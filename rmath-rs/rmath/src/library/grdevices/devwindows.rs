@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Windows graphics device module (devWindows.c, 4053 lines)
 //!
 //! Provides Windows GDI-based graphics device (devga), savePlot,
@@ -372,37 +371,37 @@ fn with_windows_device_state<T>(f: impl FnOnce(&mut WindowsDeviceState) -> T) ->
 /// Extract R_RED component from a packed R color integer
 #[inline]
 unsafe fn R_RED(color: c_int) -> c_int {
-    (color >> 16) & 0xff
+    unsafe { (color >> 16) & 0xff }
 }
 
 /// Extract R_GREEN component from a packed R color integer
 #[inline]
 unsafe fn R_GREEN(color: c_int) -> c_int {
-    (color >> 8) & 0xff
+    unsafe { (color >> 8) & 0xff }
 }
 
 /// Extract R_BLUE component from a packed R color integer
 #[inline]
 unsafe fn R_BLUE(color: c_int) -> c_int {
-    color & 0xff
+    unsafe { color & 0xff }
 }
 
 /// Extract R_ALPHA component from a packed R color integer
 #[inline]
 unsafe fn R_ALPHA(color: c_int) -> c_int {
-    (color >> 24) & 0xff
+    unsafe { (color >> 24) & 0xff }
 }
 
 /// Construct an R color from R, G, B, A components
 #[inline]
 unsafe fn R_RGBA(r: c_int, g: c_int, b: c_int, a: c_int) -> c_int {
-    (a << 24) | (r << 16) | (g << 8) | b
+    unsafe { (a << 24) | (r << 16) | (g << 8) | b }
 }
 
 /// Check if a color is fully opaque
 #[inline]
 unsafe fn R_OPAQUE(color: c_int) -> bool {
-    R_ALPHA(color) == 255
+    unsafe { R_ALPHA(color) == 255 }
 }
 
 /// Pack RGB into a 0x00RRGGBB integer
@@ -413,19 +412,21 @@ fn rgb_pack(r: c_int, g: c_int, b: c_int) -> c_uint {
 
 /// Convert an R color to an ARGB quadruplet with gamma correction
 unsafe fn GArgb(color: c_int, gamma: c_double) -> c_uint {
-    let r: c_int;
-    let g: c_int;
-    let b: c_int;
-    if gamma != 1.0 {
-        r = (255.0 * (R_RED(color) as c_double / 255.0).powf(gamma)) as c_int;
-        g = (255.0 * (R_GREEN(color) as c_double / 255.0).powf(gamma)) as c_int;
-        b = (255.0 * (R_BLUE(color) as c_double / 255.0).powf(gamma)) as c_int;
-    } else {
-        r = R_RED(color);
-        g = R_GREEN(color);
-        b = R_BLUE(color);
+    unsafe {
+        let r: c_int;
+        let g: c_int;
+        let b: c_int;
+        if gamma != 1.0 {
+            r = (255.0 * (R_RED(color) as c_double / 255.0).powf(gamma)) as c_int;
+            g = (255.0 * (R_GREEN(color) as c_double / 255.0).powf(gamma)) as c_int;
+            b = (255.0 * (R_BLUE(color) as c_double / 255.0).powf(gamma)) as c_int;
+        } else {
+            r = R_RED(color);
+            g = R_GREEN(color);
+            b = R_BLUE(color);
+        }
+        rgb_pack(r, g, b)
     }
-    rgb_pack(r, g, b)
 }
 
 fn imin2(a: c_int, b: c_int) -> c_int {
@@ -438,10 +439,12 @@ fn imax2(a: c_int, b: c_int) -> c_int {
 
 /// Safe CStr pointer helper: returns "" if null
 unsafe fn cstr_or_empty(p: *const c_char) -> *const c_char {
-    if p.is_null() {
-        b"\0".as_ptr() as *const c_char
-    } else {
-        p
+    unsafe {
+        if p.is_null() {
+            b"\0".as_ptr() as *const c_char
+        } else {
+            p
+        }
     }
 }
 
@@ -450,40 +453,44 @@ unsafe fn cstr_or_empty(p: *const c_char) -> *const c_char {
 // ===========================================================================
 
 unsafe fn RStandardFonts() {
-    let arial = b"Arial\0";
-    let symbol = b"Symbol\0";
-    with_windows_device_state(|state| {
-        for i in 0..4 {
+    unsafe {
+        let arial = b"Arial\0";
+        let symbol = b"Symbol\0";
+        with_windows_device_state(|state| {
+            for i in 0..4 {
+                ptr::copy_nonoverlapping(
+                    arial.as_ptr() as *const c_char,
+                    state.fontname[i as usize].as_mut_ptr(),
+                    arial.len(),
+                );
+            }
             ptr::copy_nonoverlapping(
-                arial.as_ptr() as *const c_char,
-                state.fontname[i as usize].as_mut_ptr(),
-                arial.len(),
+                symbol.as_ptr() as *const c_char,
+                state.fontname[4].as_mut_ptr(),
+                symbol.len(),
             );
-        }
-        ptr::copy_nonoverlapping(
-            symbol.as_ptr() as *const c_char,
-            state.fontname[4].as_mut_ptr(),
-            symbol.len(),
-        );
-        state.fontstyle[0] = Plain;
-        state.fontstyle[4] = Plain;
-        state.fontstyle[1] = Bold;
-        state.fontstyle[2] = Italic;
-        state.fontstyle[3] = BoldItalic;
-        state.fontnum = 5;
-        state.fontinitdone = 2;
-    });
+            state.fontstyle[0] = Plain;
+            state.fontstyle[4] = Plain;
+            state.fontstyle[1] = Bold;
+            state.fontstyle[2] = Italic;
+            state.fontstyle[3] = BoldItalic;
+            state.fontnum = 5;
+            state.fontinitdone = 2;
+        });
+    }
 }
 
 unsafe fn RFontInit() {
-    // On non-Windows, just use standard fonts
-    RStandardFonts();
+    unsafe {
+        // On non-Windows, just use standard fonts
+        RStandardFonts();
+    }
 }
 
 /// Translate a font family name using the Windows font database.
 /// On non-Windows, returns NULL (font name from fontname[] will be used).
 unsafe fn translateFontFamily(_family: *const c_char) -> *mut c_char {
-    ptr::null_mut()
+    unsafe { ptr::null_mut() }
 }
 
 // ===========================================================================
@@ -494,34 +501,40 @@ unsafe fn translateFontFamily(_family: *const c_char) -> *mut c_char {
 /// Stub: returns R_NilValue (no-op on non-Windows).
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn savePlot(args: SEXP) -> SEXP {
-    let _ = args;
-    R_NilValue()
+    unsafe {
+        let _ = args;
+        R_NilValue()
+    }
 }
 
 /// devga -- create a Windows GDI graphics device (windows() function).
 /// Stub: returns R_NilValue (no-op on non-Windows).
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn devga(args: SEXP) -> SEXP {
-    let _ = args;
-    R_NilValue()
+    unsafe {
+        let _ = args;
+        R_NilValue()
+    }
 }
 
 /// bmVersion -- return bitmap library version info (libpng, jpeg, libtiff).
 /// Returns a named character vector of version strings.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn bmVersion() -> SEXP {
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
-    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
-    use crate::attrib_core::setAttrib;
-    setAttrib(ans, R_NamesSymbol(), nms);
-    SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(nms, 1, Rf_mkChar(b"jpeg\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(nms, 2, Rf_mkChar(b"libtiff\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(ans, 1, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(ans, 2, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-    Rf_unprotect(2);
-    ans
+    unsafe {
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+        let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+        use crate::attrib_core::setAttrib;
+        setAttrib(ans, R_NamesSymbol(), nms);
+        SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nms, 1, Rf_mkChar(b"jpeg\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nms, 2, Rf_mkChar(b"libtiff\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ans, 1, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ans, 2, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+        Rf_unprotect(2);
+        ans
+    }
 }
 
 // ===========================================================================
@@ -533,48 +546,52 @@ pub unsafe fn bmVersion() -> SEXP {
 /// On Windows, this loads winCairo.dll. Stub: returns R_NilValue.
 #[cfg(target_os = "windows")]
 pub unsafe fn devCairo(args: SEXP) -> SEXP {
-    let _ = args;
-    R_NilValue()
+    unsafe {
+        let _ = args;
+        R_NilValue()
+    }
 }
 
 /// cairoVersion -- return the Cairo library version string.
 /// Stub: returns empty string.
 #[cfg(target_os = "windows")]
 pub unsafe fn cairoVersion() -> SEXP {
-    Rf_mkString(b"\0".as_ptr() as *const c_char)
+    unsafe { Rf_mkString(b"\0".as_ptr() as *const c_char) }
 }
 
 /// pangoVersion -- return the Pango library version string.
 /// Stub: returns empty string.
 #[cfg(target_os = "windows")]
 pub unsafe fn pangoVersion() -> SEXP {
-    Rf_mkString(b"\0".as_ptr() as *const c_char)
+    unsafe { Rf_mkString(b"\0".as_ptr() as *const c_char) }
 }
 
 /// cairoFT -- return Cairo FreeType information.
 /// Stub: returns empty string.
 #[cfg(target_os = "windows")]
 pub unsafe fn cairoFT() -> SEXP {
-    Rf_mkString(b"\0".as_ptr() as *const c_char)
+    unsafe { Rf_mkString(b"\0".as_ptr() as *const c_char) }
 }
 
 /// bmVersion -- return bitmap library version info (libpng, jpeg, libtiff).
 /// Returns a named character vector of version strings.
 #[cfg(target_os = "windows")]
 pub unsafe fn bmVersion() -> SEXP {
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
-    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
-    use crate::attrib_core::setAttrib;
-    use crate::sexp::globals::R_NamesSymbol;
-    setAttrib(ans, R_NamesSymbol(), nms);
-    SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(nms, 1, Rf_mkChar(b"jpeg\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(nms, 2, Rf_mkChar(b"libtiff\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(ans, 1, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(ans, 2, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-    Rf_unprotect(2);
-    ans
+    unsafe {
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+        let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+        use crate::attrib_core::setAttrib;
+        use crate::sexp::globals::R_NamesSymbol;
+        setAttrib(ans, R_NamesSymbol(), nms);
+        SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nms, 1, Rf_mkChar(b"jpeg\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nms, 2, Rf_mkChar(b"libtiff\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ans, 1, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(ans, 2, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+        Rf_unprotect(2);
+        ans
+    }
 }
 
 // ===========================================================================
@@ -583,22 +600,26 @@ pub unsafe fn bmVersion() -> SEXP {
 
 #[cfg(target_os = "windows")]
 pub unsafe fn savePlot(args: SEXP) -> SEXP {
-    // Full implementation would parse args and call SaveAsPng/SaveAsBmp/etc.
-    // For now, stub on Windows too since we lack full GDI support
-    let _ = args;
-    R_NilValue()
+    unsafe {
+        // Full implementation would parse args and call SaveAsPng/SaveAsBmp/etc.
+        // For now, stub on Windows too since we lack full GDI support
+        let _ = args;
+        R_NilValue()
+    }
 }
 
 #[cfg(target_os = "windows")]
 pub unsafe fn devga(args: SEXP) -> SEXP {
-    // Full implementation would:
-    // 1. Parse all arguments from args (display, width, height, ps, etc.)
-    // 2. Allocate a gadesc
-    // 3. Call GADeviceDriver
-    // 4. Create the device
-    // For now, stub since we lack full GDI
-    let _ = args;
-    R_NilValue()
+    unsafe {
+        // Full implementation would:
+        // 1. Parse all arguments from args (display, width, height, ps, etc.)
+        // 2. Allocate a gadesc
+        // 3. Call GADeviceDriver
+        // 4. Create the device
+        // For now, stub since we lack full GDI
+        let _ = args;
+        R_NilValue()
+    }
 }
 
 // ===========================================================================
@@ -612,7 +633,9 @@ mod win_impl {
     // --- Callbacks: all are no-ops since we lack Windows GDI ---
 
     pub unsafe fn GA_Activate(dd: *mut c_void) {
-        let _ = dd;
+        unsafe {
+            let _ = dd;
+        }
     }
 
     pub unsafe fn GA_Circle(
@@ -622,28 +645,40 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (x, y, radius, gc, dd);
+        unsafe {
+            let _ = (x, y, radius, gc, dd);
+        }
     }
 
     pub unsafe fn GA_Clip(x0: c_double, x1: c_double, y0: c_double, y1: c_double, dd: *mut c_void) {
-        let _ = (x0, x1, y0, y1, dd);
+        unsafe {
+            let _ = (x0, x1, y0, y1, dd);
+        }
     }
 
     pub unsafe fn GA_Close(dd: *mut c_void) {
-        let _ = dd;
+        unsafe {
+            let _ = dd;
+        }
     }
 
     pub unsafe fn GA_Deactivate(dd: *mut c_void) {
-        let _ = dd;
+        unsafe {
+            let _ = dd;
+        }
     }
 
     pub unsafe fn GA_eventHelper(dd: *mut c_void, code: c_int) {
-        let _ = (dd, code);
+        unsafe {
+            let _ = (dd, code);
+        }
     }
 
     pub unsafe fn GA_Locator(x: *mut c_double, y: *mut c_double, dd: *mut c_void) -> c_int {
-        let _ = (x, y, dd);
-        0 // FALSE
+        unsafe {
+            let _ = (x, y, dd);
+            0 // FALSE
+        }
     }
 
     pub unsafe fn GA_Line(
@@ -654,7 +689,9 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (x1, y1, x2, y2, gc, dd);
+        unsafe {
+            let _ = (x1, y1, x2, y2, gc, dd);
+        }
     }
 
     pub unsafe fn GA_MetricInfo(
@@ -665,15 +702,21 @@ mod win_impl {
         width: *mut c_double,
         dd: *mut c_void,
     ) {
-        let _ = (c, gc, ascent, descent, width, dd);
+        unsafe {
+            let _ = (c, gc, ascent, descent, width, dd);
+        }
     }
 
     pub unsafe fn GA_Mode(mode: c_int, dd: *mut c_void) {
-        let _ = (mode, dd);
+        unsafe {
+            let _ = (mode, dd);
+        }
     }
 
     pub unsafe fn GA_NewPage(gc: *const c_void, dd: *mut c_void) {
-        let _ = (gc, dd);
+        unsafe {
+            let _ = (gc, dd);
+        }
     }
 
     pub unsafe fn GA_Path(
@@ -685,7 +728,9 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (x, y, npoly, nper, winding, gc, dd);
+        unsafe {
+            let _ = (x, y, npoly, nper, winding, gc, dd);
+        }
     }
 
     pub unsafe fn GA_Polygon(
@@ -695,7 +740,9 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (n, x, y, gc, dd);
+        unsafe {
+            let _ = (n, x, y, gc, dd);
+        }
     }
 
     pub unsafe fn GA_Polyline(
@@ -705,7 +752,9 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (n, x, y, gc, dd);
+        unsafe {
+            let _ = (n, x, y, gc, dd);
+        }
     }
 
     pub unsafe fn GA_Rect(
@@ -716,7 +765,9 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (x0, y0, x1, y1, gc, dd);
+        unsafe {
+            let _ = (x0, y0, x1, y1, gc, dd);
+        }
     }
 
     pub unsafe fn GA_Size(
@@ -726,11 +777,15 @@ mod win_impl {
         top: *mut c_double,
         dd: *mut c_void,
     ) {
-        let _ = (left, right, bottom, top, dd);
+        unsafe {
+            let _ = (left, right, bottom, top, dd);
+        }
     }
 
     pub unsafe fn GA_Resize(dd: *mut c_void) {
-        let _ = dd;
+        unsafe {
+            let _ = dd;
+        }
     }
 
     pub unsafe fn GA_Raster(
@@ -746,17 +801,23 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (raster, w, h, x, y, width, height, rot, interpolate, gc, dd);
+        unsafe {
+            let _ = (raster, w, h, x, y, width, height, rot, interpolate, gc, dd);
+        }
     }
 
     pub unsafe fn GA_Cap(dd: *mut c_void) -> SEXP {
-        let _ = dd;
-        R_NilValue()
+        unsafe {
+            let _ = dd;
+            R_NilValue()
+        }
     }
 
     pub unsafe fn GA_StrWidth(str: *const c_char, gc: *const c_void, dd: *mut c_void) -> c_double {
-        let _ = (str, gc, dd);
-        0.0
+        unsafe {
+            let _ = (str, gc, dd);
+            0.0
+        }
     }
 
     pub unsafe fn GA_Text(
@@ -768,7 +829,9 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (x, y, str, rot, hadj, gc, dd);
+        unsafe {
+            let _ = (x, y, str, rot, hadj, gc, dd);
+        }
     }
 
     pub unsafe fn GA_StrWidth_UTF8(
@@ -776,8 +839,10 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) -> c_double {
-        let _ = (str, gc, dd);
-        0.0
+        unsafe {
+            let _ = (str, gc, dd);
+            0.0
+        }
     }
 
     pub unsafe fn GA_Text_UTF8(
@@ -789,82 +854,118 @@ mod win_impl {
         gc: *const c_void,
         dd: *mut c_void,
     ) {
-        let _ = (x, y, str, rot, hadj, gc, dd);
+        unsafe {
+            let _ = (x, y, str, rot, hadj, gc, dd);
+        }
     }
 
     pub unsafe fn GA_NewFrameConfirm(dev: *mut c_void) -> c_int {
-        let _ = dev;
-        1 // TRUE
+        unsafe {
+            let _ = dev;
+            1 // TRUE
+        }
     }
 
     pub unsafe fn GA_setPattern(pattern: SEXP, dd: *mut c_void) -> SEXP {
-        let _ = (pattern, dd);
-        R_NilValue()
+        unsafe {
+            let _ = (pattern, dd);
+            R_NilValue()
+        }
     }
 
     pub unsafe fn GA_releasePattern(ref_: SEXP, dd: *mut c_void) {
-        let _ = (ref_, dd);
+        unsafe {
+            let _ = (ref_, dd);
+        }
     }
 
     pub unsafe fn GA_setClipPath(path: SEXP, ref_: SEXP, dd: *mut c_void) -> SEXP {
-        let _ = (path, ref_, dd);
-        R_NilValue()
+        unsafe {
+            let _ = (path, ref_, dd);
+            R_NilValue()
+        }
     }
 
     pub unsafe fn GA_releaseClipPath(ref_: SEXP, dd: *mut c_void) {
-        let _ = (ref_, dd);
+        unsafe {
+            let _ = (ref_, dd);
+        }
     }
 
     pub unsafe fn GA_setMask(path: SEXP, ref_: SEXP, dd: *mut c_void) -> SEXP {
-        let _ = (path, ref_, dd);
-        R_NilValue()
+        unsafe {
+            let _ = (path, ref_, dd);
+            R_NilValue()
+        }
     }
 
     pub unsafe fn GA_releaseMask(ref_: SEXP, dd: *mut c_void) {
-        let _ = (ref_, dd);
+        unsafe {
+            let _ = (ref_, dd);
+        }
     }
 
     pub unsafe fn GA_holdflush(dd: *mut c_void, level: c_int) -> c_int {
-        let _ = (dd, level);
-        0
+        unsafe {
+            let _ = (dd, level);
+            0
+        }
     }
 
     pub unsafe fn GA_onExit(dd: *mut c_void) {
-        let _ = dd;
+        unsafe {
+            let _ = dd;
+        }
     }
 
     // --- Save functions ---
 
     pub unsafe fn SaveAsPng(dd: *mut c_void, fn_: *const c_char) {
-        let _ = (dd, fn_);
+        unsafe {
+            let _ = (dd, fn_);
+        }
     }
 
     pub unsafe fn SaveAsJpeg(dd: *mut c_void, quality: c_int, fn_: *const c_char) {
-        let _ = (dd, quality, fn_);
+        unsafe {
+            let _ = (dd, quality, fn_);
+        }
     }
 
     pub unsafe fn SaveAsBmp(dd: *mut c_void, fn_: *const c_char) {
-        let _ = (dd, fn_);
+        unsafe {
+            let _ = (dd, fn_);
+        }
     }
 
     pub unsafe fn SaveAsTiff(dd: *mut c_void, fn_: *const c_char) {
-        let _ = (dd, fn_);
+        unsafe {
+            let _ = (dd, fn_);
+        }
     }
 
     pub unsafe fn SaveAsBitmap(dd: *mut c_void, res: c_int) {
-        let _ = (dd, res);
+        unsafe {
+            let _ = (dd, res);
+        }
     }
 
     pub unsafe fn SaveAsWin(dd: *mut c_void, display: *const c_char, restoreConsole: c_int) {
-        let _ = (dd, display, restoreConsole);
+        unsafe {
+            let _ = (dd, display, restoreConsole);
+        }
     }
 
     pub unsafe fn SaveAsPostscript(dd: *mut c_void, fn_: *const c_char) {
-        let _ = (dd, fn_);
+        unsafe {
+            let _ = (dd, fn_);
+        }
     }
 
     pub unsafe fn SaveAsPDF(dd: *mut c_void, fn_: *const c_char) {
-        let _ = (dd, fn_);
+        unsafe {
+            let _ = (dd, fn_);
+        }
     }
 
     // --- Raster helpers ---
@@ -878,7 +979,9 @@ mod win_impl {
         rot: c_double,
         dd: *mut c_void,
     ) {
-        let _ = (raster, x, y, w, h, rot, dd);
+        unsafe {
+            let _ = (raster, x, y, w, h, rot, dd);
+        }
     }
 
     pub unsafe fn flipRaster(
@@ -889,242 +992,340 @@ mod win_impl {
         invertY: c_int,
         flippedRaster: *mut c_uint,
     ) {
-        let _ = (
-            rasterImage,
-            imageWidth,
-            imageHeight,
-            invertX,
-            invertY,
-            flippedRaster,
-        );
+        unsafe {
+            let _ = (
+                rasterImage,
+                imageWidth,
+                imageHeight,
+                invertX,
+                invertY,
+                flippedRaster,
+            );
+        }
     }
 
     // --- PrivateCopyDevice ---
 
     pub unsafe fn PrivateCopyDevice(dd: *mut c_void, ndd: *mut c_void, name: *const c_char) {
-        let _ = (dd, ndd, name);
+        unsafe {
+            let _ = (dd, ndd, name);
+        }
     }
 
     // --- Plot history ---
 
     pub unsafe fn NewPlotHistory(n: c_int) -> SEXP {
-        let _ = n;
-        R_NilValue()
+        unsafe {
+            let _ = n;
+            R_NilValue()
+        }
     }
 
     pub unsafe fn GrowthPlotHistory(vdl: SEXP) -> SEXP {
-        let _ = vdl;
-        R_NilValue()
+        unsafe {
+            let _ = vdl;
+            R_NilValue()
+        }
     }
 
     pub unsafe fn AddtoPlotHistory(snapshot: SEXP, replace: c_int) {
-        let _ = (snapshot, replace);
+        unsafe {
+            let _ = (snapshot, replace);
+        }
     }
 
     pub unsafe fn Replay(dd: *mut c_void, vdl: SEXP) {
-        let _ = (dd, vdl);
+        unsafe {
+            let _ = (dd, vdl);
+        }
     }
 
     // --- Menu callbacks ---
 
     pub unsafe fn menustop(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menunextplot(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menufilebitmap(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menups(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menupdf(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuwm(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuclpwm(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuclpbm(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menustayontop(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuprint(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuclose(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn grpopupact(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menurec(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuadd(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menureplace(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menunext(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuprev(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menugrclear(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menugvar(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menusvar(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuconsole(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menuR(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menufit(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn menufix(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     pub unsafe fn mbarf(m: *mut c_void) {
-        let _ = m;
+        unsafe {
+            let _ = m;
+        }
     }
 
     // --- Window callbacks ---
 
     pub unsafe fn HelpResize(w: *mut c_void, r: ClipRect) {
-        let _ = (w, r);
+        unsafe {
+            let _ = (w, r);
+        }
     }
 
     pub unsafe fn HelpClose(w: *mut c_void) {
-        let _ = w;
+        unsafe {
+            let _ = w;
+        }
     }
 
     pub unsafe fn HelpExpose(w: *mut c_void, r: ClipRect) {
-        let _ = (w, r);
+        unsafe {
+            let _ = (w, r);
+        }
     }
 
     pub unsafe fn HelpMouseClick(w: *mut c_void, button: c_int, pt_x: c_int, pt_y: c_int) {
-        let _ = (w, button, pt_x, pt_y);
+        unsafe {
+            let _ = (w, button, pt_x, pt_y);
+        }
     }
 
     pub unsafe fn HelpMouseMove(w: *mut c_void, button: c_int, pt_x: c_int, pt_y: c_int) {
-        let _ = (w, button, pt_x, pt_y);
+        unsafe {
+            let _ = (w, button, pt_x, pt_y);
+        }
     }
 
     pub unsafe fn HelpMouseUp(w: *mut c_void, button: c_int, pt_x: c_int, pt_y: c_int) {
-        let _ = (w, button, pt_x, pt_y);
+        unsafe {
+            let _ = (w, button, pt_x, pt_y);
+        }
     }
 
     pub unsafe fn CHelpKeyIn(w: *mut c_void, key: c_int) {
-        let _ = (w, key);
+        unsafe {
+            let _ = (w, key);
+        }
     }
 
     pub unsafe fn NHelpKeyIn(w: *mut c_void, key: c_int) {
-        let _ = (w, key);
+        unsafe {
+            let _ = (w, key);
+        }
     }
 
     pub unsafe fn devga_sbf(c: *mut c_void, pos: c_int) {
-        let _ = (c, pos);
+        unsafe {
+            let _ = (c, pos);
+        }
     }
 
     // --- SetColor / SetFont / SetLineStyle ---
 
     pub unsafe fn SetColor(color: c_int, gamma: c_double, xd: *mut gadesc) {
-        if !xd.is_null() && (*xd).col != color {
-            (*xd).col = color;
-            (*xd).fgcolor = GArgb(color, gamma);
+        unsafe {
+            if !xd.is_null() && (*xd).col != color {
+                (*xd).col = color;
+                (*xd).fgcolor = GArgb(color, gamma);
+            }
         }
     }
 
     pub unsafe fn SetFont(gc: *const c_void, rot: c_double, xd: *mut gadesc) {
-        let _ = (gc, rot, xd);
+        unsafe {
+            let _ = (gc, rot, xd);
+        }
     }
 
     pub unsafe fn SetLineStyle(gc: *const c_void, dd: *mut c_void) {
-        let _ = (gc, dd);
+        unsafe {
+            let _ = (gc, dd);
+        }
     }
 
     // --- Device pixel dimensions ---
 
     pub unsafe fn pixelWidth(obj: *mut c_void) -> c_double {
-        let _ = obj;
-        1.0 / 96.0
+        unsafe {
+            let _ = obj;
+            1.0 / 96.0
+        }
     }
 
     pub unsafe fn pixelHeight(obj: *mut c_void) -> c_double {
-        let _ = obj;
-        1.0 / 96.0
+        unsafe {
+            let _ = obj;
+            1.0 / 96.0
+        }
     }
 
     // --- getClipRect helper ---
 
     pub unsafe fn getClipRect(xd: *mut gadesc) -> ClipRect {
-        if xd.is_null() {
-            return ClipRect::default();
+        unsafe {
+            if xd.is_null() {
+                return ClipRect::default();
+            }
+            (*xd).clip
         }
-        (*xd).clip
     }
 
     // --- getregion helper ---
 
     pub unsafe fn getregion(xd: *mut gadesc) -> ClipRect {
-        if xd.is_null() {
-            return ClipRect::default();
-        }
-        ClipRect {
-            x: 0,
-            y: 0,
-            width: (*xd).showWidth,
-            height: (*xd).showHeight,
+        unsafe {
+            if xd.is_null() {
+                return ClipRect::default();
+            }
+            ClipRect {
+                x: 0,
+                y: 0,
+                width: (*xd).showWidth,
+                height: (*xd).showHeight,
+            }
         }
     }
 
     // --- drawbits / timer helpers ---
 
     pub unsafe fn drawbits(xd: *mut gadesc) {
-        let _ = xd;
+        unsafe {
+            let _ = xd;
+        }
     }
 
     pub unsafe fn GA_Timer(xd: *mut gadesc) {
-        let _ = xd;
+        unsafe {
+            let _ = xd;
+        }
     }
 
     // --- GADeviceDriver ---
@@ -1153,63 +1354,75 @@ mod win_impl {
         xpinch: c_double,
         ypinch: c_double,
     ) -> c_int {
-        let _ = (
-            dd,
-            display,
-            width,
-            height,
-            pointsize,
-            recording,
-            resize,
-            bg,
-            canvas,
-            gamma,
-            xpos,
-            ypos,
-            buffered,
-            psenv,
-            restoreConsole,
-            title,
-            clickToConfirm,
-            fillOddEven,
-            family,
-            quality,
-            xpinch,
-            ypinch,
-        );
-        0 // FALSE
+        unsafe {
+            let _ = (
+                dd,
+                display,
+                width,
+                height,
+                pointsize,
+                recording,
+                resize,
+                bg,
+                canvas,
+                gamma,
+                xpos,
+                ypos,
+                buffered,
+                psenv,
+                restoreConsole,
+                title,
+                clickToConfirm,
+                fillOddEven,
+                family,
+                quality,
+                xpinch,
+                ypinch,
+            );
+            0 // FALSE
+        }
     }
 
     // --- deleteGraphMenus ---
 
     pub unsafe fn deleteGraphMenus(devnum: c_int) {
-        let _ = devnum;
+        unsafe {
+            let _ = devnum;
+        }
     }
 
     // --- donelocator ---
 
     pub unsafe fn donelocator(data: *mut c_void) {
-        let _ = data;
+        unsafe {
+            let _ = data;
+        }
     }
 
     // --- privategetpixel2 ---
 
     pub unsafe fn privategetpixel2(d: *mut c_void, i: c_int, j: c_int) -> c_uint {
-        let _ = (d, i, j);
-        0
+        unsafe {
+            let _ = (d, i, j);
+            0
+        }
     }
 
     // --- getKeyName ---
 
     pub unsafe fn getKeyName(key: c_int) -> c_int {
-        let _ = key;
-        0
+        unsafe {
+            let _ = key;
+            0
+        }
     }
 
     // --- err_cannot_open ---
 
     pub unsafe fn err_cannot_open(fn_: *const c_char) {
-        let _ = fn_;
+        unsafe {
+            let _ = fn_;
+        }
     }
 
     // --- init_PS_PDF ---
@@ -1234,7 +1447,9 @@ mod win_impl {
 mod win_impl {
     use super::*;
 
-    pub unsafe fn GA_Activate(_dd: *mut c_void) {}
+    pub unsafe fn GA_Activate(_dd: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn GA_Circle(
         _x: c_double,
         _y: c_double,
@@ -1242,6 +1457,7 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_Clip(
         _x0: c_double,
@@ -1250,12 +1466,19 @@ mod win_impl {
         _y1: c_double,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
-    pub unsafe fn GA_Close(_dd: *mut c_void) {}
-    pub unsafe fn GA_Deactivate(_dd: *mut c_void) {}
-    pub unsafe fn GA_eventHelper(_dd: *mut c_void, _code: c_int) {}
+    pub unsafe fn GA_Close(_dd: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn GA_Deactivate(_dd: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn GA_eventHelper(_dd: *mut c_void, _code: c_int) {
+        unsafe {}
+    }
     pub unsafe fn GA_Locator(_x: *mut c_double, _y: *mut c_double, _dd: *mut c_void) -> c_int {
-        0
+        unsafe { 0 }
     }
     pub unsafe fn GA_Line(
         _x1: c_double,
@@ -1265,6 +1488,7 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_MetricInfo(
         _c: c_int,
@@ -1274,9 +1498,14 @@ mod win_impl {
         _width: *mut c_double,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
-    pub unsafe fn GA_Mode(_mode: c_int, _dd: *mut c_void) {}
-    pub unsafe fn GA_NewPage(_gc: *const c_void, _dd: *mut c_void) {}
+    pub unsafe fn GA_Mode(_mode: c_int, _dd: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn GA_NewPage(_gc: *const c_void, _dd: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn GA_Path(
         _x: *mut c_double,
         _y: *mut c_double,
@@ -1286,6 +1515,7 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_Polygon(
         _n: c_int,
@@ -1294,6 +1524,7 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_Polyline(
         _n: c_int,
@@ -1302,6 +1533,7 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_Rect(
         _x0: c_double,
@@ -1311,6 +1543,7 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_Size(
         _left: *mut c_double,
@@ -1319,8 +1552,11 @@ mod win_impl {
         _top: *mut c_double,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
-    pub unsafe fn GA_Resize(_dd: *mut c_void) {}
+    pub unsafe fn GA_Resize(_dd: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn GA_Raster(
         _raster: *mut c_uint,
         _w: c_int,
@@ -1334,16 +1570,17 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_Cap(_dd: *mut c_void) -> SEXP {
-        R_NilValue()
+        unsafe { R_NilValue() }
     }
     pub unsafe fn GA_StrWidth(
         _str: *const c_char,
         _gc: *const c_void,
         _dd: *mut c_void,
     ) -> c_double {
-        0.0
+        unsafe { 0.0 }
     }
     pub unsafe fn GA_Text(
         _x: c_double,
@@ -1354,13 +1591,14 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_StrWidth_UTF8(
         _str: *const c_char,
         _gc: *const c_void,
         _dd: *mut c_void,
     ) -> c_double {
-        0.0
+        unsafe { 0.0 }
     }
     pub unsafe fn GA_Text_UTF8(
         _x: c_double,
@@ -1371,34 +1609,59 @@ mod win_impl {
         _gc: *const c_void,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn GA_NewFrameConfirm(_dev: *mut c_void) -> c_int {
-        1
+        unsafe { 1 }
     }
     pub unsafe fn GA_setPattern(_pattern: SEXP, _dd: *mut c_void) -> SEXP {
-        R_NilValue()
+        unsafe { R_NilValue() }
     }
-    pub unsafe fn GA_releasePattern(_ref: SEXP, _dd: *mut c_void) {}
+    pub unsafe fn GA_releasePattern(_ref: SEXP, _dd: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn GA_setClipPath(_path: SEXP, _ref: SEXP, _dd: *mut c_void) -> SEXP {
-        R_NilValue()
+        unsafe { R_NilValue() }
     }
-    pub unsafe fn GA_releaseClipPath(_ref: SEXP, _dd: *mut c_void) {}
+    pub unsafe fn GA_releaseClipPath(_ref: SEXP, _dd: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn GA_setMask(_path: SEXP, _ref: SEXP, _dd: *mut c_void) -> SEXP {
-        R_NilValue()
+        unsafe { R_NilValue() }
     }
-    pub unsafe fn GA_releaseMask(_ref: SEXP, _dd: *mut c_void) {}
+    pub unsafe fn GA_releaseMask(_ref: SEXP, _dd: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn GA_holdflush(_dd: *mut c_void, _level: c_int) -> c_int {
-        0
+        unsafe { 0 }
     }
-    pub unsafe fn GA_onExit(_dd: *mut c_void) {}
-    pub unsafe fn SaveAsPng(_dd: *mut c_void, _fn: *const c_char) {}
-    pub unsafe fn SaveAsJpeg(_dd: *mut c_void, _quality: c_int, _fn: *const c_char) {}
-    pub unsafe fn SaveAsBmp(_dd: *mut c_void, _fn: *const c_char) {}
-    pub unsafe fn SaveAsTiff(_dd: *mut c_void, _fn: *const c_char) {}
-    pub unsafe fn SaveAsBitmap(_dd: *mut c_void, _res: c_int) {}
-    pub unsafe fn SaveAsWin(_dd: *mut c_void, _display: *const c_char, _restoreConsole: c_int) {}
-    pub unsafe fn SaveAsPostscript(_dd: *mut c_void, _fn: *const c_char) {}
-    pub unsafe fn SaveAsPDF(_dd: *mut c_void, _fn: *const c_char) {}
+    pub unsafe fn GA_onExit(_dd: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsPng(_dd: *mut c_void, _fn: *const c_char) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsJpeg(_dd: *mut c_void, _quality: c_int, _fn: *const c_char) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsBmp(_dd: *mut c_void, _fn: *const c_char) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsTiff(_dd: *mut c_void, _fn: *const c_char) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsBitmap(_dd: *mut c_void, _res: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsWin(_dd: *mut c_void, _display: *const c_char, _restoreConsole: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsPostscript(_dd: *mut c_void, _fn: *const c_char) {
+        unsafe {}
+    }
+    pub unsafe fn SaveAsPDF(_dd: *mut c_void, _fn: *const c_char) {
+        unsafe {}
+    }
     pub unsafe fn doRaster(
         _raster: *mut c_uint,
         _x: c_int,
@@ -1408,6 +1671,7 @@ mod win_impl {
         _rot: c_double,
         _dd: *mut c_void,
     ) {
+        unsafe {}
     }
     pub unsafe fn flipRaster(
         _rasterImage: *mut c_uint,
@@ -1417,67 +1681,152 @@ mod win_impl {
         _invertY: c_int,
         _flippedRaster: *mut c_uint,
     ) {
+        unsafe {}
     }
-    pub unsafe fn PrivateCopyDevice(_dd: *mut c_void, _ndd: *mut c_void, _name: *const c_char) {}
+    pub unsafe fn PrivateCopyDevice(_dd: *mut c_void, _ndd: *mut c_void, _name: *const c_char) {
+        unsafe {}
+    }
     pub unsafe fn NewPlotHistory(_n: c_int) -> SEXP {
-        R_NilValue()
+        unsafe { R_NilValue() }
     }
     pub unsafe fn GrowthPlotHistory(_vdl: SEXP) -> SEXP {
-        R_NilValue()
+        unsafe { R_NilValue() }
     }
-    pub unsafe fn AddtoPlotHistory(_snapshot: SEXP, _replace: c_int) {}
-    pub unsafe fn Replay(_dd: *mut c_void, _vdl: SEXP) {}
-    pub unsafe fn menustop(_m: *mut c_void) {}
-    pub unsafe fn menunextplot(_m: *mut c_void) {}
-    pub unsafe fn menufilebitmap(_m: *mut c_void) {}
-    pub unsafe fn menups(_m: *mut c_void) {}
-    pub unsafe fn menupdf(_m: *mut c_void) {}
-    pub unsafe fn menuwm(_m: *mut c_void) {}
-    pub unsafe fn menuclpwm(_m: *mut c_void) {}
-    pub unsafe fn menuclpbm(_m: *mut c_void) {}
-    pub unsafe fn menustayontop(_m: *mut c_void) {}
-    pub unsafe fn menuprint(_m: *mut c_void) {}
-    pub unsafe fn menuclose(_m: *mut c_void) {}
-    pub unsafe fn grpopupact(_m: *mut c_void) {}
-    pub unsafe fn menurec(_m: *mut c_void) {}
-    pub unsafe fn menuadd(_m: *mut c_void) {}
-    pub unsafe fn menureplace(_m: *mut c_void) {}
-    pub unsafe fn menunext(_m: *mut c_void) {}
-    pub unsafe fn menuprev(_m: *mut c_void) {}
-    pub unsafe fn menugrclear(_m: *mut c_void) {}
-    pub unsafe fn menugvar(_m: *mut c_void) {}
-    pub unsafe fn menusvar(_m: *mut c_void) {}
-    pub unsafe fn menuconsole(_m: *mut c_void) {}
-    pub unsafe fn menuR(_m: *mut c_void) {}
-    pub unsafe fn menufit(_m: *mut c_void) {}
-    pub unsafe fn menufix(_m: *mut c_void) {}
-    pub unsafe fn mbarf(_m: *mut c_void) {}
-    pub unsafe fn HelpResize(_w: *mut c_void, _r: ClipRect) {}
-    pub unsafe fn HelpClose(_w: *mut c_void) {}
-    pub unsafe fn HelpExpose(_w: *mut c_void, _r: ClipRect) {}
-    pub unsafe fn HelpMouseClick(_w: *mut c_void, _button: c_int, _pt_x: c_int, _pt_y: c_int) {}
-    pub unsafe fn HelpMouseMove(_w: *mut c_void, _button: c_int, _pt_x: c_int, _pt_y: c_int) {}
-    pub unsafe fn HelpMouseUp(_w: *mut c_void, _button: c_int, _pt_x: c_int, _pt_y: c_int) {}
-    pub unsafe fn CHelpKeyIn(_w: *mut c_void, _key: c_int) {}
-    pub unsafe fn NHelpKeyIn(_w: *mut c_void, _key: c_int) {}
-    pub unsafe fn devga_sbf(_c: *mut c_void, _pos: c_int) {}
-    pub unsafe fn SetColor(_color: c_int, _gamma: c_double, _xd: *mut gadesc) {}
-    pub unsafe fn SetFont(_gc: *const c_void, _rot: c_double, _xd: *mut gadesc) {}
-    pub unsafe fn SetLineStyle(_gc: *const c_void, _dd: *mut c_void) {}
+    pub unsafe fn AddtoPlotHistory(_snapshot: SEXP, _replace: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn Replay(_dd: *mut c_void, _vdl: SEXP) {
+        unsafe {}
+    }
+    pub unsafe fn menustop(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menunextplot(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menufilebitmap(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menups(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menupdf(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuwm(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuclpwm(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuclpbm(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menustayontop(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuprint(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuclose(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn grpopupact(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menurec(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuadd(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menureplace(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menunext(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuprev(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menugrclear(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menugvar(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menusvar(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuconsole(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menuR(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menufit(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn menufix(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn mbarf(_m: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn HelpResize(_w: *mut c_void, _r: ClipRect) {
+        unsafe {}
+    }
+    pub unsafe fn HelpClose(_w: *mut c_void) {
+        unsafe {}
+    }
+    pub unsafe fn HelpExpose(_w: *mut c_void, _r: ClipRect) {
+        unsafe {}
+    }
+    pub unsafe fn HelpMouseClick(_w: *mut c_void, _button: c_int, _pt_x: c_int, _pt_y: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn HelpMouseMove(_w: *mut c_void, _button: c_int, _pt_x: c_int, _pt_y: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn HelpMouseUp(_w: *mut c_void, _button: c_int, _pt_x: c_int, _pt_y: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn CHelpKeyIn(_w: *mut c_void, _key: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn NHelpKeyIn(_w: *mut c_void, _key: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn devga_sbf(_c: *mut c_void, _pos: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn SetColor(_color: c_int, _gamma: c_double, _xd: *mut gadesc) {
+        unsafe {}
+    }
+    pub unsafe fn SetFont(_gc: *const c_void, _rot: c_double, _xd: *mut gadesc) {
+        unsafe {}
+    }
+    pub unsafe fn SetLineStyle(_gc: *const c_void, _dd: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn pixelWidth(_obj: *mut c_void) -> c_double {
-        1.0 / 96.0
+        unsafe { 1.0 / 96.0 }
     }
     pub unsafe fn pixelHeight(_obj: *mut c_void) -> c_double {
-        1.0 / 96.0
+        unsafe { 1.0 / 96.0 }
     }
     pub unsafe fn getClipRect(_xd: *mut gadesc) -> ClipRect {
-        ClipRect::default()
+        unsafe { ClipRect::default() }
     }
     pub unsafe fn getregion(_xd: *mut gadesc) -> ClipRect {
-        ClipRect::default()
+        unsafe { ClipRect::default() }
     }
-    pub unsafe fn drawbits(_xd: *mut gadesc) {}
-    pub unsafe fn GA_Timer(_xd: *mut gadesc) {}
+    pub unsafe fn drawbits(_xd: *mut gadesc) {
+        unsafe {}
+    }
+    pub unsafe fn GA_Timer(_xd: *mut gadesc) {
+        unsafe {}
+    }
     pub unsafe fn GADeviceDriver(
         _dd: *mut c_void,
         _display: *const c_char,
@@ -1502,17 +1851,23 @@ mod win_impl {
         _xpinch: c_double,
         _ypinch: c_double,
     ) -> c_int {
-        0
+        unsafe { 0 }
     }
-    pub unsafe fn deleteGraphMenus(_devnum: c_int) {}
-    pub unsafe fn donelocator(_data: *mut c_void) {}
+    pub unsafe fn deleteGraphMenus(_devnum: c_int) {
+        unsafe {}
+    }
+    pub unsafe fn donelocator(_data: *mut c_void) {
+        unsafe {}
+    }
     pub unsafe fn privategetpixel2(_d: *mut c_void, _i: c_int, _j: c_int) -> c_uint {
-        0
+        unsafe { 0 }
     }
     pub unsafe fn getKeyName(_key: c_int) -> c_int {
-        0
+        unsafe { 0 }
     }
-    pub unsafe fn err_cannot_open(_fn: *const c_char) {}
+    pub unsafe fn err_cannot_open(_fn: *const c_char) {
+        unsafe {}
+    }
     pub fn init_PS_PDF() {}
     pub fn Load_Rcairo_Dll() -> c_int {
         0

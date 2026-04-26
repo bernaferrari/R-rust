@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Port of R's `src/library/grDevices/src/devPicTeX.c`.
 //!
 //! PicTeX graphics device for R. Generates LaTeX/PicTeX code for plotting.
@@ -28,38 +27,46 @@ use crate::unix::sys_unix::R_ExpandFileName;
 const R_GE_definitions: c_int = 16;
 
 unsafe fn translateCharFP(s: SEXP) -> *const c_char {
-    CHAR(s)
+    unsafe { CHAR(s) }
 }
 
 unsafe fn R_fopen(path: *const c_char, mode: *const c_char) -> *mut libc::FILE {
-    libc::fopen(path, mode)
+    unsafe { libc::fopen(path, mode) }
 }
 
-unsafe fn R_CheckDeviceAvailable() {}
+unsafe fn R_CheckDeviceAvailable() {
+    unsafe {}
+}
 
 unsafe fn GEcreateDD() -> pDevDesc {
-    Box::into_raw(Box::new(std::mem::zeroed::<DevDesc>()))
+    unsafe { Box::into_raw(Box::new(std::mem::zeroed::<DevDesc>())) }
 }
 
 unsafe fn GEfreeDD(dev: pDevDesc) {
-    if !dev.is_null() {
-        drop(Box::from_raw(dev));
+    unsafe {
+        if !dev.is_null() {
+            drop(Box::from_raw(dev));
+        }
     }
 }
 
 unsafe fn GEcreateDevDesc(dev: pDevDesc) -> pGEDevDesc {
-    Box::into_raw(Box::new(GEDevDesc {
-        dev,
-        displayListOn: 0,
-        displayList: R_NilValue(),
-        DLlastElt: R_NilValue(),
-        savedSnapshot: R_NilValue(),
-        dirty: 0,
-        recordGraphics: 0,
-    }))
+    unsafe {
+        Box::into_raw(Box::new(GEDevDesc {
+            dev,
+            displayListOn: 0,
+            displayList: R_NilValue(),
+            DLlastElt: R_NilValue(),
+            savedSnapshot: R_NilValue(),
+            dirty: 0,
+            recordGraphics: 0,
+        }))
+    }
 }
 
-unsafe fn GEaddDevice2f(_dd: pGEDevDesc, _name: *const c_char, _file: *const c_char) {}
+unsafe fn GEaddDevice2f(_dd: pGEDevDesc, _name: *const c_char, _file: *const c_char) {
+    unsafe {}
+}
 
 /* ==================== Constants ==================== */
 
@@ -77,19 +84,21 @@ fn in2dots(x: c_double) -> c_double {
 /// Returns the number of bytes written, or -1 on error.
 #[inline]
 unsafe fn fprintf(fp: *mut libc::FILE, fmt: std::fmt::Arguments<'_>) -> c_int {
-    let s = fmt.to_string();
-    let bytes = s.as_bytes();
-    let n = bytes.len();
-    if libc::fputs(s.as_ptr() as *const c_char, fp) == libc::EOF {
-        return -1;
+    unsafe {
+        let s = fmt.to_string();
+        let bytes = s.as_bytes();
+        let n = bytes.len();
+        if libc::fputs(s.as_ptr() as *const c_char, fp) == libc::EOF {
+            return -1;
+        }
+        n as c_int
     }
-    n as c_int
 }
 
 /// Helper to write a single char to a FILE*.
 #[inline]
 unsafe fn fputc_ch(c: u8, fp: *mut libc::FILE) -> c_int {
-    libc::fputc(c as c_int, fp)
+    unsafe { libc::fputc(c as c_int, fp) }
 }
 
 /* ==================== Device-specific descriptor ==================== */
@@ -213,25 +222,27 @@ static FONTNAME: [&str; 4] = ["cmss10", "cmssbx10", "cmssi10", "cmssxi10"];
 ///
 /// Writes `\setdashpattern <...>` or `\setsolid` commands to the TeX file.
 unsafe fn SetLinetype(mut newlty: c_int, newlwd: c_double, dd: pDevDesc) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
 
-    (*ptd).lty = newlty;
-    if (*ptd).lty != 0 {
-        fprintf((*ptd).texfp, format_args!("\\setdashpattern <"));
-        let mut i = 0;
-        while i < 8 && (newlty & 15) != 0 {
-            let lwd = (newlwd as c_int) * (newlty & 15);
-            fprintf((*ptd).texfp, format_args!("{}pt", lwd));
-            let templty = newlty >> 4;
-            if (i + 1) < 8 && (templty & 15) != 0 {
-                fprintf((*ptd).texfp, format_args!(", "));
+        (*ptd).lty = newlty;
+        if (*ptd).lty != 0 {
+            fprintf((*ptd).texfp, format_args!("\\setdashpattern <"));
+            let mut i = 0;
+            while i < 8 && (newlty & 15) != 0 {
+                let lwd = (newlwd as c_int) * (newlty & 15);
+                fprintf((*ptd).texfp, format_args!("{}pt", lwd));
+                let templty = newlty >> 4;
+                if (i + 1) < 8 && (templty & 15) != 0 {
+                    fprintf((*ptd).texfp, format_args!(", "));
+                }
+                newlty = newlty >> 4;
+                i += 1;
             }
-            newlty = newlty >> 4;
-            i += 1;
+            fprintf((*ptd).texfp, format_args!(">\n"));
+        } else {
+            fprintf((*ptd).texfp, format_args!("\\setsolid\n"));
         }
-        fprintf((*ptd).texfp, format_args!(">\n"));
-    } else {
-        fprintf((*ptd).texfp, format_args!("\\setsolid\n"));
     }
 }
 
@@ -240,25 +251,27 @@ unsafe fn SetLinetype(mut newlty: c_int, newlwd: c_double, dd: pDevDesc) {
 /// Writes `\font\picfont <name> at <size>pt\picfont` to the TeX file
 /// if the font or size has changed.
 unsafe fn SetFont(face: c_int, size: c_int, ptd: *mut picTeXDesc) {
-    let mut lface = face;
-    let mut lsize = size;
-    if lface < 1 || lface > 4 {
-        lface = 1;
-    }
-    if lsize < 1 || lsize > 24 {
-        lsize = 10;
-    }
-    if lsize != (*ptd).fontsize || lface != (*ptd).fontface {
-        fprintf(
-            (*ptd).texfp,
-            format_args!(
-                "\\font\\picfont {} at {}pt\\picfont\n",
-                FONTNAME[(lface - 1) as usize],
-                lsize,
-            ),
-        );
-        (*ptd).fontsize = lsize;
-        (*ptd).fontface = lface;
+    unsafe {
+        let mut lface = face;
+        let mut lsize = size;
+        if lface < 1 || lface > 4 {
+            lface = 1;
+        }
+        if lsize < 1 || lsize > 24 {
+            lsize = 10;
+        }
+        if lsize != (*ptd).fontsize || lface != (*ptd).fontface {
+            fprintf(
+                (*ptd).texfp,
+                format_args!(
+                    "\\font\\picfont {} at {}pt\\picfont\n",
+                    FONTNAME[(lface - 1) as usize],
+                    lsize,
+                ),
+            );
+            (*ptd).fontsize = lsize;
+            (*ptd).fontface = lface;
+        }
     }
 }
 
@@ -272,85 +285,87 @@ unsafe fn PicTeX_ClipLine(
     y1: c_double,
     ptd: *mut picTeXDesc,
 ) {
-    (*ptd).clippedx0 = x0;
-    (*ptd).clippedx1 = x1;
-    (*ptd).clippedy0 = y0;
-    (*ptd).clippedy1 = y1;
+    unsafe {
+        (*ptd).clippedx0 = x0;
+        (*ptd).clippedx1 = x1;
+        (*ptd).clippedy0 = y0;
+        (*ptd).clippedy1 = y1;
 
-    // Trivial reject: entirely outside on any side
-    if ((*ptd).clippedx0 < (*ptd).clipleft && (*ptd).clippedx1 < (*ptd).clipleft)
-        || ((*ptd).clippedx0 > (*ptd).clipright && (*ptd).clippedx1 > (*ptd).clipright)
-        || ((*ptd).clippedy0 < (*ptd).clipbottom && (*ptd).clippedy1 < (*ptd).clipbottom)
-        || ((*ptd).clippedy0 > (*ptd).cliptop && (*ptd).clippedy1 > (*ptd).cliptop)
-    {
-        // Collapse to a zero-length segment
-        (*ptd).clippedx0 = (*ptd).clippedx1;
-        (*ptd).clippedy0 = (*ptd).clippedy1;
-        return;
-    }
+        // Trivial reject: entirely outside on any side
+        if ((*ptd).clippedx0 < (*ptd).clipleft && (*ptd).clippedx1 < (*ptd).clipleft)
+            || ((*ptd).clippedx0 > (*ptd).clipright && (*ptd).clippedx1 > (*ptd).clipright)
+            || ((*ptd).clippedy0 < (*ptd).clipbottom && (*ptd).clippedy1 < (*ptd).clipbottom)
+            || ((*ptd).clippedy0 > (*ptd).cliptop && (*ptd).clippedy1 > (*ptd).cliptop)
+        {
+            // Collapse to a zero-length segment
+            (*ptd).clippedx0 = (*ptd).clippedx1;
+            (*ptd).clippedy0 = (*ptd).clippedy1;
+            return;
+        }
 
-    /* Clipping Left */
-    if (*ptd).clippedx1 >= (*ptd).clipleft && (*ptd).clippedx0 < (*ptd).clipleft {
-        (*ptd).clippedy0 = ((*ptd).clippedy1 - (*ptd).clippedy0)
-            / ((*ptd).clippedx1 - (*ptd).clippedx0)
-            * ((*ptd).clipleft - (*ptd).clippedx0)
-            + (*ptd).clippedy0;
-        (*ptd).clippedx0 = (*ptd).clipleft;
-    }
-    if (*ptd).clippedx1 <= (*ptd).clipleft && (*ptd).clippedx0 > (*ptd).clipleft {
-        (*ptd).clippedy1 = ((*ptd).clippedy1 - (*ptd).clippedy0)
-            / ((*ptd).clippedx1 - (*ptd).clippedx0)
-            * ((*ptd).clipleft - (*ptd).clippedx0)
-            + (*ptd).clippedy0;
-        (*ptd).clippedx1 = (*ptd).clipleft;
-    }
+        /* Clipping Left */
+        if (*ptd).clippedx1 >= (*ptd).clipleft && (*ptd).clippedx0 < (*ptd).clipleft {
+            (*ptd).clippedy0 = ((*ptd).clippedy1 - (*ptd).clippedy0)
+                / ((*ptd).clippedx1 - (*ptd).clippedx0)
+                * ((*ptd).clipleft - (*ptd).clippedx0)
+                + (*ptd).clippedy0;
+            (*ptd).clippedx0 = (*ptd).clipleft;
+        }
+        if (*ptd).clippedx1 <= (*ptd).clipleft && (*ptd).clippedx0 > (*ptd).clipleft {
+            (*ptd).clippedy1 = ((*ptd).clippedy1 - (*ptd).clippedy0)
+                / ((*ptd).clippedx1 - (*ptd).clippedx0)
+                * ((*ptd).clipleft - (*ptd).clippedx0)
+                + (*ptd).clippedy0;
+            (*ptd).clippedx1 = (*ptd).clipleft;
+        }
 
-    /* Clipping Right */
-    if (*ptd).clippedx1 >= (*ptd).clipright && (*ptd).clippedx0 < (*ptd).clipright {
-        (*ptd).clippedy1 = ((*ptd).clippedy1 - (*ptd).clippedy0)
-            / ((*ptd).clippedx1 - (*ptd).clippedx0)
-            * ((*ptd).clipright - (*ptd).clippedx0)
-            + (*ptd).clippedy0;
-        (*ptd).clippedx1 = (*ptd).clipright;
-    }
-    if (*ptd).clippedx1 <= (*ptd).clipright && (*ptd).clippedx0 > (*ptd).clipright {
-        (*ptd).clippedy0 = ((*ptd).clippedy1 - (*ptd).clippedy0)
-            / ((*ptd).clippedx1 - (*ptd).clippedx0)
-            * ((*ptd).clipright - (*ptd).clippedx0)
-            + (*ptd).clippedy0;
-        (*ptd).clippedx0 = (*ptd).clipright;
-    }
+        /* Clipping Right */
+        if (*ptd).clippedx1 >= (*ptd).clipright && (*ptd).clippedx0 < (*ptd).clipright {
+            (*ptd).clippedy1 = ((*ptd).clippedy1 - (*ptd).clippedy0)
+                / ((*ptd).clippedx1 - (*ptd).clippedx0)
+                * ((*ptd).clipright - (*ptd).clippedx0)
+                + (*ptd).clippedy0;
+            (*ptd).clippedx1 = (*ptd).clipright;
+        }
+        if (*ptd).clippedx1 <= (*ptd).clipright && (*ptd).clippedx0 > (*ptd).clipright {
+            (*ptd).clippedy0 = ((*ptd).clippedy1 - (*ptd).clippedy0)
+                / ((*ptd).clippedx1 - (*ptd).clippedx0)
+                * ((*ptd).clipright - (*ptd).clippedx0)
+                + (*ptd).clippedy0;
+            (*ptd).clippedx0 = (*ptd).clipright;
+        }
 
-    /* Clipping Bottom */
-    if (*ptd).clippedy1 >= (*ptd).clipbottom && (*ptd).clippedy0 < (*ptd).clipbottom {
-        (*ptd).clippedx0 = ((*ptd).clippedx1 - (*ptd).clippedx0)
-            / ((*ptd).clippedy1 - (*ptd).clippedy0)
-            * ((*ptd).clipbottom - (*ptd).clippedy0)
-            + (*ptd).clippedx0;
-        (*ptd).clippedy0 = (*ptd).clipbottom;
-    }
-    if (*ptd).clippedy1 <= (*ptd).clipbottom && (*ptd).clippedy0 > (*ptd).clipbottom {
-        (*ptd).clippedx1 = ((*ptd).clippedx1 - (*ptd).clippedx0)
-            / ((*ptd).clippedy1 - (*ptd).clippedy0)
-            * ((*ptd).clipbottom - (*ptd).clippedy0)
-            + (*ptd).clippedx0;
-        (*ptd).clippedy1 = (*ptd).clipbottom;
-    }
+        /* Clipping Bottom */
+        if (*ptd).clippedy1 >= (*ptd).clipbottom && (*ptd).clippedy0 < (*ptd).clipbottom {
+            (*ptd).clippedx0 = ((*ptd).clippedx1 - (*ptd).clippedx0)
+                / ((*ptd).clippedy1 - (*ptd).clippedy0)
+                * ((*ptd).clipbottom - (*ptd).clippedy0)
+                + (*ptd).clippedx0;
+            (*ptd).clippedy0 = (*ptd).clipbottom;
+        }
+        if (*ptd).clippedy1 <= (*ptd).clipbottom && (*ptd).clippedy0 > (*ptd).clipbottom {
+            (*ptd).clippedx1 = ((*ptd).clippedx1 - (*ptd).clippedx0)
+                / ((*ptd).clippedy1 - (*ptd).clippedy0)
+                * ((*ptd).clipbottom - (*ptd).clippedy0)
+                + (*ptd).clippedx0;
+            (*ptd).clippedy1 = (*ptd).clipbottom;
+        }
 
-    /* Clipping Top */
-    if (*ptd).clippedy1 >= (*ptd).cliptop && (*ptd).clippedy0 < (*ptd).cliptop {
-        (*ptd).clippedx1 = ((*ptd).clippedx1 - (*ptd).clippedx0)
-            / ((*ptd).clippedy1 - (*ptd).clippedy0)
-            * ((*ptd).cliptop - (*ptd).clippedy0)
-            + (*ptd).clippedx0;
-        (*ptd).clippedy1 = (*ptd).cliptop;
-    }
-    if (*ptd).clippedy1 <= (*ptd).cliptop && (*ptd).clippedy0 > (*ptd).cliptop {
-        (*ptd).clippedx0 = ((*ptd).clippedx1 - (*ptd).clippedx0)
-            / ((*ptd).clippedy1 - (*ptd).clippedy0)
-            * ((*ptd).cliptop - (*ptd).clippedy0)
-            + (*ptd).clippedx0;
-        (*ptd).clippedy0 = (*ptd).cliptop;
+        /* Clipping Top */
+        if (*ptd).clippedy1 >= (*ptd).cliptop && (*ptd).clippedy0 < (*ptd).cliptop {
+            (*ptd).clippedx1 = ((*ptd).clippedx1 - (*ptd).clippedx0)
+                / ((*ptd).clippedy1 - (*ptd).clippedy0)
+                * ((*ptd).cliptop - (*ptd).clippedy0)
+                + (*ptd).clippedx0;
+            (*ptd).clippedy1 = (*ptd).cliptop;
+        }
+        if (*ptd).clippedy1 <= (*ptd).cliptop && (*ptd).clippedy0 > (*ptd).cliptop {
+            (*ptd).clippedx0 = ((*ptd).clippedx1 - (*ptd).clippedx0)
+                / ((*ptd).clippedy1 - (*ptd).clippedy0)
+                * ((*ptd).cliptop - (*ptd).clippedy0)
+                + (*ptd).clippedx0;
+            (*ptd).clippedy0 = (*ptd).cliptop;
+        }
     }
 }
 
@@ -359,34 +374,36 @@ unsafe fn PicTeX_ClipLine(
 /// Wraps the string in braces and escapes: $ % { } ^
 /// Faithful to the C source (only those 5 special chars are escaped).
 unsafe fn textext(str: *const c_char, ptd: *mut picTeXDesc) {
-    fputc_ch(b'{', (*ptd).texfp);
-    if !str.is_null() {
-        let mut p = str;
-        while *p != 0 {
-            match *p as u8 {
-                b'$' => {
-                    fprintf((*ptd).texfp, format_args!("\\$"));
+    unsafe {
+        fputc_ch(b'{', (*ptd).texfp);
+        if !str.is_null() {
+            let mut p = str;
+            while *p != 0 {
+                match *p as u8 {
+                    b'$' => {
+                        fprintf((*ptd).texfp, format_args!("\\$"));
+                    }
+                    b'%' => {
+                        fprintf((*ptd).texfp, format_args!("\\%%"));
+                    }
+                    b'{' => {
+                        fprintf((*ptd).texfp, format_args!("\\{{"));
+                    }
+                    b'}' => {
+                        fprintf((*ptd).texfp, format_args!("\\}}"));
+                    }
+                    b'^' => {
+                        fprintf((*ptd).texfp, format_args!("\\^{{}}"));
+                    }
+                    c => {
+                        fputc_ch(c, (*ptd).texfp);
+                    }
                 }
-                b'%' => {
-                    fprintf((*ptd).texfp, format_args!("\\%%"));
-                }
-                b'{' => {
-                    fprintf((*ptd).texfp, format_args!("\\{{"));
-                }
-                b'}' => {
-                    fprintf((*ptd).texfp, format_args!("\\}}"));
-                }
-                b'^' => {
-                    fprintf((*ptd).texfp, format_args!("\\^{{}}"));
-                }
-                c => {
-                    fputc_ch(c, (*ptd).texfp);
-                }
+                p = p.add(1);
             }
-            p = p.add(1);
         }
+        fprintf((*ptd).texfp, format_args!("}} "));
     }
-    fprintf((*ptd).texfp, format_args!("}} "));
 }
 
 /* ==================== Device driver actions ==================== */
@@ -399,17 +416,19 @@ unsafe extern "C" fn PicTeX_Circle(
     _gc: pGEcontext,
     dd: pDevDesc,
 ) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
-    fprintf(
-        (*ptd).texfp,
-        format_args!(
-            "\\circulararc 360 degrees from {:.2} {:.2} center at {:.2} {:.2}\n",
-            x,
-            (y + r),
-            x,
-            y,
-        ),
-    );
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+        fprintf(
+            (*ptd).texfp,
+            format_args!(
+                "\\circulararc 360 degrees from {:.2} {:.2} center at {:.2} {:.2}\n",
+                x,
+                (y + r),
+                x,
+                y,
+            ),
+        );
+    }
 }
 
 /// PicTeX_Clip - set the clip region.
@@ -420,28 +439,32 @@ unsafe extern "C" fn PicTeX_Clip(
     y1: c_double,
     dd: pDevDesc,
 ) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
-    if (*ptd).debug {
-        fprintf(
-            (*ptd).texfp,
-            format_args!(
-                "% Setting Clip Region to {:.2} {:.2} {:.2} {:.2}\n",
-                x0, y0, x1, y1,
-            ),
-        );
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+        if (*ptd).debug {
+            fprintf(
+                (*ptd).texfp,
+                format_args!(
+                    "% Setting Clip Region to {:.2} {:.2} {:.2} {:.2}\n",
+                    x0, y0, x1, y1,
+                ),
+            );
+        }
+        (*ptd).clipleft = x0;
+        (*ptd).clipright = x1;
+        (*ptd).clipbottom = y0;
+        (*ptd).cliptop = y1;
     }
-    (*ptd).clipleft = x0;
-    (*ptd).clipright = x1;
-    (*ptd).clipbottom = y0;
-    (*ptd).cliptop = y1;
 }
 
 /// PicTeX_Close - close the device: write closing LaTeX and free resources.
 unsafe extern "C" fn PicTeX_Close(dd: pDevDesc) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
-    fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n"));
-    libc::fclose((*ptd).texfp);
-    libc::free(ptd as *mut c_void);
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+        fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n"));
+        libc::fclose((*ptd).texfp);
+        libc::free(ptd as *mut c_void);
+    }
 }
 
 /// PicTeX_Line - draw a line segment with clipping.
@@ -453,27 +476,39 @@ unsafe extern "C" fn PicTeX_Line(
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
-    if x1 != x2 || y1 != y2 {
-        let gc_ref = if gc.is_null() { None } else { Some(&*gc) };
-        let lty = gc_ref.map(|g| g.lty).unwrap_or(0);
-        let lwd = gc_ref.map(|g| g.lwd).unwrap_or(1.0);
-        SetLinetype(lty, lwd, dd);
-        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
-        if (*ptd).debug {
+    unsafe {
+        if x1 != x2 || y1 != y2 {
+            let gc_ref = if gc.is_null() { None } else { Some(&*gc) };
+            let lty = gc_ref.map(|g| g.lty).unwrap_or(0);
+            let lwd = gc_ref.map(|g| g.lwd).unwrap_or(1.0);
+            SetLinetype(lty, lwd, dd);
+            let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+            if (*ptd).debug {
+                fprintf(
+                    (*ptd).texfp,
+                    format_args!(
+                        "% Drawing line from {:.2}, {:.2} to {:.2}, {:.2}\n",
+                        x1, y1, x2, y2,
+                    ),
+                );
+            }
+            PicTeX_ClipLine(x1, y1, x2, y2, ptd);
+            if (*ptd).debug {
+                fprintf(
+                    (*ptd).texfp,
+                    format_args!(
+                        "% Drawing clipped line from {:.2}, {:.2} to {:.2}, {:.2}\n",
+                        (*ptd).clippedx0,
+                        (*ptd).clippedy0,
+                        (*ptd).clippedx1,
+                        (*ptd).clippedy1,
+                    ),
+                );
+            }
             fprintf(
                 (*ptd).texfp,
                 format_args!(
-                    "% Drawing line from {:.2}, {:.2} to {:.2}, {:.2}\n",
-                    x1, y1, x2, y2,
-                ),
-            );
-        }
-        PicTeX_ClipLine(x1, y1, x2, y2, ptd);
-        if (*ptd).debug {
-            fprintf(
-                (*ptd).texfp,
-                format_args!(
-                    "% Drawing clipped line from {:.2}, {:.2} to {:.2}, {:.2}\n",
+                    "\\plot {:.2} {:.2} {:.2} {:.2} /\n",
                     (*ptd).clippedx0,
                     (*ptd).clippedy0,
                     (*ptd).clippedx1,
@@ -481,16 +516,6 @@ unsafe extern "C" fn PicTeX_Line(
                 ),
             );
         }
-        fprintf(
-            (*ptd).texfp,
-            format_args!(
-                "\\plot {:.2} {:.2} {:.2} {:.2} /\n",
-                (*ptd).clippedx0,
-                (*ptd).clippedy0,
-                (*ptd).clippedx1,
-                (*ptd).clippedy1,
-            ),
-        );
     }
 }
 
@@ -505,50 +530,54 @@ unsafe extern "C" fn PicTeX_MetricInfo(
     width: *mut c_double,
     _dd: pDevDesc,
 ) {
-    if !ascent.is_null() {
-        *ascent = 0.0;
-    }
-    if !descent.is_null() {
-        *descent = 0.0;
-    }
-    if !width.is_null() {
-        *width = 0.0;
+    unsafe {
+        if !ascent.is_null() {
+            *ascent = 0.0;
+        }
+        if !descent.is_null() {
+            *descent = 0.0;
+        }
+        if !width.is_null() {
+            *width = 0.0;
+        }
     }
 }
 
 /// PicTeX_NewPage - start a new page.
 unsafe extern "C" fn PicTeX_NewPage(_gc: pGEcontext, dd: pDevDesc) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
 
-    if (*ptd).pageno != 0 {
-        fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n\n\n"));
-        fprintf((*ptd).texfp, format_args!("\\hbox{{\\beginpicture\n"));
-        fprintf(
-            (*ptd).texfp,
-            format_args!("\\setcoordinatesystem units <1pt,1pt>\n"),
-        );
-        fprintf(
-            (*ptd).texfp,
-            format_args!(
-                "\\setplotarea x from 0 to {:.2}, y from 0 to {:.2}\n",
-                in2dots((*ptd).width),
-                in2dots((*ptd).height),
-            ),
-        );
-        fprintf((*ptd).texfp, format_args!("\\setlinear\n"));
-        fprintf(
-            (*ptd).texfp,
-            format_args!("\\font\\picfont cmss10\\picfont\n"),
-        );
+        if (*ptd).pageno != 0 {
+            fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n\n\n"));
+            fprintf((*ptd).texfp, format_args!("\\hbox{{\\beginpicture\n"));
+            fprintf(
+                (*ptd).texfp,
+                format_args!("\\setcoordinatesystem units <1pt,1pt>\n"),
+            );
+            fprintf(
+                (*ptd).texfp,
+                format_args!(
+                    "\\setplotarea x from 0 to {:.2}, y from 0 to {:.2}\n",
+                    in2dots((*ptd).width),
+                    in2dots((*ptd).height),
+                ),
+            );
+            fprintf((*ptd).texfp, format_args!("\\setlinear\n"));
+            fprintf(
+                (*ptd).texfp,
+                format_args!("\\font\\picfont cmss10\\picfont\n"),
+            );
+        }
+        (*ptd).pageno += 1;
+
+        // Reset font to force SetFont to write the font command
+        let face = (*ptd).fontface;
+        let size = (*ptd).fontsize;
+        (*ptd).fontface = 0;
+        (*ptd).fontsize = 0;
+        SetFont(face, size, ptd);
     }
-    (*ptd).pageno += 1;
-
-    // Reset font to force SetFont to write the font command
-    let face = (*ptd).fontface;
-    let size = (*ptd).fontsize;
-    (*ptd).fontface = 0;
-    (*ptd).fontsize = 0;
-    SetFont(face, size, ptd);
 }
 
 /// PicTeX_Polygon - draw a filled/stroked polygon.
@@ -559,24 +588,43 @@ unsafe extern "C" fn PicTeX_Polygon(
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
-    {
-        let gc_ref = if gc.is_null() { None } else { Some(&*gc) };
-        let lty = gc_ref.map(|g| g.lty).unwrap_or(0);
-        let lwd = gc_ref.map(|g| g.lwd).unwrap_or(1.0);
-        SetLinetype(lty, lwd, dd);
-    }
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+        {
+            let gc_ref = if gc.is_null() { None } else { Some(&*gc) };
+            let lty = gc_ref.map(|g| g.lty).unwrap_or(0);
+            let lwd = gc_ref.map(|g| g.lwd).unwrap_or(1.0);
+            SetLinetype(lty, lwd, dd);
+        }
 
-    if n < 2 || x.is_null() || y.is_null() {
-        return;
-    }
+        if n < 2 || x.is_null() || y.is_null() {
+            return;
+        }
 
-    let mut x1 = *x.add(0);
-    let mut y1 = *y.add(0);
+        let mut x1 = *x.add(0);
+        let mut y1 = *y.add(0);
 
-    for i in 1..n as usize {
-        let x2 = *x.add(i);
-        let y2 = *y.add(i);
+        for i in 1..n as usize {
+            let x2 = *x.add(i);
+            let y2 = *y.add(i);
+            PicTeX_ClipLine(x1, y1, x2, y2, ptd);
+            fprintf(
+                (*ptd).texfp,
+                format_args!(
+                    "\\plot {:.2} {:.2} {:.2} {:.2} /\n",
+                    (*ptd).clippedx0,
+                    (*ptd).clippedy0,
+                    (*ptd).clippedx1,
+                    (*ptd).clippedy1,
+                ),
+            );
+            x1 = x2;
+            y1 = y2;
+        }
+
+        // Close the polygon
+        let x2 = *x.add(0);
+        let y2 = *y.add(0);
         PicTeX_ClipLine(x1, y1, x2, y2, ptd);
         fprintf(
             (*ptd).texfp,
@@ -588,24 +636,7 @@ unsafe extern "C" fn PicTeX_Polygon(
                 (*ptd).clippedy1,
             ),
         );
-        x1 = x2;
-        y1 = y2;
     }
-
-    // Close the polygon
-    let x2 = *x.add(0);
-    let y2 = *y.add(0);
-    PicTeX_ClipLine(x1, y1, x2, y2, ptd);
-    fprintf(
-        (*ptd).texfp,
-        format_args!(
-            "\\plot {:.2} {:.2} {:.2} {:.2} /\n",
-            (*ptd).clippedx0,
-            (*ptd).clippedy0,
-            (*ptd).clippedx1,
-            (*ptd).clippedy1,
-        ),
-    );
 }
 
 /// PicTeX_Polyline - draw a polyline (series of connected line segments).
@@ -616,37 +647,39 @@ unsafe extern "C" fn PicTeX_Polyline(
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
-    {
-        let gc_ref = if gc.is_null() { None } else { Some(&*gc) };
-        let lty = gc_ref.map(|g| g.lty).unwrap_or(0);
-        let lwd = gc_ref.map(|g| g.lwd).unwrap_or(1.0);
-        SetLinetype(lty, lwd, dd);
-    }
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+        {
+            let gc_ref = if gc.is_null() { None } else { Some(&*gc) };
+            let lty = gc_ref.map(|g| g.lty).unwrap_or(0);
+            let lwd = gc_ref.map(|g| g.lwd).unwrap_or(1.0);
+            SetLinetype(lty, lwd, dd);
+        }
 
-    if n < 2 || x.is_null() || y.is_null() {
-        return;
-    }
+        if n < 2 || x.is_null() || y.is_null() {
+            return;
+        }
 
-    let mut x1 = *x.add(0);
-    let mut y1 = *y.add(0);
+        let mut x1 = *x.add(0);
+        let mut y1 = *y.add(0);
 
-    for i in 1..n as usize {
-        let x2 = *x.add(i);
-        let y2 = *y.add(i);
-        PicTeX_ClipLine(x1, y1, x2, y2, ptd);
-        fprintf(
-            (*ptd).texfp,
-            format_args!(
-                "\\plot {:.2} {:.2} {:.2} {:.2} /\n",
-                (*ptd).clippedx0,
-                (*ptd).clippedy0,
-                (*ptd).clippedx1,
-                (*ptd).clippedy1,
-            ),
-        );
-        x1 = x2;
-        y1 = y2;
+        for i in 1..n as usize {
+            let x2 = *x.add(i);
+            let y2 = *y.add(i);
+            PicTeX_ClipLine(x1, y1, x2, y2, ptd);
+            fprintf(
+                (*ptd).texfp,
+                format_args!(
+                    "\\plot {:.2} {:.2} {:.2} {:.2} /\n",
+                    (*ptd).clippedx0,
+                    (*ptd).clippedy0,
+                    (*ptd).clippedx1,
+                    (*ptd).clippedy1,
+                ),
+            );
+            x1 = x2;
+            y1 = y2;
+        }
     }
 }
 
@@ -659,9 +692,11 @@ unsafe extern "C" fn PicTeX_Rect(
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
-    let mut x = [x0, x0, x1, x1];
-    let mut y = [y0, y1, y1, y0];
-    PicTeX_Polygon(4, x.as_mut_ptr(), y.as_mut_ptr(), gc, dd);
+    unsafe {
+        let mut x = [x0, x0, x1, x1];
+        let mut y = [y0, y1, y1, y0];
+        PicTeX_Polygon(4, x.as_mut_ptr(), y.as_mut_ptr(), gc, dd);
+    }
 }
 
 /// PicTeX_Size - return the device size (left, right, bottom, top).
@@ -672,17 +707,19 @@ unsafe extern "C" fn PicTeX_Size(
     top: *mut c_double,
     dd: pDevDesc,
 ) {
-    if !left.is_null() {
-        *left = (*dd).left;
-    }
-    if !right.is_null() {
-        *right = (*dd).right;
-    }
-    if !bottom.is_null() {
-        *bottom = (*dd).bottom;
-    }
-    if !top.is_null() {
-        *top = (*dd).top;
+    unsafe {
+        if !left.is_null() {
+            *left = (*dd).left;
+        }
+        if !right.is_null() {
+            *right = (*dd).right;
+        }
+        if !bottom.is_null() {
+            *bottom = (*dd).bottom;
+        }
+        if !top.is_null() {
+            *top = (*dd).top;
+        }
     }
 }
 
@@ -691,34 +728,36 @@ unsafe extern "C" fn PicTeX_Size(
 /// Sums character widths from the CHARWIDTH table for each byte in the string,
 /// scaled by the current font size.
 unsafe extern "C" fn PicTeX_StrWidth(str: *const c_char, gc: pGEcontext, dd: pDevDesc) -> c_double {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
 
-    // Compute font size from gc, matching C: size = (int)(gc->cex * gc->ps + 0.5)
-    let size = if !gc.is_null() {
-        ((*gc).cex * (*gc).ps + 0.5) as c_int
-    } else {
-        10
-    };
-    let face = if !gc.is_null() { (*gc).fontface } else { 1 };
-    SetFont(face, size, ptd);
+        // Compute font size from gc, matching C: size = (int)(gc->cex * gc->ps + 0.5)
+        let size = if !gc.is_null() {
+            ((*gc).cex * (*gc).ps + 0.5) as c_int
+        } else {
+            10
+        };
+        let face = if !gc.is_null() { (*gc).fontface } else { 1 };
+        SetFont(face, size, ptd);
 
-    let mut sum: c_double = 0.0;
+        let mut sum: c_double = 0.0;
 
-    if !str.is_null() {
-        let mut p = str;
-        while *p != 0 {
-            let ch = *p as u8;
-            if ch < 128 {
-                sum += CHARWIDTH[((*ptd).fontface - 1).max(0).min(3) as usize][ch as usize];
-            } else {
-                // For non-ASCII chars, use a rough width estimate
-                sum += 0.5;
+        if !str.is_null() {
+            let mut p = str;
+            while *p != 0 {
+                let ch = *p as u8;
+                if ch < 128 {
+                    sum += CHARWIDTH[((*ptd).fontface - 1).max(0).min(3) as usize][ch as usize];
+                } else {
+                    // For non-ASCII chars, use a rough width estimate
+                    sum += 0.5;
+                }
+                p = p.add(1);
             }
-            p = p.add(1);
         }
-    }
 
-    sum * (*ptd).fontsize as c_double
+        sum * (*ptd).fontsize as c_double
+    }
 }
 
 /// PicTeX_Text - draw text at a position.
@@ -734,81 +773,89 @@ unsafe extern "C" fn PicTeX_Text(
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
-    let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
-    let xoff: c_double = 0.0;
-    let yoff: c_double = 0.0;
+    unsafe {
+        let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
+        let xoff: c_double = 0.0;
+        let yoff: c_double = 0.0;
 
-    // Compute font size from gc, matching C: size = (int)(gc->cex * gc->ps + 0.5)
-    let size = if !gc.is_null() {
-        ((*gc).cex * (*gc).ps + 0.5) as c_int
-    } else {
-        10
-    };
-    let face = if !gc.is_null() { (*gc).fontface } else { 1 };
-    SetFont(face, size, ptd);
+        // Compute font size from gc, matching C: size = (int)(gc->cex * gc->ps + 0.5)
+        let size = if !gc.is_null() {
+            ((*gc).cex * (*gc).ps + 0.5) as c_int
+        } else {
+            10
+        };
+        let face = if !gc.is_null() { (*gc).fontface } else { 1 };
+        SetFont(face, size, ptd);
 
-    if (*ptd).debug {
-        let sw = PicTeX_StrWidth(str, gc, dd);
-        fprintf(
-            (*ptd).texfp,
-            format_args!(
-                "% Writing string of length {:.2}, at {:.2} {:.2}, xc = {:.2} yc = {:.2}\n",
-                sw, x, y, 0.0, 0.0,
-            ),
-        );
+        if (*ptd).debug {
+            let sw = PicTeX_StrWidth(str, gc, dd);
+            fprintf(
+                (*ptd).texfp,
+                format_args!(
+                    "% Writing string of length {:.2}, at {:.2} {:.2}, xc = {:.2} yc = {:.2}\n",
+                    sw, x, y, 0.0, 0.0,
+                ),
+            );
+        }
+
+        if rot == 90.0 {
+            fprintf(
+                (*ptd).texfp,
+                format_args!("\\put {{\\rotatebox{{{}}}", rot as c_int),
+            );
+            textext(str, ptd);
+            fprintf(
+                (*ptd).texfp,
+                format_args!("}} [rB] <{:.2}pt,{:.2}pt>", xoff, yoff),
+            );
+        } else {
+            fprintf((*ptd).texfp, format_args!("\\put "));
+            textext(str, ptd);
+            fprintf(
+                (*ptd).texfp,
+                format_args!("[lB] <{:.2}pt,{:.2}pt>", xoff, yoff),
+            );
+        }
+        fprintf((*ptd).texfp, format_args!(" at {:.2} {:.2}\n", x, y));
+        let _ = hadj;
     }
-
-    if rot == 90.0 {
-        fprintf(
-            (*ptd).texfp,
-            format_args!("\\put {{\\rotatebox{{{}}}", rot as c_int),
-        );
-        textext(str, ptd);
-        fprintf(
-            (*ptd).texfp,
-            format_args!("}} [rB] <{:.2}pt,{:.2}pt>", xoff, yoff),
-        );
-    } else {
-        fprintf((*ptd).texfp, format_args!("\\put "));
-        textext(str, ptd);
-        fprintf(
-            (*ptd).texfp,
-            format_args!("[lB] <{:.2}pt,{:.2}pt>", xoff, yoff),
-        );
-    }
-    fprintf((*ptd).texfp, format_args!(" at {:.2} {:.2}\n", x, y));
-    let _ = hadj;
 }
 
 /// PicTeX_setPattern - set a fill pattern.
 /// Returns R_NilValue (patterns not supported).
 unsafe extern "C" fn PicTeX_setPattern(_pattern: SEXP, _dd: pDevDesc) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /// PicTeX_releasePattern - release a fill pattern reference.
 /// No-op.
-unsafe extern "C" fn PicTeX_releasePattern(_ref: SEXP, _dd: pDevDesc) {}
+unsafe extern "C" fn PicTeX_releasePattern(_ref: SEXP, _dd: pDevDesc) {
+    unsafe {}
+}
 
 /// PicTeX_setClipPath - set a clipping path.
 /// Returns R_NilValue (clip paths not supported).
 unsafe extern "C" fn PicTeX_setClipPath(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /// PicTeX_releaseClipPath - release a clipping path reference.
 /// No-op.
-unsafe extern "C" fn PicTeX_releaseClipPath(_ref: SEXP, _dd: pDevDesc) {}
+unsafe extern "C" fn PicTeX_releaseClipPath(_ref: SEXP, _dd: pDevDesc) {
+    unsafe {}
+}
 
 /// PicTeX_setMask - set a mask.
 /// Returns R_NilValue (masks not supported).
 unsafe extern "C" fn PicTeX_setMask(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /// PicTeX_releaseMask - release a mask reference.
 /// No-op.
-unsafe extern "C" fn PicTeX_releaseMask(_ref: SEXP, _dd: pDevDesc) {}
+unsafe extern "C" fn PicTeX_releaseMask(_ref: SEXP, _dd: pDevDesc) {
+    unsafe {}
+}
 
 /* ==================== Device driver initialization ==================== */
 
@@ -828,134 +875,137 @@ unsafe fn PicTeXDeviceDriver(
     height: c_double,
     debug: bool,
 ) -> bool {
-    // Allocate device-specific structure
-    let ptd: *mut picTeXDesc = libc::malloc(std::mem::size_of::<picTeXDesc>()) as *mut picTeXDesc;
-    if ptd.is_null() {
-        return false;
-    }
-
-    // Initialize to zero
-    ptr::write_bytes(ptd, 0, 1);
-
-    // Open the output file
-    let expanded = R_ExpandFileName(filename);
-    let fp = R_fopen(expanded, b"w\0".as_ptr() as *const c_char);
-    if fp.is_null() {
-        libc::free(ptd as *mut c_void);
-        return false;
-    }
-
-    (*ptd).texfp = fp;
-
-    // Copy filename (safely truncate to 127 chars + null)
-    if !filename.is_null() {
-        let mut i = 0usize;
-        while i < 127 && *filename.add(i) != 0 {
-            (*ptd).filename[i] = *filename.add(i);
-            i += 1;
+    unsafe {
+        // Allocate device-specific structure
+        let ptd: *mut picTeXDesc =
+            libc::malloc(std::mem::size_of::<picTeXDesc>()) as *mut picTeXDesc;
+        if ptd.is_null() {
+            return false;
         }
-        (*ptd).filename[i] = 0;
+
+        // Initialize to zero
+        ptr::write_bytes(ptd, 0, 1);
+
+        // Open the output file
+        let expanded = R_ExpandFileName(filename);
+        let fp = R_fopen(expanded, b"w\0".as_ptr() as *const c_char);
+        if fp.is_null() {
+            libc::free(ptd as *mut c_void);
+            return false;
+        }
+
+        (*ptd).texfp = fp;
+
+        // Copy filename (safely truncate to 127 chars + null)
+        if !filename.is_null() {
+            let mut i = 0usize;
+            while i < 127 && *filename.add(i) != 0 {
+                (*ptd).filename[i] = *filename.add(i);
+                i += 1;
+            }
+            (*ptd).filename[i] = 0;
+        }
+
+        // Set initial device colors
+        (*dd).startfill = R_GE_str2col(bg) as c_int;
+        (*dd).startcol = R_GE_str2col(fg) as c_int;
+        (*dd).startps = 10.0;
+        (*dd).startlty = 0;
+        (*dd).startfont = 1;
+        (*dd).startgamma = 1.0;
+
+        // Set device callbacks
+        (*dd).close = Some(PicTeX_Close);
+        (*dd).clip = Some(PicTeX_Clip);
+        (*dd).size = Some(PicTeX_Size);
+        (*dd).newPage = Some(PicTeX_NewPage);
+        (*dd).line = Some(PicTeX_Line);
+        (*dd).text = Some(PicTeX_Text);
+        (*dd).strWidth = Some(PicTeX_StrWidth);
+        (*dd).rect = Some(PicTeX_Rect);
+        (*dd).circle = Some(PicTeX_Circle);
+        (*dd).polygon = Some(PicTeX_Polygon);
+        (*dd).polyline = Some(PicTeX_Polyline);
+        (*dd).metricInfo = Some(PicTeX_MetricInfo);
+        (*dd).hasTextUTF8 = 0;
+        (*dd).useRotatedTextInContour = 0;
+        (*dd).setPattern = Some(PicTeX_setPattern);
+        (*dd).releasePattern = Some(PicTeX_releasePattern);
+        (*dd).setClipPath = Some(PicTeX_setClipPath);
+        (*dd).releaseClipPath = Some(PicTeX_releaseClipPath);
+        (*dd).setMask = Some(PicTeX_setMask);
+        (*dd).releaseMask = Some(PicTeX_releaseMask);
+
+        // Screen Dimensions in Pixels (dots)
+        (*dd).left = 0.0;
+        (*dd).right = in2dots(width);
+        (*dd).bottom = 0.0;
+        (*dd).top = in2dots(height);
+        (*dd).clipLeft = (*dd).left;
+        (*dd).clipRight = (*dd).right;
+        (*dd).clipBottom = (*dd).bottom;
+        (*dd).clipTop = (*dd).top;
+
+        // Store dimensions
+        (*ptd).width = width;
+        (*ptd).height = height;
+
+        // PicTeX_Open: write the LaTeX picture environment header
+        (*ptd).fontsize = 0;
+        (*ptd).fontface = 0;
+        (*ptd).debug = false;
+        fprintf((*ptd).texfp, format_args!("\\hbox{{\\beginpicture\n"));
+        fprintf(
+            (*ptd).texfp,
+            format_args!("\\setcoordinatesystem units <1pt,1pt>\n"),
+        );
+        fprintf(
+            (*ptd).texfp,
+            format_args!(
+                "\\setplotarea x from 0 to {:.2}, y from 0 to {:.2}\n",
+                in2dots((*ptd).width),
+                in2dots((*ptd).height),
+            ),
+        );
+        fprintf((*ptd).texfp, format_args!("\\setlinear\n"));
+        fprintf(
+            (*ptd).texfp,
+            format_args!("\\font\\picfont cmss10\\picfont\n"),
+        );
+        SetFont(1, 10, ptd);
+        (*ptd).pageno += 1;
+
+        // Base Pointsize / Nominal Character Sizes in Pixels
+        (*dd).cra[0] = 9.0;
+        (*dd).cra[1] = 12.0;
+
+        // Character Addressing Offsets
+        (*dd).xCharOffset = 0.0;
+        (*dd).yCharOffset = 0.0;
+        (*dd).yLineBias = 0.0;
+
+        // Inches per Raster Unit (printer points: 72.27 dots per inch)
+        (*dd).ipr[0] = 1.0 / DOTSperIN;
+        (*dd).ipr[1] = 1.0 / DOTSperIN;
+
+        // Device capabilities
+        (*dd).canClip = 1; // TRUE
+        (*dd).canHAdj = 0;
+        (*dd).canChangeGamma = 0; // FALSE
+
+        (*ptd).lty = 1;
+        (*ptd).pageno = 0;
+        (*ptd).debug = debug;
+
+        (*dd).haveTransparency = 1;
+        (*dd).haveTransparentBg = 2;
+
+        (*dd).deviceSpecific = ptd as *mut c_void;
+        (*dd).displayListOn = 0; // FALSE
+        (*dd).deviceVersion = R_GE_definitions;
+
+        true
     }
-
-    // Set initial device colors
-    (*dd).startfill = R_GE_str2col(bg) as c_int;
-    (*dd).startcol = R_GE_str2col(fg) as c_int;
-    (*dd).startps = 10.0;
-    (*dd).startlty = 0;
-    (*dd).startfont = 1;
-    (*dd).startgamma = 1.0;
-
-    // Set device callbacks
-    (*dd).close = Some(PicTeX_Close);
-    (*dd).clip = Some(PicTeX_Clip);
-    (*dd).size = Some(PicTeX_Size);
-    (*dd).newPage = Some(PicTeX_NewPage);
-    (*dd).line = Some(PicTeX_Line);
-    (*dd).text = Some(PicTeX_Text);
-    (*dd).strWidth = Some(PicTeX_StrWidth);
-    (*dd).rect = Some(PicTeX_Rect);
-    (*dd).circle = Some(PicTeX_Circle);
-    (*dd).polygon = Some(PicTeX_Polygon);
-    (*dd).polyline = Some(PicTeX_Polyline);
-    (*dd).metricInfo = Some(PicTeX_MetricInfo);
-    (*dd).hasTextUTF8 = 0;
-    (*dd).useRotatedTextInContour = 0;
-    (*dd).setPattern = Some(PicTeX_setPattern);
-    (*dd).releasePattern = Some(PicTeX_releasePattern);
-    (*dd).setClipPath = Some(PicTeX_setClipPath);
-    (*dd).releaseClipPath = Some(PicTeX_releaseClipPath);
-    (*dd).setMask = Some(PicTeX_setMask);
-    (*dd).releaseMask = Some(PicTeX_releaseMask);
-
-    // Screen Dimensions in Pixels (dots)
-    (*dd).left = 0.0;
-    (*dd).right = in2dots(width);
-    (*dd).bottom = 0.0;
-    (*dd).top = in2dots(height);
-    (*dd).clipLeft = (*dd).left;
-    (*dd).clipRight = (*dd).right;
-    (*dd).clipBottom = (*dd).bottom;
-    (*dd).clipTop = (*dd).top;
-
-    // Store dimensions
-    (*ptd).width = width;
-    (*ptd).height = height;
-
-    // PicTeX_Open: write the LaTeX picture environment header
-    (*ptd).fontsize = 0;
-    (*ptd).fontface = 0;
-    (*ptd).debug = false;
-    fprintf((*ptd).texfp, format_args!("\\hbox{{\\beginpicture\n"));
-    fprintf(
-        (*ptd).texfp,
-        format_args!("\\setcoordinatesystem units <1pt,1pt>\n"),
-    );
-    fprintf(
-        (*ptd).texfp,
-        format_args!(
-            "\\setplotarea x from 0 to {:.2}, y from 0 to {:.2}\n",
-            in2dots((*ptd).width),
-            in2dots((*ptd).height),
-        ),
-    );
-    fprintf((*ptd).texfp, format_args!("\\setlinear\n"));
-    fprintf(
-        (*ptd).texfp,
-        format_args!("\\font\\picfont cmss10\\picfont\n"),
-    );
-    SetFont(1, 10, ptd);
-    (*ptd).pageno += 1;
-
-    // Base Pointsize / Nominal Character Sizes in Pixels
-    (*dd).cra[0] = 9.0;
-    (*dd).cra[1] = 12.0;
-
-    // Character Addressing Offsets
-    (*dd).xCharOffset = 0.0;
-    (*dd).yCharOffset = 0.0;
-    (*dd).yLineBias = 0.0;
-
-    // Inches per Raster Unit (printer points: 72.27 dots per inch)
-    (*dd).ipr[0] = 1.0 / DOTSperIN;
-    (*dd).ipr[1] = 1.0 / DOTSperIN;
-
-    // Device capabilities
-    (*dd).canClip = 1; // TRUE
-    (*dd).canHAdj = 0;
-    (*dd).canChangeGamma = 0; // FALSE
-
-    (*ptd).lty = 1;
-    (*ptd).pageno = 0;
-    (*ptd).debug = debug;
-
-    (*dd).haveTransparency = 1;
-    (*dd).haveTransparentBg = 2;
-
-    (*dd).deviceSpecific = ptd as *mut c_void;
-    (*dd).displayListOn = 0; // FALSE
-    (*dd).deviceVersion = R_GE_definitions;
-
-    true
 }
 
 /* ==================== R entry point ==================== */
@@ -970,56 +1020,58 @@ unsafe fn PicTeXDeviceDriver(
 ///   height  - height in inches
 ///   debug   - logical: if TRUE, write TeX comments into output
 pub unsafe fn PicTeX(args: SEXP) -> SEXP {
-    let mut args = args;
+    unsafe {
+        let mut args = args;
 
-    let vmax = vmaxget();
+        let vmax = vmaxget();
 
-    // Skip entry point name
-    args = CDR(args);
+        // Skip entry point name
+        args = CDR(args);
 
-    // Get filename
-    let tmp = asChar(CAR(args) as *const c_void);
-    if tmp as SEXP == NA_STRING() {
-        Rf_error(b"invalid 'file' parameter in pictex\0".as_ptr() as *const c_char);
-        unreachable!();
+        // Get filename
+        let tmp = asChar(CAR(args) as *const c_void);
+        if tmp as SEXP == NA_STRING() {
+            Rf_error(b"invalid 'file' parameter in pictex\0".as_ptr() as *const c_char);
+            unreachable!();
+        }
+        let file = translateCharFP(tmp as SEXP);
+        args = CDR(args);
+
+        let bg = CHAR(asChar(CAR(args) as *const c_void) as SEXP);
+        args = CDR(args);
+
+        let fg = CHAR(asChar(CAR(args) as *const c_void) as SEXP);
+        args = CDR(args);
+
+        let width = asReal(CAR(args));
+        args = CDR(args);
+
+        let height = asReal(CAR(args));
+        args = CDR(args);
+
+        let mut debug = asLogical(CAR(args));
+        if debug == NA_LOGICAL {
+            debug = 0;
+        }
+
+        R_CheckDeviceAvailable();
+
+        let dev = GEcreateDD();
+        if dev.is_null() {
+            Rf_error(b"unable to start pictex() device\0".as_ptr() as *const c_char);
+            unreachable!();
+        }
+
+        if !PicTeXDeviceDriver(dev, file, bg, fg, width, height, debug != 0) {
+            GEfreeDD(dev);
+            Rf_error(b"unable to start pictex() device\0".as_ptr() as *const c_char);
+            unreachable!();
+        }
+
+        let dd = GEcreateDevDesc(dev);
+        GEaddDevice2f(dd, b"pictex\0".as_ptr() as *const c_char, file);
+
+        vmaxset(vmax);
+        R_NilValue()
     }
-    let file = translateCharFP(tmp as SEXP);
-    args = CDR(args);
-
-    let bg = CHAR(asChar(CAR(args) as *const c_void) as SEXP);
-    args = CDR(args);
-
-    let fg = CHAR(asChar(CAR(args) as *const c_void) as SEXP);
-    args = CDR(args);
-
-    let width = asReal(CAR(args));
-    args = CDR(args);
-
-    let height = asReal(CAR(args));
-    args = CDR(args);
-
-    let mut debug = asLogical(CAR(args));
-    if debug == NA_LOGICAL {
-        debug = 0;
-    }
-
-    R_CheckDeviceAvailable();
-
-    let dev = GEcreateDD();
-    if dev.is_null() {
-        Rf_error(b"unable to start pictex() device\0".as_ptr() as *const c_char);
-        unreachable!();
-    }
-
-    if !PicTeXDeviceDriver(dev, file, bg, fg, width, height, debug != 0) {
-        GEfreeDD(dev);
-        Rf_error(b"unable to start pictex() device\0".as_ptr() as *const c_char);
-        unreachable!();
-    }
-
-    let dd = GEcreateDevDesc(dev);
-    GEaddDevice2f(dd, b"pictex\0".as_ptr() as *const c_char, file);
-
-    vmaxset(vmax);
-    R_NilValue()
 }

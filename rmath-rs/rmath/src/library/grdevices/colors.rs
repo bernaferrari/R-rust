@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/grDevices/src/colors.c
@@ -128,119 +127,139 @@ where
 const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
 unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
-    if a.is_null() || b.is_null() {
-        return 0;
+    unsafe {
+        if a.is_null() || b.is_null() {
+            return 0;
+        }
+        if libc::strcmp(a, b) == 0 { 1 } else { 0 }
     }
-    if libc::strcmp(a, b) == 0 { 1 } else { 0 }
 }
 
 unsafe fn isMatrix(x: SEXP) -> bool {
-    let dim = getAttrib(x, R_DimSymbol());
-    Rf_isNull(dim) == 0 && LENGTH(dim) == 2
+    unsafe {
+        let dim = getAttrib(x, R_DimSymbol());
+        Rf_isNull(dim) == 0 && LENGTH(dim) == 2
+    }
 }
 
 unsafe fn RGB2rgb_func(r: u32, g: u32, b: u32) -> *const c_char {
-    with_color_state(|state| {
-        let c = &mut state.col_buf;
-        c[0] = b'#';
-        c[1] = HEX_DIGITS[((r >> 4) & 0x0F) as usize];
-        c[2] = HEX_DIGITS[(r & 0x0F) as usize];
-        c[3] = HEX_DIGITS[((g >> 4) & 0x0F) as usize];
-        c[4] = HEX_DIGITS[(g & 0x0F) as usize];
-        c[5] = HEX_DIGITS[((b >> 4) & 0x0F) as usize];
-        c[6] = HEX_DIGITS[(b & 0x0F) as usize];
-        c[7] = 0;
-        c.as_ptr() as *const c_char
-    })
+    unsafe {
+        with_color_state(|state| {
+            let c = &mut state.col_buf;
+            c[0] = b'#';
+            c[1] = HEX_DIGITS[((r >> 4) & 0x0F) as usize];
+            c[2] = HEX_DIGITS[(r & 0x0F) as usize];
+            c[3] = HEX_DIGITS[((g >> 4) & 0x0F) as usize];
+            c[4] = HEX_DIGITS[(g & 0x0F) as usize];
+            c[5] = HEX_DIGITS[((b >> 4) & 0x0F) as usize];
+            c[6] = HEX_DIGITS[(b & 0x0F) as usize];
+            c[7] = 0;
+            c.as_ptr() as *const c_char
+        })
+    }
 }
 
 unsafe fn RGBA2rgb_func(r: u32, g: u32, b: u32, a: u32) -> *const c_char {
-    with_color_state(|state| {
-        let c = &mut state.col_buf;
-        c[0] = b'#';
-        c[1] = HEX_DIGITS[((r >> 4) & 0x0F) as usize];
-        c[2] = HEX_DIGITS[(r & 0x0F) as usize];
-        c[3] = HEX_DIGITS[((g >> 4) & 0x0F) as usize];
-        c[4] = HEX_DIGITS[(g & 0x0F) as usize];
-        c[5] = HEX_DIGITS[((b >> 4) & 0x0F) as usize];
-        c[6] = HEX_DIGITS[(b & 0x0F) as usize];
-        c[7] = HEX_DIGITS[((a >> 4) & 0x0F) as usize];
-        c[8] = HEX_DIGITS[(a & 0x0F) as usize];
-        c[9] = 0;
-        c.as_ptr() as *const c_char
-    })
+    unsafe {
+        with_color_state(|state| {
+            let c = &mut state.col_buf;
+            c[0] = b'#';
+            c[1] = HEX_DIGITS[((r >> 4) & 0x0F) as usize];
+            c[2] = HEX_DIGITS[(r & 0x0F) as usize];
+            c[3] = HEX_DIGITS[((g >> 4) & 0x0F) as usize];
+            c[4] = HEX_DIGITS[(g & 0x0F) as usize];
+            c[5] = HEX_DIGITS[((b >> 4) & 0x0F) as usize];
+            c[6] = HEX_DIGITS[(b & 0x0F) as usize];
+            c[7] = HEX_DIGITS[((a >> 4) & 0x0F) as usize];
+            c[8] = HEX_DIGITS[(a & 0x0F) as usize];
+            c[9] = 0;
+            c.as_ptr() as *const c_char
+        })
+    }
 }
 
 unsafe fn incol2name_buf_opaque(col: rcolor) -> *const c_char {
-    with_color_state(|state| {
-        let c = &mut state.col_buf;
-        c[0] = b'#';
-        c[1] = HEX_DIGITS[((col >> 4) & 0x0F) as usize];
-        c[2] = HEX_DIGITS[(col & 0x0F) as usize];
-        c[3] = HEX_DIGITS[((col >> 12) & 0x0F) as usize];
-        c[4] = HEX_DIGITS[((col >> 8) & 0x0F) as usize];
-        c[5] = HEX_DIGITS[((col >> 20) & 0x0F) as usize];
-        c[6] = HEX_DIGITS[((col >> 16) & 0x0F) as usize];
-        c[7] = 0;
-        c.as_ptr() as *const c_char
-    })
+    unsafe {
+        with_color_state(|state| {
+            let c = &mut state.col_buf;
+            c[0] = b'#';
+            c[1] = HEX_DIGITS[((col >> 4) & 0x0F) as usize];
+            c[2] = HEX_DIGITS[(col & 0x0F) as usize];
+            c[3] = HEX_DIGITS[((col >> 12) & 0x0F) as usize];
+            c[4] = HEX_DIGITS[((col >> 8) & 0x0F) as usize];
+            c[5] = HEX_DIGITS[((col >> 20) & 0x0F) as usize];
+            c[6] = HEX_DIGITS[((col >> 16) & 0x0F) as usize];
+            c[7] = 0;
+            c.as_ptr() as *const c_char
+        })
+    }
 }
 
 unsafe fn incol2name_buf_trans(col: rcolor) -> *const c_char {
-    with_color_state(|state| {
-        let c = &mut state.col_buf;
-        c[0] = b'#';
-        c[1] = HEX_DIGITS[((col >> 4) & 0x0F) as usize];
-        c[2] = HEX_DIGITS[(col & 0x0F) as usize];
-        c[3] = HEX_DIGITS[((col >> 12) & 0x0F) as usize];
-        c[4] = HEX_DIGITS[((col >> 8) & 0x0F) as usize];
-        c[5] = HEX_DIGITS[((col >> 20) & 0x0F) as usize];
-        c[6] = HEX_DIGITS[((col >> 16) & 0x0F) as usize];
-        c[7] = HEX_DIGITS[((col >> 28) & 0x0F) as usize];
-        c[8] = HEX_DIGITS[((col >> 24) & 0x0F) as usize];
-        c[9] = 0;
-        c.as_ptr() as *const c_char
-    })
+    unsafe {
+        with_color_state(|state| {
+            let c = &mut state.col_buf;
+            c[0] = b'#';
+            c[1] = HEX_DIGITS[((col >> 4) & 0x0F) as usize];
+            c[2] = HEX_DIGITS[(col & 0x0F) as usize];
+            c[3] = HEX_DIGITS[((col >> 12) & 0x0F) as usize];
+            c[4] = HEX_DIGITS[((col >> 8) & 0x0F) as usize];
+            c[5] = HEX_DIGITS[((col >> 20) & 0x0F) as usize];
+            c[6] = HEX_DIGITS[((col >> 16) & 0x0F) as usize];
+            c[7] = HEX_DIGITS[((col >> 28) & 0x0F) as usize];
+            c[8] = HEX_DIGITS[((col >> 24) & 0x0F) as usize];
+            c[9] = 0;
+            c.as_ptr() as *const c_char
+        })
+    }
 }
 
 unsafe fn ScaleColor(x: c_double) -> u32 {
-    if ISNAN(x) {
-        Rf_error(b"color intensity NA, not in [0,1]\0".as_ptr() as *const c_char);
+    unsafe {
+        if ISNAN(x) {
+            Rf_error(b"color intensity NA, not in [0,1]\0".as_ptr() as *const c_char);
+        }
+        if !R_FINITE(x) || x < 0.0 || x > 1.0 {
+            Rf_error(b"color intensity not in [0,1]\0".as_ptr() as *const c_char);
+        }
+        (255.0 * x + 0.5) as u32
     }
-    if !R_FINITE(x) || x < 0.0 || x > 1.0 {
-        Rf_error(b"color intensity not in [0,1]\0".as_ptr() as *const c_char);
-    }
-    (255.0 * x + 0.5) as u32
 }
 
 unsafe fn CheckColor(x: c_int) -> u32 {
-    if x == NA_INTEGER {
-        Rf_error(b"color intensity NA, not in 0:255\0".as_ptr() as *const c_char);
+    unsafe {
+        if x == NA_INTEGER {
+            Rf_error(b"color intensity NA, not in 0:255\0".as_ptr() as *const c_char);
+        }
+        if x < 0 || x > 255 {
+            Rf_error(b"color intensity not in 0:255\0".as_ptr() as *const c_char);
+        }
+        x as u32
     }
-    if x < 0 || x > 255 {
-        Rf_error(b"color intensity not in 0:255\0".as_ptr() as *const c_char);
-    }
-    x as u32
 }
 
 unsafe fn ScaleAlpha(x: c_double) -> u32 {
-    if ISNAN(x) {
-        Rf_error(b"alpha level NA, not in [0,1]\0".as_ptr() as *const c_char);
+    unsafe {
+        if ISNAN(x) {
+            Rf_error(b"alpha level NA, not in [0,1]\0".as_ptr() as *const c_char);
+        }
+        if !R_FINITE(x) || x < 0.0 || x > 1.0 {
+            Rf_error(b"alpha level not in [0,1]\0".as_ptr() as *const c_char);
+        }
+        (255.0 * x + 0.5) as u32
     }
-    if !R_FINITE(x) || x < 0.0 || x > 1.0 {
-        Rf_error(b"alpha level not in [0,1]\0".as_ptr() as *const c_char);
-    }
-    (255.0 * x + 0.5) as u32
 }
 
 unsafe fn CheckAlpha(x: c_int) -> u32 {
-    if x == NA_INTEGER {
-        Rf_error(b"alpha level NA, not in 0:255\0".as_ptr() as *const c_char);
+    unsafe {
+        if x == NA_INTEGER {
+            Rf_error(b"alpha level NA, not in 0:255\0".as_ptr() as *const c_char);
+        }
+        if x < 0 || x > 255 {
+            Rf_error(b"alpha level not in 0:255\0".as_ptr() as *const c_char);
+        }
+        x as u32
     }
-    if x < 0 || x > 255 {
-        Rf_error(b"alpha level not in 0:255\0".as_ptr() as *const c_char);
-    }
-    x as u32
 }
 
 // ---------------------------------------------------------------------------
@@ -255,47 +274,49 @@ unsafe fn hsv2rgb(
     g: &mut c_double,
     b: &mut c_double,
 ) {
-    if !R_FINITE(h) || !R_FINITE(s) || !R_FINITE(v) {
-        Rf_error(b"inputs must be finite\0".as_ptr() as *const c_char);
-    }
-    let (f, t_val) = libm::modf(h * 6.0);
-    let i = (t_val as c_int) % 6;
-    let p = v * (1.0 - s);
-    let q = v * (1.0 - s * f);
-    let t = v * (1.0 - s * (1.0 - f));
-    match i {
-        0 => {
-            *r = v;
-            *g = t;
-            *b = p;
+    unsafe {
+        if !R_FINITE(h) || !R_FINITE(s) || !R_FINITE(v) {
+            Rf_error(b"inputs must be finite\0".as_ptr() as *const c_char);
         }
-        1 => {
-            *r = q;
-            *g = v;
-            *b = p;
-        }
-        2 => {
-            *r = p;
-            *g = v;
-            *b = t;
-        }
-        3 => {
-            *r = p;
-            *g = q;
-            *b = v;
-        }
-        4 => {
-            *r = t;
-            *g = p;
-            *b = v;
-        }
-        5 => {
-            *r = v;
-            *g = p;
-            *b = q;
-        }
-        _ => {
-            Rf_error(b"bad hsv to rgb color conversion\0".as_ptr() as *const c_char);
+        let (f, t_val) = libm::modf(h * 6.0);
+        let i = (t_val as c_int) % 6;
+        let p = v * (1.0 - s);
+        let q = v * (1.0 - s * f);
+        let t = v * (1.0 - s * (1.0 - f));
+        match i {
+            0 => {
+                *r = v;
+                *g = t;
+                *b = p;
+            }
+            1 => {
+                *r = q;
+                *g = v;
+                *b = p;
+            }
+            2 => {
+                *r = p;
+                *g = v;
+                *b = t;
+            }
+            3 => {
+                *r = p;
+                *g = q;
+                *b = v;
+            }
+            4 => {
+                *r = t;
+                *g = p;
+                *b = v;
+            }
+            5 => {
+                *r = v;
+                *g = p;
+                *b = q;
+            }
+            _ => {
+                Rf_error(b"bad hsv to rgb color conversion\0".as_ptr() as *const c_char);
+            }
         }
     }
 }
@@ -308,55 +329,57 @@ unsafe fn rgb2hsv(
     s: &mut c_double,
     v: &mut c_double,
 ) {
-    let mut min = r;
-    let mut max = r;
-    let mut r_max = true;
-    let mut _b_max = false;
+    unsafe {
+        let mut min = r;
+        let mut max = r;
+        let mut r_max = true;
+        let mut _b_max = false;
 
-    if min > g {
-        if b < g {
-            min = b;
+        if min > g {
+            if b < g {
+                min = b;
+            } else {
+                min = g;
+                if b > r {
+                    max = b;
+                    _b_max = true;
+                    r_max = false;
+                }
+            }
         } else {
-            min = g;
-            if b > r {
+            if b > g {
                 max = b;
                 _b_max = true;
                 r_max = false;
+            } else {
+                max = g;
+                r_max = false;
+                if b < r {
+                    min = b;
+                }
             }
         }
-    } else {
-        if b > g {
-            max = b;
-            _b_max = true;
-            r_max = false;
+
+        *v = max;
+        let delta = max - min;
+        if max == 0.0 || delta == 0.0 {
+            *s = 0.0;
+            *h = 0.0;
+            return;
+        }
+        *s = delta / max;
+
+        if r_max {
+            *h = (g - b) / delta;
+        } else if _b_max {
+            *h = 4.0 + (r - g) / delta;
         } else {
-            max = g;
-            r_max = false;
-            if b < r {
-                min = b;
-            }
+            *h = 2.0 + (b - r) / delta;
         }
-    }
-
-    *v = max;
-    let delta = max - min;
-    if max == 0.0 || delta == 0.0 {
-        *s = 0.0;
-        *h = 0.0;
-        return;
-    }
-    *s = delta / max;
-
-    if r_max {
-        *h = (g - b) / delta;
-    } else if _b_max {
-        *h = 4.0 + (r - g) / delta;
-    } else {
-        *h = 2.0 + (b - r) / delta;
-    }
-    *h /= 6.0;
-    if *h < 0.0 {
-        *h += 1.0;
+        *h /= 6.0;
+        if *h < 0.0 {
+            *h += 1.0;
+        }
     }
 }
 
@@ -365,37 +388,41 @@ unsafe fn rgb2hsv(
 // ---------------------------------------------------------------------------
 
 unsafe fn gtrans(u: c_double) -> c_double {
-    if u > 0.00304 {
-        1.055 * u.powf(1.0 / GAMMA) - 0.055
-    } else {
-        12.92 * u
+    unsafe {
+        if u > 0.00304 {
+            1.055 * u.powf(1.0 / GAMMA) - 0.055
+        } else {
+            12.92 * u
+        }
     }
 }
 
 unsafe fn FixupColor(r: &mut c_int, g: &mut c_int, b: &mut c_int) -> c_int {
-    let mut fix = 0;
-    if *r < 0 {
-        *r = 0;
-        fix = 1;
-    } else if *r > 255 {
-        *r = 255;
-        fix = 1;
+    unsafe {
+        let mut fix = 0;
+        if *r < 0 {
+            *r = 0;
+            fix = 1;
+        } else if *r > 255 {
+            *r = 255;
+            fix = 1;
+        }
+        if *g < 0 {
+            *g = 0;
+            fix = 1;
+        } else if *g > 255 {
+            *g = 255;
+            fix = 1;
+        }
+        if *b < 0 {
+            *b = 0;
+            fix = 1;
+        } else if *b > 255 {
+            *b = 255;
+            fix = 1;
+        }
+        fix
     }
-    if *g < 0 {
-        *g = 0;
-        fix = 1;
-    } else if *g > 255 {
-        *g = 255;
-        fix = 1;
-    }
-    if *b < 0 {
-        *b = 0;
-        fix = 1;
-    } else if *b > 255 {
-        *b = 255;
-        fix = 1;
-    }
-    fix
 }
 
 unsafe fn hcl2rgb(
@@ -406,39 +433,41 @@ unsafe fn hcl2rgb(
     gv: &mut c_double,
     bv: &mut c_double,
 ) {
-    if l <= 0.0 {
-        *rv = 0.0;
-        *gv = 0.0;
-        *bv = 0.0;
-        return;
+    unsafe {
+        if l <= 0.0 {
+            *rv = 0.0;
+            *gv = 0.0;
+            *bv = 0.0;
+            return;
+        }
+
+        let rad = DEG2RAD * h;
+        let _lu = l;
+        let uu = c * rad.cos();
+        let vv = c * rad.sin();
+
+        let (x, y, z);
+        if l <= 0.0 && uu == 0.0 && vv == 0.0 {
+            x = 0.0;
+            y = 0.0;
+            z = 0.0;
+        } else {
+            y = WHITE_Y
+                * if l > 7.999592 {
+                    ((l + 16.0) / 116.0).powi(3)
+                } else {
+                    l / 903.3
+                };
+            let u2 = uu / (13.0 * l) + WHITE_u;
+            let v2 = vv / (13.0 * l) + WHITE_v;
+            x = 9.0 * y * u2 / (4.0 * v2);
+            z = -x / 3.0 - 5.0 * y + 3.0 * y / v2;
+        }
+
+        *rv = gtrans((3.240479 * x - 1.537150 * y - 0.498535 * z) / WHITE_Y);
+        *gv = gtrans((-0.969256 * x + 1.875992 * y + 0.041556 * z) / WHITE_Y);
+        *bv = gtrans((0.055648 * x - 0.204043 * y + 1.057311 * z) / WHITE_Y);
     }
-
-    let rad = DEG2RAD * h;
-    let _lu = l;
-    let uu = c * rad.cos();
-    let vv = c * rad.sin();
-
-    let (x, y, z);
-    if l <= 0.0 && uu == 0.0 && vv == 0.0 {
-        x = 0.0;
-        y = 0.0;
-        z = 0.0;
-    } else {
-        y = WHITE_Y
-            * if l > 7.999592 {
-                ((l + 16.0) / 116.0).powi(3)
-            } else {
-                l / 903.3
-            };
-        let u2 = uu / (13.0 * l) + WHITE_u;
-        let v2 = vv / (13.0 * l) + WHITE_v;
-        x = 9.0 * y * u2 / (4.0 * v2);
-        z = -x / 3.0 - 5.0 * y + 3.0 * y / v2;
-    }
-
-    *rv = gtrans((3.240479 * x - 1.537150 * y - 0.498535 * z) / WHITE_Y);
-    *gv = gtrans((-0.969256 * x + 1.875992 * y + 0.041556 * z) / WHITE_Y);
-    *bv = gtrans((0.055648 * x - 0.204043 * y + 1.057311 * z) / WHITE_Y);
 }
 
 // ---------------------------------------------------------------------------
@@ -446,27 +475,29 @@ unsafe fn hcl2rgb(
 // ---------------------------------------------------------------------------
 
 unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
-    let mut si = 0usize;
-    let mut ti = 0usize;
-    loop {
-        let sc = *s.add(si);
-        let tc = *t.add(ti);
-        if sc == 0 && tc == 0 {
-            return 1;
-        }
-        if sc == b' ' as libc::c_char {
+    unsafe {
+        let mut si = 0usize;
+        let mut ti = 0usize;
+        loop {
+            let sc = *s.add(si);
+            let tc = *t.add(ti);
+            if sc == 0 && tc == 0 {
+                return 1;
+            }
+            if sc == b' ' as libc::c_char {
+                si += 1;
+                continue;
+            }
+            if tc == b' ' as libc::c_char {
+                ti += 1;
+                continue;
+            }
+            if libc::tolower(sc as c_int) != libc::tolower(tc as c_int) {
+                return 0;
+            }
             si += 1;
-            continue;
-        }
-        if tc == b' ' as libc::c_char {
             ti += 1;
-            continue;
         }
-        if libc::tolower(sc as c_int) != libc::tolower(tc as c_int) {
-            return 0;
-        }
-        si += 1;
-        ti += 1;
     }
 }
 
@@ -475,17 +506,19 @@ unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 unsafe fn hexdigit(d: c_int) -> u32 {
-    if d >= b'0' as c_int && d <= b'9' as c_int {
-        return (d - b'0' as c_int) as u32;
+    unsafe {
+        if d >= b'0' as c_int && d <= b'9' as c_int {
+            return (d - b'0' as c_int) as u32;
+        }
+        if d >= b'A' as c_int && d <= b'F' as c_int {
+            return (10 + d - b'A' as c_int) as u32;
+        }
+        if d >= b'a' as c_int && d <= b'f' as c_int {
+            return (10 + d - b'a' as c_int) as u32;
+        }
+        Rf_error(b"invalid hex digit in 'color' or 'lty'\0".as_ptr() as *const c_char);
+        0
     }
-    if d >= b'A' as c_int && d <= b'F' as c_int {
-        return (10 + d - b'A' as c_int) as u32;
-    }
-    if d >= b'a' as c_int && d <= b'f' as c_int {
-        return (10 + d - b'a' as c_int) as u32;
-    }
-    Rf_error(b"invalid hex digit in 'color' or 'lty'\0".as_ptr() as *const c_char);
-    0
 }
 
 // ---------------------------------------------------------------------------
@@ -493,46 +526,48 @@ unsafe fn hexdigit(d: c_int) -> u32 {
 // ---------------------------------------------------------------------------
 
 unsafe fn rgb2col(rgb: *const c_char) -> rcolor {
-    if *rgb != b'#' as libc::c_char {
-        Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
-    }
-    let len = libc::strlen(rgb);
-    let mut r: u32 = 0;
-    let mut g: u32 = 0;
-    let mut b: u32 = 0;
-    let mut a: u32 = 0;
-
-    // Parse r, g, b and optionally a based on string length
-    match len {
-        9 => {
-            a = 16 * hexdigit(*rgb.add(7) as c_int) + hexdigit(*rgb.add(8) as c_int);
-            r = 16 * hexdigit(*rgb.add(1) as c_int) + hexdigit(*rgb.add(2) as c_int);
-            g = 16 * hexdigit(*rgb.add(3) as c_int) + hexdigit(*rgb.add(4) as c_int);
-            b = 16 * hexdigit(*rgb.add(5) as c_int) + hexdigit(*rgb.add(6) as c_int);
-            R_RGBA(r as c_int, g as c_int, b as c_int, a as c_int)
-        }
-        7 => {
-            r = 16 * hexdigit(*rgb.add(1) as c_int) + hexdigit(*rgb.add(2) as c_int);
-            g = 16 * hexdigit(*rgb.add(3) as c_int) + hexdigit(*rgb.add(4) as c_int);
-            b = 16 * hexdigit(*rgb.add(5) as c_int) + hexdigit(*rgb.add(6) as c_int);
-            R_RGB(r as c_int, g as c_int, b as c_int)
-        }
-        5 => {
-            a = 17 * hexdigit(*rgb.add(4) as c_int);
-            r = 17 * hexdigit(*rgb.add(1) as c_int);
-            g = 17 * hexdigit(*rgb.add(2) as c_int);
-            b = 17 * hexdigit(*rgb.add(3) as c_int);
-            R_RGBA(r as c_int, g as c_int, b as c_int, a as c_int)
-        }
-        4 => {
-            r = 17 * hexdigit(*rgb.add(1) as c_int);
-            g = 17 * hexdigit(*rgb.add(2) as c_int);
-            b = 17 * hexdigit(*rgb.add(3) as c_int);
-            R_RGB(r as c_int, g as c_int, b as c_int)
-        }
-        _ => {
+    unsafe {
+        if *rgb != b'#' as libc::c_char {
             Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
-            0
+        }
+        let len = libc::strlen(rgb);
+        let mut r: u32 = 0;
+        let mut g: u32 = 0;
+        let mut b: u32 = 0;
+        let mut a: u32 = 0;
+
+        // Parse r, g, b and optionally a based on string length
+        match len {
+            9 => {
+                a = 16 * hexdigit(*rgb.add(7) as c_int) + hexdigit(*rgb.add(8) as c_int);
+                r = 16 * hexdigit(*rgb.add(1) as c_int) + hexdigit(*rgb.add(2) as c_int);
+                g = 16 * hexdigit(*rgb.add(3) as c_int) + hexdigit(*rgb.add(4) as c_int);
+                b = 16 * hexdigit(*rgb.add(5) as c_int) + hexdigit(*rgb.add(6) as c_int);
+                R_RGBA(r as c_int, g as c_int, b as c_int, a as c_int)
+            }
+            7 => {
+                r = 16 * hexdigit(*rgb.add(1) as c_int) + hexdigit(*rgb.add(2) as c_int);
+                g = 16 * hexdigit(*rgb.add(3) as c_int) + hexdigit(*rgb.add(4) as c_int);
+                b = 16 * hexdigit(*rgb.add(5) as c_int) + hexdigit(*rgb.add(6) as c_int);
+                R_RGB(r as c_int, g as c_int, b as c_int)
+            }
+            5 => {
+                a = 17 * hexdigit(*rgb.add(4) as c_int);
+                r = 17 * hexdigit(*rgb.add(1) as c_int);
+                g = 17 * hexdigit(*rgb.add(2) as c_int);
+                b = 17 * hexdigit(*rgb.add(3) as c_int);
+                R_RGBA(r as c_int, g as c_int, b as c_int, a as c_int)
+            }
+            4 => {
+                r = 17 * hexdigit(*rgb.add(1) as c_int);
+                g = 17 * hexdigit(*rgb.add(2) as c_int);
+                b = 17 * hexdigit(*rgb.add(3) as c_int);
+                R_RGB(r as c_int, g as c_int, b as c_int)
+            }
+            _ => {
+                Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
+                0
+            }
         }
     }
 }
@@ -3185,41 +3220,45 @@ const COLOR_DATA: [ColorDataBaseEntry; 657] = [
 // ---------------------------------------------------------------------------
 
 unsafe fn name2col(nm: *const c_char) -> rcolor {
-    if libc::strcmp(nm, b"NA\0".as_ptr() as *const c_char) == 0
-        || libc::strcmp(nm, b"transparent\0".as_ptr() as *const c_char) == 0
-    {
-        return R_TRANWHITE;
-    }
-    for entry in COLOR_DATA_BASE.iter() {
-        if entry.name.is_empty() {
-            break;
+    unsafe {
+        if libc::strcmp(nm, b"NA\0".as_ptr() as *const c_char) == 0
+            || libc::strcmp(nm, b"transparent\0".as_ptr() as *const c_char) == 0
+        {
+            return R_TRANWHITE;
         }
-        if StrMatch(entry.name.as_ptr() as *const c_char, nm) != 0 {
-            return entry.code;
+        for entry in COLOR_DATA_BASE.iter() {
+            if entry.name.is_empty() {
+                break;
+            }
+            if StrMatch(entry.name.as_ptr() as *const c_char, nm) != 0 {
+                return entry.code;
+            }
         }
+        Rf_error(b"invalid color name\0".as_ptr() as *const c_char);
+        0
     }
-    Rf_error(b"invalid color name\0".as_ptr() as *const c_char);
-    0
 }
 
 unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
-    if *s == b'#' as libc::c_char {
-        return rgb2col(s);
-    }
-    if (*s as c_int) >= b'0' as c_int && (*s as c_int) <= b'9' as c_int {
-        let mut ptr: *mut c_char = std::ptr::null_mut();
-        let indx = libc::strtod(s, &mut ptr) as c_int;
-        if !ptr.is_null() && *ptr != 0 {
-            Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
+    unsafe {
+        if *s == b'#' as libc::c_char {
+            return rgb2col(s);
         }
-        if indx == 0 {
-            return bg;
+        if (*s as c_int) >= b'0' as c_int && (*s as c_int) <= b'9' as c_int {
+            let mut ptr: *mut c_char = std::ptr::null_mut();
+            let indx = libc::strtod(s, &mut ptr) as c_int;
+            if !ptr.is_null() && *ptr != 0 {
+                Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
+            }
+            if indx == 0 {
+                return bg;
+            }
+            let ps = with_color_state(|state| state.palette_size) as usize;
+            let idx = (indx as usize).wrapping_sub(1) % ps;
+            with_color_state(|state| state.palette[idx])
+        } else {
+            name2col(s)
         }
-        let ps = with_color_state(|state| state.palette_size) as usize;
-        let idx = (indx as usize).wrapping_sub(1) % ps;
-        with_color_state(|state| state.palette[idx])
-    } else {
-        name2col(s)
     }
 }
 
@@ -3229,85 +3268,93 @@ unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
 
 /// Internal to external color representation.
 pub unsafe extern "C" fn incol2name(col: c_uint) -> *const c_char {
-    if R_OPAQUE(col) != 0 {
-        for entry in COLOR_DATA_BASE.iter() {
-            if entry.name.is_empty() {
-                break;
+    unsafe {
+        if R_OPAQUE(col) != 0 {
+            for entry in COLOR_DATA_BASE.iter() {
+                if entry.name.is_empty() {
+                    break;
+                }
+                if col == entry.code {
+                    return entry.name.as_ptr() as *const c_char;
+                }
             }
-            if col == entry.code {
-                return entry.name.as_ptr() as *const c_char;
-            }
+            incol2name_buf_opaque(col)
+        } else if R_TRANSPARENT(col) != 0 {
+            b"transparent\0".as_ptr() as *const c_char
+        } else {
+            incol2name_buf_trans(col)
         }
-        incol2name_buf_opaque(col)
-    } else if R_TRANSPARENT(col) != 0 {
-        b"transparent\0".as_ptr() as *const c_char
-    } else {
-        incol2name_buf_trans(col)
     }
 }
 
 pub unsafe extern "C" fn inR_GE_str2col(s: *const c_char) -> c_uint {
-    if streql(s, b"0\0".as_ptr() as *const c_char) != 0 {
-        Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
+    unsafe {
+        if streql(s, b"0\0".as_ptr() as *const c_char) != 0 {
+            Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
+        }
+        str2col(s, R_TRANWHITE)
     }
-    str2col(s, R_TRANWHITE)
 }
 
 /// Convert a sexp element to an R color desc.
 pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
-    let t = TYPEOF(x);
-    let indx: c_int;
-    match t {
-        tt if tt == SEXPTYPE::STRSXP => {
-            // STRSXP
-            return str2col(CHAR(STRING_ELT(x, i as R_xlen_t)), bg);
-        }
-        tt if tt == SEXPTYPE::LGLSXP => {
-            // LGLSXP
-            indx = *LOGICAL(x).add(i as usize);
-            if indx == NA_LOGICAL {
-                return R_TRANWHITE;
+    unsafe {
+        let t = TYPEOF(x);
+        let indx: c_int;
+        match t {
+            tt if tt == SEXPTYPE::STRSXP => {
+                // STRSXP
+                return str2col(CHAR(STRING_ELT(x, i as R_xlen_t)), bg);
+            }
+            tt if tt == SEXPTYPE::LGLSXP => {
+                // LGLSXP
+                indx = *LOGICAL(x).add(i as usize);
+                if indx == NA_LOGICAL {
+                    return R_TRANWHITE;
+                }
+            }
+            tt if tt == SEXPTYPE::INTSXP => {
+                // INTSXP
+                indx = *INTEGER(x).add(i as usize);
+                if indx == NA_INTEGER {
+                    return R_TRANWHITE;
+                }
+            }
+            tt if tt == SEXPTYPE::REALSXP => {
+                // REALSXP
+                if !R_FINITE(*REAL(x).add(i as usize)) {
+                    return R_TRANWHITE;
+                }
+                indx = *REAL(x).add(i as usize) as c_int;
+            }
+            _ => {
+                return bg;
             }
         }
-        tt if tt == SEXPTYPE::INTSXP => {
-            // INTSXP
-            indx = *INTEGER(x).add(i as usize);
-            if indx == NA_INTEGER {
-                return R_TRANWHITE;
-            }
+        if indx < 0 {
+            Rf_error(b"numerical color values must be >= 0\0".as_ptr() as *const c_char);
         }
-        tt if tt == SEXPTYPE::REALSXP => {
-            // REALSXP
-            if !R_FINITE(*REAL(x).add(i as usize)) {
-                return R_TRANWHITE;
-            }
-            indx = *REAL(x).add(i as usize) as c_int;
-        }
-        _ => {
+        if indx == 0 {
             return bg;
         }
+        let ps = with_color_state(|state| state.palette_size) as usize;
+        let idx = (indx as usize).wrapping_sub(1) % ps;
+        with_color_state(|state| state.palette[idx])
     }
-    if indx < 0 {
-        Rf_error(b"numerical color values must be >= 0\0".as_ptr() as *const c_char);
-    }
-    if indx == 0 {
-        return bg;
-    }
-    let ps = with_color_state(|state| state.palette_size) as usize;
-    let idx = (indx as usize).wrapping_sub(1) % ps;
-    with_color_state(|state| state.palette[idx])
 }
 
 /// Save/restore palette (NOT #[unsafe(no_mangle)] — main/colors.rs already exports it)
 unsafe extern "C" fn savePalette_impl(save: c_int) {
-    with_color_state(|state| {
-        let ps = state.palette_size as usize;
-        if save != 0 {
-            state.palette0[..ps].copy_from_slice(&state.palette[..ps]);
-        } else {
-            state.palette[..ps].copy_from_slice(&state.palette0[..ps]);
-        }
-    });
+    unsafe {
+        with_color_state(|state| {
+            let ps = state.palette_size as usize;
+            if save != 0 {
+                state.palette0[..ps].copy_from_slice(&state.palette[..ps]);
+            } else {
+                state.palette[..ps].copy_from_slice(&state.palette0[..ps]);
+            }
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3320,7 +3367,7 @@ unsafe extern "C" fn inRGBpar3_dispatch(
     i: c_int,
     bg: c_uint,
 ) -> c_uint {
-    inRGBpar3(x as SEXP, i, bg)
+    unsafe { inRGBpar3(x as SEXP, i, bg) }
 }
 
 pub fn initPalette() {
@@ -3339,614 +3386,634 @@ pub fn initPalette() {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
-    let mut r: c_double = 0.0;
-    let mut g: c_double = 0.0;
-    let mut b: c_double = 0.0;
+    unsafe {
+        let mut r: c_double = 0.0;
+        let mut g: c_double = 0.0;
+        let mut b: c_double = 0.0;
 
-    let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.into()));
-    let s = Rf_protect(coerceVector(s, SEXPTYPE::REALSXP.into()));
-    let v = Rf_protect(coerceVector(v, SEXPTYPE::REALSXP.into()));
-    let a = if Rf_isNull(a) != 0 {
-        a
-    } else {
-        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
-    };
+        let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.into()));
+        let s = Rf_protect(coerceVector(s, SEXPTYPE::REALSXP.into()));
+        let v = Rf_protect(coerceVector(v, SEXPTYPE::REALSXP.into()));
+        let a = if Rf_isNull(a) != 0 {
+            a
+        } else {
+            Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
+        };
 
-    let nh = XLENGTH(h) as usize;
-    let ns = XLENGTH(s) as usize;
-    let nv = XLENGTH(v) as usize;
-    let na = if Rf_isNull(a) != 0 {
-        1usize
-    } else {
-        XLENGTH(a) as usize
-    };
+        let nh = XLENGTH(h) as usize;
+        let ns = XLENGTH(s) as usize;
+        let nv = XLENGTH(v) as usize;
+        let na = if Rf_isNull(a) != 0 {
+            1usize
+        } else {
+            XLENGTH(a) as usize
+        };
 
-    if nh == 0 || ns == 0 || nv == 0 || na == 0 {
-        Rf_unprotect(4);
-        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
-    }
-
-    let mut max = nh;
-    if max < ns {
-        max = ns;
-    }
-    if max < nv {
-        max = nv;
-    }
-    if max < na {
-        max = na;
-    }
-    let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, max as c_int));
-
-    if Rf_isNull(a) != 0 {
-        let mut i = 0usize;
-        while i < max {
-            let hh = *REAL(h).add(i % nh);
-            let ss = *REAL(s).add(i % ns);
-            let vv = *REAL(v).add(i % nv);
-            if hh < 0.0 || hh > 1.0 || ss < 0.0 || ss > 1.0 || vv < 0.0 || vv > 1.0 {
-                Rf_error(b"invalid hsv color\0".as_ptr() as *const c_char);
-            }
-            hsv2rgb(hh, ss, vv, &mut r, &mut g, &mut b);
-            SET_STRING_ELT(
-                c,
-                i as R_xlen_t,
-                Rf_mkChar(RGB2rgb_func(ScaleColor(r), ScaleColor(g), ScaleColor(b))),
-            );
-            i += 1;
+        if nh == 0 || ns == 0 || nv == 0 || na == 0 {
+            Rf_unprotect(4);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
         }
-    } else {
-        let mut i = 0usize;
-        while i < max {
-            let hh = *REAL(h).add(i % nh);
-            let ss = *REAL(s).add(i % ns);
-            let vv = *REAL(v).add(i % nv);
-            let aa = *REAL(a).add(i % na);
-            if hh < 0.0
-                || hh > 1.0
-                || ss < 0.0
-                || ss > 1.0
-                || vv < 0.0
-                || vv > 1.0
-                || aa < 0.0
-                || aa > 1.0
-            {
-                Rf_error(b"invalid hsv color\0".as_ptr() as *const c_char);
-            }
-            hsv2rgb(hh, ss, vv, &mut r, &mut g, &mut b);
-            SET_STRING_ELT(
-                c,
-                i as R_xlen_t,
-                Rf_mkChar(RGBA2rgb_func(
-                    ScaleColor(r),
-                    ScaleColor(g),
-                    ScaleColor(b),
-                    ScaleAlpha(aa),
-                )),
-            );
-            i += 1;
+
+        let mut max = nh;
+        if max < ns {
+            max = ns;
         }
+        if max < nv {
+            max = nv;
+        }
+        if max < na {
+            max = na;
+        }
+        let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, max as c_int));
+
+        if Rf_isNull(a) != 0 {
+            let mut i = 0usize;
+            while i < max {
+                let hh = *REAL(h).add(i % nh);
+                let ss = *REAL(s).add(i % ns);
+                let vv = *REAL(v).add(i % nv);
+                if hh < 0.0 || hh > 1.0 || ss < 0.0 || ss > 1.0 || vv < 0.0 || vv > 1.0 {
+                    Rf_error(b"invalid hsv color\0".as_ptr() as *const c_char);
+                }
+                hsv2rgb(hh, ss, vv, &mut r, &mut g, &mut b);
+                SET_STRING_ELT(
+                    c,
+                    i as R_xlen_t,
+                    Rf_mkChar(RGB2rgb_func(ScaleColor(r), ScaleColor(g), ScaleColor(b))),
+                );
+                i += 1;
+            }
+        } else {
+            let mut i = 0usize;
+            while i < max {
+                let hh = *REAL(h).add(i % nh);
+                let ss = *REAL(s).add(i % ns);
+                let vv = *REAL(v).add(i % nv);
+                let aa = *REAL(a).add(i % na);
+                if hh < 0.0
+                    || hh > 1.0
+                    || ss < 0.0
+                    || ss > 1.0
+                    || vv < 0.0
+                    || vv > 1.0
+                    || aa < 0.0
+                    || aa > 1.0
+                {
+                    Rf_error(b"invalid hsv color\0".as_ptr() as *const c_char);
+                }
+                hsv2rgb(hh, ss, vv, &mut r, &mut g, &mut b);
+                SET_STRING_ELT(
+                    c,
+                    i as R_xlen_t,
+                    Rf_mkChar(RGBA2rgb_func(
+                        ScaleColor(r),
+                        ScaleColor(g),
+                        ScaleColor(b),
+                        ScaleAlpha(aa),
+                    )),
+                );
+                i += 1;
+            }
+        }
+        Rf_unprotect(5);
+        c
     }
-    Rf_unprotect(5);
-    c
 }
 
 pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
-    let fixup = asLogical(sfixup);
-    let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.into()));
-    let c = Rf_protect(coerceVector(c, SEXPTYPE::REALSXP.into()));
-    let l = Rf_protect(coerceVector(l, SEXPTYPE::REALSXP.into()));
-    let a = if Rf_isNull(a) != 0 {
-        a
-    } else {
-        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
-    };
+    unsafe {
+        let fixup = asLogical(sfixup);
+        let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.into()));
+        let c = Rf_protect(coerceVector(c, SEXPTYPE::REALSXP.into()));
+        let l = Rf_protect(coerceVector(l, SEXPTYPE::REALSXP.into()));
+        let a = if Rf_isNull(a) != 0 {
+            a
+        } else {
+            Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
+        };
 
-    let nh = XLENGTH(h) as usize;
-    let nc = XLENGTH(c) as usize;
-    let nl = XLENGTH(l) as usize;
-    let na = if Rf_isNull(a) != 0 {
-        1usize
-    } else {
-        XLENGTH(a) as usize
-    };
+        let nh = XLENGTH(h) as usize;
+        let nc = XLENGTH(c) as usize;
+        let nl = XLENGTH(l) as usize;
+        let na = if Rf_isNull(a) != 0 {
+            1usize
+        } else {
+            XLENGTH(a) as usize
+        };
 
-    if nh == 0 || nc == 0 || nl == 0 || na == 0 {
-        Rf_unprotect(4);
-        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
-    }
-
-    let mut max = nh;
-    if max < nc {
-        max = nc;
-    }
-    if max < nl {
-        max = nl;
-    }
-    if max < na {
-        max = na;
-    }
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, max as c_int));
-
-    if Rf_isNull(a) != 0 {
-        let mut i = 0usize;
-        while i < max {
-            let H = *REAL(h).add(i % nh);
-            let C = *REAL(c).add(i % nc);
-            let L = *REAL(l).add(i % nl);
-            if R_FINITE(H) && R_FINITE(C) && R_FINITE(L) {
-                if L < 0.0 || L > WHITE_Y || C < 0.0 {
-                    Rf_error(b"invalid hcl color\0".as_ptr() as *const c_char);
-                }
-                let mut rv: c_double = 0.0;
-                let mut gv: c_double = 0.0;
-                let mut bv: c_double = 0.0;
-                hcl2rgb(H, C, L, &mut rv, &mut gv, &mut bv);
-                let mut ir = (255.0 * rv + 0.5) as c_int;
-                let mut ig = (255.0 * gv + 0.5) as c_int;
-                let mut ib = (255.0 * bv + 0.5) as c_int;
-                if FixupColor(&mut ir, &mut ig, &mut ib) != 0 && fixup == 0 {
-                    SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-                } else {
-                    SET_STRING_ELT(
-                        ans,
-                        i as R_xlen_t,
-                        Rf_mkChar(RGB2rgb_func(ir as u32, ig as u32, ib as u32)),
-                    );
-                }
-            } else {
-                SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-            }
-            i += 1;
+        if nh == 0 || nc == 0 || nl == 0 || na == 0 {
+            Rf_unprotect(4);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
         }
-    } else {
-        let mut i = 0usize;
-        while i < max {
-            let H = *REAL(h).add(i % nh);
-            let C = *REAL(c).add(i % nc);
-            let L = *REAL(l).add(i % nl);
-            let mut A = *REAL(a).add(i % na);
-            if !R_FINITE(A) {
-                A = 1.0;
-            }
-            if R_FINITE(H) && R_FINITE(C) && R_FINITE(L) {
-                if L < 0.0 || L > WHITE_Y || C < 0.0 || A < 0.0 || A > 1.0 {
-                    Rf_error(b"invalid hcl color\0".as_ptr() as *const c_char);
-                }
-                let mut rv: c_double = 0.0;
-                let mut gv: c_double = 0.0;
-                let mut bv: c_double = 0.0;
-                hcl2rgb(H, C, L, &mut rv, &mut gv, &mut bv);
-                let mut ir = (255.0 * rv + 0.5) as c_int;
-                let mut ig = (255.0 * gv + 0.5) as c_int;
-                let mut ib = (255.0 * bv + 0.5) as c_int;
-                if FixupColor(&mut ir, &mut ig, &mut ib) != 0 && fixup == 0 {
-                    SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-                } else {
-                    SET_STRING_ELT(
-                        ans,
-                        i as R_xlen_t,
-                        Rf_mkChar(RGBA2rgb_func(
-                            ir as u32,
-                            ig as u32,
-                            ib as u32,
-                            ScaleAlpha(A),
-                        )),
-                    );
-                }
-            } else {
-                SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
-            }
-            i += 1;
+
+        let mut max = nh;
+        if max < nc {
+            max = nc;
         }
+        if max < nl {
+            max = nl;
+        }
+        if max < na {
+            max = na;
+        }
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, max as c_int));
+
+        if Rf_isNull(a) != 0 {
+            let mut i = 0usize;
+            while i < max {
+                let H = *REAL(h).add(i % nh);
+                let C = *REAL(c).add(i % nc);
+                let L = *REAL(l).add(i % nl);
+                if R_FINITE(H) && R_FINITE(C) && R_FINITE(L) {
+                    if L < 0.0 || L > WHITE_Y || C < 0.0 {
+                        Rf_error(b"invalid hcl color\0".as_ptr() as *const c_char);
+                    }
+                    let mut rv: c_double = 0.0;
+                    let mut gv: c_double = 0.0;
+                    let mut bv: c_double = 0.0;
+                    hcl2rgb(H, C, L, &mut rv, &mut gv, &mut bv);
+                    let mut ir = (255.0 * rv + 0.5) as c_int;
+                    let mut ig = (255.0 * gv + 0.5) as c_int;
+                    let mut ib = (255.0 * bv + 0.5) as c_int;
+                    if FixupColor(&mut ir, &mut ig, &mut ib) != 0 && fixup == 0 {
+                        SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
+                    } else {
+                        SET_STRING_ELT(
+                            ans,
+                            i as R_xlen_t,
+                            Rf_mkChar(RGB2rgb_func(ir as u32, ig as u32, ib as u32)),
+                        );
+                    }
+                } else {
+                    SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
+                }
+                i += 1;
+            }
+        } else {
+            let mut i = 0usize;
+            while i < max {
+                let H = *REAL(h).add(i % nh);
+                let C = *REAL(c).add(i % nc);
+                let L = *REAL(l).add(i % nl);
+                let mut A = *REAL(a).add(i % na);
+                if !R_FINITE(A) {
+                    A = 1.0;
+                }
+                if R_FINITE(H) && R_FINITE(C) && R_FINITE(L) {
+                    if L < 0.0 || L > WHITE_Y || C < 0.0 || A < 0.0 || A > 1.0 {
+                        Rf_error(b"invalid hcl color\0".as_ptr() as *const c_char);
+                    }
+                    let mut rv: c_double = 0.0;
+                    let mut gv: c_double = 0.0;
+                    let mut bv: c_double = 0.0;
+                    hcl2rgb(H, C, L, &mut rv, &mut gv, &mut bv);
+                    let mut ir = (255.0 * rv + 0.5) as c_int;
+                    let mut ig = (255.0 * gv + 0.5) as c_int;
+                    let mut ib = (255.0 * bv + 0.5) as c_int;
+                    if FixupColor(&mut ir, &mut ig, &mut ib) != 0 && fixup == 0 {
+                        SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
+                    } else {
+                        SET_STRING_ELT(
+                            ans,
+                            i as R_xlen_t,
+                            Rf_mkChar(RGBA2rgb_func(
+                                ir as u32,
+                                ig as u32,
+                                ib as u32,
+                                ScaleAlpha(A),
+                            )),
+                        );
+                    }
+                } else {
+                    SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
+                }
+                i += 1;
+            }
+        }
+        Rf_unprotect(5);
+        ans
     }
-    Rf_unprotect(5);
-    ans
 }
 
 pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP {
-    let mV = asReal(mcv);
-    if !R_FINITE(mV) || mV == 0.0 {
-        Rf_error(b"invalid value of 'maxColorValue'\0".as_ptr() as *const c_char);
-    }
+    unsafe {
+        let mV = asReal(mcv);
+        if !R_FINITE(mV) || mV == 0.0 {
+            Rf_error(b"invalid value of 'maxColorValue'\0".as_ptr() as *const c_char);
+        }
 
-    let (r, g, b, a) = if mV == 255.0 {
-        (
-            Rf_protect(coerceVector(r, SEXPTYPE::INTSXP.into())),
-            Rf_protect(coerceVector(g, SEXPTYPE::INTSXP.into())),
-            Rf_protect(coerceVector(b, SEXPTYPE::INTSXP.into())),
+        let (r, g, b, a) = if mV == 255.0 {
+            (
+                Rf_protect(coerceVector(r, SEXPTYPE::INTSXP.into())),
+                Rf_protect(coerceVector(g, SEXPTYPE::INTSXP.into())),
+                Rf_protect(coerceVector(b, SEXPTYPE::INTSXP.into())),
+                if Rf_isNull(a) != 0 {
+                    a
+                } else {
+                    Rf_protect(coerceVector(a, SEXPTYPE::INTSXP.into()))
+                },
+            )
+        } else {
+            (
+                Rf_protect(coerceVector(r, SEXPTYPE::REALSXP.into())),
+                Rf_protect(coerceVector(g, SEXPTYPE::REALSXP.into())),
+                Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.into())),
+                if Rf_isNull(a) != 0 {
+                    a
+                } else {
+                    Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
+                },
+            )
+        };
+
+        let nr = XLENGTH(r) as usize;
+        let ng = XLENGTH(g) as usize;
+        let nb = XLENGTH(b) as usize;
+        let na = if Rf_isNull(a) != 0 {
+            1usize
+        } else {
+            XLENGTH(a) as usize
+        };
+
+        if nr == 0 || ng == 0 || nb == 0 || na == 0 {
+            Rf_unprotect(4);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
+        }
+
+        let mut l_max = nr;
+        if l_max < ng {
+            l_max = ng;
+        }
+        if l_max < nb {
+            l_max = nb;
+        }
+        if l_max < na {
+            l_max = na;
+        }
+
+        let nam = Rf_protect(coerceVector(nam, SEXPTYPE::STRSXP.into()));
+        if LENGTH(nam) != 0 && LENGTH(nam) != l_max as c_int {
+            Rf_error(b"invalid 'names' vector\0".as_ptr() as *const c_char);
+        }
+        let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, l_max as c_int));
+
+        if mV == 255.0 {
             if Rf_isNull(a) != 0 {
-                a
+                let mut i = 0usize;
+                while i < l_max {
+                    let sr = CheckColor(*INTEGER(r).add(i % nr));
+                    let sg = CheckColor(*INTEGER(g).add(i % ng));
+                    let sb = CheckColor(*INTEGER(b).add(i % nb));
+                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
+                    i += 1;
+                }
             } else {
-                Rf_protect(coerceVector(a, SEXPTYPE::INTSXP.into()))
-            },
-        )
-    } else {
-        (
-            Rf_protect(coerceVector(r, SEXPTYPE::REALSXP.into())),
-            Rf_protect(coerceVector(g, SEXPTYPE::REALSXP.into())),
-            Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.into())),
+                let mut i = 0usize;
+                while i < l_max {
+                    let sr = CheckColor(*INTEGER(r).add(i % nr));
+                    let sg = CheckColor(*INTEGER(g).add(i % ng));
+                    let sb = CheckColor(*INTEGER(b).add(i % nb));
+                    let sa = CheckAlpha(*INTEGER(a).add(i % na));
+                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
+                    i += 1;
+                }
+            }
+        } else if mV == 1.0 {
             if Rf_isNull(a) != 0 {
-                a
+                let mut i = 0usize;
+                while i < l_max {
+                    let sr = ScaleColor(*REAL(r).add(i % nr));
+                    let sg = ScaleColor(*REAL(g).add(i % ng));
+                    let sb = ScaleColor(*REAL(b).add(i % nb));
+                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
+                    i += 1;
+                }
             } else {
-                Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
-            },
-        )
-    };
-
-    let nr = XLENGTH(r) as usize;
-    let ng = XLENGTH(g) as usize;
-    let nb = XLENGTH(b) as usize;
-    let na = if Rf_isNull(a) != 0 {
-        1usize
-    } else {
-        XLENGTH(a) as usize
-    };
-
-    if nr == 0 || ng == 0 || nb == 0 || na == 0 {
-        Rf_unprotect(4);
-        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
-    }
-
-    let mut l_max = nr;
-    if l_max < ng {
-        l_max = ng;
-    }
-    if l_max < nb {
-        l_max = nb;
-    }
-    if l_max < na {
-        l_max = na;
-    }
-
-    let nam = Rf_protect(coerceVector(nam, SEXPTYPE::STRSXP.into()));
-    if LENGTH(nam) != 0 && LENGTH(nam) != l_max as c_int {
-        Rf_error(b"invalid 'names' vector\0".as_ptr() as *const c_char);
-    }
-    let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, l_max as c_int));
-
-    if mV == 255.0 {
-        if Rf_isNull(a) != 0 {
-            let mut i = 0usize;
-            while i < l_max {
-                let sr = CheckColor(*INTEGER(r).add(i % nr));
-                let sg = CheckColor(*INTEGER(g).add(i % ng));
-                let sb = CheckColor(*INTEGER(b).add(i % nb));
-                SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
-                i += 1;
+                let mut i = 0usize;
+                while i < l_max {
+                    let sr = ScaleColor(*REAL(r).add(i % nr));
+                    let sg = ScaleColor(*REAL(g).add(i % ng));
+                    let sb = ScaleColor(*REAL(b).add(i % nb));
+                    let sa = ScaleAlpha(*REAL(a).add(i % na));
+                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
+                    i += 1;
+                }
             }
         } else {
-            let mut i = 0usize;
-            while i < l_max {
-                let sr = CheckColor(*INTEGER(r).add(i % nr));
-                let sg = CheckColor(*INTEGER(g).add(i % ng));
-                let sb = CheckColor(*INTEGER(b).add(i % nb));
-                let sa = CheckAlpha(*INTEGER(a).add(i % na));
-                SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
-                i += 1;
+            if Rf_isNull(a) != 0 {
+                let mut i = 0usize;
+                while i < l_max {
+                    let sr = ScaleColor(*REAL(r).add(i % nr) / mV);
+                    let sg = ScaleColor(*REAL(g).add(i % ng) / mV);
+                    let sb = ScaleColor(*REAL(b).add(i % nb) / mV);
+                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
+                    i += 1;
+                }
+            } else {
+                let mut i = 0usize;
+                while i < l_max {
+                    let sr = ScaleColor(*REAL(r).add(i % nr) / mV);
+                    let sg = ScaleColor(*REAL(g).add(i % ng) / mV);
+                    let sb = ScaleColor(*REAL(b).add(i % nb) / mV);
+                    let sa = ScaleAlpha(*REAL(a).add(i % na) / mV);
+                    SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
+                    i += 1;
+                }
             }
         }
-    } else if mV == 1.0 {
-        if Rf_isNull(a) != 0 {
-            let mut i = 0usize;
-            while i < l_max {
-                let sr = ScaleColor(*REAL(r).add(i % nr));
-                let sg = ScaleColor(*REAL(g).add(i % ng));
-                let sb = ScaleColor(*REAL(b).add(i % nb));
-                SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
-                i += 1;
-            }
-        } else {
-            let mut i = 0usize;
-            while i < l_max {
-                let sr = ScaleColor(*REAL(r).add(i % nr));
-                let sg = ScaleColor(*REAL(g).add(i % ng));
-                let sb = ScaleColor(*REAL(b).add(i % nb));
-                let sa = ScaleAlpha(*REAL(a).add(i % na));
-                SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
-                i += 1;
-            }
-        }
-    } else {
-        if Rf_isNull(a) != 0 {
-            let mut i = 0usize;
-            while i < l_max {
-                let sr = ScaleColor(*REAL(r).add(i % nr) / mV);
-                let sg = ScaleColor(*REAL(g).add(i % ng) / mV);
-                let sb = ScaleColor(*REAL(b).add(i % nb) / mV);
-                SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGB2rgb_func(sr, sg, sb)));
-                i += 1;
-            }
-        } else {
-            let mut i = 0usize;
-            while i < l_max {
-                let sr = ScaleColor(*REAL(r).add(i % nr) / mV);
-                let sg = ScaleColor(*REAL(g).add(i % ng) / mV);
-                let sb = ScaleColor(*REAL(b).add(i % nb) / mV);
-                let sa = ScaleAlpha(*REAL(a).add(i % na) / mV);
-                SET_STRING_ELT(c, i as R_xlen_t, Rf_mkChar(RGBA2rgb_func(sr, sg, sb, sa)));
-                i += 1;
-            }
-        }
-    }
 
-    if LENGTH(nam) != 0 {
-        setAttrib(c, R_NamesSymbol(), nam);
+        if LENGTH(nam) != 0 {
+            setAttrib(c, R_NamesSymbol(), nam);
+        }
+        Rf_unprotect(6);
+        c
     }
-    Rf_unprotect(6);
-    c
 }
 
 pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
-    let lev = Rf_protect(coerceVector(lev, SEXPTYPE::REALSXP.into()));
-    let nlev = LENGTH(lev) as usize;
-    let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlev as c_int);
-    if nlev == 0 {
-        Rf_unprotect(1);
-        return ans;
-    }
-    Rf_protect(ans);
-    let a = if Rf_isNull(a) != 0 {
-        a
-    } else {
-        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
-    };
+    unsafe {
+        let lev = Rf_protect(coerceVector(lev, SEXPTYPE::REALSXP.into()));
+        let nlev = LENGTH(lev) as usize;
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlev as c_int);
+        if nlev == 0 {
+            Rf_unprotect(1);
+            return ans;
+        }
+        Rf_protect(ans);
+        let a = if Rf_isNull(a) != 0 {
+            a
+        } else {
+            Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
+        };
 
-    if Rf_isNull(a) != 0 {
-        let mut i = 0usize;
-        while i < nlev {
-            let level = *REAL(lev).add(i);
-            if ISNAN(level) || level < 0.0 || level > 1.0 {
-                Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
+        if Rf_isNull(a) != 0 {
+            let mut i = 0usize;
+            while i < nlev {
+                let level = *REAL(lev).add(i);
+                if ISNAN(level) || level < 0.0 || level > 1.0 {
+                    Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
+                }
+                let ilevel = (255.0 * level + 0.5) as c_int;
+                SET_STRING_ELT(
+                    ans,
+                    i as R_xlen_t,
+                    Rf_mkChar(RGB2rgb_func(ilevel as u32, ilevel as u32, ilevel as u32)),
+                );
+                i += 1;
             }
-            let ilevel = (255.0 * level + 0.5) as c_int;
-            SET_STRING_ELT(
-                ans,
-                i as R_xlen_t,
-                Rf_mkChar(RGB2rgb_func(ilevel as u32, ilevel as u32, ilevel as u32)),
-            );
-            i += 1;
-        }
-        Rf_unprotect(2);
-    } else {
-        let na = LENGTH(a) as usize;
-        let max = if nlev > na { nlev } else { na };
-        let mut i = 0usize;
-        while i < max {
-            let level = *REAL(lev).add(i % nlev);
-            if ISNAN(level) || level < 0.0 || level > 1.0 {
-                Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
+            Rf_unprotect(2);
+        } else {
+            let na = LENGTH(a) as usize;
+            let max = if nlev > na { nlev } else { na };
+            let mut i = 0usize;
+            while i < max {
+                let level = *REAL(lev).add(i % nlev);
+                if ISNAN(level) || level < 0.0 || level > 1.0 {
+                    Rf_error(b"invalid gray level, must be in [0,1].\0".as_ptr() as *const c_char);
+                }
+                let ilevel = (255.0 * level + 0.5) as c_int;
+                let aa = *REAL(a).add(i % na);
+                SET_STRING_ELT(
+                    ans,
+                    i as R_xlen_t,
+                    Rf_mkChar(RGBA2rgb_func(
+                        ilevel as u32,
+                        ilevel as u32,
+                        ilevel as u32,
+                        ScaleAlpha(aa),
+                    )),
+                );
+                i += 1;
             }
-            let ilevel = (255.0 * level + 0.5) as c_int;
-            let aa = *REAL(a).add(i % na);
-            SET_STRING_ELT(
-                ans,
-                i as R_xlen_t,
-                Rf_mkChar(RGBA2rgb_func(
-                    ilevel as u32,
-                    ilevel as u32,
-                    ilevel as u32,
-                    ScaleAlpha(aa),
-                )),
-            );
-            i += 1;
+            Rf_unprotect(3);
         }
-        Rf_unprotect(3);
+        ans
     }
-    ans
 }
 
 pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
-    use crate::main::array::allocMatrix;
+    unsafe {
+        use crate::main::array::allocMatrix;
 
-    let rgb = Rf_protect(coerceVector(rgb, SEXPTYPE::REALSXP.into()));
-    if !isMatrix(rgb) {
-        Rf_error(b"rgb is not a matrix (internally)\0".as_ptr() as *const c_char);
-    }
-    let dd = getAttrib(rgb, R_DimSymbol());
-    if *INTEGER(dd).add(0) != 3 {
-        Rf_error(b"rgb must have 3 rows (internally)\0".as_ptr() as *const c_char);
-    }
-    let n = *INTEGER(dd).add(1) as usize;
+        let rgb = Rf_protect(coerceVector(rgb, SEXPTYPE::REALSXP.into()));
+        if !isMatrix(rgb) {
+            Rf_error(b"rgb is not a matrix (internally)\0".as_ptr() as *const c_char);
+        }
+        let dd = getAttrib(rgb, R_DimSymbol());
+        if *INTEGER(dd).add(0) != 3 {
+            Rf_error(b"rgb must have 3 rows (internally)\0".as_ptr() as *const c_char);
+        }
+        let n = *INTEGER(dd).add(1) as usize;
 
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int));
-    let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
-    SET_STRING_ELT(names, 0, Rf_mkChar(b"h\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(names, 1, Rf_mkChar(b"s\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(names, 2, Rf_mkChar(b"v\0".as_ptr() as *const c_char));
-    SET_VECTOR_ELT(dmns, 0, names);
+        let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int));
+        let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+        SET_STRING_ELT(names, 0, Rf_mkChar(b"h\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 1, Rf_mkChar(b"s\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 2, Rf_mkChar(b"v\0".as_ptr() as *const c_char));
+        SET_VECTOR_ELT(dmns, 0, names);
 
-    if Rf_isNull(getAttrib(rgb, R_DimNamesSymbol())) == 0 {
-        let dd2 = getAttrib(rgb, R_DimNamesSymbol());
-        if Rf_isNull(dd2) == 0 {
-            let col_names = VECTOR_ELT(dd2, 1);
-            if Rf_isNull(col_names) == 0 {
-                SET_VECTOR_ELT(dmns, 1, col_names);
+        if Rf_isNull(getAttrib(rgb, R_DimNamesSymbol())) == 0 {
+            let dd2 = getAttrib(rgb, R_DimNamesSymbol());
+            if Rf_isNull(dd2) == 0 {
+                let col_names = VECTOR_ELT(dd2, 1);
+                if Rf_isNull(col_names) == 0 {
+                    SET_VECTOR_ELT(dmns, 1, col_names);
+                }
             }
         }
-    }
-    setAttrib(ans, R_DimNamesSymbol(), dmns);
-    Rf_unprotect(2);
+        setAttrib(ans, R_DimNamesSymbol(), dmns);
+        Rf_unprotect(2);
 
-    let mut i = 0usize;
-    let mut i3 = 0usize;
-    while i < n {
-        rgb2hsv(
-            *REAL(rgb).add(i3),
-            *REAL(rgb).add(i3 + 1),
-            *REAL(rgb).add(i3 + 2),
-            &mut *REAL(ans).add(i3),
-            &mut *REAL(ans).add(i3 + 1),
-            &mut *REAL(ans).add(i3 + 2),
-        );
-        i += 1;
-        i3 += 3;
+        let mut i = 0usize;
+        let mut i3 = 0usize;
+        while i < n {
+            rgb2hsv(
+                *REAL(rgb).add(i3),
+                *REAL(rgb).add(i3 + 1),
+                *REAL(rgb).add(i3 + 2),
+                &mut *REAL(ans).add(i3),
+                &mut *REAL(ans).add(i3 + 1),
+                &mut *REAL(ans).add(i3 + 2),
+            );
+            i += 1;
+            i3 += 3;
+        }
+        Rf_unprotect(2);
+        ans
     }
-    Rf_unprotect(2);
-    ans
 }
 
 pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
-    use crate::main::array::allocMatrix;
+    unsafe {
+        use crate::main::array::allocMatrix;
 
-    let alph = asLogical(alpha);
-    if alph == NA_LOGICAL {
-        Rf_error(b"invalid 'alpha' value\0".as_ptr() as *const c_char);
-    }
-
-    let t = TYPEOF(colors);
-    let colors = match t {
-        tt if tt == SEXPTYPE::INTSXP || tt == SEXPTYPE::STRSXP => colors, // INTSXP or STRSXP
-        tt if tt == SEXPTYPE::REALSXP => Rf_protect(coerceVector(colors, SEXPTYPE::INTSXP.into())),
-        _ => Rf_protect(coerceVector(colors, SEXPTYPE::STRSXP.into())),
-    };
-    Rf_protect(colors);
-
-    let n = LENGTH(colors) as usize;
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int));
-    let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3 + alph));
-    SET_STRING_ELT(names, 0, Rf_mkChar(b"red\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(names, 1, Rf_mkChar(b"green\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(names, 2, Rf_mkChar(b"blue\0".as_ptr() as *const c_char));
-    if alph != 0 {
-        SET_STRING_ELT(names, 3, Rf_mkChar(b"alpha\0".as_ptr() as *const c_char));
-    }
-    SET_VECTOR_ELT(dmns, 0, names);
-
-    let col_names = getAttrib(colors, R_NamesSymbol());
-    if Rf_isNull(col_names) == 0 {
-        SET_VECTOR_ELT(dmns, 1, col_names);
-    }
-    setAttrib(ans, R_DimNamesSymbol(), dmns);
-
-    let mut j = 0usize;
-    let mut i = 0usize;
-    while i < n {
-        let icol = inRGBpar3(colors, i as c_int, R_TRANWHITE);
-        *INTEGER(ans).add(j) = R_RED(icol);
-        j += 1;
-        *INTEGER(ans).add(j) = R_GREEN(icol);
-        j += 1;
-        *INTEGER(ans).add(j) = R_BLUE(icol);
-        j += 1;
-        if alph != 0 {
-            *INTEGER(ans).add(j) = R_ALPHA(icol);
-            j += 1;
+        let alph = asLogical(alpha);
+        if alph == NA_LOGICAL {
+            Rf_error(b"invalid 'alpha' value\0".as_ptr() as *const c_char);
         }
-        i += 1;
+
+        let t = TYPEOF(colors);
+        let colors = match t {
+            tt if tt == SEXPTYPE::INTSXP || tt == SEXPTYPE::STRSXP => colors, // INTSXP or STRSXP
+            tt if tt == SEXPTYPE::REALSXP => {
+                Rf_protect(coerceVector(colors, SEXPTYPE::INTSXP.into()))
+            }
+            _ => Rf_protect(coerceVector(colors, SEXPTYPE::STRSXP.into())),
+        };
+        Rf_protect(colors);
+
+        let n = LENGTH(colors) as usize;
+        let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int));
+        let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3 + alph));
+        SET_STRING_ELT(names, 0, Rf_mkChar(b"red\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 1, Rf_mkChar(b"green\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(names, 2, Rf_mkChar(b"blue\0".as_ptr() as *const c_char));
+        if alph != 0 {
+            SET_STRING_ELT(names, 3, Rf_mkChar(b"alpha\0".as_ptr() as *const c_char));
+        }
+        SET_VECTOR_ELT(dmns, 0, names);
+
+        let col_names = getAttrib(colors, R_NamesSymbol());
+        if Rf_isNull(col_names) == 0 {
+            SET_VECTOR_ELT(dmns, 1, col_names);
+        }
+        setAttrib(ans, R_DimNamesSymbol(), dmns);
+
+        let mut j = 0usize;
+        let mut i = 0usize;
+        while i < n {
+            let icol = inRGBpar3(colors, i as c_int, R_TRANWHITE);
+            *INTEGER(ans).add(j) = R_RED(icol);
+            j += 1;
+            *INTEGER(ans).add(j) = R_GREEN(icol);
+            j += 1;
+            *INTEGER(ans).add(j) = R_BLUE(icol);
+            j += 1;
+            if alph != 0 {
+                *INTEGER(ans).add(j) = R_ALPHA(icol);
+                j += 1;
+            }
+            i += 1;
+        }
+        Rf_unprotect(4);
+        ans
     }
-    Rf_unprotect(4);
-    ans
 }
 
 pub unsafe fn do_palette(val: SEXP) -> SEXP {
-    if Rf_isString(val) == 0 {
-        Rf_error(b"invalid argument type\0".as_ptr() as *const c_char);
-    }
-
-    // Record current palette
-    let ps = with_color_state(|state| state.palette_size) as usize;
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, ps as c_int));
-    let mut i = 0usize;
-    while i < ps {
-        let color = with_color_state(|state| state.palette[i]);
-        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(incol2name(color)));
-        i += 1;
-    }
-
-    let n = LENGTH(val) as usize;
-    if n == 1 {
-        let s = CHAR(STRING_ELT(val, 0));
-        if StrMatch(b"default\0".as_ptr() as *const c_char, s) != 0 {
-            with_color_state(|state| {
-                state.palette[..DEFAULT_PALETTE.len()].copy_from_slice(&DEFAULT_PALETTE);
-                state.palette_size = DEFAULT_PALETTE.len() as c_int;
-            });
-        } else {
-            Rf_error(b"unknown palette (need >= 2 colors)\0".as_ptr() as *const c_char);
+    unsafe {
+        if Rf_isString(val) == 0 {
+            Rf_error(b"invalid argument type\0".as_ptr() as *const c_char);
         }
-    } else if n > 1 {
-        if n > MAX_PALETTE_SIZE {
-            Rf_error(b"maximum number of colors is 1024\0".as_ptr() as *const c_char);
-        }
-        let mut color_buf: [rcolor; MAX_PALETTE_SIZE] = [0; MAX_PALETTE_SIZE];
+
+        // Record current palette
+        let ps = with_color_state(|state| state.palette_size) as usize;
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, ps as c_int));
         let mut i = 0usize;
-        while i < n {
-            let s = CHAR(STRING_ELT(val, i as R_xlen_t));
-            color_buf[i] = if *s == b'#' as libc::c_char {
-                rgb2col(s)
-            } else {
-                name2col(s)
-            };
+        while i < ps {
+            let color = with_color_state(|state| state.palette[i]);
+            SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(incol2name(color)));
             i += 1;
         }
-        with_color_state(|state| {
-            state.palette[..n].copy_from_slice(&color_buf[..n]);
-            state.palette_size = n as c_int;
-        });
-    }
 
-    Rf_unprotect(1);
-    ans
+        let n = LENGTH(val) as usize;
+        if n == 1 {
+            let s = CHAR(STRING_ELT(val, 0));
+            if StrMatch(b"default\0".as_ptr() as *const c_char, s) != 0 {
+                with_color_state(|state| {
+                    state.palette[..DEFAULT_PALETTE.len()].copy_from_slice(&DEFAULT_PALETTE);
+                    state.palette_size = DEFAULT_PALETTE.len() as c_int;
+                });
+            } else {
+                Rf_error(b"unknown palette (need >= 2 colors)\0".as_ptr() as *const c_char);
+            }
+        } else if n > 1 {
+            if n > MAX_PALETTE_SIZE {
+                Rf_error(b"maximum number of colors is 1024\0".as_ptr() as *const c_char);
+            }
+            let mut color_buf: [rcolor; MAX_PALETTE_SIZE] = [0; MAX_PALETTE_SIZE];
+            let mut i = 0usize;
+            while i < n {
+                let s = CHAR(STRING_ELT(val, i as R_xlen_t));
+                color_buf[i] = if *s == b'#' as libc::c_char {
+                    rgb2col(s)
+                } else {
+                    name2col(s)
+                };
+                i += 1;
+            }
+            with_color_state(|state| {
+                state.palette[..n].copy_from_slice(&color_buf[..n]);
+                state.palette_size = n as c_int;
+            });
+        }
+
+        Rf_unprotect(1);
+        ans
+    }
 }
 
 pub unsafe fn do_palette2(val: SEXP) -> SEXP {
-    let ps = with_color_state(|state| state.palette_size) as usize;
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, ps as c_int));
-    let ians = INTEGER(ans);
-    let mut i = 0usize;
-    while i < ps {
-        *ians.add(i) = with_color_state(|state| state.palette[i]) as c_int;
-        i += 1;
-    }
+    unsafe {
+        let ps = with_color_state(|state| state.palette_size) as usize;
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, ps as c_int));
+        let ians = INTEGER(ans);
+        let mut i = 0usize;
+        while i < ps {
+            *ians.add(i) = with_color_state(|state| state.palette[i]) as c_int;
+            i += 1;
+        }
 
-    let n = LENGTH(val) as usize;
-    if n > 0 {
-        if TYPEOF(val) != SEXPTYPE::INTSXP {
-            Rf_error(b"requires INTSXP argument\0".as_ptr() as *const c_char);
-        }
-        if n > MAX_PALETTE_SIZE {
-            Rf_error(b"maximum number of colors is 1024\0".as_ptr() as *const c_char);
-        }
-        with_color_state(|state| {
-            let mut i = 0usize;
-            while i < n {
-                state.palette[i] = *INTEGER(val).add(i) as rcolor;
-                i += 1;
+        let n = LENGTH(val) as usize;
+        if n > 0 {
+            if TYPEOF(val) != SEXPTYPE::INTSXP {
+                Rf_error(b"requires INTSXP argument\0".as_ptr() as *const c_char);
             }
-            state.palette_size = n as c_int;
-        });
+            if n > MAX_PALETTE_SIZE {
+                Rf_error(b"maximum number of colors is 1024\0".as_ptr() as *const c_char);
+            }
+            with_color_state(|state| {
+                let mut i = 0usize;
+                while i < n {
+                    state.palette[i] = *INTEGER(val).add(i) as rcolor;
+                    i += 1;
+                }
+                state.palette_size = n as c_int;
+            });
+        }
+        Rf_unprotect(1);
+        ans
     }
-    Rf_unprotect(1);
-    ans
 }
 
 pub unsafe fn do_colors() -> SEXP {
-    // Count entries
-    let mut n = 0usize;
-    for entry in COLOR_DATA_BASE.iter() {
-        if entry.name.is_empty() {
-            break;
+    unsafe {
+        // Count entries
+        let mut n = 0usize;
+        for entry in COLOR_DATA_BASE.iter() {
+            if entry.name.is_empty() {
+                break;
+            }
+            n += 1;
         }
-        n += 1;
-    }
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n as c_int));
-    let mut i = 0usize;
-    for entry in COLOR_DATA_BASE.iter() {
-        if entry.name.is_empty() {
-            break;
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n as c_int));
+        let mut i = 0usize;
+        for entry in COLOR_DATA_BASE.iter() {
+            if entry.name.is_empty() {
+                break;
+            }
+            SET_STRING_ELT(
+                ans,
+                i as R_xlen_t,
+                Rf_mkChar(entry.name.as_ptr() as *const c_char),
+            );
+            i += 1;
         }
-        SET_STRING_ELT(
-            ans,
-            i as R_xlen_t,
-            Rf_mkChar(entry.name.as_ptr() as *const c_char),
-        );
-        i += 1;
+        Rf_unprotect(1);
+        ans
     }
-    Rf_unprotect(1);
-    ans
 }
 
 #[cfg(test)]

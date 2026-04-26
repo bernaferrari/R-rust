@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! PostScript / PDF graphics device module (devPS.c, 10117 lines)
 //!
 //! Provides PostScript (postscript()) and PDF (pdf()) graphics device drivers
@@ -516,80 +515,90 @@ end\n\
 // =========================================================================
 
 unsafe fn MatchKey(mut l: *const c_char, k: &str) -> bool {
-    for &b in k.as_bytes() {
-        if *l == 0 {
-            return false;
+    unsafe {
+        for &b in k.as_bytes() {
+            if *l == 0 {
+                return false;
+            }
+            if b as c_char != *l {
+                return false;
+            }
+            l = l.add(1);
         }
-        if b as c_char != *l {
-            return false;
-        }
-        l = l.add(1);
+        true
     }
-    true
 }
 
 unsafe fn KeyType(s: *const c_char) -> AFMKey {
-    if *s == 0 || *s == b'\n' as c_char {
-        return AFMKey::Empty;
-    }
-    for entry in KEYWORD_DICT.iter() {
-        if MatchKey(s, entry.keyword) {
-            return entry.code;
+    unsafe {
+        if *s == 0 || *s == b'\n' as c_char {
+            return AFMKey::Empty;
         }
+        for entry in KEYWORD_DICT.iter() {
+            if MatchKey(s, entry.keyword) {
+                return entry.code;
+            }
+        }
+        AFMKey::Unknown
     }
-    AFMKey::Unknown
 }
 
 unsafe fn SkipToNextItem(p: *mut c_char) -> *mut c_char {
-    let mut p = p;
-    while *p != 0 && libc::isspace(*p as c_int) == 0 {
-        p = p.add(1);
+    unsafe {
+        let mut p = p;
+        while *p != 0 && libc::isspace(*p as c_int) == 0 {
+            p = p.add(1);
+        }
+        while *p != 0 && libc::isspace(*p as c_int) != 0 {
+            p = p.add(1);
+        }
+        p
     }
-    while *p != 0 && libc::isspace(*p as c_int) != 0 {
-        p = p.add(1);
-    }
-    p
 }
 
 unsafe fn SkipToNextKey(p: *mut c_char) -> *mut c_char {
-    let mut p = p;
-    while *p != 0 && *p != b';' as c_char {
-        p = p.add(1);
+    unsafe {
+        let mut p = p;
+        while *p != 0 && *p != b';' as c_char {
+            p = p.add(1);
+        }
+        if *p != 0 {
+            p = p.add(1);
+        }
+        while *p != 0 && libc::isspace(*p as c_int) != 0 {
+            p = p.add(1);
+        }
+        p
     }
-    if *p != 0 {
-        p = p.add(1);
-    }
-    while *p != 0 && libc::isspace(*p as c_int) != 0 {
-        p = p.add(1);
-    }
-    p
 }
 
 unsafe fn GetFontBBox(buf: *const c_char, metrics: &mut FontMetricInfo) -> c_int {
-    let mut vals: [c_short; 4] = [0; 4];
-    let b = CStr::from_ptr(buf);
-    let s = b.to_str().unwrap_or("");
-    // sscanf equivalent for "FontBBox %hd %hd %hd %hd"
-    let mut parts = s.split_whitespace();
-    // skip "FontBBox"
-    parts.next();
-    let mut ok = true;
-    for i in 0..4 {
-        if let Some(v) = parts.next() {
-            vals[i] = v.parse::<c_short>().unwrap_or(0);
-        } else {
-            ok = false;
-            break;
+    unsafe {
+        let mut vals: [c_short; 4] = [0; 4];
+        let b = CStr::from_ptr(buf);
+        let s = b.to_str().unwrap_or("");
+        // sscanf equivalent for "FontBBox %hd %hd %hd %hd"
+        let mut parts = s.split_whitespace();
+        // skip "FontBBox"
+        parts.next();
+        let mut ok = true;
+        for i in 0..4 {
+            if let Some(v) = parts.next() {
+                vals[i] = v.parse::<c_short>().unwrap_or(0);
+            } else {
+                ok = false;
+                break;
+            }
         }
+        if !ok {
+            return 0;
+        }
+        metrics.FontBBox[0] = vals[0];
+        metrics.FontBBox[1] = vals[1];
+        metrics.FontBBox[2] = vals[2];
+        metrics.FontBBox[3] = vals[3];
+        1
     }
-    if !ok {
-        return 0;
-    }
-    metrics.FontBBox[0] = vals[0];
-    metrics.FontBBox[1] = vals[1];
-    metrics.FontBBox[2] = vals[2];
-    metrics.FontBBox[3] = vals[3];
-    1
 }
 
 unsafe fn GetCharInfo(
@@ -599,129 +608,131 @@ unsafe fn GetCharInfo(
     encnames: &[CNAME; 256],
     reencode: c_int,
 ) -> c_int {
-    if !MatchKey(buf, "C ") {
-        return 0;
-    }
-    let mut p = SkipToNextItem(buf);
-    let mut nchar: c_int = 0;
-    // parse integer
-    let b = CStr::from_ptr(p);
-    if let Ok(s) = b.to_str() {
-        let mut parts = s.split_whitespace();
-        if let Some(v) = parts.next() {
-            nchar = v.parse::<c_int>().unwrap_or(0);
+    unsafe {
+        if !MatchKey(buf, "C ") {
+            return 0;
         }
-    }
-    if (nchar < 0 || nchar > 255) && reencode == 0 {
-        return 1;
-    }
-
-    p = SkipToNextKey(p);
-    if !MatchKey(p, "WX") {
-        return 0;
-    }
-    p = SkipToNextItem(p);
-    let mut WX: c_short = 0;
-    {
+        let mut p = SkipToNextItem(buf);
+        let mut nchar: c_int = 0;
+        // parse integer
         let b = CStr::from_ptr(p);
         if let Ok(s) = b.to_str() {
             let mut parts = s.split_whitespace();
             if let Some(v) = parts.next() {
-                WX = v.parse::<c_short>().unwrap_or(0);
+                nchar = v.parse::<c_int>().unwrap_or(0);
             }
         }
-    }
-    p = SkipToNextKey(p);
-    if !MatchKey(p, "N ") {
-        return 0;
-    }
-    p = SkipToNextItem(p);
-
-    let mut charname: [c_char; 40] = [0; 40];
-    let mut nchar2: c_int = -1;
-
-    if reencode > 0 {
-        // sscanf charname
-        let b = CStr::from_ptr(p);
-        if let Ok(s) = b.to_str() {
-            let mut parts = s.split_whitespace();
-            if let Some(v) = parts.next() {
-                let bytes = v.as_bytes();
-                let len = bytes.len().min(39);
-                for (i, &b) in bytes.iter().take(len).enumerate() {
-                    charname[i] = b as c_char;
-                }
-                charname[len] = 0;
-            }
-        }
-        nchar = -1;
-        nchar2 = -1;
-        for i in 0..256 {
-            if libc::strcmp(charname.as_ptr(), encnames[i].cname.as_ptr()) == 0 {
-                libc::strcpy(charnames[i].cname.as_mut_ptr(), charname.as_ptr());
-                if nchar == -1 {
-                    nchar = i as c_int;
-                } else {
-                    nchar2 = i as c_int;
-                }
-            }
-        }
-        if nchar == -1 {
+        if (nchar < 0 || nchar > 255) && reencode == 0 {
             return 1;
         }
-    } else {
-        // sscanf into charnames[nchar]
-        let b = CStr::from_ptr(p);
-        if let Ok(s) = b.to_str() {
-            let mut parts = s.split_whitespace();
-            if let Some(v) = parts.next() {
-                let bytes = v.as_bytes();
-                let len = bytes.len().min(39);
-                let nc = nchar as usize;
-                for (i, &b) in bytes.iter().take(len).enumerate() {
-                    charnames[nc].cname[i] = b as c_char;
-                }
-                charnames[nc].cname[len] = 0;
-            }
-        }
-    }
-    let nc = nchar as usize;
-    metrics.CharInfo[nc].WX = WX;
 
-    p = SkipToNextKey(p);
-    if !MatchKey(p, "B ") {
-        return 0;
-    }
-    p = SkipToNextItem(p);
-    {
-        let b = CStr::from_ptr(p);
-        if let Ok(s) = b.to_str() {
-            let mut parts = s.split_whitespace();
-            for j in 0..4 {
+        p = SkipToNextKey(p);
+        if !MatchKey(p, "WX") {
+            return 0;
+        }
+        p = SkipToNextItem(p);
+        let mut WX: c_short = 0;
+        {
+            let b = CStr::from_ptr(p);
+            if let Ok(s) = b.to_str() {
+                let mut parts = s.split_whitespace();
                 if let Some(v) = parts.next() {
-                    metrics.CharInfo[nc].BBox[j] = v.parse::<c_short>().unwrap_or(0);
+                    WX = v.parse::<c_short>().unwrap_or(0);
                 }
             }
         }
-    }
+        p = SkipToNextKey(p);
+        if !MatchKey(p, "N ") {
+            return 0;
+        }
+        p = SkipToNextItem(p);
 
-    if nchar2 > 0 {
-        let nc2 = nchar2 as usize;
-        metrics.CharInfo[nc2].WX = WX;
-        // parse BBox again for nchar2
+        let mut charname: [c_char; 40] = [0; 40];
+        let mut nchar2: c_int = -1;
+
+        if reencode > 0 {
+            // sscanf charname
+            let b = CStr::from_ptr(p);
+            if let Ok(s) = b.to_str() {
+                let mut parts = s.split_whitespace();
+                if let Some(v) = parts.next() {
+                    let bytes = v.as_bytes();
+                    let len = bytes.len().min(39);
+                    for (i, &b) in bytes.iter().take(len).enumerate() {
+                        charname[i] = b as c_char;
+                    }
+                    charname[len] = 0;
+                }
+            }
+            nchar = -1;
+            nchar2 = -1;
+            for i in 0..256 {
+                if libc::strcmp(charname.as_ptr(), encnames[i].cname.as_ptr()) == 0 {
+                    libc::strcpy(charnames[i].cname.as_mut_ptr(), charname.as_ptr());
+                    if nchar == -1 {
+                        nchar = i as c_int;
+                    } else {
+                        nchar2 = i as c_int;
+                    }
+                }
+            }
+            if nchar == -1 {
+                return 1;
+            }
+        } else {
+            // sscanf into charnames[nchar]
+            let b = CStr::from_ptr(p);
+            if let Ok(s) = b.to_str() {
+                let mut parts = s.split_whitespace();
+                if let Some(v) = parts.next() {
+                    let bytes = v.as_bytes();
+                    let len = bytes.len().min(39);
+                    let nc = nchar as usize;
+                    for (i, &b) in bytes.iter().take(len).enumerate() {
+                        charnames[nc].cname[i] = b as c_char;
+                    }
+                    charnames[nc].cname[len] = 0;
+                }
+            }
+        }
+        let nc = nchar as usize;
+        metrics.CharInfo[nc].WX = WX;
+
+        p = SkipToNextKey(p);
+        if !MatchKey(p, "B ") {
+            return 0;
+        }
+        p = SkipToNextItem(p);
         {
             let b = CStr::from_ptr(p);
             if let Ok(s) = b.to_str() {
                 let mut parts = s.split_whitespace();
                 for j in 0..4 {
                     if let Some(v) = parts.next() {
-                        metrics.CharInfo[nc2].BBox[j] = v.parse::<c_short>().unwrap_or(0);
+                        metrics.CharInfo[nc].BBox[j] = v.parse::<c_short>().unwrap_or(0);
                     }
                 }
             }
         }
+
+        if nchar2 > 0 {
+            let nc2 = nchar2 as usize;
+            metrics.CharInfo[nc2].WX = WX;
+            // parse BBox again for nchar2
+            {
+                let b = CStr::from_ptr(p);
+                if let Ok(s) = b.to_str() {
+                    let mut parts = s.split_whitespace();
+                    for j in 0..4 {
+                        if let Some(v) = parts.next() {
+                            metrics.CharInfo[nc2].BBox[j] = v.parse::<c_short>().unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        }
+        1
     }
-    1
 }
 
 unsafe fn GetKPX(
@@ -730,56 +741,58 @@ unsafe fn GetKPX(
     metrics: &mut FontMetricInfo,
     charnames: &[CNAME; 256],
 ) -> c_int {
-    let mut p = SkipToNextItem(buf);
-    let mut c1name: [c_char; 50] = [0; 50];
-    let mut c2name: [c_char; 50] = [0; 50];
+    unsafe {
+        let mut p = SkipToNextItem(buf);
+        let mut c1name: [c_char; 50] = [0; 50];
+        let mut c2name: [c_char; 50] = [0; 50];
 
-    let b = CStr::from_ptr(p);
-    if let Ok(s) = b.to_str() {
-        let mut parts = s.split_whitespace();
-        if let Some(v) = parts.next() {
-            let bytes = v.as_bytes();
-            let len = bytes.len().min(49);
-            for (i, &b) in bytes.iter().take(len).enumerate() {
-                c1name[i] = b as c_char;
+        let b = CStr::from_ptr(p);
+        if let Ok(s) = b.to_str() {
+            let mut parts = s.split_whitespace();
+            if let Some(v) = parts.next() {
+                let bytes = v.as_bytes();
+                let len = bytes.len().min(49);
+                for (i, &b) in bytes.iter().take(len).enumerate() {
+                    c1name[i] = b as c_char;
+                }
+                c1name[len] = 0;
             }
-            c1name[len] = 0;
-        }
-        if let Some(v) = parts.next() {
-            let bytes = v.as_bytes();
-            let len = bytes.len().min(49);
-            for (i, &b) in bytes.iter().take(len).enumerate() {
-                c2name[i] = b as c_char;
+            if let Some(v) = parts.next() {
+                let bytes = v.as_bytes();
+                let len = bytes.len().min(49);
+                for (i, &b) in bytes.iter().take(len).enumerate() {
+                    c2name[i] = b as c_char;
+                }
+                c2name[len] = 0;
             }
-            c2name[len] = 0;
+            if let Some(v) = parts.next() {
+                (*metrics.KernPairs.add(nkp as usize)).kern = v.parse::<c_short>().unwrap_or(0);
+            }
         }
-        if let Some(v) = parts.next() {
-            (*metrics.KernPairs.add(nkp as usize)).kern = v.parse::<c_short>().unwrap_or(0);
-        }
-    }
 
-    if libc::strcmp(c1name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
-        || libc::strcmp(c2name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
-    {
-        return 0;
-    }
+        if libc::strcmp(c1name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
+            || libc::strcmp(c2name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
+        {
+            return 0;
+        }
 
-    let mut done: c_int = 0;
-    for i in 0..256 {
-        if libc::strcmp(c1name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
-            (*metrics.KernPairs.add(nkp as usize)).c1 = i as c_uchar;
-            done += 1;
-            break;
+        let mut done: c_int = 0;
+        for i in 0..256 {
+            if libc::strcmp(c1name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
+                (*metrics.KernPairs.add(nkp as usize)).c1 = i as c_uchar;
+                done += 1;
+                break;
+            }
         }
-    }
-    for i in 0..256 {
-        if libc::strcmp(c2name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
-            (*metrics.KernPairs.add(nkp as usize)).c2 = i as c_uchar;
-            done += 1;
-            break;
+        for i in 0..256 {
+            if libc::strcmp(c2name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
+                (*metrics.KernPairs.add(nkp as usize)).c2 = i as c_uchar;
+                done += 1;
+                break;
+            }
         }
+        done
     }
-    done
 }
 
 // =========================================================================
@@ -799,91 +812,97 @@ unsafe fn GetNextItem(
     c: c_int,
     state: *mut EncodingInputState,
 ) -> c_int {
-    if c < 0 {
-        (*state).p = ptr::null_mut();
-    }
-    loop {
-        if libc::feof(fp) != 0 {
+    unsafe {
+        if c < 0 {
             (*state).p = ptr::null_mut();
-            return 1;
         }
-        if (*state).p.is_null() || *(*state).p == b'\n' as c_char || *(*state).p == 0 {
-            (*state).p = libc::fgets((*state).buf.as_mut_ptr(), 1000, fp);
+        loop {
+            if libc::feof(fp) != 0 {
+                (*state).p = ptr::null_mut();
+                return 1;
+            }
+            if (*state).p.is_null() || *(*state).p == b'\n' as c_char || *(*state).p == 0 {
+                (*state).p = libc::fgets((*state).buf.as_mut_ptr(), 1000, fp);
+            }
+            if (*state).p.is_null() {
+                return 1;
+            }
+            while *(*state).p != 0 && libc::isspace(*(*state).p as c_int) != 0 {
+                (*state).p = (*state).p.add(1);
+            }
+            if *(*state).p == 0 || *(*state).p == b'%' as c_char || *(*state).p == b'\n' as c_char {
+                (*state).p = ptr::null_mut();
+                continue;
+            }
+            (*state).p0 = (*state).p;
+            while *(*state).p != 0 && libc::isspace(*(*state).p as c_int) == 0 {
+                (*state).p = (*state).p.add(1);
+            }
+            if *(*state).p != 0 {
+                *(*state).p = 0;
+                (*state).p = (*state).p.add(1);
+            }
+            if c == 45 {
+                libc::strcpy(dest, b"/minus\0".as_ptr() as *const c_char);
+            } else {
+                libc::strcpy(dest, (*state).p0);
+            }
+            break;
         }
-        if (*state).p.is_null() {
-            return 1;
-        }
-        while *(*state).p != 0 && libc::isspace(*(*state).p as c_int) != 0 {
-            (*state).p = (*state).p.add(1);
-        }
-        if *(*state).p == 0 || *(*state).p == b'%' as c_char || *(*state).p == b'\n' as c_char {
-            (*state).p = ptr::null_mut();
-            continue;
-        }
-        (*state).p0 = (*state).p;
-        while *(*state).p != 0 && libc::isspace(*(*state).p as c_int) == 0 {
-            (*state).p = (*state).p.add(1);
-        }
-        if *(*state).p != 0 {
-            *(*state).p = 0;
-            (*state).p = (*state).p.add(1);
-        }
-        if c == 45 {
-            libc::strcpy(dest, b"/minus\0".as_ptr() as *const c_char);
-        } else {
-            libc::strcpy(dest, (*state).p0);
-        }
-        break;
+        0
     }
-    0
 }
 
 unsafe fn pathcmp(encpath: *const c_char, comparison: &str) -> c_int {
-    let mut pathcopy: [c_char; R_PATH_MAX] = [0; R_PATH_MAX];
-    libc::strcpy(pathcopy.as_mut_ptr(), encpath);
-    // strip path
-    let mut p1: *mut c_char = pathcopy.as_mut_ptr();
-    loop {
-        let p2 = libc::strchr(p1, FILESEP[0] as c_int);
-        if p2.is_null() {
-            break;
+    unsafe {
+        let mut pathcopy: [c_char; R_PATH_MAX] = [0; R_PATH_MAX];
+        libc::strcpy(pathcopy.as_mut_ptr(), encpath);
+        // strip path
+        let mut p1: *mut c_char = pathcopy.as_mut_ptr();
+        loop {
+            let p2 = libc::strchr(p1, FILESEP[0] as c_int);
+            if p2.is_null() {
+                break;
+            }
+            p1 = p2.add(1);
         }
-        p1 = p2.add(1);
+        // strip suffix
+        let p2 = libc::strchr(p1, b'.' as c_int);
+        if !p2.is_null() {
+            *p2 = 0;
+        }
+        libc::strcmp(
+            p1,
+            CStr::from_bytes_with_nul(comparison.as_bytes())
+                .unwrap_or_else(|_| unsafe { CStr::from_ptr(b"\0".as_ptr() as *const c_char) })
+                .as_ptr(),
+        )
     }
-    // strip suffix
-    let p2 = libc::strchr(p1, b'.' as c_int);
-    if !p2.is_null() {
-        *p2 = 0;
-    }
-    libc::strcmp(
-        p1,
-        CStr::from_bytes_with_nul(comparison.as_bytes())
-            .unwrap_or_else(|_| unsafe { CStr::from_ptr(b"\0".as_ptr() as *const c_char) })
-            .as_ptr(),
-    )
 }
 
 unsafe fn seticonvName(encpath: *const c_char, convname: *mut c_char) {
-    libc::strcpy(convname, b"latin1\0".as_ptr() as *const c_char);
-    if pathcmp(encpath, "ISOLatin1") == 0 {
+    unsafe {
         libc::strcpy(convname, b"latin1\0".as_ptr() as *const c_char);
-    } else if pathcmp(encpath, "WinAnsi") == 0 {
-        libc::strcpy(convname, b"cp1252\0".as_ptr() as *const c_char);
-    } else if pathcmp(encpath, "ISOLatin2") == 0 {
-        libc::strcpy(convname, b"latin2\0".as_ptr() as *const c_char);
-    } else if pathcmp(encpath, "ISOLatin7") == 0 {
-        libc::strcpy(convname, b"latin7\0".as_ptr() as *const c_char);
-    } else if pathcmp(encpath, "ISOLatin9") == 0 {
-        libc::strcpy(convname, b"latin-9\0".as_ptr() as *const c_char);
-    } else if pathcmp(encpath, "Greek") == 0 {
-        libc::strcpy(convname, b"iso-8859-7\0".as_ptr() as *const c_char);
-    } else if pathcmp(encpath, "Cyrillic") == 0 {
-        libc::strcpy(convname, b"iso-8859-5\0".as_ptr() as *const c_char);
-    } else {
-        libc::strcpy(convname, encpath);
-        let p = libc::strrchr(convname, b'.' as c_int);
-        if !p.is_null() {
-            *p = 0;
+        if pathcmp(encpath, "ISOLatin1") == 0 {
+            libc::strcpy(convname, b"latin1\0".as_ptr() as *const c_char);
+        } else if pathcmp(encpath, "WinAnsi") == 0 {
+            libc::strcpy(convname, b"cp1252\0".as_ptr() as *const c_char);
+        } else if pathcmp(encpath, "ISOLatin2") == 0 {
+            libc::strcpy(convname, b"latin2\0".as_ptr() as *const c_char);
+        } else if pathcmp(encpath, "ISOLatin7") == 0 {
+            libc::strcpy(convname, b"latin7\0".as_ptr() as *const c_char);
+        } else if pathcmp(encpath, "ISOLatin9") == 0 {
+            libc::strcpy(convname, b"latin-9\0".as_ptr() as *const c_char);
+        } else if pathcmp(encpath, "Greek") == 0 {
+            libc::strcpy(convname, b"iso-8859-7\0".as_ptr() as *const c_char);
+        } else if pathcmp(encpath, "Cyrillic") == 0 {
+            libc::strcpy(convname, b"iso-8859-5\0".as_ptr() as *const c_char);
+        } else {
+            libc::strcpy(convname, encpath);
+            let p = libc::strrchr(convname, b'.' as c_int);
+            if !p.is_null() {
+                *p = 0;
+            }
         }
     }
 }
@@ -896,114 +915,116 @@ unsafe fn LoadEncoding(
     enccode: *mut c_char,
     isPDF: bool,
 ) -> c_int {
-    let mut buf: [c_char; BUFSIZE] = [0; BUFSIZE];
-    let mut state = EncodingInputState {
-        buf: [0; 1000],
-        p: ptr::null_mut(),
-        p0: ptr::null_mut(),
-    };
-    state.p = ptr::null_mut();
-    state.p0 = ptr::null_mut();
+    unsafe {
+        let mut buf: [c_char; BUFSIZE] = [0; BUFSIZE];
+        let mut state = EncodingInputState {
+            buf: [0; 1000],
+            p: ptr::null_mut(),
+            p0: ptr::null_mut(),
+        };
+        state.p = ptr::null_mut();
+        state.p0 = ptr::null_mut();
 
-    seticonvName(encpath, encconvname);
+        seticonvName(encpath, encconvname);
 
-    let mut buf2: [c_char; R_PATH_MAX + 64] = [0; R_PATH_MAX + 64];
-    if !libc::strchr(encpath, FILESEP[0] as c_int).is_null() {
-        libc::strcpy(buf2.as_mut_ptr(), encpath);
-    } else {
-        let rhome = std::env::var("R_HOME").ok();
-        if let Some(rh) = rhome {
-            libc::snprintf(
-                buf2.as_mut_ptr(),
-                buf2.len(),
-                b"%s%slibrary%sgrDevices%senc%s%s\0".as_ptr() as *const c_char,
-                rh.as_ptr(),
-                FILESEP[0] as c_int,
-                FILESEP[0] as c_int,
-                FILESEP[0] as c_int,
-                FILESEP[0] as c_int,
-                encpath,
-            );
+        let mut buf2: [c_char; R_PATH_MAX + 64] = [0; R_PATH_MAX + 64];
+        if !libc::strchr(encpath, FILESEP[0] as c_int).is_null() {
+            libc::strcpy(buf2.as_mut_ptr(), encpath);
         } else {
+            let rhome = std::env::var("R_HOME").ok();
+            if let Some(rh) = rhome {
+                libc::snprintf(
+                    buf2.as_mut_ptr(),
+                    buf2.len(),
+                    b"%s%slibrary%sgrDevices%senc%s%s\0".as_ptr() as *const c_char,
+                    rh.as_ptr(),
+                    FILESEP[0] as c_int,
+                    FILESEP[0] as c_int,
+                    FILESEP[0] as c_int,
+                    FILESEP[0] as c_int,
+                    encpath,
+                );
+            } else {
+                return 0;
+            }
+        }
+
+        let fp = libc::fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
+        if fp.is_null() {
+            let len = libc::strlen(buf2.as_ptr());
+            buf2[len] = b'.' as c_char;
+            buf2[len + 1] = b'e' as c_char;
+            buf2[len + 2] = b'n' as c_char;
+            buf2[len + 3] = b'c' as c_char;
+            buf2[len + 4] = 0;
+            let fp2 = libc::fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
+            if fp2.is_null() {
+                return 0;
+            }
+            // use fp2, fall through below -- but we already consumed fp variable
+            // close fp2 at end
+            _ = fp2; // In this port we simplify: just return 0 if not found
             return 0;
         }
-    }
 
-    let fp = libc::fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
-    if fp.is_null() {
-        let len = libc::strlen(buf2.as_ptr());
-        buf2[len] = b'.' as c_char;
-        buf2[len + 1] = b'e' as c_char;
-        buf2[len + 2] = b'n' as c_char;
-        buf2[len + 3] = b'c' as c_char;
-        buf2[len + 4] = 0;
-        let fp2 = libc::fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
-        if fp2.is_null() {
-            return 0;
-        }
-        // use fp2, fall through below -- but we already consumed fp variable
-        // close fp2 at end
-        _ = fp2; // In this port we simplify: just return 0 if not found
-        return 0;
-    }
-
-    if GetNextItem(fp, buf.as_mut_ptr(), -1, &mut state) != 0 {
-        libc::fclose(fp);
-        return 0;
-    }
-    // encname = buf+1 (skip leading /)
-    let slen = libc::strlen(buf.as_ptr());
-    let copy_len = slen.min(99);
-    libc::memcpy(
-        encname as *mut c_void,
-        buf.as_ptr().add(1) as *const c_void,
-        copy_len,
-    );
-    *encname.add(copy_len) = 0;
-
-    if !isPDF {
-        libc::snprintf(
-            enccode,
-            5000,
-            b"/%s [\n\0".as_ptr() as *const c_char,
-            encname,
-        );
-    } else {
-        *enccode = 0;
-    }
-
-    if GetNextItem(fp, buf.as_mut_ptr(), 0, &mut state) != 0 {
-        libc::fclose(fp);
-        return 0;
-    }
-    for i in 0..256 {
-        if GetNextItem(fp, buf.as_mut_ptr(), i as c_int, &mut state) != 0 {
+        if GetNextItem(fp, buf.as_mut_ptr(), -1, &mut state) != 0 {
             libc::fclose(fp);
             return 0;
         }
+        // encname = buf+1 (skip leading /)
         let slen = libc::strlen(buf.as_ptr());
-        let copy_len = slen.min(39);
+        let copy_len = slen.min(99);
         libc::memcpy(
-            (*encnames.add(i)).cname.as_mut_ptr() as *mut c_void,
+            encname as *mut c_void,
             buf.as_ptr().add(1) as *const c_void,
             copy_len,
         );
-        (*encnames.add(i)).cname[copy_len] = 0;
-        libc::strcat(enccode, b" /\0".as_ptr() as *const c_char);
-        libc::strcat(enccode, (*encnames.add(i)).cname.as_ptr());
-        if i % 8 == 7 {
-            libc::strcat(enccode, b"\n\0".as_ptr() as *const c_char);
+        *encname.add(copy_len) = 0;
+
+        if !isPDF {
+            libc::snprintf(
+                enccode,
+                5000,
+                b"/%s [\n\0".as_ptr() as *const c_char,
+                encname,
+            );
+        } else {
+            *enccode = 0;
         }
-    }
-    if GetNextItem(fp, buf.as_mut_ptr(), 0, &mut state) != 0 {
+
+        if GetNextItem(fp, buf.as_mut_ptr(), 0, &mut state) != 0 {
+            libc::fclose(fp);
+            return 0;
+        }
+        for i in 0..256 {
+            if GetNextItem(fp, buf.as_mut_ptr(), i as c_int, &mut state) != 0 {
+                libc::fclose(fp);
+                return 0;
+            }
+            let slen = libc::strlen(buf.as_ptr());
+            let copy_len = slen.min(39);
+            libc::memcpy(
+                (*encnames.add(i)).cname.as_mut_ptr() as *mut c_void,
+                buf.as_ptr().add(1) as *const c_void,
+                copy_len,
+            );
+            (*encnames.add(i)).cname[copy_len] = 0;
+            libc::strcat(enccode, b" /\0".as_ptr() as *const c_char);
+            libc::strcat(enccode, (*encnames.add(i)).cname.as_ptr());
+            if i % 8 == 7 {
+                libc::strcat(enccode, b"\n\0".as_ptr() as *const c_char);
+            }
+        }
+        if GetNextItem(fp, buf.as_mut_ptr(), 0, &mut state) != 0 {
+            libc::fclose(fp);
+            return 0;
+        }
         libc::fclose(fp);
-        return 0;
+        if !isPDF {
+            libc::strcat(enccode, b"]\n\0".as_ptr() as *const c_char);
+        }
+        1
     }
-    libc::fclose(fp);
-    if !isPDF {
-        libc::strcat(enccode, b"]\n\0".as_ptr() as *const c_char);
-    }
-    1
 }
 
 // =========================================================================
@@ -1018,10 +1039,12 @@ unsafe fn PostScriptLoadFontMetrics(
     _encnames: *mut CNAME,
     _reencode: c_int,
 ) -> c_int {
-    // In a full implementation, this would open and parse the AFM file
-    // using gzopen/gzgets. For the port we return a stub result.
-    // The real implementation reads from R_HOME/library/grDevices/afm/*.gz
-    0
+    unsafe {
+        // In a full implementation, this would open and parse the AFM file
+        // using gzopen/gzgets. For the port we return a stub result.
+        // The real implementation reads from R_HOME/library/grDevices/afm/*.gz
+        0
+    }
 }
 
 // =========================================================================
@@ -1036,17 +1059,19 @@ unsafe fn PostScriptStringWidth(
     face: c_int,
     _encoding: *const c_char,
 ) -> f64 {
-    if metrics.is_null() {
-        if (face % 5) != 0 {
-            // CID font case: assume monospaced with wcwidth
-            // stub: return 0
+    unsafe {
+        if metrics.is_null() {
+            if (face % 5) != 0 {
+                // CID font case: assume monospaced with wcwidth
+                // stub: return 0
+                return 0.0;
+            }
+        }
+        if metrics.is_null() {
             return 0.0;
         }
+        0.0
     }
-    if metrics.is_null() {
-        return 0.0;
-    }
-    0.0
 }
 
 unsafe fn PostScriptMetricInfo(
@@ -1059,44 +1084,48 @@ unsafe fn PostScriptMetricInfo(
     isSymbol: bool,
     _encoding: *const c_char,
 ) {
-    if c == 0 {
-        *ascent = 0.001 * (*metrics).FontBBox[3] as f64;
-        *descent = -0.001 * (*metrics).FontBBox[1] as f64;
-        *width = 0.001 * ((*metrics).FontBBox[2] - (*metrics).FontBBox[0]) as f64;
-        return;
-    }
-    // 8-bit case
-    if c >= 0 && c < 256 {
-        if isSymbol {
-            // symbol font
-            *ascent = 0.001 * (*metrics).CharInfo[c as usize].BBox[3] as f64;
-            *descent = -0.001 * (*metrics).CharInfo[c as usize].BBox[1] as f64;
-        } else {
-            *ascent = 0.001 * (*metrics).CharInfo[c as usize].BBox[3] as f64;
-            *descent = -0.001 * (*metrics).CharInfo[c as usize].BBox[1] as f64;
+    unsafe {
+        if c == 0 {
+            *ascent = 0.001 * (*metrics).FontBBox[3] as f64;
+            *descent = -0.001 * (*metrics).FontBBox[1] as f64;
+            *width = 0.001 * ((*metrics).FontBBox[2] - (*metrics).FontBBox[0]) as f64;
+            return;
         }
-        let wx = (*metrics).CharInfo[c as usize].WX;
-        if wx == NA_SHORT {
+        // 8-bit case
+        if c >= 0 && c < 256 {
+            if isSymbol {
+                // symbol font
+                *ascent = 0.001 * (*metrics).CharInfo[c as usize].BBox[3] as f64;
+                *descent = -0.001 * (*metrics).CharInfo[c as usize].BBox[1] as f64;
+            } else {
+                *ascent = 0.001 * (*metrics).CharInfo[c as usize].BBox[3] as f64;
+                *descent = -0.001 * (*metrics).CharInfo[c as usize].BBox[1] as f64;
+            }
+            let wx = (*metrics).CharInfo[c as usize].WX;
+            if wx == NA_SHORT {
+                *width = 0.0;
+            } else {
+                *width = 0.001 * wx as f64;
+            }
+        } else {
+            *ascent = 0.0;
+            *descent = 0.0;
             *width = 0.0;
-        } else {
-            *width = 0.001 * wx as f64;
         }
-    } else {
-        *ascent = 0.0;
-        *descent = 0.0;
-        *width = 0.0;
     }
 }
 
 unsafe fn PostScriptCIDMetricInfo(c: c_int, ascent: *mut f64, descent: *mut f64, width: *mut f64) {
-    *ascent = 0.880;
-    *descent = -0.120;
-    if c == 0 || c > 65535 {
-        *width = 1.0;
-    } else {
-        // Use a simple approximation for character width
-        let w = if c >= 0x1100 { 2.0 } else { 1.0 };
-        *width = w;
+    unsafe {
+        *ascent = 0.880;
+        *descent = -0.120;
+        if c == 0 || c > 65535 {
+            *width = 1.0;
+        } else {
+            // Use a simple approximation for character width
+            let w = if c >= 0x1100 { 2.0 } else { 1.0 };
+            *width = w;
+        }
     }
 }
 
@@ -1105,163 +1134,201 @@ unsafe fn PostScriptCIDMetricInfo(c: c_int, ascent: *mut f64, descent: *mut f64,
 // =========================================================================
 
 unsafe fn makeCIDFont() -> cidfontinfo {
-    let font = libc::malloc(std::mem::size_of::<CIDFontInfo>()) as cidfontinfo;
-    if !font.is_null() {
-        (*font).name = [0; 50];
+    unsafe {
+        let font = libc::malloc(std::mem::size_of::<CIDFontInfo>()) as cidfontinfo;
+        if !font.is_null() {
+            (*font).name = [0; 50];
+        }
+        font
     }
-    font
 }
 
 unsafe fn makeType1Font() -> type1fontinfo {
-    let font = libc::malloc(std::mem::size_of::<Type1FontInfo>()) as type1fontinfo;
-    if !font.is_null() {
-        (*font).name = [0; 50];
-        (*font).metrics.KernPairs = ptr::null_mut();
-        (*font).metrics.nKP = 0;
+    unsafe {
+        let font = libc::malloc(std::mem::size_of::<Type1FontInfo>()) as type1fontinfo;
+        if !font.is_null() {
+            (*font).name = [0; 50];
+            (*font).metrics.KernPairs = ptr::null_mut();
+            (*font).metrics.nKP = 0;
+        }
+        font
     }
-    font
 }
 
 unsafe fn freeCIDFont(font: cidfontinfo) {
-    libc::free(font as *mut c_void);
-}
-
-unsafe fn freeType1Font(font: type1fontinfo) {
-    if !font.is_null() {
-        if !(*font).metrics.KernPairs.is_null() {
-            libc::free((*font).metrics.KernPairs as *mut c_void);
-        }
+    unsafe {
         libc::free(font as *mut c_void);
     }
 }
 
+unsafe fn freeType1Font(font: type1fontinfo) {
+    unsafe {
+        if !font.is_null() {
+            if !(*font).metrics.KernPairs.is_null() {
+                libc::free((*font).metrics.KernPairs as *mut c_void);
+            }
+            libc::free(font as *mut c_void);
+        }
+    }
+}
+
 unsafe fn makeEncoding() -> encodinginfo {
-    let enc = libc::malloc(std::mem::size_of::<EncodingInfo>()) as encodinginfo;
-    enc
+    unsafe {
+        let enc = libc::malloc(std::mem::size_of::<EncodingInfo>()) as encodinginfo;
+        enc
+    }
 }
 
 unsafe fn freeEncoding(enc: encodinginfo) {
-    libc::free(enc as *mut c_void);
+    unsafe {
+        libc::free(enc as *mut c_void);
+    }
 }
 
 unsafe fn makeCIDFontFamily() -> cidfontfamily {
-    let fam = libc::malloc(std::mem::size_of::<CIDFontFamily>()) as cidfontfamily;
-    if !fam.is_null() {
-        (*fam).fxname = [0; 50];
-        (*fam).cidfonts = [ptr::null_mut(); 4];
-        (*fam).symfont = ptr::null_mut();
-        (*fam).cmap = [0; 50];
-        (*fam).encoding = [0; 50];
+    unsafe {
+        let fam = libc::malloc(std::mem::size_of::<CIDFontFamily>()) as cidfontfamily;
+        if !fam.is_null() {
+            (*fam).fxname = [0; 50];
+            (*fam).cidfonts = [ptr::null_mut(); 4];
+            (*fam).symfont = ptr::null_mut();
+            (*fam).cmap = [0; 50];
+            (*fam).encoding = [0; 50];
+        }
+        fam
     }
-    fam
 }
 
 unsafe fn makeFontFamily() -> type1fontfamily {
-    let fam = libc::malloc(std::mem::size_of::<T1FontFamily>()) as type1fontfamily;
-    if !fam.is_null() {
-        (*fam).fxname = [0; 50];
-        (*fam).fonts = [ptr::null_mut(); 5];
-        (*fam).encoding = ptr::null_mut();
+    unsafe {
+        let fam = libc::malloc(std::mem::size_of::<T1FontFamily>()) as type1fontfamily;
+        if !fam.is_null() {
+            (*fam).fxname = [0; 50];
+            (*fam).fonts = [ptr::null_mut(); 5];
+            (*fam).encoding = ptr::null_mut();
+        }
+        fam
     }
-    fam
 }
 
 unsafe fn freeCIDFontFamily(family: cidfontfamily) {
-    if family.is_null() {
-        return;
-    }
-    for i in 0..4 {
-        if !(*family).cidfonts[i].is_null() {
-            freeCIDFont((*family).cidfonts[i]);
+    unsafe {
+        if family.is_null() {
+            return;
         }
+        for i in 0..4 {
+            if !(*family).cidfonts[i].is_null() {
+                freeCIDFont((*family).cidfonts[i]);
+            }
+        }
+        if !(*family).symfont.is_null() {
+            freeType1Font((*family).symfont);
+        }
+        libc::free(family as *mut c_void);
     }
-    if !(*family).symfont.is_null() {
-        freeType1Font((*family).symfont);
-    }
-    libc::free(family as *mut c_void);
 }
 
 unsafe fn freeFontFamily(family: type1fontfamily) {
-    if family.is_null() {
-        return;
-    }
-    for i in 0..5 {
-        if !(*family).fonts[i].is_null() {
-            freeType1Font((*family).fonts[i]);
+    unsafe {
+        if family.is_null() {
+            return;
         }
+        for i in 0..5 {
+            if !(*family).fonts[i].is_null() {
+                freeType1Font((*family).fonts[i]);
+            }
+        }
+        libc::free(family as *mut c_void);
     }
-    libc::free(family as *mut c_void);
 }
 
 unsafe fn makeCIDFontList() -> cidfontlist {
-    let fl = libc::malloc(std::mem::size_of::<CIDFontList>()) as cidfontlist;
-    if !fl.is_null() {
-        (*fl).cidfamily = ptr::null_mut();
-        (*fl).next = ptr::null_mut();
+    unsafe {
+        let fl = libc::malloc(std::mem::size_of::<CIDFontList>()) as cidfontlist;
+        if !fl.is_null() {
+            (*fl).cidfamily = ptr::null_mut();
+            (*fl).next = ptr::null_mut();
+        }
+        fl
     }
-    fl
 }
 
 unsafe fn makeFontList() -> type1fontlist {
-    let fl = libc::malloc(std::mem::size_of::<T1FontList>()) as type1fontlist;
-    if !fl.is_null() {
-        (*fl).family = ptr::null_mut();
-        (*fl).next = ptr::null_mut();
+    unsafe {
+        let fl = libc::malloc(std::mem::size_of::<T1FontList>()) as type1fontlist;
+        if !fl.is_null() {
+            (*fl).family = ptr::null_mut();
+            (*fl).next = ptr::null_mut();
+        }
+        fl
     }
-    fl
 }
 
 unsafe fn freeCIDFontList(fl: cidfontlist) {
-    if !fl.is_null() {
-        (*fl).cidfamily = ptr::null_mut();
-        (*fl).next = ptr::null_mut();
-        libc::free(fl as *mut c_void);
+    unsafe {
+        if !fl.is_null() {
+            (*fl).cidfamily = ptr::null_mut();
+            (*fl).next = ptr::null_mut();
+            libc::free(fl as *mut c_void);
+        }
     }
 }
 
 unsafe fn freeFontList(fl: type1fontlist) {
-    if !fl.is_null() {
-        (*fl).family = ptr::null_mut();
-        (*fl).next = ptr::null_mut();
-        libc::free(fl as *mut c_void);
+    unsafe {
+        if !fl.is_null() {
+            (*fl).family = ptr::null_mut();
+            (*fl).next = ptr::null_mut();
+            libc::free(fl as *mut c_void);
+        }
     }
 }
 
 unsafe fn freeDeviceCIDFontList(fl: cidfontlist) {
-    if !fl.is_null() {
-        freeDeviceCIDFontList((*fl).next);
-        freeCIDFontList(fl);
+    unsafe {
+        if !fl.is_null() {
+            freeDeviceCIDFontList((*fl).next);
+            freeCIDFontList(fl);
+        }
     }
 }
 
 unsafe fn freeDeviceFontList(fl: type1fontlist) {
-    if !fl.is_null() {
-        freeDeviceFontList((*fl).next);
-        freeFontList(fl);
+    unsafe {
+        if !fl.is_null() {
+            freeDeviceFontList((*fl).next);
+            freeFontList(fl);
+        }
     }
 }
 
 unsafe fn makeEncList() -> encodinglist {
-    let el = libc::malloc(std::mem::size_of::<EncList>()) as encodinglist;
-    if !el.is_null() {
-        (*el).encoding = ptr::null_mut();
-        (*el).next = ptr::null_mut();
+    unsafe {
+        let el = libc::malloc(std::mem::size_of::<EncList>()) as encodinglist;
+        if !el.is_null() {
+            (*el).encoding = ptr::null_mut();
+            (*el).next = ptr::null_mut();
+        }
+        el
     }
-    el
 }
 
 unsafe fn freeEncList(el: encodinglist) {
-    if !el.is_null() {
-        (*el).encoding = ptr::null_mut();
-        (*el).next = ptr::null_mut();
-        libc::free(el as *mut c_void);
+    unsafe {
+        if !el.is_null() {
+            (*el).encoding = ptr::null_mut();
+            (*el).next = ptr::null_mut();
+            libc::free(el as *mut c_void);
+        }
     }
 }
 
 unsafe fn freeDeviceEncList(el: encodinglist) {
-    if !el.is_null() {
-        freeDeviceEncList((*el).next);
-        freeEncList(el);
+    unsafe {
+        if !el.is_null() {
+            freeDeviceEncList((*el).next);
+            freeEncList(el);
+        }
     }
 }
 
@@ -1270,17 +1337,19 @@ unsafe fn freeDeviceEncList(el: encodinglist) {
 // =========================================================================
 
 unsafe fn safestrcpy(dest: *mut c_char, src: *const c_char, maxlen: usize) {
-    let slen = libc::strlen(src);
-    if slen < maxlen {
-        libc::strcpy(dest, src);
-    } else {
-        libc::strncpy(dest, src, maxlen - 1);
-        *dest.add(maxlen - 1) = 0;
+    unsafe {
+        let slen = libc::strlen(src);
+        if slen < maxlen {
+            libc::strcpy(dest, src);
+        } else {
+            libc::strncpy(dest, src, maxlen - 1);
+            *dest.add(maxlen - 1) = 0;
+        }
     }
 }
 
 unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
-    libc::strcmp(a, b) == 0
+    unsafe { libc::strcmp(a, b) == 0 }
 }
 
 // =========================================================================
@@ -1292,26 +1361,28 @@ unsafe fn findEncoding(
     deviceEncodings: encodinglist,
     isPDF: bool,
 ) -> encodinginfo {
-    let enclist = with_postscript_font_state(|state| state.loaded_encodings(isPDF));
-    let mut result: encodinginfo = ptr::null_mut();
-    let mut found = false;
+    unsafe {
+        let enclist = with_postscript_font_state(|state| state.loaded_encodings(isPDF));
+        let mut result: encodinginfo = ptr::null_mut();
+        let mut found = false;
 
-    if streql(encpath, b"default\0".as_ptr() as *const c_char) {
-        found = true;
-        if !deviceEncodings.is_null() {
-            result = (*deviceEncodings).encoding;
-        }
-    } else {
-        let mut el = enclist;
-        while !el.is_null() && !found {
-            found = streql(encpath, (*(*el).encoding).encpath.as_ptr());
-            if found {
-                result = (*el).encoding;
+        if streql(encpath, b"default\0".as_ptr() as *const c_char) {
+            found = true;
+            if !deviceEncodings.is_null() {
+                result = (*deviceEncodings).encoding;
             }
-            el = (*el).next;
+        } else {
+            let mut el = enclist;
+            while !el.is_null() && !found {
+                found = streql(encpath, (*(*el).encoding).encpath.as_ptr());
+                if found {
+                    result = (*el).encoding;
+                }
+                el = (*el).next;
+            }
         }
+        result
     }
-    result
 }
 
 unsafe fn findDeviceEncoding(
@@ -1319,75 +1390,81 @@ unsafe fn findDeviceEncoding(
     mut enclist: encodinglist,
     index: *mut c_int,
 ) -> encodinginfo {
-    let mut result: encodinginfo = ptr::null_mut();
-    let mut found = false;
-    *index = 0;
-    while !enclist.is_null() && !found {
-        found = streql(encpath, (*(*enclist).encoding).encpath.as_ptr());
-        if found {
-            result = (*enclist).encoding;
+    unsafe {
+        let mut result: encodinginfo = ptr::null_mut();
+        let mut found = false;
+        *index = 0;
+        while !enclist.is_null() && !found {
+            found = streql(encpath, (*(*enclist).encoding).encpath.as_ptr());
+            if found {
+                result = (*enclist).encoding;
+            }
+            enclist = (*enclist).next;
+            *index += 1;
         }
-        enclist = (*enclist).next;
-        *index += 1;
+        result
     }
-    result
 }
 
 unsafe fn addEncoding(encpath: *const c_char, isPDF: bool) -> encodinginfo {
-    let encoding = makeEncoding();
-    if encoding.is_null() {
-        return ptr::null_mut();
-    }
-
-    if LoadEncoding(
-        encpath,
-        (*encoding).name.as_mut_ptr(),
-        (*encoding).convname.as_mut_ptr(),
-        (*encoding).encnames.as_mut_ptr(),
-        (*encoding).enccode.as_mut_ptr(),
-        isPDF,
-    ) != 0
-    {
-        let newenc = makeEncList();
-        if newenc.is_null() {
-            freeEncoding(encoding);
+    unsafe {
+        let encoding = makeEncoding();
+        if encoding.is_null() {
             return ptr::null_mut();
         }
-        let enclist = with_postscript_font_state(|state| state.loaded_encodings(isPDF));
-        safestrcpy((*encoding).encpath.as_mut_ptr(), encpath, R_PATH_MAX);
-        (*newenc).encoding = encoding;
-        if enclist.is_null() {
-            with_postscript_font_state(|state| *state.loaded_encodings_mut(isPDF) = newenc);
+
+        if LoadEncoding(
+            encpath,
+            (*encoding).name.as_mut_ptr(),
+            (*encoding).convname.as_mut_ptr(),
+            (*encoding).encnames.as_mut_ptr(),
+            (*encoding).enccode.as_mut_ptr(),
+            isPDF,
+        ) != 0
+        {
+            let newenc = makeEncList();
+            if newenc.is_null() {
+                freeEncoding(encoding);
+                return ptr::null_mut();
+            }
+            let enclist = with_postscript_font_state(|state| state.loaded_encodings(isPDF));
+            safestrcpy((*encoding).encpath.as_mut_ptr(), encpath, R_PATH_MAX);
+            (*newenc).encoding = encoding;
+            if enclist.is_null() {
+                with_postscript_font_state(|state| *state.loaded_encodings_mut(isPDF) = newenc);
+            } else {
+                let mut el = enclist;
+                while !(*el).next.is_null() {
+                    el = (*el).next;
+                }
+                (*el).next = newenc;
+            }
+            encoding
         } else {
-            let mut el = enclist;
+            freeEncoding(encoding);
+            ptr::null_mut()
+        }
+    }
+}
+
+unsafe fn addDeviceEncoding(encoding: encodinginfo, mut devEncs: encodinglist) -> encodinglist {
+    unsafe {
+        let newenc = makeEncList();
+        if newenc.is_null() {
+            return ptr::null_mut();
+        }
+        (*newenc).encoding = encoding;
+        if devEncs.is_null() {
+            devEncs = newenc;
+        } else {
+            let mut el = devEncs;
             while !(*el).next.is_null() {
                 el = (*el).next;
             }
             (*el).next = newenc;
         }
-        encoding
-    } else {
-        freeEncoding(encoding);
-        ptr::null_mut()
+        devEncs
     }
-}
-
-unsafe fn addDeviceEncoding(encoding: encodinginfo, mut devEncs: encodinglist) -> encodinglist {
-    let newenc = makeEncList();
-    if newenc.is_null() {
-        return ptr::null_mut();
-    }
-    (*newenc).encoding = encoding;
-    if devEncs.is_null() {
-        devEncs = newenc;
-    } else {
-        let mut el = devEncs;
-        while !(*el).next.is_null() {
-            el = (*el).next;
-        }
-        (*el).next = newenc;
-    }
-    devEncs
 }
 
 // =========================================================================
@@ -1395,16 +1472,18 @@ unsafe fn addDeviceEncoding(encoding: encodinginfo, mut devEncs: encodinglist) -
 // =========================================================================
 
 unsafe fn getFontDB(fontdbname: *const c_char) -> SEXP {
-    // In a full implementation, this would:
-    // 1. Find the grDevices namespace
-    // 2. Look up .PSenv
-    // 3. Find the font database
-    // For now, return R_NilValue
-    R_NilValue()
+    unsafe {
+        // In a full implementation, this would:
+        // 1. Find the grDevices namespace
+        // 2. Look up .PSenv
+        // 3. Find the font database
+        // For now, return R_NilValue
+        R_NilValue()
+    }
 }
 
 unsafe fn getFont(_family: *const c_char, _fontdbname: *const c_char) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 unsafe fn fontMetricsFileName(
@@ -1412,11 +1491,11 @@ unsafe fn fontMetricsFileName(
     _faceIndex: c_int,
     _fontdbname: *const c_char,
 ) -> *const c_char {
-    ptr::null()
+    unsafe { ptr::null() }
 }
 
 unsafe fn getFontType(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    ptr::null()
+    unsafe { ptr::null() }
 }
 
 unsafe fn isType1Font(
@@ -1424,14 +1503,16 @@ unsafe fn isType1Font(
     _fontdbname: *const c_char,
     defaultFont: type1fontfamily,
 ) -> bool {
-    if libc::strlen(family) == 0 {
-        return !defaultFont.is_null();
+    unsafe {
+        if libc::strlen(family) == 0 {
+            return !defaultFont.is_null();
+        }
+        let ft = getFontType(family, _fontdbname);
+        if ft.is_null() {
+            return false;
+        }
+        streql(ft, b"Type1Font\0".as_ptr() as *const c_char)
     }
-    let ft = getFontType(family, _fontdbname);
-    if ft.is_null() {
-        return false;
-    }
-    streql(ft, b"Type1Font\0".as_ptr() as *const c_char)
 }
 
 unsafe fn isCIDFont(
@@ -1439,34 +1520,36 @@ unsafe fn isCIDFont(
     _fontdbname: *const c_char,
     defaultCIDFont: cidfontfamily,
 ) -> bool {
-    if libc::strlen(family) == 0 {
-        return !defaultCIDFont.is_null();
+    unsafe {
+        if libc::strlen(family) == 0 {
+            return !defaultCIDFont.is_null();
+        }
+        let ft = getFontType(family, _fontdbname);
+        if ft.is_null() {
+            return false;
+        }
+        streql(ft, b"CIDFont\0".as_ptr() as *const c_char)
     }
-    let ft = getFontType(family, _fontdbname);
-    if ft.is_null() {
-        return false;
-    }
-    streql(ft, b"CIDFont\0".as_ptr() as *const c_char)
 }
 
 unsafe fn getFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    ptr::null()
+    unsafe { ptr::null() }
 }
 
 unsafe fn getFontName(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    ptr::null()
+    unsafe { ptr::null() }
 }
 
 unsafe fn getFontCMap(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    ptr::null()
+    unsafe { ptr::null() }
 }
 
 unsafe fn getCIDFontEncoding(_family: *const c_char, _fontdbname: *const c_char) -> *const c_char {
-    ptr::null()
+    unsafe { ptr::null() }
 }
 
 unsafe fn getCIDFontPDFResource(_family: *const c_char) -> *const c_char {
-    ptr::null()
+    unsafe { ptr::null() }
 }
 
 // =========================================================================
@@ -1478,30 +1561,34 @@ unsafe fn findLoadedFont(
     _encoding: *const c_char,
     isPDF: bool,
 ) -> type1fontfamily {
-    let mut fontlist = with_postscript_font_state(|state| state.loaded_fonts(isPDF));
-    while !fontlist.is_null() {
-        if streql(name, (*(*fontlist).family).fxname.as_ptr()) {
-            return (*fontlist).family;
+    unsafe {
+        let mut fontlist = with_postscript_font_state(|state| state.loaded_fonts(isPDF));
+        while !fontlist.is_null() {
+            if streql(name, (*(*fontlist).family).fxname.as_ptr()) {
+                return (*fontlist).family;
+            }
+            fontlist = (*fontlist).next;
         }
-        fontlist = (*fontlist).next;
+        ptr::null_mut()
     }
-    ptr::null_mut()
 }
 
 unsafe fn findLoadedCIDFont(family: *const c_char, isPDF: bool) -> cidfontfamily {
-    let mut fontlist = with_postscript_font_state(|state| state.loaded_cid_fonts(isPDF));
-    while !fontlist.is_null() {
-        if !(*(*fontlist).cidfamily).cidfonts[0].is_null()
-            && streql(
-                family,
-                (*(*(*fontlist).cidfamily).cidfonts[0]).name.as_ptr(),
-            )
-        {
-            return (*fontlist).cidfamily;
+    unsafe {
+        let mut fontlist = with_postscript_font_state(|state| state.loaded_cid_fonts(isPDF));
+        while !fontlist.is_null() {
+            if !(*(*fontlist).cidfamily).cidfonts[0].is_null()
+                && streql(
+                    family,
+                    (*(*(*fontlist).cidfamily).cidfonts[0]).name.as_ptr(),
+                )
+            {
+                return (*fontlist).cidfamily;
+            }
+            fontlist = (*fontlist).next;
         }
-        fontlist = (*fontlist).next;
+        ptr::null_mut()
     }
-    ptr::null_mut()
 }
 
 unsafe fn findDeviceCIDFont(
@@ -1509,25 +1596,27 @@ unsafe fn findDeviceCIDFont(
     mut fontlist: cidfontlist,
     index: *mut c_int,
 ) -> cidfontfamily {
-    let mut font: cidfontfamily = ptr::null_mut();
-    let mut found = false;
-    *index = 0;
-    if libc::strlen(name) > 0 {
-        while !fontlist.is_null() && !found {
-            found = streql(name, (*(*fontlist).cidfamily).fxname.as_ptr());
-            if found {
-                font = (*fontlist).cidfamily;
+    unsafe {
+        let mut font: cidfontfamily = ptr::null_mut();
+        let mut found = false;
+        *index = 0;
+        if libc::strlen(name) > 0 {
+            while !fontlist.is_null() && !found {
+                found = streql(name, (*(*fontlist).cidfamily).fxname.as_ptr());
+                if found {
+                    font = (*fontlist).cidfamily;
+                }
+                fontlist = (*fontlist).next;
+                *index += 1;
             }
-            fontlist = (*fontlist).next;
-            *index += 1;
+        } else {
+            if !fontlist.is_null() {
+                font = (*fontlist).cidfamily;
+                *index = 1;
+            }
         }
-    } else {
-        if !fontlist.is_null() {
-            font = (*fontlist).cidfamily;
-            *index = 1;
-        }
+        font
     }
-    font
 }
 
 unsafe fn findDeviceFont(
@@ -1535,99 +1624,107 @@ unsafe fn findDeviceFont(
     mut fontlist: type1fontlist,
     index: *mut c_int,
 ) -> type1fontfamily {
-    let mut font: type1fontfamily = ptr::null_mut();
-    let mut found = false;
-    *index = 0;
-    if libc::strlen(name) > 0 {
-        while !fontlist.is_null() && !found {
-            found = streql(name, (*(*fontlist).family).fxname.as_ptr());
-            if found {
-                font = (*fontlist).family;
+    unsafe {
+        let mut font: type1fontfamily = ptr::null_mut();
+        let mut found = false;
+        *index = 0;
+        if libc::strlen(name) > 0 {
+            while !fontlist.is_null() && !found {
+                found = streql(name, (*(*fontlist).family).fxname.as_ptr());
+                if found {
+                    font = (*fontlist).family;
+                }
+                fontlist = (*fontlist).next;
+                *index += 1;
             }
-            fontlist = (*fontlist).next;
-            *index += 1;
+        } else {
+            if !fontlist.is_null() {
+                font = (*fontlist).family;
+                *index = 1;
+            }
         }
-    } else {
-        if !fontlist.is_null() {
-            font = (*fontlist).family;
-            *index = 1;
-        }
+        font
     }
-    font
 }
 
 unsafe fn addLoadedCIDFont(font: cidfontfamily, isPDF: bool) -> cidfontfamily {
-    if font.is_null() {
-        return ptr::null_mut();
-    }
-    let newfont = makeCIDFontList();
-    if newfont.is_null() {
-        freeCIDFontFamily(font);
-        return ptr::null_mut();
-    }
-    (*newfont).cidfamily = font;
-    let fontlist = with_postscript_font_state(|state| state.loaded_cid_fonts(isPDF));
-    if fontlist.is_null() {
-        with_postscript_font_state(|state| *state.loaded_cid_fonts_mut(isPDF) = newfont);
-    } else {
-        let mut fl = fontlist;
-        while !(*fl).next.is_null() {
-            fl = (*fl).next;
+    unsafe {
+        if font.is_null() {
+            return ptr::null_mut();
         }
-        (*fl).next = newfont;
+        let newfont = makeCIDFontList();
+        if newfont.is_null() {
+            freeCIDFontFamily(font);
+            return ptr::null_mut();
+        }
+        (*newfont).cidfamily = font;
+        let fontlist = with_postscript_font_state(|state| state.loaded_cid_fonts(isPDF));
+        if fontlist.is_null() {
+            with_postscript_font_state(|state| *state.loaded_cid_fonts_mut(isPDF) = newfont);
+        } else {
+            let mut fl = fontlist;
+            while !(*fl).next.is_null() {
+                fl = (*fl).next;
+            }
+            (*fl).next = newfont;
+        }
+        font
     }
-    font
 }
 
 unsafe fn addLoadedFont(font: type1fontfamily, isPDF: bool) -> type1fontfamily {
-    if font.is_null() {
-        return ptr::null_mut();
-    }
-    let newfont = makeFontList();
-    if newfont.is_null() {
-        freeFontFamily(font);
-        return ptr::null_mut();
-    }
-    (*newfont).family = font;
-    let fontlist = with_postscript_font_state(|state| state.loaded_fonts(isPDF));
-    if fontlist.is_null() {
-        with_postscript_font_state(|state| *state.loaded_fonts_mut(isPDF) = newfont);
-    } else {
-        let mut fl = fontlist;
-        while !(*fl).next.is_null() {
-            fl = (*fl).next;
+    unsafe {
+        if font.is_null() {
+            return ptr::null_mut();
         }
-        (*fl).next = newfont;
+        let newfont = makeFontList();
+        if newfont.is_null() {
+            freeFontFamily(font);
+            return ptr::null_mut();
+        }
+        (*newfont).family = font;
+        let fontlist = with_postscript_font_state(|state| state.loaded_fonts(isPDF));
+        if fontlist.is_null() {
+            with_postscript_font_state(|state| *state.loaded_fonts_mut(isPDF) = newfont);
+        } else {
+            let mut fl = fontlist;
+            while !(*fl).next.is_null() {
+                fl = (*fl).next;
+            }
+            (*fl).next = newfont;
+        }
+        font
     }
-    font
 }
 
 unsafe fn addCIDFont(name: *const c_char, isPDF: bool) -> cidfontfamily {
-    let fontfamily = makeCIDFontFamily();
-    if fontfamily.is_null() {
-        return ptr::null_mut();
-    }
-    let cmap = getFontCMap(name, font_database_name(isPDF));
-    if cmap.is_null() {
-        freeCIDFontFamily(fontfamily);
-        return ptr::null_mut();
-    }
-    safestrcpy((*fontfamily).fxname.as_mut_ptr(), name, 50);
-    safestrcpy((*fontfamily).cmap.as_mut_ptr(), cmap, 50);
-    let enc = getCIDFontEncoding(name, font_database_name(isPDF));
-    if !enc.is_null() {
-        safestrcpy((*fontfamily).encoding.as_mut_ptr(), enc, 50);
-    }
-    let fname = getFontName(name, font_database_name(isPDF));
-    for i in 0..4 {
-        (*fontfamily).cidfonts[i] = makeCIDFont();
-        if !fname.is_null() {
-            safestrcpy((*(*fontfamily).cidfonts[i]).name.as_mut_ptr(), fname, 50);
+    unsafe {
+        let fontfamily = makeCIDFontFamily();
+        if fontfamily.is_null() {
+            return ptr::null_mut();
         }
+        let cmap = getFontCMap(name, font_database_name(isPDF));
+        if cmap.is_null() {
+            freeCIDFontFamily(fontfamily);
+            return ptr::null_mut();
+        }
+        safestrcpy((*fontfamily).fxname.as_mut_ptr(), name, 50);
+        safestrcpy((*fontfamily).cmap.as_mut_ptr(), cmap, 50);
+        let enc = getCIDFontEncoding(name, font_database_name(isPDF));
+        if !enc.is_null() {
+            safestrcpy((*fontfamily).encoding.as_mut_ptr(), enc, 50);
+        }
+        let fname = getFontName(name, font_database_name(isPDF));
+        for i in 0..4 {
+            (*fontfamily).cidfonts[i] = makeCIDFont();
+            if !fname.is_null() {
+                safestrcpy((*(*fontfamily).cidfonts[i]).name.as_mut_ptr(), fname, 50);
+            }
+        }
+        // Load symbol font (Type 1)
+        // ... (would need the actual font path)
+        addLoadedCIDFont(fontfamily, isPDF)
     }
-    // Load symbol font (Type 1)
-    // ... (would need the actual font path)
-    addLoadedCIDFont(fontfamily, isPDF)
 }
 
 unsafe fn addFont(
@@ -1635,55 +1732,57 @@ unsafe fn addFont(
     isPDF: bool,
     deviceEncodings: encodinglist,
 ) -> type1fontfamily {
-    let fontfamily = makeFontFamily();
-    if fontfamily.is_null() {
-        return ptr::null_mut();
-    }
-    let encpath = getFontEncoding(name, font_database_name(isPDF));
-    if encpath.is_null() {
-        freeFontFamily(fontfamily);
-        return ptr::null_mut();
-    }
-    safestrcpy((*fontfamily).fxname.as_mut_ptr(), name, 50);
-    let encoding = findEncoding(encpath, deviceEncodings, isPDF);
-    let encoding = if encoding.is_null() {
-        addEncoding(encpath, isPDF)
-    } else {
-        encoding
-    };
-    if encoding.is_null() {
-        freeFontFamily(fontfamily);
-        return ptr::null_mut();
-    }
-    (*fontfamily).encoding = encoding;
-    // Load font metrics for each of the 5 faces
-    for i in 0..5 {
-        let font = makeType1Font();
-        if font.is_null() {
+    unsafe {
+        let fontfamily = makeFontFamily();
+        if fontfamily.is_null() {
+            return ptr::null_mut();
+        }
+        let encpath = getFontEncoding(name, font_database_name(isPDF));
+        if encpath.is_null() {
             freeFontFamily(fontfamily);
             return ptr::null_mut();
         }
-        (*fontfamily).fonts[i] = font;
-        let afmpath = fontMetricsFileName(name, i as c_int, font_database_name(isPDF));
-        if afmpath.is_null() {
-            freeFontFamily(fontfamily);
-            freeType1Font(font);
-            return ptr::null_mut();
-        }
-        if PostScriptLoadFontMetrics(
-            afmpath,
-            &mut (*(*fontfamily).fonts[i]).metrics,
-            (*(*fontfamily).fonts[i]).name.as_mut_ptr(),
-            (*(*fontfamily).fonts[i]).charnames.as_mut_ptr(),
-            (*encoding).encnames.as_mut_ptr(),
-            if i < 4 { 1 } else { 0 },
-        ) == 0
-        {
+        safestrcpy((*fontfamily).fxname.as_mut_ptr(), name, 50);
+        let encoding = findEncoding(encpath, deviceEncodings, isPDF);
+        let encoding = if encoding.is_null() {
+            addEncoding(encpath, isPDF)
+        } else {
+            encoding
+        };
+        if encoding.is_null() {
             freeFontFamily(fontfamily);
             return ptr::null_mut();
         }
+        (*fontfamily).encoding = encoding;
+        // Load font metrics for each of the 5 faces
+        for i in 0..5 {
+            let font = makeType1Font();
+            if font.is_null() {
+                freeFontFamily(fontfamily);
+                return ptr::null_mut();
+            }
+            (*fontfamily).fonts[i] = font;
+            let afmpath = fontMetricsFileName(name, i as c_int, font_database_name(isPDF));
+            if afmpath.is_null() {
+                freeFontFamily(fontfamily);
+                freeType1Font(font);
+                return ptr::null_mut();
+            }
+            if PostScriptLoadFontMetrics(
+                afmpath,
+                &mut (*(*fontfamily).fonts[i]).metrics,
+                (*(*fontfamily).fonts[i]).name.as_mut_ptr(),
+                (*(*fontfamily).fonts[i]).charnames.as_mut_ptr(),
+                (*encoding).encnames.as_mut_ptr(),
+                if i < 4 { 1 } else { 0 },
+            ) == 0
+            {
+                freeFontFamily(fontfamily);
+                return ptr::null_mut();
+            }
+        }
+        addLoadedFont(fontfamily, isPDF)
     }
-    addLoadedFont(fontfamily, isPDF)
 }
 
 unsafe fn addDefaultFontFromAFMs(
@@ -1692,44 +1791,46 @@ unsafe fn addDefaultFontFromAFMs(
     isPDF: bool,
     deviceEncodings: encodinglist,
 ) -> type1fontfamily {
-    let fontfamily = makeFontFamily();
-    if fontfamily.is_null() {
-        return ptr::null_mut();
-    }
-    let encoding = findEncoding(encpath, deviceEncodings, isPDF);
-    let encoding = if encoding.is_null() {
-        addEncoding(encpath, isPDF)
-    } else {
-        encoding
-    };
-    if encoding.is_null() {
-        freeFontFamily(fontfamily);
-        return ptr::null_mut();
-    }
-    (*fontfamily).fxname[0] = 0;
-    (*fontfamily).encoding = encoding;
-    for i in 0..5 {
-        let font = makeType1Font();
-        if font.is_null() {
+    unsafe {
+        let fontfamily = makeFontFamily();
+        if fontfamily.is_null() {
+            return ptr::null_mut();
+        }
+        let encoding = findEncoding(encpath, deviceEncodings, isPDF);
+        let encoding = if encoding.is_null() {
+            addEncoding(encpath, isPDF)
+        } else {
+            encoding
+        };
+        if encoding.is_null() {
             freeFontFamily(fontfamily);
             return ptr::null_mut();
         }
-        (*fontfamily).fonts[i] = font;
-        let afm = *afmpaths.add(i);
-        if PostScriptLoadFontMetrics(
-            afm,
-            &mut (*(*fontfamily).fonts[i]).metrics,
-            (*(*fontfamily).fonts[i]).name.as_mut_ptr(),
-            (*(*fontfamily).fonts[i]).charnames.as_mut_ptr(),
-            (*encoding).encnames.as_mut_ptr(),
-            if i < 4 { 1 } else { 0 },
-        ) == 0
-        {
-            freeFontFamily(fontfamily);
-            return ptr::null_mut();
+        (*fontfamily).fxname[0] = 0;
+        (*fontfamily).encoding = encoding;
+        for i in 0..5 {
+            let font = makeType1Font();
+            if font.is_null() {
+                freeFontFamily(fontfamily);
+                return ptr::null_mut();
+            }
+            (*fontfamily).fonts[i] = font;
+            let afm = *afmpaths.add(i);
+            if PostScriptLoadFontMetrics(
+                afm,
+                &mut (*(*fontfamily).fonts[i]).metrics,
+                (*(*fontfamily).fonts[i]).name.as_mut_ptr(),
+                (*(*fontfamily).fonts[i]).charnames.as_mut_ptr(),
+                (*encoding).encnames.as_mut_ptr(),
+                if i < 4 { 1 } else { 0 },
+            ) == 0
+            {
+                freeFontFamily(fontfamily);
+                return ptr::null_mut();
+            }
         }
+        addLoadedFont(fontfamily, isPDF)
     }
-    addLoadedFont(fontfamily, isPDF)
 }
 
 unsafe fn addDeviceCIDFont(
@@ -1737,24 +1838,26 @@ unsafe fn addDeviceCIDFont(
     mut devFonts: cidfontlist,
     index: *mut c_int,
 ) -> cidfontlist {
-    let newfont = makeCIDFontList();
-    *index = 0;
-    if newfont.is_null() {
-        return ptr::null_mut();
-    }
-    (*newfont).cidfamily = font;
-    *index = 1;
-    if devFonts.is_null() {
-        devFonts = newfont;
-    } else {
-        let mut fl = devFonts;
-        while !(*fl).next.is_null() {
-            fl = (*fl).next;
-            *index += 1;
+    unsafe {
+        let newfont = makeCIDFontList();
+        *index = 0;
+        if newfont.is_null() {
+            return ptr::null_mut();
         }
-        (*fl).next = newfont;
+        (*newfont).cidfamily = font;
+        *index = 1;
+        if devFonts.is_null() {
+            devFonts = newfont;
+        } else {
+            let mut fl = devFonts;
+            while !(*fl).next.is_null() {
+                fl = (*fl).next;
+                *index += 1;
+            }
+            (*fl).next = newfont;
+        }
+        devFonts
     }
-    devFonts
 }
 
 unsafe fn addDeviceFont(
@@ -1762,24 +1865,26 @@ unsafe fn addDeviceFont(
     mut devFonts: type1fontlist,
     index: *mut c_int,
 ) -> type1fontlist {
-    let newfont = makeFontList();
-    *index = 0;
-    if newfont.is_null() {
-        return ptr::null_mut();
-    }
-    (*newfont).family = font;
-    *index = 1;
-    if devFonts.is_null() {
-        devFonts = newfont;
-    } else {
-        let mut fl = devFonts;
-        while !(*fl).next.is_null() {
-            fl = (*fl).next;
-            *index += 1;
+    unsafe {
+        let newfont = makeFontList();
+        *index = 0;
+        if newfont.is_null() {
+            return ptr::null_mut();
         }
-        (*fl).next = newfont;
+        (*newfont).family = font;
+        *index = 1;
+        if devFonts.is_null() {
+            devFonts = newfont;
+        } else {
+            let mut fl = devFonts;
+            while !(*fl).next.is_null() {
+                fl = (*fl).next;
+                *index += 1;
+            }
+            (*fl).next = newfont;
+        }
+        devFonts
     }
-    devFonts
 }
 
 // =========================================================================
@@ -1787,7 +1892,7 @@ unsafe fn addDeviceFont(
 // =========================================================================
 
 unsafe fn R_GE_str2col(colstr: *const c_char) -> rcolor {
-    crate::mainutils::colors::R_GE_str2col(colstr) as rcolor
+    unsafe { crate::mainutils::colors::R_GE_str2col(colstr) as rcolor }
 }
 
 // =========================================================================
@@ -1913,46 +2018,54 @@ struct PDFCurrent {
 /// Check whether a Type 1 font family is currently loaded in either
 /// the PostScript or PDF device. Returns a logical scalar.
 pub unsafe fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
-    use crate::main::coerce::asLogical;
-    use crate::sexp::constructors::Rf_ScalarLogical;
-    // If name is not a string or length > 1, error
-    if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
-        Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
+    unsafe {
+        use crate::main::coerce::asLogical;
+        use crate::sexp::constructors::Rf_ScalarLogical;
+        // If name is not a string or length > 1, error
+        if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
+            Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
+        }
+        let fname = CHAR(STRING_ELT(name, 0));
+        let pdf = asLogical(isPDF);
+        let found = !findLoadedFont(fname, ptr::null(), pdf != 0).is_null();
+        Rf_ScalarLogical(if found { 1 } else { 0 })
     }
-    let fname = CHAR(STRING_ELT(name, 0));
-    let pdf = asLogical(isPDF);
-    let found = !findLoadedFont(fname, ptr::null(), pdf != 0).is_null();
-    Rf_ScalarLogical(if found { 1 } else { 0 })
 }
 
 /// Check whether a CID font family is currently loaded in either
 /// the PostScript or PDF device. Returns a logical scalar.
 pub unsafe fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
-    use crate::main::coerce::asLogical;
-    use crate::sexp::constructors::Rf_ScalarLogical;
-    if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
-        Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
+    unsafe {
+        use crate::main::coerce::asLogical;
+        use crate::sexp::constructors::Rf_ScalarLogical;
+        if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
+            Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
+        }
+        let fname = CHAR(STRING_ELT(name, 0));
+        let pdf = asLogical(isPDF);
+        let found = !findLoadedCIDFont(fname, pdf != 0).is_null();
+        Rf_ScalarLogical(if found { 1 } else { 0 })
     }
-    let fname = CHAR(STRING_ELT(name, 0));
-    let pdf = asLogical(isPDF);
-    let found = !findLoadedCIDFont(fname, pdf != 0).is_null();
-    Rf_ScalarLogical(if found { 1 } else { 0 })
 }
 
 /// Create a PostScript graphics device (postscript() function in R).
 ///
 /// Stub: returns R_NilValue (device creation not implemented).
 pub unsafe fn PostScript(args: SEXP) -> SEXP {
-    let _ = args;
-    R_NilValue()
+    unsafe {
+        let _ = args;
+        R_NilValue()
+    }
 }
 
 /// Create a PDF graphics device (pdf() function in R).
 ///
 /// Stub: returns R_NilValue (device creation not implemented).
 pub unsafe fn PDF(args: SEXP) -> SEXP {
-    let _ = args;
-    R_NilValue()
+    unsafe {
+        let _ = args;
+        R_NilValue()
+    }
 }
 
 #[cfg(test)]
