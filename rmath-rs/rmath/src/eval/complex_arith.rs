@@ -9,7 +9,7 @@ use crate::sexp::accessors::{COMPLEX, INTEGER, REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_ScalarComplex, Rf_allocVector3};
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::Rf_protect;
+use crate::sexp::protect::protect;
 
 /// NA sentinel for complex: both real and imaginary parts are NA_REAL.
 pub const NA_COMPLEX: Rcomplex = Rcomplex {
@@ -125,7 +125,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = COMPLEX(result);
         super::arithmetic::warn_if_non_multiple_recycling(na, nb);
 
@@ -170,7 +170,6 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         }
 
         super::arithmetic::propagate_binary_vector_attributes(result, sa, sb, n);
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -222,7 +221,7 @@ pub unsafe fn complex_abs_vec(sa: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         for i in 0..n {
             let z = *COMPLEX(sa).add(i as usize);
@@ -232,7 +231,6 @@ pub unsafe fn complex_abs_vec(sa: SEXP) -> SEXP {
                 *dst.add(i as usize) = complex_abs(z);
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -248,7 +246,7 @@ pub unsafe fn complex_unary_vec(sa: SEXP, f: fn(Rcomplex) -> Rcomplex) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = COMPLEX(result);
         for i in 0..n {
             let z = *COMPLEX(sa).add(i as usize);
@@ -258,7 +256,6 @@ pub unsafe fn complex_unary_vec(sa: SEXP, f: fn(Rcomplex) -> Rcomplex) -> SEXP {
                 *dst.add(i as usize) = f(z);
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -338,7 +335,7 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = COMPLEX(result);
 
         for i in 0..n {
@@ -351,7 +348,6 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             *dst.add(i as usize) = Rcomplex { r, i: im_val };
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }

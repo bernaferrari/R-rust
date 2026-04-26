@@ -25,7 +25,7 @@ use crate::sexp::ffi::{
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::numeric::NumericVector;
 use crate::sexp::object::Sexp;
-use crate::sexp::protect::Rf_protect;
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
-        let _p = Rf_protect(result_raw);
+        let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a.len(), b.len());
         let mut integer_overflow = false;
 
@@ -106,7 +106,6 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             warn_simple("NAs produced by integer overflow");
         }
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
-        crate::sexp::protect::Rf_unprotect(1);
         result_raw
     }
 }
@@ -144,7 +143,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
-        let _p = Rf_protect(result_raw);
+        let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a.len(), b.len());
 
         let use_real = a.needs_real_with(b);
@@ -193,7 +192,6 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         }
 
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
-        crate::sexp::protect::Rf_unprotect(1);
         result_raw
     }
 }
@@ -295,7 +293,7 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
-        let _p = Rf_protect(result_raw);
+        let _result_guard = protect(result_raw);
 
         for i in 0..n {
             let value = x.real_at(i);
@@ -312,7 +310,6 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         }
 
         propagate_unary_vector_attributes(result_raw, sa, n);
-        crate::sexp::protect::Rf_unprotect(1);
         result_raw
     }
 }
@@ -390,7 +387,7 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
-        let _p = Rf_protect(result_raw);
+        let _result_guard = protect(result_raw);
 
         if result_type == SEXPTYPE::REALSXP {
             for i in 0..n {
@@ -409,7 +406,6 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
         }
 
         propagate_unary_vector_attributes(result_raw, x, n);
-        crate::sexp::protect::Rf_unprotect(1);
         result_raw
     }
 }
@@ -432,7 +428,7 @@ unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
-        let _p = Rf_protect(result_raw);
+        let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a_len, b_len);
 
         for i in 0..n {
@@ -456,7 +452,6 @@ unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         }
 
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
-        crate::sexp::protect::Rf_unprotect(1);
         result_raw
     }
 }
@@ -518,6 +513,7 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             .is_some_and(|input| matches!(input.typeof_(), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP));
 
         if prefer_int || input_is_int {
+            let _result_guard = protect(result);
             let Some(result_vec) = NumericVector::from_raw(result) else {
                 return result;
             };
@@ -538,7 +534,7 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let Some(iresult) = Sexp::from_raw(iresult_raw) else {
                     return result;
                 };
-                let _p = Rf_protect(iresult_raw);
+                let _iresult_guard = protect(iresult_raw);
                 for i in 0..n {
                     let v = result_vec.real_at(i);
                     let value = if v.to_bits() == R_NA_BIT_PATTERN {
@@ -549,7 +545,6 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     iresult.set_integer_elt(i, value);
                 }
                 propagate_unary_vector_attributes(iresult_raw, x, n);
-                crate::sexp::protect::Rf_unprotect(1);
                 return iresult_raw;
             }
         }
