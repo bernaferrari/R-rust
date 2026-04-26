@@ -1,13 +1,35 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Double Centering for Classical Multidimensional Scaling.
 //! Port of r-source/src/library/stats/src/dblcen.c
 
-use core::ffi::c_int;
 use std::os::raw::c_double;
+use std::slice;
 
 use crate::main::util_main::nrows;
 use crate::sexp::accessors::REAL;
 use crate::sexp::ffi::SEXP;
+
+fn double_centre_square(a: &mut [c_double], n: usize) {
+    let n_f = n as c_double;
+
+    for row in 0..n {
+        let mut sum = 0.0;
+        for col in 0..n {
+            sum += a[row + col * n];
+        }
+        let mean = sum / n_f;
+        for col in 0..n {
+            a[row + col * n] -= mean;
+        }
+    }
+
+    for col in 0..n {
+        let column = &mut a[col * n..(col + 1) * n];
+        let mean = column.iter().sum::<c_double>() / n_f;
+        for value in column {
+            *value -= mean;
+        }
+    }
+}
 
 /// DoubleCentre - double centering for classical MDS.
 ///
@@ -21,34 +43,14 @@ use crate::sexp::ffi::SEXP;
 /// # Safety
 /// A must be a valid REALSXP matrix pointer.
 pub unsafe fn DoubleCentre(A: SEXP) -> SEXP {
-    let n = nrows(A as *const std::ffi::c_void);
-    let a = REAL(A);
+    let n = unsafe { nrows(A as *const std::ffi::c_void) };
+    if n <= 0 {
+        return A;
+    }
     let n_s = n as usize;
-    let n_f = n as f64;
-
-    // Subtract row means
-    for i in 0..n_s {
-        let mut sum: c_double = 0.0;
-        for j in 0..n_s {
-            sum += *a.add(i + j * n_s);
-        }
-        sum /= n_f;
-        for j in 0..n_s {
-            *a.add(i + j * n_s) -= sum;
-        }
-    }
-
-    // Subtract column means
-    for j in 0..n_s {
-        let mut sum: c_double = 0.0;
-        for i in 0..n_s {
-            sum += *a.add(i + j * n_s);
-        }
-        sum /= n_f;
-        for i in 0..n_s {
-            *a.add(i + j * n_s) -= sum;
-        }
-    }
+    let len = n_s * n_s;
+    let a = unsafe { slice::from_raw_parts_mut(REAL(A), len) };
+    double_centre_square(a, n_s);
 
     A
 }

@@ -1,103 +1,114 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Burg's algorithm for AR model estimation
 //! Port of r-source/src/library/stats/src/burg.c
 
 use std::os::raw::{c_double, c_int};
+use std::slice;
 
 use crate::main::coerce::{asInteger, coerceVector};
-use crate::sexp::accessors::{LENGTH, REAL, SET_VECTOR_ELT, TYPEOF};
+use crate::mainutils::errors::Rf_error;
+use crate::sexp::accessors::{LENGTH, REAL, SET_VECTOR_ELT};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
-unsafe fn burg(
-    n: c_int,
-    x: *const c_double,
-    pmax: c_int,
-    coefs: *mut c_double,
-    var1: *mut c_double,
-    var2: *mut c_double,
+fn burg_values(
+    x: &[c_double],
+    pmax: usize,
+    coefs: &mut [c_double],
+    var1: &mut [c_double],
+    var2: &mut [c_double],
 ) {
-    let u = vec![0.0f64; n as usize];
-    let mut u = u;
-    let v = vec![0.0f64; n as usize];
-    let mut v = v;
-    let u0 = vec![0.0f64; n as usize];
-    let mut u0 = u0;
+    let n = x.len();
+    let mut u = vec![0.0; n];
+    let mut v = vec![0.0; n];
+    let mut u0 = vec![0.0; n];
 
-    // Zero out coefs
-    for i in 0..(pmax * pmax) as usize {
-        *coefs.add(i) = 0.0;
-    }
+    coefs.fill(0.0);
 
     let mut sum = 0.0;
-    let mut t: c_int = 0;
-    while t < n {
-        u[t as usize] = *x.add((n - 1 - t) as usize);
-        v[t as usize] = *x.add((n - 1 - t) as usize);
-        sum += *x.add(t as usize) * *x.add(t as usize);
-        t += 1;
+    for (t, value) in x.iter().rev().enumerate() {
+        u[t] = *value;
+        v[t] = *value;
     }
-    *var1 = sum / n as c_double;
-    *var2 = *var1;
 
-    let mut p: c_int = 1;
-    while p <= pmax {
+    for value in x {
+        sum += value * value;
+    }
+    var1[0] = sum / n as c_double;
+    var2[0] = var1[0];
+
+    for p in 1..=pmax {
         sum = 0.0;
-        let mut d: c_double = 0.0;
-        let mut t = p;
-        while t < n {
-            sum += v[t as usize] * u[(t - 1) as usize];
-            d += v[t as usize] * v[t as usize] + u[(t - 1) as usize] * u[(t - 1) as usize];
-            t += 1;
+        let mut d = 0.0;
+        for t in p..n {
+            sum += v[t] * u[t - 1];
+            d += v[t] * v[t] + u[t - 1] * u[t - 1];
         }
         let phii = 2.0 * sum / d;
-        *coefs.add((pmax * (p - 1) + (p - 1)) as usize) = phii;
+        coefs[pmax * (p - 1) + (p - 1)] = phii;
         if p > 1 {
-            let mut j: c_int = 1;
-            while j < p {
-                *coefs.add((p - 1 + pmax * (j - 1)) as usize) = *coefs
-                    .add((p - 2 + pmax * (j - 1)) as usize)
-                    - phii * *coefs.add((p - 2 + pmax * (p - j - 1)) as usize);
-                j += 1;
+            for j in 1..p {
+                coefs[p - 1 + pmax * (j - 1)] =
+                    coefs[p - 2 + pmax * (j - 1)] - phii * coefs[p - 2 + pmax * (p - j - 1)];
             }
         }
-        // update u and v
-        let mut t: c_int = 0;
-        while t < n {
-            u0[t as usize] = u[t as usize];
-            t += 1;
+        u0.copy_from_slice(&u);
+        for t in p..n {
+            u[t] = u0[t - 1] - phii * v[t];
+            v[t] -= phii * u0[t - 1];
         }
-        let mut t = p;
-        while t < n {
-            u[t as usize] = u0[(t - 1) as usize] - phii * v[t as usize];
-            v[t as usize] = v[t as usize] - phii * u0[(t - 1) as usize];
-            t += 1;
+        var1[p] = var1[p - 1] * (1.0 - phii * phii);
+        let mut d = 0.0;
+        for t in p..n {
+            d += v[t] * v[t] + u[t] * u[t];
         }
-        *var1.add(p as usize) = *var1.add((p - 1) as usize) * (1.0 - phii * phii);
-        let mut d: c_double = 0.0;
-        let mut t = p;
-        while t < n {
-            d += v[t as usize] * v[t as usize] + u[t as usize] * u[t as usize];
-            t += 1;
-        }
-        *var2.add(p as usize) = d / (2.0 * (n - p) as c_double);
-        p += 1;
+        var2[p] = d / (2.0 * (n - p) as c_double);
     }
 }
 
+fn error(msg: &'static [u8]) -> ! {
+    unsafe {
+        Rf_error(msg.as_ptr() as *const _);
+    }
+    unreachable!("Rf_error returned");
+}
+
+fn non_negative_usize(value: c_int, name: &'static [u8]) -> usize {
+    if value < 0 {
+        error(name);
+    }
+    value as usize
+}
+
 pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
-    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.as_c_int()));
-    let n = LENGTH(x);
-    let pmax = asInteger(order);
-    let coefs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax));
-    let var1 = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1));
-    let var2 = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1));
-    burg(n, REAL(x), pmax, REAL(coefs), REAL(var1), REAL(var2));
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
-    SET_VECTOR_ELT(ans, 0, coefs);
-    SET_VECTOR_ELT(ans, 1, var1);
-    SET_VECTOR_ELT(ans, 2, var2);
-    Rf_unprotect(5);
+    let x = unsafe { coerceVector(x, SEXPTYPE::REALSXP.as_c_int()) };
+    let _x_guard = protect(x);
+    let n = unsafe { LENGTH(x) };
+    let pmax = unsafe { asInteger(order) };
+    let pmax_usize = non_negative_usize(pmax, b"'order.max' must be non-negative\0");
+    if n <= pmax {
+        error(b"'order.max' must be smaller than the number of observations\0");
+    }
+
+    let coefs = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax) };
+    let _coefs_guard = protect(coefs);
+    let var1 = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1) };
+    let _var1_guard = protect(var1);
+    let var2 = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1) };
+    let _var2_guard = protect(var2);
+
+    let x_values = unsafe { slice::from_raw_parts(REAL(x), n as usize) };
+    let coefs_values = unsafe { slice::from_raw_parts_mut(REAL(coefs), pmax_usize * pmax_usize) };
+    let var1_values = unsafe { slice::from_raw_parts_mut(REAL(var1), pmax_usize + 1) };
+    let var2_values = unsafe { slice::from_raw_parts_mut(REAL(var2), pmax_usize + 1) };
+    burg_values(x_values, pmax_usize, coefs_values, var1_values, var2_values);
+
+    let ans = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 3) };
+    let _ans_guard = protect(ans);
+    unsafe {
+        SET_VECTOR_ELT(ans, 0, coefs);
+        SET_VECTOR_ELT(ans, 1, var1);
+        SET_VECTOR_ELT(ans, 2, var2);
+    }
     ans
 }
