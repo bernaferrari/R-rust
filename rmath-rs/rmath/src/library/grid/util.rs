@@ -4,10 +4,11 @@
 //! Contains list element access, numeric extraction, rectangle geometry,
 //! text bounding rectangle calculation, and external pointer utilities.
 
-use std::ffi::CStr;
+use std::ffi::{CStr, c_void};
 use std::os::raw::{c_char, c_double, c_int};
 
 use crate::main::memory_main::{R_ExternalPtrAddr, R_MakeExternalPtr};
+use crate::mainutils::engine::{GEStrHeight, GEStrWidth, fromDeviceHeight, fromDeviceWidth};
 use crate::sexp::accessors::{
     CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
@@ -22,15 +23,11 @@ use super::types::*;
 /* ==================== GE function stubs ==================== */
 
 unsafe extern "C" {
-    fn GEStrWidth(str: *const c_char, enc: c_int, gc: pGEcontext, dd: pGEDevDesc) -> c_double;
-    fn GEStrHeight(str: *const c_char, enc: c_int, gc: pGEcontext, dd: pGEDevDesc) -> c_double;
     fn GEExpressionWidth(expr: SEXP, gc: pGEcontext, dd: pGEDevDesc) -> c_double;
     fn GEExpressionHeight(expr: SEXP, gc: pGEcontext, dd: pGEDevDesc) -> c_double;
-    fn fromDeviceWidth(x: c_double, unit: c_int, dd: pGEDevDesc) -> c_double;
-    fn fromDeviceHeight(x: c_double, unit: c_int, dd: pGEDevDesc) -> c_double;
-    fn getCharCE(x: SEXP) -> c_int;
-    static CE_SYMBOL: c_int;
 }
+
+const CE_SYMBOL: c_int = 5;
 
 /* ==================== Helper: fmax2/fmin2 ==================== */
 
@@ -253,13 +250,21 @@ pub unsafe fn textRect(
 
     if is_expr {
         let expr = VECTOR_ELT(text, idx as R_xlen_t);
-        w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd);
-        h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd);
+        w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
+        h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
     } else {
         let string = CHAR(STRING_ELT(text, idx as R_xlen_t));
         let enc = CE_SYMBOL; // simplified: always use CE_SYMBOL as stub
-        w = fromDeviceWidth(GEStrWidth(string, enc, gc, dd), 1, dd);
-        h = fromDeviceHeight(GEStrHeight(string, enc, gc, dd), 1, dd);
+        w = fromDeviceWidth(
+            GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
+            1,
+            dd as *mut c_void,
+        );
+        h = fromDeviceHeight(
+            GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
+            1,
+            dd as *mut c_void,
+        );
     }
 
     // w and h may be non-finite (e.g., if font not found)
