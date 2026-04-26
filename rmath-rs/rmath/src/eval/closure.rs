@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Closure application — ports R's applyClosure from eval.c.
@@ -153,48 +152,50 @@ pub unsafe fn applyClosure(
     suppliedenv: SEXP,
     _R_verbose: c_int,
 ) -> SEXP {
-    if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
-        return R_NilValue();
-    }
+    unsafe {
+        if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
+            return R_NilValue();
+        }
 
-    let newrho = make_applyClosure_env(op, arglist, rho);
-    if newrho.is_null() || newrho == R_NilValue() {
-        return R_NilValue();
-    }
+        let newrho = make_applyClosure_env(op, arglist, rho);
+        if newrho.is_null() || newrho == R_NilValue() {
+            return R_NilValue();
+        }
 
-    let body = BODY(op);
-    if body.is_null() {
-        return R_NilValue();
-    }
+        let body = BODY(op);
+        if body.is_null() {
+            return R_NilValue();
+        }
 
-    let ctx = crate::sexp::context::Rf_begincontext(
-        crate::sexp::context::ctxt_flags::CTXT_FUNCTION
-            | crate::sexp::context::ctxt_flags::CTXT_RETURN,
-        call,
-        newrho,
-        rho,
-        None,
-        op,
-        ptr::null_mut(),
-    );
+        let ctx = crate::sexp::context::Rf_begincontext(
+            crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+                | crate::sexp::context::ctxt_flags::CTXT_RETURN,
+            call,
+            newrho,
+            rho,
+            None,
+            op,
+            ptr::null_mut(),
+        );
 
-    struct CtxGuard(*mut crate::sexp::context::RCNTXT);
-    impl Drop for CtxGuard {
-        fn drop(&mut self) {
-            unsafe {
-                crate::sexp::context::Rf_endcontext(self.0);
+        struct CtxGuard(*mut crate::sexp::context::RCNTXT);
+        impl Drop for CtxGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    crate::sexp::context::Rf_endcontext(self.0);
+                }
             }
         }
-    }
-    let _ctx_guard = CtxGuard(ctx);
+        let _ctx_guard = CtxGuard(ctx);
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::eval::eval::Rf_eval(body, newrho)
-    }));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(body, newrho)
+        }));
 
-    match result {
-        Ok(val) => val,
-        Err(payload) => crate::sexp::context::handle_closure_signal(payload),
+        match result {
+            Ok(val) => val,
+            Err(payload) => crate::sexp::context::handle_closure_signal(payload),
+        }
     }
 }
 
@@ -206,7 +207,7 @@ pub unsafe fn applyClosure(
 ///
 /// This is a helper that separates environment creation from body evaluation.
 pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         match (
             Sexp::from_raw(op),
             Sexp::from_raw(arglist),
@@ -244,7 +245,7 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
             _ => R_NilValue(),
         }
     }))
-    .unwrap_or_else(|_| R_NilValue())
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
 
 unsafe fn exact_tag_name_equal(left: SEXP, right: SEXP) -> bool {
@@ -380,29 +381,32 @@ pub unsafe fn R_execClosure(
     arglist: SEXP,
     rho: SEXP,
 ) -> Result<SEXP, crate::sexp::context::RError> {
-    let newrho = make_applyClosure_env(op, arglist, rho);
-    if newrho.is_null() || newrho == R_NilValue() {
-        return Err(crate::sexp::context::RError {
-            message: "failed to create closure environment".to_string(),
-        });
-    }
+    unsafe {
+        let newrho = make_applyClosure_env(op, arglist, rho);
+        if newrho.is_null() || newrho == R_NilValue() {
+            return Err(crate::sexp::context::RError {
+                message: "failed to create closure environment".to_string(),
+            });
+        }
 
-    let body = BODY(op);
+        let body = BODY(op);
 
-    // Use catch_unwind for error recovery
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, newrho)));
+        // Use catch_unwind for error recovery
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, newrho)));
 
-    match result {
-        Ok(val) => Ok(val),
-        Err(payload) => {
-            if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
-                Err(crate::sexp::context::RError {
-                    message: err.message.clone(),
-                })
-            } else {
-                Err(crate::sexp::context::RError {
-                    message: "unknown error".to_string(),
-                })
+        match result {
+            Ok(val) => Ok(val),
+            Err(payload) => {
+                if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
+                    Err(crate::sexp::context::RError {
+                        message: err.message.clone(),
+                    })
+                } else {
+                    Err(crate::sexp::context::RError {
+                        message: "unknown error".to_string(),
+                    })
+                }
             }
         }
     }
