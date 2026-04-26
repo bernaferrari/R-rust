@@ -38,7 +38,7 @@ use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -485,7 +485,8 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
             return x;
         }
         // Build new dim
-        let new_dim = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, keep_count as R_xlen_t));
+        let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, keep_count as R_xlen_t);
+        let _new_dim_guard = protect(new_dim);
         let mut new_len: R_xlen_t = 1;
         let mut j = 0;
         for i in 0..ndim {
@@ -497,7 +498,8 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
             }
         }
         // Reallocate x with new dimensions
-        let new_x = Rf_protect(Rf_allocVector3(TYPEOF(x), new_len));
+        let new_x = Rf_allocVector3(TYPEOF(x), new_len);
+        let _new_x_guard = protect(new_x);
         // Copy data
         let xtype = TYPEOF(x);
         if xtype == SEXPTYPE::INTSXP || xtype == SEXPTYPE::LGLSXP {
@@ -551,7 +553,6 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
             SET_ATTRIB(new_x, dim_pair);
         }
         SET_OBJECT(new_x, OBJECT(x));
-        Rf_unprotect(2);
         new_x
     }
 }
@@ -1072,22 +1073,24 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 
         /* Set dim attribute */
         if nrs >= 0 && ncs >= 0 {
-            let attr = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+            let attr = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+            let _attr_guard = protect(attr);
             *INTEGER(attr).add(0) = nrs;
             *INTEGER(attr).add(1) = ncs;
             if !isNull(getAttrib(dim, sym_Names())) {
                 setAttrib(attr, sym_Names(), getAttrib(dim, sym_Names()));
             }
             setAttrib(result, sym_Dim(), attr);
-            Rf_unprotect(1);
         }
 
         /* Transfer dimnames */
         if nrs >= 0 && ncs >= 0 {
             let dimnames = getAttrib(x, sym_DimNames());
-            let dimnamesnames = Rf_protect(getAttrib(dimnames, sym_Names()));
+            let dimnamesnames = getAttrib(dimnames, sym_Names());
+            let _dimnamesnames_guard = protect(dimnamesnames);
             if !isNull(dimnames) {
-                let newdimnames = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 2));
+                let newdimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                let _newdimnames_guard = protect(newdimnames);
                 if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
                     SET_VECTOR_ELT(
                         newdimnames,
@@ -1105,9 +1108,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                 }
                 setAttrib(newdimnames, sym_Names(), dimnamesnames);
                 setAttrib(result, sym_DimNames(), newdimnames);
-                Rf_unprotect(1); /* newdimnames */
             }
-            Rf_unprotect(1); /* dimnamesnames */
         }
 
         if drop != 0 {
@@ -1285,7 +1286,8 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         }
 
         /* Set dim attribute */
-        let new_dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, k));
+        let new_dim = Rf_allocVector(SEXPTYPE::INTSXP, k);
+        let _new_dim_guard = protect(new_dim);
         for i in 0..(k as usize) {
             *INTEGER(new_dim).add(i) = bound[i];
         }
@@ -1293,13 +1295,14 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             setAttrib(new_dim, sym_Names(), getAttrib(xdims, sym_Names()));
         }
         setAttrib(result, sym_Dim(), new_dim);
-        Rf_unprotect(1); /* new_dim */
 
         /* Transfer dimnames */
         let dimnames = getAttrib(x, sym_DimNames());
-        let dimnamesnames = Rf_protect(getAttrib(dimnames, sym_Names()));
+        let dimnamesnames = getAttrib(dimnames, sym_Names());
+        let _dimnamesnames_guard = protect(dimnamesnames);
         if !isNull(dimnames) {
-            let new_xdims = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, k as R_xlen_t));
+            let new_xdims = Rf_allocVector3(SEXPTYPE::VECSXP, k as R_xlen_t);
+            let _new_xdims_guard = protect(new_xdims);
             let mut jj = 0;
             if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
                 let mut rr = s;
@@ -1329,7 +1332,6 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             }
             setAttrib(new_xdims, sym_Names(), dimnamesnames);
             setAttrib(result, sym_DimNames(), new_xdims);
-            Rf_unprotect(1); /* new_xdims */
         }
 
         if drop != 0 {
