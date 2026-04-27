@@ -9008,16 +9008,9 @@ pub unsafe fn do_isIncomplete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 }
 
 /// R's `isSeekable(con)` — check if a connection supports seeking.
-/// Simplified: return TRUE for file connections, FALSE otherwise.
+/// Delegates to the session-owned connection table.
 pub unsafe fn do_isSeekable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let con = CAR(args);
-        if con.is_null() || con == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        // Delegate to connections.rs seek implementation to check
-        crate::mainutils::connections::do_isincomplete(_call, _op, args, _rho)
-    }
+    unsafe { crate::mainutils::connections::do_isseekable(_call, _op, args, _rho) }
 }
 
 /// R's `seek(con, where, origin, rw)` — seek in a connection.

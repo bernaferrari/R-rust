@@ -1363,6 +1363,15 @@ mod tests {
     }
 
     #[test]
+    fn test_connection_seekability_uses_connection_capability() {
+        let mut session = RSession::new();
+
+        let file = session
+            .eval("con <- file(tempfile(), \"w+\", \"\", TRUE, \"\", FALSE); isSeekable(con)");
+        assert_eq!(file.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
     fn test_sample_int_uniform_shape_and_errors() {
         let mut session = RSession::new();
 

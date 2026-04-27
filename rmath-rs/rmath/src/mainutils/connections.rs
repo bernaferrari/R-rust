@@ -1373,6 +1373,29 @@ pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) ->
 }
 
 // ---------------------------------------------------------------------------
+// do_isseekable — isSeekable(con)
+// ---------------------------------------------------------------------------
+
+pub unsafe fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let scon = CAR(args);
+
+        if !inherits_class(scon, "connection") {
+            r_error("'con' is not a connection");
+        }
+        let i = as_integer(scon) as usize;
+        let table = connection_table();
+        if i >= table.len() || table[i].is_none() {
+            return Rf_ScalarLogical(0);
+        }
+        let Some(conn) = table[i].as_ref() else {
+            return Rf_ScalarLogical(0);
+        };
+        Rf_ScalarLogical(if conn.canseek { 1 } else { 0 })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // do_isatty — isatty(con)
 // ---------------------------------------------------------------------------
 
@@ -2783,6 +2806,51 @@ mod tests {
             let result = do_isopen(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(as_integer(result), 1);
+        }
+    }
+
+    #[test]
+    fn test_do_isseekable_uses_connection_capability() {
+        let _lock = reset_connections();
+        unsafe {
+            R_InitConnections();
+
+            let stdout_sxp = Rf_ScalarInteger(1);
+            let _stdout_guard = protect(stdout_sxp);
+            set_connection_class(stdout_sxp, "terminal");
+            let stdout_args = Rf_cons(stdout_sxp, R_NilValue());
+            let _stdout_args_guard = protect(stdout_args);
+            let stdout_result = do_isseekable(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                stdout_args,
+                ptr::null_mut(),
+            );
+            assert_eq!(as_integer(stdout_result), 0);
+
+            let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
+            let _raw_guard = protect(raw);
+            let desc = Rf_mkString(c"raw".as_ptr());
+            let _desc_guard = protect(desc);
+            let open = Rf_mkString(c"rb".as_ptr());
+            let _open_guard = protect(open);
+            let open_tail = Rf_cons(open, R_NilValue());
+            let _open_tail_guard = protect(open_tail);
+            let raw_tail = Rf_cons(raw, open_tail);
+            let _raw_tail_guard = protect(raw_tail);
+            let raw_args = Rf_cons(desc, raw_tail);
+            let _raw_args_guard = protect(raw_args);
+            let raw_conn =
+                do_rawConnection(ptr::null_mut(), ptr::null_mut(), raw_args, ptr::null_mut());
+            let raw_seek_args = Rf_cons(raw_conn, R_NilValue());
+            let _raw_seek_args_guard = protect(raw_seek_args);
+            let raw_result = do_isseekable(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                raw_seek_args,
+                ptr::null_mut(),
+            );
+            assert_eq!(as_integer(raw_result), 1);
         }
     }
 
