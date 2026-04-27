@@ -281,13 +281,13 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
         let xvals: *mut f64;
         let mut x = x;
         if TYPEOF(x) != 14 {
-            x = Rf_protect(coerceVector(x, REALSXP_C));
+            x = coerceVector(x, REALSXP_C);
             xvals = REAL(x);
         } else {
             xvals = R_alloc((n as usize) * (n as usize), std::mem::size_of::<f64>()) as *mut f64;
             ptr::copy_nonoverlapping(REAL(x), xvals, (n as usize) * (n as usize));
         }
-        Rf_protect(x);
+        let _x_guard = protect(x);
 
         let wR = R_alloc(n as usize, std::mem::size_of::<f64>()) as *mut f64;
         let wI = R_alloc(n as usize, std::mem::size_of::<f64>()) as *mut f64;
@@ -361,7 +361,8 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
                 let cmplx_vecs = unscramble(imaginary, n, vecs);
 
                 // Build complex eigenvalue vector
-                let values = Rf_protect(Rf_allocVector(CPLXSXP_C, n as c_int));
+                let values = Rf_allocVector(CPLXSXP_C, n as c_int);
+                let _values_guard = protect(values);
                 for i in 0..n as usize {
                     let c = COMPLEX(values).add(i);
                     (*c).r = *wR.add(i);
@@ -369,54 +370,61 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
                 }
 
                 // Build complex eigenvector matrix
-                let z = Rf_protect(Rf_allocVector(CPLXSXP_C, (n as c_int) * (n as c_int)));
+                let z = Rf_allocVector(CPLXSXP_C, (n as c_int) * (n as c_int));
+                let _z_guard = protect(z);
                 for i in 0..cmplx_vecs.len() {
                     let c = COMPLEX(z).add(i);
                     (*c).r = cmplx_vecs[i].r;
                     (*c).i = cmplx_vecs[i].i;
                 }
 
-                ret = Rf_protect(Rf_allocVector(VECSXP_C, 2));
-                nm = Rf_protect(Rf_allocVector(STRSXP_C, 2));
+                ret = Rf_allocVector(VECSXP_C, 2);
+                let _ret_guard = protect(ret);
+                nm = Rf_allocVector(STRSXP_C, 2);
+                let _nm_guard = protect(nm);
                 SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
                 SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
                 SET_VECTOR_ELT(ret, 0, values);
                 SET_VECTOR_ELT(ret, 1, z);
                 setAttrib(ret, R_NamesSymbol(), nm);
 
-                Rf_unprotect(6); // x, values, z, ret, nm, + values_protect
                 return ret;
             } else {
                 // All real eigenvalues
-                let values = Rf_protect(Rf_allocVector(REALSXP_C, n as c_int));
+                let values = Rf_allocVector(REALSXP_C, n as c_int);
+                let _values_guard = protect(values);
                 ptr::copy_nonoverlapping(wR, REAL(values), n as usize);
 
-                let z = Rf_protect(Rf_allocVector(REALSXP_C, (n as c_int) * (n as c_int)));
+                let z = Rf_allocVector(REALSXP_C, (n as c_int) * (n as c_int));
+                let _z_guard = protect(z);
                 ptr::copy_nonoverlapping(right, REAL(z), (n as usize) * (n as usize));
 
-                ret = Rf_protect(Rf_allocVector(VECSXP_C, 2));
-                nm = Rf_protect(Rf_allocVector(STRSXP_C, 2));
+                ret = Rf_allocVector(VECSXP_C, 2);
+                let _ret_guard = protect(ret);
+                nm = Rf_allocVector(STRSXP_C, 2);
+                let _nm_guard = protect(nm);
                 SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
                 SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
                 SET_VECTOR_ELT(ret, 0, values);
                 SET_VECTOR_ELT(ret, 1, z);
                 setAttrib(ret, R_NamesSymbol(), nm);
 
-                Rf_unprotect(6);
                 return ret;
             }
         } else {
             // Only values
-            let values = Rf_protect(Rf_allocVector(REALSXP_C, n as c_int));
+            let values = Rf_allocVector(REALSXP_C, n as c_int);
+            let _values_guard = protect(values);
             ptr::copy_nonoverlapping(wR, REAL(values), n as usize);
 
-            ret = Rf_protect(Rf_allocVector(VECSXP_C, 1));
-            nm = Rf_protect(Rf_allocVector(STRSXP_C, 1));
+            ret = Rf_allocVector(VECSXP_C, 1);
+            let _ret_guard = protect(ret);
+            nm = Rf_allocVector(STRSXP_C, 1);
+            let _nm_guard = protect(nm);
             SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
             SET_VECTOR_ELT(ret, 0, values);
             setAttrib(ret, R_NamesSymbol(), nm);
 
-            Rf_unprotect(5);
             ret
         }
     }
@@ -951,8 +959,10 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
             }
 
             // Build result: list(rank, factors, pivot)
-            let ret = Rf_protect(Rf_allocVector(VECSXP_C, 3));
-            let nm = Rf_protect(Rf_allocVector(STRSXP_C, 3));
+            let ret = Rf_allocVector(VECSXP_C, 3);
+            let _ret_guard = protect(ret);
+            let nm = Rf_allocVector(STRSXP_C, 3);
+            let _nm_guard = protect(nm);
             SET_STRING_ELT(nm, 0, Rf_mkChar(b"rank\0".as_ptr() as *const c_char));
             SET_STRING_ELT(nm, 1, Rf_mkChar(b"factors\0".as_ptr() as *const c_char));
             SET_STRING_ELT(nm, 2, Rf_mkChar(b"pivot\0".as_ptr() as *const c_char));
@@ -972,7 +982,6 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
             SET_VECTOR_ELT(ret, 2, pivot_s);
 
             setAttrib(ret, R_NamesSymbol(), nm);
-            Rf_unprotect(2);
             ret
         } else {
             // Non-pivoted Cholesky: dpotrf
@@ -1235,22 +1244,27 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
         }
 
         // Build result: list(qr=qr_matrix, rank=rank, qraux=qraux, pivot=pivot)
-        let qr = Rf_protect(Rf_allocVector(REALSXP_C, len as c_int));
+        let qr = Rf_allocVector(REALSXP_C, len as c_int);
+        let _qr_guard = protect(qr);
         ptr::copy_nonoverlapping(a_copy.as_ptr(), REAL(qr), len);
 
-        let qraux = Rf_protect(Rf_allocVector(REALSXP_C, min_mn as c_int));
+        let qraux = Rf_allocVector(REALSXP_C, min_mn as c_int);
+        let _qraux_guard = protect(qraux);
         // qraux stores: tau for first min(m,n) columns, then norms of remaining columns
         for i in 0..min_mn as usize {
             *REAL(qraux).add(i) = *tau.add(i);
         }
 
-        let pivot = Rf_protect(Rf_allocVector(INTSXP_C, n as c_int));
+        let pivot = Rf_allocVector(INTSXP_C, n as c_int);
+        let _pivot_guard = protect(pivot);
         for i in 0..n as usize {
             *INTEGER(pivot).add(i) = *jpvt.add(i);
         }
 
-        let ret = Rf_protect(Rf_allocVector(VECSXP_C, 4));
-        let nm = Rf_protect(Rf_allocVector(STRSXP_C, 4));
+        let ret = Rf_allocVector(VECSXP_C, 4);
+        let _ret_guard = protect(ret);
+        let nm = Rf_allocVector(STRSXP_C, 4);
+        let _nm_guard = protect(nm);
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"qr\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"rank\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 2, Rf_mkChar(b"qraux\0".as_ptr() as *const c_char));
@@ -1261,7 +1275,6 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
         SET_VECTOR_ELT(ret, 3, pivot);
         setAttrib(ret, R_NamesSymbol(), nm);
 
-        Rf_unprotect(5);
         ret
     }
 }
@@ -1334,10 +1347,12 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'zgeqp3'\0".as_ptr() as *const c_char);
         }
 
-        let qr = Rf_protect(Rf_allocVector(CPLXSXP_C, len as c_int));
+        let qr = Rf_allocVector(CPLXSXP_C, len as c_int);
+        let _qr_guard = protect(qr);
         ptr::copy_nonoverlapping(a_copy.as_ptr(), COMPLEX(qr) as *mut LapRcomplex, len);
 
-        let qraux = Rf_protect(Rf_allocVector(CPLXSXP_C, min_mn as c_int));
+        let qraux = Rf_allocVector(CPLXSXP_C, min_mn as c_int);
+        let _qraux_guard = protect(qraux);
         for i in 0..min_mn as usize {
             *COMPLEX(qraux).add(i) = {
                 // SAFETY: LapRcomplex and Rcomplex have identical layouts: #[repr(C)] struct { r: f64, i: f64 }
@@ -1345,13 +1360,16 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
             };
         }
 
-        let pivot = Rf_protect(Rf_allocVector(INTSXP_C, n as c_int));
+        let pivot = Rf_allocVector(INTSXP_C, n as c_int);
+        let _pivot_guard = protect(pivot);
         for i in 0..n as usize {
             *INTEGER(pivot).add(i) = *jpvt.add(i);
         }
 
-        let ret = Rf_protect(Rf_allocVector(VECSXP_C, 4));
-        let nm = Rf_protect(Rf_allocVector(STRSXP_C, 4));
+        let ret = Rf_allocVector(VECSXP_C, 4);
+        let _ret_guard = protect(ret);
+        let nm = Rf_allocVector(STRSXP_C, 4);
+        let _nm_guard = protect(nm);
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"qr\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"rank\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 2, Rf_mkChar(b"qraux\0".as_ptr() as *const c_char));
@@ -1362,7 +1380,6 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
         SET_VECTOR_ELT(ret, 3, pivot);
         setAttrib(ret, R_NamesSymbol(), nm);
 
-        Rf_unprotect(5);
         ret
     }
 }
@@ -1383,13 +1400,12 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
 
         let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
         let p = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
-        let mut nprot: c_int = 2;
-
         let xvals: *mut LapRcomplex;
         let mut x = x;
+        let mut _x_guard = None;
         if TYPEOF(x) != 15 {
-            x = Rf_protect(coerceVector(x, CPLXSXP_C));
-            nprot += 1;
+            x = coerceVector(x, CPLXSXP_C);
+            _x_guard = Some(protect(x));
             xvals = COMPLEX(x) as *mut LapRcomplex;
         } else {
             let len = (n as usize) * (p as usize);
@@ -1460,8 +1476,10 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
             Rf_error(b"error code from Lapack routine 'zgesdd'\0".as_ptr() as *const c_char);
         }
 
-        let val = Rf_protect(Rf_allocVector(VECSXP_C, 3));
-        let nm = Rf_protect(Rf_allocVector(STRSXP_C, 3));
+        let val = Rf_allocVector(VECSXP_C, 3);
+        let _val_guard = protect(val);
+        let nm = Rf_allocVector(STRSXP_C, 3);
+        let _nm_guard = protect(nm);
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"d\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"u\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 2, Rf_mkChar(b"vt\0".as_ptr() as *const c_char));
@@ -1470,7 +1488,6 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
         SET_VECTOR_ELT(val, 1, u);
         SET_VECTOR_ELT(val, 2, v);
 
-        Rf_unprotect(nprot);
         val
     }
 }
@@ -1504,7 +1521,8 @@ pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
         let mut a_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len];
         ptr::copy_nonoverlapping(COMPLEX(xin) as *const LapRcomplex, a_copy.as_mut_ptr(), len);
 
-        let values = Rf_protect(Rf_allocVector(REALSXP_C, n as c_int));
+        let values = Rf_allocVector(REALSXP_C, n as c_int);
+        let _values_guard = protect(values);
 
         // Query optimal work size
         let mut tmp = LapRcomplex::default();
@@ -1551,25 +1569,28 @@ pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
 
         let ret;
         let nm;
+        let _ret_guard;
+        let _nm_guard;
         if ov == 0 {
-            let z = Rf_protect(Rf_allocVector(CPLXSXP_C, len as c_int));
+            let z = Rf_allocVector(CPLXSXP_C, len as c_int);
+            let _z_guard = protect(z);
             ptr::copy_nonoverlapping(a_copy.as_ptr(), COMPLEX(z) as *mut LapRcomplex, len);
 
-            ret = Rf_protect(Rf_allocVector(VECSXP_C, 2));
-            nm = Rf_protect(Rf_allocVector(STRSXP_C, 2));
+            ret = Rf_allocVector(VECSXP_C, 2);
+            _ret_guard = protect(ret);
+            nm = Rf_allocVector(STRSXP_C, 2);
+            _nm_guard = protect(nm);
             SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
             SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
             SET_VECTOR_ELT(ret, 0, values);
             SET_VECTOR_ELT(ret, 1, z);
-
-            Rf_unprotect(5);
         } else {
-            ret = Rf_protect(Rf_allocVector(VECSXP_C, 1));
-            nm = Rf_protect(Rf_allocVector(STRSXP_C, 1));
+            ret = Rf_allocVector(VECSXP_C, 1);
+            _ret_guard = protect(ret);
+            nm = Rf_allocVector(STRSXP_C, 1);
+            _nm_guard = protect(nm);
             SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
             SET_VECTOR_ELT(ret, 0, values);
-
-            Rf_unprotect(4);
         }
 
         setAttrib(ret, R_NamesSymbol(), nm);
@@ -1605,7 +1626,8 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
         let mut a_copy: Vec<LapRcomplex> = vec![LapRcomplex::default(); len];
         ptr::copy_nonoverlapping(COMPLEX(x) as *const LapRcomplex, a_copy.as_mut_ptr(), len);
 
-        let values = Rf_protect(Rf_allocVector(CPLXSXP_C, n as c_int));
+        let values = Rf_allocVector(CPLXSXP_C, n as c_int);
+        let _values_guard = protect(values);
 
         let mut vr: *mut LapRcomplex = ptr::null_mut();
         if ov == 0 {
@@ -1665,25 +1687,28 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
 
         let ret;
         let nm;
+        let _ret_guard;
+        let _nm_guard;
         if ov == 0 {
-            let z = Rf_protect(Rf_allocVector(CPLXSXP_C, len as c_int));
+            let z = Rf_allocVector(CPLXSXP_C, len as c_int);
+            let _z_guard = protect(z);
             ptr::copy_nonoverlapping(vr, COMPLEX(z) as *mut LapRcomplex, len);
 
-            ret = Rf_protect(Rf_allocVector(VECSXP_C, 2));
-            nm = Rf_protect(Rf_allocVector(STRSXP_C, 2));
+            ret = Rf_allocVector(VECSXP_C, 2);
+            _ret_guard = protect(ret);
+            nm = Rf_allocVector(STRSXP_C, 2);
+            _nm_guard = protect(nm);
             SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
             SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
             SET_VECTOR_ELT(ret, 0, values);
             SET_VECTOR_ELT(ret, 1, z);
-
-            Rf_unprotect(5);
         } else {
-            ret = Rf_protect(Rf_allocVector(VECSXP_C, 1));
-            nm = Rf_protect(Rf_allocVector(STRSXP_C, 1));
+            ret = Rf_allocVector(VECSXP_C, 1);
+            _ret_guard = protect(ret);
+            nm = Rf_allocVector(STRSXP_C, 1);
+            _nm_guard = protect(nm);
             SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
             SET_VECTOR_ELT(ret, 0, values);
-
-            Rf_unprotect(4);
         }
 
         setAttrib(ret, R_NamesSymbol(), nm);
@@ -2033,12 +2058,13 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
         super::backend::dgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
 
         if info != 0 {
-            let modulus = Rf_protect(Rf_allocVector(REALSXP_C, 1));
+            let modulus = Rf_allocVector(REALSXP_C, 1);
+            let _modulus_guard = protect(modulus);
             *REAL(modulus) = 0.0;
-            let attr = Rf_protect(Rf_allocVector(INTSXP_C, 1));
+            let attr = Rf_allocVector(INTSXP_C, 1);
+            let _attr_guard = protect(attr);
             *INTEGER(attr) = 0;
             setAttrib(modulus, R_NilValue(), attr); // sign attribute
-            Rf_unprotect(2);
             return modulus;
         }
 
@@ -2052,18 +2078,19 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
             }
         }
 
-        let ans = Rf_protect(Rf_allocVector(REALSXP_C, 1));
+        let ans = Rf_allocVector(REALSXP_C, 1);
+        let _ans_guard = protect(ans);
         if ldet != 0 {
             *REAL(ans) = det.abs().ln() + (if sign < 0 { std::f64::consts::PI } else { 0.0 });
         } else {
             *REAL(ans) = det * (sign as f64);
         }
 
-        let attr = Rf_protect(Rf_allocVector(INTSXP_C, 1));
+        let attr = Rf_allocVector(INTSXP_C, 1);
+        let _attr_guard = protect(attr);
         *INTEGER(attr) = sign;
         setAttrib(ans, R_NilValue(), attr);
 
-        Rf_unprotect(2);
         ans
     }
 }
