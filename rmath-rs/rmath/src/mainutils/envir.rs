@@ -25,6 +25,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
+use crate::sexp::protect::protect;
 use std::os::raw::{c_char, c_int};
 
 /// djb2 string hash function.
@@ -427,8 +428,6 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::envir::{defineVar, setVar};
-        use crate::sexp::protect::Rf_protect;
-        use crate::sexp::protect::Rf_unprotect;
         use crate::sexp::symbol::Rf_install;
 
         if args.is_null() || args == R_NilValue() {
@@ -451,12 +450,11 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         // Second arg: value
         let val = CADR(args);
-        Rf_protect(val);
+        let _val_guard = protect(val);
 
         // Third arg: envir
         let aenv = CADDR(args);
         if !isEnvironment(aenv) {
-            Rf_unprotect(1);
             error("invalid 'envir' argument");
         }
 
@@ -480,7 +478,6 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             defineVar(sym, val, aenv);
         }
 
-        Rf_unprotect(1);
         val
     }
 }
@@ -579,8 +576,6 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         use crate::eval::attrib_core::{getAttrib, setAttrib};
         use crate::sexp::envir::defineVar;
         use crate::sexp::memory_ext::allocSExp;
-        use crate::sexp::protect::Rf_protect;
-        use crate::sexp::protect::Rf_unprotect;
 
         if args.is_null() || args == R_NilValue() {
             error("invalid first argument");
@@ -609,7 +604,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         if s.is_null() {
             error("could not allocate environment");
         }
-        Rf_protect(s);
+        let _s_guard = protect(s);
 
         // Copy bindings from the source (list or environment)
         let what = CAR(args);
@@ -673,7 +668,6 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             SET_ENCLOS(s, old_enclos);
         }
 
-        Rf_unprotect(1);
         s
     }
 }
@@ -690,9 +684,6 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// Removes the environment at position `pos` from the search list.
 pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::protect::Rf_protect;
-        use crate::sexp::protect::Rf_unprotect;
-
         if args.is_null() || args == R_NilValue() {
             error("invalid 'pos' argument");
         }
@@ -739,12 +730,11 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             error("invalid 'pos' argument");
         }
 
-        Rf_protect(s);
+        let _s_guard = protect(s);
         let x = ENCLOS(s);
         SET_ENCLOS(t, x);
         SET_ENCLOS(s, base_env);
 
-        Rf_unprotect(1);
         crate::sexp::globals::set_R_Visible(FALSE);
         R_NilValue()
     }
@@ -817,8 +807,6 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
     unsafe {
         use crate::eval::attrib_core::getAttrib;
         use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
-        use crate::sexp::protect::Rf_protect;
-        use crate::sexp::protect::Rf_unprotect;
 
         let global_env = R_GlobalEnv();
         let base_env = R_BaseEnv();
@@ -839,7 +827,7 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
         if ans.is_null() {
             error("could not allocate search result");
         }
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         // First element is always ".GlobalEnv"
         SET_STRING_ELT(ans, 0, Rf_mkChar(b".GlobalEnv\0".as_ptr() as *const c_char));
@@ -878,7 +866,6 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
             t = ENCLOS(t);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
