@@ -20,8 +20,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
 use crate::sexp::ffi::{FALSE, ISNAN, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::Rf_protect;
-use crate::sexp::protect::Rf_unprotect;
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -254,7 +253,8 @@ unsafe fn coerce_to_logical(x: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let len = XLENGTH(x) as usize;
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, len as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, len as R_xlen_t);
+        let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
         let t = TYPEOF(x);
 
@@ -304,7 +304,6 @@ unsafe fn coerce_to_logical(x: SEXP) -> SEXP {
                 // For other types, zero-length
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -328,7 +327,8 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
             SEXPTYPE::LGLSXP.as_c_int()
         };
 
-        let x = Rf_protect(Rf_allocVector3(out_type, len as R_xlen_t));
+        let x = Rf_allocVector3(out_type, len as R_xlen_t);
+        let _x_guard = protect(x);
 
         match t {
             tt if tt == SEXPTYPE::LGLSXP => {
@@ -389,7 +389,6 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         x
     }
 }
@@ -408,7 +407,8 @@ unsafe fn binary_logic(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t);
+        let _ans_guard = protect(ans);
         let px1 = LOGICAL(s1);
         let px2 = LOGICAL(s2);
         let pa = LOGICAL(ans);
@@ -426,7 +426,6 @@ unsafe fn binary_logic(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             };
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -445,7 +444,8 @@ unsafe fn binary_logic_raw(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::RAWSXP, n as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::RAWSXP, n as R_xlen_t);
+        let _ans_guard = protect(ans);
         let px1 = RAW(s1);
         let px2 = RAW(s2);
         let pa = RAW(ans);
@@ -463,7 +463,6 @@ unsafe fn binary_logic_raw(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             };
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -533,10 +532,11 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         // Coerce both to logical and apply binary logic
-        let x_lgl = Rf_protect(coerce_to_logical(x));
-        let y_lgl = Rf_protect(coerce_to_logical(y));
+        let x_lgl = coerce_to_logical(x);
+        let _x_lgl_guard = protect(x_lgl);
+        let y_lgl = coerce_to_logical(y);
+        let _y_lgl_guard = protect(y_lgl);
         let result = binary_logic(code, x_lgl, y_lgl);
-        Rf_unprotect(2);
         result
     }
 }

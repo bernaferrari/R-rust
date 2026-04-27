@@ -128,7 +128,7 @@ use std::os::raw::{c_char, c_int};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 /// checkArity — stub, no-op.
 #[inline(always)]
@@ -193,16 +193,17 @@ pub unsafe fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if n == 0 {
             // Return all environment variables
             let vars: Vec<_> = std::env::vars().collect();
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, vars.len() as R_xlen_t));
+            let ans = Rf_allocVector3(SEXPTYPE::STRSXP, vars.len() as R_xlen_t);
+            let _ans_guard = protect(ans);
             for (i, (key, val)) in vars.iter().enumerate() {
                 let combined = format!("{}={}", key, val);
                 let c_str = std::ffi::CString::new(combined).unwrap_or_default();
                 SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
             }
-            Rf_unprotect(1);
             ans
         } else {
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t));
+            let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+            let _ans_guard = protect(ans);
             for j in 0..n as R_xlen_t {
                 let name = STRING_ELT(x, j);
                 let name_c = CHAR(name);
@@ -214,7 +215,6 @@ pub unsafe fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     SET_STRING_ELT(ans, j, STRING_ELT(unset, 0));
                 }
             }
-            Rf_unprotect(1);
             ans
         }
     }
@@ -242,7 +242,8 @@ pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         let n = LENGTH(val);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t);
+        let _ans_guard = protect(ans);
         for i in 0..n as R_xlen_t {
             let name_c = CHAR(STRING_ELT(nm, i));
             let val_c = CHAR(STRING_ELT(val, i));
@@ -251,7 +252,6 @@ pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             std::env::set_var(name_str, val_str);
             *LOGICAL(ans).add(i as usize) = TRUE;
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -272,14 +272,14 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         }
 
         let n = LENGTH(nm);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t);
+        let _ans_guard = protect(ans);
         for i in 0..n as R_xlen_t {
             let name_c = CHAR(STRING_ELT(nm, i));
             let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
             std::env::remove_var(name_str);
             *LOGICAL(ans).add(i as usize) = TRUE;
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -337,7 +337,8 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         }
 
         let slen = std::cmp::max(n1, std::cmp::max(n2, n3));
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, slen as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, slen as R_xlen_t);
+        let _ans_guard = protect(ans);
 
         for i in 0..slen as R_xlen_t {
             let tn_c = CHAR(STRING_ELT(pattern, i % (n1 as R_xlen_t)));
@@ -355,7 +356,6 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -378,7 +378,8 @@ pub fn R_system(command: &str) -> c_int {
 pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Return a list with basic system info
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 5));
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let _ans_guard = protect(ans);
 
         // sysname
         let sysname = Rf_mkString(
@@ -414,7 +415,8 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         SET_VECTOR_ELT(ans, 4, machine);
 
         // Set names
-        let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 5));
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
+        let _names_guard = protect(names);
         SET_STRING_ELT(
             names,
             0,
@@ -464,7 +466,6 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         let names_sym = crate::eval::attrib_core::R_NamesSymbol();
         crate::eval::attrib_core::setAttrib(ans, names_sym, names);
 
-        Rf_unprotect(2);
         ans
     }
 }
@@ -475,8 +476,10 @@ pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
         // Return all environment variables as a named character vector
         let vars: Vec<(String, String)> = std::env::vars().collect();
         let n = vars.len();
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t));
-        let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+        let _ans_guard = protect(ans);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+        let _names_guard = protect(names);
 
         for (i, (key, val)) in vars.iter().enumerate() {
             let k = std::ffi::CString::new(key.as_str()).unwrap_or_default();
@@ -488,7 +491,6 @@ pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
         let names_sym = crate::eval::attrib_core::R_NamesSymbol();
         crate::eval::attrib_core::setAttrib(ans, names_sym, names);
 
-        Rf_unprotect(2);
         ans
     }
 }
