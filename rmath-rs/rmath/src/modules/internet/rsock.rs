@@ -519,7 +519,7 @@ pub(crate) unsafe fn R_SockConnect(port: c_int, host: *mut c_char, timeout: c_in
         let mut server: sockaddr_in = core::mem::zeroed();
         core::ptr::copy_nonoverlapping((*ai).ai_addr as *const sockaddr_in, &mut server, 1);
         server.sin_port = htons(port as u16);
-        server.sin_family = AF_INET as u8;
+        server.sin_family = AF_INET as libc::sa_family_t;
         freeaddrinfo(res);
 
         let conn_status = connect(

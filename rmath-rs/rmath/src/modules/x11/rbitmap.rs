@@ -1,4 +1,3 @@
-
 //! X11 bitmap save routines (rbitmap.c)
 //!
 //! Port of R's bitmap image writers: PNG, JPEG, TIFF, BMP.

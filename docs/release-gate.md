@@ -5,9 +5,10 @@ collects the checks that matter for the Android-first Rust port into one
 repeatable gate with subsystem labels in the output.
 
 The GitHub workflows use the same policy split: formatting, strict clippy,
-focused tests, Android checks, conformance parity, artifact validation, and the
-safe API audit are the default release bar. The gate also checks the upstream
-port map so C-to-Rust traceability does not decay as modules are rewritten.
+focused tests, Android checks, conformance parity, artifact validation, Android
+showcase artifacts, and the safe API audit are the default release bar. The gate
+also checks the upstream port map so C-to-Rust traceability does not decay as
+modules are rewritten.
 
 ## Commands
 
@@ -46,9 +47,11 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 | Rust tests | yes | yes | `cargo test -p rmath`, `cargo test -p r-embed -p r-uniffi` |
 | Android global-state scan | yes | yes | `scripts/check_android_globals.sh` through `scripts/android_toolchain_check.sh` |
 | Android aarch64 cargo check | yes | yes | `scripts/android_toolchain_check.sh` |
+| Android shared library size | yes | yes | `scripts/android_artifact_size.sh --check` |
 | Conformance parity | yes | yes | `scripts/conformance_parity.sh --check --report target/release-gate/conformance` |
 | Upstream core slices | yes | yes | `scripts/upstream_core_slices.sh --report target/release-gate/upstream-core-slices` |
 | Artifact sanity | yes | yes | JSON/Markdown conformance report validation |
+| Android showcase artifacts | yes | yes | `scripts/android_showcase_artifacts.sh --check` |
 | Public safe API audit | yes | yes | `scripts/audit_safe_api.sh` |
 | Upstream port map | yes | yes | `scripts/check_upstream_port_map.sh` |
 | Git whitespace | yes | yes | `git diff --check` |
@@ -83,6 +86,11 @@ The gate writes conformance reports to:
 - `target/release-gate/conformance/summary.json`
 - `target/release-gate/conformance/summary.md`
 - `target/release-gate/upstream-core-slices/summary.md`
+- `target/release-gate/android-artifacts/android-artifact-size.json`
+- `target/release-gate/android-artifacts/android-artifact-size.md`
+- `target/release-gate/android-showcase/showcase-transcript.txt`
+- `target/release-gate/android-showcase/line-plot.png`
+- `target/release-gate/android-showcase/point-plot.png`
 
 The JSON report is checked for nonzero total cases and zero failing or
 unexpected-passing cases. The Markdown report is the human-readable release
@@ -95,16 +103,16 @@ The upstream source map is checked from:
 See `docs/upstream-port-map.md` for sync-mode definitions and the comparison
 workflow.
 
-The Android showcase script writes separate demo artifacts:
-
-- `target/android-showcase/showcase-transcript.txt`
-- `target/android-showcase/line-plot.png`
-- `target/android-showcase/point-plot.png`
-
-Generate them with:
+The Android showcase script can also be run directly:
 
 ```bash
 scripts/android_showcase_artifacts.sh --check
+```
+
+The Android shared library size gate can also be run directly:
+
+```bash
+scripts/android_artifact_size.sh --check
 ```
 
 Performance and memory report artifacts are separate from the default release

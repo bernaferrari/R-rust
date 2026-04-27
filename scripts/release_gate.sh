@@ -6,11 +6,14 @@ REPORT_DIR="$ROOT_DIR/target/release-gate/conformance"
 UPSTREAM_REPORT_DIR="$ROOT_DIR/target/release-gate/upstream-core-slices"
 PERFORMANCE_REPORT_DIR="$ROOT_DIR/target/release-gate/performance"
 PACKAGE_CORPUS_REPORT_DIR="$ROOT_DIR/target/release-gate/pure-r-package-corpus"
+ANDROID_ARTIFACT_REPORT_DIR="$ROOT_DIR/target/release-gate/android-artifacts"
+ANDROID_SHOWCASE_DIR="$ROOT_DIR/target/release-gate/android-showcase"
 FULL=0
 RUN_ANDROID=1
 RUN_ANDROID_PACKAGE=0
 RUN_UNIFFI_BINDINGS=0
 RUN_DESKTOP_SMOKE=0
+RUN_ANDROID_SHOWCASE=1
 RUN_STRICT_CLIPPY=1
 
 usage() {
@@ -21,6 +24,7 @@ Runs the local release-candidate gate:
   - rustfmt check
   - targeted Rust tests for rmath, r-embed, and r-uniffi
   - Android mutable-global scan and aarch64 cargo check
+  - Android artifact size and showcase output checks
   - C R vs Rust conformance report
   - curated upstream GNU R evaluator/arithmetic slices
   - generated artifact sanity checks
@@ -35,6 +39,8 @@ Options:
   --android-package   Run scripts/android_package_smoke.sh --check.
   --uniffi-bindings   Run scripts/generate_uniffi_bindings.sh --check.
   --desktop-smoke     Run scripts/desktop_host_smoke.sh.
+  --no-showcase       Skip Android showcase artifact generation. This is for
+                      focused local debugging only, not release signoff.
   --strict-clippy     Run strict clippy. This is the default.
   --no-strict-clippy  Skip strict clippy for focused local debugging only.
   -h, --help          Show this help.
@@ -64,6 +70,10 @@ while (($# > 0)); do
             ;;
         --desktop-smoke)
             RUN_DESKTOP_SMOKE=1
+            shift
+            ;;
+        --no-showcase)
+            RUN_ANDROID_SHOWCASE=0
             shift
             ;;
         --strict-clippy)
@@ -169,8 +179,14 @@ run_cargo test -p r-embed -p r-uniffi -- --test-threads=1
 if [[ "$RUN_ANDROID" -eq 1 ]]; then
     section "Android toolchain and mutable globals"
     run scripts/android_toolchain_check.sh
+
+    section "Android artifact size"
+    run scripts/android_artifact_size.sh --check --output-dir "$ANDROID_ARTIFACT_REPORT_DIR"
 else
     section "Android toolchain and mutable globals"
+    echo "Skipped by --no-android. Do not use this mode for release signoff."
+
+    section "Android artifact size"
     echo "Skipped by --no-android. Do not use this mode for release signoff."
 fi
 
@@ -188,6 +204,14 @@ run scripts/compare_stock_r_performance.sh --quick --check --strict --output-dir
 
 section "Pure-R package corpus"
 run scripts/pure_r_package_corpus.sh --check --report "$PACKAGE_CORPUS_REPORT_DIR"
+
+if [[ "$RUN_ANDROID_SHOWCASE" -eq 1 ]]; then
+    section "Android showcase artifacts"
+    run scripts/android_showcase_artifacts.sh --check --out-dir "$ANDROID_SHOWCASE_DIR"
+else
+    section "Android showcase artifacts"
+    echo "Skipped by --no-showcase. Do not use this mode for release signoff."
+fi
 
 section "Public safe API audit"
 run scripts/audit_safe_api.sh
@@ -216,3 +240,5 @@ run git diff --check
 echo
 echo "Release gate passed. Conformance report: $REPORT_DIR/summary.md"
 echo "Upstream slice report: $UPSTREAM_REPORT_DIR/summary.md"
+echo "Android artifact report: $ANDROID_ARTIFACT_REPORT_DIR/android-artifact-size.md"
+echo "Android showcase artifacts: $ANDROID_SHOWCASE_DIR"

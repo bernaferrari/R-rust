@@ -426,7 +426,7 @@ pub unsafe fn tzcode_type() -> SEXP {
 
 #[cfg(not(target_os = "macos"))]
 pub unsafe fn tzcode_type() -> SEXP {
-    crate::sexp::constructors::Rf_mkString(b"system\0".as_ptr() as *const libc::c_char)
+    unsafe { crate::sexp::constructors::Rf_mkString(b"system\0".as_ptr() as *const libc::c_char) }
 }
 
 // ---------------------------------------------------------------------------

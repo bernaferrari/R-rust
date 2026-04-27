@@ -1,4 +1,3 @@
-
 //! X11 data entry widget (dataentry.c)
 //!
 //! Port of R's X11 spreadsheet-style data editor / data viewer.

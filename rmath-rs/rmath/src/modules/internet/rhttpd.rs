@@ -67,7 +67,7 @@ const CONTENT_LENGTH: c_char = 0x08;
 const THREAD_OWNED: c_char = 0x10;
 const THREAD_DISPOSE: c_char = 0x20;
 const CONTENT_TYPE: c_char = 0x40;
-const CONTENT_FORM_UENC: c_char = -128; // 0x80 as i8
+const CONTENT_FORM_UENC: c_char = 0x80u8 as c_char;
 
 // ============================================================
 // External libc functions not available in libc crate directly
@@ -486,7 +486,7 @@ unsafe fn remove_worker(c: *mut HttpdConn) {
 unsafe fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mut sockaddr {
     unsafe {
         libc::memset(sa as *mut c_void, 0, core::mem::size_of::<sockaddr_in>());
-        (*sa).sin_family = AF_INET as u8;
+        (*sa).sin_family = AF_INET as libc::sa_family_t;
         (*sa).sin_port = htons(port as u16);
         (*sa).sin_addr.s_addr = if !ip.is_null() {
             inet_addr(ip)
@@ -526,7 +526,7 @@ unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
     unsafe {
         let sig = http_sig(&*c);
         let l = libc::strlen(text);
-        let mut local_buf = [0i8; 96];
+        let mut local_buf = [0 as c_char; 96];
         // reduce the number of packets by sending the payload en-block from buf
         if l < local_buf.len() - 10 {
             libc::memcpy(
@@ -776,7 +776,7 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
             }
             let name_len = c.offset_from(e) as isize;
             if name_len > 0 && name_len < 64 {
-                let mut fn_buf = [0i8; 64];
+                let mut fn_buf = [0 as c_char; 64];
                 libc::memcpy(
                     fn_buf.as_mut_ptr() as *mut c_void,
                     e as *const c_void,
@@ -926,7 +926,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
 
             if TYPEOF(y) == SEXPTYPE::STRSXP && LENGTH(y) > 0 {
                 // Character payload
-                let mut buf = [0i8; 64];
+                let mut buf = [0 as c_char; 64];
                 let cs = translateCharUTF8(STRING_ELT(y, 0));
                 let mut fn_ptr: *const c_char = std::ptr::null_mut();
 
@@ -1039,7 +1039,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
 
             if TYPEOF(y) == SEXPTYPE::RAWSXP {
                 // Raw payload
-                let mut buf = [0i8; 64];
+                let mut buf = [0 as c_char; 64];
                 let cs = RAW(y);
                 if code == 200 {
                     send_http_response(c, b" 200 OK\r\nContent-type: \0".as_ptr() as *const c_char);
@@ -1119,7 +1119,7 @@ unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
         inp_buf.set_len(in_len + 1);
         let mut inp: *mut c_char = inp_buf.as_mut_ptr();
 
-        let mut out_buf = vec![0i8; in_len + 1];
+        let mut out_buf = vec![0 as c_char; in_len + 1];
         let outbuf = out_buf.as_mut_ptr();
         let mut out = outbuf;
         *out = 0;

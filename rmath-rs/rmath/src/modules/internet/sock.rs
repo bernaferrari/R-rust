@@ -246,7 +246,7 @@ pub(crate) unsafe fn Sock_open(
         }
 
         let mut server: sockaddr_in = core::mem::zeroed();
-        server.sin_family = AF_INET as u8;
+        server.sin_family = AF_INET as libc::sa_family_t;
         server.sin_addr.s_addr = libc::INADDR_ANY;
         server.sin_port = htons(port as u16);
 
@@ -329,7 +329,7 @@ pub(crate) unsafe fn Sock_listen(
                 &net_client as *const sockaddr_in as *const sockaddr,
                 core::mem::size_of::<sockaddr_in>() as socklen_t,
                 name_buf.as_mut_ptr(),
-                buflen as libc::socklen_t,
+                buflen as _,
                 core::ptr::null_mut(),
                 0,
                 0,
@@ -399,7 +399,7 @@ pub(crate) unsafe fn Sock_connect(
         let mut server: sockaddr_in = core::mem::zeroed();
         core::ptr::copy_nonoverlapping((*ai).ai_addr as *const sockaddr_in, &mut server, 1);
         server.sin_port = htons(port as u16);
-        server.sin_family = AF_INET as u8;
+        server.sin_family = AF_INET as libc::sa_family_t;
         freeaddrinfo(res);
 
         let mut retval: c_int;
