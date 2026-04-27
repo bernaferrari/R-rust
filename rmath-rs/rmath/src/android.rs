@@ -1767,6 +1767,9 @@ mod tests {
             "lookup failed: {}",
             lookup.output
         );
+
+        let super_assign = session.eval("x <- 0; f <- function() { x <<- 1 }; f(); x");
+        assert_eq!(super_assign.output, "[1] 1");
     }
 
     #[test]
@@ -2111,6 +2114,36 @@ mod tests {
         let mut session = RSession::new();
         let result = session.eval("f <- function() return(42)\nf()");
         assert_eq!(result.output, "[1] 42");
+    }
+
+    #[test]
+    fn test_eval_on_exit_runs_for_normal_and_return_paths() {
+        let mut session = RSession::new();
+
+        let normal = session.eval(
+            "x <- 0; f <- function() { on.exit({ x <<- 1 }); 42 }; y <- f(); all(c(y == 42, x == 1))",
+        );
+        assert_eq!(normal.typed, RValue::Logical(Some(true)));
+
+        let returned = session.eval(
+            "x <- 0; f <- function() { on.exit({ x <<- 2 }); return(7); x <<- 99 }; y <- f(); all(c(y == 7, x == 2))",
+        );
+        assert_eq!(returned.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
+    fn test_eval_on_exit_add_and_after_order() {
+        let mut session = RSession::new();
+
+        let fifo = session.eval(
+            "x <- c(); f <- function() { on.exit({ x <<- c(x, 1) }, add = TRUE); on.exit({ x <<- c(x, 2) }, add = TRUE) }; f(); all(x == c(1, 2))",
+        );
+        assert_eq!(fifo.typed, RValue::Logical(Some(true)));
+
+        let lifo = session.eval(
+            "x <- c(); f <- function() { on.exit({ x <<- c(x, 1) }, add = TRUE); on.exit({ x <<- c(x, 2) }, add = TRUE, after = FALSE) }; f(); all(x == c(2, 1))",
+        );
+        assert_eq!(lifo.typed, RValue::Logical(Some(true)));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 use std::os::raw::{c_char, c_int};
 
 use crate::mainutils::coerce::{ISNAN, R_FINITE, asInteger, asLogical, asReal};
-use crate::mainutils::duplicate::{duplicate, shallow_duplicate};
+use crate::mainutils::duplicate::duplicate;
 use crate::mainutils::relop::{PRIMNAME, checkArity};
 use crate::sexp::accessors::{
     BODY, CADDR, CADR, CAR, CDR, CHAR, CLOENV, COMPLEX, ENCLOS, FORMALS, INTEGER, LENGTH,
@@ -12,14 +12,13 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::attrib_core::{getAttrib, setAttrib};
 use crate::sexp::constructors::{
-    Rf_allocVector, Rf_cons, Rf_isEnvironment, Rf_isString, Rf_isVectorAtomic, Rf_length,
-    Rf_mkString,
+    Rf_allocVector, Rf_isEnvironment, Rf_isString, Rf_isVectorAtomic, Rf_length, Rf_mkString,
 };
-use crate::sexp::context::{R_GlobalContext, ctxt_flags};
-use crate::sexp::envir::{R_findVarInFrame, defineVar, findFun, matchArgs_NR};
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::context::R_GlobalContext;
+use crate::sexp::envir::{R_findVarInFrame, defineVar, findFun};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
-use crate::sexp::memory_ext::{allocFormalsList3, allocSExp, mkPROMISE};
+use crate::sexp::memory_ext::{allocSExp, mkPROMISE};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -200,59 +199,8 @@ pub unsafe fn do_makelazy(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 pub unsafe fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        checkArity(op, args);
-        let formals = allocFormalsList3(
-            Rf_install(b"expr\0".as_ptr() as *const c_char),
-            Rf_install(b"add\0".as_ptr() as *const c_char),
-            Rf_install(b"after\0".as_ptr() as *const c_char),
-        );
-        let arg_list = matchArgs_NR(formals, args);
-        let code = if CAR(arg_list) == R_MissingArg() {
-            R_NilValue()
-        } else {
-            CAR(arg_list)
-        };
-
-        let mut addit = FALSE;
-        let mut after = TRUE;
-
-        if CADR(arg_list) != R_MissingArg() {
-            addit = asLogical(crate::eval::eval::Rf_eval(CADR(arg_list), rho));
-            if addit == NA_INTEGER {
-                errorcall(call, "invalid 'add' argument");
-            }
-        }
-        if CADDR(arg_list) != R_MissingArg() {
-            after = asLogical(crate::eval::eval::Rf_eval(CADDR(arg_list), rho));
-            if after == NA_INTEGER {
-                errorcall(call, "invalid 'lifo' argument");
-            }
-        }
-
-        let mut ctxt = R_GlobalContext();
-        while !ctxt.is_null()
-            && !ctxt.is_null()
-            && !((*ctxt).callflag & ctxt_flags::CTXT_FUNCTION != 0 && (*ctxt).cloenv == rho)
-        {
-            ctxt = (*ctxt).nextcontext;
-        }
-
-        if !ctxt.is_null() && (*ctxt).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
-            if code == R_NilValue() && addit == 0 {
-                (*ctxt).conexit = R_NilValue();
-            } else {
-                let oldcode = (*ctxt).conexit;
-                if isNull(oldcode) || addit == 0 {
-                    (*ctxt).conexit = Rf_cons(code, R_NilValue());
-                } else if after != 0 {
-                    let codelist = Rf_cons(code, R_NilValue());
-                    (*ctxt).conexit = listAppend(shallow_duplicate(oldcode), codelist);
-                } else {
-                    (*ctxt).conexit = Rf_cons(code, oldcode);
-                }
-            }
-        }
-        R_NilValue()
+        let _ = (call, op);
+        crate::eval::special::do_on_exit_from_args(args, rho)
     }
 }
 

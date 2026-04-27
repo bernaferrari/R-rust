@@ -156,6 +156,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "repeat"
             | "return"
             | "invisible"
+            | "on.exit"
             | "withVisible"
             | "cat"
             | "print"

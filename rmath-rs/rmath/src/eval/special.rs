@@ -5,11 +5,11 @@
 //! Special forms are functions where arguments are NOT pre-evaluated.
 //! This includes: if, while, for, repeat, break, next, return, function, begin, (.
 
-use crate::sexp::accessors::{CADDR, CADR, CAR, CDDR, CDR, TYPEOF};
+use crate::sexp::accessors::{CADDR, CADR, CAR, CDDR, CDR, CHAR, PRINTNAME, SETCDR, TAG, TYPEOF};
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::defineVar;
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, set_R_Visible};
 use crate::sexp::symbol::R_BraceSymbol;
 
@@ -64,6 +64,7 @@ unsafe fn dispatch_special_by_name(
             "function" => do_function(CDR(call), rho),
             "return" => do_return(CDR(call), rho),
             "invisible" => do_invisible(CDR(call), rho),
+            "on.exit" => do_on_exit_from_args(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
             _ => unimplemented_special_form(name),
@@ -75,6 +76,130 @@ fn unimplemented_special_form(name: &str) -> ! {
     std::panic::panic_any(RError {
         message: format!("unimplemented special form '{name}'"),
     });
+}
+
+unsafe fn is_null(x: SEXP) -> bool {
+    unsafe { x.is_null() || crate::sexp::accessors::Rf_isNull(x) != 0 }
+}
+
+unsafe fn tag_name(cell: SEXP) -> Option<String> {
+    unsafe {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let printname = PRINTNAME(tag);
+        if printname.is_null() || printname == R_NilValue() {
+            return None;
+        }
+        let chars = CHAR(printname);
+        if chars.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(chars)
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+
+unsafe fn list_append(s: SEXP, t: SEXP) -> SEXP {
+    unsafe {
+        if is_null(s) {
+            return t;
+        }
+        let mut r = s;
+        while !is_null(CDR(r)) {
+            r = CDR(r);
+        }
+        SETCDR(r, t);
+        s
+    }
+}
+
+unsafe fn find_function_context(rho: SEXP) -> *mut crate::sexp::context::RCNTXT {
+    unsafe {
+        let mut ctxt = crate::sexp::context::R_GlobalContext();
+        while !ctxt.is_null()
+            && !((*ctxt).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0
+                && (*ctxt).cloenv == rho)
+        {
+            ctxt = (*ctxt).nextcontext;
+        }
+        ctxt
+    }
+}
+
+/// Implement `on.exit(expr, add = FALSE, after = TRUE)`.
+pub(crate) unsafe fn do_on_exit_from_args(args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut expr = R_NilValue();
+        let mut add_expr = R_NilValue();
+        let mut after_expr = R_NilValue();
+        let mut positional = 0usize;
+        let mut current = args;
+        while !is_null(current) {
+            let value = CAR(current);
+            match tag_name(current).as_deref() {
+                Some("expr") => expr = value,
+                Some("add") => add_expr = value,
+                Some("after") | Some("lifo") => after_expr = value,
+                _ => {
+                    match positional {
+                        0 => expr = value,
+                        1 => add_expr = value,
+                        2 => after_expr = value,
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+
+        let add = if is_null(add_expr) {
+            FALSE
+        } else {
+            let value = crate::mainutils::coerce::asLogical(Rf_eval(add_expr, rho));
+            if value == NA_INTEGER {
+                std::panic::panic_any(RError {
+                    message: "invalid 'add' argument".to_string(),
+                });
+            }
+            value
+        };
+        let after = if is_null(after_expr) {
+            TRUE
+        } else {
+            let value = crate::mainutils::coerce::asLogical(Rf_eval(after_expr, rho));
+            if value == NA_INTEGER {
+                std::panic::panic_any(RError {
+                    message: "invalid 'after' argument".to_string(),
+                });
+            }
+            value
+        };
+
+        let ctxt = find_function_context(rho);
+        if !ctxt.is_null() {
+            if is_null(expr) && add == FALSE {
+                (*ctxt).conexit = R_NilValue();
+            } else {
+                let old = (*ctxt).conexit;
+                if is_null(old) || add == FALSE {
+                    (*ctxt).conexit = Rf_cons(expr, R_NilValue());
+                } else if after != FALSE {
+                    let copied = crate::mainutils::duplicate::shallow_duplicate(old);
+                    (*ctxt).conexit = list_append(copied, Rf_cons(expr, R_NilValue()));
+                } else {
+                    (*ctxt).conexit = Rf_cons(expr, old);
+                }
+            }
+        }
+        set_R_Visible(FALSE);
+        R_NilValue()
+    }
 }
 
 /// Implement `invisible(x)` when it is reached through the special-form path.

@@ -84,6 +84,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "on.exit",
+        handler: crate::mainutils::builtin::do_onexit,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "capture.output",
         handler: crate::mainutils::essentials::do_capture_output,
         restore_visibility_always: false,
@@ -1771,10 +1776,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "sys.function",
         handler: crate::mainutils::essentials::do_sys_function,
-    },
-    EvaluatedBuiltin {
-        name: "on.exit",
-        handler: crate::mainutils::essentials::do_on_exit,
     },
     EvaluatedBuiltin {
         name: "read.csv",

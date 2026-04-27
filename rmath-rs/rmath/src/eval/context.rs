@@ -426,10 +426,37 @@ pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 // ---------------------------------------------------------------------------
-// R_run_onexits — run on.exit handlers (stub — full impl needs eval)
+// R_run_onexits — run on.exit handlers
 // ---------------------------------------------------------------------------
 
-pub fn R_run_onexits() {}
+pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
+    unsafe {
+        if cptr.is_null() {
+            return;
+        }
+        let conexit = (*cptr).conexit;
+        if isNull(conexit) {
+            return;
+        }
+        (*cptr).conexit = R_NilValue();
+
+        let rho = (*cptr).cloenv;
+        let mut current = conexit;
+        while !isNull(current) {
+            let expr = CAR(current);
+            if !isNull(expr) {
+                let _ = super::eval::Rf_eval(expr, rho);
+            }
+            current = CDR(current);
+        }
+    }
+}
+
+pub fn R_run_onexits() {
+    unsafe {
+        R_run_onexits_for_context(R_GlobalContext());
+    }
+}
 
 // ---------------------------------------------------------------------------
 // eval_CleanUp — cleanup on error or normal exit

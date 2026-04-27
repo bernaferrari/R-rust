@@ -187,7 +187,10 @@ pub unsafe fn PRIMVAL(op: SEXP) -> c_int {
         }
         let t = TYPEOF(op);
         if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            (*op).data.primsxp.offset
+            let table_index = (*op).data.primsxp.offset;
+            crate::eval::primitive::fun_tab_descriptor(table_index)
+                .map(|entry| entry.offset)
+                .unwrap_or(table_index)
         } else {
             0
         }

@@ -192,6 +192,13 @@ pub unsafe fn applyClosure(
             crate::eval::eval::Rf_eval(body, newrho)
         }));
 
+        let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            crate::eval::context::R_run_onexits_for_context(ctx);
+        }));
+        if let Err(payload) = onexit {
+            return crate::sexp::context::handle_closure_signal(payload);
+        }
+
         match result {
             Ok(val) => val,
             Err(payload) => crate::sexp::context::handle_closure_signal(payload),

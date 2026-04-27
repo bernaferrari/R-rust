@@ -660,11 +660,15 @@ impl<'arena> Parser<'arena> {
 
         match self.peek() {
             Token::LeftAssign | Token::Assign | Token::LeftSuper => {
-                let _op = self.advance();
+                let op = self.advance().clone();
                 self.skip_newlines();
                 let right = self.parse_assignment()?;
                 unsafe {
-                    let op_sym = Rf_install(c"<-".as_ptr());
+                    let op_sym = match op {
+                        Token::Assign => Rf_install(c"=".as_ptr()),
+                        Token::LeftSuper => Rf_install(c"<<-".as_ptr()),
+                        _ => Rf_install(c"<-".as_ptr()),
+                    };
                     Ok(self.lang3(op_sym, left, right))
                 }
             }
@@ -1454,7 +1458,7 @@ pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
 mod tests {
     use super::*;
 
-    use crate::sexp::accessors::{CADR, CAR, CDR, TYPEOF};
+    use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, PRINTNAME, TYPEOF};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::session::RSession;
@@ -1470,6 +1474,16 @@ mod tests {
         match r {
             Ok(v) => v,
             Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
+    unsafe fn call_head_name(call: SEXP) -> String {
+        unsafe {
+            let printname = PRINTNAME(CAR(call));
+            let chars = CHAR(printname);
+            std::ffi::CStr::from_ptr(chars)
+                .to_string_lossy()
+                .into_owned()
         }
     }
 
@@ -1685,6 +1699,7 @@ mod tests {
         unsafe {
             let result = must(parse_str("x = 42"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+            assert_eq!(call_head_name(result), "=");
         }
     }
 
@@ -1693,6 +1708,15 @@ mod tests {
         unsafe {
             let result = must(parse_str("42 -> x"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+        }
+    }
+
+    #[test]
+    fn test_super_assignment_preserves_operator() {
+        unsafe {
+            let result = must(parse_str("x <<- 42"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+            assert_eq!(call_head_name(result), "<<-");
         }
     }
 
