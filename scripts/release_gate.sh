@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPORT_DIR="$ROOT_DIR/target/release-gate/conformance"
 UPSTREAM_REPORT_DIR="$ROOT_DIR/target/release-gate/upstream-core-slices"
 PERFORMANCE_REPORT_DIR="$ROOT_DIR/target/release-gate/performance"
+PACKAGE_CORPUS_REPORT_DIR="$ROOT_DIR/target/release-gate/pure-r-package-corpus"
 FULL=0
 RUN_ANDROID=1
 RUN_ANDROID_PACKAGE=0
@@ -184,6 +185,9 @@ check_conformance_artifacts
 
 section "Stock R performance comparison"
 run scripts/compare_stock_r_performance.sh --quick --check --strict --output-dir "$PERFORMANCE_REPORT_DIR/stock-r"
+
+section "Pure-R package corpus"
+run scripts/pure_r_package_corpus.sh --check --report "$PACKAGE_CORPUS_REPORT_DIR"
 
 section "Public safe API audit"
 run scripts/audit_safe_api.sh

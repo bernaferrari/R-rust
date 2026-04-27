@@ -74,6 +74,15 @@ If `Rscript` is missing, the harness prints a deterministic skip message and
 returns `0`. That keeps local runs from failing unexpectedly on machines without
 stock R installed; release gates should install stock R and require this command.
 
+## Pure-R Package Corpus
+
+`scripts/pure_r_package_corpus.sh --check --report target/pure-r-package-corpus`
+runs the Android-style pure-R package corpus and writes JSON/Markdown proof.
+The corpus covers package metadata discovery, `library()` loading, namespace
+exports/imports/S3 directives, package data, lazy data, same-name package
+isolation across sessions, and explicit native-code package rejection. The
+release gate runs this script after the stock-R performance comparison.
+
 ## Current Status
 
 As of the latest local run:
@@ -95,7 +104,7 @@ Current domain coverage:
 | Vectors, lists, attributes, and objects | 31 | Vectors, lists, names, subsetting, factors, class replacement, arithmetic attributes |
 | Base functions, conditions, and platform helpers | 72 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
 | Stats, math, and RNG | 58 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, `sample`/`sample.int` invariants |
-| Packages, namespaces, and S3 | 0 | Covered by unit/package smoke tests today; parity fixtures are tracked by `rport-ifek` and `rport-x3pp` |
+| Packages, namespaces, and S3 | 0 | Covered by the pure-R package corpus gate; expression parity fixtures remain tracked separately |
 | Graphics and Android embedding | 0 | Covered by renderer/unit tests today; parity fixtures are tracked by `rport-c6ap` and `rport-89pz` |
 | Error semantics | 6 | Missing argument, `stop`, `stopifnot`, sampling errors, and selected expected errors |
 
