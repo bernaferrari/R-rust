@@ -10,7 +10,7 @@
 //!
 //! The [`set_current_instance`] / [`clear_current_instance`] functions set a
 //! thread-local pointer to the "active" instance. When an instance is active,
-//! the global accessor functions (`R_GlobalEnv`, `Rf_protect`, `with_arena`,
+//! the global accessor functions (`R_GlobalEnv`, protection APIs, `with_arena`,
 //! etc.) dispatch to that instance's fields. Code that touches mutable runtime
 //! state must enter through `RSession` or explicitly install an active
 //! `RInstance`; unscoped mutable process-global fallback state is intentionally

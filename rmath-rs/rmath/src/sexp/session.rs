@@ -118,7 +118,7 @@ impl Drop for CurrentInstanceGuard {
 ///
 /// Each `RSession` owns an [`RInstance`] containing a private arena,
 /// environment chain, and protection stack. When a session is active,
-/// all global accessor functions (`R_GlobalEnv`, `Rf_protect`, `with_arena`,
+/// all global accessor functions (`R_GlobalEnv`, protection APIs, `with_arena`,
 /// etc.) dispatch to the session's instance.
 ///
 /// # Thread Safety

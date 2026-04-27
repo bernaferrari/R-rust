@@ -15,7 +15,7 @@ use std::process;
 use std::sync::Mutex;
 
 use crate::sexp::ffi::SEXP;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Standalone utility: R_Date
@@ -372,10 +372,11 @@ pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use std::fs::OpenOptions;
 
         let s = CAR(args);
-        let ans = Rf_protect(Rf_allocVector3(
+        let ans = Rf_allocVector3(
             SEXPTYPE::LGLSXP.as_c_int(),
             LENGTH(s) as crate::sexp::ffi::R_xlen_t,
-        ));
+        );
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..LENGTH(s) as usize {
@@ -397,7 +398,6 @@ pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -412,10 +412,11 @@ pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use std::fs;
 
         let s = CAR(args);
-        let ans = Rf_protect(Rf_allocVector3(
+        let ans = Rf_allocVector3(
             SEXPTYPE::LGLSXP.as_c_int(),
             LENGTH(s) as crate::sexp::ffi::R_xlen_t,
-        ));
+        );
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..LENGTH(s) as usize {
@@ -432,7 +433,6 @@ pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -449,10 +449,8 @@ pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let from = CAR(args);
         let to = CADR(args);
         let n = LENGTH(from);
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..n as usize {
@@ -470,7 +468,6 @@ pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 *pa.add(i) = if symlink(fc, tc).is_ok() { TRUE } else { FALSE };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -487,10 +484,8 @@ pub unsafe fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let from = CAR(args);
         let to = CADR(args);
         let n = LENGTH(from);
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..n as usize {
@@ -512,7 +507,6 @@ pub unsafe fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -524,16 +518,13 @@ pub unsafe fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
 
         let from = CAR(args);
         let to = CADR(args);
         let n = LENGTH(from);
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..n as usize {
@@ -555,7 +546,6 @@ pub unsafe fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -738,14 +728,14 @@ pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::path::Path;
 
         let s = CAR(args);
-        let ans = Rf_protect(Rf_allocVector3(
+        let ans = Rf_allocVector3(
             SEXPTYPE::LGLSXP.as_c_int(),
             LENGTH(s) as crate::sexp::ffi::R_xlen_t,
-        ));
+        );
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..LENGTH(s) as usize {
@@ -762,7 +752,6 @@ pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -776,7 +765,6 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let paths = CAR(args);
         let pattern = CADR(args);
@@ -851,10 +839,11 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
 
         entries.sort();
-        let ans = Rf_protect(Rf_allocVector3(
+        let ans = Rf_allocVector3(
             SEXPTYPE::STRSXP.as_c_int(),
             entries.len() as crate::sexp::ffi::R_xlen_t,
-        ));
+        );
+        let _ans_guard = protect(ans);
         for (i, name) in entries.iter().enumerate() {
             SET_STRING_ELT(
                 ans,
@@ -862,7 +851,6 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 Rf_mkChar(CString::new(name.as_str()).unwrap_or_default().as_ptr()),
             );
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -876,7 +864,6 @@ pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let paths = CAR(args);
         let pattern = CADR(args);
@@ -925,10 +912,11 @@ pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         entries.sort();
-        let ans = Rf_protect(Rf_allocVector3(
+        let ans = Rf_allocVector3(
             SEXPTYPE::STRSXP.as_c_int(),
             entries.len() as crate::sexp::ffi::R_xlen_t,
-        ));
+        );
+        let _ans_guard = protect(ans);
         for (i, name) in entries.iter().enumerate() {
             SET_STRING_ELT(
                 ans,
@@ -936,7 +924,6 @@ pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 Rf_mkChar(CString::new(name.as_str()).unwrap_or_default().as_ptr()),
             );
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -970,14 +957,14 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::path::Path;
 
         let s = CAR(args);
-        let ans = Rf_protect(Rf_allocVector3(
+        let ans = Rf_allocVector3(
             SEXPTYPE::LGLSXP.as_c_int(),
             LENGTH(s) as crate::sexp::ffi::R_xlen_t,
-        ));
+        );
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..LENGTH(s) as usize {
@@ -994,7 +981,6 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1015,7 +1001,6 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::path::Path;
 
         let files = CAR(args);
@@ -1028,10 +1013,8 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             mode = *INTEGER(mode_arg);
         }
 
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::INTSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
         let pa = INTEGER(ans);
 
         for i in 0..n as usize {
@@ -1092,7 +1075,6 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1252,11 +1234,12 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
         use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let lc = libc::localeconv();
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 7));
-        let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 7));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
+        let _ans_guard = protect(ans);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
+        let _names_guard = protect(names);
 
         let field_names = [
             "decimal_point",
@@ -1304,7 +1287,6 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
         }
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1316,14 +1298,11 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let s = CAR(args);
         let n = LENGTH(s);
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
 
         for i in 0..n as usize {
             let elt = STRING_ELT(s, i as crate::sexp::ffi::R_xlen_t);
@@ -1357,7 +1336,6 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 );
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1368,7 +1346,6 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let names = [
             "jpeg",
@@ -1391,14 +1368,10 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
             "libcurl",
         ];
         let n = names.len();
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
-        let cn = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _cn_guard = protect(cn);
 
         for (i, name) in names.iter().enumerate() {
             // Report capabilities we actually have
@@ -1430,7 +1403,6 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         }
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1450,17 +1422,17 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
 
         let s = CAR(args);
         let recursive = CADR(args);
         let showWarnings = CDR(CDR(args));
         let _ = showWarnings; // suppress unused warning
-        let ans = Rf_protect(Rf_allocVector3(
+        let ans = Rf_allocVector3(
             SEXPTYPE::LGLSXP.as_c_int(),
             LENGTH(s) as crate::sexp::ffi::R_xlen_t,
-        ));
+        );
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
         let do_recursive = if recursive.is_null() || recursive == R_NilValue() {
             false
@@ -1484,7 +1456,6 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 *pa.add(i) = if result.is_ok() { TRUE } else { FALSE };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1496,16 +1467,13 @@ pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
 
         let from = CAR(args);
         let to = CADR(args);
         let n = LENGTH(from);
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
         for i in 0..n as usize {
@@ -1527,7 +1495,6 @@ pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1538,11 +1505,12 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
         use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
         use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::{SEXPTYPE, TRUE};
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         // Returns a named list with 3 elements: MBCS, UTF-8, Latin-1
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 3));
-        let cn = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 3));
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _ans_guard = protect(ans);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let _cn_guard = protect(cn);
         SET_STRING_ELT(cn, 0, Rf_mkChar(b"MBCS\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 1, Rf_mkChar(b"UTF-8\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 2, Rf_mkChar(b"Latin-1\0".as_ptr() as *const _));
@@ -1552,7 +1520,6 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
         SET_VECTOR_ELT(ans, 2, Rf_ScalarLogical(TRUE)); // Latin-1 supported
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1564,7 +1531,6 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
 
         let paths = CAR(args);
@@ -1576,10 +1542,8 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             0o644
         };
 
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::LGLSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
 
         for i in 0..n as usize {
@@ -1596,7 +1560,6 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 *pa.add(i) = if result.is_ok() { TRUE } else { FALSE };
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1619,14 +1582,11 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let paths = CAR(args);
         let n = LENGTH(paths);
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
 
         for i in 0..n as usize {
             let elt = STRING_ELT(paths, i as crate::sexp::ffi::R_xlen_t);
@@ -1661,7 +1621,6 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 }
             }
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1672,10 +1631,11 @@ pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
         use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
         use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 3));
-        let cn = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 3));
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let _ans_guard = protect(ans);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let _cn_guard = protect(cn);
         SET_STRING_ELT(cn, 0, Rf_mkChar(b"used\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 1, Rf_mkChar(b"limit\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 2, Rf_mkChar(b"status\0".as_ptr() as *const _));
@@ -1692,7 +1652,6 @@ pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
         SET_VECTOR_ELT(ans, 2, Rf_ScalarInteger(status));
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1703,7 +1662,6 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let fields = [
             ("OS.type", "unix"),
@@ -1722,14 +1680,10 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         ];
 
         let n = fields.len();
-        let ans = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
-        let cn = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::STRSXP.as_c_int(),
-            n as crate::sexp::ffi::R_xlen_t,
-        ));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _cn_guard = protect(cn);
 
         for (i, (name, val)) in fields.iter().enumerate() {
             SET_STRING_ELT(
@@ -1745,7 +1699,6 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         }
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
-        Rf_unprotect(2);
         ans
     }
 }
