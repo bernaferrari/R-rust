@@ -5,15 +5,16 @@
 //! Manages command-line arguments and processes common options like --save,
 //! --no-save, --restore, --vanilla, etc.
 
-use std::cell::Cell;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::mainutils::startup::StartupRuntimeState;
 use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // Save/Restore action constants (matching R_ext/RStartup.h)
@@ -34,80 +35,221 @@ pub const SA_RESTORE: c_int = 1;
 /// Do not restore the workspace at startup.
 pub const SA_NORESTORE: c_int = 0;
 
-// ---------------------------------------------------------------------------
-// Static state: command-line argument storage
-// ---------------------------------------------------------------------------
-
-thread_local! { static NumCommandLineArgs: Cell<c_int> = Cell::new(0); }
-
-thread_local! { static CommandLineArgs: Cell<*mut *mut c_char> = Cell::new(ptr::null_mut()); }
-
-// ---------------------------------------------------------------------------
-// Static state: option flags (matching Rstart fields)
-// ---------------------------------------------------------------------------
-
-thread_local! { static R_RestoreHistory: Cell<c_int> = Cell::new(1); }
-
-thread_local! { static SaveAction: Cell<c_int> = Cell::new(SA_SAVEASK); }
-
-thread_local! { static RestoreAction: Cell<c_int> = Cell::new(SA_RESTORE); }
-
-thread_local! { static R_Quiet: Cell<c_int> = Cell::new(0); }
-
-thread_local! { static R_NoEcho: Cell<c_int> = Cell::new(0); }
-
-thread_local! { static R_Interactive: Cell<c_int> = Cell::new(1); }
-
-thread_local! { static R_Verbose: Cell<c_int> = Cell::new(0); }
-
-thread_local! { static LoadSiteFile: Cell<c_int> = Cell::new(1); }
-
-thread_local! { static LoadInitFile: Cell<c_int> = Cell::new(1); }
-
-thread_local! { static NoRenviron: Cell<c_int> = Cell::new(0); }
+fn with_startup_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut StartupRuntimeState) -> R,
+{
+    with_required_current_instance(|inst| f(&mut inst.startup_state))
+}
 
 // ---------------------------------------------------------------------------
 // R_set_command_line_arguments
 // ---------------------------------------------------------------------------
 
-/// Copy the command-line arguments to permanent storage.
+/// Copy the command-line arguments to session-owned storage.
 ///
 /// This is called at startup to store a copy of argc/argv that can later
-/// be retrieved via `commandArgs()`. The memory is never freed (matching R).
+/// be retrieved via `commandArgs()`. R's C implementation intentionally leaks
+/// these startup copies for process lifetime; this port keeps them owned by the
+/// active `RInstance` so independent sessions do not share or leak argv state.
 ///
 /// # Safety
 /// - `argv` must point to a valid array of at least `argc` C-string pointers.
 /// - Each `argv[i]` must be a valid null-terminated C string.
 pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) {
     unsafe {
-        NumCommandLineArgs.with(|v| v.set(argc));
+        with_startup_state(|state| {
+            state.command_line_args.clear();
+        });
 
-        if argc <= 0 {
-            CommandLineArgs.with(|v| v.set(ptr::null_mut()));
+        if argc <= 0 || argv.is_null() {
             return;
         }
 
-        let layout = match std::alloc::Layout::array::<*mut c_char>(argc as usize) {
-            Ok(l) => l,
-            Err(_) => return,
-        };
-        let ptr = std::alloc::alloc(layout) as *mut *mut c_char;
-        if ptr.is_null() {
-            return;
-        }
+        let copied = (0..argc as usize)
+            .map(|i| {
+                let src = *argv.add(i);
+                (!src.is_null()).then(|| CStr::from_ptr(src).to_owned())
+            })
+            .collect::<Vec<_>>();
 
-        ptr::write_bytes(ptr, 0, argc as usize);
-        CommandLineArgs.with(|v| v.set(ptr));
-
-        for i in 0..argc as usize {
-            let src = *argv.add(i);
-            if !src.is_null() {
-                let cstr = CStr::from_ptr(src);
-                let dup = CString::new(cstr.to_bytes()).unwrap_or_default();
-                *ptr.add(i) = dup.into_raw();
-            }
-        }
+        with_startup_state(|state| {
+            state.command_line_args = copied;
+        });
     }
+}
+
+#[derive(Clone, Copy)]
+struct CommandLineOptionState {
+    restore_history: c_int,
+    save_action: c_int,
+    restore_action: c_int,
+    quiet: c_int,
+    no_echo: c_int,
+    interactive: c_int,
+    verbose: c_int,
+    load_site_file: c_int,
+    load_init_file: c_int,
+    no_renviron: c_int,
+}
+
+impl CommandLineOptionState {
+    fn read() -> Self {
+        with_startup_state(|state| Self {
+            restore_history: state.restore_history,
+            save_action: state.save_action,
+            restore_action: state.restore_action,
+            quiet: state.quiet,
+            no_echo: state.no_echo,
+            interactive: state.interactive,
+            verbose: state.verbose,
+            load_site_file: state.load_site_file,
+            load_init_file: state.load_init_file,
+            no_renviron: state.no_renviron,
+        })
+    }
+
+    fn write(self) {
+        with_startup_state(|state| {
+            state.restore_history = self.restore_history;
+            state.save_action = self.save_action;
+            state.restore_action = self.restore_action;
+            state.quiet = self.quiet;
+            state.no_echo = self.no_echo;
+            state.interactive = self.interactive;
+            state.verbose = self.verbose;
+            state.load_site_file = self.load_site_file;
+            state.load_init_file = self.load_init_file;
+            state.no_renviron = self.no_renviron;
+        });
+    }
+
+    fn reset_to_defaults() {
+        Self {
+            restore_history: 1,
+            save_action: SA_SAVEASK,
+            restore_action: SA_RESTORE,
+            quiet: 0,
+            no_echo: 0,
+            interactive: 1,
+            verbose: 0,
+            load_site_file: 1,
+            load_init_file: 1,
+            no_renviron: 0,
+        }
+        .write();
+    }
+
+    fn get(field: impl FnOnce(&Self) -> c_int) -> c_int {
+        let state = Self::read();
+        field(&state)
+    }
+}
+
+#[cfg(test)]
+fn command_line_args_for_test() -> Vec<String> {
+    with_startup_state(|state| {
+        state
+            .command_line_args
+            .iter()
+            .map(|arg| {
+                arg.as_ref()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            })
+            .collect()
+    })
+}
+
+pub(crate) fn sync_eval_control_from_command_line() {
+    with_required_current_instance(|inst| {
+        inst.eval_state.quiet = inst.startup_state.quiet;
+        inst.eval_state.no_echo = inst.startup_state.no_echo;
+        inst.eval_state.interactive = inst.startup_state.interactive;
+        inst.eval_state.verbose = inst.startup_state.verbose;
+    });
+}
+
+#[cfg(test)]
+fn set_interactive(value: bool) {
+    with_startup_state(|state| {
+        state.interactive = c_int::from(value);
+    });
+    with_required_current_instance(|inst| {
+        inst.eval_state.interactive = c_int::from(value);
+    });
+}
+
+#[cfg(test)]
+fn set_no_echo(value: bool) {
+    with_startup_state(|state| {
+        state.no_echo = c_int::from(value);
+    });
+    with_required_current_instance(|inst| {
+        inst.eval_state.no_echo = c_int::from(value);
+    });
+}
+
+#[cfg(test)]
+fn set_quiet(value: bool) {
+    with_startup_state(|state| {
+        state.quiet = c_int::from(value);
+    });
+    with_required_current_instance(|inst| {
+        inst.eval_state.quiet = c_int::from(value);
+    });
+}
+
+#[cfg(test)]
+fn set_verbose(value: bool) {
+    with_startup_state(|state| {
+        state.verbose = c_int::from(value);
+    });
+    with_required_current_instance(|inst| {
+        inst.eval_state.verbose = c_int::from(value);
+    });
+}
+
+#[cfg(test)]
+fn set_restore_history(value: bool) {
+    with_startup_state(|state| {
+        state.restore_history = c_int::from(value);
+    });
+}
+
+#[cfg(test)]
+fn set_save_action(value: c_int) {
+    with_startup_state(|state| {
+        state.save_action = value;
+    });
+}
+
+#[cfg(test)]
+fn set_restore_action(value: c_int) {
+    with_startup_state(|state| {
+        state.restore_action = value;
+    });
+}
+
+#[cfg(test)]
+fn set_load_site_file(value: bool) {
+    with_startup_state(|state| {
+        state.load_site_file = c_int::from(value);
+    });
+}
+
+#[cfg(test)]
+fn set_load_init_file(value: bool) {
+    with_startup_state(|state| {
+        state.load_init_file = c_int::from(value);
+    });
+}
+
+#[cfg(test)]
+fn set_no_renviron(value: bool) {
+    with_startup_state(|state| {
+        state.no_renviron = c_int::from(value);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -127,22 +269,18 @@ pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
         let _ = args;
         let _ = env;
 
-        let n = NumCommandLineArgs.with(|v| v.get()) as R_xlen_t;
-        let num_args = NumCommandLineArgs.with(|v| v.get());
-        let vals = Rf_allocVector(SEXPTYPE::STRSXP, num_args);
+        let command_line_args = with_startup_state(|state| state.command_line_args.clone());
+        let num_args = command_line_args.len().min(c_int::MAX as usize);
+        let vals = Rf_allocVector(SEXPTYPE::STRSXP, num_args as c_int);
 
         if vals.is_null() {
             return ptr::null_mut();
         }
 
-        let cmd_args = CommandLineArgs.with(|v| v.get());
-        if !cmd_args.is_null() {
-            for i in 0..num_args as usize {
-                let arg_ptr = *cmd_args.add(i);
-                if !arg_ptr.is_null() {
-                    let charsxp = Rf_mkChar(arg_ptr);
-                    SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
-                }
+        for (i, arg) in command_line_args.iter().take(num_args).enumerate() {
+            if let Some(arg) = arg {
+                let charsxp = Rf_mkChar(arg.as_ptr());
+                SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
             }
         }
 
@@ -160,10 +298,9 @@ pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
 /// It handles options like `--save`, `--no-save`, `--restore`, `--vanilla`,
 /// `--quiet`, `--verbose`, etc. Unknown options are passed through.
 ///
-/// Since the full `Rstart` struct is not defined in this port, the option
-/// values are stored in module-level statics (SaveAction, RestoreAction, etc.)
-/// rather than in an Rstart struct. The `Rp` parameter is accepted for ABI
-/// compatibility but unused.
+/// Startup options are stored on the active `RInstance`, not in process-global
+/// statics, so multiple sessions can parse command lines independently. The
+/// `Rp` parameter is accepted for source compatibility but unused.
 ///
 /// Returns the new argument count (with common args removed).
 ///
@@ -185,8 +322,8 @@ pub unsafe fn R_common_command_line(
         let ac = *pac;
         let mut newac: c_int = 1;
         let mut processing: bool = true;
-
-        R_RestoreHistory.with(|v| v.set(1));
+        let mut options = CommandLineOptionState::read();
+        options.restore_history = 1;
 
         let mut i: c_int = 1;
         while i < ac {
@@ -214,41 +351,41 @@ pub unsafe fn R_common_command_line(
                     }
                     processing = false;
                 } else if arg_bytes == b"--save" {
-                    SaveAction.with(|v| v.set(SA_SAVE));
+                    options.save_action = SA_SAVE;
                 } else if arg_bytes == b"--no-save" {
-                    SaveAction.with(|v| v.set(SA_NOSAVE));
+                    options.save_action = SA_NOSAVE;
                 } else if arg_bytes == b"--restore" {
-                    RestoreAction.with(|v| v.set(SA_RESTORE));
+                    options.restore_action = SA_RESTORE;
                 } else if arg_bytes == b"--no-restore" {
-                    RestoreAction.with(|v| v.set(SA_NORESTORE));
-                    R_RestoreHistory.with(|v| v.set(0));
+                    options.restore_action = SA_NORESTORE;
+                    options.restore_history = 0;
                 } else if arg_bytes == b"--no-restore-data" {
-                    RestoreAction.with(|v| v.set(SA_NORESTORE));
+                    options.restore_action = SA_NORESTORE;
                 } else if arg_bytes == b"--no-restore-history" {
-                    R_RestoreHistory.with(|v| v.set(0));
+                    options.restore_history = 0;
                 } else if arg_bytes == b"--silent" || arg_bytes == b"--quiet" || arg_bytes == b"-q"
                 {
-                    R_Quiet.with(|v| v.set(1));
+                    options.quiet = 1;
                 } else if arg_bytes == b"--vanilla" {
-                    SaveAction.with(|v| v.set(SA_NOSAVE));
-                    RestoreAction.with(|v| v.set(SA_NORESTORE));
-                    R_RestoreHistory.with(|v| v.set(0));
-                    LoadSiteFile.with(|v| v.set(0));
-                    LoadInitFile.with(|v| v.set(0));
-                    NoRenviron.with(|v| v.set(1));
+                    options.save_action = SA_NOSAVE;
+                    options.restore_action = SA_NORESTORE;
+                    options.restore_history = 0;
+                    options.load_site_file = 0;
+                    options.load_init_file = 0;
+                    options.no_renviron = 1;
                 } else if arg_bytes == b"--no-environ" {
-                    NoRenviron.with(|v| v.set(1));
+                    options.no_renviron = 1;
                 } else if arg_bytes == b"--verbose" {
-                    R_Verbose.with(|v| v.set(1));
+                    options.verbose = 1;
                 } else if arg_bytes == b"--no-echo" || arg_bytes == b"--slave" || arg_bytes == b"-s"
                 {
-                    R_Quiet.with(|v| v.set(1));
-                    R_NoEcho.with(|v| v.set(1));
-                    SaveAction.with(|v| v.set(SA_NOSAVE));
+                    options.quiet = 1;
+                    options.no_echo = 1;
+                    options.save_action = SA_NOSAVE;
                 } else if arg_bytes == b"--no-site-file" {
-                    LoadSiteFile.with(|v| v.set(0));
+                    options.load_site_file = 0;
                 } else if arg_bytes == b"--no-init-file" {
-                    LoadInitFile.with(|v| v.set(0));
+                    options.load_init_file = 0;
                 } else if arg_bytes.starts_with(b"--encoding") {
                     let mut p: Option<&[u8]> = None;
                     if arg_bytes.len() > 11 {
@@ -304,6 +441,8 @@ pub unsafe fn R_common_command_line(
         }
 
         *pac = newac;
+        options.write();
+        sync_eval_control_from_command_line();
         newac
     }
 }
@@ -314,52 +453,52 @@ pub unsafe fn R_common_command_line(
 
 /// Returns the current SaveAction setting.
 pub unsafe fn R_GetSaveAction() -> c_int {
-    SaveAction.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.save_action)
 }
 
 /// Returns the current RestoreAction setting.
 pub unsafe fn R_GetRestoreAction() -> c_int {
-    RestoreAction.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.restore_action)
 }
 
 /// Returns whether R_RestoreHistory is set.
 pub unsafe fn R_GetRestoreHistory() -> c_int {
-    R_RestoreHistory.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.restore_history)
 }
 
 /// Returns whether R_Quiet mode is active.
 pub unsafe fn R_GetQuiet() -> c_int {
-    R_Quiet.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.quiet)
 }
 
 /// Returns whether R_NoEcho mode is active.
 pub unsafe fn R_GetNoEcho() -> c_int {
-    R_NoEcho.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.no_echo)
 }
 
 /// Returns whether R is running interactively.
 pub unsafe fn R_GetInteractive() -> c_int {
-    R_Interactive.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.interactive)
 }
 
 /// Returns whether R_Verbose mode is active.
 pub unsafe fn R_GetVerbose() -> c_int {
-    R_Verbose.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.verbose)
 }
 
 /// Returns whether site file loading is enabled.
 pub unsafe fn R_GetLoadSiteFile() -> c_int {
-    LoadSiteFile.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.load_site_file)
 }
 
 /// Returns whether init file loading is enabled.
 pub unsafe fn R_GetLoadInitFile() -> c_int {
-    LoadInitFile.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.load_init_file)
 }
 
 /// Returns whether .Renviron processing is disabled.
 pub unsafe fn R_GetNoRenviron() -> c_int {
-    NoRenviron.with(|v| v.get())
+    CommandLineOptionState::get(|state| state.no_renviron)
 }
 
 // ---------------------------------------------------------------------------
@@ -369,8 +508,9 @@ pub unsafe fn R_GetNoRenviron() -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+    use crate::sexp::session::RSession;
     use std::ffi::CString;
-    use std::sync::Mutex;
 
     fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
         match r {
@@ -378,10 +518,6 @@ mod tests {
             Err(e) => panic!("test failed: {e:?}"),
         }
     }
-
-    /// Mutex to serialize tests that touch global mutable statics,
-    /// preventing race conditions when tests run in parallel.
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     /// Helper: build a null-terminated argv array from Rust strings.
     /// Uses libc::malloc so we can safely free after R_common_command_line
@@ -423,7 +559,7 @@ mod tests {
     #[test]
     fn test_set_command_line_arguments() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
 
             let args = ["R", "--vanilla", "-e", "print(1)"];
             let mut argv: Vec<*mut c_char> = make_argv(&args);
@@ -431,39 +567,16 @@ mod tests {
 
             R_set_command_line_arguments(argc, argv.as_mut_ptr());
 
-            assert_eq!(NumCommandLineArgs.with(|v| v.get()), 4);
-            assert!(!CommandLineArgs.with(|v| v.get()).is_null());
-
-            for i in 0..args.len() {
-                let stored = *CommandLineArgs.with(|v| v.get()).add(i);
-                assert!(!stored.is_null());
-                let s = CStr::from_ptr(stored).to_str().unwrap_or("");
-                assert_eq!(s, args[i]);
-            }
-
-            for i in 0..NumCommandLineArgs.with(|v| v.get()) as usize {
-                let p = *CommandLineArgs.with(|v| v.get()).add(i);
-                if !p.is_null() {
-                    let _ = CString::from_raw(p);
-                }
-            }
-            if !CommandLineArgs.with(|v| v.get()).is_null() {
-                let layout = std::alloc::Layout::array::<*mut c_char>(4)
-                    .unwrap_or_else(|_| std::alloc::Layout::new::<*mut c_char>());
-                std::alloc::dealloc(CommandLineArgs.with(|v| v.get()) as *mut u8, layout);
-            }
+            assert_eq!(command_line_args_for_test(), args);
 
             free_argv(&mut argv);
-
-            NumCommandLineArgs.with(|v| v.set(0));
-            CommandLineArgs.with(|v| v.set(ptr::null_mut()));
         }
     }
 
     #[test]
     fn test_command_args_empty() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
 
             let args: [&str; 0] = [];
             let mut argv: Vec<*mut c_char> = vec![];
@@ -471,29 +584,45 @@ mod tests {
 
             R_set_command_line_arguments(argc, argv.as_mut_ptr());
 
-            assert_eq!(NumCommandLineArgs.with(|v| v.get()), 0);
+            assert!(command_line_args_for_test().is_empty());
+        }
+    }
 
-            CommandLineArgs.with(|v| v.set(ptr::null_mut()));
+    #[test]
+    fn command_line_args_are_session_local() {
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            let first_args = ["R", "--first"];
+            let mut first_argv = make_argv(&first_args);
+            R_set_command_line_arguments(first_args.len() as c_int, first_argv.as_mut_ptr());
+            assert_eq!(command_line_args_for_test(), first_args);
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            let second_args = ["R", "--second", "script.R"];
+            let mut second_argv = make_argv(&second_args);
+            R_set_command_line_arguments(second_args.len() as c_int, second_argv.as_mut_ptr());
+            assert_eq!(command_line_args_for_test(), second_args);
+
+            set_current_instance(&mut first);
+            assert_eq!(command_line_args_for_test(), first_args);
+
+            clear_current_instance();
+            free_argv(&mut first_argv);
+            free_argv(&mut second_argv);
         }
     }
 
     fn reset_state() {
-        SaveAction.with(|v| v.set(SA_SAVEASK));
-        RestoreAction.with(|v| v.set(SA_RESTORE));
-        R_RestoreHistory.with(|v| v.set(1));
-        R_Quiet.with(|v| v.set(0));
-        R_NoEcho.with(|v| v.set(0));
-        R_Interactive.with(|v| v.set(1));
-        R_Verbose.with(|v| v.set(0));
-        LoadSiteFile.with(|v| v.set(1));
-        LoadInitFile.with(|v| v.set(1));
-        NoRenviron.with(|v| v.set(0));
+        CommandLineOptionState::reset_to_defaults();
+        sync_eval_control_from_command_line();
     }
 
     #[test]
     fn test_common_command_line_save_no_save() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
             let args = ["R", "--save", "--no-save", "script.R"];
@@ -502,7 +631,7 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(SaveAction.with(|v| v.get()), SA_NOSAVE);
+            assert_eq!(R_GetSaveAction(), SA_NOSAVE);
             // argv[0] (R) + unknown "script.R" = 2
             assert_eq!(argc, 2);
 
@@ -513,7 +642,7 @@ mod tests {
     #[test]
     fn test_common_command_line_vanilla() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
             let args = ["R", "--vanilla", "script.R"];
@@ -522,12 +651,12 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(SaveAction.with(|v| v.get()), SA_NOSAVE);
-            assert_eq!(RestoreAction.with(|v| v.get()), SA_NORESTORE);
-            assert_eq!(R_RestoreHistory.with(|v| v.get()), 0);
-            assert_eq!(LoadSiteFile.with(|v| v.get()), 0);
-            assert_eq!(LoadInitFile.with(|v| v.get()), 0);
-            assert_eq!(NoRenviron.with(|v| v.get()), 1);
+            assert_eq!(R_GetSaveAction(), SA_NOSAVE);
+            assert_eq!(R_GetRestoreAction(), SA_NORESTORE);
+            assert_eq!(R_GetRestoreHistory(), 0);
+            assert_eq!(R_GetLoadSiteFile(), 0);
+            assert_eq!(R_GetLoadInitFile(), 0);
+            assert_eq!(R_GetNoRenviron(), 1);
             assert_eq!(argc, 2); // R + script.R
 
             free_argv(&mut argv);
@@ -537,7 +666,7 @@ mod tests {
     #[test]
     fn test_common_command_line_quiet_verbose() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
             let args = ["R", "-q", "--verbose", "script.R"];
@@ -546,9 +675,9 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(R_Quiet.with(|v| v.get()), 1);
-            assert_eq!(R_Verbose.with(|v| v.get()), 1);
-            assert_eq!(SaveAction.with(|v| v.get()), SA_SAVEASK); // -q alone doesn't change SaveAction
+            assert_eq!(R_GetQuiet(), 1);
+            assert_eq!(R_GetVerbose(), 1);
+            assert_eq!(R_GetSaveAction(), SA_SAVEASK); // -q alone doesn't change SaveAction
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -558,7 +687,7 @@ mod tests {
     #[test]
     fn test_common_command_line_slave() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
             let args = ["R", "--slave", "script.R"];
@@ -567,9 +696,9 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(R_Quiet.with(|v| v.get()), 1);
-            assert_eq!(R_NoEcho.with(|v| v.get()), 1);
-            assert_eq!(SaveAction.with(|v| v.get()), SA_NOSAVE);
+            assert_eq!(R_GetQuiet(), 1);
+            assert_eq!(R_GetNoEcho(), 1);
+            assert_eq!(R_GetSaveAction(), SA_NOSAVE);
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -579,7 +708,7 @@ mod tests {
     #[test]
     fn test_common_command_line_args_separator() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
             // Everything after --args passes through, even if it looks like an option
@@ -589,7 +718,7 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(SaveAction.with(|v| v.get()), SA_SAVE);
+            assert_eq!(R_GetSaveAction(), SA_SAVE);
             // argv[0] + --args + --no-save + file.R = 4
             assert_eq!(argc, 4);
 
@@ -600,7 +729,7 @@ mod tests {
     #[test]
     fn test_common_command_line_restore_options() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
             let args = ["R", "--no-restore-data", "--no-restore-history", "script.R"];
@@ -609,8 +738,8 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(RestoreAction.with(|v| v.get()), SA_NORESTORE);
-            assert_eq!(R_RestoreHistory.with(|v| v.get()), 0);
+            assert_eq!(R_GetRestoreAction(), SA_NORESTORE);
+            assert_eq!(R_GetRestoreHistory(), 0);
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -620,7 +749,7 @@ mod tests {
     #[test]
     fn test_common_command_line_no_site_init_file() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
             let args = ["R", "--no-site-file", "--no-init-file", "script.R"];
@@ -629,8 +758,8 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(LoadSiteFile.with(|v| v.get()), 0);
-            assert_eq!(LoadInitFile.with(|v| v.get()), 0);
+            assert_eq!(R_GetLoadSiteFile(), 0);
+            assert_eq!(R_GetLoadInitFile(), 0);
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -640,7 +769,8 @@ mod tests {
     #[test]
     fn test_common_command_line_unknown_option_pass_through() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
+            reset_state();
 
             let args = ["R", "--unknown-option", "script.R"];
             let mut argv: Vec<*mut c_char> = make_argv(&args);
@@ -658,37 +788,37 @@ mod tests {
     #[test]
     fn test_getters() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _session = RSession::new();
             reset_state();
 
-            SaveAction.with(|v| v.set(SA_NOSAVE));
+            set_save_action(SA_NOSAVE);
             assert_eq!(R_GetSaveAction(), SA_NOSAVE);
 
-            RestoreAction.with(|v| v.set(SA_NORESTORE));
+            set_restore_action(SA_NORESTORE);
             assert_eq!(R_GetRestoreAction(), SA_NORESTORE);
 
-            R_RestoreHistory.with(|v| v.set(0));
+            set_restore_history(false);
             assert_eq!(R_GetRestoreHistory(), 0);
 
-            R_Quiet.with(|v| v.set(1));
+            set_quiet(true);
             assert_eq!(R_GetQuiet(), 1);
 
-            R_NoEcho.with(|v| v.set(1));
+            set_no_echo(true);
             assert_eq!(R_GetNoEcho(), 1);
 
-            R_Interactive.with(|v| v.set(0));
+            set_interactive(false);
             assert_eq!(R_GetInteractive(), 0);
 
-            R_Verbose.with(|v| v.set(1));
+            set_verbose(true);
             assert_eq!(R_GetVerbose(), 1);
 
-            LoadSiteFile.with(|v| v.set(0));
+            set_load_site_file(false);
             assert_eq!(R_GetLoadSiteFile(), 0);
 
-            LoadInitFile.with(|v| v.set(0));
+            set_load_init_file(false);
             assert_eq!(R_GetLoadInitFile(), 0);
 
-            NoRenviron.with(|v| v.set(1));
+            set_no_renviron(true);
             assert_eq!(R_GetNoRenviron(), 1);
 
             reset_state();

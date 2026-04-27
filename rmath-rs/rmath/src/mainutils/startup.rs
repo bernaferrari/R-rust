@@ -30,6 +30,17 @@ use crate::sexp::instance::with_current_instance;
 #[derive(Debug, Clone)]
 pub struct StartupRuntimeState {
     workspace_name: CString,
+    pub(crate) command_line_args: Vec<Option<CString>>,
+    pub(crate) restore_history: c_int,
+    pub(crate) save_action: c_int,
+    pub(crate) restore_action: c_int,
+    pub(crate) quiet: c_int,
+    pub(crate) no_echo: c_int,
+    pub(crate) interactive: c_int,
+    pub(crate) verbose: c_int,
+    pub(crate) load_site_file: c_int,
+    pub(crate) load_init_file: c_int,
+    pub(crate) no_renviron: c_int,
 }
 
 impl StartupRuntimeState {
@@ -53,6 +64,17 @@ impl Default for StartupRuntimeState {
     fn default() -> Self {
         Self {
             workspace_name: c".RData".to_owned(),
+            command_line_args: Vec::new(),
+            restore_history: 1,
+            save_action: 1,
+            restore_action: 1,
+            quiet: 0,
+            no_echo: 0,
+            interactive: 1,
+            verbose: 0,
+            load_site_file: 1,
+            load_init_file: 1,
+            no_renviron: 0,
         }
     }
 }
@@ -211,10 +233,9 @@ pub unsafe fn R_OpenSiteFile() -> *mut FILE {
         // Simple, straightforward implementation mirroring the C logic but without
         // complex expansion/ARCH handling.
         // Check environment variable first, then fall back to R_HOME/etc.
-        // LoadSiteFile flag is always true in this port unless explicitly disabled.
-        #[allow(unused_mut)]
-        let mut _load_site = true;
-        if !_load_site {
+        let load_site =
+            with_current_instance(|inst| inst.startup_state.load_site_file != 0).unwrap_or(true);
+        if !load_site {
             return ptr::null_mut();
         }
 
