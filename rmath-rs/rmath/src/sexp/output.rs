@@ -115,6 +115,35 @@ fn format_real_value(v: f64) -> String {
     }
 }
 
+fn is_finite_r_number(v: f64) -> bool {
+    !R_IsNA(v) && !R_IsNaN(v) && v.is_finite()
+}
+
+fn format_real_value_for_vector(v: f64, force_decimal_for_whole: bool) -> String {
+    if force_decimal_for_whole && is_finite_r_number(v) && v.fract() == 0.0 {
+        format!("{v:.1}")
+    } else {
+        format_real_value(v)
+    }
+}
+
+fn format_real_vector_values(x: Sexp<'_>, limit: R_xlen_t) -> Vec<String> {
+    let values: Vec<_> = (0..x.len().min(limit)).map(|i| x.try_real_elt(i)).collect();
+    let force_decimal_for_whole = values
+        .iter()
+        .filter_map(|value| value.as_ref().ok().copied())
+        .any(|value| is_finite_r_number(value) && value.fract() != 0.0);
+
+    values
+        .into_iter()
+        .map(|value| {
+            value
+                .map(|value| format_real_value_for_vector(value, force_decimal_for_whole))
+                .unwrap_or_else(format_access_error)
+        })
+        .collect()
+}
+
 fn trim_float(s: String) -> String {
     let (mut mantissa, exponent) = match s.find(['e', 'E']) {
         Some(idx) => (s[..idx].to_string(), &s[idx..]),
@@ -622,9 +651,7 @@ pub fn print_value(x: Sexp<'_>) {
             if x.len() == 1 {
                 emit(&format!("[1] {}\n", format_real_element(x, 0)));
             } else {
-                let vals: Vec<String> = (0..x.len().min(10))
-                    .map(|i| format_real_element(x, i))
-                    .collect();
+                let vals = format_real_vector_values(x, 10);
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
             }
@@ -735,9 +762,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if x.len() == 1 {
                 format!("[1] {}", format_real_element(x, 0))
             } else {
-                let vals: Vec<String> = (0..x.len().min(10))
-                    .map(|i| format_real_element(x, i))
-                    .collect();
+                let vals = format_real_vector_values(x, 10);
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 format!("[1] {}{}", format_aligned_values(vals), suffix)
             }
@@ -988,5 +1013,26 @@ mod tests {
     fn test_numeric_vector_alignment_matches_r_simple_output() {
         let vals = vec!["2".to_string(), "NA".to_string(), "4".to_string()];
         assert_eq!(format_aligned_values(vals), " 2 NA  4");
+    }
+
+    #[test]
+    fn test_real_vector_alignment_keeps_decimal_column() {
+        let mut session = RSession::new();
+        session
+            .with_arena(|arena| {
+                let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
+                let sexp = Sexp::from_raw(ptr).expect("real vector allocation failed");
+                sexp.try_set_real_elt(0, 200.0).expect("set real");
+                sexp.try_set_real_elt(1, 80200.0).expect("set real");
+                sexp.try_set_real_elt(2, 100.5).expect("set real");
+
+                assert_eq!(format_sexp_direct(sexp), "[1]   200.0 80200.0   100.5");
+
+                start_capture();
+                print_value(sexp);
+                let output = stop_capture();
+                assert_eq!(output.stdout, "[1]   200.0 80200.0   100.5\n");
+            })
+            .unwrap();
     }
 }
