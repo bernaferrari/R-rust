@@ -49,6 +49,7 @@ mod tests {
 
     #[test]
     fn test_singular_with_domain() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let domain = b"myapp\0" as *const u8 as *const c_char;
             let s1 = b"file\0" as *const u8 as *const c_char;
@@ -60,6 +61,7 @@ mod tests {
 
     #[test]
     fn test_plural_no_catalog() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let domain = b"myapp\0" as *const u8 as *const c_char;
             let s1 = b"file\0" as *const u8 as *const c_char;

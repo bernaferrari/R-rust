@@ -5,7 +5,6 @@
 
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 
@@ -305,12 +304,8 @@ impl Default for IntlRuntimeState {
     }
 }
 
-thread_local! {
-    static INTL_RUNTIME: RefCell<IntlRuntimeState> = RefCell::new(IntlRuntimeState::default());
-}
-
 pub(crate) fn with_intl_runtime<R>(f: impl FnOnce(&mut IntlRuntimeState) -> R) -> R {
-    INTL_RUNTIME.with(|runtime| f(&mut runtime.borrow_mut()))
+    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.intl_state))
 }
 
 // ---------------------------------------------------------------------------

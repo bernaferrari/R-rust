@@ -607,6 +607,7 @@ mod tests {
 
     #[test]
     fn test_dcigettext_returns_msgid() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msgid = b"hello world\0" as *const u8 as *const c_char;
             let result = libintl_dcigettext(
@@ -623,6 +624,7 @@ mod tests {
 
     #[test]
     fn test_dcigettext_plural() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msgid1 = b"file\0" as *const u8 as *const c_char;
             let msgid2 = b"files\0" as *const u8 as *const c_char;

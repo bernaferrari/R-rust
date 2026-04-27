@@ -246,6 +246,7 @@ mod tests {
 
     #[test]
     fn test_find_domain_null_locale() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dirname = b"/usr/share/locale\0".as_ptr() as *const c_char;
             let domain = b"messages\0".as_ptr() as *const c_char;

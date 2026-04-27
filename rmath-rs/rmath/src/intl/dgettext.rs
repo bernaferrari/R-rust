@@ -29,6 +29,7 @@ mod tests {
 
     #[test]
     fn test_returns_msgid() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msgid = b"hello\0" as *const u8 as *const c_char;
             let result = libintl_dgettext(std::ptr::null(), msgid);
@@ -38,6 +39,7 @@ mod tests {
 
     #[test]
     fn test_with_domain() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let domain = b"mydomain\0" as *const u8 as *const c_char;
             let msgid = b"test\0" as *const u8 as *const c_char;

@@ -30,6 +30,7 @@ mod tests {
 
     #[test]
     fn test_bindtextdomain_alias() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = bindtextdomain(
                 b"test\0" as *const u8 as *const c_char,
@@ -41,6 +42,7 @@ mod tests {
 
     #[test]
     fn test_bind_textdomain_codeset_alias() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = bind_textdomain_codeset(
                 b"test\0" as *const u8 as *const c_char,

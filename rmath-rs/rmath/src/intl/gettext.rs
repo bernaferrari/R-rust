@@ -33,6 +33,7 @@ mod tests {
 
     #[test]
     fn test_returns_msgid() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msgid = b"hello world\0" as *const u8 as *const c_char;
             let result = libintl_gettext(msgid);

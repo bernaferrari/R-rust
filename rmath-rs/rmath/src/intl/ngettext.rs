@@ -43,6 +43,7 @@ mod tests {
 
     #[test]
     fn test_singular_form() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = b"cat\0" as *const u8 as *const c_char;
             let s2 = b"cats\0" as *const u8 as *const c_char;
@@ -53,6 +54,7 @@ mod tests {
 
     #[test]
     fn test_plural_no_catalog() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = b"cat\0" as *const u8 as *const c_char;
             let s2 = b"cats\0" as *const u8 as *const c_char;

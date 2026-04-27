@@ -97,6 +97,7 @@ mod tests {
 
     #[test]
     fn test_null_returns_current() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Reset to default first.
             let _ = libintl_textdomain(std::ptr::null());
@@ -110,6 +111,7 @@ mod tests {
 
     #[test]
     fn test_empty_string_resets_to_default() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Set a custom domain first.
             let custom = b"myapp\0" as *const u8 as *const c_char;
@@ -126,6 +128,7 @@ mod tests {
 
     #[test]
     fn test_set_custom_domain() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Reset to known state.
             let empty = b"\0" as *const u8 as *const c_char;
@@ -144,6 +147,7 @@ mod tests {
 
     #[test]
     fn test_counter_increments() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let empty = b"\0" as *const u8 as *const c_char;
             let _ = libintl_textdomain(empty);
@@ -155,6 +159,42 @@ mod tests {
 
             // Clean up.
             let _ = libintl_textdomain(empty);
+        }
+    }
+
+    #[test]
+    fn test_textdomain_state_is_session_local() {
+        use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            let custom = b"first_domain\0" as *const u8 as *const c_char;
+            let first_result = libintl_textdomain(custom);
+            assert_eq!(
+                std::ffi::CStr::from_ptr(first_result)
+                    .to_str()
+                    .unwrap_or(""),
+                "first_domain"
+            );
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            let second_result = libintl_textdomain(std::ptr::null());
+            assert_eq!(
+                std::ffi::CStr::from_ptr(second_result)
+                    .to_str()
+                    .unwrap_or(""),
+                "messages"
+            );
+
+            set_current_instance(&mut first);
+            let first_again = libintl_textdomain(std::ptr::null());
+            assert_eq!(
+                std::ffi::CStr::from_ptr(first_again).to_str().unwrap_or(""),
+                "first_domain"
+            );
+            clear_current_instance();
         }
     }
 }

@@ -41,6 +41,7 @@ mod tests {
 
     #[test]
     fn test_returns_msgid() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msgid = b"hello\0" as *const u8 as *const c_char;
             let result = libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES);
@@ -50,6 +51,7 @@ mod tests {
 
     #[test]
     fn test_with_null_domain() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msgid = b"world\0" as *const u8 as *const c_char;
             let result = libintl_dcgettext(std::ptr::null(), msgid, types::LC_MESSAGES);

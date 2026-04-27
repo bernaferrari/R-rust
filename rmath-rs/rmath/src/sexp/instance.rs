@@ -280,6 +280,9 @@ pub struct RInstance {
     pub(crate) unix_system_state: crate::unix::system::UnixSystemRuntimeState,
     /// Per-instance startup/workspace metadata.
     pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
+    /// Per-instance gettext catalog and domain state.
+    #[cfg(not(target_os = "android"))]
+    pub(crate) intl_state: crate::intl::types::IntlRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
     pub(crate) tzone_state: crate::tzone::TzRuntimeState,
     /// Per-instance appl::lbfgsb solver continuation state.
@@ -428,6 +431,8 @@ impl RInstance {
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
+            #[cfg(not(target_os = "android"))]
+            intl_state: crate::intl::types::IntlRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             lbfgsb_state: crate::appl::lbfgsb::LbfgsbState::default(),
             symbols: HashMap::new(),
