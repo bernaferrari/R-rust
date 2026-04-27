@@ -357,6 +357,9 @@ pub struct RInstance {
     pub(crate) plot3d_state: crate::library::graphics::plot3d::Plot3dState,
     /// Per-instance graphics dendrogram scratch state.
     pub(crate) dendrogram_state: crate::library::graphics::plot::DendrogramState,
+    /// Per-instance parallel fork child/process bookkeeping.
+    #[cfg(all(unix, not(target_os = "android")))]
+    pub(crate) parallel_fork_state: crate::library::parallel::fork::ForkRuntimeState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -448,6 +451,8 @@ impl RInstance {
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
             plot3d_state: crate::library::graphics::plot3d::Plot3dState::default(),
             dendrogram_state: crate::library::graphics::plot::DendrogramState::default(),
+            #[cfg(all(unix, not(target_os = "android")))]
+            parallel_fork_state: crate::library::parallel::fork::ForkRuntimeState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };
