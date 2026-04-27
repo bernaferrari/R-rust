@@ -124,12 +124,12 @@ unsafe fn count_line_sections(text: *const c_char, align: c_int) -> c_int {
     if align == ALIGN_NONE {
         return 1;
     }
-    let len = strlen(text);
+    let len = unsafe { strlen(text) };
     if len < 2 {
         return 1;
     }
     let mut nl: c_int = 1;
-    let bytes = core::slice::from_raw_parts(text as *const u8, len);
+    let bytes = unsafe { core::slice::from_raw_parts(text as *const u8, len) };
     for i in 0..len - 1 {
         if bytes[i as usize] == b'\n' {
             nl += 1;
@@ -297,8 +297,10 @@ pub(crate) unsafe fn compute_text_extents(
 pub unsafe fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
     if !str.is_null() && n > 0 {
         let copy_len = XV_COPYRIGHT.len().min(n as usize) - 1;
-        libc::strncpy(str, XV_COPYRIGHT.as_ptr() as *const c_char, copy_len);
-        *str.add(copy_len) = 0; // null terminate
+        unsafe {
+            libc::strncpy(str, XV_COPYRIGHT.as_ptr() as *const c_char, copy_len);
+            *str.add(copy_len) = 0; // null terminate
+        }
     }
     XV_VERSION
 }

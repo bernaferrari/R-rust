@@ -580,7 +580,7 @@ pub unsafe fn in_R_GetX11Image(
 /// data editor window using X11/Xt widgets.
 /// Stub returns R_NilValue.
 pub unsafe fn in_RX11_dataentry(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    crate::sexp::globals::R_NilValue()
+    unsafe { crate::sexp::globals::R_NilValue() }
 }
 
 /// in_R_X11_dataviewer - X11 data viewer entry point.
@@ -588,7 +588,7 @@ pub unsafe fn in_RX11_dataentry(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP)
 /// In a real implementation, this opens a read-only data viewer.
 /// Stub returns R_NilValue.
 pub unsafe fn in_R_X11_dataviewer(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    crate::sexp::globals::R_NilValue()
+    unsafe { crate::sexp::globals::R_NilValue() }
 }
 
 // ── Module-private stubs (symbols already exported elsewhere) ─────────
@@ -663,7 +663,7 @@ unsafe fn _R_SaveAsBmp(
     fp: *mut c_void,
     res: c_int,
 ) -> c_int {
-    super::rbitmap::save_as_bmp(d, width, height, gp, bgr, fp, res)
+    unsafe { super::rbitmap::save_as_bmp(d, width, height, gp, bgr, fp, res) }
 }
 
 #[cfg(test)]

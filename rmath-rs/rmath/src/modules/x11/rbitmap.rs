@@ -52,18 +52,22 @@ const BMP_HEADERSIZE: u32 = 54;
 /// Write a little-endian 16-bit word to a FILE.
 unsafe fn bmpw(x: u16, fp: *mut c_void) {
     let bytes = x.to_le_bytes();
-    libc::fwrite(bytes.as_ptr() as *const c_void, 2, 1, fp as *mut libc::FILE);
+    unsafe {
+        libc::fwrite(bytes.as_ptr() as *const c_void, 2, 1, fp as *mut libc::FILE);
+    }
 }
 
 /// Write a little-endian 32-bit double word to a FILE.
 unsafe fn bmpdw(x: u32, fp: *mut c_void) {
     let bytes = x.to_le_bytes();
-    libc::fwrite(bytes.as_ptr() as *const c_void, 4, 1, fp as *mut libc::FILE);
+    unsafe {
+        libc::fwrite(bytes.as_ptr() as *const c_void, 4, 1, fp as *mut libc::FILE);
+    }
 }
 
 /// Write a single byte to a FILE.
 unsafe fn bmpputc(a: u8, fp: *mut c_void) -> bool {
-    libc::fputc(a as c_int, fp as *mut libc::FILE) != libc::EOF
+    unsafe { libc::fputc(a as c_int, fp as *mut libc::FILE) != libc::EOF }
 }
 
 // ── Real BMP writer implementation ───────────────────────────────────
@@ -94,6 +98,10 @@ pub(crate) unsafe fn save_as_bmp(
         Some(f) => f,
         None => return 0,
     };
+    let pixel_at = |row: u32, col: u32| -> u32 { unsafe { gp_fn(d, row as c_int, col as c_int) } };
+    let put_byte = |value: u8| -> bool { unsafe { bmpputc(value, fp) } };
+    let write_u16 = |value: u16| unsafe { bmpw(value, fp) };
+    let write_u32 = |value: u32| unsafe { bmpdw(value, fp) };
 
     let w = width as u32;
     let h = height as u32;
@@ -112,7 +120,7 @@ pub(crate) unsafe fn save_as_bmp(
             if !withpalette {
                 break;
             }
-            let col = gp_fn(d, i as c_int, j as c_int) & 0xFFFFFF;
+            let col = pixel_at(i, j) & 0xFFFFFF;
 
             // Binary search the palette
             let mut low: isize = 0;
@@ -160,22 +168,22 @@ pub(crate) unsafe fn save_as_bmp(
     }
 
     // Write the BMP file header (14 bytes)
-    if !bmpputc(b'B', fp) || !bmpputc(b'M', fp) {
+    if !put_byte(b'B') || !put_byte(b'M') {
         return 0;
     }
-    bmpdw(bf_size, fp); // bfSize
-    bmpw(0, fp); // bfReserved1
-    bmpw(0, fp); // bfReserved2
-    bmpdw(bf_off_bits, fp); // bfOffBits
+    write_u32(bf_size); // bfSize
+    write_u16(0); // bfReserved1
+    write_u16(0); // bfReserved2
+    write_u32(bf_off_bits); // bfOffBits
 
     // Write the DIB header (BITMAPINFOHEADER, 40 bytes)
-    bmpdw(40, fp); // biSize (Windows V3)
-    bmpdw(w, fp); // biWidth
-    bmpdw(h, fp); // biHeight (positive = bottom-up)
-    bmpw(1, fp); // biPlanes
-    bmpw(bi_bit_count, fp); // biBitCount
-    bmpdw(0, fp); // biCompression = BI_RGB
-    bmpdw(0, fp); // biSizeImage (not needed for BI_RGB)
+    write_u32(40); // biSize (Windows V3)
+    write_u32(w); // biWidth
+    write_u32(h); // biHeight (positive = bottom-up)
+    write_u16(1); // biPlanes
+    write_u16(bi_bit_count); // biBitCount
+    write_u32(0); // biCompression = BI_RGB
+    write_u32(0); // biSizeImage (not needed for BI_RGB)
 
     // Resolution: pixels per metre
     let lres: u32 = if res > 0 {
@@ -183,10 +191,10 @@ pub(crate) unsafe fn save_as_bmp(
     } else {
         2835 // 72 ppi = 2835 pixels/metre
     };
-    bmpdw(lres, fp); // biXPelsPerMeter
-    bmpdw(lres, fp); // biYPelsPerMeter
-    bmpdw(bi_clr_used, fp); // biClrUsed
-    bmpdw(0, fp); // biClrImportant
+    write_u32(lres); // biXPelsPerMeter
+    write_u32(lres); // biYPelsPerMeter
+    write_u32(bi_clr_used); // biClrUsed
+    write_u32(0); // biClrImportant
 
     // Write the image data
     if withpalette {
@@ -196,7 +204,7 @@ pub(crate) unsafe fn save_as_bmp(
             let blue = get_blue(col, bshift);
             let green = get_green(col, 8);
             let red = get_red(col, rshift);
-            if !bmpputc(blue, fp) || !bmpputc(green, fp) || !bmpputc(red, fp) || !bmpputc(0, fp) {
+            if !put_byte(blue) || !put_byte(green) || !put_byte(red) || !put_byte(0) {
                 return 0;
             }
         }
@@ -210,7 +218,7 @@ pub(crate) unsafe fn save_as_bmp(
         // BMP rows are bottom-up
         for i in (0..h).rev() {
             for j in 0..w {
-                let col = gp_fn(d, i as c_int, j as c_int) & 0xFFFFFF;
+                let col = pixel_at(i, j) & 0xFFFFFF;
 
                 // Binary search the palette (colour must be there)
                 let mut low: isize = 0;
@@ -227,20 +235,20 @@ pub(crate) unsafe fn save_as_bmp(
                     }
                 }
 
-                if !bmpputc(mid as u8, fp) {
+                if !put_byte(mid as u8) {
                     return 0;
                 }
             }
             // Write padding bytes
             for _ in 0..pad {
-                if !bmpputc(0, fp) {
+                if !put_byte(0) {
                     return 0;
                 }
             }
         }
     } else {
         // 24-bit image: write null bmiColors entry
-        bmpdw(0, fp);
+        write_u32(0);
 
         // Row stride must be padded to 4-byte boundary
         let row_bytes = 3 * w;
@@ -252,17 +260,17 @@ pub(crate) unsafe fn save_as_bmp(
         // BMP rows are bottom-up
         for i in (0..h).rev() {
             for j in 0..w {
-                let col = gp_fn(d, i as c_int, j as c_int) & 0xFFFFFF;
+                let col = pixel_at(i, j) & 0xFFFFFF;
                 let blue = get_blue(col, bshift);
                 let green = get_green(col, 8);
                 let red = get_red(col, rshift);
-                if !bmpputc(blue, fp) || !bmpputc(green, fp) || !bmpputc(red, fp) {
+                if !put_byte(blue) || !put_byte(green) || !put_byte(red) {
                     return 0;
                 }
             }
             // Write padding bytes
             for _ in 0..pad {
-                if !bmpputc(0, fp) {
+                if !put_byte(0) {
                     return 0;
                 }
             }
@@ -334,5 +342,5 @@ unsafe fn R_SaveAsBmp(
     fp: *mut c_void,
     res: c_int,
 ) -> c_int {
-    save_as_bmp(d, width, height, gp, bgr, fp, res)
+    unsafe { save_as_bmp(d, width, height, gp, bgr, fp, res) }
 }
