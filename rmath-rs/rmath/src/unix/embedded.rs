@@ -5,8 +5,9 @@
 //! Provides `Rf_initEmbeddedR` and `Rf_endEmbeddedR` for embedding
 //! R within another application via libR.
 
-use std::cell::Cell;
 use std::os::raw::{c_char, c_int};
+
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // Stub: Rf_initialize_R, setup_Rmainloop, fpu_setup
@@ -31,12 +32,6 @@ unsafe fn R_CleanTempDir() {}
 unsafe fn PrintWarnings() {}
 
 // ---------------------------------------------------------------------------
-// R_Interactive global
-// ---------------------------------------------------------------------------
-
-thread_local! { static R_Interactive: Cell<c_int> = Cell::new(0); }
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -50,7 +45,10 @@ thread_local! { static R_Interactive: Cell<c_int> = Cell::new(0); }
 pub unsafe fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
     unsafe {
         Rf_initialize_R(argc, argv);
-        R_Interactive.with(|v| v.set(1)); /* TRUE */
+        with_required_current_instance(|instance| {
+            instance.startup_state.interactive = 1;
+            instance.eval_state.interactive = 1;
+        });
         setup_Rmainloop();
         1
     }
@@ -86,16 +84,21 @@ mod tests {
 
     #[test]
     fn test_init_embedded_r_runs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let argv: &mut [*mut c_char] = &mut [];
             let result = Rf_initEmbeddedR(0, argv.as_mut_ptr());
             assert_eq!(result, 1);
-            assert_eq!(R_Interactive.with(|v| v.get()), 1);
+            with_required_current_instance(|instance| {
+                assert_eq!(instance.startup_state.interactive, 1);
+                assert_eq!(instance.eval_state.interactive, 1);
+            });
         }
     }
 
     #[test]
     fn test_end_embedded_r_runs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             Rf_endEmbeddedR(0);
         }
@@ -103,6 +106,7 @@ mod tests {
 
     #[test]
     fn test_end_embedded_r_fatal_runs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             Rf_endEmbeddedR(1);
         }
