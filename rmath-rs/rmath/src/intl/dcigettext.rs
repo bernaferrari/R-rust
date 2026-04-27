@@ -278,7 +278,7 @@ unsafe fn dcigettext_internal(
         let effective_domain = if !domainname.is_null() {
             domainname
         } else {
-            _nl_current_default_domain.with(|v| v.get())
+            with_intl_runtime(|intl| intl.current_default_domain)
         };
 
         if effective_domain.is_null() {
@@ -514,7 +514,7 @@ pub unsafe fn libintl_dcigettext(
         let effective_domain = if !domainname.is_null() {
             domainname
         } else {
-            _nl_current_default_domain.with(|v| v.get())
+            with_intl_runtime(|intl| intl.current_default_domain)
         };
 
         if effective_domain.is_null() {
@@ -522,7 +522,7 @@ pub unsafe fn libintl_dcigettext(
         }
 
         // Find the binding for this domain.
-        let mut binding: *mut binding = _nl_domain_bindings.with(|v| v.get());
+        let mut binding: *mut binding = with_intl_runtime(|intl| intl.domain_bindings);
         while !binding.is_null() {
             if c_streq((*binding).domainname.as_ptr(), effective_domain) {
                 break;

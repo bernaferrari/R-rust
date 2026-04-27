@@ -41,7 +41,7 @@ unsafe fn set_binding_values(
         }
 
         let mut modified: c_int = 0;
-        let mut binding: *mut binding = _nl_domain_bindings.with(|v| v.get());
+        let mut binding: *mut binding = with_intl_runtime(|intl| intl.domain_bindings);
 
         // Walk the sorted linked list looking for an existing binding.
         while !binding.is_null() {
@@ -212,16 +212,12 @@ unsafe fn set_binding_values(
                 }
 
                 // --- Enqueue the new binding in sorted order ---
-                if _nl_domain_bindings.with(|v| v.get()).is_null()
-                    || libc_strcmp(
-                        domainname,
-                        (*_nl_domain_bindings.with(|v| v.get())).domainname.as_ptr(),
-                    ) < 0
-                {
-                    (*new_binding).next = _nl_domain_bindings.with(|v| v.get());
-                    _nl_domain_bindings.with(|v| v.set(new_binding));
+                let head = with_intl_runtime(|intl| intl.domain_bindings);
+                if head.is_null() || libc_strcmp(domainname, (*head).domainname.as_ptr()) < 0 {
+                    (*new_binding).next = head;
+                    with_intl_runtime(|intl| intl.domain_bindings = new_binding);
                 } else {
-                    let mut cur = _nl_domain_bindings.with(|v| v.get());
+                    let mut cur = head;
                     while !(*cur).next.is_null()
                         && libc_strcmp(domainname, (*(*cur).next).domainname.as_ptr()) > 0
                     {
@@ -237,7 +233,7 @@ unsafe fn set_binding_values(
 
         // If we modified any binding, flush the caches.
         if modified != 0 {
-            _nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
+            with_intl_runtime(|intl| intl.msg_cat_cntr += 1);
         }
     }
 }

@@ -5,14 +5,11 @@
 
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use super::types::*;
-
-thread_local! { static _nl_loaded_domains: RefCell<*mut loaded_l10nfile> = RefCell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Internal helpers (matching external functions declared in loadinfo.h)
@@ -140,7 +137,7 @@ pub unsafe fn _nl_find_domain(
         };
 
         retval = _nl_make_l10nflist(
-            _nl_loaded_domains.with(|v| std::ptr::addr_of_mut!(*v.borrow_mut())),
+            with_intl_runtime(|intl| &mut intl.loaded_domains as *mut *mut loaded_l10nfile),
             dirname,
             dirname_len,
             0,
@@ -193,7 +190,7 @@ pub unsafe fn _nl_find_domain(
         }
 
         retval = _nl_make_l10nflist(
-            _nl_loaded_domains.with(|v| std::ptr::addr_of_mut!(*v.borrow_mut())),
+            with_intl_runtime(|intl| &mut intl.loaded_domains as *mut *mut loaded_l10nfile),
             dirname,
             dirname_len,
             mask,

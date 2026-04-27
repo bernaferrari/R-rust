@@ -23,19 +23,21 @@ pub unsafe fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
     unsafe {
         // A NULL pointer requests the current setting.
         if domainname.is_null() {
-            return types::_nl_current_default_domain.with(|v| v.get()) as *mut c_char;
+            return types::with_intl_runtime(|intl| intl.current_default_domain) as *mut c_char;
         }
 
-        let old_domain = types::_nl_current_default_domain.with(|v| v.get());
+        let old_domain = types::with_intl_runtime(|intl| intl.current_default_domain);
 
         // If domain name is the null string, set to default domain "messages".
         if *domainname == 0 || ptr::eq(domainname, types::_nl_default_default_domain.as_ptr()) {
-            types::_nl_current_default_domain
-                .with(|v| v.set(types::_nl_default_default_domain.as_ptr()));
-            let new_domain = types::_nl_current_default_domain.with(|v| v.get()) as *mut c_char;
+            types::with_intl_runtime(|intl| {
+                intl.current_default_domain = types::_nl_default_default_domain.as_ptr();
+            });
+            let new_domain =
+                types::with_intl_runtime(|intl| intl.current_default_domain) as *mut c_char;
 
             // Signal a change of the loaded catalogs.
-            types::_nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
+            types::with_intl_runtime(|intl| intl.msg_cat_cntr += 1);
 
             return new_domain;
         }
@@ -63,13 +65,13 @@ pub unsafe fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
             new_domain = c_strdup(domainname);
 
             if !new_domain.is_null() {
-                types::_nl_current_default_domain.with(|v| v.set(new_domain));
+                types::with_intl_runtime(|intl| intl.current_default_domain = new_domain);
             }
         }
 
         // Signal a change of the loaded catalogs if the call was successful.
         if !new_domain.is_null() {
-            types::_nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
+            types::with_intl_runtime(|intl| intl.msg_cat_cntr += 1);
 
             // Free old domain if it was dynamically allocated.
             if old_domain != new_domain as *const c_char
@@ -146,10 +148,10 @@ mod tests {
             let empty = b"\0" as *const u8 as *const c_char;
             let _ = libintl_textdomain(empty);
 
-            let before = types::_nl_msg_cat_cntr.with(|v| v.get());
+            let before = types::with_intl_runtime(|intl| intl.msg_cat_cntr);
             let custom = b"counter_test\0" as *const u8 as *const c_char;
             let _ = libintl_textdomain(custom);
-            assert!(types::_nl_msg_cat_cntr.with(|v| v.get()) > before);
+            assert!(types::with_intl_runtime(|intl| intl.msg_cat_cntr) > before);
 
             // Clean up.
             let _ = libintl_textdomain(empty);

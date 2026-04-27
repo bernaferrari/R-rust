@@ -4,7 +4,7 @@
 
 #![allow(non_snake_case, dead_code)]
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 
@@ -294,24 +294,41 @@ pub(crate) struct arguments {
 }
 
 // ---------------------------------------------------------------------------
-// Global state (stubs matching the C extern declarations in gettextP.h)
+// Runtime state
 // ---------------------------------------------------------------------------
 
 /// Default message catalog directory.
 pub(crate) static _nl_default_dirname: [c_char; 2] = [0x2f, 0];
 
-/// Linked list of domain bindings.
-thread_local! { pub(crate) static _nl_domain_bindings: Cell<*mut binding> = Cell::new(ptr::null_mut()); }
-
-/// Counter incremented when bindings change (flush caches).
-thread_local! { pub(crate) static _nl_msg_cat_cntr: Cell<c_int> = Cell::new(0); }
-
 /// Default default text domain name ("messages").
 pub(crate) static _nl_default_default_domain: [c_char; 9] =
     [0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0];
 
-/// Current default text domain (initially points to the default).
-thread_local! { pub(crate) static _nl_current_default_domain: Cell<*const c_char> = Cell::new(_nl_default_default_domain.as_ptr()); }
+pub(crate) struct IntlRuntimeState {
+    pub domain_bindings: *mut binding,
+    pub msg_cat_cntr: c_int,
+    pub current_default_domain: *const c_char,
+    pub loaded_domains: *mut loaded_l10nfile,
+}
+
+impl Default for IntlRuntimeState {
+    fn default() -> Self {
+        Self {
+            domain_bindings: ptr::null_mut(),
+            msg_cat_cntr: 0,
+            current_default_domain: _nl_default_default_domain.as_ptr(),
+            loaded_domains: ptr::null_mut(),
+        }
+    }
+}
+
+thread_local! {
+    static INTL_RUNTIME: RefCell<IntlRuntimeState> = RefCell::new(IntlRuntimeState::default());
+}
+
+pub(crate) fn with_intl_runtime<R>(f: impl FnOnce(&mut IntlRuntimeState) -> R) -> R {
+    INTL_RUNTIME.with(|runtime| f(&mut runtime.borrow_mut()))
+}
 
 // ---------------------------------------------------------------------------
 // Helper functions
