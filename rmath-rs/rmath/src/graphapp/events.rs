@@ -5,46 +5,37 @@
 //!
 //! Ported from events.c - winprocs, timers, and event dispatch.
 
-use std::cell::{Cell, RefCell};
 use std::os::raw::{c_int, c_long, c_uint, c_void};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use super::runtime::{TimerState, with_graphapp_runtime};
 use super::types::*;
 
-thread_local! { static KEYSTATE: Cell<c_int> = Cell::new(0); }
-thread_local! { static TIMER_STATE: RefCell<TimerState> = RefCell::new(TimerState::default()); }
-
-#[derive(Clone, Copy, Default)]
-struct TimerState {
-    timeout: timerfn,
-    data: *mut c_void,
-    millisec: c_uint,
-    pending: bool,
-}
-
 pub fn init_events() {
-    KEYSTATE.with(|state| state.set(0));
-    TIMER_STATE.with(|state| *state.borrow_mut() = TimerState::default());
+    with_graphapp_runtime(|runtime| {
+        runtime.events.keystate = 0;
+        runtime.events.timer = TimerState::default();
+    });
 }
 
 pub fn finish_events() {
-    TIMER_STATE.with(|state| *state.borrow_mut() = TimerState::default());
+    with_graphapp_runtime(|runtime| runtime.events.timer = TimerState::default());
 }
 
 pub unsafe fn handle_control(_hwnd: *mut c_void, _message: c_uint) {}
 
 pub fn getkeystate() -> c_int {
-    KEYSTATE.with(|v| v.get())
+    with_graphapp_runtime(|runtime| runtime.events.keystate)
 }
 
 pub fn drawall() {}
 
 pub fn peekevent() -> c_int {
-    TIMER_STATE.with(|state| i32::from(state.borrow().pending))
+    with_graphapp_runtime(|runtime| i32::from(runtime.events.timer.pending))
 }
 
 pub fn waitevent() {
-    let millisec = TIMER_STATE.with(|state| state.borrow().millisec);
+    let millisec = with_graphapp_runtime(|runtime| runtime.events.timer.millisec);
     if millisec > 0 {
         delay(millisec);
     }
@@ -52,13 +43,13 @@ pub fn waitevent() {
 }
 
 pub fn doevent() -> c_int {
-    let (timeout, data) = TIMER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        if !state.pending {
+    let (timeout, data) = with_graphapp_runtime(|runtime| {
+        let timer = &mut runtime.events.timer;
+        if !timer.pending {
             return (None, std::ptr::null_mut());
         }
-        state.pending = false;
-        (state.timeout, state.data)
+        timer.pending = false;
+        (timer.timeout, timer.data)
     });
 
     if let Some(timeout) = timeout {
@@ -82,20 +73,20 @@ pub unsafe fn execapp(_cmd: *mut std::os::raw::c_char) -> c_int {
 }
 
 pub fn settimer(millisec: c_uint) -> c_int {
-    TIMER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        state.millisec = millisec;
-        state.pending = millisec > 0 && state.timeout.is_some();
+    with_graphapp_runtime(|runtime| {
+        let timer = &mut runtime.events.timer;
+        timer.millisec = millisec;
+        timer.pending = millisec > 0 && timer.timeout.is_some();
     });
     i32::from(millisec > 0)
 }
 
 pub unsafe fn settimerfn(timeout: timerfn, data: *mut c_void) {
-    TIMER_STATE.with(|state| {
-        let mut state = state.borrow_mut();
-        state.timeout = timeout;
-        state.data = data;
-        state.pending = state.millisec > 0 && state.timeout.is_some();
+    with_graphapp_runtime(|runtime| {
+        let timer = &mut runtime.events.timer;
+        timer.timeout = timeout;
+        timer.data = data;
+        timer.pending = timer.millisec > 0 && timer.timeout.is_some();
     });
 }
 

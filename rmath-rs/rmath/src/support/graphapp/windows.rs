@@ -5,34 +5,31 @@
 //!
 //! Ported from windows.c - manipulating on-screen windows.
 
-use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_long};
 use std::ptr;
 
-use super::{memory, objects, strings};
+use super::runtime::with_graphapp_runtime;
 use super::types::*;
-
-thread_local! { static CURRENT_WINDOW: Cell<window> = Cell::new(ptr::null_mut()); }
-thread_local! { static ACTIVE_WINDOWS: Cell<c_int> = Cell::new(0); }
+use super::{memory, objects, strings};
 
 pub fn get_current_window() -> window {
-    CURRENT_WINDOW.with(|v| v.get())
+    with_graphapp_runtime(|runtime| runtime.windows.current)
 }
 
 pub fn set_current_window(w: window) {
-    CURRENT_WINDOW.with(|v| v.set(w));
+    with_graphapp_runtime(|runtime| runtime.windows.current = w);
 }
 
 pub fn get_active_windows() -> c_int {
-    ACTIVE_WINDOWS.with(|v| v.get())
+    with_graphapp_runtime(|runtime| runtime.windows.active_count)
 }
 
 pub fn set_active_windows(n: c_int) {
-    ACTIVE_WINDOWS.with(|v| v.set(n));
+    with_graphapp_runtime(|runtime| runtime.windows.active_count = n);
 }
 
 pub fn decrement_active_windows() {
-    ACTIVE_WINDOWS.with(|v| v.set(v.get() - 1));
+    with_graphapp_runtime(|runtime| runtime.windows.active_count -= 1);
 }
 
 unsafe fn alloc_drawstate(dest: drawing) -> drawstate {

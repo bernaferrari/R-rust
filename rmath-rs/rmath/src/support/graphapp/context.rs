@@ -5,25 +5,15 @@
 //!
 //! Ported from context.c - internal functions for manipulating device contexts.
 
-use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::ptr;
 
+use super::runtime::ContextEntry;
+use super::runtime::with_graphapp_runtime;
 use super::types::*;
 
-#[derive(Clone, Copy)]
-struct ContextEntry {
-    obj: object,
-    dc: *mut c_void,
-    old: *mut c_void,
-}
-
-thread_local! {
-    static CONTEXTS: RefCell<Vec<ContextEntry>> = RefCell::new(Vec::new());
-}
-
 pub fn init_contexts() {
-    CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
+    with_graphapp_runtime(|runtime| runtime.contexts.clear());
 }
 
 pub fn finish_contexts() {
@@ -31,20 +21,19 @@ pub fn finish_contexts() {
 }
 
 pub fn del_all_contexts() {
-    CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
+    with_graphapp_runtime(|runtime| runtime.contexts.clear());
 }
 
 pub unsafe fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) {
     if obj.is_null() {
         return;
     }
-    CONTEXTS.with(|contexts| {
-        let mut contexts = contexts.borrow_mut();
-        if let Some(entry) = contexts.iter_mut().find(|entry| entry.obj == obj) {
+    with_graphapp_runtime(|runtime| {
+        if let Some(entry) = runtime.contexts.iter_mut().find(|entry| entry.obj == obj) {
             entry.dc = dc;
             entry.old = old;
         } else {
-            contexts.push(ContextEntry { obj, dc, old });
+            runtime.contexts.push(ContextEntry { obj, dc, old });
         }
     });
 }
@@ -53,9 +42,9 @@ pub unsafe fn get_context(obj: object) -> *mut c_void {
     if obj.is_null() {
         return ptr::null_mut();
     }
-    CONTEXTS.with(|contexts| {
-        contexts
-            .borrow()
+    with_graphapp_runtime(|runtime| {
+        runtime
+            .contexts
             .iter()
             .find(|entry| entry.obj == obj)
             .map_or(ptr::null_mut(), |entry| entry.dc)
@@ -66,8 +55,8 @@ pub unsafe fn remove_context(obj: object) {
     if obj.is_null() {
         return;
     }
-    CONTEXTS.with(|contexts| {
-        if let Some(entry) = contexts.borrow_mut().iter_mut().find(|entry| entry.obj == obj) {
+    with_graphapp_runtime(|runtime| {
+        if let Some(entry) = runtime.contexts.iter_mut().find(|entry| entry.obj == obj) {
             entry.dc = entry.old;
             entry.old = ptr::null_mut();
         }
@@ -78,9 +67,7 @@ pub unsafe fn del_context(obj: object) {
     if obj.is_null() {
         return;
     }
-    CONTEXTS.with(|contexts| {
-        contexts.borrow_mut().retain(|entry| entry.obj != obj);
-    });
+    with_graphapp_runtime(|runtime| runtime.contexts.retain(|entry| entry.obj != obj));
 }
 
 pub unsafe fn fix_brush(dc: *mut c_void, obj: drawing, brush: *mut c_void) {

@@ -27,6 +27,7 @@ pub mod metafile;
 pub mod objects;
 pub mod printer;
 pub mod rgb;
+pub mod runtime;
 pub mod status;
 pub mod strings;
 pub mod tooltips;

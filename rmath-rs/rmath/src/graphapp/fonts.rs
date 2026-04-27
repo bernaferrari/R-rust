@@ -5,19 +5,13 @@
 //!
 //! Ported from fonts.c - font creation and measurement.
 
-use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
 use super::objects;
+use super::runtime::{FontState, with_graphapp_runtime};
 use super::strings;
 use super::types::*;
-
-thread_local! { pub static FixedFont: Cell<font> = Cell::new(ptr::null_mut()); }
-thread_local! { pub static SystemFont: Cell<font> = Cell::new(ptr::null_mut()); }
-thread_local! { pub static Times: Cell<font> = Cell::new(ptr::null_mut()); }
-thread_local! { pub static Helvetica: Cell<font> = Cell::new(ptr::null_mut()); }
-thread_local! { pub static Courier: Cell<font> = Cell::new(ptr::null_mut()); }
 
 unsafe fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
     let obj = unsafe { objects::new_object(FontObject, ptr::null_mut(), ptr::null_mut()) };
@@ -40,18 +34,27 @@ unsafe fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
     obj
 }
 
-fn ensure_font(slot: &Cell<font>, name: &str, style: c_int, size: c_int) {
-    if slot.get().is_null() {
-        slot.set(unsafe { alloc_font(name, style, size) });
+fn ensure_font(slot: &mut font, name: &str, style: c_int, size: c_int) {
+    if slot.is_null() {
+        *slot = unsafe { alloc_font(name, style, size) };
     }
 }
 
 pub fn init_fonts() {
-    FixedFont.with(|slot| ensure_font(slot, "Fixed", FixedWidth, 10));
-    SystemFont.with(|slot| ensure_font(slot, "System", Plain, 10));
-    Times.with(|slot| ensure_font(slot, "Times", Plain, 12));
-    Helvetica.with(|slot| ensure_font(slot, "Helvetica", SansSerif, 12));
-    Courier.with(|slot| ensure_font(slot, "Courier", FixedWidth, 10));
+    with_graphapp_runtime(|runtime| {
+        let FontState {
+            fixed,
+            system,
+            times,
+            helvetica,
+            courier,
+        } = &mut runtime.fonts;
+        ensure_font(fixed, "Fixed", FixedWidth, 10);
+        ensure_font(system, "System", Plain, 10);
+        ensure_font(times, "Times", Plain, 12);
+        ensure_font(helvetica, "Helvetica", SansSerif, 12);
+        ensure_font(courier, "Courier", FixedWidth, 10);
+    });
 }
 
 pub fn getSysFontSize() -> c_int {
@@ -68,7 +71,9 @@ mod tests {
             objects::init_objects();
         }
         init_fonts();
-        SystemFont.with(|slot| assert!(!slot.get().is_null()));
-        FixedFont.with(|slot| assert!(!slot.get().is_null()));
+        with_graphapp_runtime(|runtime| {
+            assert!(!runtime.fonts.system.is_null());
+            assert!(!runtime.fonts.fixed.is_null());
+        });
     }
 }
