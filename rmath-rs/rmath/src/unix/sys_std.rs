@@ -13,10 +13,11 @@
 //! The readline integration (~400 lines) is stubbed since it requires
 //! FFI to libreadline/libedit which may not be available.
 
-use std::cell::Cell;
 use std::io::{self, BufRead, Write};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
+
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // Stub: R_CleanUp dispatch
@@ -221,9 +222,31 @@ pub unsafe fn Rstd_read_history(_file: *const c_char) {}
 // Event loop stubs
 // ---------------------------------------------------------------------------
 
-thread_local! { pub static R_PolledEvents: Cell<Option<unsafe extern "C" fn()>> = Cell::new(None); }
+#[derive(Default)]
+pub(crate) struct SysStdRuntimeState {
+    pub(crate) r_polled_events: Option<unsafe extern "C" fn()>,
+    pub(crate) rg_polled_events: Option<unsafe extern "C" fn()>,
+}
 
-thread_local! { pub static Rg_PolledEvents: Cell<Option<unsafe extern "C" fn()>> = Cell::new(None); }
+pub(crate) fn set_r_polled_events(callback: Option<unsafe extern "C" fn()>) {
+    with_required_current_instance(|instance| {
+        instance.sys_std_state.r_polled_events = callback;
+    });
+}
+
+pub(crate) fn set_rg_polled_events(callback: Option<unsafe extern "C" fn()>) {
+    with_required_current_instance(|instance| {
+        instance.sys_std_state.rg_polled_events = callback;
+    });
+}
+
+pub(crate) fn r_polled_events() -> Option<unsafe extern "C" fn()> {
+    with_required_current_instance(|instance| instance.sys_std_state.r_polled_events)
+}
+
+pub(crate) fn rg_polled_events() -> Option<unsafe extern "C" fn()> {
+    with_required_current_instance(|instance| instance.sys_std_state.rg_polled_events)
+}
 
 /// Wait for the specified number of microseconds.
 pub fn R_wait_usec(_usec: c_int) {
@@ -256,7 +279,65 @@ pub unsafe fn R_ExpandFileName_readline(_s: *const c_char, _buff: *mut c_char) -
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
     use super::*;
+
+    unsafe extern "C" fn first_callback() {}
+
+    unsafe extern "C" fn second_callback() {}
+
+    fn callback_addr(callback: Option<unsafe extern "C" fn()>) -> usize {
+        callback.map(callback_fn_addr).unwrap_or(0)
+    }
+
+    fn callback_fn_addr(callback: unsafe extern "C" fn()) -> usize {
+        callback as *const () as usize
+    }
+
+    #[test]
+    fn polled_event_callbacks_are_session_local() {
+        let mut first = RInstance::new();
+        unsafe {
+            set_current_instance(&mut first);
+        }
+        set_r_polled_events(Some(first_callback));
+        set_rg_polled_events(Some(first_callback));
+        assert_eq!(
+            callback_addr(r_polled_events()),
+            callback_fn_addr(first_callback)
+        );
+        assert_eq!(
+            callback_addr(rg_polled_events()),
+            callback_fn_addr(first_callback)
+        );
+
+        let mut second = RInstance::new();
+        unsafe {
+            set_current_instance(&mut second);
+        }
+        assert!(r_polled_events().is_none());
+        assert!(rg_polled_events().is_none());
+        set_r_polled_events(Some(second_callback));
+        assert_eq!(
+            callback_addr(r_polled_events()),
+            callback_fn_addr(second_callback)
+        );
+
+        unsafe {
+            set_current_instance(&mut first);
+        }
+        assert_eq!(
+            callback_addr(r_polled_events()),
+            callback_fn_addr(first_callback)
+        );
+        assert_eq!(
+            callback_addr(rg_polled_events()),
+            callback_fn_addr(first_callback)
+        );
+
+        clear_current_instance();
+    }
 
     #[test]
     fn test_std_write_console() {
