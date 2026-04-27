@@ -18,7 +18,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::pGEDevDesc;
@@ -370,17 +370,18 @@ unsafe fn transformArithmeticUnitToINCHES(
 
 pub unsafe fn unit(value: c_double, unit_id: c_int) -> SEXP {
     unsafe {
-        let units = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+        let units = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+        let _units_guard = protect(units);
         SET_VECTOR_ELT(units, 0 as R_xlen_t, Rf_allocVector(SEXPTYPE::VECSXP, 3));
         let u = VECTOR_ELT(units, 0);
         SET_VECTOR_ELT(u, 0 as R_xlen_t, Rf_ScalarReal(value));
         SET_VECTOR_ELT(u, 1 as R_xlen_t, R_NilValue());
         SET_VECTOR_ELT(u, 2 as R_xlen_t, Rf_ScalarInteger(unit_id));
-        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        let _cl_guard = protect(cl);
         SET_STRING_ELT(cl, 0 as R_xlen_t, Rf_mkChar(c"unit".as_ptr()));
         SET_STRING_ELT(cl, 1 as R_xlen_t, Rf_mkChar(c"unit_v2".as_ptr()));
         R_classgets(units, cl);
-        Rf_unprotect(2);
         units
     }
 }
@@ -415,7 +416,8 @@ pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
         }
         let i = index % l;
         if isSimpleUnit(unit) {
-            let new_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+            let new_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+            let _new_unit_guard = protect(new_unit);
             SET_VECTOR_ELT(
                 new_unit,
                 0 as R_xlen_t,
@@ -429,16 +431,15 @@ pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
                 0
             };
             SET_VECTOR_ELT(new_unit, 2 as R_xlen_t, Rf_ScalarInteger(unit_val));
-            Rf_unprotect(1);
             return new_unit;
         }
         if isNewUnit(unit) {
             return VECTOR_ELT(unit, i as R_xlen_t);
         }
         // Fallback: try to upgrade
-        let unit2 = Rf_protect(upgradeUnit(unit));
+        let unit2 = upgradeUnit(unit);
+        let _unit2_guard = protect(unit2);
         let res = unitScalar(unit2, index);
-        Rf_unprotect(1);
         res
     }
 }
@@ -1111,9 +1112,11 @@ pub unsafe fn validUnits(units: SEXP) -> SEXP {
 pub unsafe fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(amount);
-        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
+        let answer = Rf_allocVector(SEXPTYPE::VECSXP, n);
+        let _answer_guard = protect(answer);
         for i in 0..n as R_xlen_t {
-            let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+            let this_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+            let _this_unit_guard = protect(this_unit);
             SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(*REAL(amount).add(i as usize)));
             SET_VECTOR_ELT(this_unit, 1, VECTOR_ELT(data, i));
             SET_VECTOR_ELT(
@@ -1122,13 +1125,12 @@ pub unsafe fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP 
                 Rf_ScalarInteger(*INTEGER(unit_type).add(i as usize)),
             );
             SET_VECTOR_ELT(answer, i, this_unit);
-            Rf_unprotect(1);
         }
-        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        let _cl_guard = protect(cl);
         SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
         SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
         R_classgets(answer, cl);
-        Rf_unprotect(2);
         answer
     }
 }
@@ -1170,23 +1172,25 @@ pub unsafe fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
         if nmax == 0 {
             return R_NilValue();
         }
-        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nmax));
+        let answer = Rf_allocVector(SEXPTYPE::VECSXP, nmax);
+        let _answer_guard = protect(answer);
         for i in 0..nmax as R_xlen_t {
-            let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+            let this_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+            let _this_unit_guard = protect(this_unit);
             SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
-            let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+            let data = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            let _data_guard = protect(data);
             SET_VECTOR_ELT(data, 0, unitScalar(u1, (i as c_int) % n1));
             SET_VECTOR_ELT(data, 1, unitScalar(u2, (i as c_int) % n2));
             SET_VECTOR_ELT(this_unit, 1, data);
             SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(L_SUM));
             SET_VECTOR_ELT(answer, i, this_unit);
-            Rf_unprotect(2);
         }
-        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        let _cl_guard = protect(cl);
         SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
         SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
         R_classgets(answer, cl);
-        Rf_unprotect(2);
         answer
     }
 }
@@ -1199,7 +1203,8 @@ pub unsafe fn multUnits(units: SEXP, values: SEXP) -> SEXP {
         if n == 0 {
             return R_NilValue();
         }
-        let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
+        let answer = crate::main::duplicate::Rf_duplicate(units);
+        let _answer_guard = protect(answer);
         if isSimpleUnit(answer) {
             for i in 0..n as usize {
                 *REAL(answer).add(i) *= *REAL(values).add(i % nv as usize);
@@ -1213,7 +1218,6 @@ pub unsafe fn multUnits(units: SEXP, values: SEXP) -> SEXP {
                 }
             }
         }
-        Rf_unprotect(1);
         answer
     }
 }
@@ -1225,7 +1229,8 @@ pub unsafe fn flipUnits(units: SEXP) -> SEXP {
         if n == 0 {
             return R_NilValue();
         }
-        let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
+        let answer = crate::main::duplicate::Rf_duplicate(units);
+        let _answer_guard = protect(answer);
         if isSimpleUnit(answer) {
             for i in 0..n as usize {
                 *REAL(answer).add(i) = -*REAL(answer).add(i);
@@ -1239,7 +1244,6 @@ pub unsafe fn flipUnits(units: SEXP) -> SEXP {
                 }
             }
         }
-        Rf_unprotect(1);
         answer
     }
 }
@@ -1255,17 +1259,19 @@ pub unsafe fn absoluteUnits(_units: SEXP) -> SEXP {
 pub unsafe fn summaryUnits(units: SEXP, op_type: SEXP) -> SEXP {
     unsafe {
         let op = *INTEGER(op_type);
-        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+        let this_unit = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+        let _this_unit_guard = protect(this_unit);
         SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
         SET_VECTOR_ELT(this_unit, 1, units);
         SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(op));
-        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+        let answer = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+        let _answer_guard = protect(answer);
         SET_VECTOR_ELT(answer, 0, this_unit);
-        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        let _cl_guard = protect(cl);
         SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
         SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
         R_classgets(answer, cl);
-        Rf_unprotect(3);
         answer
     }
 }
@@ -1421,20 +1427,23 @@ mod tests {
 
     unsafe fn string_unit(value: c_double, text: &[u8], unit_id: c_int) -> SEXP {
         unsafe {
-            let amount = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+            let amount = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+            let _amount_guard = protect(amount);
             *REAL(amount).add(0) = value;
-            let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
-            let chars = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let data = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            let _data_guard = protect(data);
+            let chars = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _chars_guard = protect(chars);
             SET_STRING_ELT(
                 chars,
                 0,
                 Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int),
             );
             SET_VECTOR_ELT(data, 0, chars);
-            let unit_type = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+            let unit_type = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            let _unit_type_guard = protect(unit_type);
             *INTEGER(unit_type).add(0) = unit_id;
             let result = constructUnits(amount, data, unit_type);
-            Rf_unprotect(4);
             result
         }
     }
