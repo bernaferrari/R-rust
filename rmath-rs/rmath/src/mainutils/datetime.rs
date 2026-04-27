@@ -729,7 +729,8 @@ fn makelt(tm: &stm, ans: SEXP, i: R_xlen_t, valid: bool, frac_secs: c_double) {
 unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
     unsafe {
         let nans: c_int = 11;
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nans as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nans as R_xlen_t);
+        let _ans_guard = protect(ans);
         for i in 0..9 {
             let sexp: c_int = if i > 0 {
                 SEXPTYPE::INTSXP.into()
@@ -741,7 +742,8 @@ unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
         SET_VECTOR_ELT(ans, 9, Rf_allocVector3(SEXPTYPE::STRSXP, n)); // zone
         SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP, n)); // gmtoff
 
-        let ansnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nans as R_xlen_t));
+        let ansnames = Rf_allocVector3(SEXPTYPE::STRSXP, nans as R_xlen_t);
+        let _ansnames_guard = protect(ansnames);
         for i in 0..nans {
             let cstr = CString::new(ltnames[i as usize]).unwrap_or_default();
             SET_STRING_ELT(ansnames, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
@@ -768,12 +770,15 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 message: "invalid 'x' value: not numeric".to_string(),
             });
         }
-        let x = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, XLENGTH(x)));
+        let x = Rf_allocVector3(SEXPTYPE::REALSXP, XLENGTH(x));
+        let _x_guard = protect(x);
         // Copy values (simplified: assumes input is already REALSXP)
         std::ptr::copy_nonoverlapping(REAL(CAR(args)), REAL(x), XLENGTH(x) as usize);
 
         let n = XLENGTH(x);
         let (ans, ansnames) = make_posixlt_skeleton(n);
+        let _ans_guard = protect(ans);
+        let _ansnames_guard = protect(ansnames);
 
         for i in 0..n {
             let mut dummy = stm::new();
@@ -821,7 +826,6 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // We store ansnames as the names attribute directly
         let _ = ansnames; // ansnames is already protected
 
-        Rf_unprotect(3); // x, ans, ansnames
         ans
     }
 }
@@ -835,7 +839,8 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 /// Ported from `do_asPOSIXct()` in datetime.c.
 pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let x = Rf_protect(CAR(args));
+        let x = CAR(args);
+        let _x_guard = protect(x);
 
         // x must be a VECSXP (list) with at least 9 components
         if TYPEOF(x) != SEXPTYPE::VECSXP {
@@ -860,7 +865,8 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             n = len8;
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _ans_guard = protect(ans);
 
         for i in 0..n {
             let iu = i as usize;
@@ -899,7 +905,6 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
-        Rf_unprotect(2);
         ans
     }
 }
@@ -913,7 +918,8 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 /// Ported from `do_formatPOSIXlt()` in datetime.c.
 pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let x = Rf_protect(CAR(args));
+        let x = CAR(args);
+        let _x_guard = protect(x);
 
         // x must be VECSXP with at least 9 components
         if TYPEOF(x) != SEXPTYPE::VECSXP {
@@ -945,7 +951,8 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         let m = XLENGTH(sformat);
         let N = if n > 0 { std::cmp::max(m, n) } else { 0 };
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, N));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, N);
+        let _ans_guard = protect(ans);
 
         for i in 0..N {
             let iu = i as usize;
@@ -1045,7 +1052,6 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             }
         }
 
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1079,6 +1085,8 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let N = if n > 0 { std::cmp::max(m, n) } else { 0 };
 
         let (ans, ansnames) = make_posixlt_skeleton(N);
+        let _ans_guard = protect(ans);
+        let _ansnames_guard = protect(ansnames);
 
         for i in 0..N {
             let iu = i as usize;
@@ -1196,7 +1204,6 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             }
         }
 
-        Rf_unprotect(2); // ans, ansnames
         ans
     }
 }
@@ -1210,7 +1217,8 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 /// Ported from `do_D2POSIXlt()` in datetime.c.
 pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let x = Rf_protect(CAR(args));
+        let x = CAR(args);
+        let _x_guard = protect(x);
         if TYPEOF(x) != SEXPTYPE::REALSXP {
             std::panic::panic_any(RError {
                 message: "invalid 'x' value: not numeric".to_string(),
@@ -1219,6 +1227,8 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         let n = XLENGTH(x);
         let (ans, ansnames) = make_posixlt_skeleton(n);
+        let _ans_guard = protect(ans);
+        let _ansnames_guard = protect(ansnames);
 
         for i in 0..n {
             let iu = i as usize;
@@ -1243,7 +1253,6 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = 0;
         }
 
-        Rf_unprotect(3); // x, ans, ansnames
         ans
     }
 }
@@ -1258,7 +1267,8 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 #[allow(clippy::if_same_then_else)]
 pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let x = Rf_protect(CAR(args));
+        let x = CAR(args);
+        let _x_guard = protect(x);
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
@@ -1280,7 +1290,8 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             n = len8;
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _ans_guard = protect(ans);
 
         for i in 0..n {
             let iu = i as usize;
@@ -1316,7 +1327,6 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1355,7 +1365,8 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             }
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nn as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, nn as R_xlen_t);
+        let _ans_guard = protect(ans);
         for i in 0..9 {
             let sexp: c_int = if i > 0 {
                 SEXPTYPE::INTSXP.into()
@@ -1371,7 +1382,8 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP, n));
         }
 
-        let ansnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nn as R_xlen_t));
+        let ansnames = Rf_allocVector3(SEXPTYPE::STRSXP, nn as R_xlen_t);
+        let _ansnames_guard = protect(ansnames);
         for i in 0..nn {
             let cstr = CString::new(ltnames[i as usize]).unwrap_or_default();
             SET_STRING_ELT(ansnames, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
@@ -1438,7 +1450,6 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             }
         }
 
-        Rf_unprotect(2); // ans, ansnames
         ans
     }
 }
