@@ -6,86 +6,59 @@
 
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::ptr;
 
 use super::types::*;
 
-// ---------------------------------------------------------------------------
-// Static Germanic plural expression
-// ---------------------------------------------------------------------------
-
-thread_local! { static plvar: RefCell<expression> = RefCell::new(expression {
-    nargs: 0,
-    operation: expression_operator::var,
-    val: expression_val { num: 0 },
-}); }
-
-thread_local! { static plone: RefCell<expression> = RefCell::new(expression {
-    nargs: 0,
-    operation: expression_operator::num,
-    val: expression_val { num: 1 },
-}); }
-
-thread_local! { static GERMANIC_PLURAL: RefCell<expression> = RefCell::new(expression {
-    nargs: 2,
-    operation: expression_operator::not_equal,
-    val: expression_val {
-        args: [ptr::null_mut(), ptr::null_mut(), ptr::null_mut()],
-    },
-}); }
-
-/// Ensure the static Germanic plural expression is initialized.
-///
-/// This replaces the C99 designated-initializer approach and the runtime
-/// `init_germanic_plural()` fallback, using a simple initialization guard.
-fn init_germanic_plural() {
-    GERMANIC_PLURAL.with(|ger| {
-        let g = ger.borrow();
-        if unsafe { g.val.args[0] }.is_null() {
-            drop(g);
-            plvar.with(|pv| {
-                let mut p = pv.borrow_mut();
-                p.nargs = 0;
-                p.operation = expression_operator::var;
-            });
-            plone.with(|po| {
-                let mut p = po.borrow_mut();
-                p.nargs = 0;
-                p.operation = expression_operator::num;
-                p.val = expression_val { num: 1 };
-            });
-            let plvar_ptr: *mut expression =
-                plvar.with(|v| &*v.borrow() as *const expression as *mut expression);
-            let plone_ptr: *mut expression =
-                plone.with(|v| &*v.borrow() as *const expression as *mut expression);
-            let mut g = ger.borrow_mut();
-            g.nargs = 2;
-            g.operation = expression_operator::not_equal;
-            g.val = expression_val {
-                args: [plvar_ptr, plone_ptr, ptr::null_mut()],
-            };
-        }
-    });
+unsafe fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
+    unsafe { super::plural_parse::libintl_gettextparse(_arg) }
 }
 
-// ---------------------------------------------------------------------------
-// Plural expression parser stub
-// ---------------------------------------------------------------------------
+fn boxed_expression(
+    nargs: c_int,
+    operation: expression_operator,
+    val: expression_val,
+) -> *mut expression {
+    Box::into_raw(Box::new(expression {
+        nargs,
+        operation,
+        val,
+    }))
+}
 
-/// Plural expression parser (stub).
+fn boxed_var_expression() -> *mut expression {
+    boxed_expression(0, expression_operator::var, expression_val { num: 0 })
+}
+
+fn boxed_num_expression(value: c_ulong) -> *mut expression {
+    boxed_expression(0, expression_operator::num, expression_val { num: value })
+}
+
+fn boxed_binary_expression(
+    operation: expression_operator,
+    left: *mut expression,
+    right: *mut expression,
+) -> *mut expression {
+    boxed_expression(
+        2,
+        operation,
+        expression_val {
+            args: [left, right, ptr::null_mut()],
+        },
+    )
+}
+
+/// Build gettext's default Germanic plural expression (`n != 1`).
 ///
-/// In the full C implementation this calls into a bison-generated parser
-/// (`libintl_gettextparse`). For the standalone port we provide a stub
-/// that always returns failure (-1), causing the caller to fall back to
-/// the Germanic plural form.
-///
-/// Returns 0 on success, non-zero on parse error.
-unsafe fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
-    // Stub: indicate parse failure so the caller uses Germanic plural.
-    -1
+/// The C implementation points every fallback catalog at file-scope mutable
+/// expression nodes. Here each loaded catalog owns its fallback tree for the
+/// catalog lifetime, so there is no shared mutable process or thread state.
+fn boxed_germanic_plural() -> *const expression {
+    let var = boxed_var_expression();
+    let one = boxed_num_expression(1);
+    boxed_binary_expression(expression_operator::not_equal, var, one)
 }
 
 // ---------------------------------------------------------------------------
@@ -175,8 +148,7 @@ pub unsafe fn libintl_gettext_extract_plural(
         }
 
         // Fall back to Germanic plural form.
-        init_germanic_plural();
-        *pluralp = GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression);
+        *pluralp = boxed_germanic_plural();
         *npluralsp = 2;
     }
 }
@@ -309,58 +281,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_germanic_plural_init() {
-        init_germanic_plural();
-        // After initialization, args[0] should point to plvar.
-        GERMANIC_PLURAL.with(|g| {
-            let g = g.borrow();
-            assert!(!unsafe { g.val.args[0] }.is_null());
-            // plvar should be the variable operator.
-            assert_eq!(
-                unsafe { (*g.val.args[0]).operation },
-                expression_operator::var
-            );
-        });
+    fn test_germanic_plural_tree() {
+        let plural = boxed_germanic_plural();
+        assert!(!plural.is_null());
+        unsafe {
+            let args = (*plural).val.get_args();
+            assert_eq!((*args[0]).operation, expression_operator::var);
+            assert_eq!((*args[1]).operation, expression_operator::num);
+            assert_eq!((*args[1]).val.get_num(), 1);
+        }
     }
 
     #[test]
     fn test_plural_eval_germanic() {
-        init_germanic_plural();
+        let plural = boxed_germanic_plural();
 
         // n=1 -> n!=1 is false -> plural form 0 (singular)
-        let result = unsafe {
-            plural_eval(
-                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
-                1,
-            )
-        };
+        let result = unsafe { plural_eval(plural, 1) };
         assert_eq!(result, 0);
 
         // n=0 -> n!=1 is true -> plural form 1 (plural)
-        let result = unsafe {
-            plural_eval(
-                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
-                0,
-            )
-        };
+        let result = unsafe { plural_eval(plural, 0) };
         assert_eq!(result, 1);
 
         // n=2 -> n!=1 is true -> plural form 1 (plural)
-        let result = unsafe {
-            plural_eval(
-                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
-                2,
-            )
-        };
+        let result = unsafe { plural_eval(plural, 2) };
         assert_eq!(result, 1);
 
         // n=5 -> n!=1 is true -> plural form 1 (plural)
-        let result = unsafe {
-            plural_eval(
-                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
-                5,
-            )
-        };
+        let result = unsafe { plural_eval(plural, 5) };
         assert_eq!(result, 1);
     }
 
@@ -404,11 +353,11 @@ mod tests {
             let mut pluralp: *const expression = ptr::null();
             let mut npluralsp: c_ulong = 0;
             libintl_gettext_extract_plural(entry, &mut pluralp, &mut npluralsp);
-            // Parser is a stub so it will fail and fall back to Germanic.
-            // The C code does the same: if PLURAL_PARSE fails, goto no_plural
-            // which resets npluralsp to 2.
-            assert_eq!(npluralsp, 2);
+            assert_eq!(npluralsp, 3);
             assert!(!pluralp.is_null());
+            assert_eq!(plural_eval(pluralp, 1), 0);
+            assert_eq!(plural_eval(pluralp, 5), 2);
+            assert_eq!(plural_eval(pluralp, 21), 0);
         }
     }
 
