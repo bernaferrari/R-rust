@@ -12,8 +12,8 @@
 //! Ported from r-source/src/modules/X11/devX11.c and devX11.h
 
 use crate::sexp::ffi::SEXP;
+use crate::sexp::instance::with_required_current_instance;
 use core::ffi::{c_char, c_double, c_int, c_uint, c_void};
-use std::cell::Cell;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -392,27 +392,35 @@ pub(crate) fn physical_to_pixel_size(
     (width_px, height_px)
 }
 
-// ── Module state ─────────────────────────────────────────────────────
-//
-// These mirror the C file-level statics.  They are mutable statics
-// that would be initialised by Rf_setX11Display() in a real X11 build.
+// ── Runtime state ────────────────────────────────────────────────────
 
-/// Current display colour model
-thread_local! { static DISPLAY_COLOR_MODEL: Cell<XColorType> = Cell::new(XColorType::TrueColor); }
+pub(crate) struct X11RuntimeState {
+    display_color_model: XColorType,
+    max_cube_size: c_int,
+    display_res_dpi: c_int,
+    num_x11_devices: c_int,
+    red_gamma: c_double,
+    green_gamma: c_double,
+    blue_gamma: c_double,
+}
 
-/// Maximum colour cube size
-thread_local! { static MAX_CUBE_SIZE: Cell<c_int> = Cell::new(256); }
+impl Default for X11RuntimeState {
+    fn default() -> Self {
+        Self {
+            display_color_model: XColorType::TrueColor,
+            max_cube_size: 256,
+            display_res_dpi: 72,
+            num_x11_devices: 0,
+            red_gamma: DEFAULT_RED_GAMMA,
+            green_gamma: DEFAULT_GREEN_GAMMA,
+            blue_gamma: DEFAULT_BLUE_GAMMA,
+        }
+    }
+}
 
-/// Current display resolution (DPI)
-thread_local! { static DISPLAY_RES_DPI: Cell<c_int> = Cell::new(72); }
-
-/// Number of currently open X11 devices
-thread_local! { static NUM_X11_DEVICES: Cell<c_int> = Cell::new(0); }
-
-/// Gamma correction values
-thread_local! { static RED_GAMMA: Cell<c_double> = Cell::new(DEFAULT_RED_GAMMA); }
-thread_local! { static GREEN_GAMMA: Cell<c_double> = Cell::new(DEFAULT_GREEN_GAMMA); }
-thread_local! { static BLUE_GAMMA: Cell<c_double> = Cell::new(DEFAULT_BLUE_GAMMA); }
+fn with_x11_state<R>(f: impl FnOnce(&mut X11RuntimeState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.x11_state))
+}
 
 // ── Exported symbols (no_mangle) ──────────────────────────────────────
 
@@ -465,16 +473,14 @@ pub unsafe fn Rf_allocX11DeviceDesc(ps: c_double) -> *mut c_void {
 /// In a real implementation, this sets up gamma correction,
 /// colour model, and links the X11Desc to the pDevDesc.
 /// Stub returns 0 (failure).
-pub unsafe fn Rf_setX11DeviceData(
-    _dd: pDevDesc,
-    gamma_fac: c_double,
-    _xd: *mut c_void,
-) -> c_int {
+pub unsafe fn Rf_setX11DeviceData(_dd: pDevDesc, gamma_fac: c_double, _xd: *mut c_void) -> c_int {
     // Apply gamma correction even in stub mode
     if gamma_fac > 0.0 {
-        RED_GAMMA.with(|v| v.set(gamma_fac));
-        GREEN_GAMMA.with(|v| v.set(gamma_fac));
-        BLUE_GAMMA.with(|v| v.set(gamma_fac));
+        with_x11_state(|state| {
+            state.red_gamma = gamma_fac;
+            state.green_gamma = gamma_fac;
+            state.blue_gamma = gamma_fac;
+        });
     }
     0
 }
@@ -502,23 +508,24 @@ pub unsafe fn Rf_setX11Display(
 ) -> c_int {
     // Apply settings even in stub mode
     if gamma_fac > 0.0 {
-        RED_GAMMA.with(|v| v.set(gamma_fac));
-        GREEN_GAMMA.with(|v| v.set(gamma_fac));
-        BLUE_GAMMA.with(|v| v.set(gamma_fac));
+        with_x11_state(|state| {
+            state.red_gamma = gamma_fac;
+            state.green_gamma = gamma_fac;
+            state.blue_gamma = gamma_fac;
+        });
     }
 
     // Set colour model
-    DISPLAY_COLOR_MODEL.with(|v| {
-        v.set(match colormodel {
+    with_x11_state(|state| {
+        state.display_color_model = match colormodel {
             0 => XColorType::Monochrome,
             1 => XColorType::Grayscale,
             2 => XColorType::PseudoColor1,
             3 => XColorType::PseudoColor2,
             _ => XColorType::TrueColor,
-        })
+        };
+        state.max_cube_size = maxcube;
     });
-
-    MAX_CUBE_SIZE.with(|v| v.set(maxcube));
     0
 }
 
@@ -568,12 +575,7 @@ pub unsafe fn in_R_GetX11Image(
 /// In a real implementation, this opens a spreadsheet-style
 /// data editor window using X11/Xt widgets.
 /// Stub returns R_NilValue.
-pub unsafe fn in_RX11_dataentry(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn in_RX11_dataentry(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::globals::R_NilValue()
 }
 
@@ -581,12 +583,7 @@ pub unsafe fn in_RX11_dataentry(
 ///
 /// In a real implementation, this opens a read-only data viewer.
 /// Stub returns R_NilValue.
-pub unsafe fn in_R_X11_dataviewer(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn in_R_X11_dataviewer(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::globals::R_NilValue()
 }
 
@@ -663,4 +660,41 @@ unsafe fn _R_SaveAsBmp(
     res: c_int,
 ) -> c_int {
     super::rbitmap::save_as_bmp(d, width, height, gp, bgr, fp, res)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn x11_runtime_state_is_session_local() {
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
+            Rf_setX11Display(std::ptr::null_mut(), 2.0, 1, 64, 0);
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            assert_eq!(
+                with_x11_state(|state| state.display_color_model),
+                XColorType::TrueColor
+            );
+            assert_eq!(with_x11_state(|state| state.max_cube_size), 256);
+            Rf_setX11Display(std::ptr::null_mut(), 3.0, 3, 32, 0);
+            replace_current_instance(previous);
+        }
+
+        assert_eq!(first.x11_state.display_color_model, XColorType::Grayscale);
+        assert_eq!(first.x11_state.max_cube_size, 64);
+        assert_eq!(first.x11_state.red_gamma, 2.0);
+        assert_eq!(
+            second.x11_state.display_color_model,
+            XColorType::PseudoColor2
+        );
+        assert_eq!(second.x11_state.max_cube_size, 32);
+        assert_eq!(second.x11_state.red_gamma, 3.0);
+    }
 }

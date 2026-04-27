@@ -17,7 +17,7 @@ mod dataentry;
     unused_assignments,
     non_camel_case_types
 )]
-mod dev_x11;
+pub(crate) mod dev_x11;
 #[allow(
     dead_code,
     unused_imports,

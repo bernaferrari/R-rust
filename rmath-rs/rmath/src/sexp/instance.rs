@@ -270,6 +270,8 @@ pub struct RInstance {
     pub(crate) libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState,
     /// Per-instance embedded HTTP server socket, worker, and handler state.
     pub(crate) httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState,
+    /// Per-instance X11 graphics defaults and device counters.
+    pub(crate) x11_state: crate::modules::x11::dev_x11::X11RuntimeState,
     /// Per-instance Unix standard console/event callback state.
     pub(crate) sys_std_state: crate::unix::sys_std::SysStdRuntimeState,
     /// Per-instance Unix platform scratch buffer and process timing state.
@@ -408,6 +410,7 @@ impl RInstance {
             internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
             libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
             httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState::default(),
+            x11_state: crate::modules::x11::dev_x11::X11RuntimeState::default(),
             sys_std_state: crate::unix::sys_std::SysStdRuntimeState::default(),
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
