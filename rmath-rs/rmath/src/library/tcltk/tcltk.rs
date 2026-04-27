@@ -17,9 +17,7 @@
  *  all references, but each entry point aborts with an unsupported error.
  */
 
-use std::cell::Cell;
-use std::os::raw::{c_char, c_int, c_void};
-use std::ptr;
+use std::os::raw::c_int;
 
 use crate::sexp::ffi::SEXP;
 
@@ -27,14 +25,6 @@ fn unsupported(name: &str) -> ! {
     crate::main::errors::Rf_error_unimplemented(name);
     unreachable!("Rf_error_unimplemented returned")
 }
-
-// ---------------------------------------------------------------------------
-// RTcl_interp -- global interpreter pointer (module-private)
-// ---------------------------------------------------------------------------
-
-/// Opaque placeholder for a Tcl interpreter pointer.
-/// In the real implementation this is `*mut Tcl_Interp`.
-thread_local! { static RTcl_interp: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // tcltk_init -- called on package load (Unix path)
