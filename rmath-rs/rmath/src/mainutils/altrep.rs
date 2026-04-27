@@ -17,6 +17,7 @@ use std::os::raw::c_int;
 use crate::sexp::accessors::*;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::with_arena;
 
 unsafe fn error(msg: &str) {
@@ -622,7 +623,6 @@ pub unsafe fn ALTSTRING_SET_ELT(x: SEXP, i: R_xlen_t, v: SEXP) {
 // ALTREP method registration (stubs - no dynamic dispatch needed)
 // ---------------------------------------------------------------------------
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 type AltrepFinalizer = Option<unsafe extern "C" fn(SEXP)>;
@@ -640,17 +640,30 @@ struct AltrepClassMethods {
     coerce: AltrepCoerceMethod,
 }
 
-thread_local! {
-    static ALTREP_METHODS: RefCell<HashMap<usize, AltrepClassMethods>> = RefCell::new(HashMap::new());
+#[derive(Default)]
+pub(crate) struct AltrepRuntimeState {
+    methods: HashMap<usize, AltrepClassMethods>,
 }
 
 fn with_methods<F, R>(class: SEXP, f: F) -> R
 where
     F: FnOnce(&mut AltrepClassMethods) -> R,
 {
-    ALTREP_METHODS.with(|m| {
+    with_required_current_instance(|instance| {
         let key = class as usize;
-        f(m.borrow_mut().entry(key).or_default())
+        f(instance.altrep_state.methods.entry(key).or_default())
+    })
+}
+
+#[cfg(test)]
+fn has_altrep_length_method(class: SEXP) -> bool {
+    with_required_current_instance(|instance| {
+        instance
+            .altrep_state
+            .methods
+            .get(&(class as usize))
+            .and_then(|methods| methods.length)
+            .is_some()
     })
 }
 
@@ -680,7 +693,13 @@ pub unsafe fn R_set_altrep_coerce_method(class: SEXP, method: AltrepCoerceMethod
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
     use super::*;
+
+    unsafe extern "C" fn dummy_length(_x: SEXP) -> R_xlen_t {
+        42
+    }
 
     #[test]
     #[should_panic]
@@ -696,6 +715,27 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_altrep_length(std::ptr::null_mut()), 0);
+        }
+    }
+
+    #[test]
+    fn method_registry_is_session_local() {
+        unsafe {
+            let class = R_NilValue();
+
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            R_set_altrep_length_method(class, Some(dummy_length));
+            assert!(has_altrep_length_method(class));
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            assert!(!has_altrep_length_method(class));
+
+            set_current_instance(&mut first);
+            assert!(has_altrep_length_method(class));
+
+            clear_current_instance();
         }
     }
 

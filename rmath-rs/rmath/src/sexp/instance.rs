@@ -258,6 +258,8 @@ pub struct RInstance {
     pub(crate) objects_state: crate::mainutils::objects::ObjectsRuntimeState,
     /// Per-instance dotcode/native-call runtime policy cache.
     pub(crate) dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState,
+    /// Per-instance ALTREP class-method registry.
+    pub(crate) altrep_state: crate::mainutils::altrep::AltrepRuntimeState,
     /// Per-instance startup/workspace metadata.
     pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
@@ -381,6 +383,7 @@ impl RInstance {
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
             objects_state: crate::mainutils::objects::ObjectsRuntimeState::default(),
             dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState::default(),
+            altrep_state: crate::mainutils::altrep::AltrepRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             symbols: HashMap::new(),
