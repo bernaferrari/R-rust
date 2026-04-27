@@ -25,7 +25,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -408,10 +408,10 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
         }
 
         let mut data = hash_table_setup(x, nmax_arg);
-        Rf_protect(data.hash_table);
+        let _hash_table_guard = protect(data.hash_table);
 
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         let v = LOGICAL(ans);
 
@@ -430,7 +430,6 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
             }
         }
 
-        Rf_unprotect(2);
         ans
     }
 }
@@ -473,7 +472,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
     let xtype = unsafe { TYPEOF(raw) };
 
     let dup = unsafe { duplicated_impl(raw, from_last, nmax_arg) };
-    unsafe { Rf_protect(dup) };
+    let _dup_guard = protect(dup);
 
     let mut k: R_xlen_t = 0;
     for i in 0..n {
@@ -483,7 +482,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
     }
 
     let ans = unsafe { Rf_allocVector3(xtype, k) };
-    unsafe { Rf_protect(ans) };
+    let _ans_guard = protect(ans);
 
     let mut ki: R_xlen_t = 0;
 
@@ -552,7 +551,6 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
         _ => {} // intentionally unhandled: unsupported SEXPTYPE for unique
     }
 
-    unsafe { Rf_unprotect(2) };
     Ok(ans)
 }
 
