@@ -7,10 +7,10 @@
 
 use std::os::raw::c_void;
 use std::ptr;
-use std::sync::Mutex;
 
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // checkArity
@@ -27,20 +27,26 @@ unsafe fn checkArity(op: SEXP, args: SEXP) {
 /// Function pointer type for the LAPACK dispatch function.
 type LapackFn = Option<unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>;
 
-static LAPACK_DISPATCH: Mutex<LapackFn> = Mutex::new(None);
+#[derive(Default)]
+pub(crate) struct LapackRuntimeState {
+    dispatch: LapackFn,
+}
 
 pub unsafe fn R_setLapackRoutines(routines: *const c_void) -> *const c_void {
     unsafe {
-        let mut guard = LAPACK_DISPATCH.lock().unwrap_or_else(|e| e.into_inner());
-        let old = *guard;
-        if !routines.is_null() {
-            *guard = Some(std::mem::transmute::<
+        let new_dispatch = if !routines.is_null() {
+            Some(std::mem::transmute::<
                 *const c_void,
                 unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
-            >(routines));
+            >(routines))
         } else {
-            *guard = None;
-        }
+            None
+        };
+        let old = with_required_current_instance(|instance| {
+            let old = instance.lapack_state.dispatch;
+            instance.lapack_state.dispatch = new_dispatch;
+            old
+        });
         match old {
             Some(f) => f as *const c_void,
             None => ptr::null(),
@@ -55,8 +61,7 @@ pub unsafe fn R_setLapackRoutines(routines: *const c_void) -> *const c_void {
 /// .Internal(lapack(...)) -- dispatch to the LAPACK module.
 pub fn do_lapack(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let guard = LAPACK_DISPATCH.lock().unwrap_or_else(|e| e.into_inner());
-        match *guard {
+        match with_required_current_instance(|instance| instance.lapack_state.dispatch) {
             Some(f) => f(call, op, args, rho),
             None => R_NilValue(),
         }
@@ -69,11 +74,22 @@ pub fn do_lapack(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
     use super::*;
+
+    unsafe extern "C" fn return_op(_call: SEXP, op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+        op
+    }
+
+    unsafe extern "C" fn return_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+        args
+    }
 
     #[test]
     fn test_do_lapack_returns_nil() {
         unsafe {
+            let _session = crate::sexp::session::RSession::new();
             let result = do_lapack(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -81,6 +97,33 @@ mod tests {
                 ptr::null_mut(),
             );
             assert!(result.is_null() || result == R_NilValue());
+        }
+    }
+
+    #[test]
+    fn lapack_dispatch_is_session_local() {
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            let old = R_setLapackRoutines(return_op as *const c_void);
+            assert!(old.is_null());
+            let op = 0x01usize as SEXP;
+            let args = 0x02usize as SEXP;
+            assert_eq!(do_lapack(ptr::null_mut(), op, args, ptr::null_mut()), op);
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            assert_eq!(
+                do_lapack(ptr::null_mut(), op, args, ptr::null_mut()),
+                R_NilValue()
+            );
+            R_setLapackRoutines(return_args as *const c_void);
+            assert_eq!(do_lapack(ptr::null_mut(), op, args, ptr::null_mut()), args);
+
+            set_current_instance(&mut first);
+            assert_eq!(do_lapack(ptr::null_mut(), op, args, ptr::null_mut()), op);
+
+            clear_current_instance();
         }
     }
 }

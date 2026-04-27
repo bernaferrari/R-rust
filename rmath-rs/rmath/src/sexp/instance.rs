@@ -262,6 +262,8 @@ pub struct RInstance {
     pub(crate) altrep_state: crate::mainutils::altrep::AltrepRuntimeState,
     /// Per-instance serialization lazy-load cache and read-depth state.
     pub(crate) serialize_state: crate::mainutils::serialize::SerializeRuntimeState,
+    /// Per-instance LAPACK module dispatcher.
+    pub(crate) lapack_state: crate::mainutils::lapack::LapackRuntimeState,
     /// Per-instance startup/workspace metadata.
     pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
@@ -387,6 +389,7 @@ impl RInstance {
             dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState::default(),
             altrep_state: crate::mainutils::altrep::AltrepRuntimeState::default(),
             serialize_state: crate::mainutils::serialize::SerializeRuntimeState::default(),
+            lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             symbols: HashMap::new(),
