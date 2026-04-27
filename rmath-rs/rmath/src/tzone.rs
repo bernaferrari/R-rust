@@ -13,7 +13,6 @@
  * providing FFI-compatible entry points for R's datetime functionality.
  */
 
-use std::cell::{Cell, UnsafeCell};
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -241,12 +240,8 @@ struct TzGlobals {
     lcl_is_set: i32,
     gmt_is_set: i32,
     tm: stm,
-    // We store zone abbreviation strings in a separate buffer so that
-    // the char slices within `state.chars` remain valid pointers.
-    // In C, chars[] is a mutable array inside the struct, and pointers
-    // into it are used as `*const char`. We emulate this by keeping
-    // the chars arrays in the state structs and returning raw pointers
-    // to them via `as_ptr()`.
+    tzname_bufs: [Box<[u8; TZ_MAX_CHARS + 1]>; 2],
+    tzname_ptrs: Box<[*mut libc::c_char; 2]>,
 }
 
 impl Default for TzGlobals {
@@ -258,12 +253,25 @@ impl Default for TzGlobals {
             lcl_is_set: 0,
             gmt_is_set: 0,
             tm: stm::default(),
+            tzname_bufs: [
+                Box::new([0u8; TZ_MAX_CHARS + 1]),
+                Box::new([0u8; TZ_MAX_CHARS + 1]),
+            ],
+            tzname_ptrs: Box::new([std::ptr::null_mut(); 2]),
         };
         // Initialize gmtmem with "GMT"
         let gmt_bytes = b"GMT";
         g.gmtmem.chars[..gmt_bytes.len()].copy_from_slice(gmt_bytes);
         g.gmtmem.charcnt = 3;
+        g.sync_tzname_ptrs();
         g
+    }
+}
+
+impl TzGlobals {
+    fn sync_tzname_ptrs(&mut self) {
+        self.tzname_ptrs[0] = self.tzname_bufs[0].as_mut_ptr() as *mut libc::c_char;
+        self.tzname_ptrs[1] = self.tzname_bufs[1].as_mut_ptr() as *mut libc::c_char;
     }
 }
 
@@ -292,10 +300,6 @@ fn with_tz_globals<R>(f: impl FnOnce(&mut TzGlobals) -> R) -> R {
 
 // Wild abbreviation (three spaces).
 static WILDABBR: &[u8] = b"   ";
-
-thread_local! { static R_TZNAME: UnsafeCell<[*mut libc::c_char; 2]> = UnsafeCell::new([std::ptr::null_mut(); 2]); }
-thread_local! { static TZNAME_BUF0: Cell<[u8; TZ_MAX_CHARS + 1]> = Cell::new([0u8; TZ_MAX_CHARS + 1]); }
-thread_local! { static TZNAME_BUF1: Cell<[u8; TZ_MAX_CHARS + 1]> = Cell::new([0u8; TZ_MAX_CHARS + 1]); }
 
 // ---------------------------------------------------------------------------
 // Helper macros / inline functions
@@ -498,108 +502,66 @@ fn get_abbr<'a>(sp: &'a state, ind: usize) -> &'a [u8] {
 // ---------------------------------------------------------------------------
 
 fn settzname(g: &mut TzGlobals) {
-    let sp = &mut g.lclmem;
-
-    TZNAME_BUF0.with(|v| {
-        let mut buf = v.get();
-        for i in 0..TZ_MAX_CHARS + 1 {
-            buf[i] = 0;
-        }
-        for i in 0..WILDABBR.len() {
-            buf[i] = WILDABBR[i];
-        }
-        v.set(buf);
-    });
-
-    TZNAME_BUF1.with(|v| {
-        let mut buf = v.get();
-        for i in 0..TZ_MAX_CHARS + 1 {
-            buf[i] = 0;
-        }
-        for i in 0..WILDABBR.len() {
-            buf[i] = WILDABBR[i];
-        }
-        v.set(buf);
-    });
+    for buf in &mut g.tzname_bufs {
+        buf.fill(0);
+        buf[..WILDABBR.len()].copy_from_slice(WILDABBR);
+    }
 
     // Get the latest zone names
-    for i in 0..sp.typecnt as usize {
-        let ttisp = &sp.ttis[i];
+    for i in 0..g.lclmem.typecnt as usize {
+        let ttisp = &g.lclmem.ttis[i];
         let isdst = ttisp.tt_isdst;
-        let abbr = get_abbr(sp, ttisp.tt_abbrind as usize);
+        let abbr = get_abbr(&g.lclmem, ttisp.tt_abbrind as usize).to_vec();
         if isdst != 0 {
-            copy_to_tzname_buf(1, abbr);
+            copy_to_tzname_buf(g, 1, &abbr);
         } else {
-            copy_to_tzname_buf(0, abbr);
+            copy_to_tzname_buf(g, 0, &abbr);
         }
     }
-    for i in 0..sp.timecnt as usize {
-        let ttisp = &sp.ttis[sp.types[i] as usize];
+    for i in 0..g.lclmem.timecnt as usize {
+        let ttisp = &g.lclmem.ttis[g.lclmem.types[i] as usize];
         let isdst = ttisp.tt_isdst;
-        let abbr = get_abbr(sp, ttisp.tt_abbrind as usize);
+        let abbr = get_abbr(&g.lclmem, ttisp.tt_abbrind as usize).to_vec();
         if isdst != 0 {
-            copy_to_tzname_buf(1, abbr);
+            copy_to_tzname_buf(g, 1, &abbr);
         } else {
-            copy_to_tzname_buf(0, abbr);
+            copy_to_tzname_buf(g, 0, &abbr);
         }
     }
 
     // Scrub abbreviations: replace bogus characters
     let valid_set = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 :+-._";
-    for i in 0..sp.charcnt as usize {
-        let c = sp.chars[i];
+    for i in 0..g.lclmem.charcnt as usize {
+        let c = g.lclmem.chars[i];
         if !valid_set.contains(&c) {
-            sp.chars[i] = b'_';
+            g.lclmem.chars[i] = b'_';
         }
     }
 
     // Truncate long abbreviations
-    for i in 0..sp.typecnt as usize {
-        let ttisp = &sp.ttis[i];
+    for i in 0..g.lclmem.typecnt as usize {
+        let ttisp = &g.lclmem.ttis[i];
         let abbr_start = ttisp.tt_abbrind as usize;
-        let abbr = get_abbr(sp, abbr_start);
+        let abbr = get_abbr(&g.lclmem, abbr_start);
         if abbr.len() > TZ_ABBR_MAX_LEN {
             // Check if it's the GRANDPARENTED string
             let is_gp = std::str::from_utf8(abbr)
                 .map(|s| s == GRANDPARENTED)
                 .unwrap_or(false);
             if !is_gp {
-                sp.chars[abbr_start + TZ_ABBR_MAX_LEN] = 0;
+                g.lclmem.chars[abbr_start + TZ_ABBR_MAX_LEN] = 0;
             }
         }
     }
 
-    // Update the raw pointers
-    let mut buf0_val = TZNAME_BUF0.with(|v| v.get());
-    let mut buf1_val = TZNAME_BUF1.with(|v| v.get());
-    R_TZNAME.with(|v| unsafe {
-        let arr = &mut *v.get();
-        arr[0] = buf0_val.as_mut_ptr() as *mut libc::c_char;
-        arr[1] = buf1_val.as_mut_ptr() as *mut libc::c_char;
-    });
+    g.sync_tzname_ptrs();
 }
 
-fn copy_to_tzname_buf(which: usize, abbr: &[u8]) {
+fn copy_to_tzname_buf(g: &mut TzGlobals, which: usize, abbr: &[u8]) {
     let len = abbr.len().min(TZ_MAX_CHARS);
-    if which == 0 {
-        TZNAME_BUF0.with(|v| {
-            let mut buf = v.get();
-            for i in 0..len {
-                buf[i] = abbr[i];
-            }
-            buf[len] = 0;
-            v.set(buf);
-        });
-    } else {
-        TZNAME_BUF1.with(|v| {
-            let mut buf = v.get();
-            for i in 0..len {
-                buf[i] = abbr[i];
-            }
-            buf[len] = 0;
-            v.set(buf);
-        });
-    }
+    let buf = &mut g.tzname_bufs[which];
+    buf[..len].copy_from_slice(&abbr[..len]);
+    buf[len] = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -2323,8 +2285,11 @@ pub fn R_tzsetwall() {
 /// `R_tzname` -- returns a pointer to the [2]-element array of timezone name
 /// pointers (standard, daylight).
 pub unsafe fn R_tzname() -> *mut *mut libc::c_char {
-    with_tz_globals(r_tzset_impl);
-    R_TZNAME.with(|v| v.get() as *mut *mut libc::c_char)
+    with_tz_globals(|g| {
+        r_tzset_impl(g);
+        g.sync_tzname_ptrs();
+        g.tzname_ptrs.as_mut_ptr()
+    })
 }
 
 // ---------------------------------------------------------------------------
