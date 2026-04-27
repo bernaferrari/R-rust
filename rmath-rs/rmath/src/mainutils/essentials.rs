@@ -15774,19 +15774,96 @@ pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `gc()` — garbage collection (simplified: returns matrix of zeros).
+#[derive(Clone, Copy, Debug, Default)]
+struct RuntimeMemorySnapshot {
+    active_nodes: usize,
+    free_nodes: usize,
+    current_bytes: usize,
+    peak_bytes: usize,
+}
+
+fn runtime_memory_snapshot() -> RuntimeMemorySnapshot {
+    crate::sexp::instance::with_required_current_instance(|instance| {
+        let active_nodes = instance.arena.node_count();
+        let free_nodes = instance.arena.free_count();
+        let current_bytes = instance.arena.total_bytes_allocated();
+        let peak_bytes = instance.gc_state.stats.peak_memory.max(current_bytes);
+
+        RuntimeMemorySnapshot {
+            active_nodes,
+            free_nodes,
+            current_bytes,
+            peak_bytes,
+        }
+    })
+}
+
+fn bytes_to_mb(bytes: usize) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0)
+}
+
+fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, value: f64) {
+    unsafe {
+        *data.add(col * rows + row) = value;
+    }
+}
+
+/// R's `gc()` — garbage collection with session-owned memory counters.
 pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        // Return a 2x7 matrix of zeros (Ncells/Vcells rows, 7 columns)
+        crate::mainutils::memory_main::R_gc();
+        let snapshot = runtime_memory_snapshot();
+        let node_size = std::mem::size_of::<crate::sexp::ffi::SexprecCore>();
+        let ncell_bytes = snapshot.active_nodes.saturating_mul(node_size);
+        let ncell_trigger = (snapshot.active_nodes + snapshot.free_nodes)
+            .saturating_mul(2)
+            .max(snapshot.active_nodes);
+        let ncell_peak = snapshot
+            .active_nodes
+            .saturating_add(crate::sexp::gengc::get_gc_stats().freed);
+        let vcell_size = std::mem::size_of::<SEXP>();
+        let vcell_used = snapshot.current_bytes / vcell_size;
+        let vcell_trigger_bytes = snapshot
+            .current_bytes
+            .saturating_mul(2)
+            .max(snapshot.current_bytes);
+        let vcell_peak = snapshot.peak_bytes / vcell_size;
+
+        // Return a 2x7 matrix. Rows are Ncells and Vcells; columns follow R's
+        // visible shape: used, (Mb), gc trigger, (Mb), max used, (Mb), limit.
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, 14);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
         let dst = REAL(result);
-        for i in 0..14 {
-            *dst.add(i) = 0.0;
-        }
+        set_real_matrix_cell(dst, 0, 0, 2, snapshot.active_nodes as f64);
+        set_real_matrix_cell(dst, 1, 0, 2, vcell_used as f64);
+        set_real_matrix_cell(dst, 0, 1, 2, bytes_to_mb(ncell_bytes));
+        set_real_matrix_cell(dst, 1, 1, 2, bytes_to_mb(snapshot.current_bytes));
+        set_real_matrix_cell(dst, 0, 2, 2, ncell_trigger as f64);
+        set_real_matrix_cell(dst, 1, 2, 2, (vcell_trigger_bytes / vcell_size) as f64);
+        set_real_matrix_cell(
+            dst,
+            0,
+            3,
+            2,
+            bytes_to_mb(ncell_trigger.saturating_mul(node_size)),
+        );
+        set_real_matrix_cell(dst, 1, 3, 2, bytes_to_mb(vcell_trigger_bytes));
+        set_real_matrix_cell(dst, 0, 4, 2, ncell_peak as f64);
+        set_real_matrix_cell(dst, 1, 4, 2, vcell_peak as f64);
+        set_real_matrix_cell(
+            dst,
+            0,
+            5,
+            2,
+            bytes_to_mb(ncell_peak.saturating_mul(node_size)),
+        );
+        set_real_matrix_cell(dst, 1, 5, 2, bytes_to_mb(snapshot.peak_bytes));
+        set_real_matrix_cell(dst, 0, 6, 2, 0.0);
+        set_real_matrix_cell(dst, 1, 6, 2, 0.0);
+
         // Set dim = c(2, 7)
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
@@ -15821,6 +15898,30 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 );
                 SET_VECTOR_ELT(dn, 0, row_names);
             }
+            let col_names = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
+            if !col_names.is_null() {
+                let _p5 = protect(col_names);
+                for (i, name) in [
+                    "used",
+                    "(Mb)",
+                    "gc trigger",
+                    "(Mb)",
+                    "max used",
+                    "(Mb)",
+                    "limit",
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let cstr = CString::new(*name).unwrap_or_default();
+                    SET_STRING_ELT(
+                        col_names,
+                        i as R_xlen_t,
+                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                    );
+                }
+                SET_VECTOR_ELT(dn, 1, col_names);
+            }
             crate::sexp::attrib_core::setAttrib(
                 result,
                 Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
@@ -15832,17 +15933,27 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `gcinfo(on)` — set gc info verbosity (simplified: no-op).
-pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+/// R's `gcinfo(on)` — set session-local GC reporting verbosity.
+pub unsafe fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let old = crate::mainutils::memory_main::do_gcinfo(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
+        old
     }
 }
 
-/// R's `memory.size(max)` — memory usage in MB (simplified: returns 0).
-pub unsafe fn do_memory_size(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarReal(0.0) }
+/// R's `memory.size(max)` — current or peak arena memory in MB.
+pub unsafe fn do_memory_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let max = crate::mainutils::coerce::asLogical(CAR(args));
+        let snapshot = runtime_memory_snapshot();
+        let bytes = if max == TRUE {
+            snapshot.peak_bytes
+        } else {
+            snapshot.current_bytes
+        };
+        Rf_ScalarReal(bytes_to_mb(bytes))
+    }
 }
 
 /// R's `object.size(x)` — estimate object size in bytes (simplified).
@@ -19061,6 +19172,108 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert!(((*REAL(result)).to_owned() - 1.0).abs() < 1e-10);
         }
+    }
+
+    #[test]
+    fn test_gc_reports_session_memory_counters() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+            let value = Rf_allocVector3(SEXPTYPE::INTSXP, 256);
+            let _guard = protect(value);
+
+            let result = do_gc(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                R_NilValue(),
+                std::ptr::null_mut(),
+            );
+
+            assert!(!result.is_null());
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            let dim = crate::sexp::attrib_core::getAttrib(
+                result,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            );
+            assert!(!dim.is_null());
+            assert_eq!(*INTEGER(dim), 2);
+            assert_eq!(*INTEGER(dim).add(1), 7);
+
+            let data = REAL(result);
+            assert!(*data > 0.0, "Ncells used should reflect active arena nodes");
+            assert!(*data.add(1) > 0.0, "Vcells used should reflect arena bytes");
+            assert!(*data.add(9) >= *data.add(1), "Vcells max used >= used");
+        }
+    }
+
+    #[test]
+    fn test_memory_size_uses_current_and_peak_arena_bytes() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+            let before = do_memory_size(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                R_NilValue(),
+                std::ptr::null_mut(),
+            );
+
+            let value = Rf_allocVector3(SEXPTYPE::REALSXP, 512);
+            let _guard = protect(value);
+            let current = do_memory_size(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                R_NilValue(),
+                std::ptr::null_mut(),
+            );
+            let peak_args = Rf_cons(Rf_ScalarLogical(TRUE), R_NilValue());
+            let peak = do_memory_size(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                peak_args,
+                std::ptr::null_mut(),
+            );
+
+            assert!(*REAL(current) > *REAL(before));
+            assert!(*REAL(peak) >= *REAL(current));
+        }
+    }
+
+    #[test]
+    fn test_gcinfo_is_session_local_and_returns_previous_value() {
+        let left = crate::sexp::session::RSession::new();
+        let right = crate::sexp::session::RSession::new();
+
+        left.with_protected(|| unsafe {
+            let args = Rf_cons(Rf_ScalarLogical(TRUE), R_NilValue());
+            let old = do_gcinfo(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(*LOGICAL(old), FALSE);
+
+            let args = Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue());
+            let old = do_gcinfo(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(*LOGICAL(old), TRUE);
+        });
+
+        right.with_protected(|| unsafe {
+            let args = Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue());
+            let old = do_gcinfo(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(*LOGICAL(old), FALSE);
+        });
     }
 
     #[test]

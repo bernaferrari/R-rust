@@ -70,8 +70,12 @@ pub unsafe fn R_gc_running() -> c_int {
 ///
 /// This is the equivalent of R's `R_gc()`.
 pub unsafe fn R_gc() {
-    with_memory_state(|state| state.gc_count += 1);
-    // No actual GC implementation yet; stub.
+    with_memory_state(|state| {
+        state.gc_count += 1;
+        state.in_gc = 1;
+    });
+    crate::sexp::gengc::full_gc();
+    with_memory_state(|state| state.in_gc = 0);
 }
 
 /// Trigger a lightweight garbage collection.
@@ -1076,28 +1080,42 @@ pub unsafe fn initStack() {
 }
 
 // ---------------------------------------------------------------------------
-// Memory profile stub
+// Memory profile
 // ---------------------------------------------------------------------------
 
-/// Memory profiling (stub).
+/// Return a small session-local memory profile.
 ///
 /// This is the equivalent of R's `do_memoryprofile()`.
 pub unsafe fn do_memoryprofile(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let data = REAL(result);
+        crate::sexp::instance::with_required_current_instance(|instance| {
+            *data.add(0) = instance.arena.node_count() as f64;
+            *data.add(1) = instance.arena.free_count() as f64;
+            *data.add(2) = instance.arena.total_bytes_allocated() as f64;
+            *data.add(3) = instance
+                .gc_state
+                .stats
+                .peak_memory
+                .max(instance.arena.total_bytes_allocated()) as f64;
+        });
+        result
+    }
 }
 
 // ---------------------------------------------------------------------------
 // do_* stubs for GC-related .Internal / .Primitive calls
 // ---------------------------------------------------------------------------
 
-/// gc() implementation (stub).
+/// gc() implementation.
 ///
 /// This is the equivalent of R's `do_gc()`.
 pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        R_gc();
-        Rf_allocVector3(SEXPTYPE::REALSXP, 14)
-    }
+    unsafe { crate::mainutils::essentials::do_gc(_call, _op, _args, _rho) }
 }
 
 /// gcinfo() implementation (stub).
