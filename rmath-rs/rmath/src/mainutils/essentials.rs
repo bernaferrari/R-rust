@@ -3409,6 +3409,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "is.single",
             "file",
             "url",
+            "textConnection",
+            "textConnectionValue",
+            "rawConnection",
             "close",
             "flush",
             "print.matrix",
@@ -9026,9 +9029,8 @@ pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `pushBackClear(con)` — clear push back buffer.
-/// Simplified: no-op stub.
 pub unsafe fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { crate::mainutils::connections::do_pushBackClear(_call, _op, args, _rho) }
 }
 
 /// R's `pushBackLength(con)` — get push back buffer length.

@@ -718,6 +718,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_url,
     },
     EvaluatedBuiltin {
+        name: "textConnection",
+        handler: crate::mainutils::connections::do_textConnection,
+    },
+    EvaluatedBuiltin {
+        name: "textConnectionValue",
+        handler: crate::mainutils::connections::do_textConnectionValue,
+    },
+    EvaluatedBuiltin {
+        name: "rawConnection",
+        handler: crate::mainutils::connections::do_rawConnection,
+    },
+    EvaluatedBuiltin {
         name: "close",
         handler: crate::mainutils::essentials::do_close,
     },

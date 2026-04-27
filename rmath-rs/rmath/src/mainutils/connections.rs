@@ -414,6 +414,30 @@ pub(crate) fn connection_pushback(n: c_int, bytes: &[u8]) {
     conn.pushback.push(pushed);
 }
 
+fn pop_pushback_byte(conn: &mut RConn) -> Option<u8> {
+    while let Some(buf) = conn.pushback.last_mut() {
+        if let Some(byte) = buf.pop() {
+            return Some(byte);
+        }
+        conn.pushback.pop();
+    }
+    None
+}
+
+fn read_pushback_line(conn: &mut RConn) -> Option<String> {
+    let mut line = Vec::new();
+    while let Some(byte) = pop_pushback_byte(conn) {
+        if byte == b'\n' {
+            return Some(String::from_utf8_lossy(&line).to_string());
+        }
+        if byte != b'\r' {
+            line.push(byte);
+        }
+    }
+
+    (!line.is_empty()).then(|| String::from_utf8_lossy(&line).to_string())
+}
+
 /// Write bytes to a connection using the Rust connection table.
 pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     let index = checked_connection_index(n);
@@ -1445,11 +1469,18 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
 
         conn.incomplete = false;
         let mut lines: Vec<String> = Vec::new();
+        while lines.len() < n {
+            let Some(line) = read_pushback_line(conn) else {
+                break;
+            };
+            lines.push(line);
+        }
+        let backend_limit = n.saturating_sub(lines.len());
 
         match &conn.kind {
             ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 if let Some(ref mut reader) = conn.reader {
-                    for _ in 0..n {
+                    for _ in 0..backend_limit {
                         let mut line = String::new();
                         match reader.read_line(&mut line) {
                             Ok(0) => break, // EOF
@@ -1476,7 +1507,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
                 {
                     let _reader = BufReader::new(stdout);
                     #[allow(clippy::never_loop)]
-                    for _ in 0..n {
+                    for _ in 0..backend_limit {
                         break;
                     }
                 }
@@ -1492,10 +1523,12 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
                     }
                     lines.push(line_str.to_string());
                 }
-                if lines.len() >= n {
+                if backend_limit == 0 {
+                    // Pushback satisfied this read without touching the underlying data.
+                } else if lines.len() >= n {
                     // Update position
                     let mut new_pos = pos;
-                    for _ in 0..n {
+                    for _ in 0..backend_limit {
                         if let Some(idx) = data[new_pos..].find('\n') {
                             new_pos += idx + 1;
                         } else {
@@ -1530,7 +1563,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
             ConnKind::Terminal(name) if name == "stdin" => {
                 let stdin = io::stdin();
                 let mut reader = stdin.lock();
-                for _ in 0..n {
+                for _ in 0..backend_limit {
                     let mut line = String::new();
                     match reader.read_line(&mut line) {
                         Ok(0) => break,
@@ -1962,11 +1995,11 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 }
 
 // ---------------------------------------------------------------------------
-// do_sockConnection — stub
+// do_sockConnection — socketConnection()
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_sockConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    r_error("socketConnection is not supported in this pure-R Android runtime")
 }
 
 // ---------------------------------------------------------------------------
@@ -2051,11 +2084,39 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 }
 
 // ---------------------------------------------------------------------------
-// do_sumConnection — stub
+// do_sumConnection — summary.connection()
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let scon = CAR(args);
+        if !inherits_class(scon, "connection") {
+            r_error("'con' is not a connection");
+        }
+        let i = as_integer(scon) as usize;
+        let table = connection_table();
+        let Some(conn) = table[i].as_ref() else {
+            r_error("invalid connection");
+        };
+
+        let fields = [
+            format!("description={}", conn.description),
+            format!("class={}", conn.class),
+            format!("mode={}", conn.mode),
+            format!("opened={}", conn.isopen),
+            format!("can read={}", conn.canread),
+            format!("can write={}", conn.canwrite),
+            format!("can seek={}", conn.canseek),
+            format!("pushback={}", conn.pushback.len()),
+        ];
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, fields.len() as c_int);
+        for (idx, field) in fields.iter().enumerate() {
+            let c_field = CString::new(field.as_str()).unwrap_or_default();
+            let charsxp = Rf_mkChar(c_field.as_ptr());
+            SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
+        }
+        ans
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2135,15 +2196,71 @@ pub unsafe fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe {
+        let data = CAR(_args);
+        let con = CAR(CDR(_args));
+        let new_line = if CDR(CDR(_args)) == R_NilValue() {
+            true
+        } else {
+            check_logical_arg(CAR(CDR(CDR(_args))), "newLine") != 0
+        };
+
+        if TYPEOF(data) != SEXPTYPE::STRSXP {
+            r_error("'data' must be a character vector");
+        }
+        if !inherits_class(con, "connection") {
+            r_error("'con' is not a connection");
+        }
+        let i = as_integer(con);
+        let len = LENGTH(data);
+        for idx in (0..len).rev() {
+            let mut line = string_elt(data, idx as R_xlen_t).into_bytes();
+            if new_line {
+                line.push(b'\n');
+            }
+            connection_pushback(i, &line);
+        }
+        R_NilValue()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_pushBackClear — pushBackClear(con)
+// ---------------------------------------------------------------------------
+
+pub unsafe fn do_pushBackClear(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let con = CAR(args);
+        if !inherits_class(con, "connection") {
+            r_error("'con' is not a connection");
+        }
+        let i = as_integer(con) as usize;
+        let mut table = connection_table();
+        let Some(conn) = table[i].as_mut() else {
+            r_error("invalid connection");
+        };
+        conn.pushback.clear();
+        R_NilValue()
+    }
 }
 
 // ---------------------------------------------------------------------------
 // do_pushBackLength — pushBackLength(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_pushBackLength(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { Rf_ScalarInteger(0) }
+pub unsafe fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let con = CAR(args);
+        if !inherits_class(con, "connection") {
+            r_error("'con' is not a connection");
+        }
+        let i = as_integer(con) as usize;
+        let table = connection_table();
+        let Some(conn) = table[i].as_ref() else {
+            r_error("invalid connection");
+        };
+        Rf_ScalarInteger(conn.pushback.len() as c_int)
+    }
 }
 
 // ---------------------------------------------------------------------------

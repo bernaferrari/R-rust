@@ -1372,6 +1372,40 @@ mod tests {
     }
 
     #[test]
+    fn test_connection_pushback_is_session_owned_and_readable() {
+        let mut session = RSession::new();
+
+        let length = session.eval(
+            "con <- textConnection(\"pb\", c(\"underlying\"), \"r\", FALSE); pushBack(c(\"first\", \"second\"), con); pushBackLength(con)",
+        );
+        assert_eq!(length.output, "[1] 2");
+
+        let lines = session.eval("readLines(con, 3, TRUE, TRUE, \"\", FALSE)");
+        assert_eq!(
+            lines.typed,
+            RValue::StringVector(vec![
+                Some("first".to_string()),
+                Some("second".to_string()),
+                Some("underlying".to_string()),
+            ])
+        );
+
+        let cleared = session.eval(
+            "con <- textConnection(\"pb\", c(\"base\"), \"r\", FALSE); pushBack(\"discard\", con); pushBackClear(con); all(c(pushBackLength(con) == 0, readLines(con, 1, TRUE, TRUE, \"\", FALSE) == \"base\"))",
+        );
+        assert_eq!(cleared.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
+    fn test_socket_connection_errors_explicitly() {
+        let mut session = RSession::new();
+        let result = session.eval("socketConnection(\"127.0.0.1\", 9)");
+        assert!(
+            matches!(result.typed, RValue::Error(message) if message.contains("socketConnection is not supported"))
+        );
+    }
+
+    #[test]
     fn test_sample_int_uniform_shape_and_errors() {
         let mut session = RSession::new();
 
