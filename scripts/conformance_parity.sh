@@ -13,6 +13,7 @@ MODE="--check"
 REPORT_DIR=""
 REPORT_JSON=""
 REPORT_MD=""
+STRICT=0
 
 while (($# > 0)); do
     case "$1" in
@@ -20,9 +21,13 @@ while (($# > 0)); do
             MODE="--check"
             shift
             ;;
+        --strict)
+            STRICT=1
+            shift
+            ;;
         --report)
             if (($# < 2)); then
-                echo "usage: $0 [--check] [--report DIR] [--json FILE] [--markdown FILE]" >&2
+                echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
                 exit 2
             fi
             REPORT_DIR="$2"
@@ -30,7 +35,7 @@ while (($# > 0)); do
             ;;
         --json)
             if (($# < 2)); then
-                echo "usage: $0 [--check] [--report DIR] [--json FILE] [--markdown FILE]" >&2
+                echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
                 exit 2
             fi
             REPORT_JSON="$2"
@@ -38,14 +43,14 @@ while (($# > 0)); do
             ;;
         --markdown)
             if (($# < 2)); then
-                echo "usage: $0 [--check] [--report DIR] [--json FILE] [--markdown FILE]" >&2
+                echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
                 exit 2
             fi
             REPORT_MD="$2"
             shift 2
             ;;
         *)
-            echo "usage: $0 [--check] [--report DIR] [--json FILE] [--markdown FILE]" >&2
+            echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
             exit 2
             ;;
     esac
@@ -66,8 +71,13 @@ if [[ -n "$REPORT_MD" ]]; then
 fi
 
 if ! command -v Rscript >/dev/null 2>&1; then
-    echo "SKIP: Rscript not found; conformance parity checks require stock C R." >&2
-    exit 0
+    if [[ "$STRICT" -eq 1 ]]; then
+        echo "ERROR: Rscript not found; strict conformance parity requires stock GNU R." >&2
+        exit 1
+    else
+        echo "SKIP: Rscript not found; conformance parity checks require stock C R." >&2
+        exit 0
+    fi
 fi
 
 if [[ ! -d "$CASES_DIR" ]]; then
@@ -540,6 +550,10 @@ main() {
     echo "Summary: ${passed}/${total} cases passed, ${xfailed} expected failures"
     if (( xpassed > 0 )); then
         echo "Unexpected passes: ${xpassed}"
+    fi
+    if [[ "$STRICT" -eq 1 && "$xfailed" -gt 0 ]]; then
+        echo "Strict mode: ${xfailed} expected failures remain; fix them or remove --strict."
+        failed=$((failed + xfailed))
     fi
     write_report
     if (( failed > 0 )); then

@@ -173,7 +173,7 @@ else
 fi
 
 section "Conformance report"
-run scripts/conformance_parity.sh --check --report "$REPORT_DIR"
+run scripts/conformance_parity.sh --check --strict --report "$REPORT_DIR"
 
 section "Upstream core slices"
 run scripts/upstream_core_slices.sh --report "$UPSTREAM_REPORT_DIR"

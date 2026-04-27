@@ -29,6 +29,17 @@ Run parity and write reports:
 ./scripts/conformance_parity.sh --check --report target/conformance-report
 ```
 
+Run the release-grade gate:
+
+```bash
+./scripts/conformance_parity.sh --check --strict --report target/conformance-report
+```
+
+Strict mode is intentionally harder than local developer mode: it requires
+`Rscript --vanilla` to be installed and fails if any `xfail.tsv` entry remains
+active or unexpectedly passes. Local non-strict runs may still skip cleanly when
+stock GNU R is unavailable.
+
 That writes:
 
 - `target/conformance-report/summary.json`
@@ -99,6 +110,10 @@ hand-edit release numbers without rerunning the report command.
 - `xfail`: accepted known gap with an owner bead and reason.
 - `xpass`: stale expected failure; remove it from `xfail.tsv` or update the
   owner bead.
+
+Release gates run with `--strict`, so `xfail` debt is not shippable. Temporary
+expected failures are useful while developing a slice, but a release-quality
+claim must either fix the behavior or explicitly remove the case from the gate.
 
 `xfail.tsv` rows are tab-separated:
 
