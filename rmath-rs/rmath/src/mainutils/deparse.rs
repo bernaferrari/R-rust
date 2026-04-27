@@ -1245,7 +1245,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 do_names = false;
             }
         }
-        Rf_protect(nv);
+        let _nv_guard = protect(nv);
 
         let mut str_names = false;
         let need_c = tlen > 1;
@@ -1540,7 +1540,6 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
         if str_names {
             d.opts = d_opts_in;
         }
-        Rf_unprotect(1); // nv
     }
 }
 
@@ -1564,7 +1563,7 @@ unsafe fn vec2buff(v: SEXP, d: *mut LocalParseData, do_names: bool) {
                 do_names = false;
             }
         }
-        Rf_protect(nv);
+        let _nv_guard = protect(nv);
 
         let mut sv = R_NilValue();
         if (d.opts & USESOURCE) != 0 {
@@ -1589,7 +1588,6 @@ unsafe fn vec2buff(v: SEXP, d: *mut LocalParseData, do_names: bool) {
         if lbreak {
             d.indent -= 1;
         }
-        Rf_unprotect(1); // nv
     }
 }
 
@@ -2547,7 +2545,7 @@ unsafe fn deparse1WithCutoff(
         }
 
         svec = Rf_allocVector(SEXPTYPE::STRSXP, local_data.linenumber);
-        Rf_protect(svec);
+        let _svec_guard = protect(svec);
 
         deparse2(call, svec, &mut local_data);
 
@@ -2572,7 +2570,6 @@ unsafe fn deparse1WithCutoff(
                 }
             }
             let result = Rf_mkString(data.as_ptr() as *const c_char);
-            Rf_unprotect(1);
             R_FreeStringBuffer(&mut local_data.buffer);
             return result;
         } else if need_ellipses {
@@ -2580,7 +2577,6 @@ unsafe fn deparse1WithCutoff(
             SET_STRING_ELT(svec, get_browse_lines() as R_xlen_t, ellipsis);
         }
 
-        Rf_unprotect(1);
         R_FreeStringBuffer(&mut local_data.buffer);
         svec
     }
@@ -2653,7 +2649,7 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
 
         let tval = deparse1(tval_raw, false, opts);
-        Rf_protect(tval);
+        let _tval_guard = protect(tval);
 
         // Write to stdout (connection index 1) or a connection
         let ifile = crate::mainutils::coerce::asInteger(sfile);
@@ -2673,7 +2669,7 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // Build a STRSXP with newlines appended for writeLines
             let n = LENGTH(lines_sexp);
             let text = Rf_allocVector(SEXPTYPE::STRSXP, n);
-            Rf_protect(text);
+            let _text_guard = protect(text);
             for i in 0..n as R_xlen_t {
                 SET_STRING_ELT(text, i, STRING_ELT(lines_sexp, i));
             }
@@ -2689,10 +2685,8 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 ),
                 R_NilValue(),
             );
-            Rf_unprotect(1);
         }
 
-        Rf_unprotect(1);
         CAR(args)
     }
 }
@@ -2744,7 +2738,7 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     opts
                 },
             );
-            Rf_protect(tval);
+            let _tval_guard = protect(tval);
 
             if ifile == 1 {
                 if isValidName(obj_name) {
@@ -2761,8 +2755,6 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 }
             }
-
-            Rf_unprotect(1);
         }
 
         let outnames = Rf_allocVector(SEXPTYPE::STRSXP, nobjs);
@@ -2839,7 +2831,7 @@ pub unsafe fn deparse1w(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 pub unsafe fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
     unsafe {
         let temp = deparse1WithCutoff(call, abbrev, MAX_CUTOFF, true, SIMPLEDEPARSE, -1);
-        Rf_protect(temp);
+        let _temp_guard = protect(temp);
         let lines = LENGTH(temp);
         if lines > 1 {
             // Calculate total length
@@ -2880,10 +2872,8 @@ pub unsafe fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
                 buf[pos] = 0;
             }
             let result = Rf_mkString(buf.as_ptr() as *const c_char);
-            Rf_unprotect(1);
             result
         } else {
-            Rf_unprotect(1);
             temp
         }
     }
@@ -3070,7 +3060,7 @@ mod tests {
         unsafe {
             // Create a simple expression: 1L
             let expr = Rf_ScalarInteger(1);
-            Rf_protect(expr);
+            let _expr_guard = protect(expr);
             let args = Rf_cons(
                 expr,
                 Rf_cons(
@@ -3084,11 +3074,10 @@ mod tests {
                     ),
                 ),
             );
-            Rf_protect(args);
+            let _args_guard = protect(args);
             let result = do_deparse(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             // Should return a character vector (STRSXP)
             assert!(!result.is_null());
-            Rf_unprotect(2);
         }
     }
 
