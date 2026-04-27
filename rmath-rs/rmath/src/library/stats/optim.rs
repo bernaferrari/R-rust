@@ -124,7 +124,8 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
     unsafe {
         let os = &mut *(ex as *mut OptStruct);
-        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let x = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _x_guard = protect(x);
         if Rf_isNull((*os).names) == 0 {
             setAttrib(x, R_NamesSymbol(), (*os).names);
         }
@@ -137,8 +138,10 @@ unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_voi
             *REAL(x).add(i as usize) = *p.add(i as usize) * *(*os).parscale.add(i as usize);
         }
         SETCADR((*os).R_fcall, x);
-        let s = Rf_protect(eval((*os).R_fcall, (*os).R_env));
+        let s = eval((*os).R_fcall, (*os).R_env);
+        let _s_guard = protect(s);
         let s = coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
+        let _coerced_guard = protect(s);
         if LENGTH(s) != 1 {
             let msg = CString::new(format!(
                 "objective function in optim evaluates to length {} not 1",
@@ -148,7 +151,6 @@ unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_voi
             Rf_error(msg.as_ptr());
         }
         let val = *REAL(s).add(0) / (*os).fnscale;
-        Rf_unprotect(2);
         val
     }
 }
@@ -168,7 +170,8 @@ unsafe extern "C" fn fmingr(
 
         if Rf_isNull((*os).R_gcall) == 0 {
             // Analytical derivatives
-            let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+            let x = Rf_allocVector(SEXPTYPE::REALSXP, n);
+            let _x_guard = protect(x);
             if Rf_isNull((*os).names) == 0 {
                 setAttrib(x, R_NamesSymbol(), (*os).names);
             }
@@ -181,8 +184,10 @@ unsafe extern "C" fn fmingr(
                 *REAL(x).add(i as usize) = *p.add(i as usize) * *(*os).parscale.add(i as usize);
             }
             SETCADR((*os).R_gcall, x);
-            let s = Rf_protect(eval((*os).R_gcall, (*os).R_env));
+            let s = eval((*os).R_gcall, (*os).R_env);
+            let _s_guard = protect(s);
             let s = coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
+            let _coerced_guard = protect(s);
             if LENGTH(s) != n {
                 let msg = CString::new(format!(
                     "gradient in optim evaluated to length {} not {}",
@@ -196,10 +201,10 @@ unsafe extern "C" fn fmingr(
                 *df.add(i as usize) =
                     *REAL(s).add(i as usize) * *(*os).parscale.add(i as usize) / (*os).fnscale;
             }
-            Rf_unprotect(2);
         } else {
             // Numerical derivatives
-            let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+            let x = Rf_allocVector(SEXPTYPE::REALSXP, n);
+            let _x_guard = protect(x);
             setAttrib(x, R_NamesSymbol(), (*os).names);
             for i in 0..n {
                 *REAL(x).add(i as usize) = *p.add(i as usize) * *(*os).parscale.add(i as usize);
@@ -211,20 +216,30 @@ unsafe extern "C" fn fmingr(
                     let eps = *(*os).ndeps.add(i as usize);
                     *REAL(x).add(i as usize) =
                         (*p.add(i as usize) + eps) * *(*os).parscale.add(i as usize);
-                    let s1 = Rf_protect(eval((*os).R_fcall, (*os).R_env));
-                    let s1 = coerceVector(s1, SEXPTYPE::REALSXP.as_c_int());
-                    let val1 = *REAL(s1).add(0) / (*os).fnscale;
+                    let val1 = {
+                        let s1 = eval((*os).R_fcall, (*os).R_env);
+                        let _s1_guard = protect(s1);
+                        let s1 = coerceVector(s1, SEXPTYPE::REALSXP.as_c_int());
+                        let _coerced_guard = protect(s1);
+                        *REAL(s1).add(0) / (*os).fnscale
+                    };
                     *REAL(x).add(i as usize) =
                         (*p.add(i as usize) - eps) * *(*os).parscale.add(i as usize);
-                    let s2 = Rf_protect(eval((*os).R_fcall, (*os).R_env));
-                    let s2 = coerceVector(s2, SEXPTYPE::REALSXP.as_c_int());
-                    let val2 = *REAL(s2).add(0) / (*os).fnscale;
+                    let val2 = {
+                        let s2 = eval((*os).R_fcall, (*os).R_env);
+                        let _s2_guard = protect(s2);
+                        let s2 = coerceVector(s2, SEXPTYPE::REALSXP.as_c_int());
+                        let _coerced_guard = protect(s2);
+                        *REAL(s2).add(0) / (*os).fnscale
+                    };
                     *df.add(i as usize) = (val1 - val2) / (2.0 * eps);
                     if !R_FINITE(*df.add(i as usize)) {
-                        eprintln!("non-finite finite-difference value [{}]", i + 1);
+                        let msg =
+                            CString::new(format!("non-finite finite-difference value [{}]", i + 1))
+                                .unwrap_or_default();
+                        Rf_error(msg.as_ptr());
                     }
                     *REAL(x).add(i as usize) = *p.add(i as usize) * *(*os).parscale.add(i as usize);
-                    Rf_unprotect(2);
                 }
             } else {
                 // usebounds
@@ -237,27 +252,36 @@ unsafe extern "C" fn fmingr(
                         epsused = tmp - *p.add(i as usize);
                     }
                     *REAL(x).add(i as usize) = tmp * *(*os).parscale.add(i as usize);
-                    let s1 = Rf_protect(eval((*os).R_fcall, (*os).R_env));
-                    let s1 = coerceVector(s1, SEXPTYPE::REALSXP.as_c_int());
-                    let val1 = *REAL(s1).add(0) / (*os).fnscale;
+                    let val1 = {
+                        let s1 = eval((*os).R_fcall, (*os).R_env);
+                        let _s1_guard = protect(s1);
+                        let s1 = coerceVector(s1, SEXPTYPE::REALSXP.as_c_int());
+                        let _coerced_guard = protect(s1);
+                        *REAL(s1).add(0) / (*os).fnscale
+                    };
                     tmp = *p.add(i as usize) - eps;
                     if tmp < *(*os).lower.add(i as usize) {
                         tmp = *(*os).lower.add(i as usize);
                         eps = *p.add(i as usize) - tmp;
                     }
                     *REAL(x).add(i as usize) = tmp * *(*os).parscale.add(i as usize);
-                    let s2 = Rf_protect(eval((*os).R_fcall, (*os).R_env));
-                    let s2 = coerceVector(s2, SEXPTYPE::REALSXP.as_c_int());
-                    let val2 = *REAL(s2).add(0) / (*os).fnscale;
+                    let val2 = {
+                        let s2 = eval((*os).R_fcall, (*os).R_env);
+                        let _s2_guard = protect(s2);
+                        let s2 = coerceVector(s2, SEXPTYPE::REALSXP.as_c_int());
+                        let _coerced_guard = protect(s2);
+                        *REAL(s2).add(0) / (*os).fnscale
+                    };
                     *df.add(i as usize) = (val1 - val2) / (epsused + eps);
                     if !R_FINITE(*df.add(i as usize)) {
-                        eprintln!("non-finite finite-difference value [{}]", i + 1);
+                        let msg =
+                            CString::new(format!("non-finite finite-difference value [{}]", i + 1))
+                                .unwrap_or_default();
+                        Rf_error(msg.as_ptr());
                     }
                     *REAL(x).add(i as usize) = *p.add(i as usize) * *(*os).parscale.add(i as usize);
-                    Rf_unprotect(2);
                 }
             }
-            Rf_unprotect(1); // x
         }
     }
 }
@@ -366,13 +390,12 @@ unsafe fn duplicate(x: SEXP) -> SEXP {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(sexptype, nrow * ncol);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        Rf_protect(dim);
+        let _dim_guard = protect(dim);
         *INTEGER(dim) = nrow;
-        *INTEGER(dim.add(1)) = ncol;
+        *INTEGER(dim).add(1) = ncol;
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -576,9 +599,11 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         args = CDR(args);
         let options = CAR(args);
 
-        (*os_ptr).R_fcall = Rf_protect(Rf_lang2(fn_sexp, R_NilValue()));
+        (*os_ptr).R_fcall = Rf_lang2(fn_sexp, R_NilValue());
+        let _fcall_guard = protect((*os_ptr).R_fcall);
 
-        let par = Rf_protect(coerceVector(par, SEXPTYPE::REALSXP.as_c_int()));
+        let par = coerceVector(par, SEXPTYPE::REALSXP.as_c_int());
+        let _par_guard = protect(par);
         let npar = LENGTH(par);
         let dpar = vect(npar);
         let opar = vect(npar);
@@ -598,19 +623,23 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if LENGTH(tmp) != npar {
             Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
         }
-        let tmp = Rf_protect(coerceVector(tmp, SEXPTYPE::REALSXP.as_c_int()));
         (*os_ptr).parscale = vect(npar);
-        for i in 0..npar {
-            *(*os_ptr).parscale.add(i as usize) = *REAL(tmp).add(i as usize);
+        {
+            let tmp = coerceVector(tmp, SEXPTYPE::REALSXP.as_c_int());
+            let _tmp_guard = protect(tmp);
+            for i in 0..npar {
+                *(*os_ptr).parscale.add(i as usize) = *REAL(tmp).add(i as usize);
+            }
         }
-        Rf_unprotect(1);
         for i in 0..npar {
             *dpar.add(i as usize) =
                 *REAL(par).add(i as usize) / *(*os_ptr).parscale.add(i as usize);
         }
 
-        let res = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 5));
-        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 5));
+        let res = Rf_allocVector(SEXPTYPE::VECSXP, 5);
+        let _res_guard = protect(res);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, 5);
+        let _names_guard = protect(names);
         SET_STRING_ELT(
             names,
             0,
@@ -637,11 +666,13 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             Rf_mkChar(CString::new("message").unwrap_or_default().as_ptr()),
         );
         setAttrib(res, R_NamesSymbol(), names);
-        Rf_unprotect(1);
 
-        let value = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
-        let counts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
-        let countnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        let value = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+        let _value_guard = protect(value);
+        let counts = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let _counts_guard = protect(counts);
+        let countnames = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        let _countnames_guard = protect(countnames);
         SET_STRING_ELT(
             countnames,
             0,
@@ -653,9 +684,9 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             Rf_mkChar(CString::new("gradient").unwrap_or_default().as_ptr()),
         );
         setAttrib(counts, R_NamesSymbol(), countnames);
-        Rf_unprotect(1);
 
-        let _conv = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        let conv = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        let _conv_guard = protect(conv);
         let abstol = as_real(getListElement(
             options,
             CString::new("abstol").unwrap_or_default().as_ptr(),
@@ -740,7 +771,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 (*os_ptr).R_gcall = R_NilValue();
             }
-            Rf_protect((*os_ptr).R_gcall);
+            let _gcall_guard = protect((*os_ptr).R_gcall);
             samin(
                 npar,
                 dpar,
@@ -758,7 +789,6 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             fncount = if npar > 0 { maxit } else { 1 };
             grcount = NA_INTEGER;
-            Rf_unprotect(1); // OS->R_gcall
         } else if tn == b"BFGS" {
             let nREPORT = as_integer(getListElement(
                 options,
@@ -777,13 +807,13 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
                 }
                 (*os_ptr).ndeps = vect(npar);
-                let ndeps = Rf_protect(coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int()));
+                let ndeps = coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int());
+                let _ndeps_guard = protect(ndeps);
                 for i in 0..npar {
                     *(*os_ptr).ndeps.add(i as usize) = *REAL(ndeps).add(i as usize);
                 }
-                Rf_unprotect(1);
             }
-            Rf_protect((*os_ptr).R_gcall);
+            let _gcall_guard = protect((*os_ptr).R_gcall);
             let mask = vect_int(npar);
             for i in 0..npar {
                 *mask.add(i as usize) = 1;
@@ -809,7 +839,6 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 *REAL(par).add(i as usize) =
                     *dpar.add(i as usize) * *(*os_ptr).parscale.add(i as usize);
             }
-            Rf_unprotect(1); // OS->R_gcall
         } else if tn == b"CG" {
             let type_val = as_integer(getListElement(
                 options,
@@ -828,13 +857,13 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
                 }
                 (*os_ptr).ndeps = vect(npar);
-                let ndeps = Rf_protect(coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int()));
+                let ndeps = coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int());
+                let _ndeps_guard = protect(ndeps);
                 for i in 0..npar {
                     *(*os_ptr).ndeps.add(i as usize) = *REAL(ndeps).add(i as usize);
                 }
-                Rf_unprotect(1);
             }
-            Rf_protect((*os_ptr).R_gcall);
+            let _gcall_guard = protect((*os_ptr).R_gcall);
             cgmin(
                 npar,
                 dpar,
@@ -856,7 +885,6 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 *REAL(par).add(i as usize) =
                     *opar.add(i as usize) * *(*os_ptr).parscale.add(i as usize);
             }
-            Rf_unprotect(1); // OS->R_gcall
         } else if tn == b"L-BFGS-B" {
             let nREPORT = as_integer(getListElement(
                 options,
@@ -887,13 +915,13 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
                 }
                 (*os_ptr).ndeps = vect(npar);
-                let ndeps = Rf_protect(coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int()));
+                let ndeps = coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int());
+                let _ndeps_guard = protect(ndeps);
                 for i in 0..npar {
                     *(*os_ptr).ndeps.add(i as usize) = *REAL(ndeps).add(i as usize);
                 }
-                Rf_unprotect(1);
             }
-            Rf_protect((*os_ptr).R_gcall);
+            let _gcall_guard = protect((*os_ptr).R_gcall);
             args = CDR(args);
             let slower = CAR(args);
             args = CDR(args);
@@ -1010,14 +1038,11 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 *REAL(par).add(i as usize) =
                     *dpar.add(i as usize) * *(*os_ptr).parscale.add(i as usize);
             }
-            Rf_unprotect(1); // OS->R_gcall
             let msg_len = lmsg.iter().position(|&c| c == 0).unwrap_or(60);
             let msg_str = String::from_utf8_lossy(&lmsg[..msg_len]);
-            let smsg = Rf_protect(Rf_mkString(
-                CString::new(msg_str.as_ref()).unwrap_or_default().as_ptr(),
-            ));
+            let smsg = Rf_mkString(CString::new(msg_str.as_ref()).unwrap_or_default().as_ptr());
+            let _smsg_guard = protect(smsg);
             SET_VECTOR_ELT(res, 4, smsg);
-            Rf_unprotect(1);
         } else {
             Rf_error(b"unknown 'method'\0".as_ptr() as *const _);
         }
@@ -1031,9 +1056,8 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         *INTEGER(counts).add(0) = fncount;
         *INTEGER(counts).add(1) = grcount;
         SET_VECTOR_ELT(res, 2, counts);
-        *INTEGER(_conv).add(0) = ifail;
-        SET_VECTOR_ELT(res, 3, _conv);
-        Rf_unprotect(6);
+        *INTEGER(conv).add(0) = ifail;
+        SET_VECTOR_ELT(res, 3, conv);
         res
     }
 }
@@ -1086,16 +1110,20 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if LENGTH(tmp) != npar {
             Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
         }
-        let tmp = Rf_protect(coerceVector(tmp, SEXPTYPE::REALSXP.as_c_int()));
         (*os_ptr).parscale = vect(npar);
-        for i in 0..npar {
-            *(*os_ptr).parscale.add(i as usize) = *REAL(tmp).add(i as usize);
+        {
+            let tmp = coerceVector(tmp, SEXPTYPE::REALSXP.as_c_int());
+            let _tmp_guard = protect(tmp);
+            for i in 0..npar {
+                *(*os_ptr).parscale.add(i as usize) = *REAL(tmp).add(i as usize);
+            }
         }
-        Rf_unprotect(1);
 
-        (*os_ptr).R_fcall = Rf_protect(Rf_lang2(fn_sexp, R_NilValue()));
+        (*os_ptr).R_fcall = Rf_lang2(fn_sexp, R_NilValue());
+        let _fcall_guard = protect((*os_ptr).R_fcall);
 
-        let par = Rf_protect(coerceVector(par, SEXPTYPE::REALSXP.as_c_int()));
+        let par = coerceVector(par, SEXPTYPE::REALSXP.as_c_int());
+        let _par_guard = protect(par);
 
         if Rf_isNull(gr) == 0 {
             if !is_function(gr) {
@@ -1105,20 +1133,23 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             (*os_ptr).R_gcall = R_NilValue();
         }
-        Rf_protect((*os_ptr).R_gcall);
+        let _gcall_guard = protect((*os_ptr).R_gcall);
 
         let ndeps = getListElement(options, CString::new("ndeps").unwrap_or_default().as_ptr());
         if LENGTH(ndeps) != npar {
             Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
         }
         (*os_ptr).ndeps = vect(npar);
-        let ndeps = Rf_protect(coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int()));
-        for i in 0..npar {
-            *(*os_ptr).ndeps.add(i as usize) = *REAL(ndeps).add(i as usize);
+        {
+            let ndeps = coerceVector(ndeps, SEXPTYPE::REALSXP.as_c_int());
+            let _ndeps_guard = protect(ndeps);
+            for i in 0..npar {
+                *(*os_ptr).ndeps.add(i as usize) = *REAL(ndeps).add(i as usize);
+            }
         }
-        Rf_unprotect(1);
 
-        let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), npar, npar));
+        let ans = allocMatrix(SEXPTYPE::REALSXP.into(), npar, npar);
+        let _ans_guard = protect(ans);
         let dpar = vect(npar);
         for i in 0..npar {
             *dpar.add(i as usize) =
@@ -1157,14 +1188,13 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let nm = getAttrib(par, R_NamesSymbol());
         if Rf_isNull(nm) == 0 {
-            let dm = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+            let dm = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            let _dm_guard = protect(dm);
             SET_VECTOR_ELT(dm, 0, duplicate(nm));
             SET_VECTOR_ELT(dm, 1, duplicate(nm));
             setAttrib(ans, R_DimNamesSymbol(), dm);
-            Rf_unprotect(1);
         }
 
-        Rf_unprotect(4);
         ans
     }
 }
