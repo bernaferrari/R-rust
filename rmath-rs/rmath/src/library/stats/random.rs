@@ -161,13 +161,12 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(sexptype, nrow * ncol);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        Rf_protect(dim);
+        let _dim_guard = protect(dim);
         *INTEGER(dim) = nrow;
-        *INTEGER(dim.add(1)) = ncol;
+        *INTEGER(dim).add(1) = ncol;
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -201,13 +200,15 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
         if n == 0 {
             return x;
         }
+        let _x_guard = protect(x);
         let na = XLENGTH(sa);
 
         if na < 1 {
             fillWithNAs(x, n, type_);
         } else {
             let mut naflag = false;
-            let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+            let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+            let _a_guard = protect(a);
             let mut i0: R_xlen_t = 0;
             let mut use_type = type_;
             GetRNGstate();
@@ -235,10 +236,12 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                 }
             }
             if use_type == SEXPTYPE::REALSXP {
+                let mut x_real_guard = None;
                 // If we switched from INTSXP, we need to re-read the data
                 // For simplicity, re-allocate and fill from i0
                 let x_real = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+                    x_real_guard = Some(protect(xr));
                     // Copy integer results to real
                     for i in 0..i0 {
                         *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
@@ -264,14 +267,13 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
                     eprintln!("NAs produced");
                 }
                 PutRNGstate();
-                Rf_unprotect(1);
+                drop(x_real_guard);
                 return x_real;
             }
             if naflag {
                 eprintln!("NAs produced");
             }
             PutRNGstate();
-            Rf_unprotect(1);
         }
         x
     }
@@ -292,6 +294,7 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
         if n == 0 {
             return x;
         }
+        let _x_guard = protect(x);
         let na = XLENGTH(sa);
         let nb = XLENGTH(sb);
 
@@ -299,8 +302,10 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
             fillWithNAs(x, n, type_);
         } else {
             let mut naflag = false;
-            let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-            let b = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
+            let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+            let _a_guard = protect(a);
+            let b = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+            let _b_guard = protect(b);
             let mut i0: R_xlen_t = 0;
             let mut use_type = type_;
             GetRNGstate();
@@ -329,8 +334,10 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                 }
             }
             if use_type == SEXPTYPE::REALSXP {
+                let mut x_real_guard = None;
                 let x_real = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+                    x_real_guard = Some(protect(xr));
                     for i in 0..i0 {
                         *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
                     }
@@ -357,14 +364,13 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
                     eprintln!("NAs produced");
                 }
                 PutRNGstate();
-                Rf_unprotect(2);
+                drop(x_real_guard);
                 return x_real;
             }
             if naflag {
                 eprintln!("NAs produced");
             }
             PutRNGstate();
-            Rf_unprotect(2);
         }
         x
     }
@@ -385,6 +391,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
         if n == 0 {
             return x;
         }
+        let _x_guard = protect(x);
         let na = XLENGTH(sa);
         let nb = XLENGTH(sb);
         let nc = XLENGTH(sc);
@@ -393,9 +400,12 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
             fillWithNAs(x, n, type_);
         } else {
             let mut naflag = false;
-            let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-            let b = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
-            let c = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
+            let a = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+            let _a_guard = protect(a);
+            let b = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+            let _b_guard = protect(b);
+            let c = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
+            let _c_guard = protect(c);
             let mut i0: R_xlen_t = 0;
             let mut use_type = type_;
             GetRNGstate();
@@ -429,8 +439,10 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                 }
             }
             if use_type == SEXPTYPE::REALSXP {
+                let mut x_real_guard = None;
                 let x_real = if type_ == SEXPTYPE::INTSXP && i0 > 0 {
                     let xr = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+                    x_real_guard = Some(protect(xr));
                     for i in 0..i0 {
                         *REAL(xr).add(i as usize) = *INTEGER(x).add(i as usize) as c_double;
                     }
@@ -463,14 +475,13 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
                     eprintln!("NAs produced");
                 }
                 PutRNGstate();
-                Rf_unprotect(3);
+                drop(x_real_guard);
                 return x_real;
             }
             if naflag {
                 eprintln!("NAs produced");
             }
             PutRNGstate();
-            Rf_unprotect(3);
         }
         x
     }
@@ -785,11 +796,12 @@ pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
         }
         let mut prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
         let k = LENGTH(prob);
-        Rf_protect(prob);
+        let _prob_guard = protect(prob);
         FixupProb(REAL(prob), k);
 
         GetRNGstate();
-        let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), k, n));
+        let ans = allocMatrix(SEXPTYPE::INTSXP.into(), k, n);
+        let _ans_guard = protect(ans);
         let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
         for i in 0..n as R_xlen_t {
             let ik = i * k as R_xlen_t;
@@ -807,12 +819,11 @@ pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
 
         let nms = getAttrib(prob, R_NamesSymbol());
         if Rf_isNull(nms) == 0 {
-            let dimnms = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+            let dimnms = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            let _dimnms_guard = protect(dimnms);
             SET_VECTOR_ELT(dimnms, 0, nms);
             setAttrib(ans, R_DimNamesSymbol(), dimnms);
-            Rf_unprotect(1);
         }
-        Rf_unprotect(2);
         ans
     }
 }
@@ -884,12 +895,14 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
         }
 
         let jwork = alloc_int_array(nc as usize);
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n_of_samples));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, n_of_samples);
+        let _ans_guard = protect(ans);
 
         GetRNGstate();
 
         for i in 0..n_of_samples {
-            let tmp = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), nr, nc));
+            let tmp = allocMatrix(SEXPTYPE::INTSXP.into(), nr, nc);
+            let _tmp_guard = protect(tmp);
             rcont2(
                 nr,
                 nc,
@@ -901,11 +914,9 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
                 INTEGER(tmp),
             );
             SET_VECTOR_ELT(ans, i as R_xlen_t, tmp);
-            Rf_unprotect(1);
         }
 
         PutRNGstate();
-        Rf_unprotect(1);
         ans
     }
 }

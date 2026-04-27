@@ -41,11 +41,12 @@ use super::starma::{forkal, karma, starma, starma_struct};
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     let n = nrow * ncol;
     let s = Rf_allocVector(sexptype, n);
-    let d = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+    let _s_guard = protect(s);
+    let d = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+    let _d_guard = protect(d);
     *INTEGER(d) = nrow;
     *INTEGER(d).add(1) = ncol;
     setAttrib(s, R_DimSymbol(), d);
-    Rf_unprotect(1);
     s
 }
 
@@ -168,17 +169,19 @@ unsafe fn uni_pacf(cor: *const c_double, p: *mut c_double, nlag: c_int) {
 
 pub unsafe fn pacf1(acf: SEXP, lmax: SEXP) -> SEXP {
     let lagmax = asInteger(lmax);
-    let acf = Rf_protect(coerceVector(acf, SEXPTYPE::REALSXP.as_c_int()));
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, lagmax));
+    let acf = coerceVector(acf, SEXPTYPE::REALSXP.as_c_int());
+    let _acf_guard = protect(acf);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, lagmax);
+    let _ans_guard = protect(ans);
     uni_pacf(REAL(acf), REAL(ans), lagmax);
 
-    let d = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
+    let d = Rf_allocVector(SEXPTYPE::INTSXP, 3);
+    let _d_guard = protect(d);
     *INTEGER(d) = lagmax;
     *INTEGER(d).add(1) = 1;
     *INTEGER(d).add(2) = 1;
     setAttrib(ans, R_DimSymbol(), d);
 
-    Rf_unprotect(3);
     ans
 }
 
@@ -515,9 +518,12 @@ pub unsafe fn arma0_kfore(pG: SEXP, pd: SEXP, psd: SEXP, nahead: SEXP) -> SEXP {
     let il = asInteger(nahead);
     let d_val = dd + (*G).ns * asInteger(psd);
 
-    let res = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, il));
-    let var = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, il));
+    let res = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+    let _res_guard = protect(res);
+    let x = Rf_allocVector(SEXPTYPE::REALSXP, il);
+    let _x_guard = protect(x);
+    let var = Rf_allocVector(SEXPTYPE::REALSXP, il);
+    let _var_guard = protect(var);
     SET_VECTOR_ELT(res, 0, x);
     SET_VECTOR_ELT(res, 1, var);
 
@@ -550,12 +556,10 @@ pub unsafe fn arma0_kfore(pG: SEXP, pd: SEXP, psd: SEXP, nahead: SEXP) -> SEXP {
         &mut ifault,
     );
     if ifault != 0 {
-        Rf_unprotect(3);
         Rf_error(b"forkal error\0".as_ptr() as *const libc::c_char);
         return R_NilValue();
     }
 
-    Rf_unprotect(3);
     res
 }
 
@@ -585,14 +589,15 @@ unsafe fn artoma(p: c_int, phi: *const c_double, psi: *mut c_double, npsi: c_int
 // ---------------------------------------------------------------------------
 
 pub unsafe fn ar2ma(ar: SEXP, npsi: SEXP) -> SEXP {
-    let ar = Rf_protect(coerceVector(ar, SEXPTYPE::REALSXP.as_c_int()));
+    let ar = coerceVector(ar, SEXPTYPE::REALSXP.as_c_int());
+    let _ar_guard = protect(ar);
     let p = LENGTH(ar) as c_int;
     let ns = asInteger(npsi);
     let ns1 = ns + p + 1;
-    let psi = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ns1));
+    let psi = Rf_allocVector(SEXPTYPE::REALSXP, ns1);
+    let _psi_guard = protect(psi);
     artoma(p, REAL(ar), REAL(psi), ns1);
     let ans = lengthgets(psi, ns);
-    Rf_unprotect(2);
     ans
 }
 
@@ -739,22 +744,18 @@ pub unsafe fn ARMAtoMA(ar: SEXP, ma: SEXP, lag_max: SEXP) -> SEXP {
     let phi = REAL(ar);
     let theta = REAL(ma);
 
-    let res = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, m));
+    let res = Rf_allocVector(SEXPTYPE::REALSXP, m);
+    let _res_guard = protect(res);
     let psi = REAL(res);
 
     for i in 0..(m as usize) {
         let mut tmp = if i < q as usize { *theta.add(i) } else { 0.0 };
         for j in 0..imin(i as c_int + 1, p) as usize {
-            tmp += *phi.add(j)
-                * if i - j - 1 >= 0 {
-                    *psi.add(i - j - 1)
-                } else {
-                    1.0
-                };
+            tmp += *phi.add(j) * if i > j { *psi.add(i - j - 1) } else { 1.0 };
         }
+        *psi.add(i) = tmp;
     }
 
-    Rf_unprotect(1);
     res
 }
 
