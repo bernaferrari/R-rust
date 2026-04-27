@@ -363,9 +363,9 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             // str(NULL) returns " NULL"
-            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _ans_guard = protect(ans);
             SET_STRING_ELT(ans, 0, Rf_mkChar(b" NULL\0".as_ptr() as *const _));
-            Rf_unprotect(1);
             return ans;
         }
 
@@ -387,13 +387,13 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let type_name = sexptype2char(t);
         let desc = format!(" {} [1:{}] \"{}\"", type_name, len, type_name);
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _ans_guard = protect(ans);
         SET_STRING_ELT(
             ans,
             0,
             Rf_mkChar(std::ffi::CString::new(desc).unwrap_or_default().as_ptr()),
         );
-        Rf_unprotect(1);
         ans
     }
 }
@@ -512,7 +512,8 @@ pub unsafe fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
             // Return implicit class
             let t = TYPEOF(x);
             let type_name = sexptype2char(t);
-            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _ans_guard = protect(ans);
             SET_STRING_ELT(
                 ans,
                 0,
@@ -522,7 +523,6 @@ pub unsafe fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
                         .as_ptr(),
                 ),
             );
-            Rf_unprotect(1);
             ans
         } else {
             klass
@@ -566,9 +566,9 @@ pub unsafe fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
 
         if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             // str(NULL)
-            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _ans_guard = protect(ans);
             SET_STRING_ELT(ans, 0, Rf_mkChar(b" NULL\0".as_ptr() as *const _));
-            Rf_unprotect(1);
             return ans;
         }
 
@@ -578,13 +578,13 @@ pub unsafe fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let len = LENGTH(x);
         let desc = format!("List of {}\n $ : chr \"{}\"", len, type_name);
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _ans_guard = protect(ans);
         SET_STRING_ELT(
             ans,
             0,
             Rf_mkChar(std::ffi::CString::new(desc).unwrap_or_default().as_ptr()),
         );
-        Rf_unprotect(1);
         ans
     }
 }
@@ -634,7 +634,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_ScalarInteger(42);
-            Rf_protect(x);
+            let _x_guard = protect(x);
             let result = do_typeof(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -646,7 +646,6 @@ mod tests {
             let s = CHAR(STRING_ELT(result, 0));
             let type_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
             assert_eq!(type_str, "integer");
-            Rf_unprotect(1);
         }
     }
 
@@ -655,7 +654,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_ScalarReal(3.14);
-            Rf_protect(x);
+            let _x_guard = protect(x);
             let result = do_typeof(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -665,7 +664,6 @@ mod tests {
             let s = CHAR(STRING_ELT(result, 0));
             let type_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
             assert_eq!(type_str, "double");
-            Rf_unprotect(1);
         }
     }
 
@@ -704,7 +702,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_ScalarInteger(1);
-            Rf_protect(x);
+            let _x_guard = protect(x);
             let result = do_isnull(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -712,7 +710,6 @@ mod tests {
                 ptr::null_mut(),
             );
             assert_eq!(*LOGICAL(result), FALSE);
-            Rf_unprotect(1);
         }
     }
 
@@ -720,7 +717,8 @@ mod tests {
     fn test_length_integer() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let x = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 5));
+            let x = Rf_allocVector(SEXPTYPE::INTSXP, 5);
+            let _x_guard = protect(x);
             let result = do_length(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -728,7 +726,6 @@ mod tests {
                 ptr::null_mut(),
             );
             assert_eq!(*INTEGER(result), 5);
-            Rf_unprotect(1);
         }
     }
 
