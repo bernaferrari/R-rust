@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, REAL_ELT,
-    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
+    REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -18,7 +18,9 @@ use crate::sexp::constructors::{
     Rf_mkString,
 };
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{
+    FALSE, NA_INTEGER, NA_REAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
+};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -7086,6 +7088,95 @@ fn elt_real_safe(x: SEXP, i: R_xlen_t) -> f64 {
 // Matrix operations: matrix(), t(), nrow(), ncol(), dim(), diag()
 // ---------------------------------------------------------------------------
 
+fn supported_matrix_type(t: c_int) -> bool {
+    t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::RAWSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::VECSXP
+}
+
+unsafe fn set_matrix_na_or_zero(x: SEXP, i: R_xlen_t) {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => *REAL(x).add(i as usize) = NA_REAL,
+            t if t == SEXPTYPE::INTSXP => *INTEGER(x).add(i as usize) = NA_INTEGER,
+            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(i as usize) = NA_INTEGER,
+            t if t == SEXPTYPE::CPLXSXP => {
+                *COMPLEX(x).add(i as usize) = Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                };
+            }
+            t if t == SEXPTYPE::RAWSXP => *RAW(x).add(i as usize) = 0 as Rbyte,
+            t if t == SEXPTYPE::STRSXP => {
+                SET_STRING_ELT(x, i, crate::sexp::globals::R_NaString());
+            }
+            t if t == SEXPTYPE::VECSXP => SET_VECTOR_ELT(x, i, R_NilValue()),
+            _ => {}
+        }
+    }
+}
+
+unsafe fn set_matrix_zero(x: SEXP, i: R_xlen_t) {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => *REAL(x).add(i as usize) = 0.0,
+            t if t == SEXPTYPE::INTSXP => *INTEGER(x).add(i as usize) = 0,
+            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(i as usize) = FALSE,
+            t if t == SEXPTYPE::CPLXSXP => {
+                *COMPLEX(x).add(i as usize) = Rcomplex { r: 0.0, i: 0.0 };
+            }
+            t if t == SEXPTYPE::RAWSXP => *RAW(x).add(i as usize) = 0 as Rbyte,
+            t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(x, i, Rf_mkChar(c"".as_ptr())),
+            t if t == SEXPTYPE::VECSXP => SET_VECTOR_ELT(x, i, R_NilValue()),
+            _ => {}
+        }
+    }
+}
+
+unsafe fn copy_matrix_element(dst: SEXP, dst_i: R_xlen_t, src: SEXP, src_i: R_xlen_t) {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::REALSXP => {
+                *REAL(dst).add(dst_i as usize) = *REAL(src).add(src_i as usize)
+            }
+            t if t == SEXPTYPE::INTSXP => {
+                *INTEGER(dst).add(dst_i as usize) = *INTEGER(src).add(src_i as usize)
+            }
+            t if t == SEXPTYPE::LGLSXP => {
+                *LOGICAL(dst).add(dst_i as usize) = *LOGICAL(src).add(src_i as usize)
+            }
+            t if t == SEXPTYPE::CPLXSXP => {
+                *COMPLEX(dst).add(dst_i as usize) = *COMPLEX(src).add(src_i as usize)
+            }
+            t if t == SEXPTYPE::RAWSXP => {
+                *RAW(dst).add(dst_i as usize) = *RAW(src).add(src_i as usize)
+            }
+            t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(dst, dst_i, STRING_ELT(src, src_i)),
+            t if t == SEXPTYPE::VECSXP => SET_VECTOR_ELT(dst, dst_i, VECTOR_ELT(src, src_i)),
+            _ => {}
+        }
+    }
+}
+
+unsafe fn set_diagonal_identity_value(x: SEXP, i: R_xlen_t) {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => *REAL(x).add(i as usize) = 1.0,
+            t if t == SEXPTYPE::INTSXP => *INTEGER(x).add(i as usize) = 1,
+            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(i as usize) = TRUE,
+            t if t == SEXPTYPE::CPLXSXP => {
+                *COMPLEX(x).add(i as usize) = Rcomplex { r: 1.0, i: 0.0 };
+            }
+            t if t == SEXPTYPE::RAWSXP => *RAW(x).add(i as usize) = 1 as Rbyte,
+            _ => {}
+        }
+    }
+}
+
 /// R's `matrix(data, nrow, ncol, byrow)` — create a matrix.
 pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -7120,28 +7211,29 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         };
 
         let t = TYPEOF(data);
+        if !supported_matrix_type(t) || nrow < 0 || ncol < 0 {
+            return R_NilValue();
+        }
         let result = Rf_allocVector3(t, nrow * ncol);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
 
-        // Copy data
+        // R stores matrices in column-major order. If data has length zero, keep
+        // the requested shape and fill with the type-appropriate missing value.
         for i in 0..(nrow * ncol) {
-            let src_idx = if byrow {
-                let r = i / ncol;
-                let c = i % ncol;
-                c * nrow + r
+            if data_len == 0 {
+                set_matrix_na_or_zero(result, i);
             } else {
-                i
-            } % data_len;
-
-            if t == SEXPTYPE::REALSXP {
-                *REAL(result).add(i as usize) = *REAL(data).add(src_idx as usize);
-            } else if t == SEXPTYPE::INTSXP {
-                *INTEGER(result).add(i as usize) = *INTEGER(data).add(src_idx as usize);
-            } else if t == SEXPTYPE::LGLSXP {
-                *LOGICAL(result).add(i as usize) = *LOGICAL(data).add(src_idx as usize);
+                let src_idx = if byrow && ncol > 0 {
+                    let row = i % nrow;
+                    let col = i / nrow;
+                    row * ncol + col
+                } else {
+                    i
+                } % data_len;
+                copy_matrix_element(result, i, data, src_idx);
             }
         }
 
@@ -7186,24 +7278,23 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             };
 
         let t = TYPEOF(x);
+        if !supported_matrix_type(t) || nrow < 0 || ncol < 0 {
+            return R_NilValue();
+        }
         let result = Rf_allocVector3(t, nrow * ncol);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
 
-        // Transpose: result[j*nrow + i] = x[i*ncol + j]
-        for i in 0..nrow {
-            for j in 0..ncol {
-                let src = (i * ncol + j) as usize;
-                let dst = (j * nrow + i) as usize;
-                if t == SEXPTYPE::REALSXP {
-                    *REAL(result).add(dst) = *REAL(x).add(src);
-                } else if t == SEXPTYPE::INTSXP {
-                    *INTEGER(result).add(dst) = *INTEGER(x).add(src);
-                } else if t == SEXPTYPE::LGLSXP {
-                    *LOGICAL(result).add(dst) = *LOGICAL(x).add(src);
-                }
+        // Source and destination are both column-major:
+        // src(row, col) = row + col * nrow
+        // dst(col, row) = col + row * ncol
+        for row in 0..nrow {
+            for col in 0..ncol {
+                let src = row + col * nrow;
+                let dst = col + row * ncol;
+                copy_matrix_element(result, dst, x, src);
             }
         }
 
@@ -7298,25 +7389,26 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let nrow = *INTEGER(dim_attr) as usize;
             let ncol = *INTEGER(dim_attr).add(1) as usize;
             let n = nrow.min(ncol);
+            if !supported_matrix_type(TYPEOF(x)) {
+                return R_NilValue();
+            }
             let result = Rf_allocVector3(TYPEOF(x), n as R_xlen_t);
             if result.is_null() {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
-            let step = ncol + 1; // diagonal stride
             for i in 0..n {
-                let src = i * step;
-                if TYPEOF(x) == SEXPTYPE::REALSXP {
-                    *REAL(result).add(i) = *REAL(x).add(src);
-                } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                    *INTEGER(result).add(i) = *INTEGER(x).add(src);
-                }
+                let src = i + i * nrow;
+                copy_matrix_element(result, i as R_xlen_t, x, src as R_xlen_t);
             }
             result
         } else {
             if XLENGTH(x) == 1 {
                 let n = real_or_default(x, 0.0).max(0.0) as usize;
                 let t = TYPEOF(x);
+                if !supported_matrix_type(t) {
+                    return R_NilValue();
+                }
                 let result = Rf_allocVector3(t, (n * n) as R_xlen_t);
                 if result.is_null() {
                     return R_NilValue();
@@ -7324,19 +7416,11 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let _result_guard = protect(result);
 
                 for i in 0..n * n {
-                    if t == SEXPTYPE::REALSXP {
-                        *REAL(result).add(i) = 0.0;
-                    } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                        *INTEGER(result).add(i) = 0;
-                    }
+                    set_matrix_zero(result, i as R_xlen_t);
                 }
                 for i in 0..n {
-                    let dst = i * n + i;
-                    if t == SEXPTYPE::REALSXP {
-                        *REAL(result).add(dst) = 1.0;
-                    } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                        *INTEGER(result).add(dst) = 1;
-                    }
+                    let dst = i + i * n;
+                    set_diagonal_identity_value(result, dst as R_xlen_t);
                 }
 
                 let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
@@ -7355,27 +7439,21 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             // Create diagonal matrix from vector
             let n = XLENGTH(x) as usize;
             let t = TYPEOF(x);
+            if !supported_matrix_type(t) {
+                return R_NilValue();
+            }
             let result = Rf_allocVector3(t, (n * n) as R_xlen_t);
             if result.is_null() {
                 return R_NilValue();
             }
             let _result_guard = protect(result);
 
-            // Zero-initialize, then set diagonal
             for i in 0..n * n {
-                if t == SEXPTYPE::REALSXP {
-                    *REAL(result).add(i) = 0.0;
-                } else if t == SEXPTYPE::INTSXP {
-                    *INTEGER(result).add(i) = 0;
-                }
+                set_matrix_zero(result, i as R_xlen_t);
             }
             for i in 0..n {
-                let dst = i * n + i;
-                if t == SEXPTYPE::REALSXP {
-                    *REAL(result).add(dst) = *REAL(x).add(i);
-                } else if t == SEXPTYPE::INTSXP {
-                    *INTEGER(result).add(dst) = *INTEGER(x).add(i);
-                }
+                let dst = i + i * n;
+                copy_matrix_element(result, dst as R_xlen_t, x, i as R_xlen_t);
             }
 
             // Set dim
@@ -19049,6 +19127,15 @@ pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 mod tests {
     use super::*;
 
+    unsafe fn test_pairlist(values: &[SEXP]) -> SEXP {
+        unsafe {
+            values
+                .iter()
+                .rev()
+                .fold(R_NilValue(), |tail, value| Rf_cons(*value, tail))
+        }
+    }
+
     fn generated_namespace_input(mut seed: u64, len: usize) -> String {
         const ALPHABET: &[u8] =
             b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.,()#'\"`\\ \n\t";
@@ -19274,6 +19361,153 @@ mod tests {
             );
             assert_eq!(*LOGICAL(old), FALSE);
         });
+    }
+
+    #[test]
+    fn test_matrix_byrow_uses_column_major_storage() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 6);
+            let _data_guard = protect(data);
+            for i in 0..6 {
+                *INTEGER(data).add(i) = (i + 1) as c_int;
+            }
+            let args = test_pairlist(&[
+                data,
+                Rf_ScalarInteger(2),
+                Rf_ScalarInteger(3),
+                Rf_ScalarLogical(TRUE),
+            ]);
+
+            let result = do_matrix(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(
+                (0..6).map(|i| *INTEGER(result).add(i)).collect::<Vec<_>>(),
+                vec![1, 4, 2, 5, 3, 6]
+            );
+        }
+    }
+
+    #[test]
+    fn test_matrix_zero_length_data_preserves_shape_and_fills_na() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+            let args = test_pairlist(&[
+                data,
+                Rf_ScalarInteger(2),
+                Rf_ScalarInteger(2),
+                Rf_ScalarLogical(FALSE),
+            ]);
+
+            let result = do_matrix(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(XLENGTH(result), 4);
+            for i in 0..4 {
+                assert_eq!(*INTEGER(result).add(i), NA_INTEGER);
+            }
+        }
+    }
+
+    #[test]
+    fn test_transpose_non_square_matrix_uses_r_column_major_indexing() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 6);
+            let _data_guard = protect(data);
+            for i in 0..6 {
+                *INTEGER(data).add(i) = (i + 1) as c_int;
+            }
+            let matrix_args = test_pairlist(&[
+                data,
+                Rf_ScalarInteger(2),
+                Rf_ScalarInteger(3),
+                Rf_ScalarLogical(FALSE),
+            ]);
+            let matrix = do_matrix(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                matrix_args,
+                std::ptr::null_mut(),
+            );
+            let transpose_args = Rf_cons(matrix, R_NilValue());
+
+            let result = do_transpose(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                transpose_args,
+                std::ptr::null_mut(),
+            );
+
+            let dim = crate::sexp::attrib_core::getAttrib(
+                result,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            );
+            assert_eq!(*INTEGER(dim), 3);
+            assert_eq!(*INTEGER(dim).add(1), 2);
+            assert_eq!(
+                (0..6).map(|i| *INTEGER(result).add(i)).collect::<Vec<_>>(),
+                vec![1, 3, 5, 2, 4, 6]
+            );
+        }
+    }
+
+    #[test]
+    fn test_string_matrix_and_transpose_preserve_elements() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+            let data = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+            let _data_guard = protect(data);
+            SET_STRING_ELT(data, 0, Rf_mkChar(c"a".as_ptr()));
+            SET_STRING_ELT(data, 1, Rf_mkChar(c"b".as_ptr()));
+            SET_STRING_ELT(data, 2, Rf_mkChar(c"c".as_ptr()));
+            let args = test_pairlist(&[
+                data,
+                Rf_ScalarInteger(1),
+                Rf_ScalarInteger(3),
+                Rf_ScalarLogical(FALSE),
+            ]);
+            let matrix = do_matrix(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(CStr::from_ptr(CHAR(STRING_ELT(matrix, 2))).to_bytes(), b"c");
+
+            let transpose = do_transpose(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                Rf_cons(matrix, R_NilValue()),
+                std::ptr::null_mut(),
+            );
+            assert_eq!(
+                CStr::from_ptr(CHAR(STRING_ELT(transpose, 1))).to_bytes(),
+                b"b"
+            );
+            let dim = crate::sexp::attrib_core::getAttrib(
+                transpose,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            );
+            assert_eq!(*INTEGER(dim), 3);
+            assert_eq!(*INTEGER(dim).add(1), 1);
+        }
     }
 
     #[test]
