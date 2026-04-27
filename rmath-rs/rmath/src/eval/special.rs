@@ -9,8 +9,8 @@ use crate::sexp::accessors::{CADDR, CADR, CAR, CDDR, CDR, TYPEOF};
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::defineVar;
-use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
+use crate::sexp::globals::{R_NilValue, set_R_Visible};
 use crate::sexp::symbol::R_BraceSymbol;
 
 use super::eval::Rf_eval;
@@ -65,6 +65,7 @@ unsafe fn dispatch_special_by_name(
             "next" => do_next(),
             "function" => do_function(CDR(call), rho),
             "return" => do_return(CDR(call), rho),
+            "invisible" => do_invisible(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
             _ => {
@@ -72,6 +73,20 @@ unsafe fn dispatch_special_by_name(
                 R_NilValue()
             }
         }
+    }
+}
+
+/// Implement `invisible(x)` when it is reached through the special-form path.
+unsafe fn do_invisible(args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        let value = Rf_eval(expr, rho);
+        set_R_Visible(FALSE);
+        value
     }
 }
 

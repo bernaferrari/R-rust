@@ -22,7 +22,7 @@ use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::memory::ArenaBudget;
 use crate::sexp::object::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 use crate::sexp::output;
-use crate::sexp::session::CancellationFlag;
+use crate::sexp::session::CancellationToken;
 
 // ---------------------------------------------------------------------------
 // RSession — per-thread interpreter context
@@ -179,22 +179,22 @@ impl RSession {
         }
     }
 
-    pub fn set_cancellation_flag(&mut self, flag: Option<CancellationFlag>) {
-        self.core.set_cancellation_flag(flag);
+    pub fn set_cancellation_token(&mut self, token: Option<CancellationToken>) {
+        self.core.set_cancellation_token(token);
     }
 
-    /// Evaluate with a cancellation flag scoped to this call.
+    /// Evaluate with a cancellation token scoped to this call.
     ///
-    /// The previous flag is restored afterward, so a cancelled Android tab does
+    /// The previous token is restored afterward, so a cancelled Android tab does
     /// not poison later work in the same session or any other session.
-    pub fn eval_with_cancellation_flag(
+    pub fn eval_with_cancellation_token(
         &mut self,
         code: &str,
-        flag: Option<CancellationFlag>,
+        token: Option<CancellationToken>,
     ) -> RResult {
-        let previous = self.core.replace_cancellation_flag(flag);
+        let previous = self.core.replace_cancellation_token(token);
         let result = self.eval(code);
-        self.core.set_cancellation_flag(previous);
+        self.core.set_cancellation_token(previous);
         result
     }
 
@@ -2177,10 +2177,9 @@ mod tests {
 
                     let mut rng_bits = Vec::with_capacity(ITERS);
                     for iter in 0..ITERS {
-                        let cancelled =
-                            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+                        let cancelled = CancellationToken::cancelled();
                         let cancelled_result =
-                            session.eval_with_cancellation_flag("1 + 1", Some(cancelled));
+                            session.eval_with_cancellation_token("1 + 1", Some(cancelled));
                         assert_eq!(cancelled_result.output, "Error: operation cancelled");
 
                         let code = format!("local_value <- {}; local_value", worker * 100 + iter);
@@ -2231,12 +2230,12 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_cancellation_flag_is_scoped_to_session_call() {
+    fn test_eval_cancellation_token_is_scoped_to_session_call() {
         let mut cancelled = RSession::new();
         let mut active = RSession::new();
-        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let flag = CancellationToken::cancelled();
 
-        let cancelled_result = cancelled.eval_with_cancellation_flag("1 + 1", Some(flag));
+        let cancelled_result = cancelled.eval_with_cancellation_token("1 + 1", Some(flag));
         assert_eq!(cancelled_result.output, "Error: operation cancelled");
 
         let active_result = active.eval("1 + 1");

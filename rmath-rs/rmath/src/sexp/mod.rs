@@ -54,4 +54,4 @@ pub use object::{
     PairlistIter, Sexp, SexpAttribute, SexpComplex, SexpError, SexpMetadata, SexpResult, SexpValue,
     SexpView,
 };
-pub use session::RSession;
+pub use session::{CancellationToken, RSession};

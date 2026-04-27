@@ -20,10 +20,6 @@ use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::raw::{c_char, c_int};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::Instant;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
@@ -161,7 +157,7 @@ pub(crate) struct EvalControlState {
     pub check_constants: c_int,
     pub exec_token: SEXP,
     pub profiling: ProfilingState,
-    pub cancellation: Option<Arc<AtomicBool>>,
+    pub cancellation: Option<crate::sexp::session::CancellationToken>,
 }
 
 impl Default for EvalControlState {
@@ -696,7 +692,7 @@ pub fn is_cancellation_requested() -> bool {
         inst.eval_state
             .cancellation
             .as_ref()
-            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+            .is_some_and(|token| token.is_requested())
     })
     .unwrap_or(false)
 }

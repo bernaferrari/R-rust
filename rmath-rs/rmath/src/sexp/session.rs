@@ -32,7 +32,10 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(test)]
 use std::ptr;
 use std::rc::Rc;
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use super::context::{RError, RSignal};
 use super::envir::Environment;
@@ -64,7 +67,53 @@ impl std::fmt::Display for REvalError {
 impl std::error::Error for REvalError {}
 
 pub type RResult<T> = Result<T, REvalError>;
-pub type CancellationFlag = Arc<AtomicBool>;
+
+/// Shareable cooperative cancellation handle for an evaluation.
+///
+/// The atomic storage is intentionally private: embedding layers get an
+/// ownership-oriented token with simple request/reset/query operations instead
+/// of depending on the interpreter's synchronization detail.
+#[derive(Clone, Debug)]
+pub struct CancellationToken {
+    requested: Arc<AtomicBool>,
+}
+
+impl CancellationToken {
+    /// Create a token with cancellation initially clear.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a token that has already requested cancellation.
+    pub fn cancelled() -> Self {
+        let token = Self::new();
+        token.request();
+        token
+    }
+
+    /// Request cancellation. Active evaluations observe this cooperatively.
+    pub fn request(&self) {
+        self.requested.store(true, Ordering::Relaxed);
+    }
+
+    /// Clear a previous cancellation request so the token can be reused.
+    pub fn reset(&self) {
+        self.requested.store(false, Ordering::Relaxed);
+    }
+
+    /// Return whether cancellation has been requested.
+    pub fn is_requested(&self) -> bool {
+        self.requested.load(Ordering::Relaxed)
+    }
+}
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        CancellationToken {
+            requested: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
 
 fn install_symbol(name: &str) -> Option<SEXP> {
     let name = CString::new(name).ok()?;
@@ -565,28 +614,28 @@ impl RSession {
         self.with_active(|| crate::rng::set_seed(i1, i2));
     }
 
-    /// Set or clear this session's cooperative cancellation flag.
+    /// Set or clear this session's cooperative cancellation token.
     ///
-    /// Evaluator loop checks read this flag through the active `RInstance`.
-    /// Sharing an `Arc<AtomicBool>` lets an embedding host request cancellation
-    /// from another thread without exposing runtime internals.
-    pub fn set_cancellation_flag(&mut self, flag: Option<CancellationFlag>) {
+    /// Evaluator loop checks read this token through the active `RInstance`.
+    /// The token can be cloned and held by an embedding host so cancellation
+    /// remains session-scoped while the synchronization detail stays private.
+    pub fn set_cancellation_token(&mut self, token: Option<CancellationToken>) {
         if self.active {
-            self.instance.eval_state.cancellation = flag;
+            self.instance.eval_state.cancellation = token;
         }
     }
 
-    /// Replace this session's cooperative cancellation flag, returning the old one.
+    /// Replace this session's cooperative cancellation token, returning the old one.
     ///
     /// This gives embedders a scoped, owner-checked way to install a
     /// cancellation token for one evaluation and then restore the previous
     /// state. Closed sessions ignore new flags.
-    pub fn replace_cancellation_flag(
+    pub fn replace_cancellation_token(
         &mut self,
-        flag: Option<CancellationFlag>,
-    ) -> Option<CancellationFlag> {
+        token: Option<CancellationToken>,
+    ) -> Option<CancellationToken> {
         if self.active {
-            std::mem::replace(&mut self.instance.eval_state.cancellation, flag)
+            std::mem::replace(&mut self.instance.eval_state.cancellation, token)
         } else {
             None
         }
@@ -868,12 +917,12 @@ mod tests {
     }
 
     #[test]
-    fn test_session_cancellation_flag_is_session_owned() {
+    fn test_session_cancellation_token_is_session_owned() {
         let mut cancelled = RSession::new();
         let mut active = RSession::new();
-        let flag = Arc::new(AtomicBool::new(true));
+        let token = CancellationToken::cancelled();
 
-        cancelled.set_cancellation_flag(Some(flag));
+        cancelled.set_cancellation_token(Some(token));
         let (result, _, _) = cancelled.eval_code_with_output_capture("1 + 1");
         let err = result.expect_err("cancelled session should reject eval");
         assert_eq!(err.message, "operation cancelled");
