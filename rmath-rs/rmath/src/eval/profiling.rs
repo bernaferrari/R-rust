@@ -112,6 +112,48 @@ where
     with_required_current_instance(|instance| f(&mut instance.eval_state.profiling))
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MemoryProfileSnapshot {
+    current_bytes: u64,
+    peak_bytes: u64,
+    active_nodes: u64,
+    gc_freed_nodes: u64,
+}
+
+fn memory_profile_snapshot() -> MemoryProfileSnapshot {
+    with_required_current_instance(|instance| {
+        let current_bytes = instance.arena.total_bytes_allocated();
+        let peak_bytes = instance
+            .eval_state
+            .profiling
+            .memory_peak_bytes
+            .max(current_bytes)
+            .max(instance.gc_state.stats.peak_memory);
+        instance.eval_state.profiling.memory_peak_bytes = peak_bytes;
+
+        MemoryProfileSnapshot {
+            current_bytes: current_bytes as u64,
+            peak_bytes: peak_bytes as u64,
+            active_nodes: instance.arena.node_count() as u64,
+            gc_freed_nodes: instance.gc_state.stats.freed as u64,
+        }
+    })
+}
+
+unsafe fn write_memory_profile_prefix(pb: *mut profbuf, snapshot: MemoryProfileSnapshot) {
+    unsafe {
+        pb_str(pb, b":\0".as_ptr() as *const c_char);
+        pb_uint(pb, snapshot.current_bytes);
+        pb_str(pb, b":\0".as_ptr() as *const c_char);
+        pb_uint(pb, snapshot.peak_bytes);
+        pb_str(pb, b":\0".as_ptr() as *const c_char);
+        pb_uint(pb, snapshot.active_nodes);
+        pb_str(pb, b":\0".as_ptr() as *const c_char);
+        pb_uint(pb, snapshot.gc_freed_nodes);
+        pb_str(pb, b":\0".as_ptr() as *const c_char);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // R_Profiling -- check if profiling is active
 // ---------------------------------------------------------------------------
@@ -649,21 +691,7 @@ unsafe fn doprof(_sig: c_int) {
 
         // Memory profiling: record memory allocation sizes
         if with_profiling_state(|state| state.mem_profiling) != 0 {
-            // get_current_mem is not yet available; use stub values
-            let smallv: u64 = 0;
-            let bigv: u64 = 0;
-            let nodes: u64 = 0;
-
-            pb_str(&mut pb, b":\0".as_ptr() as *const c_char);
-            pb_uint(&mut pb, smallv);
-            pb_str(&mut pb, b":\0".as_ptr() as *const c_char);
-            pb_uint(&mut pb, bigv);
-            pb_str(&mut pb, b":\0".as_ptr() as *const c_char);
-            pb_uint(&mut pb, nodes);
-            pb_str(&mut pb, b":\0".as_ptr() as *const c_char);
-            // get_duplicate_counter / reset_duplicate_counter not yet available
-            pb_uint(&mut pb, 0u64);
-            pb_str(&mut pb, b":\0".as_ptr() as *const c_char);
+            write_memory_profile_prefix(&mut pb, memory_profile_snapshot());
         }
 
         // GC profiling
@@ -993,6 +1021,7 @@ unsafe fn R_InitProfiling(
         // Set profiling state
         with_profiling_state(|state| {
             state.mem_profiling = mem_profiling;
+            state.memory_peak_bytes = 0;
             state.profiling_error = 0;
             state.line_profiling = line_profiling;
             state.gc_profiling = gc_profiling;
@@ -1335,6 +1364,8 @@ pub fn R_WriteProfile(_out: c_int) {
 mod tests {
     use super::*;
     use crate::sexp::RSession;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::memory::with_arena;
 
     #[test]
     fn profiling_flags_are_session_local_on_same_thread() {
@@ -1401,5 +1432,67 @@ mod tests {
         left.with_protected(|| {
             with_profiling_state(|state| assert_eq!(state.opcode_counts[3], 1));
         });
+    }
+
+    #[test]
+    fn memory_profile_snapshot_uses_current_session_arena() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_after = left.with_protected(|| {
+            let before = memory_profile_snapshot();
+            with_arena(|arena| {
+                arena.alloc_vector(SEXPTYPE::REALSXP, 128);
+                arena.alloc_charsxp(b"profile-left");
+            });
+            let after = memory_profile_snapshot();
+            assert!(after.current_bytes > before.current_bytes);
+            assert!(after.peak_bytes >= after.current_bytes);
+            assert!(after.active_nodes > before.active_nodes);
+            after
+        });
+
+        right.with_protected(|| {
+            let right_snapshot = memory_profile_snapshot();
+            assert!(right_snapshot.current_bytes < left_after.current_bytes);
+            assert!(right_snapshot.active_nodes < left_after.active_nodes);
+        });
+    }
+
+    #[test]
+    fn memory_profile_prefix_writes_real_snapshot_values() {
+        let _session = RSession::new();
+        with_arena(|arena| {
+            arena.alloc_vector(SEXPTYPE::INTSXP, 64);
+        });
+        let snapshot = memory_profile_snapshot();
+
+        let mut buf = [0u8; 128];
+        let mut pb = profbuf {
+            ptr: buf.as_mut_ptr() as *mut c_char,
+            left: buf.len(),
+        };
+        unsafe {
+            write_memory_profile_prefix(&mut pb, snapshot);
+            *pb.ptr = 0;
+        }
+
+        let text = unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }
+            .to_str()
+            .expect("profile prefix should be utf8");
+        let fields: Vec<u64> = text
+            .trim_matches(':')
+            .split(':')
+            .map(|field| field.parse::<u64>().expect("numeric profile field"))
+            .collect();
+
+        assert_eq!(fields.len(), 4);
+        assert_eq!(fields[0], snapshot.current_bytes);
+        assert_eq!(fields[1], snapshot.peak_bytes);
+        assert_eq!(fields[2], snapshot.active_nodes);
+        assert_eq!(fields[3], snapshot.gc_freed_nodes);
+        assert!(fields[0] > 0);
+        assert!(fields[1] >= fields[0]);
+        assert!(fields[2] > 0);
     }
 }
