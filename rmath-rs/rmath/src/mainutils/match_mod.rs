@@ -23,7 +23,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::{CONS_NR, allocList, mkPROMISE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
 
 // ---------------------------------------------------------------------------
@@ -617,7 +617,7 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
             b = CDR(b);
         }
 
-        Rf_protect(actuals);
+        let _actuals_guard = protect(actuals);
 
         // ---- First pass: exact matches by tag ----
         f = formals;
@@ -802,7 +802,6 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
             }
         }
 
-        Rf_unprotect(1);
         actuals
     }
 }
@@ -875,7 +874,8 @@ pub unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) ->
         let mut farg = vec![Fstype::Unmatched as i32; nfarg_usize];
 
         // Shallow-duplicate supplied arguments
-        prsupplied = Rf_protect(allocList(length(supplied)));
+        prsupplied = allocList(length(supplied));
+        let _prsupplied_guard = protect(prsupplied);
         b = supplied;
         a = prsupplied;
         while b != R_NilValue() {
@@ -971,7 +971,6 @@ pub unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) ->
         }
 
         // Previous invocation of matchArgs_NR ensured all args are used
-        Rf_unprotect(1);
         prsupplied
     }
 }
@@ -1024,7 +1023,8 @@ pub unsafe fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 SEXPTYPE(xtype)
             };
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n as c_int));
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, n as c_int);
+        let _ans_guard = protect(ans);
         let ians = INTEGER(ans);
 
         // Initialize all to nomatch
@@ -1081,7 +1081,6 @@ pub unsafe fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1175,7 +1174,8 @@ pub unsafe fn do_pmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             tar_strs.push(cs);
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n_input as c_int));
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, n_input as c_int);
+        let _ans_guard = protect(ans);
         let ians = INTEGER(ans);
 
         // Initialize
@@ -1243,7 +1243,6 @@ pub unsafe fn do_pmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1301,7 +1300,8 @@ pub unsafe fn do_charmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n_input));
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, n_input);
+        let _ans_guard = protect(ans);
         let ians = INTEGER(ans);
 
         for i in 0..n_input as usize {
@@ -1355,7 +1355,6 @@ pub unsafe fn do_charmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             };
         }
 
-        Rf_unprotect(1);
         ans
     }
 }

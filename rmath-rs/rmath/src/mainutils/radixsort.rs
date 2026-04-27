@@ -18,7 +18,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{ProtectGuard, protect};
 use crate::sexp::symbol::Rf_install;
 
 unsafe fn error(msg: &str) -> ! {
@@ -1114,7 +1114,9 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         with_radix_state(|s| s.gsmaxalloc = n);
 
         // Allocate result vector
-        let mut ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nl));
+        let mut ans_guards: Vec<ProtectGuard> = Vec::new();
+        let mut ans = Rf_allocVector3(SEXPTYPE::INTSXP, nl);
+        ans_guards.push(protect(ans));
         let o: *mut c_int = INTEGER(ans);
         if n > 0 {
             *o = -1;
@@ -1192,14 +1194,12 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             // double is the largest type, 8
             xsub = libc_alloc(maxgrpn_first as usize * std::mem::size_of::<f64>());
             if xsub.is_null() {
-                Rf_unprotect(1);
                 gsfree();
                 error("Could not allocate working memory");
             }
             let newo =
                 libc_alloc(maxgrpn_first as usize * std::mem::size_of::<c_int>()) as *mut c_int;
             if newo.is_null() {
-                Rf_unprotect(1);
                 gsfree();
                 error("Could not allocate working memory");
             }
@@ -1324,7 +1324,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             ngrp = with_radix_state(|s| s.gsngrp[flip]);
             let s_ends = Rf_install(std::ffi::CString::new("ends").unwrap_or_default().as_ptr());
             let x_ends = Rf_allocVector3(SEXPTYPE::INTSXP, ngrp as R_xlen_t);
-            Rf_protect(x_ends);
+            let _x_ends_guard = protect(x_ends);
             setAttrib(ans, s_ends, x_ends);
             if ngrp > 0 {
                 let gs = with_radix_state(|s| s.gs);
@@ -1342,11 +1342,11 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                     .as_ptr(),
             );
             let scalar_maxgrpn = Rf_ScalarInteger(maxgrpn);
-            Rf_protect(scalar_maxgrpn);
+            let _scalar_maxgrpn_guard = protect(scalar_maxgrpn);
             setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
             // Set class c("grouping", "integer")
             let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            Rf_protect(nms);
+            let _nms_guard = protect(nms);
             SET_STRING_ELT(
                 nms,
                 0,
@@ -1368,7 +1368,6 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             let class_sym =
                 Rf_install(std::ffi::CString::new("class").unwrap_or_default().as_ptr());
             setAttrib(ans, class_sym, nms);
-            Rf_unprotect(3);
         }
 
         // --- Handle nalast==0: drop zeros ---
@@ -1383,7 +1382,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             }
             if zeros > 0 {
                 let new_ans = Rf_allocVector3(SEXPTYPE::INTSXP, (n - zeros) as R_xlen_t);
-                Rf_protect(new_ans);
+                ans_guards.push(protect(new_ans));
                 let o2 = INTEGER(new_ans);
                 let mut i2: c_int = 0;
                 for i in 0..n as usize {
@@ -1392,7 +1391,6 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                         i2 += 1;
                     }
                 }
-                Rf_unprotect(1);
                 ans = new_ans;
             }
         }
@@ -1412,7 +1410,6 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         with_radix_state(|s| s.otmp = ptr::null_mut());
         with_radix_state(|s| s.otmp_alloc = 0);
 
-        Rf_unprotect(1);
         ans
     }
 }

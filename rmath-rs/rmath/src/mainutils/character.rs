@@ -556,7 +556,8 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
     }
 
     let n = x.len() as c_int;
-    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
+    let y = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n) };
+    let _y_guard = protect(y);
 
     for i in 0..x.len() {
         let el = x.string_elt(i).ok_or("missing string element")?;
@@ -573,7 +574,6 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
         }
     }
 
-    unsafe { Rf_unprotect(1) };
     Ok(y)
 }
 
@@ -682,7 +682,8 @@ fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
     }
 
     let n = x.len();
-    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n as c_int)) };
+    let y = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as c_int) };
+    let _y_guard = protect(y);
 
     for i in 0..n {
         let el = x.string_elt(i).ok_or("missing string element")?;
@@ -703,7 +704,6 @@ fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
         }
     }
 
-    unsafe { Rf_unprotect(1) };
     Ok(y)
 }
 
@@ -739,7 +739,8 @@ pub fn nchar_safe(
     };
 
     let len = x.len();
-    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, len as c_int)) };
+    let s = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, len as c_int) };
+    let _s_guard = protect(s);
 
     for i in 0..len {
         let sxi = x.string_elt(i).ok_or("missing string element")?;
@@ -779,7 +780,6 @@ pub fn nchar_safe(
         }
     }
 
-    unsafe { Rf_unprotect(1) };
     Ok(s)
 }
 
@@ -898,7 +898,8 @@ pub fn substr_safe<'a>(
     let k = starts.len();
     let l_val = stops.as_ref().map(|s| s.len()).unwrap_or(1);
 
-    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, len as c_int)) };
+    let s = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len as c_int) };
+    let _s_guard = protect(s);
 
     for i in 0..len {
         let start = starts
@@ -954,7 +955,6 @@ pub fn substr_safe<'a>(
         }
     }
 
-    unsafe { Rf_unprotect(1) };
     Ok(s)
 }
 
