@@ -15865,45 +15865,10 @@ pub unsafe fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = real_or_default(CAR(args), 1.0) as i64;
-        let size = real_or_default(CAR(CDR(args)), n as f64) as i64;
-        let replace = real_or_default(CAR(CDR(CDR(args))), 0.0) != 0.0;
+        let size = CAR(CDR(args));
+        let replace = CAR(CDR(CDR(args)));
         let prob = CAR(CDR(CDR(CDR(args))));
-        if !prob.is_null() && prob != R_NilValue() {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "probability sampling is not yet implemented".to_string(),
-            });
-        }
-        if n <= 0 || size <= 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
-        if !replace && size > n {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "cannot take a sample larger than the population when 'replace = FALSE'"
-                    .to_string(),
-            });
-        }
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, size as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = INTEGER(result);
-        if replace {
-            for i in 0..size {
-                let u = crate::rng::unif_rand();
-                *dst.add(i as usize) = (u * n as f64) as c_int + 1;
-            }
-        } else {
-            let mut pool: Vec<c_int> = (1..=n as c_int).collect();
-            for i in 0..size as usize {
-                let remaining = pool.len() - i;
-                let u = crate::rng::unif_rand();
-                let j = i + ((u * remaining as f64) as usize).min(remaining - 1);
-                pool.swap(i, j);
-                *dst.add(i) = pool[i];
-            }
-        }
-        result
+        crate::mainutils::rng_dispatch::sample_int_values(n, size, replace, prob)
     }
 }
 

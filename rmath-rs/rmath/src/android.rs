@@ -1372,6 +1372,12 @@ mod tests {
         let replace = session.eval("length(sample.int(3, 7, TRUE))");
         assert_eq!(replace.output, "[1] 7");
 
+        let weighted_replace = session.eval("sample.int(3, 5, TRUE, c(0, 0, 1))");
+        assert_eq!(weighted_replace.output, "[1] 3 3 3 3 3");
+
+        let weighted_no_replace = session.eval("length(sample.int(3, 2, FALSE, c(0, 1, 1)))");
+        assert_eq!(weighted_no_replace.output, "[1] 2");
+
         let too_large = session.eval("sample.int(3, 4, FALSE)");
         assert!(matches!(too_large.typed, RValue::Error(_)));
         assert!(
@@ -1413,9 +1419,14 @@ mod tests {
         let weighted_replace =
             session.eval("all(sample(c(\"a\", \"b\", \"c\"), 5, TRUE, c(0, 0, 1)) == \"c\")");
         assert_eq!(weighted_replace.typed, RValue::Logical(Some(true)));
+        let weighted_replace_length =
+            session.eval("length(sample(c(\"a\", \"b\", \"c\"), 5, TRUE, c(0, 0, 1)))");
+        assert_eq!(weighted_replace_length.output, "[1] 5");
 
         let weighted_no_replace = session.eval("all(sample(1:3, 2, FALSE, c(0, 1, 1)) != 1L)");
         assert_eq!(weighted_no_replace.typed, RValue::Logical(Some(true)));
+        let weighted_no_replace_length = session.eval("length(sample(1:3, 2, FALSE, c(0, 1, 1)))");
+        assert_eq!(weighted_no_replace_length.output, "[1] 2");
 
         let impossible = session.eval("sample(1:3, 2, FALSE, c(1, 0, 0))");
         assert!(matches!(impossible.typed, RValue::Error(_)));

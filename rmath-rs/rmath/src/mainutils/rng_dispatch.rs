@@ -364,7 +364,12 @@ unsafe fn tag_name(tag: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn sample_int_values(n: i64, size_arg: SEXP, replace_arg: SEXP, prob_arg: SEXP) -> SEXP {
+pub(crate) unsafe fn sample_int_values(
+    n: i64,
+    size_arg: SEXP,
+    replace_arg: SEXP,
+    prob_arg: SEXP,
+) -> SEXP {
     unsafe {
         let size = parse_n(size_arg, n as c_int);
         let replace = parse_replace(replace_arg);
