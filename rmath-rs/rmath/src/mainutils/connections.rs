@@ -298,7 +298,7 @@ fn next_connection() -> usize {
             return i;
         }
     }
-    panic!("all connections are in use");
+    r_error("all connections are in use");
 }
 
 /// Get a connection by index. Returns a reference to the connection.
@@ -306,7 +306,7 @@ fn get_connection(n: usize) -> ConnectionTableGuard {
     init_connections_table();
     let table = connection_table();
     if n >= table.len() || table[n].is_none() {
-        panic!("invalid connection");
+        r_error("invalid connection");
     }
     table
 }
@@ -316,7 +316,7 @@ fn get_connection_mut(n: usize) {
     init_connections_table();
     let _table = connection_table();
     if n >= _table.len() || _table[n].is_none() {
-        panic!("invalid connection");
+        r_error("invalid connection");
     }
     // The caller should use the table directly for mutation
 }
@@ -2738,6 +2738,20 @@ mod tests {
         }
     }
 
+    fn expect_r_error<F>(f: F) -> String
+    where
+        F: FnOnce(),
+    {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        let Err(payload) = result else {
+            panic!("expected RError");
+        };
+        let Some(err) = payload.downcast_ref::<RError>() else {
+            panic!("expected RError payload");
+        };
+        err.message.clone()
+    }
+
     /// Reset session-local connection state and return a guard that keeps an
     /// active session installed for the duration of the test.
     fn reset_connections() -> ConnectionTestGuard {
@@ -3165,6 +3179,40 @@ mod tests {
             drop(get_connection(1));
             drop(get_connection(2));
         }
+    }
+
+    #[test]
+    fn test_next_connection_reports_r_error_when_table_is_full() {
+        let _lock = reset_connections();
+        init_connections_table();
+        with_connections_state(|state| {
+            for i in 3..NCONNECTIONS {
+                state.table[i] = Some(Box::new(RConn::new(
+                    "textConnection",
+                    "test-full-table",
+                    "w",
+                    ConnKind::TextConnection,
+                )));
+            }
+        });
+
+        let message = expect_r_error(|| {
+            let _ = next_connection();
+        });
+
+        assert_eq!(message, "all connections are in use");
+    }
+
+    #[test]
+    fn test_get_connection_reports_r_error_for_invalid_slot() {
+        let _lock = reset_connections();
+        init_connections_table();
+
+        let message = expect_r_error(|| {
+            drop(get_connection(NCONNECTIONS));
+        });
+
+        assert_eq!(message, "invalid connection");
     }
 
     #[test]
