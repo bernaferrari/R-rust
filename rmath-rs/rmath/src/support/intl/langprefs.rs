@@ -19,12 +19,6 @@ use std::ptr;
 mod macos {
     use super::*;
 
-    use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-
-    /// Cached language preferences string.
-    static CACHED_LANGUAGES: AtomicPtr<c_char> = AtomicPtr::new(ptr::null_mut());
-    static CACHE_INITIALIZED: AtomicBool = AtomicBool::new(false);
-
     /// Canonicalize a locale name (stub).
     ///
     /// In the full C implementation this calls `_nl_locale_name_canonicalize`.
@@ -46,23 +40,17 @@ mod macos {
     /// Determine the user's language preferences.
     ///
     /// Returns a colon-separated list of locale names, or NULL if not available.
-    /// The result must not be freed; it is statically allocated.
+    /// The result must not be freed.
     pub unsafe fn _nl_language_preferences_default() -> *const c_char {
         unsafe {
-            if CACHE_INITIALIZED.load(Ordering::Acquire) {
-                return CACHED_LANGUAGES.load(Ordering::Acquire);
-            }
-
             // Use CoreFoundation to get AppleLanguages preference.
             let preferences =
                 crate::support::intl::langprefs::macos::cf_preferences_copy_app_value();
             if !preferences.is_null() {
-                let result = crate::support::intl::langprefs::macos::extract_languages(preferences);
-                CACHED_LANGUAGES.store(result, Ordering::Release);
+                return crate::support::intl::langprefs::macos::extract_languages(preferences);
             }
 
-            CACHE_INITIALIZED.store(true, Ordering::Release);
-            CACHED_LANGUAGES.load(Ordering::Acquire)
+            ptr::null()
         }
     }
 
