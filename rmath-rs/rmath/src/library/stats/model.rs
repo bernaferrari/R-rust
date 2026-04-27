@@ -8,8 +8,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::*;
-use crate::sexp::protect::Rf_protect;
-use crate::sexp::protect::Rf_unprotect;
+use crate::sexp::protect::{protect, Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -242,14 +241,17 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
     }
 
     // Assemble the base data frame
-    let data = Rf_protect(Rf_allocVector3(
+    let mut guards = Vec::new();
+    let mut data = Rf_allocVector3(
         SEXPTYPE::VECSXP.as_c_int(),
         (nvars + nactualdots) as R_xlen_t,
-    ));
-    let names = Rf_protect(Rf_allocVector3(
+    );
+    guards.push(protect(data));
+    let names = Rf_allocVector3(
         SEXPTYPE::STRSXP.as_c_int(),
         (nvars + nactualdots) as R_xlen_t,
-    ));
+    );
+    guards.push(protect(names));
 
     for i in 0..nvars {
         SET_VECTOR_ELT(data, i as R_xlen_t, VECTOR_ELT(variables, i as R_xlen_t));
@@ -284,7 +286,6 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         j += 1;
     }
     setAttrib(data, R_NamesSymbol(), names);
-    Rf_unprotect(2);
 
     // Sanity checks
     let nc = Rf_length(data) as isize;
@@ -313,46 +314,45 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         nr = Rf_length(row_names) as isize;
     }
 
-    let data = Rf_protect(data);
-    let _subset = Rf_protect(subset);
+    let _subset_guard = protect(subset);
 
     // Turn into data.frame
-    let tmp = Rf_protect(Rf_mkString("data.frame"));
+    let tmp = Rf_mkString("data.frame");
+    let _class_guard = protect(tmp);
     setAttrib(data, R_ClassSymbol(), tmp);
-    Rf_unprotect(1);
 
     if Rf_length(row_names) == nr && row_names != R_NilValue() {
         setAttrib(data, Rf_install("row.names"), row_names);
     } else {
-        let row_names = Rf_protect(Rf_allocVector3(
+        let row_names = Rf_allocVector3(
             SEXPTYPE::INTSXP.as_c_int(),
             if nr > 0 { 2 } else { 0 } as R_xlen_t,
-        ));
+        );
+        let _row_names_guard = protect(row_names);
         if nr > 0 {
             *INTEGER(row_names).add(0) = NA_INTEGER;
             *INTEGER(row_names).add(1) = nr as c_int;
         }
         setAttrib(data, Rf_install("row.names"), row_names);
-        Rf_unprotect(1);
     }
 
     // Subsetting
     if subset != R_NilValue() {
-        let bracket_sym = Rf_protect(Rf_install("[.data.frame"));
-        let call = Rf_protect(Rf_lang4(
+        let bracket_sym = Rf_install("[.data.frame");
+        let _bracket_guard = protect(bracket_sym);
+        let drop_arg = Rf_ScalarLogical(0);
+        let _drop_arg_guard = protect(drop_arg);
+        let call = Rf_lang4(
             bracket_sym,
             data,
             subset,
             R_MissingArg(),
-            Rf_ScalarLogical(0),
-        ));
-        let data = crate::eval::eval::Rf_eval(call, rho);
-        Rf_unprotect(2);
-        // re-protect data
-        let data = Rf_protect(data);
+            drop_arg,
+        );
+        let _call_guard = protect(call);
+        data = crate::eval::eval::Rf_eval(call, rho);
+        guards.push(protect(data));
     }
-    Rf_unprotect(2);
-    let data = Rf_protect(data);
 
     // na.action
     let ans: SEXP;
@@ -360,16 +360,15 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         setAttrib(data, Rf_install("terms"), terms);
 
         let na_action_val = na_action; // simplified - skip installTrChar
-        let na_call = Rf_protect(Rf_lang2(na_action_val, data));
+        let na_call = Rf_lang2(na_action_val, data);
+        let _na_call_guard = protect(na_call);
         ans = crate::eval::eval::Rf_eval(na_call, rho);
         // Simplified: skip MAYBE_REFERENCED and copyMostAttribNoTs
-        Rf_protect(ans);
-        Rf_unprotect(3);
+        let _ans_guard = protect(ans);
     } else {
         ans = data;
     }
 
-    Rf_unprotect(1);
     ans
 }
 
