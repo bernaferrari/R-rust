@@ -17,7 +17,6 @@
 #![allow(non_snake_case)]
 
 use std::alloc::Layout;
-use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::ptr;
@@ -30,21 +29,6 @@ use super::types::*;
 
 /// Maximum depth of locale aliasing.
 const MAX_LOCALE_ALIAS_DEPTH: c_int = 10;
-
-/// Size of the message cache.
-const MSGCTRN_SIZE: usize = 256;
-
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-
-/// Cache for looked-up messages to avoid repeated catalog lookups.
-///
-/// Each entry maps (msgid, domain, category) -> translation.
-thread_local! { static _nl_msg_cache: Cell<[*mut c_char; MSGCTRN_SIZE]> = Cell::new([ptr::null_mut(); MSGCTRN_SIZE]); }
-
-/// Cache of domain data (keyed by domain binding hash).
-thread_local! { static _nl_domain_cache: Cell<[*mut loaded_l10nfile; 64]> = Cell::new([ptr::null_mut(); 64]); }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
