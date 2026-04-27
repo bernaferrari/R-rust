@@ -5,8 +5,9 @@
 //! Provides locale2charset() which maps locale strings to encoding names.
 //! On macOS, all real locales without encoding are UTF-8.
 
-use std::cell::RefCell;
 use std::ffi::CStr;
+
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // Known encoding mappings (from R's `known[]` table)
@@ -79,8 +80,6 @@ static KNOWN: &[(&[u8], &[u8])] = &[
 /// * The appropriate encoding name otherwise
 pub unsafe fn locale2charset(locale: *const std::os::raw::c_char) -> *const std::os::raw::c_char {
     unsafe {
-        thread_local! { static CHARSET_BUF: RefCell<[u8; 128]> = RefCell::new([0; 128]); }
-
         let locale_str = if locale.is_null() || {
             let s = CStr::from_ptr(locale).to_str().unwrap_or("");
             s == "NULL"
@@ -131,13 +130,14 @@ pub unsafe fn locale2charset(locale: *const std::os::raw::c_char) -> *const std:
         if enc_lower.starts_with(b"cp-") {
             let cp_num = &enc[3..];
             let result = format!("CP{}", cp_num);
-            CHARSET_BUF.with(|v| {
-                let mut buf = v.borrow_mut();
+            return with_required_current_instance(|instance| {
+                let buf = &mut instance.startup_state.locale_charset_buf;
+                buf.fill(0);
                 let bytes = result.as_bytes();
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
-                buf[result.len()] = 0;
+                let len = bytes.len().min(buf.len() - 1);
+                buf[..len].copy_from_slice(&bytes[..len]);
+                buf.as_ptr() as *const std::os::raw::c_char
             });
-            return CHARSET_BUF.with(|v| v.borrow().as_ptr()) as *const std::os::raw::c_char;
         }
 
         // Fallback for euc encoding based on language
@@ -163,6 +163,7 @@ pub unsafe fn locale2charset(locale: *const std::os::raw::c_char) -> *const std:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
 
     #[test]
     fn test_c_locale() {
@@ -214,6 +215,29 @@ mod tests {
             let locale = std::ffi::CString::new("en_US.ISO8859-1").unwrap_or_default();
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
             assert_eq!(result.to_str().unwrap_or(""), "ISO8859-1");
+        }
+    }
+
+    #[test]
+    fn test_cp_charset_buffer_is_session_local() {
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            let first_locale = std::ffi::CString::new("en_US.cp-1252").unwrap_or_default();
+            let first_ptr = locale2charset(first_locale.as_ptr());
+            assert_eq!(CStr::from_ptr(first_ptr).to_str().unwrap_or(""), "CP1252");
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            let second_locale = std::ffi::CString::new("en_US.cp-932").unwrap_or_default();
+            let second_ptr = locale2charset(second_locale.as_ptr());
+            assert_eq!(CStr::from_ptr(second_ptr).to_str().unwrap_or(""), "CP932");
+            assert_ne!(first_ptr, second_ptr);
+
+            set_current_instance(&mut first);
+            assert_eq!(CStr::from_ptr(first_ptr).to_str().unwrap_or(""), "CP1252");
+
+            clear_current_instance();
         }
     }
 }

@@ -45,6 +45,7 @@ pub struct StartupRuntimeState {
     pub(crate) date_buf: [u8; 26],
     pub(crate) native_encoding: [u8; 65],
     pub(crate) codeset_buf: [u8; 65],
+    pub(crate) locale_charset_buf: [u8; 128],
 }
 
 impl StartupRuntimeState {
@@ -83,6 +84,7 @@ impl Default for StartupRuntimeState {
             date_buf: [0; 26],
             native_encoding: [0; 65],
             codeset_buf: [0; 65],
+            locale_charset_buf: [0; 128],
         }
     }
 }
