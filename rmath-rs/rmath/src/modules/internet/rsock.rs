@@ -3,10 +3,10 @@
 // and R_SockOpen/Listen/Connect/Close/Read/Write for connection-level use.
 // Unix implementation using libc system calls and lower-level sock.rs functions.
 
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::*;
 use crate::special::mlutils::REprintf;
-use core::cell::Cell;
 use core::ffi::{c_char, c_double, c_int, c_void};
 use libc::{
     AF_INET,
@@ -61,10 +61,6 @@ use super::sock::{
     Sock_open, Sock_read, Sock_write,
 };
 
-thread_local! { static sock_inited: Cell<c_int> = Cell::new(0); }
-
-thread_local! { static R_wait_usec_val: Cell<c_int> = Cell::new(0); }
-
 // --- Internal helper functions (module-private, no #[no_mangle]) ---
 
 /// enter_sock - validate socket fd
@@ -92,12 +88,12 @@ unsafe fn close_sock(fd: c_int) -> c_int {
 
 /// check_init - ensure socket subsystem is initialized (once)
 fn check_init() {
-    sock_inited.with(|v| {
-        if v.get() == 0 {
+    with_required_current_instance(|instance| {
+        if instance.internet_state.sock_inited == 0 {
             unsafe {
                 Sock_init();
             }
-            v.set(1);
+            instance.internet_state.sock_inited = 1;
         }
     });
 }
@@ -107,7 +103,8 @@ fn check_init() {
 /// the full timeout is used.
 unsafe fn set_timeval(tv: *mut timeval, timeout: c_int) {
     unsafe {
-        let wait_usec = R_wait_usec_val.with(|v| v.get());
+        let wait_usec =
+            with_required_current_instance(|instance| instance.internet_state.wait_usec);
         if wait_usec > 0 {
             (*tv).tv_sec = (wait_usec / 1_000_000) as libc::time_t;
             (*tv).tv_usec = (wait_usec - (wait_usec / 1_000_000) * 1_000_000) as libc::suseconds_t;
@@ -370,7 +367,8 @@ pub(crate) unsafe fn R_SocketWaitMultiple(
             let mut maxfd: c_int = 0;
 
             // Compute timeout for this iteration
-            let wait_usec = R_wait_usec_val.with(|v| v.get());
+            let wait_usec =
+                with_required_current_instance(|instance| instance.internet_state.wait_usec);
             tv = core::mem::zeroed();
             if wait_usec > 0 {
                 let delta = if mytimeout < 0.0 || (wait_usec as c_double) / 1e6 < mytimeout - used {
@@ -799,5 +797,47 @@ pub(crate) unsafe fn R_SockWrite(
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+    use super::*;
+
+    fn set_wait_usec(value: c_int) {
+        with_required_current_instance(|instance| {
+            instance.internet_state.wait_usec = value;
+        });
+    }
+
+    fn wait_usec() -> c_int {
+        with_required_current_instance(|instance| instance.internet_state.wait_usec)
+    }
+
+    #[test]
+    fn socket_wait_usec_is_session_local() {
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            set_wait_usec(25_000);
+            let mut tv: timeval = core::mem::zeroed();
+            set_timeval(&mut tv, 9);
+            assert_eq!(tv.tv_sec, 0);
+            assert_eq!(tv.tv_usec, 25_000);
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            assert_eq!(wait_usec(), 0);
+            set_timeval(&mut tv, 9);
+            assert_eq!(tv.tv_sec, 9);
+            assert_eq!(tv.tv_usec, 0);
+
+            set_current_instance(&mut first);
+            assert_eq!(wait_usec(), 25_000);
+
+            clear_current_instance();
+        }
     }
 }

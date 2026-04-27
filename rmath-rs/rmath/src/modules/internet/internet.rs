@@ -27,12 +27,18 @@ const IBUFSIZE: usize = 4096;
 
 /// Per-session internet module state.
 pub(crate) struct InternetRuntimeState {
-    quiet: c_int,
+    pub(crate) quiet: c_int,
+    pub(crate) sock_inited: c_int,
+    pub(crate) wait_usec: c_int,
 }
 
 impl Default for InternetRuntimeState {
     fn default() -> Self {
-        Self { quiet: 1 }
+        Self {
+            quiet: 1,
+            sock_inited: 0,
+            wait_usec: 0,
+        }
     }
 }
 
