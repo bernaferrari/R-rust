@@ -8,6 +8,7 @@
 //! Original file: r-source/src/main/objects.c (1,879 lines)
 
 use libc;
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -111,6 +112,14 @@ pub(crate) struct ObjectsRuntimeState {
     standard_generic_ptr: R_stdGen_ptr_t,
     quick_method_check_ptr: R_stdGen_ptr_t,
     deferred_default_object: SEXP,
+    s4_classes: HashMap<String, S4ClassDef>,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct S4ClassDef {
+    pub slots: Vec<String>,
+    pub virtual_class: bool,
+    pub has_validity: bool,
 }
 
 impl Default for ObjectsRuntimeState {
@@ -125,6 +134,7 @@ impl Default for ObjectsRuntimeState {
             standard_generic_ptr: None,
             quick_method_check_ptr: None,
             deferred_default_object: ptr::null_mut(),
+            s4_classes: HashMap::new(),
         }
     }
 }
@@ -141,11 +151,38 @@ impl ObjectsRuntimeState {
     }
 }
 
-fn with_objects_state<F, R>(f: F) -> R
+pub(crate) fn with_objects_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ObjectsRuntimeState) -> R,
 {
     crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.objects_state))
+}
+
+pub(crate) fn register_s4_class(name: String, slots: Vec<String>, virtual_class: bool) {
+    with_objects_state(|state| {
+        state.s4_classes.insert(
+            name,
+            S4ClassDef {
+                slots,
+                virtual_class,
+                has_validity: false,
+            },
+        );
+    });
+}
+
+pub(crate) fn set_s4_validity(name: &str) -> bool {
+    with_objects_state(|state| {
+        let Some(class_def) = state.s4_classes.get_mut(name) else {
+            return false;
+        };
+        class_def.has_validity = true;
+        true
+    })
+}
+
+pub(crate) fn s4_class(name: &str) -> Option<S4ClassDef> {
+    with_objects_state(|state| state.s4_classes.get(name).cloned())
 }
 
 // ---------------------------------------------------------------------------

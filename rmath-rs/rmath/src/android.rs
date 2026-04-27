@@ -2181,6 +2181,43 @@ mod tests {
     }
 
     #[test]
+    fn test_s4_registry_constructs_slot_objects() {
+        let mut session = RSession::new();
+
+        let result = session.eval(
+            "setClass(\"Person\", name = \"character\", age = \"numeric\"); x <- new(\"Person\", name = \"Ada\", age = 37); all(c(isS4(x), is(x, \"Person\"), slot(x, \"name\") == \"Ada\", slot(x, \"age\") == 37, all(slotNames(\"Person\") == c(\"age\", \"name\"))))",
+        );
+        assert_eq!(result.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
+    fn test_s4_registry_validity_virtual_and_slot_errors() {
+        let mut session = RSession::new();
+
+        let validity = session.eval(
+            "setClass(\"Checked\", value = \"numeric\"); setValidity(\"Checked\", function(object) TRUE); TRUE",
+        );
+        assert_eq!(validity.typed, RValue::Logical(Some(true)));
+
+        let virtual_class = session
+            .eval("setClass(\"VirtualThing\", \"VIRTUAL\"); isVirtualClass(\"VirtualThing\")");
+        assert_eq!(virtual_class.typed, RValue::Logical(Some(true)));
+
+        let virtual_new = session.eval("new(\"VirtualThing\")");
+        assert!(
+            matches!(&virtual_new.typed, RValue::Error(message) if message.contains("virtual")),
+            "{virtual_new:?}"
+        );
+
+        let unknown_slot =
+            session.eval("setClass(\"Strict\", name = \"character\"); new(\"Strict\", nope = 1)");
+        assert!(
+            matches!(&unknown_slot.typed, RValue::Error(message) if message.contains("slot 'nope'")),
+            "{unknown_slot:?}"
+        );
+    }
+
+    #[test]
     fn test_eval_missing_arg() {
         let mut session = RSession::new();
         let missing = session.eval("f <- function(x) missing(x)\nf()");
