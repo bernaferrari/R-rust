@@ -29,7 +29,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::R_alloc;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{protect, protect_with_index_raw};
 
 use crate::attrib_core;
 use crate::main::coerce::asLogical;
@@ -1273,7 +1273,8 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
         }
 
         let mut blocksize = SCAN_BLOCKSIZE;
-        let mut ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, blocksize));
+        let mut ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
+        let mut ans_guard = protect_with_index_raw(ans, "countfields ans");
         let mut nlines: c_int = 0;
         let mut nfields: c_int = 0;
         let mut inquote: c_int = 0;
@@ -1303,8 +1304,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
                     let bns = ans;
                     blocksize = 2 * blocksize;
                     ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
-                    Rf_unprotect(1);
-                    Rf_protect(ans);
+                    ans_guard.reprotect_raw(ans);
                     copyVector(ans, bns);
                 }
                 continue;
@@ -1345,8 +1345,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
                                 let bns = ans;
                                 blocksize = 2 * blocksize;
                                 ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
-                                Rf_unprotect(1);
-                                Rf_protect(ans);
+                                ans_guard.reprotect_raw(ans);
                                 copyVector(ans, bns);
                             }
                         } else if c2 == '\n' as c_int {
@@ -1356,8 +1355,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
                                 let bns = ans;
                                 blocksize = 2 * blocksize;
                                 ans = Rf_allocVector(SEXPTYPE::INTSXP, blocksize);
-                                Rf_unprotect(1);
-                                Rf_protect(ans);
+                                ans_guard.reprotect_raw(ans);
                                 copyVector(ans, bns);
                             }
                         }
@@ -1392,19 +1390,17 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
         }
 
         if nlines < 0 {
-            Rf_unprotect(1);
             return R_NilValue();
         }
         if nlines == blocksize {
-            Rf_unprotect(1);
             return ans;
         }
 
         let bns = Rf_allocVector(SEXPTYPE::INTSXP, nlines + 1);
+        let _bns_guard = protect(bns);
         for j in 0..=nlines {
             *INTEGER(bns).add(j as usize) = *INTEGER(ans).add(j as usize);
         }
-        Rf_unprotect(1);
         bns
     }
 }
@@ -1501,15 +1497,14 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let len = LENGTH(cvec);
 
         /* Save dim/dimnames attributes */
-        let dims = Rf_protect(attrib_core::getAttrib(cvec, attrib_core::R_DimSymbol()));
+        let dims = attrib_core::getAttrib(cvec, attrib_core::R_DimSymbol());
+        let _dims_guard = protect(dims);
         let names = if isArray(cvec) != 0 {
-            Rf_protect(attrib_core::getAttrib(
-                cvec,
-                attrib_core::R_DimNamesSymbol(),
-            ))
+            attrib_core::getAttrib(cvec, attrib_core::R_DimNamesSymbol())
         } else {
-            Rf_protect(attrib_core::getAttrib(cvec, attrib_core::R_NamesSymbol()))
+            attrib_core::getAttrib(cvec, attrib_core::R_NamesSymbol())
         };
+        let _names_guard = protect(names);
 
         /* Find the first non-NA entry (empty => NA) */
         let mut typeInfo = Typecvt_Info::new();
@@ -1542,10 +1537,12 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let mut done = false;
         let mut rval: SEXP = ptr::null_mut();
+        let mut rval_guard = None;
 
         /* Try logical conversion */
         if typeInfo.islogical {
-            rval = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, len));
+            rval = Rf_allocVector(SEXPTYPE::LGLSXP, len);
+            rval_guard = Some(protect(rval));
             let mut all_logical = true;
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
@@ -1572,13 +1569,14 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if all_logical {
                 done = true;
             } else {
-                Rf_unprotect(1);
+                drop(rval_guard.take());
             }
         }
 
         /* Try integer conversion */
         if !done && typeInfo.isinteger {
-            rval = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, len));
+            rval = Rf_allocVector(SEXPTYPE::INTSXP, len);
+            rval_guard = Some(protect(rval));
             let mut all_integer = true;
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
@@ -1602,13 +1600,14 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if all_integer {
                 done = true;
             } else {
-                Rf_unprotect(1);
+                drop(rval_guard.take());
             }
         }
 
         /* Try real conversion */
         if !done && typeInfo.isreal {
-            rval = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len));
+            rval = Rf_allocVector(SEXPTYPE::REALSXP, len);
+            rval_guard = Some(protect(rval));
             let mut all_real = true;
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
@@ -1633,13 +1632,14 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if all_real {
                 done = true;
             } else {
-                Rf_unprotect(1);
+                drop(rval_guard.take());
             }
         }
 
         /* Try complex conversion */
         if !done && typeInfo.iscomplex {
-            rval = Rf_protect(Rf_allocVector(SEXPTYPE::CPLXSXP, len));
+            rval = Rf_allocVector(SEXPTYPE::CPLXSXP, len);
+            rval_guard = Some(protect(rval));
             let mut all_complex = true;
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
@@ -1668,14 +1668,15 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if all_complex {
                 done = true;
             } else {
-                Rf_unprotect(1);
+                drop(rval_guard.take());
             }
         }
 
         /* Fallback: character or factor */
         if !done {
             if as_is_flag {
-                rval = Rf_protect(Rf_duplicate(cvec));
+                rval = Rf_duplicate(cvec);
+                rval_guard = Some(protect(rval));
                 /* Replace NA strings with NA_STRING */
                 for i in 0..len as R_xlen_t {
                     let tmp = CHAR(STRING_ELT(rval, i));
@@ -1685,7 +1686,8 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
             } else {
                 /* Factor conversion */
-                let dup = Rf_protect(duplicated(cvec, 0));
+                let dup = duplicated(cvec, 0);
+                rval_guard = Some(protect(dup));
                 let mut j: c_int = 0;
                 for i in 0..len {
                     if STRING_ELT(cvec, i as R_xlen_t) == NA_STRING() {
@@ -1698,7 +1700,8 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     }
                 }
 
-                let levs = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, j));
+                let levs = Rf_allocVector(SEXPTYPE::STRSXP, j);
+                let _levs_guard = protect(levs);
                 j = 0;
                 for i in 0..len {
                     if STRING_ELT(cvec, i as R_xlen_t) == NA_STRING() {
@@ -1719,15 +1722,16 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 /* Sort levels lexicographically */
                 sortVector(levs, 0);
 
-                let a = Rf_protect(matchE(levs, cvec, NA_INTEGER(), env));
+                let a = matchE(levs, cvec, NA_INTEGER(), env);
+                let _a_guard = protect(a);
                 for i in 0..len {
                     *INTEGER(rval).add(i as usize) = *INTEGER(a).add(i as usize);
                 }
 
                 attrib_core::setAttrib(rval, attrib_core::R_LevelsSymbol(), levs);
-                let class_str = Rf_protect(Rf_mkString(b"factor\0".as_ptr() as *const c_char));
+                let class_str = Rf_mkString(b"factor\0".as_ptr() as *const c_char);
+                let _class_guard = protect(class_str);
                 attrib_core::setAttrib(rval, attrib_core::R_ClassSymbol(), class_str);
-                Rf_unprotect(3);
             }
         }
 
@@ -1739,7 +1743,6 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             attrib_core::setAttrib(rval, attrib_core::R_NamesSymbol(), names);
         }
 
-        Rf_unprotect(3);
         rval
     }
 }
@@ -1869,7 +1872,8 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
             );
         }
 
-        let mut ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nlines));
+        let mut ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
+        let _ans_guard = protect(ans);
         let mut nread: c_int = 0;
 
         while nread < nlines {
@@ -1970,14 +1974,13 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
                 libc::free(buf as *mut c_void);
                 // Trim result to actual number read
                 if nread < nlines {
-                    let ans2 = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nread));
+                    let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, nread);
+                    let _ans2_guard = protect(ans2);
                     for j in 0..nread {
                         SET_STRING_ELT(ans2, j as R_xlen_t, STRING_ELT(ans, j as R_xlen_t));
                     }
-                    Rf_unprotect(2);
                     return ans2;
                 }
-                Rf_unprotect(1);
                 return ans;
             }
 
@@ -2000,20 +2003,18 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
                 libc::free(buf as *mut c_void);
                 // Trim result to actual number read
                 if nread < nlines {
-                    let ans2 = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nread));
+                    let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, nread);
+                    let _ans2_guard = protect(ans2);
                     for j in 0..nread {
                         SET_STRING_ELT(ans2, j as R_xlen_t, STRING_ELT(ans, j as R_xlen_t));
                     }
-                    Rf_unprotect(2);
                     return ans2;
                 }
-                Rf_unprotect(1);
                 return ans;
             }
         }
 
         libc::free(buf as *mut c_void);
-        Rf_unprotect(1);
         ans
     }
 }
