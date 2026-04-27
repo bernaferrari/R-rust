@@ -10,15 +10,22 @@
  *  Original C translation by Ross Ihaka, University of Auckland, Feb 1997.
  */
 use libc::{c_double, c_int};
-use std::cell::{Cell, RefCell};
 
-// Module-level state (static in C)
-thread_local! { static OLD_N: Cell<c_int> = Cell::new(0); }
-thread_local! { static NFAC: RefCell<[c_int; 20]> = RefCell::new([0; 20]); }
-thread_local! { static M_FAC: Cell<c_int> = Cell::new(0); }
-thread_local! { static KT: Cell<c_int> = Cell::new(0); }
-thread_local! { static MAXF: Cell<c_int> = Cell::new(0); }
-thread_local! { static MAXP: Cell<c_int> = Cell::new(0); }
+use crate::sexp::instance::with_required_current_instance;
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FftState {
+    old_n: c_int,
+    nfac: [c_int; 20],
+    m_fac: c_int,
+    kt: c_int,
+    maxf: c_int,
+    maxp: c_int,
+}
+
+fn with_fft_state<R>(f: impl FnOnce(&mut FftState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.fft_state))
+}
 
 /// fft_factor - factorization check and determination of memory
 /// requirements for the fft.
@@ -31,148 +38,116 @@ thread_local! { static MAXP: Cell<c_int> = Cell::new(0); }
 ///   If `*pmaxp == 1`  There were more than 20 factors to ntot.
 pub unsafe fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_int) {
     unsafe {
-        let mut j: c_int;
-        let mut jj: c_int;
-        let mut k: c_int;
-        let mut sqrtk: c_int;
-        let mut kchanged: c_int;
+        with_fft_state(|state| {
+            let mut j: c_int;
+            let mut jj: c_int;
+            let mut k: c_int;
+            let mut sqrtk: c_int;
+            let mut kchanged: c_int;
 
-        // check series length
-        if n <= 0 {
-            OLD_N.with(|v| v.set(0));
-            *pmaxf = 0;
-            *pmaxp = 0;
-            return;
-        } else {
-            OLD_N.with(|v| v.set(n));
-        }
-
-        // determine the factors of n
-        M_FAC.with(|v| v.set(0));
-        k = n; // k := remaining unfactored factor of n
-        if k == 1 {
-            return;
-        }
-
-        // extract square factors first
-
-        // extract 4^2 = 16 separately
-        // ==> at most one remaining factor 2^2 = 4, done below
-        while k % 16 == 0 {
-            NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = 4);
-            M_FAC.with(|v| v.set(v.get() + 1));
-            k /= 16;
-        }
-
-        // extract 3^2, 5^2, ...
-        kchanged = 0;
-        sqrtk = libm::sqrt(k as f64) as c_int;
-        j = 3;
-        while j <= sqrtk {
-            jj = j * j;
-            while k % jj == 0 {
-                NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = j);
-                M_FAC.with(|v| v.set(v.get() + 1));
-                k /= jj;
-                kchanged = 1;
-            }
-            if kchanged != 0 {
-                kchanged = 0;
-                sqrtk = libm::sqrt(k as f64) as c_int;
-            }
-            j += 2;
-        }
-
-        if k <= 4 {
-            KT.with(|v| v.set(M_FAC.with(|m| m.get())));
-            NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = k);
-            if k != 1 {
-                M_FAC.with(|v| v.set(v.get() + 1));
-            }
-        } else {
-            if k % 4 == 0 {
-                NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = 2);
-                M_FAC.with(|v| v.set(v.get() + 1));
-                k /= 4;
+            if n <= 0 {
+                state.old_n = 0;
+                *pmaxf = 0;
+                *pmaxp = 0;
+                return;
             }
 
-            // all square factors out now, but k >= 5 still
-            KT.with(|v| v.set(M_FAC.with(|m| m.get())));
-            MAXP.with(|v| {
-                v.set(std::cmp::max(
-                    KT.with(|k| k.get()) + KT.with(|k| k.get()) + 2,
-                    k - 1,
-                ))
-            });
-            j = 2;
-            loop {
-                if k % j == 0 {
-                    NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = j);
-                    M_FAC.with(|v| v.set(v.get() + 1));
-                    k /= j;
+            *state = FftState::default();
+            state.old_n = n;
+
+            k = n;
+            if k == 1 {
+                return;
+            }
+
+            while k % 16 == 0 {
+                state.nfac[state.m_fac as usize] = 4;
+                state.m_fac += 1;
+                k /= 16;
+            }
+
+            kchanged = 0;
+            sqrtk = libm::sqrt(k as f64) as c_int;
+            j = 3;
+            while j <= sqrtk {
+                jj = j * j;
+                while k % jj == 0 {
+                    state.nfac[state.m_fac as usize] = j;
+                    state.m_fac += 1;
+                    k /= jj;
+                    kchanged = 1;
                 }
-                if j > c_int::MAX - 2 {
-                    break;
+                if kchanged != 0 {
+                    kchanged = 0;
+                    sqrtk = libm::sqrt(k as f64) as c_int;
                 }
-                j = ((j + 1) / 2) * 2 + 1;
-                if j > k {
-                    break;
+                j += 2;
+            }
+
+            if k <= 4 {
+                state.kt = state.m_fac;
+                state.nfac[state.m_fac as usize] = k;
+                if k != 1 {
+                    state.m_fac += 1;
+                }
+            } else {
+                if k % 4 == 0 {
+                    state.nfac[state.m_fac as usize] = 2;
+                    state.m_fac += 1;
+                    k /= 4;
+                }
+
+                state.kt = state.m_fac;
+                state.maxp = std::cmp::max(state.kt + state.kt + 2, k - 1);
+                j = 2;
+                loop {
+                    if k % j == 0 {
+                        state.nfac[state.m_fac as usize] = j;
+                        state.m_fac += 1;
+                        k /= j;
+                    }
+                    if j > c_int::MAX - 2 {
+                        break;
+                    }
+                    j = ((j + 1) / 2) * 2 + 1;
+                    if j > k {
+                        break;
+                    }
                 }
             }
-        }
 
-        if M_FAC.with(|v| v.get()) <= KT.with(|v| v.get()) + 1 {
-            MAXP.with(|v| v.set(M_FAC.with(|m| m.get()) + KT.with(|k| k.get()) + 1));
-        }
-        if M_FAC.with(|v| v.get()) + KT.with(|v| v.get()) > 20 {
-            // error - too many factors
-            OLD_N.with(|v| v.set(0));
-            *pmaxf = 0;
-            *pmaxp = 0;
-            return;
-        } else {
-            if KT.with(|v| v.get()) != 0 {
-                j = KT.with(|v| v.get());
+            if state.m_fac <= state.kt + 1 {
+                state.maxp = state.m_fac + state.kt + 1;
+            }
+            if state.m_fac + state.kt > 20 {
+                state.old_n = 0;
+                *pmaxf = 0;
+                *pmaxp = 0;
+                return;
+            }
+
+            if state.kt != 0 {
+                j = state.kt;
                 while j != 0 {
                     j -= 1;
-                    let val = NFAC.with(|v| v.borrow()[j as usize]);
-                    NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = val);
-                    M_FAC.with(|v| v.set(v.get() + 1));
+                    state.nfac[state.m_fac as usize] = state.nfac[j as usize];
+                    state.m_fac += 1;
                 }
             }
-            MAXF.with(|v| {
-                v.set(NFAC.with(|n| {
-                    n.borrow()[(M_FAC.with(|m| m.get()) - KT.with(|k| k.get()) - 1) as usize]
-                }))
-            });
-            // The last squared factor is not necessarily the largest PR#1429
-            if KT.with(|v| v.get()) > 0 {
-                MAXF.with(|v| {
-                    v.set(std::cmp::max(
-                        NFAC.with(|n| n.borrow()[(KT.with(|k| k.get()) - 1) as usize]),
-                        v.get(),
-                    ))
-                });
+            state.maxf = state.nfac[(state.m_fac - state.kt - 1) as usize];
+            if state.kt > 0 {
+                state.maxf = std::cmp::max(state.nfac[(state.kt - 1) as usize], state.maxf);
             }
-            if KT.with(|v| v.get()) > 1 {
-                MAXF.with(|v| {
-                    v.set(std::cmp::max(
-                        NFAC.with(|n| n.borrow()[(KT.with(|k| k.get()) - 2) as usize]),
-                        v.get(),
-                    ))
-                });
+            if state.kt > 1 {
+                state.maxf = std::cmp::max(state.nfac[(state.kt - 2) as usize], state.maxf);
             }
-            if KT.with(|v| v.get()) > 2 {
-                MAXF.with(|v| {
-                    v.set(std::cmp::max(
-                        NFAC.with(|n| n.borrow()[(KT.with(|k| k.get()) - 3) as usize]),
-                        v.get(),
-                    ))
-                });
+            if state.kt > 2 {
+                state.maxf = std::cmp::max(state.nfac[(state.kt - 3) as usize], state.maxf);
             }
-        }
-        *pmaxf = MAXF.with(|v| v.get());
-        *pmaxp = MAXP.with(|v| v.get());
+
+            *pmaxf = state.maxf;
+            *pmaxp = state.maxp;
+        });
     }
 }
 
@@ -191,18 +166,17 @@ pub unsafe fn fft_work(
     iwork: *mut c_int,
 ) -> c_int {
     unsafe {
-        // check that factorization was successful
-        if OLD_N.with(|v| v.get()) == 0 {
+        let state = with_fft_state(|state| *state);
+
+        if state.old_n == 0 {
             return 0;
         }
 
-        // check that the parameters match those of the factorization call
-        if n != OLD_N.with(|v| v.get()) || nseg <= 0 || nspn <= 0 || isn == 0 {
+        if n != state.old_n || nseg <= 0 || nspn <= 0 || isn == 0 {
             return 0;
         }
 
-        // perform the transform
-        let mf = MAXF.with(|v| v.get()) as usize;
+        let mf = state.maxf as usize;
         let nspan = n * nspn;
         let ntot = nspan * nseg;
 
@@ -213,8 +187,9 @@ pub unsafe fn fft_work(
             n,
             nspan,
             isn,
-            M_FAC.with(|v| v.get()),
-            KT.with(|v| v.get()),
+            state.m_fac,
+            state.kt,
+            state.nfac,
             work,
             work.add(mf),
             work.add(2 * mf),
@@ -241,6 +216,7 @@ unsafe fn fftmx(
     isn: c_int,
     m: c_int,
     kt: c_int,
+    mut nfac: [c_int; 20],
     at: *mut c_double,
     ck: *mut c_double,
     bt: *mut c_double,
@@ -337,12 +313,12 @@ unsafe fn fftmx(
         }
         macro_rules! NF {
             ($idx:expr) => {
-                NFAC.with(|v| v.borrow()[$idx as usize])
+                nfac[$idx as usize]
             };
         }
         macro_rules! NF_set {
             ($idx:expr, $val:expr) => {
-                NFAC.with(|v| v.borrow_mut()[$idx as usize] = $val)
+                nfac[$idx as usize] = $val
             };
         }
 
@@ -1054,15 +1030,10 @@ unsafe fn fftmx(
         NF_set!(nn, 1);
         let mut jj_loop = nn;
         while jj_loop > kt {
-            NFAC.with(|v| {
-                let next = v.borrow()[jj_loop as usize];
-                v.borrow_mut()[jj_loop as usize - 1] *= next;
-            });
+            nfac[jj_loop as usize - 1] *= nfac[jj_loop as usize];
             jj_loop -= 1;
         }
-        // kt is modified locally (we use a local copy since we don't want to corrupt
-        // the module-level KT for subsequent calls -- actually C does corrupt it,
-        // matching the original behavior)
+        // Work on local copies so the per-instance factorization plan remains reusable.
         let mut kt_local = kt;
         kt_local += 1;
         nn = NF!(kt_local - 1) - 1;
@@ -1208,5 +1179,36 @@ unsafe fn fftmx(
             nt = nt - kspnn;
             i = nt - inc + 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn fft_factorization_state_is_session_local() {
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
+            let mut maxf = 0;
+            let mut maxp = 0;
+            fft_factor(12, &mut maxf, &mut maxp);
+            assert_eq!(first.fft_state.old_n, 12);
+            assert!(first.fft_state.m_fac > 0);
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            assert_eq!(second.fft_state.old_n, 0);
+            fft_factor(5, &mut maxf, &mut maxp);
+            assert_eq!(second.fft_state.old_n, 5);
+            replace_current_instance(previous);
+        }
+
+        assert_eq!(first.fft_state.old_n, 12);
+        assert_eq!(second.fft_state.old_n, 5);
     }
 }

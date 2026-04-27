@@ -125,7 +125,7 @@ pub(crate) mod fexact;
     unused_assignments,
     non_camel_case_types
 )]
-mod fft;
+pub(crate) mod fft;
 #[allow(
     dead_code,
     unused_imports,

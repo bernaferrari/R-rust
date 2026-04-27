@@ -323,6 +323,8 @@ pub struct RInstance {
     pub(crate) bspline_state: crate::library::stats::bspline::BsplineState,
     /// Per-instance stats::fexact traversal continuation state.
     pub(crate) fexact_state: crate::library::stats::fexact::FexactState,
+    /// Per-instance stats::fft factorization plan state.
+    pub(crate) fft_state: crate::library::stats::fft::FftState,
     /// Per-instance dist::binomial sampler cache.
     pub(crate) dist_binom_state: crate::dist::binomial::RbinomState,
     /// Per-instance nmath::dist::binomial sampler cache.
@@ -447,6 +449,7 @@ impl RInstance {
             loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
             fexact_state: crate::library::stats::fexact::FexactState::default(),
+            fft_state: crate::library::stats::fft::FftState::default(),
             dist_binom_state: crate::dist::binomial::RbinomState::new(),
             nmath_binom_state: crate::nmath::dist::binomial::RbinomState::new(),
             dist_pois_state: crate::dist::poisson::RpoisState::new(),
