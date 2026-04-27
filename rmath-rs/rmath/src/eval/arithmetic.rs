@@ -32,6 +32,15 @@ use crate::sexp::symbol::Rf_install;
 // Vectorized binary arithmetic
 // ---------------------------------------------------------------------------
 
+const VECTOR_CANCELLATION_POLL_INTERVAL: R_xlen_t = 1024;
+
+#[inline]
+fn poll_vector_cancellation(i: R_xlen_t) {
+    if i % VECTOR_CANCELLATION_POLL_INTERVAL == 0 {
+        crate::sexp::instance::check_cancellation();
+    }
+}
+
 /// Apply a real-valued binary operation with recycling.
 ///
 /// Returns REALSXP if either operand is REALSXP, otherwise returns INTSXP/LGLSXP.
@@ -63,6 +72,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let mut integer_overflow = false;
 
         for i in 0..n {
+            poll_vector_cancellation(i);
             let x = a.real_at(i);
             let y = b.real_at(i);
             let x_na = x.to_bits() == R_NA_BIT_PATTERN;
@@ -149,6 +159,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let use_real = a.needs_real_with(b);
 
         for i in 0..n {
+            poll_vector_cancellation(i);
             let (x_na, y_na, cmp): (bool, bool, bool) = if use_real {
                 let x = a.real_at(i);
                 let y = b.real_at(i);
@@ -296,6 +307,7 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         let _result_guard = protect(result_raw);
 
         for i in 0..n {
+            poll_vector_cancellation(i);
             let value = x.real_at(i);
             if value.to_bits() == R_NA_BIT_PATTERN {
                 result.set_real_elt(i, NA_REAL);
@@ -970,7 +982,22 @@ pub unsafe fn register_special_forms(env: SEXP) {
 mod tests {
     use super::*;
     use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, REAL, TYPEOF};
-    use crate::sexp::session::RSession;
+    use crate::sexp::context::RSignal;
+    use crate::sexp::session::{CancellationToken, RSession};
+
+    fn expect_cancelled<F>(f: F)
+    where
+        F: FnOnce(),
+    {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        let Err(payload) = result else {
+            panic!("expected cancellation");
+        };
+        let Some(RSignal::Error { message }) = payload.downcast_ref::<RSignal>() else {
+            panic!("expected RSignal::Error payload");
+        };
+        assert_eq!(message, "operation cancelled");
+    }
 
     #[test]
     fn test_scalar_addition() {
@@ -1185,6 +1212,61 @@ mod tests {
             assert_eq!(*LOGICAL(result).add(0), FALSE); // 1 > 2
             assert_eq!(*LOGICAL(result).add(1), TRUE); // 2 > 1
             assert_eq!(*LOGICAL(result).add(2), TRUE); // 3 > 2
+        }
+    }
+
+    #[test]
+    fn test_vector_arithmetic_polls_cancellation() {
+        let mut session = RSession::new();
+        session.set_cancellation_token(Some(CancellationToken::cancelled()));
+
+        unsafe {
+            let a = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
+            let b = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
+            for i in 0..2048 {
+                *INTEGER(a).add(i) = i as i32;
+                *INTEGER(b).add(i) = 1;
+            }
+
+            expect_cancelled(|| {
+                let _ = real_binary("+", a, b);
+            });
+        }
+    }
+
+    #[test]
+    fn test_vector_compare_polls_cancellation() {
+        let mut session = RSession::new();
+        session.set_cancellation_token(Some(CancellationToken::cancelled()));
+
+        unsafe {
+            let a = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
+            let b = Rf_allocVector3(SEXPTYPE::INTSXP, 2048);
+            for i in 0..2048 {
+                *INTEGER(a).add(i) = i as i32;
+                *INTEGER(b).add(i) = i as i32;
+            }
+
+            expect_cancelled(|| {
+                let _ = binary_compare("==", a, b);
+            });
+        }
+    }
+
+    #[test]
+    fn test_unary_math_polls_cancellation() {
+        let mut session = RSession::new();
+        session.set_cancellation_token(Some(CancellationToken::cancelled()));
+
+        unsafe {
+            let x = Rf_allocVector3(SEXPTYPE::REALSXP, 2048);
+            for i in 0..2048 {
+                *REAL(x).add(i) = i as f64;
+            }
+
+            expect_cancelled(|| {
+                let _ = math1_vec(x, f64::sqrt);
+            });
         }
     }
 
