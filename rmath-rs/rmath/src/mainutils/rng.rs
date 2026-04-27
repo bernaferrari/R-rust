@@ -1,19 +1,3 @@
-// Local error type and error() helper
-#[derive(Debug)]
-struct RError(String);
-
-impl std::fmt::Display for RError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "RError: {}", self.0)
-    }
-}
-
-impl std::error::Error for RError {}
-
-fn error(msg: &str) -> ! {
-    panic!("{}", RError(msg.to_owned()));
-}
-
 // Minimal but faithful MT19937 implementation for the RNG family exposure
 // Supports next_f64() and next_u32() through RInstance-owned state.
 pub(crate) struct MT19937 {
