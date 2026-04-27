@@ -39,9 +39,7 @@ pub unsafe fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
             }
         }
 
-        // Fallback
-        eprintln!("Warning: unimplemented special form");
-        R_NilValue()
+        unimplemented_special_form("<unknown>")
     }
 }
 
@@ -68,12 +66,15 @@ unsafe fn dispatch_special_by_name(
             "invisible" => do_invisible(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
-            _ => {
-                eprintln!("Warning: unimplemented special form '{}'", name);
-                R_NilValue()
-            }
+            _ => unimplemented_special_form(name),
         }
     }
+}
+
+fn unimplemented_special_form(name: &str) -> ! {
+    std::panic::panic_any(RError {
+        message: format!("unimplemented special form '{name}'"),
+    });
 }
 
 /// Implement `invisible(x)` when it is reached through the special-form path.
