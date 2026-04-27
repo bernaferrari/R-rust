@@ -340,14 +340,15 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                 );
             }
         } else if isClipPath(viewportClipSXP(vp)) {
-            let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
-            let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+            let parentClip = viewportClipRect(viewportParent(vp));
+            let _parent_clip_guard = protect(parentClip);
+            let currentClip = Rf_allocVector(SEXPTYPE::REALSXP, 4);
+            let _current_clip_guard = protect(currentClip);
             *REAL(currentClip).add(0) = *REAL(parentClip).add(0);
             *REAL(currentClip).add(1) = *REAL(parentClip).add(1);
             *REAL(currentClip).add(2) = *REAL(parentClip).add(2);
             *REAL(currentClip).add(3) = *REAL(parentClip).add(3);
             SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
-            Rf_unprotect(2);
         } else {
             if viewportClip(vp) == NA_LOGICAL {
                 xx1 = toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd);
@@ -369,12 +370,12 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                     && rotationAngle != 360.0
                 {
                     Rf_warning(c"cannot clip to rotated viewport".as_ptr());
-                    let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
+                    let parentClip = viewportClipRect(viewportParent(vp));
+                    let _parent_clip_guard = protect(parentClip);
                     xx1 = *REAL(parentClip).add(0);
                     yy1 = *REAL(parentClip).add(1);
                     xx2 = *REAL(parentClip).add(2);
                     yy2 = *REAL(parentClip).add(3);
-                    Rf_unprotect(1);
                 } else {
                     let mut transform: LTransform = [[0.0; 3]; 3];
                     for i in 0..3usize {
@@ -384,26 +385,30 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                     }
                     let vpWidthCM = *REAL(viewportWidthCM(vp));
                     let vpHeightCM = *REAL(viewportHeightCM(vp));
-                    let x1 = Rf_protect(if topLevelVP == 0 {
+                    let x1 = if topLevelVP == 0 {
                         unit(0.0, L_NPC)
                     } else {
                         unit(-0.5, L_NPC)
-                    });
-                    let y1 = Rf_protect(if topLevelVP == 0 {
+                    };
+                    let _x1_guard = protect(x1);
+                    let y1 = if topLevelVP == 0 {
                         unit(0.0, L_NPC)
                     } else {
                         unit(-0.5, L_NPC)
-                    });
-                    let x2 = Rf_protect(if topLevelVP == 0 {
+                    };
+                    let _y1_guard = protect(y1);
+                    let x2 = if topLevelVP == 0 {
                         unit(1.0, L_NPC)
                     } else {
                         unit(1.5, L_NPC)
-                    });
-                    let y2 = Rf_protect(if topLevelVP == 0 {
+                    };
+                    let _x2_guard = protect(x2);
+                    let y2 = if topLevelVP == 0 {
                         unit(1.0, L_NPC)
                     } else {
                         unit(1.5, L_NPC)
-                    });
+                    };
+                    let _y2_guard = protect(y2);
                     let mut vpc = LViewportContext::default();
                     getViewportContext(vp, &mut vpc);
                     let mut gc_buf: [u8; 256] = [0; 256];
@@ -435,7 +440,6 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                         &mut xx2,
                         &mut yy2,
                     );
-                    Rf_unprotect(4);
                     xx1 = toDeviceX(xx1, GE_INCHES, dd);
                     yy1 = toDeviceY(yy1, GE_INCHES, dd);
                     xx2 = toDeviceX(xx2, GE_INCHES, dd);
@@ -443,29 +447,29 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                     GESetClip(xx1, yy1, xx2, yy2, dd);
                 }
             } else {
-                let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
+                let parentClip = viewportClipRect(viewportParent(vp));
+                let _parent_clip_guard = protect(parentClip);
                 xx1 = *REAL(parentClip).add(0);
                 yy1 = *REAL(parentClip).add(1);
                 xx2 = *REAL(parentClip).add(2);
                 yy2 = *REAL(parentClip).add(3);
-                let parentClipPath =
-                    Rf_protect(VECTOR_ELT(viewportParent(vp), PVP_CLIPPATH as R_xlen_t));
+                let parentClipPath = VECTOR_ELT(viewportParent(vp), PVP_CLIPPATH as R_xlen_t);
+                let _parent_clip_path_guard = protect(parentClipPath);
                 if isClipPath(parentClipPath) {
                     SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, parentClipPath);
                 }
                 if pushing == 0 && !isClipPath(parentClipPath) {
                     GESetClip(xx1, yy1, xx2, yy2, dd);
                 }
-                Rf_unprotect(2);
             }
 
-            let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+            let currentClip = Rf_allocVector(SEXPTYPE::REALSXP, 4);
+            let _current_clip_guard = protect(currentClip);
             *REAL(currentClip).add(0) = xx1;
             *REAL(currentClip).add(1) = yy1;
             *REAL(currentClip).add(2) = xx2;
             *REAL(currentClip).add(3) = yy2;
             SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
-            Rf_unprotect(1);
         }
 
         if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
@@ -1073,9 +1077,9 @@ pub unsafe fn L_setDisplayList(dl: SEXP) -> SEXP {
 pub unsafe fn L_getDLelt(index: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
-        let dl = Rf_protect(gridStateElement(dd, GSS_DL));
+        let dl = gridStateElement(dd, GSS_DL);
+        let _dl_guard = protect(dl);
         let result = VECTOR_ELT(dl, *INTEGER(index) as R_xlen_t);
-        Rf_unprotect(1);
         result
     }
 }
@@ -1083,10 +1087,10 @@ pub unsafe fn L_getDLelt(index: SEXP) -> SEXP {
 pub unsafe fn L_setDLelt(value: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
-        let dl = Rf_protect(gridStateElement(dd, GSS_DL));
+        let dl = gridStateElement(dd, GSS_DL);
+        let _dl_guard = protect(dl);
         let dlindex = gridStateElement(dd, GSS_DLINDEX);
         SET_VECTOR_ELT(dl, *INTEGER(dlindex) as R_xlen_t, value);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -1688,12 +1692,12 @@ pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
         let h_cm =
             transformHeighttoINCHES(vpl.height, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
 
-        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+        let answer = Rf_allocVector(SEXPTYPE::REALSXP, 4);
+        let _answer_guard = protect(answer);
         *REAL(answer).add(0) = x_cm;
         *REAL(answer).add(1) = y_cm;
         *REAL(answer).add(2) = w_cm;
         *REAL(answer).add(3) = h_cm;
-        Rf_unprotect(1);
         answer
     }
 }
@@ -3595,10 +3599,10 @@ pub unsafe fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
 
 pub unsafe fn L_locator() -> SEXP {
     unsafe {
-        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+        let answer = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+        let _answer_guard = protect(answer);
         *REAL(answer).add(0) = f64::NAN;
         *REAL(answer).add(1) = f64::NAN;
-        Rf_unprotect(1);
         answer
     }
 }
