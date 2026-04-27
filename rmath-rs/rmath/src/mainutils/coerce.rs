@@ -117,14 +117,14 @@ unsafe fn xlength(x: SEXP) -> R_xlen_t {
 
 /// Check if an SEXP is a vector atomic type.
 #[inline]
-unsafe fn isVectorAtomic(x: SEXP) -> bool {
-    unsafe { Rf_isVectorAtomic(x) != 0 }
+fn isVectorAtomic(x: SEXP) -> bool {
+    crate::sexp::object::raw_is_atomic_vector(x)
 }
 
 /// Check if an SEXP is a vector type (atomic or list).
 #[inline]
-unsafe fn isVector(x: SEXP) -> bool {
-    unsafe { Rf_isVector(x) != 0 }
+fn isVector(x: SEXP) -> bool {
+    crate::sexp::object::raw_is_vector(x)
 }
 
 /// Check if an SEXP is a vector list type.

@@ -12,7 +12,7 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::attrib_core::{getAttrib, setAttrib};
 use crate::sexp::constructors::{
-    Rf_allocVector, Rf_isEnvironment, Rf_isString, Rf_isVectorAtomic, Rf_length, Rf_mkString,
+    Rf_allocVector, Rf_isEnvironment, Rf_isString, Rf_length, Rf_mkString,
 };
 use crate::sexp::context::R_GlobalContext;
 use crate::sexp::envir::{R_findVarInFrame, defineVar, findFun};
@@ -86,7 +86,7 @@ fn na_str() -> *const c_char {
 
 pub unsafe fn asVecSize(x: SEXP) -> R_xlen_t {
     unsafe {
-        if Rf_isVectorAtomic(x) != 0 && LENGTH(x) >= 1 {
+        if crate::sexp::object::raw_is_atomic_vector(x) && LENGTH(x) >= 1 {
             match TYPEOF(x) {
                 t if t == SEXPTYPE::INTSXP => {
                     let res = *INTEGER(x);

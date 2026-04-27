@@ -111,11 +111,8 @@ unsafe fn isString(x: SEXP) -> bool {
 
 /// isVector check.
 #[inline(always)]
-unsafe fn isVector(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        matches!(t, 10 | 13 | 14 | 15 | 16 | 19 | 20 | 24)
-    }
+fn isVector(x: SEXP) -> bool {
+    crate::sexp::object::raw_is_vector(x)
 }
 
 /// isNull check.

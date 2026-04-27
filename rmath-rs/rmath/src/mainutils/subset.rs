@@ -204,20 +204,14 @@ unsafe fn isEnvironment(x: SEXP) -> bool {
 
 /// Check if x is a vector type (any atomic or generic vector).
 #[inline]
-unsafe fn isVector(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        matches!(t, 10 | 13 | 14 | 15 | 16 | 19 | 20 | 24)
-    }
+fn isVector(x: SEXP) -> bool {
+    crate::sexp::object::raw_is_vector(x)
 }
 
 /// Check if x is an atomic vector.
 #[inline]
-unsafe fn isVectorAtomic(x: SEXP) -> bool {
-    unsafe {
-        let t = TYPEOF(x);
-        matches!(t, 10 | 13 | 14 | 15 | 16 | 24)
-    }
+fn isVectorAtomic(x: SEXP) -> bool {
+    crate::sexp::object::raw_is_atomic_vector(x)
 }
 
 /// Check if x is a symbol.

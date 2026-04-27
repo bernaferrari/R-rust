@@ -332,19 +332,8 @@ unsafe fn isString(x: SEXP) -> bool {
 }
 
 #[inline]
-unsafe fn isVectorAtomic(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP
-            || t == SEXPTYPE::INTSXP
-            || t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::CPLXSXP
-            || t == SEXPTYPE::STRSXP
-            || t == SEXPTYPE::RAWSXP
-    }
+fn isVectorAtomic(x: SEXP) -> bool {
+    crate::sexp::object::raw_is_atomic_vector(x)
 }
 
 /// Check if a name is a valid R identifier.

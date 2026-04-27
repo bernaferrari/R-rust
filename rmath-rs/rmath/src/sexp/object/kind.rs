@@ -1,6 +1,23 @@
 use super::{Sexp, SexpResult, SexpView};
-use crate::sexp::ffi::{R_xlen_t, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+
+/// Return whether a raw pointer is an atomic vector.
+///
+/// This keeps legacy C-shaped entry points from open-coding numeric type tags
+/// while preserving their null-tolerant predicate semantics.
+#[inline]
+pub(crate) fn raw_is_atomic_vector(ptr: SEXP) -> bool {
+    Sexp::from_raw(ptr).is_some_and(Sexp::is_atomic)
+}
+
+/// Return whether a raw pointer is any R vector type.
+///
+/// This is the raw-boundary companion to [`Sexp::is_vector`].
+#[inline]
+pub(crate) fn raw_is_vector(ptr: SEXP) -> bool {
+    Sexp::from_raw(ptr).is_some_and(Sexp::is_vector)
+}
 
 impl<'a> Sexp<'a> {
     /// Return a Rust-shaped borrowed view for this SEXP.

@@ -41,6 +41,7 @@ mod vector;
 mod view;
 
 pub use error::{SexpError, SexpResult};
+pub(crate) use kind::{raw_is_atomic_vector, raw_is_vector};
 pub(crate) use pairlist::PairlistBuilder;
 pub use pairlist::PairlistIter;
 pub use value::{SexpAttribute, SexpComplex, SexpMetadata, SexpValue};

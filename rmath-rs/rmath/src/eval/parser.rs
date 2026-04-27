@@ -338,8 +338,14 @@ impl Lexer {
         if self.peek_char() == Some('0')
             && (self.peek_char_at(1) == Some('x') || self.peek_char_at(1) == Some('X'))
         {
-            s.push(self.advance().unwrap()); // 0
-            s.push(self.advance().unwrap()); // x
+            let Some(zero) = self.advance() else {
+                return Token::Eof;
+            };
+            let Some(prefix) = self.advance() else {
+                return Token::Eof;
+            };
+            s.push(zero);
+            s.push(prefix);
             while let Some(ch) = self.peek_char() {
                 if ch.is_ascii_hexdigit() {
                     s.push(ch);
@@ -1305,7 +1311,7 @@ impl<'arena> Parser<'arena> {
         } else if exprs.len() == 1 {
             unsafe {
                 let brace_sym = Rf_install(c"{".as_ptr());
-                Ok(self.lang2(brace_sym, exprs.into_iter().next().unwrap()))
+                Ok(self.lang2(brace_sym, exprs.pop().unwrap_or_else(|| R_NilValue())))
             }
         } else {
             unsafe {
