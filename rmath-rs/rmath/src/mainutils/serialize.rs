@@ -826,7 +826,7 @@ unsafe fn ReadItemInternal(
             Ok(sym)
         } else if stype == SEXPTYPE::LISTSXP || stype == SEXPTYPE::LANGSXP {
             let s = allocSExp(SEXPTYPE(stype));
-            Rf_protect(s);
+            let _s_guard = protect(s);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -843,11 +843,10 @@ unsafe fn ReadItemInternal(
             if isobj != 0 {
                 SET_OBJECT(s, 1);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else if stype == SEXPTYPE::CLOSXP {
             let s = allocSExp(SEXPTYPE::CLOSXP);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             if hasattr != 0 {
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
@@ -863,7 +862,6 @@ unsafe fn ReadItemInternal(
             if isobj != 0 {
                 SET_OBJECT(s, 1);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else if stype == SEXPTYPE::CHARSXP {
             let len = reader.read_i32()?;
@@ -880,7 +878,7 @@ unsafe fn ReadItemInternal(
         } else if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             let int_data = INTEGER(s);
             for i in 0..len as isize {
                 *int_data.offset(i) = reader.read_i32()?;
@@ -893,12 +891,11 @@ unsafe fn ReadItemInternal(
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else if stype == SEXPTYPE::REALSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             let real_data = REAL(s);
             for i in 0..len as isize {
                 *real_data.offset(i) = reader.read_f64()?;
@@ -911,12 +908,11 @@ unsafe fn ReadItemInternal(
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else if stype == SEXPTYPE::CPLXSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             let cpx_data = COMPLEX(s);
             for i in 0..len as isize {
                 let r = reader.read_f64()?;
@@ -931,12 +927,11 @@ unsafe fn ReadItemInternal(
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else if stype == SEXPTYPE::STRSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             for i in 0..len {
                 let elt = ReadItemInternal(reader, ref_table)?;
                 SET_STRING_ELT(s, i as R_xlen_t, elt);
@@ -949,12 +944,11 @@ unsafe fn ReadItemInternal(
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else if stype == SEXPTYPE::RAWSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             let raw_data = RAW(s);
             for i in 0..len as isize {
                 *raw_data.offset(i) = reader.read_byte()?;
@@ -967,12 +961,11 @@ unsafe fn ReadItemInternal(
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else if stype == SEXPTYPE::VECSXP || stype == SEXPTYPE::EXPRSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             for i in 0..len {
                 let elt = ReadItemInternal(reader, ref_table)?;
                 SET_VECTOR_ELT(s, i as R_xlen_t, elt);
@@ -985,7 +978,6 @@ unsafe fn ReadItemInternal(
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
             }
-            Rf_unprotect(1);
             Ok(s)
         } else {
             Err(format!("ReadItem: unknown type {}", stype))
@@ -1113,8 +1105,8 @@ pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, anslen as R_xlen_t);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, anslen as R_xlen_t);
-        Rf_protect(ans);
-        Rf_protect(names);
+        let _ans_guard = protect(ans);
+        let _names_guard = protect(names);
 
         SET_STRING_ELT(names, 0, Rf_mkChar(c"version".as_ptr()));
         SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(version));
@@ -1170,7 +1162,6 @@ pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
         }
 
         setAttrib(ans, R_NamesSymbol(), names);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1614,38 +1605,40 @@ pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
         let compressed = asInteger(compsxp);
 
         let mut err: Rboolean = 0;
-        let mut raw = Rf_protect(readRawFromFile(file, key));
+        let mut raw = readRawFromFile(file, key);
+        let mut raw_guard = protect(raw);
         if compressed == 3 {
             let next = R_decompress3(raw, &mut err);
-            Rf_unprotect(1);
-            raw = Rf_protect(next);
+            raw = next;
+            raw_guard = protect(raw);
         } else if compressed == 2 {
             let next = R_decompress2(raw, &mut err);
-            Rf_unprotect(1);
-            raw = Rf_protect(next);
+            raw = next;
+            raw_guard = protect(raw);
         } else if compressed != 0 {
             let next = R_decompress1(raw, &mut err);
-            Rf_unprotect(1);
-            raw = Rf_protect(next);
+            raw = next;
+            raw_guard = protect(raw);
         }
 
         if err != 0 {
             let file_name = sexp_to_path(file);
-            Rf_unprotect(1);
             error(&format!(
                 "lazy-load database '{}' is corrupt",
                 file_name.display()
             ));
         }
 
-        let mut val = Rf_protect(R_unserialize(raw, hook));
+        let mut val = R_unserialize(raw, hook);
+        let mut val_guard = protect(val);
         if TYPEOF(val) == SEXPTYPE::PROMSXP {
             val = Rf_eval(val, R_GlobalEnv());
+            val_guard = protect(val);
             if !val.is_null() {
                 SET_NAMED(val, 2);
             }
         }
-        Rf_unprotect(2);
+        let _ = (raw_guard, val_guard);
         val
     }
 }
@@ -2012,7 +2005,7 @@ unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
             error("read error");
         }
         let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
-        Rf_protect(s);
+        let _s_guard = protect(s);
         R_ReadItemDepth.with(|d| d.set(d.get() + 1));
 
         let local_ref_table = if ref_table.is_null() {
@@ -2062,7 +2055,6 @@ unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
         }
 
         R_ReadItemDepth.with(|d| d.set(d.get().saturating_sub(1)));
-        Rf_unprotect(1);
         s
     }
 }
@@ -2719,17 +2711,16 @@ unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
 
         let force = asLogical(forcesxp);
         let len = LENGTH(vars);
-        let val = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t));
+        let val = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
+        let _val_guard = protect(val);
         for i in 0..len {
             let name = STRING_ELT(vars, i as R_xlen_t);
             if name.is_null() {
-                Rf_unprotect(1);
                 error("bad variable names");
             }
             let sym = Rf_install(CHAR(name));
             let mut tmp = R_findVarInFrame(env, sym);
             if tmp == R_UnboundValue() {
-                Rf_unprotect(1);
                 error(&format!(
                     "object '{}' not found",
                     CStr::from_ptr(CHAR(name)).to_string_lossy()
@@ -2744,7 +2735,6 @@ unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
             SET_VECTOR_ELT(val, i as R_xlen_t, tmp);
         }
         setAttrib(val, R_NamesSymbol(), vars);
-        Rf_unprotect(1);
         val
     }
 }
