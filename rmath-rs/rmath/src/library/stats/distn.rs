@@ -83,15 +83,18 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         let na = XLENGTH(sa);
         let nb = XLENGTH(sb);
         if na == 0 || nb == 0 {
-            let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 0));
-            Rf_unprotect(1);
+            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
+            let _sy_guard = protect(sy);
             return sy;
         }
 
         let n = if na < nb { nb } else { na };
-        let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-        let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
-        let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+        let _sa_guard = protect(sa);
+        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+        let _sb_guard = protect(sb);
+        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _sy_guard = protect(sy);
         let a = REAL(sa);
         let b = REAL(sb);
         let y = REAL(sy);
@@ -129,7 +132,6 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         if naflag {
             eprintln!("NaNs produced");
         }
-        Rf_unprotect(3);
         sy
     }
 }
@@ -144,15 +146,18 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         let na = XLENGTH(sa);
         let nb = XLENGTH(sb);
         if na == 0 || nb == 0 {
-            let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 0));
-            Rf_unprotect(1);
+            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
+            let _sy_guard = protect(sy);
             return sy;
         }
 
         let n = if na < nb { nb } else { na };
-        let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-        let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
-        let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+        let _sa_guard = protect(sa);
+        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+        let _sb_guard = protect(sb);
+        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _sy_guard = protect(sy);
         let a = REAL(sa);
         let b = REAL(sb);
         let y = REAL(sy);
@@ -191,7 +196,6 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         if naflag {
             eprintln!("NaNs produced");
         }
-        Rf_unprotect(3);
         sy
     }
 }
@@ -214,8 +218,8 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         let nb = XLENGTH(sb);
         let nc = XLENGTH(sc);
         if na == 0 || nb == 0 || nc == 0 {
-            let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 0));
-            Rf_unprotect(1);
+            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
+            let _sy_guard = protect(sy);
             return sy;
         }
 
@@ -227,10 +231,14 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
             n = nc;
         }
 
-        let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-        let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
-        let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
-        let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+        let _sa_guard = protect(sa);
+        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+        let _sb_guard = protect(sb);
+        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
+        let _sc_guard = protect(sc);
+        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _sy_guard = protect(sy);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
@@ -275,7 +283,6 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         if naflag {
             eprintln!("NaNs produced");
         }
-        Rf_unprotect(4);
         sy
     }
 }
@@ -291,8 +298,8 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         let nb = XLENGTH(sb);
         let nc = XLENGTH(sc);
         if na == 0 || nb == 0 || nc == 0 {
-            let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 0));
-            Rf_unprotect(1);
+            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
+            let _sy_guard = protect(sy);
             return sy;
         }
 
@@ -304,10 +311,14 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
             n = nc;
         }
 
-        let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-        let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
-        let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
-        let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+        let _sa_guard = protect(sa);
+        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+        let _sb_guard = protect(sb);
+        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
+        let _sc_guard = protect(sc);
+        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _sy_guard = protect(sy);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
@@ -353,7 +364,6 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         if naflag {
             eprintln!("NaNs produced");
         }
-        Rf_unprotect(4);
         sy
     }
 }
@@ -377,8 +387,8 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         let nc = XLENGTH(sc);
         let nd = XLENGTH(sd);
         if na == 0 || nb == 0 || nc == 0 || nd == 0 {
-            let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 0));
-            Rf_unprotect(1);
+            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
+            let _sy_guard = protect(sy);
             return sy;
         }
 
@@ -393,11 +403,16 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
             n = nd;
         }
 
-        let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-        let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
-        let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
-        let sd = Rf_protect(coerceVector(sd, SEXPTYPE::REALSXP.as_c_int()));
-        let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+        let _sa_guard = protect(sa);
+        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+        let _sb_guard = protect(sb);
+        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
+        let _sc_guard = protect(sc);
+        let sd = coerceVector(sd, SEXPTYPE::REALSXP.as_c_int());
+        let _sd_guard = protect(sd);
+        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _sy_guard = protect(sy);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
@@ -449,7 +464,6 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         if naflag {
             eprintln!("NaNs produced");
         }
-        Rf_unprotect(5);
         sy
     }
 }
@@ -474,8 +488,8 @@ unsafe fn math4_2(
         let nc = XLENGTH(sc);
         let nd = XLENGTH(sd);
         if na == 0 || nb == 0 || nc == 0 || nd == 0 {
-            let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 0));
-            Rf_unprotect(1);
+            let sy = Rf_allocVector(SEXPTYPE::REALSXP, 0);
+            let _sy_guard = protect(sy);
             return sy;
         }
 
@@ -490,11 +504,16 @@ unsafe fn math4_2(
             n = nd;
         }
 
-        let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
-        let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
-        let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
-        let sd = Rf_protect(coerceVector(sd, SEXPTYPE::REALSXP.as_c_int()));
-        let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let sa = coerceVector(sa, SEXPTYPE::REALSXP.as_c_int());
+        let _sa_guard = protect(sa);
+        let sb = coerceVector(sb, SEXPTYPE::REALSXP.as_c_int());
+        let _sb_guard = protect(sb);
+        let sc = coerceVector(sc, SEXPTYPE::REALSXP.as_c_int());
+        let _sc_guard = protect(sc);
+        let sd = coerceVector(sd, SEXPTYPE::REALSXP.as_c_int());
+        let _sd_guard = protect(sd);
+        let sy = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _sy_guard = protect(sy);
         let a = REAL(sa);
         let b = REAL(sb);
         let c = REAL(sc);
@@ -547,7 +566,6 @@ unsafe fn math4_2(
         if naflag {
             eprintln!("NaNs produced");
         }
-        Rf_unprotect(5);
         sy
     }
 }
