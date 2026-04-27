@@ -319,6 +319,8 @@ pub struct RInstance {
     pub(crate) stats_deriv_symbols: HashMap<String, SEXP>,
     /// Per-instance stats::loess workspace buffers.
     pub(crate) loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState,
+    /// Per-instance stats::bspline recurrence continuation state.
+    pub(crate) bspline_state: crate::library::stats::bspline::BsplineState,
     /// Per-instance dist::binomial sampler cache.
     pub(crate) dist_binom_state: crate::dist::binomial::RbinomState,
     /// Per-instance nmath::dist::binomial sampler cache.
@@ -441,6 +443,7 @@ impl RInstance {
             stats_starma_tag: std::ptr::null_mut(),
             stats_deriv_symbols: HashMap::new(),
             loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
+            bspline_state: crate::library::stats::bspline::BsplineState::default(),
             dist_binom_state: crate::dist::binomial::RbinomState::new(),
             nmath_binom_state: crate::nmath::dist::binomial::RbinomState::new(),
             dist_pois_state: crate::dist::poisson::RpoisState::new(),

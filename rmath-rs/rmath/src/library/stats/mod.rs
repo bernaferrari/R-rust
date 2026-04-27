@@ -35,7 +35,7 @@ mod bandwidths;
     unused_assignments,
     non_camel_case_types
 )]
-mod bspline;
+pub(crate) mod bspline;
 #[allow(
     dead_code,
     unused_imports,

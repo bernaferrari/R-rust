@@ -10,6 +10,22 @@
 
 use std::os::raw::c_int;
 
+use crate::sexp::instance::with_required_current_instance;
+
+pub(crate) struct BsplineState {
+    bsplvb_j: c_int,
+}
+
+impl Default for BsplineState {
+    fn default() -> Self {
+        Self { bsplvb_j: 1 }
+    }
+}
+
+fn with_bspline_state<R>(f: impl FnOnce(&mut BsplineState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.bspline_state))
+}
+
 // ---------------------------------------------------------------------------
 // bsplvb: B-spline recurrence relation
 // ---------------------------------------------------------------------------
@@ -41,13 +57,9 @@ pub unsafe fn bsplvb(
         const JMAX: usize = 20;
         let mut deltal: [f64; JMAX] = [0.0; JMAX];
         let mut deltar: [f64; JMAX] = [0.0; JMAX];
-        // `j` persists across calls when index==2 (static in Fortran)
-        thread_local! {
-            static BSPLVB_J: std::cell::Cell<c_int> = std::cell::Cell::new(1);
-        }
 
-        BSPLVB_J.with(|j_cell| {
-            let mut j = j_cell.get();
+        with_bspline_state(|state| {
+            let mut j = state.bsplvb_j;
 
             if index != 2 {
                 j = 1;
@@ -85,7 +97,7 @@ pub unsafe fn bsplvb(
                 }
             }
 
-            j_cell.set(j);
+            state.bsplvb_j = j;
         });
     }
 }
@@ -474,5 +486,22 @@ pub unsafe fn sinerp(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::instance::RInstance;
+
+    #[test]
+    fn bspline_continuation_state_is_instance_local() {
+        let mut first = RInstance::new();
+        let second = RInstance::new();
+
+        first.bspline_state.bsplvb_j = 5;
+
+        assert_eq!(first.bspline_state.bsplvb_j, 5);
+        assert_eq!(second.bspline_state.bsplvb_j, 1);
     }
 }
