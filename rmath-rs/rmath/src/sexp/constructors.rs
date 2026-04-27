@@ -337,22 +337,12 @@ pub unsafe fn Rf_isRaw(x: SEXP) -> c_int {
 
 /// Check if an SEXP is a vector (any atomic or generic vector type).
 pub unsafe fn Rf_isVector(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (*x).sxpinfo.type_of().is_vector_type() as c_int
-    }
+    crate::sexp::object::raw_is_vector(x) as c_int
 }
 
 /// Check if an SEXP is an atomic vector.
 pub unsafe fn Rf_isVectorAtomic(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return 0;
-        }
-        (*x).sxpinfo.type_of().is_atomic_type() as c_int
-    }
+    crate::sexp::object::raw_is_atomic_vector(x) as c_int
 }
 
 /// Check if an SEXP is a function.

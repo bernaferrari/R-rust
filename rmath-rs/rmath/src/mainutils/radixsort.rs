@@ -1063,7 +1063,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         }
 
         // Get the length from the first vector
-        let nl: R_xlen_t = if Rf_isVectorAtomic(CAR(args)) != 0 {
+        let nl: R_xlen_t = if crate::sexp::object::raw_is_atomic_vector(CAR(args)) {
             XLENGTH(CAR(args))
         } else {
             LENGTH(CAR(args)) as R_xlen_t
@@ -1072,7 +1072,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         // Validate all vector arguments
         let mut ap = args;
         while !ap.is_null() && ap != R_NilValue() {
-            if Rf_isVectorAtomic(CAR(ap)) == 0 {
+            if !crate::sexp::object::raw_is_atomic_vector(CAR(ap)) {
                 error(&format!("argument {} is not a vector", narg + 1));
             }
             let this_len = XLENGTH(CAR(ap));

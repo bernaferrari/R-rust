@@ -23,8 +23,8 @@ use crate::sexp::accessors::{
     SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{
-    Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_isString, Rf_isSymbol,
-    Rf_isVectorAtomic, Rf_length, Rf_mkChar, Rf_mkString,
+    Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_isString, Rf_isSymbol, Rf_length,
+    Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -973,7 +973,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         } else if TYPEOF(x) == EXTPTRSXP {
             let s = EncodeExtptr(x);
             return Rf_mkString(s);
-        } else if Rf_isVectorAtomic(x) == 0 {
+        } else if !crate::sexp::object::raw_is_atomic_vector(x) {
             return ptr::null_mut();
         }
 

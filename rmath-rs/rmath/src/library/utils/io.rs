@@ -1019,19 +1019,8 @@ unsafe fn isVectorList(x: SEXP) -> bool {
 
 /// isVectorAtomic — check if SEXP is an atomic vector
 #[inline]
-unsafe fn isVectorAtomic(x: SEXP) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP
-            || t == SEXPTYPE::INTSXP
-            || t == SEXPTYPE::REALSXP
-            || t == SEXPTYPE::CPLXSXP
-            || t == SEXPTYPE::STRSXP
-            || t == SEXPTYPE::RAWSXP // RAWSXP
-    }
+fn isVectorAtomic(x: SEXP) -> bool {
+    crate::sexp::object::raw_is_atomic_vector(x)
 }
 
 /// inherits — check if object has a given class
