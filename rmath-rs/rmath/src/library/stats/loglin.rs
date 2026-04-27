@@ -445,18 +445,26 @@ pub unsafe fn LogLin(
         let maxit = as_integer(iter);
         let maxdev = as_real(eps);
 
-        let fit = Rf_protect(if TYPEOF(start) == SEXPTYPE::REALSXP {
+        let fit = if TYPEOF(start) == SEXPTYPE::REALSXP {
             duplicate(start)
         } else {
             coerceVector(start, SEXPTYPE::REALSXP.as_c_int())
-        });
-        let locmar = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, ncon));
-        let marg = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nmar));
-        let u = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ntab));
-        let dev = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxit));
-        let dtab = Rf_protect(coerceVector(dtab, SEXPTYPE::INTSXP.as_c_int()));
-        let conf = Rf_protect(coerceVector(conf, SEXPTYPE::INTSXP.as_c_int()));
-        let table = Rf_protect(coerceVector(table, SEXPTYPE::REALSXP.as_c_int()));
+        };
+        let _fit_guard = protect(fit);
+        let locmar = Rf_allocVector(SEXPTYPE::INTSXP, ncon);
+        let _locmar_guard = protect(locmar);
+        let marg = Rf_allocVector(SEXPTYPE::REALSXP, nmar);
+        let _marg_guard = protect(marg);
+        let u = Rf_allocVector(SEXPTYPE::REALSXP, ntab);
+        let _u_guard = protect(u);
+        let dev = Rf_allocVector(SEXPTYPE::REALSXP, maxit);
+        let _dev_guard = protect(dev);
+        let dtab = coerceVector(dtab, SEXPTYPE::INTSXP.as_c_int());
+        let _dtab_guard = protect(dtab);
+        let conf = coerceVector(conf, SEXPTYPE::INTSXP.as_c_int());
+        let _conf_guard = protect(conf);
+        let table = coerceVector(table, SEXPTYPE::REALSXP.as_c_int());
+        let _table_guard = protect(table);
 
         let mut nlast: c_int = 0;
         let mut ifault: c_int = 0;
@@ -494,16 +502,17 @@ pub unsafe fn LogLin(
             _ => {} // intentionally unhandled: unknown convergence error code
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+        let _ans_guard = protect(ans);
         SET_VECTOR_ELT(ans, 0, fit);
         SET_VECTOR_ELT(ans, 1, dev);
         SET_VECTOR_ELT(ans, 2, Rf_ScalarInteger(nlast));
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let _nm_guard = protect(nm);
         setAttrib(ans, R_NamesSymbol(), nm);
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"fit\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"dev\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 2, Rf_mkChar(b"nlast\0".as_ptr() as *const c_char));
-        Rf_unprotect(9);
         ans
     }
 }

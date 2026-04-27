@@ -9,7 +9,7 @@ use crate::main::random::{GetRNGstate, PutRNGstate};
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, TYPEOF};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 unsafe fn chisqsim(
     nrow: c_int,
@@ -112,8 +112,10 @@ unsafe fn fisher_sim(
 
 pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
     unsafe {
-        let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.as_c_int()));
-        let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.as_c_int()));
+        let sr = coerceVector(sr, SEXPTYPE::INTSXP.as_c_int());
+        let _sr_guard = protect(sr);
+        let sc = coerceVector(sc, SEXPTYPE::INTSXP.as_c_int());
+        let _sc_guard = protect(sc);
         let nr = LENGTH(sr);
         let nc = LENGTH(sc);
         let B = asInteger(sB);
@@ -127,7 +129,8 @@ pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
         let mut observed = vec![0i32; (nr * nc) as usize];
         let mut fact = vec![0.0f64; (n + 1) as usize];
         let mut jwork = vec![0i32; nc as usize];
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, B));
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, B);
+        let _ans_guard = protect(ans);
         fisher_sim(
             nr,
             nc,
@@ -140,16 +143,18 @@ pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
             jwork.as_mut_ptr(),
             REAL(ans),
         );
-        Rf_unprotect(3);
         ans
     }
 }
 
 pub unsafe fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
     unsafe {
-        let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.as_c_int()));
-        let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.as_c_int()));
-        let E = Rf_protect(coerceVector(E, SEXPTYPE::REALSXP.as_c_int()));
+        let sr = coerceVector(sr, SEXPTYPE::INTSXP.as_c_int());
+        let _sr_guard = protect(sr);
+        let sc = coerceVector(sc, SEXPTYPE::INTSXP.as_c_int());
+        let _sc_guard = protect(sc);
+        let E = coerceVector(E, SEXPTYPE::REALSXP.as_c_int());
+        let _e_guard = protect(E);
         let nr = LENGTH(sr);
         let nc = LENGTH(sc);
         let B = asInteger(sB);
@@ -163,7 +168,8 @@ pub unsafe fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
         let mut observed = vec![0i32; (nr * nc) as usize];
         let mut fact = vec![0.0f64; (n + 1) as usize];
         let mut jwork = vec![0i32; nc as usize];
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, B));
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, B);
+        let _ans_guard = protect(ans);
         chisqsim(
             nr,
             nc,
@@ -177,7 +183,6 @@ pub unsafe fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
             jwork.as_mut_ptr(),
             REAL(ans),
         );
-        Rf_unprotect(4);
         ans
     }
 }

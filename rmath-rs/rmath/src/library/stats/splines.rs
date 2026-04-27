@@ -452,17 +452,22 @@ unsafe fn spline_eval(
 /// SplineCoef - compute spline coefficients.
 pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
     unsafe {
-        let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.into()));
-        let y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.into()));
+        let x = coerceVector(x, SEXPTYPE::REALSXP.into());
+        let _x_guard = protect(x);
+        let y = coerceVector(y, SEXPTYPE::REALSXP.into());
+        let _y_guard = protect(y);
         let n = XLENGTH(x) as usize;
         let m = asInteger(method);
         if XLENGTH(y) as usize != n {
             Rf_error(b"inputs of different lengths\0".as_ptr() as *const c_char);
         }
 
-        let b = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
-        let c = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
-        let d = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let b = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _b_guard = protect(b);
+        let c = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _c_guard = protect(c);
+        let d = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        let _d_guard = protect(d);
 
         for i in 0..n {
             *REAL(b).add(i) = 0.0;
@@ -480,7 +485,8 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
             REAL(d) as *mut c_double,
         );
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 7));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 7);
+        let _ans_guard = protect(ans);
         SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(m));
         if n > i32::MAX as usize {
             SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(n as c_double));
@@ -494,6 +500,7 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
         SET_VECTOR_ELT(ans, 6, d);
 
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 7);
+        let _nm_guard = protect(nm);
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"method\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"n\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 2, Rf_mkChar(b"x\0".as_ptr() as *const c_char));
@@ -502,7 +509,6 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
         SET_STRING_ELT(nm, 5, Rf_mkChar(b"c\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 6, Rf_mkChar(b"d\0".as_ptr() as *const c_char));
         setAttrib(ans, R_NamesSymbol(), nm);
-        Rf_unprotect(6);
         ans
     }
 }
@@ -510,11 +516,13 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
 /// SplineEval - evaluate a spline at given points.
 pub unsafe fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
     unsafe {
-        let xout = Rf_protect(coerceVector(xout, SEXPTYPE::REALSXP.into()));
+        let xout = coerceVector(xout, SEXPTYPE::REALSXP.into());
+        let _xout_guard = protect(xout);
         let nu = XLENGTH(xout) as usize;
         let z_n = getListElement(z, b"n\0".as_ptr() as *const c_char);
         let nx = asXlen(z_n) as usize;
-        let yout = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nu as c_int));
+        let yout = Rf_allocVector(SEXPTYPE::REALSXP, nu as c_int);
+        let _yout_guard = protect(yout);
 
         let method = asInteger(getListElement(z, b"method\0".as_ptr() as *const c_char));
         let x = getListElement(z, b"x\0".as_ptr() as *const c_char);
@@ -535,7 +543,6 @@ pub unsafe fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
             REAL(c),
             REAL(d),
         );
-        Rf_unprotect(2);
         yout
     }
 }

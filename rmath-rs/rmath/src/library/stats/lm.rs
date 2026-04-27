@@ -48,13 +48,12 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 unsafe fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(sexptype, nrow * ncol);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        Rf_protect(dim);
+        let _dim_guard = protect(dim);
         *INTEGER(dim) = nrow;
-        *INTEGER(dim.add(1)) = ncol;
+        *INTEGER(dim).add(1) = ncol;
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -194,17 +193,19 @@ use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 unsafe fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
     unsafe {
         let nn = names.len() as c_int;
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nn));
+        let ans = Rf_allocVector(sexptype, nn);
+        let _ans_guard = protect(ans);
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, nn);
+        let _nm_guard = protect(nm);
         setAttrib(ans, R_NamesSymbol(), nm);
         for i in 0..(nn as usize) {
+            let name = names[i];
             SET_STRING_ELT(
                 nm,
                 i as R_xlen_t,
-                Rf_mkChar(names[i].as_ptr() as *const libc::c_char),
+                Rf_mkCharLen(name.as_ptr() as *const libc::c_char, name.len() as c_int),
             );
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -215,7 +216,7 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
 
         let mut x = x;
         let mut y = y;
-        let mut nprotect: c_int = 4;
+        let mut guards = Vec::with_capacity(6);
 
         let ans_dim = getAttrib(x, R_DimSymbol());
         if asBool(chk) && LENGTH(ans_dim) != 2 {
@@ -235,13 +236,11 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         /* These lose attributes, so do after we have extracted dims */
         if TYPEOF(x) != SEXPTYPE::REALSXP {
             x = coerceVector(x, SEXPTYPE::REALSXP);
-            Rf_protect(x);
-            nprotect += 1;
+            guards.push(protect(x));
         }
         if TYPEOF(y) != SEXPTYPE::REALSXP {
             y = coerceVector(y, SEXPTYPE::REALSXP);
-            Rf_protect(y);
-            nprotect += 1;
+            guards.push(protect(y));
         }
 
         let rptr = REAL(x);
@@ -269,7 +268,8 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
             "tol",
             "pivoted",
         ];
-        let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP, &ansNms));
+        let ans = mkNamed(SEXPTYPE::VECSXP, &ansNms);
+        guards.push(protect(ans));
         let qr = shallow_duplicate(x);
         SET_VECTOR_ELT(ans, 0, qr);
 
@@ -278,7 +278,7 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         } else {
             Rf_allocVector(SEXPTYPE::REALSXP, p)
         };
-        Rf_protect(coefficients);
+        guards.push(protect(coefficients));
         SET_VECTOR_ELT(ans, 1, coefficients);
 
         let residuals = shallow_duplicate(y);
@@ -286,14 +286,16 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         let effects = shallow_duplicate(y);
         SET_VECTOR_ELT(ans, 3, effects);
 
-        let pivot = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, p));
+        let pivot = Rf_allocVector(SEXPTYPE::INTSXP, p);
+        guards.push(protect(pivot));
         let ip = INTEGER(pivot);
         for i in 0..(p as usize) {
             *ip.add(i) = (i + 1) as c_int;
         }
         SET_VECTOR_ELT(ans, 5, pivot);
 
-        let qraux = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, p));
+        let qraux = Rf_allocVector(SEXPTYPE::REALSXP, p);
+        guards.push(protect(qraux));
         SET_VECTOR_ELT(ans, 6, qraux);
         SET_VECTOR_ELT(ans, 7, tol);
 
@@ -327,7 +329,6 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         }
         SET_VECTOR_ELT(ans, 8, Rf_ScalarLogical(pivoted));
 
-        Rf_unprotect(nprotect);
         ans
     }
 }

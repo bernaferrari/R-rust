@@ -34,28 +34,32 @@ unsafe extern "C" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_voi
     unsafe {
         let is = &*(ex as *const IntStruct);
 
-        let args = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let args = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _args_guard = protect(args);
         for i in 0..n {
             *REAL(args).add(i as usize) = *x.add(i as usize);
         }
 
-        let tmp = Rf_protect(Rf_lang2(is.f, args));
-        let resultsxp = Rf_protect(eval(tmp, is.env));
+        let tmp = Rf_lang2(is.f, args);
+        let _tmp_guard = protect(tmp);
+        let resultsxp = eval(tmp, is.env);
+        let _resultsxp_guard = protect(resultsxp);
 
         // Check length
         let rlen = LENGTH(resultsxp);
         if rlen != n {
-            Rf_unprotect(3);
             Rf_error(
                 b"evaluation of function gave a result of wrong length\0".as_ptr() as *const _,
             );
         }
 
         // Check type and coerce if needed
+        let mut coerced_guard = None;
         let resultsxp = if TYPEOF(resultsxp) == SEXPTYPE::INTSXP {
-            coerceVector(resultsxp, SEXPTYPE::REALSXP.as_c_int())
+            let coerced = coerceVector(resultsxp, SEXPTYPE::REALSXP.as_c_int());
+            coerced_guard = Some(protect(coerced));
+            coerced
         } else if TYPEOF(resultsxp) != SEXPTYPE::REALSXP {
-            Rf_unprotect(3);
             Rf_error(b"evaluation of function gave a result of wrong type\0".as_ptr() as *const _);
             unreachable!();
         } else {
@@ -65,12 +69,10 @@ unsafe extern "C" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_voi
         for i in 0..n {
             *x.add(i as usize) = *REAL(resultsxp).add(i as usize);
             if !R_FINITE(*x.add(i as usize)) {
-                Rf_unprotect(3);
                 Rf_error(b"non-finite function value\0".as_ptr() as *const _);
             }
         }
-
-        Rf_unprotect(3);
+        drop(coerced_guard);
     }
 }
 
@@ -184,8 +186,10 @@ unsafe fn build_integrate_result(
     ier: c_int,
 ) -> SEXP {
     unsafe {
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
-        let ansnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 4));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
+        let _ans_guard = protect(ans);
+        let ansnames = Rf_allocVector(SEXPTYPE::STRSXP, 4);
+        let _ansnames_guard = protect(ansnames);
 
         SET_STRING_ELT(ansnames, 0, Rf_mkChar(b"value\0".as_ptr() as *const c_char));
         SET_VECTOR_ELT(ans, 0, Rf_allocVector(SEXPTYPE::REALSXP, 1));
@@ -212,7 +216,6 @@ unsafe fn build_integrate_result(
         *INTEGER(VECTOR_ELT(ans, 3)).add(0) = ier;
 
         setAttrib(ans, R_NamesSymbol(), ansnames);
-        Rf_unprotect(2);
         ans
     }
 }
