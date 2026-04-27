@@ -29,7 +29,7 @@ use crate::sexp::ffi::{
 };
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 
 // Local integer constants for SEXPTYPE values, usable in match patterns
 const NILSXP_I: c_int = 0;
@@ -1700,7 +1700,8 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         // Extract optional arguments (recursive, use.names)
-        let args = Rf_protect(c_Extract_opt(args, &mut recurse, &mut usenames, call));
+        let args = c_Extract_opt(args, &mut recurse, &mut usenames, call);
+        let _args_guard = protect(args);
 
         // Determine the type of the returned value.
         let mut data = BindData {
@@ -1729,12 +1730,12 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // If no actual values were found, return NULL
         if data.ans_length == 0 {
-            Rf_unprotect(1);
             return R_NilValue();
         }
 
         // Allocate the return value
-        let ans = Rf_protect(Rf_allocVector3(mode.0, data.ans_length));
+        let ans = Rf_allocVector3(mode.0, data.ans_length);
+        let _ans_guard = protect(ans);
         data.ans_ptr = ans;
         data.ans_length = 0;
 
@@ -1773,7 +1774,8 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Build and attach the names attribute
         if data.ans_nnames != 0 && data.ans_length > 0 {
-            data.ans_names = Rf_protect(Rf_allocVector3(STRSXP_I, data.ans_length));
+            data.ans_names = Rf_allocVector3(STRSXP_I, data.ans_length);
+            let _ans_names_guard = protect(data.ans_names);
             data.ans_nnames = 0;
             let mut a = args;
             while !a.is_null() && a != R_NilValue() {
@@ -1790,10 +1792,8 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             }
             let names_sym = crate::eval::attrib_core::R_NamesSymbol();
             setAttrib(ans, names_sym, data.ans_names);
-            Rf_unprotect(1); // ans_names
         }
 
-        Rf_unprotect(2); // args, ans
         ans
     }
 }
@@ -1904,7 +1904,8 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
         let mode = ans_flags_to_mode(data.ans_flags);
 
         // Allocate the return value
-        let ans = Rf_protect(Rf_allocVector3(mode.0, data.ans_length));
+        let ans = Rf_allocVector3(mode.0, data.ans_length);
+        let _ans_guard = protect(ans);
         data.ans_ptr = ans;
         data.ans_length = 0;
 
@@ -1942,7 +1943,8 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
         // Build and attach names
         if data.ans_nnames != 0 && data.ans_length > 0 {
-            data.ans_names = Rf_protect(Rf_allocVector3(STRSXP_I, data.ans_length));
+            data.ans_names = Rf_allocVector3(STRSXP_I, data.ans_length);
+            let _ans_names_guard = protect(data.ans_names);
 
             if !recurse {
                 if TYPEOF(x_arg) == VECSXP_I {
@@ -1982,10 +1984,8 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             }
 
             setAttrib(ans, names_sym, data.ans_names);
-            Rf_unprotect(1); // ans_names
         }
 
-        Rf_unprotect(1); // ans
         ans
     }
 }
@@ -2008,7 +2008,8 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Build promises for lazy evaluation and method dispatch.
         // This allows method implementations to use substitute() to get
         // the original expressions.
-        let args = Rf_protect(promiseArgs(args, env));
+        let args = promiseArgs(args, env);
+        let _args_guard = protect(args);
 
         // Determine the generic name from PRIMVAL(op).
         // PRIMVAL(op) == 1 for cbind, other for rbind.
@@ -2024,12 +2025,14 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut any_s4 = false;
         let mut a = CDR(args);
         while !a.is_null() && a != R_NilValue() && method == R_NilValue() {
-            let obj = Rf_protect(crate::eval::eval::Rf_eval(CAR(a), env));
+            let obj = crate::eval::eval::Rf_eval(CAR(a), env);
+            let _obj_guard = protect(obj);
             if try_s4 && !any_s4 && crate::mainutils::objects::isS4(obj) != 0 {
                 any_s4 = true;
             }
             if isObject(obj) != 0 {
-                let classlist = Rf_protect(R_data_class(obj));
+                let classlist = R_data_class(obj);
+                let _classlist_guard = protect(classlist);
                 let classlen = Rf_length(classlist);
                 for i in 0..classlen {
                     let class_str = translateChar(STRING_ELT(classlist, i as R_xlen_t));
@@ -2048,14 +2051,12 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         break;
                     }
                 }
-                Rf_unprotect(1);
             }
-            Rf_unprotect(1);
             a = CDR(a);
         }
 
         if method != R_NilValue() {
-            Rf_protect(method);
+            let _method_guard = protect(method);
             let dispatched_args = CDR(args);
             let ans = crate::eval::closure::applyClosure(
                 call,
@@ -2065,7 +2066,6 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 R_NilValue(),
                 0,
             );
-            Rf_unprotect(2);
             return ans;
         }
         let args = CDR(args);
@@ -2093,7 +2093,6 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // zero-extent matrices shouldn't give NULL, but cbind(NULL) should:
         if data.ans_flags == 0 && data.ans_length == 0 {
-            Rf_unprotect(1);
             return R_NilValue();
         }
 
@@ -2111,7 +2110,6 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         .unwrap_or("unknown")
                 ))
                 .unwrap_or_default();
-                Rf_unprotect(1);
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: msg.into_string().unwrap_or_default(),
                 });
@@ -2125,7 +2123,6 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         } else {
             rbind(call, args, mode, env, deparse_level)
         };
-        Rf_unprotect(1);
         a
     }
 }
@@ -2350,7 +2347,8 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             have_rnames = true;
         }
 
-        let result = Rf_protect(allocMatrix(mode, rows, cols));
+        let result = allocMatrix(mode, rows, cols);
+        let _result_guard = protect(result);
         let mut n: R_xlen_t = 0;
 
         // Fill the matrix values
@@ -2359,7 +2357,8 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::STRSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::STRSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) { k } else { rows as R_xlen_t };
                     // Copy with recycling
@@ -2368,7 +2367,6 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         SET_STRING_ELT(result, n + i, STRING_ELT(coerced, si));
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2378,7 +2376,8 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                 let u = resolve_promise(CAR(t));
                 let umatrix = isMatrix(u);
                 if umatrix || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::VECSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::VECSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     if k > 0 {
                         let idx = if !umatrix { rows as R_xlen_t } else { k };
@@ -2388,7 +2387,6 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += if !umatrix { rows as R_xlen_t } else { k };
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2397,7 +2395,8 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::CPLXSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::CPLXSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) { k } else { rows as R_xlen_t };
                     for i in 0..idx {
@@ -2405,7 +2404,6 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         *COMPLEX(result).add((n + i) as usize) = *COMPLEX(coerced).add(si as usize);
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2414,7 +2412,8 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::RAWSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::RAWSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) { k } else { rows as R_xlen_t };
                     for i in 0..idx {
@@ -2422,7 +2421,6 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         *RAW(result).add((n + i) as usize) = *RAW(coerced).add(si as usize);
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2495,7 +2493,8 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
 
         // Adjustment of dimnames attributes
         if have_cnames || have_rnames {
-            let dn = Rf_protect(Rf_allocVector3(VECSXP_I, 2));
+            let dn = Rf_allocVector3(VECSXP_I, 2);
+            let _dn_guard = protect(dn);
             let nam: SEXP;
             if have_cnames {
                 let nam_vec = Rf_allocVector3(STRSXP_I, cols as R_xlen_t);
@@ -2561,10 +2560,8 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             }
 
             setAttrib(result, dimnames_sym, dn);
-            Rf_unprotect(1); // dn
         }
 
-        Rf_unprotect(1); // result
         result
     }
 }
@@ -2674,7 +2671,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             have_cnames = true;
         }
 
-        let result = Rf_protect(allocMatrix(mode, rows, cols));
+        let result = allocMatrix(mode, rows, cols);
+        let _result_guard = protect(result);
         let mut n: R_xlen_t = 0;
 
         // Fill the matrix -- rbind fills row by row
@@ -2683,7 +2681,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::STRSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::STRSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) {
                         nrows(u) as R_xlen_t
@@ -2701,7 +2700,6 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2712,7 +2710,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                 let umatrix = isMatrix(u);
                 let urows = if umatrix { nrows(u) } else { 1 };
                 if umatrix || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::VECSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::VECSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if umatrix {
                         urows as R_xlen_t
@@ -2733,7 +2732,6 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2742,7 +2740,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::RAWSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::RAWSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) {
                         nrows(u) as R_xlen_t
@@ -2759,7 +2758,6 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2768,7 +2766,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::CPLXSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::CPLXSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) {
                         nrows(u) as R_xlen_t
@@ -2786,7 +2785,6 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2795,7 +2793,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::INTSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::INTSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) {
                         nrows(u) as R_xlen_t
@@ -2813,7 +2812,6 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2822,7 +2820,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::LGLSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::LGLSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) {
                         nrows(u) as R_xlen_t
@@ -2840,7 +2839,6 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2849,7 +2847,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             while !t.is_null() && t != R_NilValue() {
                 let u = resolve_promise(CAR(t));
                 if isMatrix(u) || length(u) >= lenmin {
-                    let coerced = Rf_protect(coerceVector(u, SEXPTYPE::REALSXP));
+                    let coerced = coerceVector(u, SEXPTYPE::REALSXP);
+                    let _coerced_guard = protect(coerced);
                     let k = xlength(coerced);
                     let idx = if isMatrix(u) {
                         nrows(u) as R_xlen_t
@@ -2866,7 +2865,6 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         }
                     }
                     n += idx;
-                    Rf_unprotect(1);
                 }
                 t = CDR(t);
             }
@@ -2876,7 +2874,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
 
         // Adjustment of dimnames attributes
         if have_rnames || have_cnames {
-            let dn = Rf_protect(Rf_allocVector3(VECSXP_I, 2));
+            let dn = Rf_allocVector3(VECSXP_I, 2);
+            let _dn_guard = protect(dn);
             let nam: SEXP;
             if have_rnames {
                 let nam_vec = Rf_allocVector3(STRSXP_I, rows as R_xlen_t);
@@ -2943,10 +2942,8 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
             }
 
             setAttrib(result, dimnames_sym, dn);
-            Rf_unprotect(1); // dn
         }
 
-        Rf_unprotect(1); // result
         result
     }
 }
@@ -2958,15 +2955,13 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::protect::R_ProtectCount;
+    use crate::sexp::protect::{R_ProtectCount, protect_n};
     use crate::sexp::session::RSession;
 
     fn reset_protect_stack() {
-        unsafe {
-            let n = R_ProtectCount();
-            if n > 0 {
-                Rf_unprotect(n as c_int);
-            }
+        let n = R_ProtectCount();
+        if n > 0 {
+            drop(protect_n(n));
         }
     }
 
@@ -3129,11 +3124,12 @@ mod tests {
             let _guard = ProtectStackGuard::new();
             // do_bind with just deparse.level and no data should return NULL
             // args = (deparse.level=0)
-            let dl = Rf_protect(Rf_ScalarInteger(0));
-            let args = Rf_protect(Rf_cons(dl, R_NilValue()));
+            let dl = Rf_ScalarInteger(0);
+            let _dl_guard = protect(dl);
+            let args = Rf_cons(dl, R_NilValue());
+            let _args_guard = protect(args);
             let result = do_bind(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(result, R_NilValue());
-            Rf_unprotect(2);
         }
     }
 
@@ -3141,11 +3137,12 @@ mod tests {
     fn test_do_cbind_null_args() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let dl = Rf_protect(Rf_ScalarInteger(0));
-            let args = Rf_protect(Rf_cons(dl, R_NilValue()));
+            let dl = Rf_ScalarInteger(0);
+            let _dl_guard = protect(dl);
+            let args = Rf_cons(dl, R_NilValue());
+            let _args_guard = protect(args);
             let result = do_cbind(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(result, R_NilValue());
-            Rf_unprotect(2);
         }
     }
 
@@ -3153,11 +3150,12 @@ mod tests {
     fn test_do_rbind_null_args() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let dl = Rf_protect(Rf_ScalarInteger(0));
-            let args = Rf_protect(Rf_cons(dl, R_NilValue()));
+            let dl = Rf_ScalarInteger(0);
+            let _dl_guard = protect(dl);
+            let args = Rf_cons(dl, R_NilValue());
+            let _args_guard = protect(args);
             let result = do_rbind(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(result, R_NilValue());
-            Rf_unprotect(2);
         }
     }
 
@@ -3184,15 +3182,19 @@ mod tests {
         unsafe {
             let _guard = ProtectStackGuard::new();
             let x = R_NilValue();
-            let recurse = Rf_protect(Rf_ScalarLogical(TRUE));
-            let usenames = Rf_protect(Rf_ScalarLogical(TRUE));
-            let tail = Rf_protect(Rf_cons(usenames, R_NilValue()));
-            let middle = Rf_protect(Rf_cons(recurse, tail));
-            let args = Rf_protect(Rf_cons(x, middle));
+            let recurse = Rf_ScalarLogical(TRUE);
+            let _recurse_guard = protect(recurse);
+            let usenames = Rf_ScalarLogical(TRUE);
+            let _usenames_guard = protect(usenames);
+            let tail = Rf_cons(usenames, R_NilValue());
+            let _tail_guard = protect(tail);
+            let middle = Rf_cons(recurse, tail);
+            let _middle_guard = protect(middle);
+            let args = Rf_cons(x, middle);
+            let _args_guard = protect(args);
             let result = do_unlist(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             // unlist(NULL) should return NULL
             assert_eq!(result, R_NilValue());
-            Rf_unprotect(5);
         }
     }
 
@@ -3255,14 +3257,22 @@ mod tests {
         unsafe {
             let _guard = ProtectStackGuard::new();
             // Build a list with some NULL entries: (1, NULL, 2, NULL, 3)
-            let v1 = Rf_protect(Rf_ScalarInteger(1));
-            let v2 = Rf_protect(Rf_ScalarInteger(2));
-            let v3 = Rf_protect(Rf_ScalarInteger(3));
-            let cell3 = Rf_protect(Rf_cons(v3, R_NilValue()));
-            let cell_null2 = Rf_protect(Rf_cons(R_NilValue(), cell3));
-            let cell2 = Rf_protect(Rf_cons(v2, cell_null2));
-            let cell_null1 = Rf_protect(Rf_cons(R_NilValue(), cell2));
-            let lst = Rf_protect(Rf_cons(v1, cell_null1));
+            let v1 = Rf_ScalarInteger(1);
+            let _v1_guard = protect(v1);
+            let v2 = Rf_ScalarInteger(2);
+            let _v2_guard = protect(v2);
+            let v3 = Rf_ScalarInteger(3);
+            let _v3_guard = protect(v3);
+            let cell3 = Rf_cons(v3, R_NilValue());
+            let _cell3_guard = protect(cell3);
+            let cell_null2 = Rf_cons(R_NilValue(), cell3);
+            let _cell_null2_guard = protect(cell_null2);
+            let cell2 = Rf_cons(v2, cell_null2);
+            let _cell2_guard = protect(cell2);
+            let cell_null1 = Rf_cons(R_NilValue(), cell2);
+            let _cell_null1_guard = protect(cell_null1);
+            let lst = Rf_cons(v1, cell_null1);
+            let _lst_guard = protect(lst);
 
             // With keep_initial=true, leading NULLs are kept
             // But non-leading NULLs are removed
@@ -3279,8 +3289,6 @@ mod tests {
             assert_eq!(TYPEOF(CAR(third)), INTSXP_I);
             assert_eq!(*INTEGER(CAR(third)), 3);
             assert_eq!(CDR(third), R_NilValue());
-
-            Rf_unprotect(8);
         }
     }
 
@@ -3289,12 +3297,18 @@ mod tests {
         unsafe {
             let _guard = ProtectStackGuard::new();
             // List with no NULLs: (1, 2, 3)
-            let v1 = Rf_protect(Rf_ScalarInteger(1));
-            let v2 = Rf_protect(Rf_ScalarInteger(2));
-            let v3 = Rf_protect(Rf_ScalarInteger(3));
-            let tail2 = Rf_protect(Rf_cons(v3, R_NilValue()));
-            let tail1 = Rf_protect(Rf_cons(v2, tail2));
-            let lst = Rf_protect(Rf_cons(v1, tail1));
+            let v1 = Rf_ScalarInteger(1);
+            let _v1_guard = protect(v1);
+            let v2 = Rf_ScalarInteger(2);
+            let _v2_guard = protect(v2);
+            let v3 = Rf_ScalarInteger(3);
+            let _v3_guard = protect(v3);
+            let tail2 = Rf_cons(v3, R_NilValue());
+            let _tail2_guard = protect(tail2);
+            let tail1 = Rf_cons(v2, tail2);
+            let _tail1_guard = protect(tail1);
+            let lst = Rf_cons(v1, tail1);
+            let _lst_guard = protect(lst);
 
             let compacted = R_listCompact(lst, true);
             assert!(!compacted.is_null());
@@ -3302,8 +3316,6 @@ mod tests {
             assert_eq!(*INTEGER(CAR(CDR(compacted))), 2);
             assert_eq!(*INTEGER(CAR(CDR(CDR(compacted)))), 3);
             assert_eq!(CDR(CDR(CDR(compacted))), R_NilValue());
-
-            Rf_unprotect(6);
         }
     }
 
@@ -3311,12 +3323,13 @@ mod tests {
     fn test_r_list_compact_all_nulls() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let tail = Rf_protect(Rf_cons(R_NilValue(), R_NilValue()));
-            let lst = Rf_protect(Rf_cons(R_NilValue(), tail));
+            let tail = Rf_cons(R_NilValue(), R_NilValue());
+            let _tail_guard = protect(tail);
+            let lst = Rf_cons(R_NilValue(), tail);
+            let _lst_guard = protect(lst);
             let compacted = R_listCompact(lst, false);
             // With keep_initial=false, all NULLs are removed -> R_NilValue
             assert_eq!(compacted, R_NilValue());
-            Rf_unprotect(2);
         }
     }
 
@@ -3324,7 +3337,8 @@ mod tests {
     fn test_answertype_single_integer() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v = Rf_protect(Rf_ScalarInteger(42));
+            let v = Rf_ScalarInteger(42);
+            let _v_guard = protect(v);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: ptr::null_mut(),
@@ -3335,7 +3349,6 @@ mod tests {
             AnswerType(v, false, false, &mut data, ptr::null_mut());
             assert_eq!(data.ans_flags & 16, 16); // INTSXP flag
             assert_eq!(data.ans_length, 1);
-            Rf_unprotect(1);
         }
     }
 
@@ -3343,7 +3356,8 @@ mod tests {
     fn test_answertype_single_real() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v = Rf_protect(Rf_ScalarReal(3.14));
+            let v = Rf_ScalarReal(3.14);
+            let _v_guard = protect(v);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: ptr::null_mut(),
@@ -3354,7 +3368,6 @@ mod tests {
             AnswerType(v, false, false, &mut data, ptr::null_mut());
             assert_eq!(data.ans_flags & 32, 32); // REALSXP flag
             assert_eq!(data.ans_length, 1);
-            Rf_unprotect(1);
         }
     }
 
@@ -3362,7 +3375,8 @@ mod tests {
     fn test_answertype_single_logical() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v = Rf_protect(Rf_ScalarLogical(TRUE));
+            let v = Rf_ScalarLogical(TRUE);
+            let _v_guard = protect(v);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: ptr::null_mut(),
@@ -3373,7 +3387,6 @@ mod tests {
             AnswerType(v, false, false, &mut data, ptr::null_mut());
             assert_eq!(data.ans_flags & 2, 2); // LGLSXP flag
             assert_eq!(data.ans_length, 1);
-            Rf_unprotect(1);
         }
     }
 
@@ -3398,8 +3411,10 @@ mod tests {
     fn test_answertype_combined_types() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v_int = Rf_protect(Rf_ScalarInteger(1));
-            let v_real = Rf_protect(Rf_ScalarReal(2.0));
+            let v_int = Rf_ScalarInteger(1);
+            let _v_int_guard = protect(v_int);
+            let v_real = Rf_ScalarReal(2.0);
+            let _v_real_guard = protect(v_real);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: ptr::null_mut(),
@@ -3415,7 +3430,6 @@ mod tests {
             assert_eq!(data.ans_length, 2);
             // Mode should be REALSXP (higher priority)
             assert_eq!(ans_flags_to_mode(data.ans_flags), SEXPTYPE::REALSXP);
-            Rf_unprotect(2);
         }
     }
 
@@ -3424,7 +3438,8 @@ mod tests {
         unsafe {
             let _guard = ProtectStackGuard::new();
             // Create a length-3 integer vector
-            let v = Rf_protect(Rf_allocVector3(INTSXP_I, 3));
+            let v = Rf_allocVector3(INTSXP_I, 3);
+            let _v_guard = protect(v);
             for i in 0..3 {
                 *INTEGER(v).add(i) = (i + 1) as c_int;
             }
@@ -3438,7 +3453,6 @@ mod tests {
             AnswerType(v, false, false, &mut data, ptr::null_mut());
             assert_eq!(data.ans_flags & 16, 16);
             assert_eq!(data.ans_length, 3);
-            Rf_unprotect(1);
         }
     }
 
@@ -3446,14 +3460,15 @@ mod tests {
     fn test_do_c_dflt_single_integer() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v = Rf_protect(Rf_ScalarInteger(42));
-            let args = Rf_protect(Rf_cons(v, R_NilValue()));
+            let v = Rf_ScalarInteger(42);
+            let _v_guard = protect(v);
+            let args = Rf_cons(v, R_NilValue());
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(TYPEOF(result), INTSXP_I);
             assert_eq!(XLENGTH(result), 1);
             assert_eq!(*INTEGER(result), 42);
-            Rf_unprotect(2);
         }
     }
 
@@ -3461,16 +3476,19 @@ mod tests {
     fn test_do_c_dflt_two_integers() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v1 = Rf_protect(Rf_ScalarInteger(1));
-            let v2 = Rf_protect(Rf_ScalarInteger(2));
-            let tail = Rf_protect(Rf_cons(v2, R_NilValue()));
-            let args = Rf_protect(Rf_cons(v1, tail));
+            let v1 = Rf_ScalarInteger(1);
+            let _v1_guard = protect(v1);
+            let v2 = Rf_ScalarInteger(2);
+            let _v2_guard = protect(v2);
+            let tail = Rf_cons(v2, R_NilValue());
+            let _tail_guard = protect(tail);
+            let args = Rf_cons(v1, tail);
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(TYPEOF(result), INTSXP_I);
             assert_eq!(XLENGTH(result), 2);
             assert_eq!(*INTEGER(result), 1);
             assert_eq!(*INTEGER(result).add(1), 2);
-            Rf_unprotect(4);
         }
     }
 
@@ -3478,17 +3496,20 @@ mod tests {
     fn test_do_c_dflt_int_and_real() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v_int = Rf_protect(Rf_ScalarInteger(1));
-            let v_real = Rf_protect(Rf_ScalarReal(2.5));
-            let tail = Rf_protect(Rf_cons(v_real, R_NilValue()));
-            let args = Rf_protect(Rf_cons(v_int, tail));
+            let v_int = Rf_ScalarInteger(1);
+            let _v_int_guard = protect(v_int);
+            let v_real = Rf_ScalarReal(2.5);
+            let _v_real_guard = protect(v_real);
+            let tail = Rf_cons(v_real, R_NilValue());
+            let _tail_guard = protect(tail);
+            let args = Rf_cons(v_int, tail);
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             // integer + real -> real (coercion)
             assert_eq!(TYPEOF(result), REALSXP_I);
             assert_eq!(XLENGTH(result), 2);
             assert_eq!(*REAL(result), 1.0);
             assert_eq!(*REAL(result).add(1), 2.5);
-            Rf_unprotect(4);
         }
     }
 
@@ -3496,19 +3517,23 @@ mod tests {
     fn test_do_c_dflt_with_null() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v1 = Rf_protect(Rf_ScalarInteger(1));
+            let v1 = Rf_ScalarInteger(1);
+            let _v1_guard = protect(v1);
             let v_null = R_NilValue();
-            let v2 = Rf_protect(Rf_ScalarInteger(3));
+            let v2 = Rf_ScalarInteger(3);
+            let _v2_guard = protect(v2);
             // (1, NULL, 3) -> NULLs are dropped -> c(1, 3)
-            let tail2 = Rf_protect(Rf_cons(v2, R_NilValue()));
-            let tail1 = Rf_protect(Rf_cons(v_null, tail2));
-            let args = Rf_protect(Rf_cons(v1, tail1));
+            let tail2 = Rf_cons(v2, R_NilValue());
+            let _tail2_guard = protect(tail2);
+            let tail1 = Rf_cons(v_null, tail2);
+            let _tail1_guard = protect(tail1);
+            let args = Rf_cons(v1, tail1);
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(TYPEOF(result), INTSXP_I);
             assert_eq!(XLENGTH(result), 2);
             assert_eq!(*INTEGER(result), 1);
             assert_eq!(*INTEGER(result).add(1), 3);
-            Rf_unprotect(5);
         }
     }
 
@@ -3516,16 +3541,19 @@ mod tests {
     fn test_do_c_dflt_logical_vector() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v1 = Rf_protect(Rf_ScalarLogical(TRUE));
-            let v2 = Rf_protect(Rf_ScalarLogical(FALSE));
-            let tail = Rf_protect(Rf_cons(v2, R_NilValue()));
-            let args = Rf_protect(Rf_cons(v1, tail));
+            let v1 = Rf_ScalarLogical(TRUE);
+            let _v1_guard = protect(v1);
+            let v2 = Rf_ScalarLogical(FALSE);
+            let _v2_guard = protect(v2);
+            let tail = Rf_cons(v2, R_NilValue());
+            let _tail_guard = protect(tail);
+            let args = Rf_cons(v1, tail);
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(TYPEOF(result), LGLSXP_I);
             assert_eq!(XLENGTH(result), 2);
             assert_eq!(*LOGICAL(result), TRUE);
             assert_eq!(*LOGICAL(result).add(1), FALSE);
-            Rf_unprotect(4);
         }
     }
 
@@ -3533,16 +3561,21 @@ mod tests {
     fn test_do_c_dflt_real_vector() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v1 = Rf_protect(Rf_ScalarReal(1.5));
-            let v2 = Rf_protect(Rf_ScalarReal(2.5));
-            let v3 = Rf_protect(Rf_ScalarReal(3.5));
-            let tail2 = Rf_protect(Rf_cons(v3, R_NilValue()));
-            let tail1 = Rf_protect(Rf_cons(v2, tail2));
-            let args = Rf_protect(Rf_cons(v1, tail1));
+            let v1 = Rf_ScalarReal(1.5);
+            let _v1_guard = protect(v1);
+            let v2 = Rf_ScalarReal(2.5);
+            let _v2_guard = protect(v2);
+            let v3 = Rf_ScalarReal(3.5);
+            let _v3_guard = protect(v3);
+            let tail2 = Rf_cons(v3, R_NilValue());
+            let _tail2_guard = protect(tail2);
+            let tail1 = Rf_cons(v2, tail2);
+            let _tail1_guard = protect(tail1);
+            let args = Rf_cons(v1, tail1);
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(TYPEOF(result), REALSXP_I);
             assert_eq!(XLENGTH(result), 3);
-            Rf_unprotect(6);
         }
     }
 
@@ -3551,16 +3584,17 @@ mod tests {
         unsafe {
             let _guard = ProtectStackGuard::new();
             // Create a length-2 integer vector
-            let v = Rf_protect(Rf_allocVector3(INTSXP_I, 2));
+            let v = Rf_allocVector3(INTSXP_I, 2);
+            let _v_guard = protect(v);
             *INTEGER(v) = 10;
             *INTEGER(v).add(1) = 20;
-            let args = Rf_protect(Rf_cons(v, R_NilValue()));
+            let args = Rf_cons(v, R_NilValue());
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(TYPEOF(result), INTSXP_I);
             assert_eq!(XLENGTH(result), 2);
             assert_eq!(*INTEGER(result), 10);
             assert_eq!(*INTEGER(result).add(1), 20);
-            Rf_unprotect(2);
         }
     }
 
@@ -3569,12 +3603,13 @@ mod tests {
         unsafe {
             let _guard = ProtectStackGuard::new();
             // c(NULL, NULL) should return NULL
-            let tail = Rf_protect(Rf_cons(R_NilValue(), R_NilValue()));
-            let args = Rf_protect(Rf_cons(R_NilValue(), tail));
+            let tail = Rf_cons(R_NilValue(), R_NilValue());
+            let _tail_guard = protect(tail);
+            let args = Rf_cons(R_NilValue(), tail);
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             // All NULLs -> ans_flags=0, ans_length=0 -> NILSXP mode
             assert_eq!(result, R_NilValue());
-            Rf_unprotect(2);
         }
     }
 
@@ -3582,17 +3617,20 @@ mod tests {
     fn test_do_c_dflt_logical_and_integer() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let v_lgl = Rf_protect(Rf_ScalarLogical(TRUE));
-            let v_int = Rf_protect(Rf_ScalarInteger(42));
-            let tail = Rf_protect(Rf_cons(v_int, R_NilValue()));
-            let args = Rf_protect(Rf_cons(v_lgl, tail));
+            let v_lgl = Rf_ScalarLogical(TRUE);
+            let _v_lgl_guard = protect(v_lgl);
+            let v_int = Rf_ScalarInteger(42);
+            let _v_int_guard = protect(v_int);
+            let tail = Rf_cons(v_int, R_NilValue());
+            let _tail_guard = protect(tail);
+            let args = Rf_cons(v_lgl, tail);
+            let _args_guard = protect(args);
             let result = do_c_dflt(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             // logical + integer -> integer (coercion)
             assert_eq!(TYPEOF(result), INTSXP_I);
             assert_eq!(XLENGTH(result), 2);
             assert_eq!(*INTEGER(result), TRUE);
             assert_eq!(*INTEGER(result).add(1), 42);
-            Rf_unprotect(4);
         }
     }
 
@@ -3600,12 +3638,14 @@ mod tests {
     fn test_integer_answer_from_logical() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(LGLSXP_I, 3));
+            let src = Rf_allocVector3(LGLSXP_I, 3);
+            let _src_guard = protect(src);
             *LOGICAL(src) = TRUE;
             *LOGICAL(src).add(1) = FALSE;
             *LOGICAL(src).add(2) = NA_LOGICAL;
 
-            let dest = Rf_protect(Rf_allocVector3(INTSXP_I, 3));
+            let dest = Rf_allocVector3(INTSXP_I, 3);
+            let _dest_guard = protect(dest);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: dest,
@@ -3618,7 +3658,6 @@ mod tests {
             assert_eq!(*INTEGER(dest), TRUE);
             assert_eq!(*INTEGER(dest).add(1), FALSE);
             assert_eq!(*INTEGER(dest).add(2), NA_LOGICAL);
-            Rf_unprotect(2);
         }
     }
 
@@ -3626,12 +3665,14 @@ mod tests {
     fn test_real_answer_from_integer() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(INTSXP_I, 3));
+            let src = Rf_allocVector3(INTSXP_I, 3);
+            let _src_guard = protect(src);
             *INTEGER(src) = 1;
             *INTEGER(src).add(1) = NA_INTEGER;
             *INTEGER(src).add(2) = -5;
 
-            let dest = Rf_protect(Rf_allocVector3(REALSXP_I, 3));
+            let dest = Rf_allocVector3(REALSXP_I, 3);
+            let _dest_guard = protect(dest);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: dest,
@@ -3645,7 +3686,6 @@ mod tests {
             // NA_INTEGER -> NA_REAL
             assert!((*REAL(dest).add(1)).is_nan());
             assert_eq!(*REAL(dest).add(2), -5.0);
-            Rf_unprotect(2);
         }
     }
 
@@ -3653,12 +3693,14 @@ mod tests {
     fn test_logical_answer_from_integer() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(INTSXP_I, 3));
+            let src = Rf_allocVector3(INTSXP_I, 3);
+            let _src_guard = protect(src);
             *INTEGER(src) = 1;
             *INTEGER(src).add(1) = 0;
             *INTEGER(src).add(2) = NA_INTEGER;
 
-            let dest = Rf_protect(Rf_allocVector3(LGLSXP_I, 3));
+            let dest = Rf_allocVector3(LGLSXP_I, 3);
+            let _dest_guard = protect(dest);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: dest,
@@ -3671,7 +3713,6 @@ mod tests {
             assert_eq!(*LOGICAL(dest), TRUE);
             assert_eq!(*LOGICAL(dest).add(1), FALSE);
             assert_eq!(*LOGICAL(dest).add(2), NA_LOGICAL);
-            Rf_unprotect(2);
         }
     }
 
@@ -3679,11 +3720,13 @@ mod tests {
     fn test_complex_answer_from_real() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(REALSXP_I, 2));
+            let src = Rf_allocVector3(REALSXP_I, 2);
+            let _src_guard = protect(src);
             *REAL(src) = 1.0;
             *REAL(src).add(1) = 2.0;
 
-            let dest = Rf_protect(Rf_allocVector3(CPLXSXP_I, 2));
+            let dest = Rf_allocVector3(CPLXSXP_I, 2);
+            let _dest_guard = protect(dest);
             let mut data = BindData {
                 ans_flags: 0,
                 ans_ptr: dest,
@@ -3697,7 +3740,6 @@ mod tests {
             assert_eq!((*COMPLEX(dest)).i, 0.0);
             assert_eq!((*COMPLEX(dest).add(1)).r, 2.0);
             assert_eq!((*COMPLEX(dest).add(1)).i, 0.0);
-            Rf_unprotect(2);
         }
     }
 
@@ -3705,7 +3747,8 @@ mod tests {
     fn test_coerce_vector_lgl_to_int() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(LGLSXP_I, 2));
+            let src = Rf_allocVector3(LGLSXP_I, 2);
+            let _src_guard = protect(src);
             *LOGICAL(src) = TRUE;
             *LOGICAL(src).add(1) = FALSE;
 
@@ -3713,7 +3756,6 @@ mod tests {
             assert_eq!(TYPEOF(dest), INTSXP_I);
             assert_eq!(*INTEGER(dest), TRUE);
             assert_eq!(*INTEGER(dest).add(1), FALSE);
-            Rf_unprotect(1);
         }
     }
 
@@ -3721,7 +3763,8 @@ mod tests {
     fn test_coerce_vector_int_to_real() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(INTSXP_I, 2));
+            let src = Rf_allocVector3(INTSXP_I, 2);
+            let _src_guard = protect(src);
             *INTEGER(src) = 42;
             *INTEGER(src).add(1) = NA_INTEGER;
 
@@ -3729,7 +3772,6 @@ mod tests {
             assert_eq!(TYPEOF(dest), REALSXP_I);
             assert_eq!(*REAL(dest), 42.0);
             assert!((*REAL(dest).add(1)).is_nan()); // NA -> NaN
-            Rf_unprotect(1);
         }
     }
 
@@ -3737,14 +3779,14 @@ mod tests {
     fn test_coerce_vector_same_type() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(INTSXP_I, 2));
+            let src = Rf_allocVector3(INTSXP_I, 2);
+            let _src_guard = protect(src);
             *INTEGER(src) = 1;
             *INTEGER(src).add(1) = 2;
 
             let dest = coerceVector(src, SEXPTYPE::INTSXP);
             // Should return the same pointer (no copy needed)
             assert_eq!(dest, src);
-            Rf_unprotect(1);
         }
     }
 
@@ -3752,7 +3794,8 @@ mod tests {
     fn test_coerce_vector_raw_to_int() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(RAWSXP_I, 3));
+            let src = Rf_allocVector3(RAWSXP_I, 3);
+            let _src_guard = protect(src);
             *RAW(src) = 10;
             *RAW(src).add(1) = 20;
             *RAW(src).add(2) = 255;
@@ -3762,7 +3805,6 @@ mod tests {
             assert_eq!(*INTEGER(dest), 10);
             assert_eq!(*INTEGER(dest).add(1), 20);
             assert_eq!(*INTEGER(dest).add(2), 255);
-            Rf_unprotect(1);
         }
     }
 
@@ -3770,7 +3812,8 @@ mod tests {
     fn test_coerce_vector_raw_to_real() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(RAWSXP_I, 2));
+            let src = Rf_allocVector3(RAWSXP_I, 2);
+            let _src_guard = protect(src);
             *RAW(src) = 0;
             *RAW(src).add(1) = 200;
 
@@ -3778,7 +3821,6 @@ mod tests {
             assert_eq!(TYPEOF(dest), REALSXP_I);
             assert_eq!(*REAL(dest), 0.0);
             assert_eq!(*REAL(dest).add(1), 200.0);
-            Rf_unprotect(1);
         }
     }
 
@@ -3786,7 +3828,8 @@ mod tests {
     fn test_coerce_vector_raw_to_complex() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(RAWSXP_I, 2));
+            let src = Rf_allocVector3(RAWSXP_I, 2);
+            let _src_guard = protect(src);
             *RAW(src) = 42;
             *RAW(src).add(1) = 100;
 
@@ -3796,7 +3839,6 @@ mod tests {
             assert_eq!((*COMPLEX(dest)).i, 0.0);
             assert_eq!((*COMPLEX(dest).add(1)).r, 100.0);
             assert_eq!((*COMPLEX(dest).add(1)).i, 0.0);
-            Rf_unprotect(1);
         }
     }
 
@@ -3804,7 +3846,8 @@ mod tests {
     fn test_coerce_vector_int_to_complex() {
         unsafe {
             let _guard = ProtectStackGuard::new();
-            let src = Rf_protect(Rf_allocVector3(INTSXP_I, 2));
+            let src = Rf_allocVector3(INTSXP_I, 2);
+            let _src_guard = protect(src);
             *INTEGER(src) = 3;
             *INTEGER(src).add(1) = NA_INTEGER;
 
@@ -3814,7 +3857,6 @@ mod tests {
             assert_eq!((*COMPLEX(dest)).i, 0.0);
             assert!((*COMPLEX(dest).add(1)).r.is_nan()); // NA -> NaN
             assert_eq!((*COMPLEX(dest).add(1)).i, 0.0);
-            Rf_unprotect(1);
         }
     }
 }
