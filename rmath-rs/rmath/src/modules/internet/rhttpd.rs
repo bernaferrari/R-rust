@@ -23,7 +23,7 @@ use crate::sexp::envir::R_findVarInFrame as findVarInFrame;
 use crate::sexp::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install as install;
 use crate::sexp::*;
 use core::ffi::{c_char, c_int, c_long, c_uint, c_void};
@@ -343,10 +343,8 @@ unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
             len += (*buf).length as c_int;
             buf = (*buf).prev;
         }
-        let res = Rf_protect(Rf_allocVector(
-            SEXPTYPE::RAWSXP,
-            len + (*buf).length as c_int,
-        ));
+        let res = Rf_allocVector(SEXPTYPE::RAWSXP, len + (*buf).length as c_int);
+        let _res_guard = protect(res);
         let dst = RAW(res) as *mut c_char;
         let mut pos: isize = 0;
         while !buf.is_null() {
@@ -360,7 +358,6 @@ unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
             pos += (*buf).length as isize;
             buf = (*buf).next;
         }
-        Rf_unprotect(1);
         res
     }
 }
@@ -612,8 +609,10 @@ unsafe fn parse_query(query: *mut c_char) -> SEXP {
         }
         parts += 1;
 
-        let res = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, parts));
-        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, parts));
+        let res = Rf_allocVector(SEXPTYPE::STRSXP, parts);
+        let _res_guard = protect(res);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, parts);
+        let _names_guard = protect(names);
 
         let mut s = query;
         let mut key: *mut c_char = std::ptr::null_mut();
@@ -664,7 +663,6 @@ unsafe fn parse_query(query: *mut c_char) -> SEXP {
             }
         }
         setAttrib(res, R_NamesSymbol(), names);
-        Rf_unprotect(2);
         res
     }
 }
@@ -686,10 +684,8 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
             return parse_query((*c).body);
         } else {
             // Something else - pass as raw vector
-            let res = Rf_protect(Rf_allocVector(
-                SEXPTYPE::RAWSXP,
-                (*c).content_length as c_int,
-            ));
+            let res = Rf_allocVector(SEXPTYPE::RAWSXP, (*c).content_length as c_int);
+            let _res_guard = protect(res);
             if (*c).content_length > 0 {
                 libc::memcpy(
                     RAW(res) as *mut c_void,
@@ -708,7 +704,6 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
                     mkString((*c).content_type),
                 );
             }
-            Rf_unprotect(1);
             res
         }
     }
@@ -757,14 +752,12 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
                             v.set(install(b".httpd.handlers.env\0".as_ptr() as *const c_char))
                         });
                     }
-                    let tools_ns = Rf_protect(R_FindNamespace(mkString(
-                        b"tools\0".as_ptr() as *const c_char
-                    )));
+                    let tools_ns = R_FindNamespace(mkString(b"tools\0".as_ptr() as *const c_char));
+                    let _tools_ns_guard = protect(tools_ns);
                     let eval_sym = install(b"eval\0".as_ptr() as *const c_char);
-                    let call =
-                        Rf_protect(lang3(eval_sym, R_HANDLERS_NAME.with(|v| v.get()), tools_ns));
+                    let call = lang3(eval_sym, R_HANDLERS_NAME.with(|v| v.get()), tools_ns);
+                    let _call_guard = protect(call);
                     CUSTOM_HANDLERS_ENV.with(|v| v.set(Rf_eval(call, R_NilValue())));
-                    Rf_unprotect(2);
                 }
                 // Only proceed if .httpd.handlers.env really exists
                 if TYPEOF(CUSTOM_HANDLERS_ENV.with(|v| v.get())) == SEXPTYPE::ENVSXP {
@@ -814,33 +807,38 @@ unsafe fn process_request_(ptr: *mut c_void) {
         uri_decode((*c).url);
 
         // construct "try(httpd(url, query, body), silent=TRUE)"
-        let s_true = Rf_protect(Rf_ScalarLogical(1)); // TRUE
-        let s_body = Rf_protect(parse_request_body(c));
-        let s_query = Rf_protect(if !query.is_null() {
+        let s_true = Rf_ScalarLogical(1); // TRUE
+        let _s_true_guard = protect(s_true);
+        let s_body = parse_request_body(c);
+        let _s_body_guard = protect(s_body);
+        let s_query = if !query.is_null() {
             parse_query(query)
         } else {
             R_NilValue()
-        });
-        let s_req_headers = Rf_protect(if !(*c).headers.is_null() {
+        };
+        let _s_query_guard = protect(s_query);
+        let s_req_headers = if !(*c).headers.is_null() {
             collect_buffers((*c).headers)
         } else {
             R_NilValue()
-        });
-        let s_args = Rf_protect(list4(mkString((*c).url), s_query, s_body, s_req_headers));
+        };
+        let _s_req_headers_guard = protect(s_req_headers);
+        let s_args = list4(mkString((*c).url), s_query, s_body, s_req_headers);
+        let _s_args_guard = protect(s_args);
         let s_try = install(b"try\0".as_ptr() as *const c_char);
         let handler = handler_for_path((*c).url);
-        let x = Rf_protect(lang3(s_try, LCONS(handler, s_args), s_true));
+        let x = lang3(s_try, LCONS(handler, s_args), s_true);
+        let _x_call_guard = protect(x);
         SET_TAG(CDR(CDR(x)), install(b"silent\0".as_ptr() as *const c_char));
 
         // evaluate the above in the tools namespace
-        let tools_ns = Rf_protect(R_FindNamespace(mkString(
-            b"tools\0".as_ptr() as *const c_char
-        )));
+        let tools_ns = R_FindNamespace(mkString(b"tools\0".as_ptr() as *const c_char));
+        let _tools_ns_guard = protect(tools_ns);
         let eval_sym = install(b"eval\0".as_ptr() as *const c_char);
-        let eval_call = Rf_protect(lang3(eval_sym, x, tools_ns));
+        let eval_call = lang3(eval_sym, x, tools_ns);
+        let _eval_call_guard = protect(eval_call);
         let x = Rf_eval(eval_call, R_NilValue());
-        Rf_unprotect(1); // eval_call
-        let _x = Rf_protect(x);
+        let _x_guard = protect(x);
 
         // --- Handle the result ---
 
@@ -856,7 +854,6 @@ unsafe fn process_request_(ptr: *mut c_void) {
                 send_response((*c).sock, s, libc::strlen(s));
             }
             (*c).attr |= CONNECTION_CLOSE;
-            Rf_unprotect(7);
             vmaxset(vmax);
             return;
         }
@@ -943,7 +940,6 @@ unsafe fn process_request_(ptr: *mut c_void) {
                             b"\r\nContent-length: 0\r\n\r\n\0".as_ptr() as *const c_char,
                             23,
                         );
-                        Rf_unprotect(7);
                         fin_request(c);
                         vmaxset(vmax);
                         return;
@@ -964,7 +960,6 @@ unsafe fn process_request_(ptr: *mut c_void) {
                         while remaining > 0 && libc::feof(f) == 0 {
                             let rd = if remaining > 32768 { 32768 } else { remaining };
                             if libc::fread(fbuf.as_mut_ptr() as *mut c_void, 1, rd, f) != rd {
-                                Rf_unprotect(7);
                                 (*c).attr |= CONNECTION_CLOSE;
                                 libc::fclose(f);
                                 vmaxset(vmax);
@@ -975,7 +970,6 @@ unsafe fn process_request_(ptr: *mut c_void) {
                         }
                     }
                     libc::fclose(f);
-                    Rf_unprotect(7);
                     fin_request(c);
                     vmaxset(vmax);
                     return;
@@ -992,7 +986,6 @@ unsafe fn process_request_(ptr: *mut c_void) {
                 if (*c).method != METHOD_HEAD {
                     send_response((*c).sock, cs, libc::strlen(cs));
                 }
-                Rf_unprotect(7);
                 fin_request(c);
                 vmaxset(vmax);
                 return;
@@ -1041,14 +1034,12 @@ unsafe fn process_request_(ptr: *mut c_void) {
                 if (*c).method != METHOD_HEAD {
                     send_response((*c).sock, cs as *const c_char, LENGTH(y) as size_t);
                 }
-                Rf_unprotect(7);
                 fin_request(c);
                 vmaxset(vmax);
                 return;
             }
         }
 
-        Rf_unprotect(7);
         // Invalid response from R
         send_http_response(c, b" 500 Invalid response from R\r\nConnection: close\r\nContent-type: text/plain\r\n\r\nServer error: invalid response from R\r\n\0".as_ptr() as *const c_char);
         (*c).attr |= CONNECTION_CLOSE;
