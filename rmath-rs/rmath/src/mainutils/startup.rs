@@ -41,6 +41,7 @@ pub struct StartupRuntimeState {
     pub(crate) load_site_file: c_int,
     pub(crate) load_init_file: c_int,
     pub(crate) no_renviron: c_int,
+    pub(crate) running_as_main_program: c_int,
 }
 
 impl StartupRuntimeState {
@@ -75,6 +76,7 @@ impl Default for StartupRuntimeState {
             load_site_file: 1,
             load_init_file: 1,
             no_renviron: 0,
+            running_as_main_program: 0,
         }
     }
 }
