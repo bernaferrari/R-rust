@@ -272,6 +272,8 @@ pub struct RInstance {
     pub(crate) sys_std_state: crate::unix::sys_std::SysStdRuntimeState,
     /// Per-instance Unix platform scratch buffer and process timing state.
     pub(crate) sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState,
+    /// Per-instance Unix initialization, console dispatch, and stack state.
+    pub(crate) unix_system_state: crate::unix::system::UnixSystemRuntimeState,
     /// Per-instance startup/workspace metadata.
     pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
@@ -402,6 +404,7 @@ impl RInstance {
             libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
             sys_std_state: crate::unix::sys_std::SysStdRuntimeState::default(),
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
+            unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             symbols: HashMap::new(),

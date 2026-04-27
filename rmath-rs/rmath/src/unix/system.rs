@@ -6,11 +6,13 @@
 //! the function pointer dispatch table for system operations (console I/O,
 //! cleanup, file viewing), and FD limit utilities.
 
-use std::cell::Cell;
 use std::env;
+use std::ffi::CString;
 use std::io::{self, Write};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
+
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,26 +26,6 @@ const SA_SAVE: c_int = 1;
 const SA_NOSAVE: c_int = 2;
 const SA_DEFAULT: c_int = 0;
 const SA_SUICIDE: c_int = 3;
-
-// ---------------------------------------------------------------------------
-// Globals
-// ---------------------------------------------------------------------------
-
-thread_local! { static R_Interactive: Cell<c_int> = Cell::new(1); }
-thread_local! { static UsingReadline: Cell<c_int> = Cell::new(1); }
-thread_local! { static R_running_as_main_program: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_Home: Cell<*const c_char> = Cell::new(ptr::null()); }
-thread_local! { static R_HistoryFile: Cell<*const c_char> = Cell::new(ptr::null()); }
-thread_local! { static R_HistorySize: Cell<c_int> = Cell::new(512); }
-thread_local! { static R_RestoreHistory: Cell<c_int> = Cell::new(1); }
-thread_local! { static ifp: Cell<*mut libc::FILE> = Cell::new(ptr::null_mut()); }
-thread_local! { static R_Outputfile: Cell<*mut libc::FILE> = Cell::new(ptr::null_mut()); }
-thread_local! { static R_Consolefile: Cell<*mut libc::FILE> = Cell::new(ptr::null_mut()); }
-thread_local! { static R_GUIType: Cell<*const c_char> = Cell::new(ptr::null()); }
-thread_local! { static R_CStackDir: Cell<c_int> = Cell::new(-1); }
-thread_local! { static R_CStackLimit: Cell<usize> = Cell::new(0); }
-thread_local! { static R_CStackStart: Cell<usize> = Cell::new(0); }
-thread_local! { static R_GlobalContext: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
 
 /// C stack direction detection.
 const C_STACK_DIRECTION: c_int = -1;
@@ -79,25 +61,76 @@ type PtrEditFiles = Option<
 >;
 
 // ---------------------------------------------------------------------------
-// System interface function pointers
+// Runtime state
 // ---------------------------------------------------------------------------
 
-thread_local! { static ptr_R_Suicide: Cell<PtrSuicide> = Cell::new(None); }
-thread_local! { static ptr_R_ShowMessage: Cell<PtrShowMessage> = Cell::new(None); }
-thread_local! { static ptr_R_ReadConsole: Cell<PtrReadConsole> = Cell::new(None); }
-thread_local! { static ptr_R_WriteConsole: Cell<PtrWriteConsole> = Cell::new(None); }
-thread_local! { static ptr_R_WriteConsoleEx: Cell<PtrWriteConsoleEx> = Cell::new(None); }
-thread_local! { static ptr_R_ResetConsole: Cell<PtrResetConsole> = Cell::new(None); }
-thread_local! { static ptr_R_FlushConsole: Cell<PtrFlushConsole> = Cell::new(None); }
-thread_local! { static ptr_R_ClearerrConsole: Cell<PtrClearerrConsole> = Cell::new(None); }
-thread_local! { static ptr_R_Busy: Cell<PtrBusy> = Cell::new(None); }
-thread_local! { static ptr_R_CleanUp: Cell<PtrCleanUp> = Cell::new(None); }
-thread_local! { static ptr_R_ShowFiles: Cell<PtrShowFiles> = Cell::new(None); }
-thread_local! { static ptr_R_ChooseFile: Cell<PtrChooseFile> = Cell::new(None); }
-thread_local! { static ptr_R_loadhistory: Cell<PtrHistory> = Cell::new(None); }
-thread_local! { static ptr_R_savehistory: Cell<PtrHistory> = Cell::new(None); }
-thread_local! { static ptr_R_addhistory: Cell<PtrHistory> = Cell::new(None); }
-thread_local! { static ptr_R_EditFiles: Cell<PtrEditFiles> = Cell::new(None); }
+#[derive(Clone, Copy, Default)]
+pub(crate) struct UnixSystemCallbacks {
+    suicide: PtrSuicide,
+    show_message: PtrShowMessage,
+    read_console: PtrReadConsole,
+    write_console: PtrWriteConsole,
+    write_console_ex: PtrWriteConsoleEx,
+    reset_console: PtrResetConsole,
+    flush_console: PtrFlushConsole,
+    clearerr_console: PtrClearerrConsole,
+    busy: PtrBusy,
+    cleanup: PtrCleanUp,
+    show_files: PtrShowFiles,
+    choose_file: PtrChooseFile,
+    load_history: PtrHistory,
+    save_history: PtrHistory,
+    add_history: PtrHistory,
+    edit_files: PtrEditFiles,
+}
+
+pub(crate) struct UnixSystemRuntimeState {
+    interactive: c_int,
+    using_readline: c_int,
+    running_as_main_program: c_int,
+    home: CString,
+    history_file: CString,
+    history_size: c_int,
+    restore_history: c_int,
+    input_file: *mut libc::FILE,
+    output_file: *mut libc::FILE,
+    console_file: *mut libc::FILE,
+    gui_type: Option<CString>,
+    cstack_dir: c_int,
+    cstack_limit: usize,
+    cstack_start: usize,
+    global_context: *mut c_void,
+    num_initialized: c_int,
+    callbacks: UnixSystemCallbacks,
+}
+
+impl Default for UnixSystemRuntimeState {
+    fn default() -> Self {
+        Self {
+            interactive: 1,
+            using_readline: 1,
+            running_as_main_program: 0,
+            home: CString::new("/usr/lib/R").unwrap(),
+            history_file: CString::new(".Rhistory").unwrap(),
+            history_size: 512,
+            restore_history: 1,
+            input_file: ptr::null_mut(),
+            output_file: ptr::null_mut(),
+            console_file: ptr::null_mut(),
+            gui_type: None,
+            cstack_dir: -1,
+            cstack_limit: 0,
+            cstack_start: 0,
+            global_context: ptr::null_mut(),
+            num_initialized: 0,
+            callbacks: UnixSystemCallbacks::default(),
+        }
+    }
+}
+
+fn with_system_state<R>(f: impl FnOnce(&mut UnixSystemRuntimeState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.unix_system_state))
+}
 
 // ---------------------------------------------------------------------------
 // Default implementations (Rstd_* equivalents)
@@ -178,7 +211,7 @@ unsafe fn Rstd_read_history(_file: *const c_char) {}
 
 pub unsafe fn R_Suicide(s: *const c_char) {
     unsafe {
-        if let Some(f) = ptr_R_Suicide.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.suicide) {
             f(s);
         }
         std::process::exit(2);
@@ -187,7 +220,7 @@ pub unsafe fn R_Suicide(s: *const c_char) {
 
 pub unsafe fn R_ShowMessage(s: *const c_char) {
     unsafe {
-        if let Some(f) = ptr_R_ShowMessage.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.show_message) {
             f(s);
         }
     }
@@ -200,7 +233,7 @@ pub unsafe fn R_ReadConsole(
     addtohistory: c_int,
 ) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_ReadConsole.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.read_console) {
             f(prompt, buf, len, addtohistory)
         } else {
             0
@@ -210,9 +243,10 @@ pub unsafe fn R_ReadConsole(
 
 pub unsafe fn R_WriteConsole(buf: *const c_char, len: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_WriteConsole.with(|v| v.get()) {
+        let callbacks = with_system_state(|state| state.callbacks);
+        if let Some(f) = callbacks.write_console {
             f(buf, len);
-        } else if let Some(f) = ptr_R_WriteConsoleEx.with(|v| v.get()) {
+        } else if let Some(f) = callbacks.write_console_ex {
             f(buf, len, 0);
         }
     }
@@ -220,9 +254,10 @@ pub unsafe fn R_WriteConsole(buf: *const c_char, len: c_int) {
 
 pub unsafe fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_WriteConsole.with(|v| v.get()) {
+        let callbacks = with_system_state(|state| state.callbacks);
+        if let Some(f) = callbacks.write_console {
             f(buf, len);
-        } else if let Some(f) = ptr_R_WriteConsoleEx.with(|v| v.get()) {
+        } else if let Some(f) = callbacks.write_console_ex {
             f(buf, len, otype);
         }
     }
@@ -230,7 +265,7 @@ pub unsafe fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
 
 pub fn R_ResetConsole() {
     unsafe {
-        if let Some(f) = ptr_R_ResetConsole.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.reset_console) {
             f();
         }
     }
@@ -238,7 +273,7 @@ pub fn R_ResetConsole() {
 
 pub fn R_FlushConsole() {
     unsafe {
-        if let Some(f) = ptr_R_FlushConsole.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.flush_console) {
             f();
         }
     }
@@ -246,7 +281,7 @@ pub fn R_FlushConsole() {
 
 pub fn R_ClearerrConsole() {
     unsafe {
-        if let Some(f) = ptr_R_ClearerrConsole.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.clearerr_console) {
             f();
         }
     }
@@ -254,7 +289,7 @@ pub fn R_ClearerrConsole() {
 
 pub fn R_Busy(which: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_Busy.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.busy) {
             f(which);
         }
     }
@@ -262,7 +297,7 @@ pub fn R_Busy(which: c_int) {
 
 pub unsafe fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_CleanUp.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.cleanup) {
             f(saveact, status, runLast);
         }
         std::process::exit(status);
@@ -278,7 +313,7 @@ pub unsafe fn R_ShowFiles(
     pager: *const c_char,
 ) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_ShowFiles.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.show_files) {
             f(nfile, file, headers, wtitle, del, pager)
         } else {
             0
@@ -288,7 +323,7 @@ pub unsafe fn R_ShowFiles(
 
 pub unsafe fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_ChooseFile.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.choose_file) {
             f(new, buf, len)
         } else {
             0
@@ -303,7 +338,7 @@ pub unsafe fn R_EditFiles(
     editor: *const c_char,
 ) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_EditFiles.with(|v| v.get()) {
+        if let Some(f) = with_system_state(|state| state.callbacks.edit_files) {
             f(nfile, file, title, editor)
         } else {
             0
@@ -316,23 +351,22 @@ pub unsafe fn R_EditFiles(
 // ---------------------------------------------------------------------------
 
 pub fn R_setupHistory() {
-    let histfile = env::var("R_HISTFILE");
-    match histfile {
-        Ok(ref s) if !s.is_empty() => {
-            R_HistoryFile.with(|c| c.set(s.as_ptr() as *const c_char));
-        }
-        _ => {
-            R_HistoryFile.with(|c| c.set(b".Rhistory\0".as_ptr() as *const c_char));
-        }
-    }
+    let history_file = env::var("R_HISTFILE")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| CString::new(s).ok())
+        .unwrap_or_else(|| CString::new(".Rhistory").unwrap());
 
-    R_HistorySize.with(|c| c.set(512));
-    if let Ok(s) = env::var("R_HISTSIZE")
-        && let Ok(val) = s.parse::<c_int>()
-        && val >= 0
-    {
-        R_HistorySize.with(|c| c.set(val));
-    }
+    let history_size = env::var("R_HISTSIZE")
+        .ok()
+        .and_then(|s| s.parse::<c_int>().ok())
+        .filter(|&val| val >= 0)
+        .unwrap_or(512);
+
+    with_system_state(|state| {
+        state.history_file = history_file;
+        state.history_size = history_size;
+    });
 }
 
 pub fn R_GetFDLimit() -> c_int {
@@ -438,9 +472,8 @@ unsafe fn R_Decode2Long(_s: *const c_char, _ierr: *mut c_int) -> i64 {
     0
 }
 
-unsafe fn R_HomeDir() -> *const c_char {
-    static HOME: &[u8] = b"/usr/lib/R\0";
-    HOME.as_ptr() as *const c_char
+unsafe fn R_HomeDir() -> CString {
+    CString::new("/usr/lib/R").unwrap()
 }
 
 unsafe fn BindDomain(_home: *const c_char) {}
@@ -464,18 +497,16 @@ unsafe fn R_fopen(_path: *const c_char, _mode: *const c_char) -> *mut libc::FILE
 unsafe fn R_setStartTime() {}
 unsafe fn fpu_setup(_start: c_int) {}
 
-thread_local! { static num_initialized: Cell<c_int> = Cell::new(0); }
-
 pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
     unsafe {
-        if num_initialized.with(|v| v.get()) != 0 {
+        if with_system_state(|state| state.num_initialized) != 0 {
             eprintln!("R is already initialized\n");
             std::process::exit(1);
         }
-        num_initialized.with(|v| v.set(1));
+        with_system_state(|state| state.num_initialized = 1);
 
         // --- Stack detection ---
-        R_CStackDir.with(|v| v.set(C_STACK_DIRECTION));
+        with_system_state(|state| state.cstack_dir = C_STACK_DIRECTION);
 
         #[cfg(all(unix, not(target_os = "macos")))]
         {
@@ -483,11 +514,11 @@ pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
             if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
                 let lim = rlim.rlim_cur;
                 if lim != libc::RLIM_INFINITY {
-                    R_CStackLimit.with(|v| v.set(lim as usize));
+                    with_system_state(|state| state.cstack_limit = lim as usize);
                 }
             }
-            if R_CStackStart.with(|v| v.get()) == 0 {
-                R_CStackStart.with(|v| v.set(0));
+            if with_system_state(|state| state.cstack_start) == 0 {
+                with_system_state(|state| state.cstack_start = 0);
             }
         }
 
@@ -506,46 +537,55 @@ pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
                 0,
             ) == 0
             {
-                R_CStackStart.with(|v| v.set(base));
+                with_system_state(|state| state.cstack_start = base);
             }
 
             let mut rlim: libc::rlimit = std::mem::zeroed();
             if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
                 let lim = rlim.rlim_cur;
                 if lim != libc::RLIM_INFINITY {
-                    R_CStackLimit.with(|v| v.set(lim as usize));
+                    with_system_state(|state| state.cstack_limit = lim as usize);
                 }
             }
         }
 
-        if R_CStackStart.with(|v| v.get()) == usize::MAX {
-            R_CStackLimit.with(|v| v.set(usize::MAX));
+        if with_system_state(|state| state.cstack_start) == usize::MAX {
+            with_system_state(|state| state.cstack_limit = usize::MAX);
         }
 
         // --- Set up function pointer dispatch table ---
-        ptr_R_Suicide.with(|v| v.set(Some(Rstd_Suicide)));
-        ptr_R_ShowMessage.with(|v| v.set(Some(Rstd_ShowMessage)));
-        ptr_R_ReadConsole.with(|v| v.set(Some(Rstd_ReadConsole)));
-        ptr_R_WriteConsole.with(|v| v.set(Some(Rstd_WriteConsole)));
-        ptr_R_ResetConsole.with(|v| v.set(Some(Rstd_ResetConsole)));
-        ptr_R_FlushConsole.with(|v| v.set(Some(Rstd_FlushConsole)));
-        ptr_R_ClearerrConsole.with(|v| v.set(Some(Rstd_ClearerrConsole)));
-        ptr_R_Busy.with(|v| v.set(Some(Rstd_Busy)));
-        ptr_R_CleanUp.with(|v| v.set(Some(Rstd_CleanUp)));
-        ptr_R_ShowFiles.with(|v| v.set(Some(Rstd_ShowFiles)));
-        ptr_R_ChooseFile.with(|v| v.set(Some(Rstd_ChooseFile)));
-        ptr_R_loadhistory.with(|v| v.set(Some(Rstd_loadhistory)));
-        ptr_R_savehistory.with(|v| v.set(Some(Rstd_savehistory)));
-        ptr_R_addhistory.with(|v| v.set(Some(Rstd_addhistory)));
-
-        R_GlobalContext.with(|v| v.set(ptr::null_mut()));
+        with_system_state(|state| {
+            state.callbacks = UnixSystemCallbacks {
+                suicide: Some(Rstd_Suicide),
+                show_message: Some(Rstd_ShowMessage),
+                read_console: Some(Rstd_ReadConsole),
+                write_console: Some(Rstd_WriteConsole),
+                write_console_ex: None,
+                reset_console: Some(Rstd_ResetConsole),
+                flush_console: Some(Rstd_FlushConsole),
+                clearerr_console: Some(Rstd_ClearerrConsole),
+                busy: Some(Rstd_Busy),
+                cleanup: Some(Rstd_CleanUp),
+                show_files: Some(Rstd_ShowFiles),
+                choose_file: Some(Rstd_ChooseFile),
+                load_history: Some(Rstd_loadhistory),
+                save_history: Some(Rstd_savehistory),
+                add_history: Some(Rstd_addhistory),
+                edit_files: None,
+            };
+            state.global_context = ptr::null_mut();
+        });
 
         // --- R home and environment ---
-        R_Home.with(|v| v.set(R_HomeDir()));
-        if R_Home.with(|v| v.get()).is_null() {
+        let home = R_HomeDir();
+        let home_ptr = with_system_state(|state| {
+            state.home = home;
+            state.home.as_ptr()
+        });
+        if home_ptr.is_null() {
             R_Suicide(b"R home directory is not defined\0".as_ptr() as *const c_char);
         }
-        BindDomain(R_Home.with(|v| v.get()));
+        BindDomain(home_ptr);
         process_system_Renviron();
         R_setStartTime();
 
@@ -570,7 +610,7 @@ pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
             }
             if *arg == b'-' as c_char {
                 if libc::strcmp(arg, b"--no-readline\0".as_ptr() as *const c_char) == 0 {
-                    UsingReadline.with(|v| v.set(0));
+                    with_system_state(|state| state.using_readline = 0);
                 } else if libc::strcmp(arg, b"--vanilla\0".as_ptr() as *const c_char) == 0 {
                     save_action = SA_NOSAVE;
                 } else if libc::strcmp(arg, b"--save\0".as_ptr() as *const c_char) == 0 {
@@ -588,16 +628,18 @@ pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
 
         // --- Interactive mode ---
         if force_interactive || R_isatty(0) != 0 {
-            R_Interactive.with(|v| v.set(1));
+            with_system_state(|state| state.interactive = 1);
         } else {
-            R_Interactive.with(|v| v.set(0));
+            with_system_state(|state| state.interactive = 0);
         }
 
-        R_Outputfile.with(|v| v.set(ptr::null_mut()));
-        R_Consolefile.with(|v| v.set(ptr::null_mut()));
+        with_system_state(|state| {
+            state.output_file = ptr::null_mut();
+            state.console_file = ptr::null_mut();
+        });
 
         // --- Save action check ---
-        if R_Interactive.with(|v| v.get()) == 0
+        if with_system_state(|state| state.interactive) == 0
             && save_action != SA_SAVE
             && save_action != SA_NOSAVE
         {
@@ -627,6 +669,7 @@ mod tests {
 
     #[test]
     fn test_system_dispatch_nulls() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_ShowMessage(b"test\0".as_ptr() as *const c_char);
         }
@@ -634,10 +677,42 @@ mod tests {
 
     #[test]
     fn test_setup_history() {
+        let _session = crate::sexp::session::RSession::new();
+        R_setupHistory();
+        with_system_state(|state| {
+            assert_eq!(state.history_file.to_string_lossy(), ".Rhistory");
+            assert_eq!(state.history_size, 512);
+        });
+    }
+
+    #[test]
+    fn unix_system_runtime_state_is_session_local() {
+        use crate::sexp::instance::{RInstance, replace_current_instance};
+
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+
         unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
             R_setupHistory();
-            assert_eq!(R_HistorySize.with(|v| v.get()), 512);
+            first.unix_system_state.history_size = 1024;
+            first.unix_system_state.using_readline = 0;
+            first.unix_system_state.callbacks.show_message = Some(Rstd_ShowMessage);
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            R_setupHistory();
+            second.unix_system_state.history_size = 2048;
+            second.unix_system_state.callbacks.show_message = None;
+            replace_current_instance(previous);
         }
+
+        assert_eq!(first.unix_system_state.history_size, 1024);
+        assert_eq!(first.unix_system_state.using_readline, 0);
+        assert!(first.unix_system_state.callbacks.show_message.is_some());
+        assert_eq!(second.unix_system_state.history_size, 2048);
+        assert_eq!(second.unix_system_state.using_readline, 1);
+        assert!(second.unix_system_state.callbacks.show_message.is_none());
     }
 
     #[test]
