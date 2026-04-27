@@ -22,7 +22,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ===========================================================================
 // Constants
@@ -522,8 +522,10 @@ pub unsafe fn devga(args: SEXP) -> SEXP {
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn bmVersion() -> SEXP {
     unsafe {
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
-        let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let _ans_guard = protect(ans);
+        let nms = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let _nms_guard = protect(nms);
         use crate::attrib_core::setAttrib;
         setAttrib(ans, R_NamesSymbol(), nms);
         SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const c_char));
@@ -532,7 +534,6 @@ pub unsafe fn bmVersion() -> SEXP {
         SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
         SET_STRING_ELT(ans, 1, Rf_mkChar(b"\0".as_ptr() as *const c_char));
         SET_STRING_ELT(ans, 2, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-        Rf_unprotect(2);
         ans
     }
 }
@@ -578,8 +579,10 @@ pub unsafe fn cairoFT() -> SEXP {
 #[cfg(target_os = "windows")]
 pub unsafe fn bmVersion() -> SEXP {
     unsafe {
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
-        let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let _ans_guard = protect(ans);
+        let nms = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let _nms_guard = protect(nms);
         use crate::attrib_core::setAttrib;
         use crate::sexp::globals::R_NamesSymbol;
         setAttrib(ans, R_NamesSymbol(), nms);
@@ -589,7 +592,6 @@ pub unsafe fn bmVersion() -> SEXP {
         SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
         SET_STRING_ELT(ans, 1, Rf_mkChar(b"\0".as_ptr() as *const c_char));
         SET_STRING_ELT(ans, 2, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-        Rf_unprotect(2);
         ans
     }
 }

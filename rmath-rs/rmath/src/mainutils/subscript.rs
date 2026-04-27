@@ -31,7 +31,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
@@ -213,7 +213,7 @@ pub unsafe fn OneIndex(
             let names =
                 crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
             if !names.is_null() && names != R_NilValue() {
-                Rf_protect(names);
+                let _names_guard = protect(names);
                 // Try exact match
                 let ss = CHAR(STRING_ELT(s, _pos as R_xlen_t));
                 if !ss.is_null() {
@@ -246,7 +246,6 @@ pub unsafe fn OneIndex(
                         }
                     }
                 }
-                Rf_unprotect(1);
             }
             if _indx == -1 {
                 _indx = nx;
@@ -261,7 +260,7 @@ pub unsafe fn OneIndex(
             let names =
                 crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
             if !names.is_null() && names != R_NilValue() {
-                Rf_protect(names);
+                let _names_guard = protect(names);
                 let sname = CHAR(PRINTNAME(s));
                 if !sname.is_null() {
                     for i in 0..nx {
@@ -275,7 +274,6 @@ pub unsafe fn OneIndex(
                         }
                     }
                 }
-                Rf_unprotect(1);
             }
             if _indx == -1 {
                 _indx = nx;
@@ -537,7 +535,8 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
         }
 
         // Allocate result vector
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nr));
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nr);
+        let _ans_guard = protect(ans);
         let ap = INTEGER(ans);
 
         // Get dim attribute names for character matrix support
@@ -629,7 +628,6 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -654,7 +652,8 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
         let nc = INTEGER_ELT(s_dim, 1) as c_int;
 
         // Allocate integer result matrix
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nr * nc as R_xlen_t));
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nr * nc as R_xlen_t);
+        let _ans_guard = protect(ans);
 
         // Copy dim attribute to result
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_DimSymbol(), s_dim);
@@ -713,7 +712,6 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }

@@ -13,7 +13,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{ProtectGuard, protect};
 
 /// Helper: set the TAG of a cons cell.
 unsafe fn SET_TAG(x: SEXP, y: SEXP) {
@@ -96,12 +96,14 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
 
         // --- Build and evaluate calls ---
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LISTSXP, maxlen));
+        let ans = Rf_allocVector3(SEXPTYPE::LISTSXP, maxlen);
+        let _ans_guard = protect(ans);
 
         for i in 0..maxlen as usize {
             // Build the call: FUN(varying[0][[i]], varying[1][[i]], ..., MoreArgs[[j]])
             let mut call_args = R_NilValue();
             let mut tail: SEXP = ptr::null_mut();
+            let mut cell_guards: Vec<ProtectGuard> = Vec::new();
 
             // Add varying arguments (recycled)
             for &v in &varyings {
@@ -130,7 +132,8 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 };
 
                 // Create pairlist cell
-                let cell = Rf_protect(Rf_cons(elt, R_NilValue()));
+                let cell = Rf_cons(elt, R_NilValue());
+                cell_guards.push(protect(cell));
 
                 if call_args.is_null() || call_args == R_NilValue() {
                     call_args = cell;
@@ -146,14 +149,14 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
                 }
                 tail = cell;
-                Rf_unprotect(1);
             }
 
             // Add MoreArgs
             if nmoreargs > 0 {
                 for j in 0..nmoreargs as usize {
                     let m_elt = VECTOR_ELT(moreargs, j as R_xlen_t);
-                    let cell = Rf_protect(Rf_cons(m_elt, R_NilValue()));
+                    let cell = Rf_cons(m_elt, R_NilValue());
+                    cell_guards.push(protect(cell));
                     if call_args.is_null() || call_args == R_NilValue() {
                         call_args = cell;
                     } else {
@@ -168,19 +171,17 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         }
                     }
                     tail = cell;
-                    Rf_unprotect(1);
                 }
             }
 
             // Build LANGSXP: FUN(args...)
-            let call = Rf_protect(Rf_lang2(fun, call_args));
+            let call = Rf_lang2(fun, call_args);
+            let _call_guard = protect(call);
             // Evaluate the call
             let val = crate::eval::eval::Rf_eval(call, rho);
             SET_VECTOR_ELT(ans, i as R_xlen_t, val);
-            Rf_unprotect(1);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
