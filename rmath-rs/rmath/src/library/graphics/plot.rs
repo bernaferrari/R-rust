@@ -353,7 +353,8 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
         if n == 0 {
             return ScalarInteger(dflt);
         }
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n));
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
+        let _ans_guard = protect(ans);
         if isList(pch) != 0 {
             let mut i: c_int = 0;
             let mut cur = pch;
@@ -395,7 +396,6 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
         } else {
             Rf_error(b"invalid plotting symbol\0".as_ptr() as *const c_char);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -441,7 +441,8 @@ pub unsafe fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
         if n == 0 {
             ans = ScalarReal(dflt);
         } else {
-            let lwd = Rf_protect(coerceVector(lwd, SEXPTYPE::REALSXP.into()));
+            let lwd = coerceVector(lwd, SEXPTYPE::REALSXP.into());
+            let _lwd_guard = protect(lwd);
             let n = length(lwd);
             let ans_p = Rf_allocVector(SEXPTYPE::REALSXP, n);
             for i in 0..n as usize {
@@ -451,7 +452,6 @@ pub unsafe fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
                 }
                 REAL(ans_p).add(i).write(w);
             }
-            Rf_unprotect(1);
             ans = ans_p;
         }
         ans
@@ -513,9 +513,11 @@ pub unsafe fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
         /* bg = dpptr(GEcurrentDevice())->bg; but we use dflt for stub */
         let bg: c_uint = dflt;
         if n == 0 {
-            ans = Rf_protect(ScalarInteger(dflt as c_int));
+            ans = ScalarInteger(dflt as c_int);
+            let _ans_guard = protect(ans);
         } else {
             ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
+            let _ans_guard = protect(ans);
             if isList(col) != 0 {
                 let mut cur = col;
                 for i in 0..n as usize {
@@ -531,10 +533,8 @@ pub unsafe fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
                         .write(RGBpar3(col as *mut c_void, i as c_int, bg) as c_int);
                 }
             }
-            Rf_unprotect(1);
             return ans;
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -590,7 +590,8 @@ pub unsafe fn FixupVFont(vfont: SEXP) -> SEXP {
         if Rf_isNull(vfont) != 0 {
             return R_NilValue();
         }
-        let vf = Rf_protect(coerceVector(vfont, SEXPTYPE::INTSXP.into()));
+        let vf = coerceVector(vfont, SEXPTYPE::INTSXP.into());
+        let _vf_guard = protect(vf);
         if length(vf) != 2 {
             Rf_error(b"invalid 'vfont' value\0".as_ptr() as *const c_char);
         }
@@ -626,7 +627,6 @@ pub unsafe fn FixupVFont(vfont: SEXP) -> SEXP {
         let ans = Rf_allocVector(SEXPTYPE::INTSXP, 2);
         INTEGER(ans).add(0).write(INTEGER(vf).add(0).read());
         INTEGER(ans).add(1).write(INTEGER(vf).add(1).read());
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1219,27 +1219,28 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
         let stype = TYPEOF(labels);
         match stype {
             tt if tt == SEXPTYPE::LGLSXP => {
-                ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+                ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                let _ans_guard = protect(ans);
                 for i in 0..n as usize {
                     let strp = EncodeLogical(LOGICAL(labels).add(i).read(), 0);
                     SET_STRING_ELT(ans, i as R_xlen_t, mkChar(strp));
                 }
-                Rf_unprotect(1);
             }
             tt if tt == SEXPTYPE::INTSXP => {
-                ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+                ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                let _ans_guard = protect(ans);
                 for i in 0..n as usize {
                     let strp = EncodeInteger(INTEGER(labels).add(i).read(), 0);
                     SET_STRING_ELT(ans, i as R_xlen_t, mkChar(strp));
                 }
-                Rf_unprotect(1);
             }
             tt if tt == SEXPTYPE::REALSXP => {
                 let mut w: c_int = 0;
                 let mut d: c_int = 0;
                 let mut e: c_int = 0;
                 formatReal(REAL(labels), n as R_xlen_t, &mut w, &mut d, &mut e, OutDec);
-                ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+                ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                let _ans_guard = protect(ans);
                 for i in 0..n as usize {
                     let strp = EncodeReal0(
                         REAL(labels).add(i).read(),
@@ -1250,7 +1251,6 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
                     );
                     SET_STRING_ELT(ans, i as R_xlen_t, mkChar(strp));
                 }
-                Rf_unprotect(1);
             }
             tt if tt == SEXPTYPE::CPLXSXP => {
                 let mut w: c_int = 0;
@@ -1270,21 +1270,21 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
                     &mut ei,
                     OutDec,
                 );
-                ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+                ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                let _ans_guard = protect(ans);
                 for i in 0..n as usize {
                     let cx = COMPLEX(labels).add(i).read();
                     let strp =
                         EncodeComplex(cx, 0, d, e, 0, di, ei, b".\0".as_ptr() as *const c_char);
                     SET_STRING_ELT(ans, i as R_xlen_t, mkChar(strp));
                 }
-                Rf_unprotect(1);
             }
             tt if tt == SEXPTYPE::STRSXP => {
-                ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+                ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                let _ans_guard = protect(ans);
                 for i in 0..n as usize {
                     SET_STRING_ELT(ans, i as R_xlen_t, STRING_ELT(labels, i as R_xlen_t));
                 }
-                Rf_unprotect(1);
             }
             _ => {
                 Rf_error(b"invalid type for axis labels\0".as_ptr() as *const c_char);
@@ -1345,18 +1345,23 @@ pub unsafe fn C_path(args: SEXP) -> SEXP {
         args = CDR(args);
         let nx = length(sx);
 
-        let nper = Rf_protect(CAR(args));
+        let nper = CAR(args);
+        let _nper_guard = protect(nper);
         args = CDR(args);
         let npoly = length(nper);
 
-        let _rule = Rf_protect(CAR(args));
+        let _rule = CAR(args);
+        let _rule_guard = protect(_rule);
         args = CDR(args);
 
-        let _col = Rf_protect(FixupCol(CAR(args), R_TRANWHITE));
+        let _col = FixupCol(CAR(args), R_TRANWHITE);
+        let _col_guard = protect(_col);
         args = CDR(args);
-        let _border = Rf_protect(FixupCol(CAR(args), 0));
+        let _border = FixupCol(CAR(args), 0);
+        let _border_guard = protect(_border);
         args = CDR(args);
-        let lty = Rf_protect(FixupLty(CAR(args), 1));
+        let lty = FixupLty(CAR(args), 1);
+        let _lty_guard = protect(lty);
         args = CDR(args);
 
         GSavePars(dd);
@@ -1399,7 +1404,6 @@ pub unsafe fn C_path(args: SEXP) -> SEXP {
 
         GMode(0, dd);
         GRestorePars(dd);
-        Rf_unprotect(5);
         vmaxset(vmax);
         R_NilValue()
     }
@@ -1572,7 +1576,8 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
         if length(CAR(args)) != n + 1 {
             Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
         }
-        let xpos = Rf_protect(coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
+        let xpos = coerceVector(CAR(args), SEXPTYPE::REALSXP.into());
+        let _xpos_guard = protect(xpos);
         with_dendrogram_state(|state| {
             state.xpos = &mut *REAL(xpos).add(0);
         });
@@ -1617,7 +1622,6 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
         drawdend(n, &mut x, &mut y, dnd_llabels, dd);
         GMode(0, dd);
         GRestorePars(dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -1770,7 +1774,8 @@ pub unsafe fn C_erase(args: SEXP) -> SEXP {
     unsafe {
         let dd = GEcurrentDevice();
         let mut args = CDR(args);
-        let col = Rf_protect(FixupCol(CAR(args), R_TRANWHITE));
+        let col = FixupCol(CAR(args), R_TRANWHITE);
+        let _col_guard = protect(col);
         GSavePars(dd);
         GMode(1, dd);
         GRect(
@@ -1785,7 +1790,6 @@ pub unsafe fn C_erase(args: SEXP) -> SEXP {
         );
         GMode(0, dd);
         GRestorePars(dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -1813,12 +1817,12 @@ pub unsafe fn C_convertX(args: SEXP) -> SEXP {
         from -= 1;
         to -= 1;
 
-        let ans = Rf_protect(duplicate(x));
+        let ans = duplicate(x);
+        let _ans_guard = protect(ans);
         let rx = REAL(ans);
         for i in 0..n as usize {
             *rx.add(i) = GConvertX(*rx.add(i), from, to, GEcurrentDevice());
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1846,12 +1850,12 @@ pub unsafe fn C_convertY(args: SEXP) -> SEXP {
         from -= 1;
         to -= 1;
 
-        let ans = Rf_protect(duplicate(x));
+        let ans = duplicate(x);
+        let _ans_guard = protect(ans);
         let ry = REAL(ans);
         for i in 0..n as usize {
             *ry.add(i) = GConvertY(*ry.add(i), from, to, GEcurrentDevice());
         }
-        Rf_unprotect(1);
         ans
     }
 }
