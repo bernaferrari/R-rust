@@ -4,7 +4,6 @@
 // Windows-specific functions (wininet) remain as stubs.
 
 use core::ffi::{c_char, c_double, c_int, c_void};
-use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::io::{Read, Write as IoWrite};
 use std::net::TcpStream;
@@ -16,6 +15,7 @@ use crate::sexp::accessors::{CAR, CDR, CHAR, INTEGER, LENGTH, STRING_ELT, TYPEOF
 use crate::sexp::constructors::Rf_ScalarInteger;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::*;
 
 // DLsize_t type alias (matches C: typedef int_fast64_t DLsize_t)
@@ -25,8 +25,26 @@ type DLsize_t = i64;
 const CPBUFSIZE: usize = 65536;
 const IBUFSIZE: usize = 4096;
 
-// Internal state: whether download output should be quiet
-thread_local! { static IDquiet: Cell<c_int> = Cell::new(1); }
+/// Per-session internet module state.
+pub(crate) struct InternetRuntimeState {
+    quiet: c_int,
+}
+
+impl Default for InternetRuntimeState {
+    fn default() -> Self {
+        Self { quiet: 1 }
+    }
+}
+
+fn internet_quiet() -> c_int {
+    with_required_current_instance(|instance| instance.internet_state.quiet)
+}
+
+fn set_internet_quiet(value: c_int) {
+    with_required_current_instance(|instance| {
+        instance.internet_state.quiet = value;
+    });
+}
 
 // SEXP type constants
 const NA_LOGICAL: c_int = -2147483648; // NA_INTEGER value
@@ -308,7 +326,7 @@ unsafe fn http_open(
         };
 
         // Report content info if not quiet
-        if IDquiet.with(|v| v.get()) == 0 {
+        if internet_quiet() == 0 {
             eprint!(
                 "Content type '{}'",
                 content_type_cstr.to_str().unwrap_or("unknown")
@@ -694,8 +712,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
             let msg = CString::new("invalid 'quiet' argument").unwrap_or_default();
             Rf_error(msg.as_ptr());
         }
-        // Update global quiet state
-        IDquiet.with(|v| v.set(quiet));
+        set_internet_quiet(quiet);
 
         // mode
         let smode = CAR(args);
@@ -798,4 +815,37 @@ pub(crate) unsafe fn R_init_internet(_info: *mut c_void) {
     // In the Rust port, these functions are already available via their
     // #[unsafe(no_mangle)] pub(crate) exports, so no explicit registration
     // is needed. The function exists as a no-op to satisfy the C ABI contract.
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+    use super::*;
+
+    #[test]
+    fn quiet_flag_is_session_local() {
+        let mut first = RInstance::new();
+        unsafe {
+            set_current_instance(&mut first);
+        }
+        assert_eq!(internet_quiet(), 1);
+        set_internet_quiet(0);
+        assert_eq!(internet_quiet(), 0);
+
+        let mut second = RInstance::new();
+        unsafe {
+            set_current_instance(&mut second);
+        }
+        assert_eq!(internet_quiet(), 1);
+        set_internet_quiet(2);
+        assert_eq!(internet_quiet(), 2);
+
+        unsafe {
+            set_current_instance(&mut first);
+        }
+        assert_eq!(internet_quiet(), 0);
+
+        clear_current_instance();
+    }
 }

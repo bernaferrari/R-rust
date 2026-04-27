@@ -264,6 +264,8 @@ pub struct RInstance {
     pub(crate) serialize_state: crate::mainutils::serialize::SerializeRuntimeState,
     /// Per-instance LAPACK module dispatcher.
     pub(crate) lapack_state: crate::mainutils::lapack::LapackRuntimeState,
+    /// Per-instance internet module state.
+    pub(crate) internet_state: crate::modules::internet::internet::InternetRuntimeState,
     /// Per-instance startup/workspace metadata.
     pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
@@ -390,6 +392,7 @@ impl RInstance {
             altrep_state: crate::mainutils::altrep::AltrepRuntimeState::default(),
             serialize_state: crate::mainutils::serialize::SerializeRuntimeState::default(),
             lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
+            internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             symbols: HashMap::new(),
