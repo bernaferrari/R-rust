@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 
@@ -13,6 +14,8 @@ pub(crate) struct GraphAppRuntimeState {
     pub cursors: CursorState,
     pub events: EventState,
     pub fonts: FontState,
+    pub menus: MenuState,
+    pub objects: ObjectState,
     pub windows: WindowState,
 }
 
@@ -62,6 +65,12 @@ pub(crate) struct ContextEntry {
     pub old: *mut c_void,
 }
 
+pub(crate) struct DelNode {
+    pub obj: object,
+    pub next: *mut DelNode,
+    pub prev: *mut DelNode,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct CursorState {
     pub arrow: cursor,
@@ -108,6 +117,41 @@ pub(crate) struct FontState {
     pub times: font,
     pub helvetica: font,
     pub courier: font,
+}
+
+pub(crate) struct MenuState {
+    pub current_menubar: menubar,
+    pub current_menu: menu,
+    pub next_menu_id: c_int,
+    pub actions: HashMap<usize, menufn>,
+}
+
+impl Default for MenuState {
+    fn default() -> Self {
+        Self {
+            current_menubar: ptr::null_mut(),
+            current_menu: ptr::null_mut(),
+            next_menu_id: MinMenuID as c_int,
+            actions: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ObjectState {
+    pub base_object: object,
+    pub deletion_base: *mut DelNode,
+    pub deletion_level: c_int,
+}
+
+impl Default for ObjectState {
+    fn default() -> Self {
+        Self {
+            base_object: ptr::null_mut(),
+            deletion_base: ptr::null_mut(),
+            deletion_level: 0,
+        }
+    }
 }
 
 impl Default for FontState {

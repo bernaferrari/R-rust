@@ -9,7 +9,7 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use super::objects;
-use super::runtime::{FontState, with_graphapp_runtime};
+use super::runtime::with_graphapp_runtime;
 use super::strings;
 use super::types::*;
 
@@ -34,27 +34,25 @@ unsafe fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
     obj
 }
 
-fn ensure_font(slot: &mut font, name: &str, style: c_int, size: c_int) {
-    if slot.is_null() {
-        *slot = unsafe { alloc_font(name, style, size) };
-    }
+macro_rules! ensure_font {
+    ($field:ident, $name:expr, $style:expr, $size:expr) => {
+        if with_graphapp_runtime(|runtime| runtime.fonts.$field.is_null()) {
+            let font = unsafe { alloc_font($name, $style, $size) };
+            with_graphapp_runtime(|runtime| {
+                if runtime.fonts.$field.is_null() {
+                    runtime.fonts.$field = font;
+                }
+            });
+        }
+    };
 }
 
 pub fn init_fonts() {
-    with_graphapp_runtime(|runtime| {
-        let FontState {
-            fixed,
-            system,
-            times,
-            helvetica,
-            courier,
-        } = &mut runtime.fonts;
-        ensure_font(fixed, "Fixed", FixedWidth, 10);
-        ensure_font(system, "System", Plain, 10);
-        ensure_font(times, "Times", Plain, 12);
-        ensure_font(helvetica, "Helvetica", SansSerif, 12);
-        ensure_font(courier, "Courier", FixedWidth, 10);
-    });
+    ensure_font!(fixed, "Fixed", FixedWidth, 10);
+    ensure_font!(system, "System", Plain, 10);
+    ensure_font!(times, "Times", Plain, 12);
+    ensure_font!(helvetica, "Helvetica", SansSerif, 12);
+    ensure_font!(courier, "Courier", FixedWidth, 10);
 }
 
 pub fn getSysFontSize() -> c_int {

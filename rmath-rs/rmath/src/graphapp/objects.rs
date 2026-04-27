@@ -6,28 +6,17 @@
 //! Ported from objects.c - maintains internal info about graphical objects
 //! using a linked-list hierarchy with reference counting.
 
-use std::cell::Cell;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::memory;
+use super::runtime::{DelNode, with_graphapp_runtime};
 use super::types::*;
-
-thread_local! { static BASE_OBJECT: Cell<object> = Cell::new(ptr::null_mut()); }
-
-/// Deletion list node.
-struct DelNode {
-    obj: object,
-    next: *mut DelNode,
-    prev: *mut DelNode,
-}
-
-thread_local! { static DEL_BASE: Cell<*mut DelNode> = Cell::new(ptr::null_mut()); }
 
 /// Initialise the base object and set the list to be empty.
 pub unsafe fn init_objects() {
     unsafe {
-        if !BASE_OBJECT.with(|v| v.get()).is_null() {
+        if !with_graphapp_runtime(|runtime| runtime.objects.base_object).is_null() {
             return;
         }
         let obj = memory::memalloc(std::mem::size_of::<ObjInfo>() as i64) as object;
@@ -40,14 +29,14 @@ pub unsafe fn init_objects() {
         (*obj).prev = obj;
         (*obj).parent = ptr::null_mut();
         (*obj).child = ptr::null_mut();
-        BASE_OBJECT.with(|v| v.set(obj));
+        with_graphapp_runtime(|runtime| runtime.objects.base_object = obj);
     }
 }
 
 unsafe fn add_object(obj: object, parent: object) {
     unsafe {
         let parent = if parent.is_null() {
-            BASE_OBJECT.with(|v| v.get())
+            with_graphapp_runtime(|runtime| runtime.objects.base_object)
         } else {
             parent
         };
@@ -137,14 +126,14 @@ pub unsafe fn decrease_refcount(obj: object) {
         (*new_node).next = new_node;
         (*new_node).prev = new_node;
 
-        if !DEL_BASE.with(|v| v.get()).is_null() {
-            let del_base = DEL_BASE.with(|v| v.get());
+        let del_base = with_graphapp_runtime(|runtime| runtime.objects.deletion_base);
+        if !del_base.is_null() {
             (*new_node).prev = (*del_base).prev;
             (*new_node).next = del_base;
             (*(*new_node).prev).next = new_node;
             (*(*new_node).next).prev = new_node;
         } else {
-            DEL_BASE.with(|v| v.set(new_node));
+            with_graphapp_runtime(|runtime| runtime.objects.deletion_base = new_node);
         }
     }
 }
@@ -172,9 +161,9 @@ unsafe fn remove_delnode(n: *mut DelNode) {
         (*(*n).prev).next = (*n).next;
         (*(*n).next).prev = (*n).prev;
         if n == (*n).next {
-            DEL_BASE.with(|v| v.set(ptr::null_mut()));
-        } else if n == DEL_BASE.with(|v| v.get()) {
-            DEL_BASE.with(|v| v.set((*n).next));
+            with_graphapp_runtime(|runtime| runtime.objects.deletion_base = ptr::null_mut());
+        } else if n == with_graphapp_runtime(|runtime| runtime.objects.deletion_base) {
+            with_graphapp_runtime(|runtime| runtime.objects.deletion_base = (*n).next);
         }
         memory::memfree(n as *mut u8);
     }
@@ -182,10 +171,10 @@ unsafe fn remove_delnode(n: *mut DelNode) {
 
 unsafe fn remove_deleted_object(obj: object) {
     unsafe {
-        if DEL_BASE.with(|v| v.get()).is_null() {
+        if with_graphapp_runtime(|runtime| runtime.objects.deletion_base).is_null() {
             return;
         }
-        let mut next = DEL_BASE.with(|v| v.get());
+        let mut next = with_graphapp_runtime(|runtime| runtime.objects.deletion_base);
         let last = (*next).prev;
         loop {
             let n = next;
@@ -258,11 +247,10 @@ unsafe fn free_object(obj: object) {
 /// Traverse the deletion list and delete every object.
 pub unsafe fn deletion_traversal() {
     unsafe {
-        thread_local! { static LEVEL: Cell<c_int> = Cell::new(0); }
-        LEVEL.with(|v| v.set(v.get() + 1));
-        if LEVEL.with(|v| v.get()) == 1 {
-            while !DEL_BASE.with(|v| v.get()).is_null() {
-                let del_base = DEL_BASE.with(|v| v.get());
+        with_graphapp_runtime(|runtime| runtime.objects.deletion_level += 1);
+        if with_graphapp_runtime(|runtime| runtime.objects.deletion_level) == 1 {
+            while !with_graphapp_runtime(|runtime| runtime.objects.deletion_base).is_null() {
+                let del_base = with_graphapp_runtime(|runtime| runtime.objects.deletion_base);
                 let obj = (*del_base).obj;
                 if !obj.is_null() {
                     if (*obj).refcount == 0 {
@@ -273,7 +261,7 @@ pub unsafe fn deletion_traversal() {
                 }
             }
         }
-        LEVEL.with(|v| v.set(v.get() - 1));
+        with_graphapp_runtime(|runtime| runtime.objects.deletion_level -= 1);
     }
 }
 
@@ -365,7 +353,14 @@ pub unsafe fn tree_search(top: object, handle: *mut c_void, id: c_int, key: c_in
 
 /// Find an object in the tree.
 pub unsafe fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
-    unsafe { tree_search(BASE_OBJECT.with(|v| v.get()), handle, id, key) }
+    unsafe {
+        tree_search(
+            with_graphapp_runtime(|runtime| runtime.objects.base_object),
+            handle,
+            id,
+            key,
+        )
+    }
 }
 
 /// Remove a menu item from the hierarchy.
@@ -387,13 +382,13 @@ pub unsafe fn remove_menu_item(obj: object) {
 /// Finish objects (cleanup at application exit).
 pub unsafe fn finish_objects() {
     unsafe {
-        let base = BASE_OBJECT.with(|v| v.get());
+        let base = with_graphapp_runtime(|runtime| runtime.objects.base_object);
         if !base.is_null() {
             while !(*base).child.is_null() {
                 free_object((*base).child);
             }
             free_object(base);
-            BASE_OBJECT.with(|v| v.set(ptr::null_mut()));
+            with_graphapp_runtime(|runtime| runtime.objects.base_object = ptr::null_mut());
         }
     }
 }

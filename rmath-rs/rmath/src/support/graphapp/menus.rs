@@ -3,29 +3,21 @@
 
 //! Menu management for GraphApp.
 
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::ffi::c_void;
 use std::os::raw::c_int;
 use std::ptr;
 
 use super::controls;
 use super::objects;
+use super::runtime::with_graphapp_runtime;
 use super::strings;
 use super::types::*;
 use super::windows;
 
-thread_local! {
-    static CURRENT_MENUBAR: Cell<menubar> = Cell::new(ptr::null_mut());
-    static CURRENT_MENU: Cell<menu> = Cell::new(ptr::null_mut());
-    static NEXT_MENU_ID: Cell<c_int> = Cell::new(MinMenuID as c_int);
-    static MENU_ACTIONS: RefCell<HashMap<usize, menufn>> = RefCell::new(HashMap::new());
-}
-
 fn next_menu_id() -> c_int {
-    NEXT_MENU_ID.with(|next| {
-        let id = next.get();
-        next.set(id + 1);
+    with_graphapp_runtime(|runtime| {
+        let id = runtime.menus.next_menu_id;
+        runtime.menus.next_menu_id += 1;
         id
     })
 }
@@ -82,8 +74,8 @@ unsafe fn install_items(parent: menu, items: *mut MenuItem) {
                 item.key
             };
         }
-        MENU_ACTIONS.with(|actions| {
-            actions.borrow_mut().insert(menu_item as usize, item.fn_);
+        with_graphapp_runtime(|runtime| {
+            runtime.menus.actions.insert(menu_item as usize, item.fn_);
         });
 
         if !item.m.is_null() {
@@ -100,8 +92,8 @@ unsafe fn trigger_menu_item(item: menuitem) {
     if item.is_null() || unsafe { controls::isenabled(item) } == 0 {
         return;
     }
-    MENU_ACTIONS.with(|actions| {
-        if let Some(Some(callback)) = actions.borrow().get(&(item as usize)).copied() {
+    with_graphapp_runtime(|runtime| {
+        if let Some(Some(callback)) = runtime.menus.actions.get(&(item as usize)).copied() {
             unsafe {
                 callback(item);
             }
@@ -110,15 +102,17 @@ unsafe fn trigger_menu_item(item: menuitem) {
 }
 
 pub fn init_menus() {
-    CURRENT_MENUBAR.with(|current| current.set(ptr::null_mut()));
-    CURRENT_MENU.with(|current| current.set(ptr::null_mut()));
-    NEXT_MENU_ID.with(|next| next.set(MinMenuID as c_int));
-    MENU_ACTIONS.with(|actions| actions.borrow_mut().clear());
+    with_graphapp_runtime(|runtime| {
+        runtime.menus.current_menubar = ptr::null_mut();
+        runtime.menus.current_menu = ptr::null_mut();
+        runtime.menus.next_menu_id = MinMenuID as c_int;
+        runtime.menus.actions.clear();
+    });
 }
 
 pub unsafe fn newmdimenu() -> menu {
     let menu = unsafe { new_menu_object(MenuObject, ptr::null_mut(), menu_text_ptr(b"MDI\0")) };
-    CURRENT_MENU.with(|current| current.set(menu));
+    with_graphapp_runtime(|runtime| runtime.menus.current_menu = menu);
     menu
 }
 
@@ -129,7 +123,7 @@ pub unsafe fn newpopup(fn_: actionfn) -> menu {
             (*popup).action = fn_;
         }
     }
-    CURRENT_MENU.with(|current| current.set(popup));
+    with_graphapp_runtime(|runtime| runtime.menus.current_menu = popup);
     popup
 }
 
@@ -143,7 +137,7 @@ pub unsafe fn gmenubar(fn_: actionfn, items: *mut MenuItem) -> menubar {
                 (*parent).menubar = menubar;
             }
         }
-        CURRENT_MENUBAR.with(|current| current.set(menubar));
+        with_graphapp_runtime(|runtime| runtime.menus.current_menubar = menubar);
         install_items(menubar, items);
     }
     menubar
@@ -162,7 +156,7 @@ pub unsafe fn gchangepopup(w: window, p: menu) {
     unsafe {
         (*w).popup = p;
     }
-    CURRENT_MENU.with(|current| current.set(p));
+    with_graphapp_runtime(|runtime| runtime.menus.current_menu = p);
 }
 
 pub unsafe fn gchangemenubar(mb: menubar) {
@@ -172,7 +166,7 @@ pub unsafe fn gchangemenubar(mb: menubar) {
             (*window).menubar = mb;
         }
     }
-    CURRENT_MENUBAR.with(|current| current.set(mb));
+    with_graphapp_runtime(|runtime| runtime.menus.current_menubar = mb);
 }
 
 pub unsafe fn adjust_menu(wparam: usize) {
@@ -184,13 +178,13 @@ pub unsafe fn adjust_menu(wparam: usize) {
     unsafe {
         match (*obj).kind {
             MenubarObject => {
-                CURRENT_MENUBAR.with(|current| current.set(obj));
+                with_graphapp_runtime(|runtime| runtime.menus.current_menubar = obj);
                 if let Some(action) = (*obj).action {
                     action(obj);
                 }
             }
             MenuObject => {
-                CURRENT_MENU.with(|current| current.set(obj));
+                with_graphapp_runtime(|runtime| runtime.menus.current_menu = obj);
                 if let Some(action) = (*obj).action {
                     action(obj);
                 }
@@ -235,6 +229,7 @@ pub unsafe fn handle_menu_key(wparam: usize) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::ffi::CString;
 
     thread_local! {
