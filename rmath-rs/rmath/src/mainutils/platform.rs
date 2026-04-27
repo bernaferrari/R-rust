@@ -12,9 +12,9 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::process;
-use std::sync::Mutex;
 
 use crate::sexp::ffi::SEXP;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
@@ -23,20 +23,14 @@ use crate::sexp::protect::protect;
 
 /// Return the current date in the standard R format.
 ///
-/// The returned pointer is to a thread-local static buffer containing a
+/// The returned pointer is to the active session's date buffer containing a
 /// NUL-terminated string like `"Wed Jun 30 21:49:08 1993"`.
 ///
 /// This is a faithful port of the static `R_Date()` function in platform.c.
 pub unsafe fn R_Date() -> *mut c_char {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    thread_local! {
-        static BUF: std::cell::RefCell<[u8; 26]> = std::cell::RefCell::new([0u8; 26]);
-    }
-
-    BUF.with(|buf| {
-        let mut b = buf.borrow_mut();
-
+    with_required_current_instance(|instance| {
         let epoch_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
@@ -70,6 +64,8 @@ pub unsafe fn R_Date() -> *mut c_char {
             1900 + tm.tm_year,
         );
 
+        let b = &mut instance.startup_state.date_buf;
+        b.fill(0);
         let bytes = s.as_bytes();
         let copy_len = bytes.len().min(25);
         b[..copy_len].copy_from_slice(&bytes[..copy_len]);
@@ -207,16 +203,13 @@ pub unsafe fn R_strieql(a: *const c_char, b: *const c_char) -> c_int {
 /// Maximum length for charset names (matches R_CODESET_MAX).
 const R_CODESET_MAX: usize = 64;
 
-static NATIVE_ENC: Mutex<[u8; R_CODESET_MAX + 1]> = Mutex::new([0u8; R_CODESET_MAX + 1]);
-static CODESET_BUF: Mutex<[u8; R_CODESET_MAX + 1]> = Mutex::new([0u8; R_CODESET_MAX + 1]);
-
 /// Return the detected native encoding name (e.g., "UTF-8", "ASCII").
 ///
 /// This is a port of `R_nativeEncoding()` from platform.c.
 /// The encoding is initialized by `R_check_locale()`.
 pub unsafe fn R_nativeEncoding() -> *const c_char {
-    let enc = NATIVE_ENC.lock().unwrap_or_else(|e| e.into_inner());
-    enc.as_ptr() as *const c_char
+    with_required_current_instance(|instance| instance.startup_state.native_encoding.as_ptr())
+        as *const c_char
 }
 
 /// Detect and record locale/encoding information.
@@ -225,20 +218,21 @@ pub unsafe fn R_nativeEncoding() -> *const c_char {
 /// On Unix-like systems it uses `nl_langinfo(CODESET)` to detect the encoding.
 /// Since we cannot call libc, this provides a reasonable default.
 pub unsafe fn R_check_locale() {
-    {
-        let mut enc = NATIVE_ENC.lock().unwrap_or_else(|e| e.into_inner());
+    with_required_current_instance(|instance| {
+        let enc = &mut instance.startup_state.native_encoding;
+        enc.fill(0);
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
         enc[..len].copy_from_slice(&bytes[..len]);
         enc[len] = 0;
-    }
-    {
-        let mut cs = CODESET_BUF.lock().unwrap_or_else(|e| e.into_inner());
+
+        let cs = &mut instance.startup_state.codeset_buf;
+        cs.fill(0);
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
         cs[..len].copy_from_slice(&bytes[..len]);
         cs[len] = 0;
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1288,6 +1282,44 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), names);
         ans
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CStr;
+
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+    use super::*;
+
+    #[test]
+    fn platform_scratch_buffers_are_session_local() {
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            let first_date = R_Date();
+            R_check_locale();
+            let first_encoding = R_nativeEncoding();
+            assert_eq!(CStr::from_ptr(first_encoding).to_bytes(), b"UTF-8");
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            let second_date = R_Date();
+            let second_encoding_before = R_nativeEncoding();
+            assert_eq!(CStr::from_ptr(second_encoding_before).to_bytes(), b"");
+            R_check_locale();
+            let second_encoding = R_nativeEncoding();
+            assert_eq!(CStr::from_ptr(second_encoding).to_bytes(), b"UTF-8");
+
+            assert_ne!(first_date, second_date);
+            assert_ne!(first_encoding, second_encoding);
+
+            set_current_instance(&mut first);
+            assert_eq!(CStr::from_ptr(R_nativeEncoding()).to_bytes(), b"UTF-8");
+
+            clear_current_instance();
+        }
     }
 }
 

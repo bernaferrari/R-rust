@@ -42,6 +42,9 @@ pub struct StartupRuntimeState {
     pub(crate) load_init_file: c_int,
     pub(crate) no_renviron: c_int,
     pub(crate) running_as_main_program: c_int,
+    pub(crate) date_buf: [u8; 26],
+    pub(crate) native_encoding: [u8; 65],
+    pub(crate) codeset_buf: [u8; 65],
 }
 
 impl StartupRuntimeState {
@@ -77,6 +80,9 @@ impl Default for StartupRuntimeState {
             load_init_file: 1,
             no_renviron: 0,
             running_as_main_program: 0,
+            date_buf: [0; 26],
+            native_encoding: [0; 65],
+            codeset_buf: [0; 65],
         }
     }
 }
