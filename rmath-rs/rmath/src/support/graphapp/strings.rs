@@ -6,7 +6,6 @@
 //! Ported from strings.c - provides safe string manipulation
 //! with null-safety guarantees.
 
-use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_int, c_long};
 use std::ptr;
 
@@ -99,84 +98,67 @@ pub unsafe fn compare_strings(s1: *const c_char, s2: *const c_char) -> c_int {
     }
 }
 
-/// Append one string to another. Returns the result in a static buffer.
-pub unsafe fn add_strings(s1: *const c_char, s2: *const c_char) -> *const c_char {
+unsafe fn new_string_from_bytes(bytes: &[u8]) -> *mut c_char {
     unsafe {
-        thread_local! { static BUFFER: Cell<*mut c_char> = Cell::new(ptr::null_mut()); }
+        let len = bytes.len().min(c_long::MAX as usize);
+        let out = memory::memalloc(len as c_long + 1) as *mut c_char;
+        if out.is_null() {
+            return ptr::null_mut();
+        }
+        for (idx, byte) in bytes.iter().take(len).enumerate() {
+            *out.add(idx) = *byte as c_char;
+        }
+        *out.add(len) = 0;
+        out
+    }
+}
 
+/// Append two strings. The returned string is newly allocated and caller-owned.
+pub unsafe fn add_strings(s1: *const c_char, s2: *const c_char) -> *mut c_char {
+    unsafe {
         if s1.is_null() {
-            return s2;
+            return new_string(s2);
         }
         if s2.is_null() {
-            return s1;
+            return new_string(s1);
         }
 
         let len1 = string_length(s1);
         let len2 = string_length(s2);
-
-        let prev = BUFFER.with(|v| v.get());
-        BUFFER.with(|v| v.set(memory::memalloc(len1 + len2 + 1) as *mut c_char));
-
-        let buf = BUFFER.with(|v| v.get());
+        let buf = memory::memalloc(len1 + len2 + 1) as *mut c_char;
         if !buf.is_null() {
             copy_string(buf, s1);
             copy_string(buf.add(len1 as usize), s2);
         }
-
-        if !prev.is_null() {
-            memory::memfree(prev as *mut u8);
-        }
-
-        BUFFER.with(|v| v.get()) as *const c_char
+        buf
     }
 }
 
-/// Convert a char to a string, return in a static buffer.
+/// Convert a char to a newly allocated string.
 pub unsafe fn char_to_string(ch: c_char) -> *mut c_char {
     unsafe {
-        thread_local! { static STR: RefCell<[c_char; 2]> = RefCell::new([0; 2]); }
-        STR.with(|s| {
-            let s = &mut *s.borrow_mut();
-            s[0] = ch;
-            s[1] = 0;
-            s.as_mut_ptr()
-        })
+        let out = memory::memalloc(2) as *mut c_char;
+        if !out.is_null() {
+            *out = ch;
+            *out.add(1) = 0;
+        }
+        out
     }
 }
 
-/// Convert an integer to a string, return in a static buffer.
+/// Convert an integer to a newly allocated string.
 pub unsafe fn int_to_string(i: c_long) -> *mut c_char {
     unsafe {
-        thread_local! { static STR: RefCell<[c_char; 40]> = RefCell::new([0; 40]); }
-        STR.with(|s| {
-            let s = &mut *s.borrow_mut();
-            let str_val = format!("{}", i);
-            let bytes = str_val.as_bytes();
-            let len = bytes.len().min(39);
-            for j in 0..len {
-                s[j] = bytes[j] as c_char;
-            }
-            s[len] = 0;
-            s.as_mut_ptr()
-        })
+        let str_val = format!("{}", i);
+        new_string_from_bytes(str_val.as_bytes())
     }
 }
 
-/// Convert a float to a string, return in a static buffer.
+/// Convert a float to a newly allocated string.
 pub unsafe fn float_to_string(f: f32) -> *mut c_char {
     unsafe {
-        thread_local! { static STR: RefCell<[c_char; 40]> = RefCell::new([0; 40]); }
-        STR.with(|s| {
-            let s = &mut *s.borrow_mut();
-            let str_val = format!("{}", f);
-            let bytes = str_val.as_bytes();
-            let len = bytes.len().min(39);
-            for j in 0..len {
-                s[j] = bytes[j] as c_char;
-            }
-            s[len] = 0;
-            s.as_mut_ptr()
-        })
+        let str_val = format!("{}", f);
+        new_string_from_bytes(str_val.as_bytes())
     }
 }
 

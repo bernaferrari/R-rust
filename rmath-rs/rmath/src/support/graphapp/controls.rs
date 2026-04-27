@@ -761,7 +761,7 @@ pub unsafe fn copytext(_t: textbox) {}
 pub unsafe fn cleartext(t: textbox) {
     unsafe {
         if !t.is_null() {
-            (*t).text = super::strings::new_string(ptr::null());
+            settext(t, ptr::null());
             selecttext(t, 0, 0);
         }
     }
@@ -773,12 +773,19 @@ pub unsafe fn inserttext(t: textbox, text: *const c_char) {
             return;
         }
 
-        let combined = if (*t).text.is_null() {
-            text
+        let old_text = (*t).text;
+        let combined = if old_text.is_null() {
+            super::strings::new_string(text)
         } else {
-            super::strings::add_strings((*t).text, text)
+            super::strings::add_strings(old_text, text)
         };
-        (*t).text = super::strings::new_string(combined);
+        if combined.is_null() {
+            return;
+        }
+        if !old_text.is_null() {
+            super::strings::del_string(old_text);
+        }
+        (*t).text = combined;
 
         let end = super::strings::string_length((*t).text);
         selecttext(t, end, end);

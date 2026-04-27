@@ -5,7 +5,6 @@
 //!
 //! Ported from rgb.c - provides named colour lookup and system colour access.
 
-use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_ulong};
 
@@ -1390,36 +1389,23 @@ pub unsafe fn nametorgb(name: *const c_char) -> rgb {
     }
 }
 
-/// Get the name of a colour. Returns "" if not found.
+/// Get the name of a colour.
 /// Prefers names that are not "gray100" or "grey100".
-pub unsafe fn rgbtoname(in_val: rgb) -> *const c_char {
-    unsafe {
-        thread_local! { static NAME_BUF: Cell<[c_char; 256]> = Cell::new([0; 256]); }
-
-        for i in 0..RGBCOLORS {
-            let v = &RgbValue[i];
-            let rgb_val = rgb_make(v[0] as c_ulong, v[1] as c_ulong, v[2] as c_ulong);
-            if in_val == rgb_val && ColorName[i] != "gray100" && ColorName[i] != "grey100" {
-                let name = ColorName[i];
-                let bytes = name.as_bytes();
-                let len = bytes.len().min(255);
-                let mut buf = NAME_BUF.with(|v| v.get());
-                for j in 0..len {
-                    buf[j] = bytes[j] as c_char;
-                }
-                buf[len] = 0;
-                NAME_BUF.with(|v| v.set(buf));
-                return NAME_BUF.with(|v| {
-                    let b = v.get();
-                    std::ptr::addr_of!(b) as *const c_char
-                });
-            }
+pub fn rgb_name(in_val: rgb) -> Option<&'static str> {
+    for i in 0..RGBCOLORS {
+        let v = &RgbValue[i];
+        let rgb_val = rgb_make(v[0] as c_ulong, v[1] as c_ulong, v[2] as c_ulong);
+        if in_val == rgb_val && ColorName[i] != "gray100" && ColorName[i] != "grey100" {
+            return Some(ColorName[i]);
         }
-
-        // Return empty string pointer
-        static EMPTY: c_char = 0;
-        &EMPTY
     }
+
+    None
+}
+
+/// Compatibility spelling for GraphApp callers.
+pub fn rgbtoname(in_val: rgb) -> Option<&'static str> {
+    rgb_name(in_val)
 }
 
 /// Get the index of a colour in the named colour table.
@@ -1506,5 +1492,11 @@ mod tests {
             assert_eq!(myGetSysColor(6), Black);
             assert_eq!(myGetSysColor(999), White);
         }
+    }
+
+    #[test]
+    fn rgbtoname_returns_borrowed_table_name() {
+        assert_eq!(rgbtoname(Black), Some("black"));
+        assert_eq!(rgbtoname(Transparent), None);
     }
 }
