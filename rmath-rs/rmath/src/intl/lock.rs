@@ -14,7 +14,6 @@
 #![allow(non_snake_case, dead_code)]
 
 use std::os::raw::c_int;
-use std::sync::atomic::{AtomicI32, Ordering};
 
 // ---------------------------------------------------------------------------
 // gl_lock_t -- Simple lock (stub, no-op in standalone mode)
@@ -130,19 +129,16 @@ pub unsafe fn glthread_recursive_lock_destroy(_lock: *mut gl_recursive_lock_t) {
 /// One-time initialization type.
 ///
 /// In the C POSIX version this uses `pthread_once_t`. In the C Win32 version
-/// this uses a custom struct with CRITICAL_SECTION and flags. Here we use
-/// a simple atomic flag.
+/// this uses a custom struct with CRITICAL_SECTION and flags. This port's
+/// gettext lock layer is single-threaded and uses a plain flag.
 #[repr(C)]
 pub(crate) struct gl_once_t {
-    /// 0 = not initialized, 1 = initialized, -1 = initialization in progress.
-    inited: AtomicI32,
+    inited: bool,
 }
 
 impl gl_once_t {
     pub const fn new() -> Self {
-        Self {
-            inited: AtomicI32::new(0),
-        }
+        Self { inited: false }
     }
 }
 
@@ -163,8 +159,8 @@ pub unsafe fn glthread_once(
             return;
         }
         let once = &mut *once_control;
-        if once.inited.load(Ordering::Acquire) == 0 {
-            once.inited.store(1, Ordering::Release);
+        if !once.inited {
+            once.inited = true;
             if let Some(f) = initfunction {
                 f();
             }
@@ -182,8 +178,8 @@ pub unsafe fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_in
             return 1;
         }
         let once = &mut *once_control;
-        if once.inited.load(Ordering::Relaxed) == 0 {
-            once.inited.store(1, Ordering::Relaxed);
+        if !once.inited {
+            once.inited = true;
             1
         } else {
             0
@@ -210,7 +206,7 @@ mod tests {
     fn test_once_initialization() {
         use std::cell::Cell;
         unsafe {
-            thread_local! { static INIT_CALLED: Cell<bool> = Cell::new(false); }
+            thread_local! { static INIT_CALLED: Cell<bool> = const { Cell::new(false) }; }
             unsafe extern "C" fn init_fn() {
                 INIT_CALLED.with(|v| v.set(true));
             }
