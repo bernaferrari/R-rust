@@ -9,7 +9,6 @@
 
 #![allow(non_snake_case, dead_code)]
 
-use std::cell::Cell;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
@@ -18,86 +17,56 @@ use std::ptr;
 use super::types::*;
 
 // ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-
-/// Cached locale name for LC_MESSAGES.
-thread_local! { static _nl_locale_name_message: Cell<*mut c_char> = Cell::new(std::ptr::null_mut()); }
-
-// ---------------------------------------------------------------------------
 // Internal helper: get locale from environment
 // ---------------------------------------------------------------------------
+
+unsafe fn alloc_env_var(name: &str) -> Option<*mut c_char> {
+    unsafe {
+        let val = env::var(name).ok()?;
+        let cstr = CString::new(val.as_str()).ok()?;
+        let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1).ok()?;
+        let out = std::alloc::alloc(layout) as *mut c_char;
+        if out.is_null() {
+            return None;
+        }
+        ptr::copy_nonoverlapping(
+            cstr.as_ptr(),
+            out as *mut libc::c_char,
+            cstr.as_bytes_with_nul().len(),
+        );
+        Some(out)
+    }
+}
+
+fn category_env_name(category: c_int) -> &'static str {
+    match category {
+        0 => "LC_CTYPE",
+        1 => "LC_NUMERIC",
+        2 => "LC_TIME",
+        3 => "LC_COLLATE",
+        4 => "LC_MONETARY",
+        5 => "LC_MESSAGES",
+        6 => "LC_ALL",
+        _ => "LC_ALL",
+    }
+}
 
 /// Get the locale name from the environment for the given category.
 ///
 /// Follows the POSIX precedence: LC_ALL, LC_xxx, LANG.
 unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
     unsafe {
-        // Check LC_ALL first.
-        if let Ok(val) = env::var("LC_ALL") {
-            if let Ok(cstr) = CString::new(val.as_str()) {
-                let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
-                    .unwrap_or(Layout::new::<u8>());
-                let ptr = std::alloc::alloc(layout) as *mut c_char;
-                if !ptr.is_null() {
-                    ptr::copy_nonoverlapping(
-                        cstr.as_ptr(),
-                        ptr as *mut libc::c_char,
-                        cstr.as_bytes_with_nul().len(),
-                    );
-                    return ptr;
-                }
-            }
+        if let Some(locale) = alloc_env_var("LC_ALL") {
+            return locale;
+        }
+        if let Some(locale) = alloc_env_var(category_env_name(category)) {
+            return locale;
+        }
+        if let Some(locale) = alloc_env_var("LANG") {
+            return locale;
         }
 
-        // Check category-specific variable.
-        let cat_name = match category {
-            0 => "LC_CTYPE",
-            1 => "LC_NUMERIC",
-            2 => "LC_TIME",
-            3 => "LC_COLLATE",
-            4 => "LC_MONETARY",
-            5 => "LC_MESSAGES",
-            6 => "LC_ALL",
-            _ => "LC_ALL",
-        };
-
-        if let Ok(val) = env::var(cat_name) {
-            if let Ok(cstr) = CString::new(val.as_str()) {
-                let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
-                    .unwrap_or(Layout::new::<u8>());
-                let ptr = std::alloc::alloc(layout) as *mut c_char;
-                if !ptr.is_null() {
-                    ptr::copy_nonoverlapping(
-                        cstr.as_ptr(),
-                        ptr as *mut libc::c_char,
-                        cstr.as_bytes_with_nul().len(),
-                    );
-                    return ptr;
-                }
-            }
-        }
-
-        // Check LANG.
-        if let Ok(val) = env::var("LANG") {
-            if let Ok(cstr) = CString::new(val.as_str()) {
-                let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
-                    .unwrap_or(Layout::new::<u8>());
-                let ptr = std::alloc::alloc(layout) as *mut c_char;
-                if !ptr.is_null() {
-                    ptr::copy_nonoverlapping(
-                        cstr.as_ptr(),
-                        ptr as *mut libc::c_char,
-                        cstr.as_bytes_with_nul().len(),
-                    );
-                    return ptr;
-                }
-            }
-        }
-
-        // Fallback to "C" locale.
-        static C_LOCALE: [c_char; 2] = [0x43, 0]; // "C\0"
-        C_LOCALE.as_ptr()
+        c_strdup(b"C\0".as_ptr() as *const c_char)
     }
 }
 
@@ -125,36 +94,12 @@ unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
 
 /// Determine the name of the currently selected locale for the given category.
 ///
-/// Returns a NUL-terminated string that should not be freed by the caller.
-/// The returned pointer is valid until the next call to this function.
+/// Returns a newly allocated NUL-terminated locale string.
 ///
 /// # Safety
-/// The returned pointer is valid only until the next call to this function.
+/// The caller owns the returned pointer and must release it with `c_free`.
 pub unsafe fn _nl_locale_name(category: c_int) -> *const c_char {
-    unsafe {
-        // For LC_MESSAGES, use the cached value.
-        if category == LC_MESSAGES {
-            if !_nl_locale_name_message.with(|v| v.get()).is_null() {
-                return _nl_locale_name_message.with(|v| v.get());
-            }
-        }
-
-        let result = get_locale_from_cf(category);
-
-        if category == LC_MESSAGES {
-            // Cache the result.
-            if !result.is_null() {
-                _nl_locale_name_message.with(|v| v.set(super::types::c_strdup(result)));
-            }
-            return if !_nl_locale_name_message.with(|v| v.get()).is_null() {
-                _nl_locale_name_message.with(|v| v.get())
-            } else {
-                result
-            };
-        }
-
-        result
-    }
+    unsafe { get_locale_from_cf(category) }
 }
 
 /// Canonicalize a locale name.
@@ -217,6 +162,7 @@ mod tests {
             if !result.is_null() {
                 let s = CStr::from_ptr(result).to_str().unwrap_or("");
                 assert!(!s.is_empty());
+                c_free(result as *mut c_char);
             }
         }
     }

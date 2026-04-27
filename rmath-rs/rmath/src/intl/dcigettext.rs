@@ -140,10 +140,13 @@ unsafe fn gl_locale_name_posix(category: c_int) -> *mut c_char {
 unsafe fn gl_locale_name(category: c_int, _categoryname: *const c_char) -> *mut c_char {
     unsafe {
         // Try the platform-specific method first.
-        let platform_locale = super::localename::_nl_locale_name(category);
+        let platform_locale = super::localename::_nl_locale_name(category) as *mut c_char;
         if !platform_locale.is_null() && !c_streq(platform_locale, b"C\0".as_ptr() as *const c_char)
         {
-            return c_strdup(platform_locale);
+            return platform_locale;
+        }
+        if !platform_locale.is_null() {
+            c_free(platform_locale);
         }
 
         // Try POSIX environment variables.
