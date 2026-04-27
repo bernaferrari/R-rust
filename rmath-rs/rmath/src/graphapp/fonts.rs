@@ -65,6 +65,7 @@ mod tests {
 
     #[test]
     fn init_fonts_populates_default_handles() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             objects::init_objects();
         }

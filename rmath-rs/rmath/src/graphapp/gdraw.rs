@@ -958,6 +958,7 @@ mod tests {
 
     #[test]
     fn clip_rect_and_pixels_are_tracked_per_drawing() {
+        let _session = crate::sexp::session::RSession::new();
         let drawing = 1usize as drawing;
         unsafe {
             gsetcliprect(
@@ -980,6 +981,7 @@ mod tests {
 
     #[test]
     fn bitblt_and_scroll_move_pixels() {
+        let _session = crate::sexp::session::RSession::new();
         let src = 2usize as drawing;
         let dst = 3usize as drawing;
         unsafe {
@@ -1022,6 +1024,7 @@ mod tests {
 
     #[test]
     fn font_metrics_and_text_width_are_coherent() {
+        let _session = crate::sexp::session::RSession::new();
         let face = CString::new("Mono").unwrap_or_else(|e| panic!("{e}"));
         let text = CString::new("abcd").unwrap_or_else(|e| panic!("{e}"));
         unsafe {

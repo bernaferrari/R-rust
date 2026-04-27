@@ -87,6 +87,7 @@ mod tests {
 
     #[test]
     fn context_lifecycle_restores_old_context_before_delete() {
+        let _session = crate::sexp::session::RSession::new();
         let obj = 1usize as object;
         let dc = 2usize as *mut c_void;
         let old = 3usize as *mut c_void;
@@ -106,6 +107,7 @@ mod tests {
 
     #[test]
     fn fix_brush_registers_missing_context_once() {
+        let _session = crate::sexp::session::RSession::new();
         let obj = 4usize as object;
         let dc = 5usize as *mut c_void;
         let brush = 6usize as *mut c_void;

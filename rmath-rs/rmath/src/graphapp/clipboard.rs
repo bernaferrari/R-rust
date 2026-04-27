@@ -64,6 +64,7 @@ mod tests {
 
     #[test]
     fn clipboard_roundtrips_text() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let text = CString::new("hello").unwrap();
             assert_eq!(copystringtoclipboard(text.as_ptr()), 5);
@@ -75,6 +76,32 @@ mod tests {
                 5
             );
             assert_eq!(CStr::from_ptr(buf.as_ptr()).to_str().unwrap(), "hello");
+        }
+    }
+
+    #[test]
+    fn clipboard_state_is_session_local() {
+        use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            let text = CString::new("first").unwrap();
+            assert_eq!(copystringtoclipboard(text.as_ptr()), 5);
+            assert_eq!(clipboardhastext(), 1);
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            assert_eq!(clipboardhastext(), 0);
+
+            set_current_instance(&mut first);
+            let mut buf = [0i8; 16];
+            assert_eq!(
+                getstringfromclipboard(buf.as_mut_ptr(), buf.len() as c_int),
+                5
+            );
+            assert_eq!(CStr::from_ptr(buf.as_ptr()).to_str().unwrap(), "first");
+            clear_current_instance();
         }
     }
 }

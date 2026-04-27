@@ -283,6 +283,9 @@ pub struct RInstance {
     /// Per-instance gettext catalog and domain state.
     #[cfg(not(target_os = "android"))]
     pub(crate) intl_state: crate::intl::types::IntlRuntimeState,
+    /// Per-instance GraphApp GUI compatibility runtime state.
+    #[cfg(not(target_os = "android"))]
+    pub(crate) graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
     pub(crate) tzone_state: crate::tzone::TzRuntimeState,
     /// Per-instance appl::lbfgsb solver continuation state.
@@ -433,6 +436,8 @@ impl RInstance {
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             #[cfg(not(target_os = "android"))]
             intl_state: crate::intl::types::IntlRuntimeState::default(),
+            #[cfg(not(target_os = "android"))]
+            graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             lbfgsb_state: crate::appl::lbfgsb::LbfgsbState::default(),
             symbols: HashMap::new(),

@@ -125,6 +125,7 @@ mod tests {
 
     #[test]
     fn timer_callback_runs_once_per_scheduled_event() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             init_events();
             TIMER_CALLS.with(|calls| calls.set(0));

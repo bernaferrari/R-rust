@@ -292,6 +292,7 @@ mod tests {
 
     #[test]
     fn message_box_records_status_text() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let text = CString::new("hello").unwrap_or_else(|e| panic!("{e}"));
             myMessageBox(ptr::null_mut(), text.as_ptr(), 7);

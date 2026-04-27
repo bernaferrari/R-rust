@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -244,11 +243,6 @@ impl Default for WindowState {
     }
 }
 
-thread_local! {
-    static GRAPHAPP_RUNTIME: RefCell<GraphAppRuntimeState> =
-        RefCell::new(GraphAppRuntimeState::default());
-}
-
 pub(crate) fn with_graphapp_runtime<R>(f: impl FnOnce(&mut GraphAppRuntimeState) -> R) -> R {
-    GRAPHAPP_RUNTIME.with(|runtime| f(&mut runtime.borrow_mut()))
+    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.graphapp_state))
 }
