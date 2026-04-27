@@ -7,7 +7,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::*;
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
 use libc::{FILE, size_t, ssize_t};
@@ -921,7 +921,8 @@ pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SE
         let _ = (call, op, args, rho);
         checkArity(op, args);
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _ans_guard = protect(ans);
         let d = curl_version_info(CURLVERSION_NOW);
 
         if !d.is_null() && !(*d).version.is_null() {
@@ -933,27 +934,27 @@ pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SE
         // ssl_version attribute
         if !d.is_null() && !(*d).ssl_version.is_null() {
             let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
-            setAttrib(ans, sSSLVersion, Rf_mkString((*d).ssl_version));
+            let value = Rf_mkString((*d).ssl_version);
+            let _value_guard = protect(value);
+            setAttrib(ans, sSSLVersion, value);
         } else if !d.is_null() {
             let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
-            setAttrib(
-                ans,
-                sSSLVersion,
-                Rf_mkString(b"none\0".as_ptr() as *const c_char),
-            );
+            let value = Rf_mkString(b"none\0".as_ptr() as *const c_char);
+            let _value_guard = protect(value);
+            setAttrib(ans, sSSLVersion, value);
         }
 
         // libssh_version attribute
         if !d.is_null() && (*d).age >= 3 && !(*d).libssh_version.is_null() {
             let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
-            setAttrib(ans, sLibSSHVersion, Rf_mkString((*d).libssh_version));
+            let value = Rf_mkString((*d).libssh_version);
+            let _value_guard = protect(value);
+            setAttrib(ans, sLibSSHVersion, value);
         } else {
             let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
-            setAttrib(
-                ans,
-                sLibSSHVersion,
-                Rf_mkString(b"\0".as_ptr() as *const c_char),
-            );
+            let value = Rf_mkString(b"\0".as_ptr() as *const c_char);
+            let _value_guard = protect(value);
+            setAttrib(ans, sLibSSHVersion, value);
         }
 
         // protocols attribute
@@ -964,7 +965,8 @@ pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SE
                 n += 1;
                 p = p.add(1);
             }
-            let protocols = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+            let protocols = Rf_allocVector(SEXPTYPE::STRSXP, n);
+            let _protocols_guard = protect(protocols);
             p = (*d).protocols;
             for i in 0..n {
                 SET_STRING_ELT(protocols, i as R_xlen_t, Rf_mkChar(*p));
@@ -972,10 +974,8 @@ pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SE
             }
             let sProtocols = install(b"protocols\0".as_ptr() as *const c_char);
             setAttrib(ans, sProtocols, protocols);
-            Rf_unprotect(1);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1089,10 +1089,8 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
         );
         curl_easy_cleanup(hnd);
 
-        let ans = Rf_protect(Rf_allocVector(
-            SEXPTYPE::STRSXP,
-            headers_used.with(|v| v.get()),
-        ));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, headers_used.with(|v| v.get()));
+        let _ans_guard = protect(ans);
         for i in 0..headers_used.with(|v| v.get()) {
             HEADERS.with(|headers| {
                 SET_STRING_ELT(
@@ -1104,9 +1102,10 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
         }
 
         let sStatus = install(b"status\0".as_ptr() as *const c_char);
-        setAttrib(ans, sStatus, Rf_ScalarInteger(http_code as c_int));
+        let status = Rf_ScalarInteger(http_code as c_int);
+        let _status_guard = protect(status);
+        setAttrib(ans, sStatus, status);
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1409,14 +1408,14 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
 
         let ans = Rf_ScalarInteger(0);
         if nurls > 1 {
-            let _ans = Rf_protect(ans);
+            let _ans_guard = protect(ans);
             let sretvals = install(b"retvals\0".as_ptr() as *const c_char);
-            let retval = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nurls));
+            let retval = Rf_allocVector(SEXPTYPE::INTSXP, nurls);
+            let _retval_guard = protect(retval);
             for i in 0..nurls {
                 *INTEGER(retval).add(i as usize) = if errs_arr[i as usize] != 0 { 1 } else { 0 };
             }
             setAttrib(ans, sretvals, retval);
-            Rf_unprotect(2);
         }
         ans
     }
