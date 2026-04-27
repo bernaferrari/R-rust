@@ -583,10 +583,10 @@ unsafe fn check_gv(
 ) -> *mut c_double {
     use crate::main::errors::Rf_error;
 
-    let gval = Rf_protect(coerceVector(
-        Rf_protect(crate::eval::eval::Rf_eval(gr, rho)),
-        SEXPTYPE::REALSXP,
-    ));
+    let evaluated = crate::eval::eval::Rf_eval(gr, rho);
+    let _evaluated_guard = protect(evaluated);
+    let gval = coerceVector(evaluated, SEXPTYPE::REALSXP);
+    let _gval_guard = protect(gval);
     if LENGTH(gval) != n {
         Rf_error(
             format!(
@@ -605,7 +605,8 @@ unsafe fn check_gv(
         }
     }
     if !hv.is_null() {
-        let hval = Rf_protect(crate::eval::eval::Rf_eval(hs, rho));
+        let hval = crate::eval::eval::Rf_eval(hs, rho);
+        let _hval_guard = protect(hval);
         let dim = getAttrib(hval, R_DimSymbol());
         let rhval = REAL(hval);
 
@@ -622,8 +623,17 @@ unsafe fn check_gv(
                 .as_ptr() as *const c_char,
             );
         }
+        let mut pos = 0usize;
+        for i in 0..(n as usize) {
+            for j in 0..=i {
+                *hv.add(pos) = *rhval.add(i + j * n as usize);
+                if ISNAN(*hv.add(pos)) {
+                    Rf_error(b"NA/NaN Hessian evaluation\0".as_ptr() as *const c_char);
+                }
+                pos += 1;
+            }
+        }
     }
-    Rf_unprotect(2);
     gv
 }
 
@@ -725,7 +735,7 @@ pub unsafe fn port_nlminb(
     // We are going to alter .par, so must duplicate it
     crate::sexp::envir::defineVar(dot_par_symbol, duplicate(xpt), rho);
     xpt = crate::sexp::envir::R_findVar(dot_par_symbol, rho);
-    Rf_protect(xpt);
+    let mut _xpt_guard = protect(xpt);
 
     if LENGTH(lowerb) == n && LENGTH(upperb) == n {
         if isReal(lowerb) && isReal(upperb) {
@@ -775,9 +785,15 @@ pub unsafe fn port_nlminb(
                 fx = R_PosInf;
             }
         }
+
+        crate::sexp::envir::defineVar(dot_par_symbol, duplicate(xpt), rho);
+        xpt = crate::sexp::envir::R_findVar(dot_par_symbol, rho);
+        _xpt_guard = protect(xpt);
+        if *INTEGER(iv).add(0) >= 3 {
+            break;
+        }
     }
 
-    Rf_unprotect(1); // xpt
     R_NilValue()
 }
 
@@ -863,7 +879,8 @@ unsafe fn getFunc(list: SEXP, enm: &[u8], _lnm: &[u8]) -> SEXP {
 unsafe fn eval_check_store(fcn: SEXP, rho: SEXP, vv: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    let v = Rf_protect(crate::eval::eval::Rf_eval(fcn, rho));
+    let v = crate::eval::eval::Rf_eval(fcn, rho);
+    let _v_guard = protect(v);
     let v_type = TYPEOF(v);
     let vv_type = TYPEOF(vv);
     if v_type != vv_type || LENGTH(v) != LENGTH(vv) {
@@ -884,8 +901,18 @@ unsafe fn eval_check_store(fcn: SEXP, rho: SEXP, vv: SEXP) -> SEXP {
                 *LOGICAL(vv).add(i) = *LOGICAL(v).add(i);
             }
         }
+        x if x == SEXPTYPE::INTSXP.0 => {
+            for i in 0..(LENGTH(vv) as usize) {
+                *INTEGER(vv).add(i) = *INTEGER(v).add(i);
+            }
+        }
+        x if x == SEXPTYPE::REALSXP.0 => {
+            for i in 0..(LENGTH(vv) as usize) {
+                *REAL(vv).add(i) = *REAL(v).add(i);
+            }
+        }
+        _ => Rf_error(b"invalid type for eval_check_store\0".as_ptr() as *const c_char),
     }
-    Rf_unprotect(1);
     vv
 }
 
@@ -893,7 +920,8 @@ unsafe fn eval_check_store(fcn: SEXP, rho: SEXP, vv: SEXP) -> SEXP {
 unsafe fn neggrad(gf: SEXP, rho: SEXP, gg: SEXP) {
     use crate::main::errors::Rf_error;
 
-    let val = Rf_protect(crate::eval::eval::Rf_eval(gf, rho));
+    let val = crate::eval::eval::Rf_eval(gf, rho);
+    let _val_guard = protect(val);
     let dims = INTEGER(getAttrib(val, R_DimSymbol()));
     let gdims = INTEGER(getAttrib(gg, R_DimSymbol()));
     let ntot = *gdims.add(0) as usize * *gdims.add(1) as usize;
@@ -914,7 +942,6 @@ unsafe fn neggrad(gf: SEXP, rho: SEXP, gg: SEXP) {
     for i in 0..ntot {
         *REAL(gg).add(i) = -*REAL(val).add(i);
     }
-    Rf_unprotect(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -937,8 +964,10 @@ pub unsafe fn port_nlsb(
     let p = LENGTH(d) as c_int;
     let nd = *dims.add(0);
 
-    let rr = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nd));
-    let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+    let rr = Rf_allocVector(SEXPTYPE::REALSXP, nd);
+    let _rr_guard = protect(rr);
+    let x = Rf_allocVector(SEXPTYPE::REALSXP, n);
+    let _x_guard = protect(x);
     let mut b: *mut c_double = std::ptr::null_mut();
     let rd =
         crate::sexp::memory_ext::R_alloc(nd as usize, std::mem::size_of::<c_double>()) as *mut c_double;
@@ -952,20 +981,24 @@ pub unsafe fn port_nlsb(
 
     // Initialize parameter vector
     let get_pars = getFunc(m, b"getPars\0", b"m\0");
-    let get_pars_call = Rf_protect(Rf_lang2(get_pars, R_NilValue()));
+    let get_pars_call = Rf_lang2(get_pars, R_NilValue());
+    let _get_pars_guard = protect(get_pars_call);
     eval_check_store(get_pars_call, R_GlobalEnv(), x);
 
     // Create the setPars call
     let set_pars = getFunc(m, b"setPars\0", b"m\0");
-    let set_pars_call = Rf_protect(Rf_lang2(set_pars, x));
+    let set_pars_call = Rf_lang2(set_pars, x);
+    let _set_pars_guard = protect(set_pars_call);
 
     // Evaluate residual and gradient
     let resid_fn = getFunc(m, b"resid\0", b"m\0");
-    let resid_call = Rf_protect(Rf_lang2(resid_fn, R_NilValue()));
+    let resid_call = Rf_lang2(resid_fn, R_NilValue());
+    let _resid_guard = protect(resid_call);
     eval_check_store(resid_call, R_GlobalEnv(), rr);
 
     let gradient_fn = getFunc(m, b"gradient\0", b"m\0");
-    let gradient_call = Rf_protect(Rf_lang2(gradient_fn, R_NilValue()));
+    let gradient_call = Rf_lang2(gradient_fn, R_NilValue());
+    let _gradient_guard = protect(gradient_call);
     neggrad(gradient_call, R_GlobalEnv(), gg);
 
     if LENGTH(lowerb) == n && LENGTH(upperb) == n {
@@ -1003,9 +1036,32 @@ pub unsafe fn port_nlsb(
                 eval_check_store(resid_call, R_GlobalEnv(), rr);
                 neggrad(gradient_call, R_GlobalEnv(), gg);
             }
+            -2 => {
+                eval_check_store(resid_call, R_GlobalEnv(), rr);
+                neggrad(gradient_call, R_GlobalEnv(), gg);
+            }
+            -1 => {
+                crate::eval::eval::Rf_eval(set_pars_call, R_GlobalEnv());
+                eval_check_store(resid_call, R_GlobalEnv(), rr);
+                neggrad(gradient_call, R_GlobalEnv(), gg);
+            }
+            0 => {
+                eprintln!("nlsb_iterate returned {}", *INTEGER(iv).add(0));
+            }
+            1 => {
+                crate::eval::eval::Rf_eval(set_pars_call, R_GlobalEnv());
+                eval_check_store(resid_call, R_GlobalEnv(), rr);
+            }
+            2 => {
+                crate::eval::eval::Rf_eval(set_pars_call, R_GlobalEnv());
+                neggrad(gradient_call, R_GlobalEnv(), gg);
+            }
+            _ => {}
+        }
+        if *INTEGER(iv).add(0) >= 3 {
+            break;
         }
     }
 
-    Rf_unprotect(6);
     R_NilValue()
 }
