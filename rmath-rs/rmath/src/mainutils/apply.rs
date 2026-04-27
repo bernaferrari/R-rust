@@ -31,7 +31,7 @@ use crate::sexp::accessors::REAL;
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_cons, Rf_lang3};
 use crate::sexp::envir::{R_findVarInFrame, defineVar, forcePromise};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect_with_index_raw};
+use crate::sexp::protect::{protect, protect_with_index_raw};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -394,13 +394,15 @@ pub unsafe fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // X and FUN are symbols bound to promises in rho
         let X = checkArgIsSymbol(CAR(args));
-        let XX = Rf_protect(Rf_eval(CAR(args), rho));
+        let XX = Rf_eval(CAR(args), rho);
+        let _xx_guard = protect(XX);
         let n: R_xlen_t = XLENGTH(XX);
         let FUN = checkArgIsSymbol(CADR(args));
         let realIndx: bool = n > c_int::MAX as R_xlen_t;
 
         // Allocate result vector
-        let ans = Rf_protect(Rf_allocVector(VECSXP_VAL, n as c_int));
+        let ans = Rf_allocVector(VECSXP_VAL, n as c_int);
+        let _ans_guard = protect(ans);
         let names = getAttrib(XX, R_NamesSymbol());
         if Rf_isNull(names) == 0 {
             setAttrib(ans, R_NamesSymbol(), names);
@@ -408,15 +410,15 @@ pub unsafe fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Build call: FUN(X[[<ind>]], ...)
         let isym = Rf_install(CString::new("i").unwrap_or_default().as_ptr());
-        let tmp = Rf_protect(Rf_lang3(crate::sexp::symbol::R_Bracket2Symbol(), X, isym));
-        let R_fcall = Rf_protect(Rf_lang3(FUN, tmp, crate::sexp::symbol::R_DotsSymbol()));
+        let tmp = Rf_lang3(crate::sexp::symbol::R_Bracket2Symbol(), X, isym);
+        let _tmp_guard = protect(tmp);
+        let R_fcall = Rf_lang3(FUN, tmp, crate::sexp::symbol::R_DotsSymbol());
+        let _fcall_guard = protect(R_fcall);
         MARK_NOT_MUTABLE(R_fcall);
 
         // Create the loop index variable and value
-        let ind = Rf_protect(Rf_allocVector(
-            if realIndx { REALSXP_VAL } else { INTSXP_VAL },
-            1,
-        ));
+        let mut ind = Rf_allocVector(if realIndx { REALSXP_VAL } else { INTSXP_VAL }, 1);
+        let mut ind_guard = protect_with_index_raw(ind, "do_lapply ind");
         defineVar(isym, ind, rho);
         INCREMENT_NAMED(ind);
 
@@ -437,20 +439,13 @@ pub unsafe fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Check if ind was captured or removed by FUN
             let cur_val = R_findVarInFrame(rho, isym);
             if cur_val != ind || MAYBE_SHARED(ind) {
-                // ind has been captured or removed by FUN so fix it up
-                let new_ind = Rf_protect(duplicate(ind));
-                defineVar(isym, new_ind, rho);
-                INCREMENT_NAMED(new_ind);
-                Rf_unprotect(1);
-                // Update ind pointer -- we need to continue using the new ind
-                // Note: ind itself is still on the protect stack; we can't easily
-                // change it. In C, REPROTECT handles this. Here we create a new
-                // allocation each time, which is safe but slightly wasteful.
-                // For correctness we re-find ind from the environment.
+                ind = duplicate(ind);
+                ind_guard.reprotect_raw(ind);
+                defineVar(isym, ind, rho);
+                INCREMENT_NAMED(ind);
             }
         }
 
-        Rf_unprotect(4);
         ans
     }
 }
@@ -465,18 +460,21 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
-        let X = Rf_protect(CAR(args));
-        let XX = Rf_protect(Rf_eval(CAR(args), rho));
+        let X = CAR(args);
+        let _x_guard = protect(X);
+        let XX = Rf_eval(CAR(args), rho);
+        let _xx_guard = protect(XX);
         let FUN = CADR(args); // must be unevaluated for use in e.g. bquote
-        let value = Rf_protect(Rf_eval(CADDR(args), rho));
+        let value = Rf_eval(CADDR(args), rho);
+        let _value_guard = protect(value);
 
         if isVector(value) == 0 {
             r_error("'FUN.VALUE' must be a vector");
         }
 
-        let use_names_val = Rf_protect(Rf_eval(CADDDR(args), rho));
+        let use_names_val = Rf_eval(CADDDR(args), rho);
+        let _use_names_guard = protect(use_names_val);
         let useNames = asLogical(use_names_val);
-        Rf_unprotect(1);
 
         if useNames == NA_LOGICAL {
             r_error("invalid 'USE.NAMES' value");
@@ -512,10 +510,8 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let dim_v = getAttrib(value, R_DimSymbol());
         let array_value: bool = TYPEOF(dim_v) == INTSXP_VAL && LENGTH(dim_v) >= 1;
 
-        let ans = Rf_protect(Rf_allocVector(
-            commonType,
-            (n * commonLen as R_xlen_t) as c_int,
-        ));
+        let ans = Rf_allocVector(commonType, (n * commonLen as R_xlen_t) as c_int);
+        let _ans_guard = protect(ans);
 
         let mut names: SEXP = R_NilValue();
         let mut rowNames: SEXP = R_NilValue();
@@ -539,24 +535,24 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Build call: FUN(XX[[<ind>]], ...)
         let isym = Rf_install(CString::new("i").unwrap_or_default().as_ptr());
-        let ind = Rf_protect(Rf_allocVector(
-            if realIndx { REALSXP_VAL } else { INTSXP_VAL },
-            1,
-        ));
+        let mut ind = Rf_allocVector(if realIndx { REALSXP_VAL } else { INTSXP_VAL }, 1);
+        let mut ind_guard = protect_with_index_raw(ind, "do_vapply ind");
         defineVar(isym, ind, rho);
         INCREMENT_NAMED(ind);
 
-        let tmp = Rf_protect(LCONS(
+        let tmp = LCONS(
             crate::sexp::symbol::R_Bracket2Symbol(),
             LCONS(X, LCONS(isym, R_NilValue())),
-        ));
-        let R_fcall = Rf_protect(LCONS(
+        );
+        let _tmp_guard = protect(tmp);
+        let R_fcall = LCONS(
             FUN,
             LCONS(
                 tmp,
                 LCONS(crate::sexp::symbol::R_DotsSymbol(), R_NilValue()),
             ),
-        ));
+        );
+        let _fcall_guard = protect(R_fcall);
 
         let mut common_len_offset: R_xlen_t = 0;
 
@@ -571,7 +567,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if MAYBE_REFERENCED(val) {
                 val = lazy_duplicate(val);
             }
-            Rf_protect(val);
+            let mut val_guard = protect_with_index_raw(val, "do_vapply val");
 
             if length(val) != commonLen {
                 r_error!(
@@ -614,7 +610,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     );
                 }
                 val = coerceVector(val, commonType);
-                // val is already protected; after coercion the new val replaces it on the stack
+                val_guard.reprotect_raw(val);
             }
 
             // Take row names from the first result only
@@ -722,15 +718,20 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 common_len_offset += commonLen as R_xlen_t;
             }
 
-            Rf_unprotect(1); // unprotect val
+            let cur_val = R_findVarInFrame(rho, isym);
+            if cur_val != ind || MAYBE_SHARED(ind) {
+                ind = duplicate(ind);
+                ind_guard.reprotect_raw(ind);
+                defineVar(isym, ind, rho);
+                INCREMENT_NAMED(ind);
+            }
         }
-
-        Rf_unprotect(3); // ind, tmp, R_fcall
 
         // Set dim attribute if commonLen != 1
         if commonLen != 1 {
             let rnk_v: c_int = if array_value { LENGTH(dim_v) } else { 1 };
-            let dim = Rf_protect(Rf_allocVector(INTSXP_VAL, rnk_v + 1));
+            let dim = Rf_allocVector(INTSXP_VAL, rnk_v + 1);
+            let _dim_guard = protect(dim);
             if array_value {
                 for j in 0..rnk_v {
                     *INTEGER(dim).add(j as usize) = *INTEGER(dim_v).add(j as usize);
@@ -740,12 +741,12 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             *INTEGER(dim).add(rnk_v as usize) = n as c_int;
             setAttrib(ans, R_DimSymbol(), dim);
-            Rf_unprotect(1);
 
             // Set dimnames if useNames
             if useNames != 0 {
                 if Rf_isNull(names) == 0 || Rf_isNull(rowNames) == 0 {
-                    let dimnames = Rf_protect(Rf_allocVector(VECSXP_VAL, rnk_v + 1));
+                    let dimnames = Rf_allocVector(VECSXP_VAL, rnk_v + 1);
+                    let _dimnames_guard = protect(dimnames);
                     if array_value && Rf_isNull(rowNames) == 0 {
                         if TYPEOF(rowNames) != VECSXP_VAL || LENGTH(rowNames) != rnk_v {
                             r_error!(
@@ -765,7 +766,6 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
                     SET_VECTOR_ELT(dimnames, rnk_v as R_xlen_t, names);
                     setAttrib(ans, R_DimNamesSymbol(), dimnames);
-                    Rf_unprotect(1);
                 }
             }
         } else if useNames != 0 {
@@ -775,8 +775,6 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
-        drop(rowNames_guard);
-        Rf_unprotect(4); // X, XX, value, ans
         ans
     }
 }
@@ -803,7 +801,7 @@ pub(crate) unsafe fn do_one(
             } else {
                 XLENGTH(x)
             };
-            let ans = Rf_protect(if replace {
+            let ans = if replace {
                 shallow_duplicate(x)
             } else {
                 let a = Rf_allocVector(VECSXP_VAL, n as c_int);
@@ -812,7 +810,8 @@ pub(crate) unsafe fn do_one(
                     setAttrib(a, R_NamesSymbol(), names);
                 }
                 a
-            });
+            };
+            let _ans_guard = protect(ans);
 
             for i in 0..n {
                 let elt = VECTOR_ELT(x, i);
@@ -820,7 +819,6 @@ pub(crate) unsafe fn do_one(
                 SET_VECTOR_ELT(ans, i, result);
             }
 
-            Rf_unprotect(1);
             return ans;
         }
 
@@ -842,7 +840,8 @@ pub(crate) unsafe fn do_one(
         }
 
         if !matched {
-            let klass = Rf_protect(R_data_class(x));
+            let klass = R_data_class(x);
+            let _klass_guard = protect(klass);
             let nklass = if TYPEOF(klass) == STRSXP_VAL {
                 LENGTH(klass)
             } else {
@@ -869,7 +868,6 @@ pub(crate) unsafe fn do_one(
                     break;
                 }
             }
-            Rf_unprotect(1);
         }
 
         if matched {
@@ -878,12 +876,12 @@ pub(crate) unsafe fn do_one(
             defineVar(Xsym, x, rho);
             INCREMENT_NAMED(x);
 
-            let R_fcall = Rf_protect(Rf_lang3(fun, Xsym, crate::sexp::symbol::R_DotsSymbol()));
+            let R_fcall = Rf_lang3(fun, Xsym, crate::sexp::symbol::R_DotsSymbol());
+            let _fcall_guard = protect(R_fcall);
             let mut ans = force_and_call(R_fcall, 1, rho);
             if MAYBE_REFERENCED(ans) {
                 ans = lazy_duplicate(ans);
             }
-            Rf_unprotect(1);
             ans
         } else if replace {
             lazy_duplicate(x)
@@ -951,7 +949,7 @@ pub unsafe fn do_rapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         let n: R_xlen_t = XLENGTH(x);
-        let ans = Rf_protect(if replace {
+        let ans = if replace {
             shallow_duplicate(x)
         } else {
             let a = Rf_allocVector(VECSXP_VAL, n as c_int);
@@ -960,7 +958,8 @@ pub unsafe fn do_rapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 setAttrib(a, R_NamesSymbol(), names);
             }
             a
-        });
+        };
+        let _ans_guard = protect(ans);
 
         for i in 0..n {
             let elt = VECTOR_ELT(x, i);
@@ -968,7 +967,6 @@ pub unsafe fn do_rapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             SET_VECTOR_ELT(ans, i, result);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1229,7 +1227,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let empty = Rf_allocVector(VECSXP_VAL, 0);
-            Rf_protect(empty);
+            let _empty_guard = protect(empty);
             let result = do_islistfactor(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -1239,7 +1237,6 @@ mod tests {
             );
             assert!(!result.is_null());
             assert_eq!(*LOGICAL(result), 0); // FALSE for empty list
-            Rf_unprotect(1);
         }
     }
 
