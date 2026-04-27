@@ -5,7 +5,6 @@
  *  Stubs for S4 method dispatch functions.
  */
 
-use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -13,6 +12,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::*;
 
 fn nil_value() -> SEXP {
@@ -100,20 +100,32 @@ pub unsafe fn R_nextMethodCall(_matched_call: SEXP, _ev: SEXP) -> SEXP {
     nil_value()
 }
 
-/// R_clear_method_selection - clear the method selection cache.
-/// Ported from R's R_clear_method_selection() in methods_list_dispatch.c.
-thread_local! { static N_OV: Cell<c_int> = Cell::new(0); }
+pub(crate) struct MethodsDispatchState {
+    n_overrides: c_int,
+    table_dispatch_on: c_int,
+}
+
+impl Default for MethodsDispatchState {
+    fn default() -> Self {
+        Self {
+            n_overrides: 0,
+            table_dispatch_on: 0,
+        }
+    }
+}
+
+fn with_methods_dispatch_state<R>(f: impl FnOnce(&mut MethodsDispatchState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.methods_dispatch_state))
+}
 
 pub extern "C" fn R_clear_method_selection() -> SEXP {
-    N_OV.with(|v| v.set(0));
+    with_methods_dispatch_state(|state| state.n_overrides = 0);
     nil_value()
 }
 
-thread_local! { static TABLE_DISPATCH_ON: Cell<c_int> = Cell::new(0); }
-
 pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
     unsafe {
-        let prev = TABLE_DISPATCH_ON.with(|v| v.get());
+        let prev = with_methods_dispatch_state(|state| state.table_dispatch_on);
         let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP && LENGTH(onOff) >= 1 {
             LOGICAL_ELT(onOff, 0)
         } else {
@@ -121,7 +133,9 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
         };
         if value != std::os::raw::c_int::MIN {
             // NA_LOGICAL == INT_MIN
-            TABLE_DISPATCH_ON.with(|v| v.set(if value != 0 { 1 } else { 0 }));
+            with_methods_dispatch_state(|state| {
+                state.table_dispatch_on = if value != 0 { 1 } else { 0 }
+            });
         }
         scalar_logical(prev)
     }
@@ -178,6 +192,45 @@ pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> S
         let c_str = std::ffi::CString::new(res_str)
             .unwrap_or_else(|_| std::ffi::CString::new("").unwrap_or_default());
         Rf_mkString(c_str.as_ptr())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn methods_dispatch_state_is_session_local() {
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
+            first.methods_dispatch_state.n_overrides = 7;
+            let on = Rf_ScalarLogical(1);
+            assert_eq!(*LOGICAL(R_set_method_dispatch(on)), 0);
+            assert_eq!(
+                with_methods_dispatch_state(|state| state.table_dispatch_on),
+                1
+            );
+            R_clear_method_selection();
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            assert_eq!(
+                with_methods_dispatch_state(|state| state.table_dispatch_on),
+                0
+            );
+            let off = Rf_ScalarLogical(0);
+            assert_eq!(*LOGICAL(R_set_method_dispatch(off)), 0);
+            replace_current_instance(previous);
+        }
+
+        assert_eq!(first.methods_dispatch_state.n_overrides, 0);
+        assert_eq!(first.methods_dispatch_state.table_dispatch_on, 1);
+        assert_eq!(second.methods_dispatch_state.n_overrides, 0);
+        assert_eq!(second.methods_dispatch_state.table_dispatch_on, 0);
     }
 }
 
