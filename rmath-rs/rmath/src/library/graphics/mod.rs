@@ -72,3 +72,5 @@ pub(crate) mod plot3d;
     non_camel_case_types
 )]
 mod stem;
+#[allow(dead_code)]
+pub(crate) mod xspline;

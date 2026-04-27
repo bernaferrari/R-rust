@@ -1,76 +1,77 @@
 /*
  *  Source code from Xfig 3.2.4 modified to work with arrays of doubles
- *  instead of linked lists of F_points and to remove some globals.
+ *  instead of linked lists of F_points and to remove globals.
  *
- *  Ported from r-source/src/main/xspline.c
- *
- *  X-spline curve computation (Blanc & Schlick, SIGGRAPH '95).
- *  Functions: compute_open_spline, compute_closed_spline,
- *  and supporting blend/step/segment helpers.
- *
- *  Copyright (c) 1985-1988 by Supoj Sutanthavibul
- *  Parts Copyright (c) 1989-2002 by Brian V. Smith
- *  Parts Copyright (c) 1991 by Paul King
- *  Parts Copyright (c) 1992 by James Tough
- *  Parts Copyright (c) 1998 by Georg Stemmer
- *  Parts Copyright (c) 1995 by C. Blanc and C. Schlick
+ *  Ported from r-source/src/main/xspline.c.
  */
 
-use std::ffi::c_void;
+use std::ffi::{CStr, c_void};
 use std::os::raw::{c_double, c_int};
 
-use crate::main::errors::Rf_error;
 use crate::mainutils::engine::{
-    fromDeviceHeight, fromDeviceWidth, fromDeviceX, fromDeviceY, toDeviceHeight, toDeviceX,
-    toDeviceY, toDeviceWidth,
+    fromDeviceHeight, fromDeviceWidth, fromDeviceX, fromDeviceY, toDeviceHeight, toDeviceWidth,
+    toDeviceX, toDeviceY,
 };
+use crate::mainutils::errors::Rf_error;
 
-type pGEDevDesc = *mut c_void;
+type PGEDevDesc = *mut c_void;
 
-const MAXNUMPTS: usize = 25000;
-
+const MAXNUMPTS: usize = 25_000;
 const HIGH_PRECISION: c_double = 0.5;
 const MAX_SPLINE_STEP: c_double = 0.2;
 
 const GE_INCHES: c_int = 13;
 const GE_NDC: c_int = 7;
 
-use std::cell::Cell;
-
-thread_local! {
-    static NPOINTS: Cell<c_int> = Cell::new(0);
-    static MAX_POINTS: Cell<c_int> = Cell::new(0);
-    static XPOINTS: Cell<*mut c_double> = Cell::new(std::ptr::null_mut());
-    static YPOINTS: Cell<*mut c_double> = Cell::new(std::ptr::null_mut());
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SplinePoint {
+    pub x: c_double,
+    pub y: c_double,
 }
 
-unsafe fn r_alloc<T>(n: usize) -> *mut T {
-    let layout = std::alloc::Layout::array::<T>(n).unwrap();
-    std::alloc::alloc(layout) as *mut T
+struct SplineBuilder {
+    points: Vec<SplinePoint>,
+    dd: PGEDevDesc,
 }
 
-unsafe fn add_point(x: c_double, y: c_double, dd: pGEDevDesc) {
-    let mut npoints = NPOINTS.get();
-    let mut max_points = MAX_POINTS.get();
-    let mut xpoints = XPOINTS.get();
-    let mut ypoints = YPOINTS.get();
-
-    if npoints >= max_points {
-        let tmp_n = max_points + 200;
-        if tmp_n > MAXNUMPTS as c_int {
-            Rf_error(b"add_point - reached MAXNUMPTS\0".as_ptr() as *const std::os::raw::c_char);
+impl SplineBuilder {
+    fn new(dd: PGEDevDesc) -> Self {
+        Self {
+            points: Vec::new(),
+            dd,
         }
     }
-    if npoints > 0
-        && *xpoints.add((npoints - 1) as usize) == x
-        && *ypoints.add((npoints - 1) as usize) == y
-    {
-        return;
+
+    fn add_point(&mut self, x: c_double, y: c_double) {
+        if self.points.len() >= MAXNUMPTS {
+            r_error(c"add_point - reached MAXNUMPTS");
+        }
+
+        if self
+            .points
+            .last()
+            .is_some_and(|prev| prev.x == x && prev.y == y)
+        {
+            return;
+        }
+
+        let point = unsafe {
+            SplinePoint {
+                x: toDeviceX(x / 1200.0, GE_INCHES, self.dd),
+                y: toDeviceY(y / 1200.0, GE_INCHES, self.dd),
+            }
+        };
+        self.points.push(point);
     }
-    *xpoints.add(npoints as usize) = toDeviceX(x / 1200.0, GE_INCHES, dd);
-    *ypoints.add(npoints as usize) = toDeviceY(y / 1200.0, GE_INCHES, dd);
-    npoints += 1;
-    NPOINTS.set(npoints);
+
+    fn into_points(self) -> Vec<SplinePoint> {
+        self.points
+    }
+}
+
+fn r_error(message: &'static CStr) -> ! {
+    unsafe { Rf_error(message.as_ptr()) };
+    unreachable!("Rf_error should not return")
 }
 
 #[inline]
@@ -86,7 +87,9 @@ fn f_blend(numerator: c_double, denominator: c_double) -> c_double {
 }
 
 fn g_blend(u: c_double, q_val: c_double) -> c_double {
-    u * (q_val + u * (2.0 * q_val + u * (8.0 - 12.0 * q_val + u * (14.0 * q_val - 11.0 + u * (4.0 - 5.0 * q_val)))))
+    u * (q_val
+        + u * (2.0 * q_val
+            + u * (8.0 - 12.0 * q_val + u * (14.0 * q_val - 11.0 + u * (4.0 - 5.0 * q_val)))))
 }
 
 fn h_blend(u: c_double, q_val: c_double) -> c_double {
@@ -109,6 +112,7 @@ fn positive_s1_influence(k: c_double, t: c_double, s1: c_double) -> (c_double, c
     } else {
         0.0
     };
+
     let tk = k + 1.0 - s1;
     let a2 = f_blend(t + k + 1.0 - tk, k + 2.0 - tk);
     (a0, a2)
@@ -117,6 +121,7 @@ fn positive_s1_influence(k: c_double, t: c_double, s1: c_double) -> (c_double, c
 fn positive_s2_influence(k: c_double, t: c_double, s2: c_double) -> (c_double, c_double) {
     let tk = k + 2.0 + s2;
     let a1 = f_blend(t + k + 1.0 - tk, k + 1.0 - tk);
+
     let tk = k + 2.0 - s2;
     let a3 = if t + k + 1.0 > tk {
         f_blend(t + k + 1.0 - tk, k + 3.0 - tk)
@@ -126,99 +131,69 @@ fn positive_s2_influence(k: c_double, t: c_double, s2: c_double) -> (c_double, c
     (a1, a3)
 }
 
-unsafe fn eqn_numerator(a_blend: &[c_double; 4], dim: &[c_double; 4]) -> c_double {
-    a_blend[0] * dim[0] + a_blend[1] * dim[1] + a_blend[2] * dim[2] + a_blend[3] * dim[3]
-}
-
-unsafe fn point_adding(a_blend: &[c_double; 4], px: &[c_double; 4], py: &[c_double; 4], dd: pGEDevDesc) {
-    let weights_sum = a_blend[0] + a_blend[1] + a_blend[2] + a_blend[3];
-    add_point(
-        eqn_numerator(a_blend, px) / weights_sum,
-        eqn_numerator(a_blend, py) / weights_sum,
-        dd,
-    );
-}
-
-fn point_computing(a_blend: &[c_double; 4], px: &[c_double; 4], py: &[c_double; 4]) -> (c_double, c_double) {
-    let weights_sum = a_blend[0] + a_blend[1] + a_blend[2] + a_blend[3];
-    let x = (a_blend[0] * px[0] + a_blend[1] * px[1] + a_blend[2] * px[2] + a_blend[3] * px[3]) / weights_sum;
-    let y = (a_blend[0] * py[0] + a_blend[1] * py[1] + a_blend[2] * py[2] + a_blend[3] * py[3]) / weights_sum;
+fn point_computing(
+    a_blend: &[c_double; 4],
+    px: &[c_double; 4],
+    py: &[c_double; 4],
+) -> (c_double, c_double) {
+    let weights_sum = a_blend.iter().sum::<c_double>();
+    let x = (a_blend[0] * px[0] + a_blend[1] * px[1] + a_blend[2] * px[2] + a_blend[3] * px[3])
+        / weights_sum;
+    let y = (a_blend[0] * py[0] + a_blend[1] * py[1] + a_blend[2] * py[2] + a_blend[3] * py[3])
+        / weights_sum;
     (x, y)
 }
 
-unsafe fn step_computing(
+fn point_adding(
+    a_blend: &[c_double; 4],
+    px: &[c_double; 4],
+    py: &[c_double; 4],
+    out: &mut SplineBuilder,
+) {
+    let (x, y) = point_computing(a_blend, px, py);
+    out.add_point(x, y);
+}
+
+fn blended_point(k: c_double, t: c_double, s1: c_double, s2: c_double) -> [c_double; 4] {
+    let (a0, a2) = if s1 < 0.0 {
+        negative_s1_influence(t, s1)
+    } else {
+        positive_s1_influence(k, t, s1)
+    };
+    let (a1, a3) = if s2 < 0.0 {
+        negative_s2_influence(t, s2)
+    } else {
+        positive_s2_influence(k, t, s2)
+    };
+    [a0, a1, a2, a3]
+}
+
+fn step_computing(
     k: c_double,
     px: &[c_double; 4],
     py: &[c_double; 4],
     s1: c_double,
     s2: c_double,
     precision: c_double,
-    dd: pGEDevDesc,
+    dd: PGEDevDesc,
 ) -> c_double {
     if s1 == 0.0 && s2 == 0.0 {
         return 1.0;
     }
 
-    let (xstart, ystart);
-    if s1 > 0.0 {
-        let (a0, a2) = if s2 < 0.0 {
-            positive_s1_influence(k, 0.0, s1)
-        } else {
-            positive_s1_influence(k, 0.0, s1)
-        };
-        let (a1, a3) = if s2 < 0.0 {
-            negative_s2_influence(0.0, s2)
-        } else {
-            positive_s2_influence(k, 0.0, s2)
-        };
-        let ab = [a0, a1, a2, a3];
-        let (xs, ys) = point_computing(&ab, px, py);
-        xstart = xs;
-        ystart = ys;
+    let (xstart, ystart) = if s1 > 0.0 {
+        point_computing(&blended_point(k, 0.0, s1, s2), px, py)
     } else {
-        xstart = px[1];
-        ystart = py[1];
-    }
+        (px[1], py[1])
+    };
 
-    let (xend, yend);
-    if s2 > 0.0 {
-        let (a0, a2) = if s1 < 0.0 {
-            negative_s1_influence(1.0, s1)
-        } else {
-            positive_s1_influence(k, 1.0, s1)
-        };
-        let (a1, a3) = if s1 < 0.0 {
-            positive_s2_influence(k, 1.0, s2)
-        } else {
-            positive_s2_influence(k, 1.0, s2)
-        };
-        let ab = [a0, a1, a2, a3];
-        let (xe, ye) = point_computing(&ab, px, py);
-        xend = xe;
-        yend = ye;
+    let (xend, yend) = if s2 > 0.0 {
+        point_computing(&blended_point(k, 1.0, s1, s2), px, py)
     } else {
-        xend = px[2];
-        yend = py[2];
-    }
+        (px[2], py[2])
+    };
 
-    let (xmid, ymid);
-    {
-        let (a0, a2, a1, a3) = if s2 > 0.0 {
-            if s1 < 0.0 {
-                let (a0, a2) = negative_s1_influence(0.5, s1);
-                let (a1, a3) = positive_s2_influence(k, 0.5, s2);
-                (a0, a2, a1, a3)
-            } else {
-                let (a0, a2) = positive_s1_influence(k, 0.5, s1);
-                let (a1, a3) = positive_s2_influence(k, 0.5, s2);
-                (a0, a2, a1, a3)
-            }
-        };
-        let ab = [a0, a1, a2, a3];
-        let (xm, ym) = point_computing(&ab, px, py);
-        xmid = xm;
-        ymid = ym;
-    }
+    let (xmid, ymid) = point_computing(&blended_point(k, 0.5, s1, s2), px, py);
 
     let xv1 = xstart - xmid;
     let yv1 = ystart - ymid;
@@ -227,7 +202,6 @@ unsafe fn step_computing(
 
     let scal_prod = xv1 * xv2 + yv1 * yv2;
     let sides_length_prod = ((xv1 * xv1 + yv1 * yv1) * (xv2 * xv2 + yv2 * yv2)).sqrt();
-
     let angle_cos = if sides_length_prod == 0.0 {
         0.0
     } else {
@@ -238,16 +212,19 @@ unsafe fn step_computing(
     let ylength = yend - ystart;
     let mut start_to_end_dist = (xlength * xlength + ylength * ylength).sqrt();
 
-    let dev_width = fromDeviceWidth(toDeviceWidth(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0;
-    let dev_height = fromDeviceHeight(toDeviceHeight(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0;
+    let (dev_width, dev_height) = unsafe {
+        (
+            fromDeviceWidth(toDeviceWidth(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0,
+            fromDeviceHeight(toDeviceHeight(1.0, GE_NDC, dd), GE_INCHES, dd) * 1200.0,
+        )
+    };
     let dev_diag = (dev_width * dev_width + dev_height * dev_height).sqrt();
     if start_to_end_dist > dev_diag {
         start_to_end_dist = dev_diag;
     }
 
-    let mut number_of_steps = start_to_end_dist.sqrt() / 2.0;
-    number_of_steps += ((1.0 + angle_cos) * 10.0) as c_double;
-
+    let number_of_steps =
+        start_to_end_dist.sqrt() / 2.0 + ((1.0 + angle_cos) * 10.0) as c_int as c_double;
     let step = if number_of_steps == 0.0 {
         1.0
     } else {
@@ -261,90 +238,170 @@ unsafe fn step_computing(
     }
 }
 
-unsafe fn spline_segment_computing(
+fn spline_segment_computing(
     step: c_double,
     k: c_double,
     px: &[c_double; 4],
     py: &[c_double; 4],
     s1: c_double,
     s2: c_double,
-    dd: pGEDevDesc,
+    out: &mut SplineBuilder,
 ) {
     let mut t = 0.0;
     while t < 1.0 {
-        let (a0, a2) = if s1 < 0.0 {
-            negative_s1_influence(t, s1)
-        } else {
-            positive_s1_influence(k, t, s1)
-        };
-        let (a1, a3) = if s2 < 0.0 {
-            negative_s2_influence(t, s2)
-        } else {
-            positive_s2_influence(k, t, s2)
-        };
-        let ab = [a0, a1, a2, a3];
-        point_adding(&ab, px, py, dd);
+        point_adding(&blended_point(k, t, s1, s2), px, py, out);
         t += step;
     }
 }
 
-unsafe fn spline_last_segment_computing(
-    _step: c_double,
+fn spline_last_segment_computing(
     k: c_double,
     px: &[c_double; 4],
     py: &[c_double; 4],
     s1: c_double,
     s2: c_double,
-    dd: pGEDevDesc,
+    out: &mut SplineBuilder,
 ) {
-    let t = 1.0;
-    let (a0, a2) = if s1 < 0.0 {
-        negative_s1_influence(t, s1)
-    } else {
-        positive_s1_influence(k, t, s1)
-    };
-    let (a1, a3) = if s2 < 0.0 {
-        negative_s2_influence(t, s2)
-    } else {
-        positive_s2_influence(k, t, s2)
-    };
-    let ab = [a0, a1, a2, a3];
-    point_adding(&ab, px, py, dd);
+    point_adding(&blended_point(k, 1.0, s1, s2), px, py, out);
 }
 
-unsafe fn copy_control_point(
+fn copy_control_point(
     pi: usize,
-    i: c_int,
-    n: c_int,
+    i: usize,
+    x: &[c_double],
+    y: &[c_double],
+    s: &[c_double],
     px: &mut [c_double; 4],
     py: &mut [c_double; 4],
     ps: &mut [c_double; 4],
-    x: *const c_double,
-    y: *const c_double,
-    s: *const c_double,
-    dd: pGEDevDesc,
+    dd: PGEDevDesc,
 ) {
-    let idx = (i as usize) % (n as usize);
-    px[pi] = fromDeviceX(*x.add(idx), GE_INCHES, dd) * 1200.0;
-    py[pi] = fromDeviceY(*y.add(idx), GE_INCHES, dd) * 1200.0;
-    ps[pi] = *s.add(idx);
+    let idx = i % x.len();
+    unsafe {
+        px[pi] = fromDeviceX(x[idx], GE_INCHES, dd) * 1200.0;
+        py[pi] = fromDeviceY(y[idx], GE_INCHES, dd) * 1200.0;
+    }
+    ps[pi] = s[idx];
 }
 
-unsafe fn next_control_points(
-    k: c_int,
-    n: c_int,
+fn next_control_points(
+    k: usize,
+    x: &[c_double],
+    y: &[c_double],
+    s: &[c_double],
     px: &mut [c_double; 4],
     py: &mut [c_double; 4],
     ps: &mut [c_double; 4],
-    x: *const c_double,
-    y: *const c_double,
-    s: *const c_double,
-    dd: pGEDevDesc,
+    dd: PGEDevDesc,
 ) {
-    copy_control_point(0, k, n, px, py, ps, x, y, s, dd);
-    copy_control_point(1, k + 1, n, px, py, ps, x, y, s, dd);
-    copy_control_point(2, k + 2, n, px, py, ps, x, y, s, dd);
-    copy_control_point(3, k + 3, n, px, py, ps, x, y, s, dd);
+    copy_control_point(0, k, x, y, s, px, py, ps, dd);
+    copy_control_point(1, k + 1, x, y, s, px, py, ps, dd);
+    copy_control_point(2, k + 2, x, y, s, px, py, ps, dd);
+    copy_control_point(3, k + 3, x, y, s, px, py, ps, dd);
+}
+
+fn validate_inputs(x: &[c_double], y: &[c_double], s: &[c_double]) {
+    if x.len() != y.len() || x.len() != s.len() {
+        r_error(c"x, y, and shape vectors must have the same length");
+    }
+}
+
+pub fn compute_open_spline_points(
+    x: &[c_double],
+    y: &[c_double],
+    s: &[c_double],
+    rep_ends: bool,
+    precision: c_double,
+    dd: PGEDevDesc,
+) -> Vec<SplinePoint> {
+    validate_inputs(x, y, s);
+    if rep_ends && x.len() < 2 {
+        r_error(c"there must be at least two control points");
+    }
+    if !rep_ends && x.len() < 4 {
+        r_error(c"there must be at least four control points");
+    }
+
+    let mut out = SplineBuilder::new(dd);
+    let mut px = [0.0; 4];
+    let mut py = [0.0; 4];
+    let mut ps = [0.0; 4];
+    let mut step = 0.0;
+
+    if rep_ends {
+        copy_control_point(0, 0, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(1, 0, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(2, 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+
+        if x.len() == 2 {
+            copy_control_point(3, 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+        } else {
+            copy_control_point(3, 2, x, y, s, &mut px, &mut py, &mut ps, dd);
+        }
+
+        let mut k = 0usize;
+        loop {
+            step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
+            spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
+            if k + 3 >= x.len() {
+                break;
+            }
+            next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd);
+            k += 1;
+        }
+
+        if x.len() == 2 {
+            copy_control_point(0, x.len() - 2, x, y, s, &mut px, &mut py, &mut ps, dd);
+        } else {
+            copy_control_point(0, x.len() - 3, x, y, s, &mut px, &mut py, &mut ps, dd);
+        }
+        copy_control_point(1, x.len() - 2, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(2, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+        copy_control_point(3, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+        step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
+        spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
+        out.add_point(px[3], py[3]);
+    } else {
+        for k in 0..(x.len() - 3) {
+            next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd);
+            step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
+            spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
+        }
+        spline_last_segment_computing((x.len() - 4) as c_double, &px, &py, ps[1], ps[2], &mut out);
+    }
+
+    out.into_points()
+}
+
+pub fn compute_closed_spline_points(
+    x: &[c_double],
+    y: &[c_double],
+    s: &[c_double],
+    precision: c_double,
+    dd: PGEDevDesc,
+) -> Vec<SplinePoint> {
+    validate_inputs(x, y, s);
+    if x.len() < 3 {
+        r_error(c"There must be at least three control points");
+    }
+
+    let mut out = SplineBuilder::new(dd);
+    let mut px = [0.0; 4];
+    let mut py = [0.0; 4];
+    let mut ps = [0.0; 4];
+
+    copy_control_point(0, x.len() - 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+    copy_control_point(1, 0, x, y, s, &mut px, &mut py, &mut ps, dd);
+    copy_control_point(2, 1, x, y, s, &mut px, &mut py, &mut ps, dd);
+    copy_control_point(3, 2, x, y, s, &mut px, &mut py, &mut ps, dd);
+
+    for k in 0..x.len() {
+        let step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
+        spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], &mut out);
+        next_control_points(k, x, y, s, &mut px, &mut py, &mut ps, dd);
+    }
+
+    out.into_points()
 }
 
 pub unsafe fn compute_open_spline(
@@ -354,35 +411,16 @@ pub unsafe fn compute_open_spline(
     s: *const c_double,
     rep_ends: bool,
     precision: c_double,
-    dd: pGEDevDesc,
-) {
-    let mut px = [0.0f64; 4];
-    let mut py = [0.0f64; 4];
-    let mut ps = [0.0f64; 4];
-
-    MAX_POINTS.set(0);
-    NPOINTS.set(0);
-    XPOINTS.set(std::ptr::null_mut());
-    YPOINTS.set(std::ptr::null_mut());
-
-    if rep_ends && n < 2 {
-        Rf_error(b"there must be at least two control points\0".as_ptr() as *const std::os::raw::c_char);
+    dd: PGEDevDesc,
+) -> Vec<SplinePoint> {
+    if n < 0 || x.is_null() || y.is_null() || s.is_null() {
+        r_error(c"invalid xspline control point input");
     }
-    if !rep_ends && n < 4 {
-        Rf_error(b"there must be at least four control points\0".as_ptr() as *const std::os::raw::c_char);
-    }
-
-    if rep_ends {
-        copy_control_point(0, 0, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-        copy_control_point(1, 0, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-        copy_control_point(2, 1, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-
-        if n == 2 {
-            copy_control_point(3, 1, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-        } else {
-            copy_control_point(3, 2, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-        }
-    }
+    let len = n as usize;
+    let x = unsafe { std::slice::from_raw_parts(x, len) };
+    let y = unsafe { std::slice::from_raw_parts(y, len) };
+    let s = unsafe { std::slice::from_raw_parts(s, len) };
+    compute_open_spline_points(x, y, s, rep_ends, precision, dd)
 }
 
 pub unsafe fn compute_closed_spline(
@@ -391,33 +429,45 @@ pub unsafe fn compute_closed_spline(
     y: *const c_double,
     s: *const c_double,
     precision: c_double,
-    dd: pGEDevDesc,
-) {
-    let mut px = [0.0f64; 4];
-    let mut py = [0.0f64; 4];
-    let mut ps = [0.0f64; 4];
-
-    MAX_POINTS.set(0);
-    NPOINTS.set(0);
-    XPOINTS.set(std::ptr::null_mut());
-    YPOINTS.set(std::ptr::null_mut());
-
-    if n < 3 {
-        Rf_error(b"There must be at least three control points\0".as_ptr() as *const std::os::raw::c_char);
+    dd: PGEDevDesc,
+) -> Vec<SplinePoint> {
+    if n < 0 || x.is_null() || y.is_null() || s.is_null() {
+        r_error(c"invalid xspline control point input");
     }
-
-    copy_control_point(0, n - 1, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-    copy_control_point(1, 0, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-    copy_control_point(2, 1, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-    copy_control_point(3, 2, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-
-    for k in 0..n {
-        let step = step_computing(k as c_double, &px, &py, ps[1], ps[2], precision, dd);
-        spline_segment_computing(step, k as c_double, &px, &py, ps[1], ps[2], dd);
-        next_control_points(k, n, &mut px, &mut py, &mut ps, x, y, s, dd);
-    }
+    let len = n as usize;
+    let x = unsafe { std::slice::from_raw_parts(x, len) };
+    let y = unsafe { std::slice::from_raw_parts(y, len) };
+    let s = unsafe { std::slice::from_raw_parts(s, len) };
+    compute_closed_spline_points(x, y, s, precision, dd)
 }
 
-pub unsafe fn get_spline_points() -> (*mut c_double, *mut c_double, c_int) {
-    (XPOINTS.get(), YPOINTS.get(), NPOINTS.get())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_spline_with_repeated_ends_returns_owned_points() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [0.0, 1.0, 0.0];
+        let s = [0.0, 0.0, 0.0];
+
+        let points =
+            compute_open_spline_points(&x, &y, &s, true, HIGH_PRECISION, std::ptr::null_mut());
+
+        assert!(!points.is_empty());
+        assert_eq!(points.last().unwrap().x, 2.0);
+    }
+
+    #[test]
+    fn closed_spline_returns_owned_points_without_global_scratch() {
+        let x = [0.0, 1.0, 0.0];
+        let y = [0.0, 0.0, 1.0];
+        let s = [0.0, 0.0, 0.0];
+
+        let first = compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut());
+        let second = compute_closed_spline_points(&x, &y, &s, HIGH_PRECISION, std::ptr::null_mut());
+
+        assert_eq!(first, second);
+        assert!(first.len() >= 3);
+    }
 }
