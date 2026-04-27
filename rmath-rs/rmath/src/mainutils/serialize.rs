@@ -11,7 +11,6 @@
 //! follows R's serialization protocol structure: format header, version
 //! info, then recursive WriteItem/ReadItem.
 
-use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom, Write};
@@ -38,6 +37,7 @@ use crate::sexp::ffi::{R_size_t, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXP
 use crate::sexp::globals::{
     R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_NilValue, R_UnboundValue,
 };
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::Rf_install;
@@ -200,9 +200,11 @@ fn lzma2_raw_decode(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::i
 
 #[inline]
 unsafe fn clear_lazy_load_cache() {
-    USED.with(|used| used.set(0));
-    CACHE_NAMES.with(|names| names.set([ptr::null_mut(); NC]));
-    CACHE_PTRS.with(|ptrs| ptrs.set([ptr::null_mut(); NC]));
+    with_required_current_instance(|instance| {
+        instance.serialize_state.used = 0;
+        instance.serialize_state.cache_names = [ptr::null_mut(); NC];
+        instance.serialize_state.cache_ptrs = [ptr::null_mut(); NC];
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -318,16 +320,45 @@ pub type R_outpstream_t = *mut R_outpstream_st;
 pub type R_inpstream_t = *mut R_inpstream_st;
 
 // ---------------------------------------------------------------------------
-// Global state for lazy-load database cache
+// Per-session lazy-load/read state
 // ---------------------------------------------------------------------------
 
-thread_local! { static USED: Cell<usize> = Cell::new(0); }
+pub(crate) struct SerializeRuntimeState {
+    used: usize,
+    cache_names: [*mut c_char; NC],
+    cache_ptrs: [*mut c_char; NC],
+    read_item_depth: c_int,
+}
 
-thread_local! { static CACHE_NAMES: Cell<[*mut c_char; NC]> = Cell::new([ptr::null_mut(); NC]); }
+impl Default for SerializeRuntimeState {
+    fn default() -> Self {
+        Self {
+            used: 0,
+            cache_names: [ptr::null_mut(); NC],
+            cache_ptrs: [ptr::null_mut(); NC],
+            read_item_depth: 0,
+        }
+    }
+}
 
-thread_local! { static CACHE_PTRS: Cell<[*mut c_char; NC]> = Cell::new([ptr::null_mut(); NC]); }
+fn increment_read_item_depth() {
+    with_required_current_instance(|instance| {
+        instance.serialize_state.read_item_depth += 1;
+    });
+}
 
-thread_local! { static R_ReadItemDepth: Cell<c_int> = Cell::new(0); }
+fn decrement_read_item_depth() {
+    with_required_current_instance(|instance| {
+        if instance.serialize_state.read_item_depth > 0 {
+            instance.serialize_state.read_item_depth -= 1;
+        }
+    });
+}
+
+#[cfg(test)]
+fn read_item_depth_for_test() -> c_int {
+    with_required_current_instance(|instance| instance.serialize_state.read_item_depth)
+}
 
 // ---------------------------------------------------------------------------
 // Internal binary writer/reader (Vec<u8> based)
@@ -2006,7 +2037,7 @@ unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
         }
         let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
         let _s_guard = protect(s);
-        R_ReadItemDepth.with(|d| d.set(d.get() + 1));
+        increment_read_item_depth();
 
         let local_ref_table = if ref_table.is_null() {
             MakeReadRefTable()
@@ -2054,7 +2085,7 @@ unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
             SET_STRING_ELT(s, i as R_xlen_t, elt);
         }
 
-        R_ReadItemDepth.with(|d| d.set(d.get().saturating_sub(1)));
+        decrement_read_item_depth();
         s
     }
 }
@@ -2971,6 +3002,7 @@ mod tests {
     use crate::sexp::globals::{
         R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_UnboundValue,
     };
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
     use std::ffi::CString;
     use std::mem;
     use std::os::raw::c_void;
@@ -3007,6 +3039,36 @@ mod tests {
             );
         }
         vec
+    }
+
+    #[test]
+    fn serialize_runtime_state_is_session_local() {
+        let mut first = RInstance::new();
+        unsafe {
+            set_current_instance(&mut first);
+        }
+        increment_read_item_depth();
+        assert_eq!(read_item_depth_for_test(), 1);
+
+        let mut second = RInstance::new();
+        unsafe {
+            set_current_instance(&mut second);
+        }
+        assert_eq!(read_item_depth_for_test(), 0);
+        decrement_read_item_depth();
+        assert_eq!(read_item_depth_for_test(), 0);
+        increment_read_item_depth();
+        increment_read_item_depth();
+        assert_eq!(read_item_depth_for_test(), 2);
+
+        unsafe {
+            set_current_instance(&mut first);
+        }
+        assert_eq!(read_item_depth_for_test(), 1);
+        decrement_read_item_depth();
+        assert_eq!(read_item_depth_for_test(), 0);
+
+        clear_current_instance();
     }
 
     fn make_na_string_vector() -> SEXP {
