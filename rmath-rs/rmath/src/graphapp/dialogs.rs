@@ -3,20 +3,15 @@
 
 //! Dialog functions for GraphApp.
 
-use std::cell::RefCell;
 use std::env;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
 use std::ptr;
 
+use super::runtime::with_graphapp_runtime;
 use super::strings;
 use super::types::*;
-
-thread_local! {
-    static USER_FILTER: RefCell<Option<CString>> = const { RefCell::new(None) };
-    static LAST_MESSAGE: RefCell<Option<(c_int, String)>> = const { RefCell::new(None) };
-}
 
 fn env_dialog_value() -> Option<String> {
     env::var("RMATH_GRAPHAPP_DIALOG_RESPONSE")
@@ -98,9 +93,7 @@ fn copy_into_buffer(result: &str, strbuf: *mut c_char, bufsize: c_int) -> *mut c
 }
 
 fn remember_message(kind: c_int, text: &str) {
-    LAST_MESSAGE.with(|slot| {
-        *slot.borrow_mut() = Some((kind, text.to_owned()));
-    });
+    with_graphapp_runtime(|runtime| runtime.dialogs.last_message = Some((kind, text.to_owned())));
 }
 
 fn write_status(obj: object, text: &str) {
@@ -188,8 +181,8 @@ pub unsafe fn askUserPass(_title: *const c_char) -> *mut c_char {
 }
 
 pub unsafe fn setuserfilter(filter: *const c_char) {
-    USER_FILTER.with(|slot| {
-        *slot.borrow_mut() = CString::new(unsafe { cstr_to_string(filter) }).ok();
+    with_graphapp_runtime(|runtime| {
+        runtime.dialogs.user_filter = CString::new(unsafe { cstr_to_string(filter) }).ok();
     });
 }
 
@@ -303,7 +296,7 @@ mod tests {
             let text = CString::new("hello").unwrap_or_else(|e| panic!("{e}"));
             myMessageBox(ptr::null_mut(), text.as_ptr(), 7);
             assert_eq!(
-                LAST_MESSAGE.with(|slot| slot.borrow().clone()),
+                with_graphapp_runtime(|runtime| runtime.dialogs.last_message.clone()),
                 Some((7, "hello".to_owned()))
             );
         }

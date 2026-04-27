@@ -6,22 +6,12 @@
 //! Ported from drawing.c - provides line, rectangle, ellipse, polygon drawing,
 //! pixel operations, and bitmap transfer functions.
 
-use std::cell::RefCell;
 use std::os::raw::c_int;
 use std::ptr;
 
 use super::gdraw;
+use super::runtime::with_graphapp_runtime;
 use super::types::*;
-
-thread_local! { static CURRENT_DRAWSTATE: RefCell<drawstruct> = RefCell::new(drawstruct {
-    dest: ptr::null_mut(),
-    hue: Black,
-    mode: GA_S,
-    p: point { x: 0, y: 0 },
-    linewidth: 1,
-    fnt: ptr::null_mut(),
-    crsr: ptr::null_mut(),
-}); }
 
 #[repr(transparent)]
 pub struct MutPtr<T>(*mut T);
@@ -40,82 +30,83 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 }
 
 pub unsafe fn get_current_drawstate() -> &'static drawstruct {
-    unsafe { CURRENT_DRAWSTATE.with(|v| &*v.as_ptr()) }
+    let ptr = with_graphapp_runtime(|runtime| &runtime.current_drawstate as *const drawstruct);
+    unsafe { &*ptr }
 }
 
 pub unsafe fn get_current_drawstate_mut() -> MutPtr<drawstruct> {
-    MutPtr(CURRENT_DRAWSTATE.with(|v| v.as_ptr() as *mut drawstruct))
+    MutPtr(with_graphapp_runtime(|runtime| {
+        &mut runtime.current_drawstate as *mut drawstruct
+    }))
 }
 
 /// Set the current RGB colour.
 pub extern "C" fn setrgb(c: rgb) {
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().hue = c);
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.hue = c);
 }
 
 /// Get the current drawing destination.
 pub extern "C" fn currentdrawing() -> drawing {
-    CURRENT_DRAWSTATE.with(|v| v.borrow().dest)
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.dest)
 }
 
 /// Get the current RGB colour.
 pub extern "C" fn currentrgb() -> rgb {
-    CURRENT_DRAWSTATE.with(|v| v.borrow().hue)
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.hue)
 }
 
 /// Get the current drawing mode.
 pub extern "C" fn currentmode() -> c_int {
-    CURRENT_DRAWSTATE.with(|v| v.borrow().mode)
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.mode)
 }
 
 /// Get the current drawing point.
 pub extern "C" fn currentpoint() -> point {
-    CURRENT_DRAWSTATE.with(|v| v.borrow().p)
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.p)
 }
 
 /// Get the current line width.
 pub extern "C" fn currentlinewidth() -> c_int {
-    CURRENT_DRAWSTATE.with(|v| v.borrow().linewidth)
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.linewidth)
 }
 
 /// Get the current font.
 pub extern "C" fn currentfont() -> font {
-    CURRENT_DRAWSTATE.with(|v| v.borrow().fnt)
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.fnt)
 }
 
 /// Get the current cursor.
 pub extern "C" fn currentcursor() -> cursor {
-    CURRENT_DRAWSTATE.with(|v| v.borrow().crsr)
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.crsr)
 }
 
 /// Set the drawing mode.
 pub extern "C" fn setdrawmode(mode: c_int) {
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().mode = mode);
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.mode = mode);
 }
 
 /// Set the line width.
 pub extern "C" fn setlinewidth(width: c_int) {
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().linewidth = width);
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.linewidth = width);
 }
 
 /// Move the current drawing point.
 pub extern "C" fn moveto(p: point) {
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().p = p);
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.p = p);
 }
 
 /// Draw a line from the current point to the given point.
 pub extern "C" fn lineto(p: point) {
-    CURRENT_DRAWSTATE.with(|v| {
-        let ds = v.borrow();
-        unsafe {
-            drawline(ds.p, p);
-        }
-    });
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().p = p);
+    let from = currentpoint();
+    unsafe {
+        drawline(from, p);
+    }
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.p = p);
 }
 
 /// Draw a single point.
 pub extern "C" fn drawpoint(p: point) {
-    CURRENT_DRAWSTATE.with(|v| unsafe { setpixel(p, v.borrow().hue) });
+    unsafe { setpixel(p, currentrgb()) };
 }
 
 /// Draw a line between two points.
@@ -303,7 +294,7 @@ pub unsafe fn copydrawstate() -> drawstate {
     unsafe {
         let ds = super::memory::memalloc(std::mem::size_of::<drawstruct>() as i64) as drawstate;
         if !ds.is_null() {
-            *ds = CURRENT_DRAWSTATE.with(|v| v.borrow().clone());
+            *ds = with_graphapp_runtime(|runtime| runtime.current_drawstate.clone());
         }
         ds
     }
@@ -312,7 +303,9 @@ pub unsafe fn copydrawstate() -> drawstate {
 /// Set the draw state.
 pub extern "C" fn setdrawstate(saved: drawstate) {
     if !saved.is_null() {
-        CURRENT_DRAWSTATE.with(|v| *v.borrow_mut() = unsafe { (*saved).clone() });
+        unsafe {
+            with_graphapp_runtime(|runtime| runtime.current_drawstate = (*saved).clone());
+        }
     }
 }
 
@@ -323,21 +316,20 @@ pub extern "C" fn restoredrawstate(saved: drawstate) {
 
 /// Reset the draw state to defaults.
 pub extern "C" fn resetdrawstate() {
-    CURRENT_DRAWSTATE.with(|v| {
-        let mut ds = v.borrow_mut();
-        ds.dest = ptr::null_mut();
-        ds.hue = Black;
-        ds.mode = GA_S;
-        ds.p = point { x: 0, y: 0 };
-        ds.linewidth = 1;
-        ds.fnt = ptr::null_mut();
-        ds.crsr = ptr::null_mut();
+    with_graphapp_runtime(|runtime| {
+        runtime.current_drawstate.dest = ptr::null_mut();
+        runtime.current_drawstate.hue = Black;
+        runtime.current_drawstate.mode = GA_S;
+        runtime.current_drawstate.p = point { x: 0, y: 0 };
+        runtime.current_drawstate.linewidth = 1;
+        runtime.current_drawstate.fnt = ptr::null_mut();
+        runtime.current_drawstate.crsr = ptr::null_mut();
     });
 }
 
 /// Set the draw destination.
 pub extern "C" fn drawto(dest: drawing) {
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().dest = dest);
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.dest = dest);
 }
 
 /// Add a control to the current window.
@@ -347,12 +339,12 @@ pub unsafe fn addto(_dest: control) {}
 
 /// Set the current cursor.
 pub extern "C" fn setcursor(c: cursor) {
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().crsr = c);
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.crsr = c);
 }
 
 /// Set the current font.
 pub extern "C" fn setfont(f: font) {
-    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().fnt = f);
+    with_graphapp_runtime(|runtime| runtime.current_drawstate.fnt = f);
 }
 
 /// Set the caret position and size.

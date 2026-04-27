@@ -3,18 +3,15 @@
 
 //! Clipboard functions for GraphApp.
 
+use super::runtime::with_graphapp_runtime;
 use super::types::*;
-use std::cell::RefCell;
 use std::os::raw::c_int;
 use std::ptr;
 
-thread_local! { static CLIPBOARD_TEXT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) }; }
-
 fn set_clipboard_bytes(bytes: &[u8]) {
-    CLIPBOARD_TEXT.with(|clipboard| {
-        let mut clipboard = clipboard.borrow_mut();
-        clipboard.clear();
-        clipboard.extend_from_slice(bytes);
+    with_graphapp_runtime(|runtime| {
+        runtime.clipboard_text.clear();
+        runtime.clipboard_text.extend_from_slice(bytes);
     });
 }
 
@@ -42,12 +39,11 @@ pub unsafe fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) 
         return 0;
     }
 
-    CLIPBOARD_TEXT.with(|clipboard| {
-        let clipboard = clipboard.borrow();
-        let count = clipboard.len().min((n - 1) as usize);
+    with_graphapp_runtime(|runtime| {
+        let count = runtime.clipboard_text.len().min((n - 1) as usize);
         if count > 0 {
             unsafe {
-                ptr::copy_nonoverlapping(clipboard.as_ptr(), str_ as *mut u8, count);
+                ptr::copy_nonoverlapping(runtime.clipboard_text.as_ptr(), str_ as *mut u8, count);
             }
         }
         unsafe {
@@ -58,7 +54,7 @@ pub unsafe fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) 
 }
 
 pub fn clipboardhastext() -> c_int {
-    CLIPBOARD_TEXT.with(|clipboard| (!clipboard.borrow().is_empty()) as c_int)
+    with_graphapp_runtime(|runtime| (!runtime.clipboard_text.is_empty()) as c_int)
 }
 
 #[cfg(test)]

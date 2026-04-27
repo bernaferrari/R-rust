@@ -2,21 +2,54 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 
 use super::types::*;
 
-#[derive(Default)]
 pub(crate) struct GraphAppRuntimeState {
     pub app: AppState,
+    pub clipboard_text: Vec<u8>,
     pub contexts: Vec<ContextEntry>,
     pub cursors: CursorState,
+    pub current_drawstate: drawstruct,
+    pub dialogs: DialogState,
     pub events: EventState,
     pub fonts: FontState,
     pub menus: MenuState,
     pub objects: ObjectState,
     pub windows: WindowState,
+}
+
+impl Default for GraphAppRuntimeState {
+    fn default() -> Self {
+        Self {
+            app: AppState::default(),
+            clipboard_text: Vec::new(),
+            contexts: Vec::new(),
+            cursors: CursorState::default(),
+            current_drawstate: default_drawstate(),
+            dialogs: DialogState::default(),
+            events: EventState::default(),
+            fonts: FontState::default(),
+            menus: MenuState::default(),
+            objects: ObjectState::default(),
+            windows: WindowState::default(),
+        }
+    }
+}
+
+fn default_drawstate() -> drawstruct {
+    drawstruct {
+        dest: ptr::null_mut(),
+        hue: Black,
+        mode: GA_S,
+        p: point { x: 0, y: 0 },
+        linewidth: 1,
+        fnt: ptr::null_mut(),
+        crsr: ptr::null_mut(),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -69,6 +102,12 @@ pub(crate) struct DelNode {
     pub obj: object,
     pub next: *mut DelNode,
     pub prev: *mut DelNode,
+}
+
+#[derive(Default)]
+pub(crate) struct DialogState {
+    pub user_filter: Option<CString>,
+    pub last_message: Option<(c_int, String)>,
 }
 
 #[derive(Clone, Copy)]
