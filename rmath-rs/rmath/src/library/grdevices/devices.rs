@@ -19,7 +19,7 @@ use crate::sexp::constructors::{
 };
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 use super::device_registry;
 
@@ -251,29 +251,29 @@ pub unsafe fn devholdflush(args: SEXP) -> SEXP {
     }
 }
 
+unsafe fn int_vector(values: &[c_int]) -> SEXP {
+    unsafe {
+        let vector = Rf_allocVector(SEXPTYPE::INTSXP, values.len() as c_int);
+        for (index, value) in values.iter().enumerate() {
+            *INTEGER(vector).add(index) = *value;
+        }
+        vector
+    }
+}
+
+unsafe fn set_int_capability(capabilities: SEXP, capability: c_int, values: &[c_int]) {
+    unsafe {
+        SET_VECTOR_ELT(capabilities, capability as R_xlen_t, int_vector(values));
+    }
+}
+
 /// dev.capabilities() - query capabilities of the current device.
 pub unsafe fn devcap(args: SEXP) -> SEXP {
     unsafe {
         let mut args = args;
-        let capabilities;
-        let trans;
-        let transbg;
-        let raster;
-        let capture;
-        let locator;
-        let events;
-        let patterns;
-        let clippaths;
-        let masks;
-        let compositing;
-        let transforms;
-        let paths;
-        let glyphs;
-        let variableFonts;
-        let _devcap: SEXP;
 
         args = CDR(args);
-        capabilities = CAR(args);
+        let capabilities = CAR(args);
 
         let gdd = GEcurrentDevice();
         let deviceVersion = if gdd.is_null() {
@@ -312,118 +312,75 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
         let canGenKeybd = if gdd.is_null() { 0 } else { (*gdd).canGenKeybd };
         let canGenIdle = if gdd.is_null() { 0 } else { (*gdd).canGenIdle };
 
-        trans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(trans).add(0) = haveTransparency;
-        SET_VECTOR_ELT(
+        set_int_capability(
             capabilities,
-            R_GE_capability_semiTransparency as R_xlen_t,
-            trans,
+            R_GE_capability_semiTransparency,
+            &[haveTransparency],
         );
-        Rf_unprotect(1);
 
-        transbg = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(transbg).add(0) = haveTransparentBg;
-        SET_VECTOR_ELT(
+        set_int_capability(
             capabilities,
-            R_GE_capability_transparentBackground as R_xlen_t,
-            transbg,
+            R_GE_capability_transparentBackground,
+            &[haveTransparentBg],
         );
-        Rf_unprotect(1);
 
-        raster = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(raster).add(0) = haveRaster;
-        SET_VECTOR_ELT(
+        set_int_capability(capabilities, R_GE_capability_rasterImage, &[haveRaster]);
+
+        set_int_capability(capabilities, R_GE_capability_capture, &[haveCapture]);
+
+        set_int_capability(capabilities, R_GE_capability_locator, &[haveLocator]);
+
+        set_int_capability(
             capabilities,
-            R_GE_capability_rasterImage as R_xlen_t,
-            raster,
+            R_GE_capability_events,
+            &[
+                canGenMouseDown,
+                canGenMouseMove,
+                canGenMouseUp,
+                canGenKeybd,
+                canGenIdle,
+            ],
         );
-        Rf_unprotect(1);
 
-        capture = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(capture).add(0) = haveCapture;
-        SET_VECTOR_ELT(capabilities, R_GE_capability_capture as R_xlen_t, capture);
-        Rf_unprotect(1);
-
-        locator = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(locator).add(0) = haveLocator;
-        SET_VECTOR_ELT(capabilities, R_GE_capability_locator as R_xlen_t, locator);
-        Rf_unprotect(1);
-
-        events = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 5));
-        *INTEGER(events).add(0) = canGenMouseDown;
-        *INTEGER(events).add(1) = canGenMouseMove;
-        *INTEGER(events).add(2) = canGenMouseUp;
-        *INTEGER(events).add(3) = canGenKeybd;
-        *INTEGER(events).add(4) = canGenIdle;
-        SET_VECTOR_ELT(capabilities, R_GE_capability_events as R_xlen_t, events);
-        Rf_unprotect(1);
-
-        patterns = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(patterns).add(0) = NA_INTEGER;
-        SET_VECTOR_ELT(capabilities, R_GE_capability_patterns as R_xlen_t, patterns);
-        Rf_unprotect(1);
-
-        clippaths = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(clippaths).add(0) = NA_INTEGER;
-        SET_VECTOR_ELT(
-            capabilities,
-            R_GE_capability_clippingPaths as R_xlen_t,
-            clippaths,
-        );
-        Rf_unprotect(1);
-
-        masks = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(masks).add(0) = NA_INTEGER;
-        SET_VECTOR_ELT(capabilities, R_GE_capability_masks as R_xlen_t, masks);
-        Rf_unprotect(1);
+        set_int_capability(capabilities, R_GE_capability_patterns, &[NA_INTEGER]);
+        set_int_capability(capabilities, R_GE_capability_clippingPaths, &[NA_INTEGER]);
+        set_int_capability(capabilities, R_GE_capability_masks, &[NA_INTEGER]);
 
         // deviceVersion < R_GE_group (stub), so all 0
-        compositing = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        transforms = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        paths = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        if deviceVersion < R_GE_group {
-            *INTEGER(compositing).add(0) = 0;
-            *INTEGER(transforms).add(0) = 0;
-            *INTEGER(paths).add(0) = 0;
+        let group_capability = if deviceVersion < R_GE_group {
+            0
         } else {
-            *INTEGER(compositing).add(0) = NA_INTEGER;
-            *INTEGER(transforms).add(0) = NA_INTEGER;
-            *INTEGER(paths).add(0) = NA_INTEGER;
-        }
-        SET_VECTOR_ELT(
+            NA_INTEGER
+        };
+        set_int_capability(
             capabilities,
-            R_GE_capability_compositing as R_xlen_t,
-            compositing,
+            R_GE_capability_compositing,
+            &[group_capability],
         );
-        SET_VECTOR_ELT(
+        set_int_capability(
             capabilities,
-            R_GE_capability_transformations as R_xlen_t,
-            transforms,
+            R_GE_capability_transformations,
+            &[group_capability],
         );
-        SET_VECTOR_ELT(capabilities, R_GE_capability_paths as R_xlen_t, paths);
-        Rf_unprotect(3);
+        set_int_capability(capabilities, R_GE_capability_paths, &[group_capability]);
 
-        glyphs = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        if deviceVersion < R_GE_glyphs {
-            *INTEGER(glyphs).add(0) = 0;
+        let glyphs = if deviceVersion < R_GE_glyphs {
+            0
         } else {
-            *INTEGER(glyphs).add(0) = NA_INTEGER;
-        }
-        SET_VECTOR_ELT(capabilities, R_GE_capability_glyphs as R_xlen_t, glyphs);
-        Rf_unprotect(1);
+            NA_INTEGER
+        };
+        set_int_capability(capabilities, R_GE_capability_glyphs, &[glyphs]);
 
-        variableFonts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        if deviceVersion < R_GE_fontVar {
-            *INTEGER(variableFonts).add(0) = 0;
+        let variable_fonts = if deviceVersion < R_GE_fontVar {
+            0
         } else {
-            *INTEGER(variableFonts).add(0) = NA_INTEGER;
-        }
-        SET_VECTOR_ELT(
+            NA_INTEGER
+        };
+        set_int_capability(
             capabilities,
-            R_GE_capability_variableFonts as R_xlen_t,
-            variableFonts,
+            R_GE_capability_variableFonts,
+            &[variable_fonts],
         );
-        Rf_unprotect(1);
 
         // Stub: no device->capabilities callback to invoke
         capabilities
@@ -450,14 +407,11 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
             return raster;
         }
 
-        raster = Rf_protect(raster);
+        let _raster_guard = protect(raster);
         if native != 0 {
-            setAttrib(
-                raster,
-                R_ClassSymbol(),
-                Rf_mkString(b"nativeRaster\0".as_ptr() as *const c_char),
-            );
-            Rf_unprotect(1);
+            let class = Rf_mkString(b"nativeRaster\0".as_ptr() as *const c_char);
+            let _class_guard = protect(class);
+            setAttrib(raster, R_ClassSymbol(), class);
             return raster;
         }
 
@@ -467,7 +421,8 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
         let nrow = *INTEGER(dim_attr).add(0);
         let ncol = *INTEGER(dim_attr).add(1);
 
-        let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, size as c_int));
+        let image = Rf_allocVector(SEXPTYPE::STRSXP, size as c_int);
+        let _image_guard = protect(image);
         let rint = INTEGER(raster);
         let mut i: c_int = 0;
         while i < size {
@@ -479,11 +434,11 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
             i += 1;
         }
 
-        let idim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+        let idim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        let _idim_guard = protect(idim);
         *INTEGER(idim).add(0) = nrow;
         *INTEGER(idim).add(1) = ncol;
         setAttrib(image, R_DimSymbol(), idim);
-        Rf_unprotect(3);
 
         image
     }

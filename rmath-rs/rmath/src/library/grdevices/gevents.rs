@@ -223,13 +223,12 @@ pub unsafe fn doMouseEvent(
         return;
     };
 
-    Rf_protect(handler_name as SEXP);
     let handler = R_findVar(Rf_install(handler_name), (*dd).eventEnv as SEXP);
-    Rf_protect(handler);
+    let mut guards = Vec::with_capacity(3);
+    guards.push(protect(handler));
     let handler = if TYPEOF(handler) == PROMSXP {
         let h = Rf_eval(handler, (*dd).eventEnv as SEXP);
-        Rf_unprotect(1);
-        Rf_protect(h);
+        guards.push(protect(h));
         h
     } else {
         handler
@@ -244,14 +243,13 @@ pub unsafe fn doMouseEvent(
             + ((buttons & RIGHT_BUTTON) != 0) as c_int;
 
         let bvec = Rf_allocVector(INTSXP, len as c_int);
-        Rf_protect(bvec);
+        let _bvec_guard = protect(bvec);
         let mut idx = 0;
         if buttons & LEFT_BUTTON != 0 {
             *INTEGER(bvec).add(idx) = 0;
             idx += 1;
         }
     }
-    Rf_unprotect(2);
     (*dd).gettingEvent = 1;
 }
 
@@ -259,11 +257,11 @@ pub unsafe fn doKeybd(dd: pDevDesc, rkey: c_int, keyname: *const c_char) {
     (*dd).gettingEvent = 0;
 
     let handler = R_findVar(Rf_install(cstr_ptr(KEYBD_HANDLER)), (*dd).eventEnv as SEXP);
-    Rf_protect(handler);
+    let mut guards = Vec::with_capacity(4);
+    guards.push(protect(handler));
     let handler = if TYPEOF(handler) == PROMSXP {
         let h = Rf_eval(handler, (*dd).eventEnv as SEXP);
-        Rf_unprotect(1);
-        Rf_protect(h);
+        guards.push(protect(h));
         h
     } else {
         handler
@@ -280,16 +278,14 @@ pub unsafe fn doKeybd(dd: pDevDesc, rkey: c_int, keyname: *const c_char) {
         } else {
             Rf_mkString(b"\0".as_ptr() as *const c_char)
         };
-        Rf_protect(skey);
+        let _skey_guard = protect(skey);
         let temp = Rf_lang2(handler, skey);
-        Rf_protect(temp);
+        let _temp_guard = protect(temp);
         let result = Rf_eval(temp, (*dd).eventEnv as SEXP);
-        Rf_protect(result);
+        let _result_guard = protect(result);
         defineVar(Rf_install(b"result\0".as_ptr() as *const c_char), result, (*dd).eventEnv as SEXP);
-        Rf_unprotect(3);
         R_FlushConsole();
     }
-    Rf_unprotect(1);
     (*dd).gettingEvent = 1;
 }
 
@@ -297,11 +293,11 @@ pub unsafe fn doIdle(dd: pDevDesc) {
     (*dd).gettingEvent = 0;
 
     let handler = R_findVar(Rf_install(cstr_ptr(IDLE_HANDLER)), (*dd).eventEnv as SEXP);
-    Rf_protect(handler);
+    let mut guards = Vec::with_capacity(3);
+    guards.push(protect(handler));
     let handler = if TYPEOF(handler) == PROMSXP {
         let h = Rf_eval(handler, (*dd).eventEnv as SEXP);
-        Rf_unprotect(1);
-        Rf_protect(h);
+        guards.push(protect(h));
         h
     } else {
         handler
@@ -311,14 +307,12 @@ pub unsafe fn doIdle(dd: pDevDesc) {
         let s_which = Rf_install(b"which\0".as_ptr() as *const c_char);
         defineVar(s_which, Rf_ScalarInteger(dev_number(dd) + 1), (*dd).eventEnv as SEXP);
         let temp = Rf_lang1(handler);
-        Rf_protect(temp);
+        let _temp_guard = protect(temp);
         let result = Rf_eval(temp, (*dd).eventEnv as SEXP);
-        Rf_protect(result);
+        let _result_guard = protect(result);
         defineVar(Rf_install(b"result\0".as_ptr() as *const c_char), result, (*dd).eventEnv as SEXP);
-        Rf_unprotect(2);
         R_FlushConsole();
     }
-    Rf_unprotect(1);
     (*dd).gettingEvent = 1;
 }
 
