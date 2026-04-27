@@ -24,7 +24,7 @@ use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
 use crate::sexp::memory::with_arena;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -4873,7 +4873,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         } else {
             actual_args
         };
-        Rf_protect(evaluated_args);
+        let _evaluated_args_guard = protect(evaluated_args);
 
         // Get the PRIMPRINT flag (visibility hint)
         let flag = crate::eval::eval::PRIMPRINT(internal_val);
@@ -4896,7 +4896,6 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -4913,10 +4912,10 @@ pub unsafe fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
             duplicate(call)
         } else {
             let klass = Rf_mkString(b"formula\0".as_ptr() as *const c_char);
-            Rf_protect(klass);
+            let _klass_guard = protect(klass);
 
             let result = duplicate(call);
-            Rf_protect(result);
+            let _result_guard = protect(result);
 
             let class_sym = Rf_install(b"class\0".as_ptr() as *const c_char);
             setAttrib(result, class_sym, klass);
@@ -4924,7 +4923,6 @@ pub unsafe fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
             let dot_env_sym = Rf_install(b".Environment\0".as_ptr() as *const c_char);
             setAttrib(result, dot_env_sym, rho);
 
-            Rf_unprotect(2);
             result
         }
     }
