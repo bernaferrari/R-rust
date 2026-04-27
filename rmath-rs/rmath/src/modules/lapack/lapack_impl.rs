@@ -51,14 +51,14 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
 
         let n = INTEGER(coerceVector(dim, INTSXP_C)).add(0).read() as i32;
         let p = INTEGER(coerceVector(dim, INTSXP_C)).add(1).read() as i32;
-        let mut nprot: c_int = 2;
 
         // Work on a copy of x
         let xvals: *mut f64;
         let mut x = x;
+        let mut _x_guard = None;
         if TYPEOF(x) != 14 {
-            x = Rf_protect(coerceVector(x, REALSXP_C));
-            nprot += 1;
+            x = coerceVector(x, REALSXP_C);
+            _x_guard = Some(protect(x));
             xvals = REAL(x);
         } else {
             let len = (n as usize) * (p as usize);
@@ -129,8 +129,10 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
         }
 
         // Build result list: list(d=s, u=u, vt=vt)
-        let val = Rf_protect(Rf_allocVector(VECSXP_C, 3));
-        let nm = Rf_protect(Rf_allocVector(STRSXP_C, 3));
+        let val = Rf_allocVector(VECSXP_C, 3);
+        let _val_guard = protect(val);
+        let nm = Rf_allocVector(STRSXP_C, 3);
+        let _names_guard = protect(nm);
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"d\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"u\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 2, Rf_mkChar(b"vt\0".as_ptr() as *const c_char));
@@ -139,7 +141,6 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
         SET_VECTOR_ELT(val, 1, u);
         SET_VECTOR_ELT(val, 2, vt);
 
-        Rf_unprotect(nprot);
         val
     }
 }
@@ -172,22 +173,26 @@ pub unsafe fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
         // Work on a copy of x
         let rx: *mut f64;
         let mut x = x;
+        let mut guards = Vec::new();
         if TYPEOF(x) != 14 {
-            x = Rf_protect(coerceVector(x, REALSXP_C));
+            x = coerceVector(x, REALSXP_C);
+            guards.push(protect(x));
             rx = REAL(x);
         } else {
             rx = R_alloc((n as usize) * (n as usize), std::mem::size_of::<f64>()) as *mut f64;
             ptr::copy_nonoverlapping(REAL(x), rx, (n as usize) * (n as usize));
         }
-        Rf_protect(x);
+        guards.push(protect(x));
 
-        let values = Rf_protect(Rf_allocVector(REALSXP_C, n as c_int));
+        let values = Rf_allocVector(REALSXP_C, n as c_int);
+        guards.push(protect(values));
         let rvalues = REAL(values);
 
         let mut z = R_NilValue();
         let mut rz: *mut f64 = ptr::null_mut();
         if ov == 0 {
-            z = Rf_protect(Rf_allocVector(REALSXP_C, (n as c_int) * (n as c_int)));
+            z = Rf_allocVector(REALSXP_C, (n as c_int) * (n as c_int));
+            guards.push(protect(z));
             rz = REAL(z);
         }
 
@@ -228,19 +233,22 @@ pub unsafe fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
         let ret;
         let nm;
         if ov == 0 {
-            ret = Rf_protect(Rf_allocVector(VECSXP_C, 2));
-            nm = Rf_protect(Rf_allocVector(STRSXP_C, 2));
+            ret = Rf_allocVector(VECSXP_C, 2);
+            guards.push(protect(ret));
+            nm = Rf_allocVector(STRSXP_C, 2);
+            guards.push(protect(nm));
             SET_STRING_ELT(nm, 1, Rf_mkChar(b"vectors\0".as_ptr() as *const c_char));
             SET_VECTOR_ELT(ret, 1, z);
         } else {
-            ret = Rf_protect(Rf_allocVector(VECSXP_C, 1));
-            nm = Rf_protect(Rf_allocVector(STRSXP_C, 1));
+            ret = Rf_allocVector(VECSXP_C, 1);
+            guards.push(protect(ret));
+            nm = Rf_allocVector(STRSXP_C, 1);
+            guards.push(protect(nm));
         }
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"values\0".as_ptr() as *const c_char));
         setAttrib(ret, R_NamesSymbol(), nm);
         SET_VECTOR_ELT(ret, 0, values);
 
-        Rf_unprotect(if ov != 0 { 4 } else { 5 });
         ret
     }
 }
@@ -1083,9 +1091,9 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'dgesv'\0".as_ptr() as *const c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(REALSXP_C, len_b as c_int));
+        let ans = Rf_allocVector(REALSXP_C, len_b as c_int);
+        let _ans_guard = protect(ans);
         ptr::copy_nonoverlapping(b_copy.as_ptr(), REAL(ans), len_b);
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1152,9 +1160,9 @@ pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'zgesv'\0".as_ptr() as *const c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(CPLXSXP_C, len_b as c_int));
+        let ans = Rf_allocVector(CPLXSXP_C, len_b as c_int);
+        let _ans_guard = protect(ans);
         ptr::copy_nonoverlapping(b_copy.as_ptr(), COMPLEX(ans) as *mut LapRcomplex, len_b);
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1730,10 +1738,8 @@ pub unsafe fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'dtrtrs'\0".as_ptr() as *const c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(
-            REALSXP_C,
-            ((k as usize) * (nrhs as usize)) as c_int,
-        ));
+        let ans = Rf_allocVector(REALSXP_C, ((k as usize) * (nrhs as usize)) as c_int);
+        let _ans_guard = protect(ans);
         // Copy only the first k rows
         for j in 0..nrhs as usize {
             for i in 0..k as usize {
@@ -1741,7 +1747,6 @@ pub unsafe fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1797,10 +1802,8 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'ztrtrs'\0".as_ptr() as *const c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(
-            CPLXSXP_C,
-            ((k as usize) * (nrhs as usize)) as c_int,
-        ));
+        let ans = Rf_allocVector(CPLXSXP_C, ((k as usize) * (nrhs as usize)) as c_int);
+        let _ans_guard = protect(ans);
         for j in 0..nrhs as usize {
             for i in 0..k as usize {
                 *COMPLEX(ans).add(i + j * k as usize) = {
@@ -1810,7 +1813,6 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1897,9 +1899,9 @@ pub unsafe fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'dormqr'\0".as_ptr() as *const c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(REALSXP_C, len_b as c_int));
+        let ans = Rf_allocVector(REALSXP_C, len_b as c_int);
+        let _ans_guard = protect(ans);
         ptr::copy_nonoverlapping(b_copy.as_ptr(), REAL(ans), len_b);
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1993,9 +1995,9 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'zunmqr'\0".as_ptr() as *const c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(CPLXSXP_C, len_b as c_int));
+        let ans = Rf_allocVector(CPLXSXP_C, len_b as c_int);
+        let _ans_guard = protect(ans);
         ptr::copy_nonoverlapping(b_copy.as_ptr(), COMPLEX(ans) as *mut LapRcomplex, len_b);
-        Rf_unprotect(1);
         ans
     }
 }
