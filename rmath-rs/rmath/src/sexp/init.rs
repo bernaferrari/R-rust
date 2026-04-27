@@ -33,6 +33,7 @@ pub unsafe fn initialize_r() {
 pub unsafe fn initialize_base_bindings(base_env: super::ffi::SEXP) {
     unsafe {
         pre_intern_symbols();
+        crate::eval::jit::R_init_jit_enabled();
 
         crate::eval::arithmetic::register_arithmetic_builtins(base_env);
         crate::eval::arithmetic::register_special_forms(base_env);

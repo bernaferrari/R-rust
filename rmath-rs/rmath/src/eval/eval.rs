@@ -163,9 +163,16 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
         EvalKind::Closure => Ok(expr),
         EvalKind::Promise => eval_promise_safe(expr, env),
         EvalKind::Dots => eval_dots_safe(expr, env),
-        EvalKind::Bytecode => super::bytecode::eval_bytecode(expr, env),
+        EvalKind::Bytecode => eval_bytecode_safe(expr, env),
         EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
     }
+}
+
+fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    if super::jit::get_R_disable_bytecode() != 0 {
+        return Err("bytecode evaluation is disabled for this R session".to_string());
+    }
+    super::bytecode::eval_bytecode(expr, env)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -654,5 +661,26 @@ mod tests {
                 .expect("language call");
             assert_eq!(classify_expr(call), EvalKind::Language);
         }
+    }
+
+    #[test]
+    fn bytecode_disabled_errors_before_interpreting_payload() {
+        let mut session = RSession::new();
+        let raw_bcode = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::BCODESXP))
+            .expect("session should be active");
+        let bcode = session
+            .sexp(raw_bcode)
+            .expect("bytecode belongs to session");
+        let env = session.global_env().expect("global env should exist");
+
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.eval_state.disable_bytecode = TRUE;
+        });
+
+        let err = EvalContext::new(env)
+            .eval(bcode)
+            .expect_err("disabled bytecode should not execute");
+        assert!(err.contains("bytecode evaluation is disabled"));
     }
 }

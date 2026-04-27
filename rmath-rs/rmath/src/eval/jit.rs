@@ -24,6 +24,88 @@ use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
+const BYTECODE_COMPILER_AVAILABLE: bool = false;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct JitSettings {
+    jit_enabled: c_int,
+    compile_pkgs: c_int,
+    disable_bytecode: c_int,
+    min_jit_score: c_int,
+    loop_jit_score: c_int,
+}
+
+impl JitSettings {
+    fn from_env_values(
+        enable_jit: Option<&str>,
+        compile_pkgs: Option<&str>,
+        disable_bytecode: Option<&str>,
+    ) -> Self {
+        let disable_bytecode = parse_enabled_flag(disable_bytecode, FALSE);
+        let mut jit_enabled = parse_jit_level(enable_jit, 3);
+        if disable_bytecode != FALSE || !BYTECODE_COMPILER_AVAILABLE {
+            jit_enabled = 0;
+        }
+        let (min_jit_score, loop_jit_score) = jit_thresholds(jit_enabled);
+        JitSettings {
+            jit_enabled,
+            compile_pkgs: parse_enabled_flag(compile_pkgs, FALSE),
+            disable_bytecode,
+            min_jit_score,
+            loop_jit_score,
+        }
+    }
+}
+
+fn parse_jit_level(value: Option<&str>, default: c_int) -> c_int {
+    value
+        .and_then(|value| value.parse::<c_int>().ok())
+        .unwrap_or(default)
+        .clamp(0, 3)
+}
+
+fn parse_enabled_flag(value: Option<&str>, default: c_int) -> c_int {
+    if parse_jit_level(value, default) > 0 {
+        TRUE
+    } else {
+        FALSE
+    }
+}
+
+fn jit_thresholds(jit_enabled: c_int) -> (c_int, c_int) {
+    match jit_enabled {
+        0 => (c_int::MAX, c_int::MAX),
+        1 => (500, 500),
+        2 => (100, 100),
+        _ => (50, 50),
+    }
+}
+
+fn current_env_settings() -> JitSettings {
+    let enable_jit = std::env::var("R_ENABLE_JIT").ok();
+    let compile_pkgs = std::env::var("_R_COMPILE_PKGS_").ok();
+    let disable_bytecode = std::env::var("R_DISABLE_BYTECODE").ok();
+    JitSettings::from_env_values(
+        enable_jit.as_deref(),
+        compile_pkgs.as_deref(),
+        disable_bytecode.as_deref(),
+    )
+}
+
+fn apply_jit_settings(settings: JitSettings) {
+    with_required_current_instance(|inst| {
+        inst.eval_state.jit_enabled = settings.jit_enabled;
+        inst.eval_state.compile_pkgs = settings.compile_pkgs;
+        inst.eval_state.disable_bytecode = settings.disable_bytecode;
+        inst.eval_state.min_jit_score = settings.min_jit_score;
+        inst.eval_state.loop_jit_score = settings.loop_jit_score;
+    });
+}
+
+pub fn bytecode_compiler_available() -> bool {
+    BYTECODE_COMPILER_AVAILABLE
+}
+
 // ---------------------------------------------------------------------------
 // JIT scoring
 // ---------------------------------------------------------------------------
@@ -258,20 +340,24 @@ pub unsafe fn R_cmpfun(fun: SEXP) {
             return; // Already compiled or no body
         }
 
-        // Try to compile via the compiler namespace
-        // In the full implementation, this calls cmpfun() from the compiler package
-        // For now, we leave functions uncompiled
+        if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
+            return;
+        }
+
+        // The bytecode compiler is deliberately gated until the compiler
+        // package pipeline is ported. Automatic JIT must not mutate closures
+        // or report success while compilation is unavailable.
     }
 }
 
 /// Compile an expression to bytecode.
 ///
 /// Ported from R's `R_compileExpr()` in eval.c.
-pub unsafe fn R_compileExpr(_expr: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Stub: JIT compilation not yet implemented
-        R_NilValue()
+pub unsafe fn R_compileExpr(expr: SEXP, _rho: SEXP) -> SEXP {
+    if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
+        return expr;
     }
+    expr
 }
 
 // ---------------------------------------------------------------------------
@@ -341,8 +427,12 @@ pub(crate) unsafe fn r_parse_string(str: *const c_char) -> SEXP {
 /// Check compiler options.
 ///
 /// Ported from R's `checkCompilerOptions()` in eval.c.
-unsafe fn checkCompilerOptions(_jitEnabled: c_int) {
-    // Stub: not yet implemented
+unsafe fn checkCompilerOptions(jitEnabled: c_int) {
+    let (min_jit_score, loop_jit_score) = jit_thresholds(jitEnabled);
+    with_required_current_instance(|inst| {
+        inst.eval_state.min_jit_score = min_jit_score;
+        inst.eval_state.loop_jit_score = loop_jit_score;
+    });
 }
 
 /// Initialize JIT from environment variables.
@@ -354,39 +444,9 @@ unsafe fn checkCompilerOptions(_jitEnabled: c_int) {
 /// - _R_COMPILE_PKGS_: compile packages
 pub unsafe fn R_init_jit_enabled() {
     unsafe {
-        // Default: JIT enabled at level 3
-        let mut val: c_int = 3;
-
-        // Check R_ENABLE_JIT environment variable
-        if let Ok(enable) = std::env::var("R_ENABLE_JIT")
-            && let Ok(v) = enable.parse::<c_int>()
-        {
-            val = v;
-        }
-
-        if val != 0 {
-            // loadCompilerNamespace(); // stub: not yet implemented
-            checkCompilerOptions(val);
-        }
-        set_R_jit_enabled(val);
-
-        // Check _R_COMPILE_PKGS_
-        if let Ok(compile) = std::env::var("_R_COMPILE_PKGS_")
-            && let Ok(v) = compile.parse::<c_int>()
-        {
-            with_required_current_instance(|inst| {
-                inst.eval_state.compile_pkgs = if v > 0 { TRUE } else { FALSE };
-            });
-        }
-
-        // Check R_DISABLE_BYTECODE
-        if let Ok(disable) = std::env::var("R_DISABLE_BYTECODE")
-            && let Ok(v) = disable.parse::<c_int>()
-        {
-            with_required_current_instance(|inst| {
-                inst.eval_state.disable_bytecode = if v > 0 { TRUE } else { FALSE };
-            });
-        }
+        let settings = current_env_settings();
+        checkCompilerOptions(settings.jit_enabled);
+        apply_jit_settings(settings);
     }
 }
 
@@ -396,7 +456,8 @@ pub unsafe fn R_init_jit_enabled() {
 /// function should be compiled based on JIT settings and scoring.
 pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
     unsafe {
-        if get_R_jit_enabled() == 0 || get_R_disable_bytecode() != 0 {
+        if get_R_jit_enabled() == 0 || get_R_disable_bytecode() != 0 || !BYTECODE_COMPILER_AVAILABLE
+        {
             return FALSE;
         }
         if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
@@ -518,9 +579,97 @@ pub unsafe fn do_declare(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::memory::with_arena;
     use crate::sexp::session::RSession;
 
     use super::*;
+
+    #[test]
+    fn test_jit_settings_parse_and_gate_unavailable_compiler() {
+        assert!(!bytecode_compiler_available());
+
+        let defaults = JitSettings::from_env_values(None, None, None);
+        assert_eq!(defaults.jit_enabled, 0);
+        assert_eq!(defaults.compile_pkgs, FALSE);
+        assert_eq!(defaults.disable_bytecode, FALSE);
+        assert_eq!(defaults.min_jit_score, c_int::MAX);
+
+        let requested = JitSettings::from_env_values(Some("3"), Some("1"), Some("0"));
+        assert_eq!(requested.jit_enabled, 0);
+        assert_eq!(requested.compile_pkgs, TRUE);
+        assert_eq!(requested.disable_bytecode, FALSE);
+
+        let disabled = JitSettings::from_env_values(Some("3"), None, Some("1"));
+        assert_eq!(disabled.jit_enabled, 0);
+        assert_eq!(disabled.disable_bytecode, TRUE);
+
+        let invalid = JitSettings::from_env_values(Some("not-a-number"), Some("-1"), None);
+        assert_eq!(invalid.jit_enabled, 0);
+        assert_eq!(invalid.compile_pkgs, FALSE);
+    }
+
+    #[test]
+    fn test_jit_settings_are_session_local() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|_| {
+            apply_jit_settings(JitSettings::from_env_values(
+                Some("3"),
+                Some("1"),
+                Some("0"),
+            ));
+            assert_eq!(get_R_jit_enabled(), 0);
+            assert_eq!(get_R_compile_pkgs(), TRUE);
+            assert_eq!(get_R_disable_bytecode(), FALSE);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| {
+                apply_jit_settings(JitSettings::from_env_values(
+                    Some("0"),
+                    Some("0"),
+                    Some("1"),
+                ));
+                assert_eq!(get_R_jit_enabled(), 0);
+                assert_eq!(get_R_compile_pkgs(), FALSE);
+                assert_eq!(get_R_disable_bytecode(), TRUE);
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            assert_eq!(get_R_jit_enabled(), 0);
+            assert_eq!(get_R_compile_pkgs(), TRUE);
+            assert_eq!(get_R_disable_bytecode(), FALSE);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_compile_expr_returns_original_expression_without_compiler() {
+        let _session = RSession::new();
+        let expr = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        unsafe {
+            assert_eq!(R_compileExpr(expr, R_NilValue()), expr);
+        }
+    }
+
+    #[test]
+    fn test_check_jit_does_not_claim_compilation_without_compiler() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_code_with_output_capture("function(x) { x + 1 }");
+        let fun = result.expect("closure should evaluate").as_raw();
+
+        unsafe {
+            set_R_jit_enabled(3);
+            with_required_current_instance(|inst| inst.eval_state.min_jit_score = 0);
+
+            assert_eq!(R_CheckJIT(fun), FALSE);
+            assert_ne!(TYPEOF(BODY(fun)), SEXPTYPE::BCODESXP);
+        }
+    }
 
     #[test]
     fn test_session_jit_state_is_local_on_same_thread() {
