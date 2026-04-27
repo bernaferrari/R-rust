@@ -13,7 +13,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_FINITE, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Helper: R functions -- delegate to real implementations
@@ -108,11 +108,11 @@ fn K2l(x: f64, lower: bool, tol: f64) -> f64 {
 pub unsafe fn pkolmogorov_two_limit(sq: SEXP, slower: SEXP, stol: SEXP) -> SEXP {
     let lower = asInteger(slower);
     let tol = asReal(stol);
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq)));
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq));
+    let _ans_guard = protect(ans);
     for i in 0..LENGTH(sq) as usize {
         *REAL(ans).add(i) = K2l(*REAL(sq).add(i), lower != 0, tol);
     }
-    Rf_unprotect(1);
     ans
 }
 
@@ -291,7 +291,8 @@ pub unsafe fn psmirnov_exact(
     let md = m as f64;
     let nd = n as f64;
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq)));
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq));
+    let _ans_guard = protect(ans);
     let p = REAL(ans);
     for i in 0..LENGTH(sq) as usize {
         let mut q = *REAL(sq).add(i);
@@ -311,7 +312,6 @@ pub unsafe fn psmirnov_exact(
             }
         }
     }
-    Rf_unprotect(1);
     ans
 }
 
@@ -442,11 +442,11 @@ fn K2x(n: c_int, d: f64) -> f64 {
 /// R entry point: pkolmogorov_two_exact(sq, sn)
 pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
     let n = asInteger(sn);
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq)));
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, LENGTH(sq));
+    let _ans_guard = protect(ans);
     for i in 0..LENGTH(sq) as usize {
         *REAL(ans).add(i) = K2x(n, *REAL(sq).add(i));
     }
-    Rf_unprotect(1);
     ans
 }
 
@@ -517,8 +517,10 @@ fn Smirnov_sim_wrk(
 
 /// R entry point: Smirnov_sim(sr, sc, sB, twosided)
 pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sB: SEXP, twosided: SEXP) -> SEXP {
-    let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.as_c_int()));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.as_c_int()));
+    let sr = coerceVector(sr, SEXPTYPE::INTSXP.as_c_int());
+    let _sr_guard = protect(sr);
+    let sc = coerceVector(sc, SEXPTYPE::INTSXP.as_c_int());
+    let _sc_guard = protect(sc);
     let nr = LENGTH(sr);
     let nc = LENGTH(sc);
     let b = asInteger(sB);
@@ -538,7 +540,8 @@ pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sB: SEXP, twosided: SEXP) -> SEXP 
     let mut fact = vec![0.0f64; (n + 1) as usize];
     let mut jwork = vec![0i32; nc as usize];
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, b));
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, b);
+    let _ans_guard = protect(ans);
     let results = std::slice::from_raw_parts_mut(REAL(ans), b as usize);
 
     Smirnov_sim_wrk(
@@ -555,6 +558,5 @@ pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sB: SEXP, twosided: SEXP) -> SEXP 
         results,
     );
 
-    Rf_unprotect(3);
     ans
 }

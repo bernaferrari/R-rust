@@ -65,14 +65,14 @@ pub unsafe fn logit_link(mu: SEXP) -> SEXP {
                 b"Argument must be a nonempty numeric vector\0".as_ptr() as *const libc::c_char
             );
         }
-        let ans = Rf_protect(shallow_duplicate(mu));
+        let ans = shallow_duplicate(mu);
+        let _ans_guard = protect(ans);
         let rans = REAL(ans);
         let rmu = REAL(mu);
 
         for i in 0..(n as usize) {
             *rans.add(i) = x_d_omx(*rmu.add(i)).ln(); // log(x/(1-x))
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -80,7 +80,6 @@ pub unsafe fn logit_link(mu: SEXP) -> SEXP {
 pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(eta);
-        let mut nprot: c_int = 1;
         if n == 0
             || !(TYPEOF(eta) == SEXPTYPE::REALSXP
                 || TYPEOF(eta) == SEXPTYPE::INTSXP
@@ -90,13 +89,14 @@ pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
                 b"Argument must be a nonempty numeric vector\0".as_ptr() as *const libc::c_char
             );
         }
+        let mut guards = Vec::with_capacity(2);
         let mut eta = eta;
         if TYPEOF(eta) != SEXPTYPE::REALSXP {
             eta = coerceVector(eta, SEXPTYPE::REALSXP);
-            Rf_protect(eta);
-            nprot += 1;
+            guards.push(protect(eta));
         }
-        let ans = Rf_protect(shallow_duplicate(eta));
+        let ans = shallow_duplicate(eta);
+        guards.push(protect(ans));
         let rans = REAL(ans);
         let reta = REAL(eta);
 
@@ -111,7 +111,6 @@ pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
             };
             *rans.add(i) = x_d_opx(tmp);
         }
-        Rf_unprotect(nprot);
         ans
     }
 }
@@ -119,7 +118,6 @@ pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
 pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(eta);
-        let mut nprot: c_int = 1;
         if n == 0
             || !(TYPEOF(eta) == SEXPTYPE::REALSXP
                 || TYPEOF(eta) == SEXPTYPE::INTSXP
@@ -129,13 +127,14 @@ pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
                 b"Argument must be a nonempty numeric vector\0".as_ptr() as *const libc::c_char
             );
         }
+        let mut guards = Vec::with_capacity(2);
         let mut eta = eta;
         if TYPEOF(eta) != SEXPTYPE::REALSXP {
             eta = coerceVector(eta, SEXPTYPE::REALSXP);
-            Rf_protect(eta);
-            nprot += 1;
+            guards.push(protect(eta));
         }
-        let ans = Rf_protect(shallow_duplicate(eta));
+        let ans = shallow_duplicate(eta);
+        guards.push(protect(ans));
         let rans = REAL(ans);
         let reta = REAL(eta);
 
@@ -149,7 +148,6 @@ pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
                 expE / (opexp * opexp)
             };
         }
-        Rf_unprotect(nprot);
         ans
     }
 }
@@ -165,7 +163,7 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
         let n = LENGTH(y);
         let lmu = LENGTH(mu);
         let lwt = LENGTH(wt);
-        let mut nprot: c_int = 1;
+        let mut guards = Vec::with_capacity(4);
 
         let mut y = y;
         let mut mu = mu;
@@ -173,22 +171,20 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
 
         if TYPEOF(y) != SEXPTYPE::REALSXP {
             y = coerceVector(y, SEXPTYPE::REALSXP);
-            Rf_protect(y);
-            nprot += 1;
+            guards.push(protect(y));
         }
         let ry = REAL(y);
-        let ans = Rf_protect(shallow_duplicate(y));
+        let ans = shallow_duplicate(y);
+        guards.push(protect(ans));
         let rans = REAL(ans);
 
         if TYPEOF(mu) != SEXPTYPE::REALSXP {
             mu = coerceVector(mu, SEXPTYPE::REALSXP);
-            Rf_protect(mu);
-            nprot += 1;
+            guards.push(protect(mu));
         }
         if TYPEOF(wt) != SEXPTYPE::REALSXP {
             wt = coerceVector(wt, SEXPTYPE::REALSXP);
-            Rf_protect(wt);
-            nprot += 1;
+            guards.push(protect(wt));
         }
         let rmu = REAL(mu);
         let rwt = REAL(wt);
@@ -222,7 +218,6 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(nprot);
         ans
     }
 }
