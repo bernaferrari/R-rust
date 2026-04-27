@@ -8,9 +8,8 @@
 //! Original file: r-source/src/main/objects.c (1,879 lines)
 
 use libc;
-use std::cell::Cell;
 use std::ffi::CString;
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use crate::eval::attrib_core::{R_ClassSymbol, R_data_class, getAttrib, isObject, setAttrib};
@@ -90,13 +89,6 @@ unsafe fn sym(name: &str) -> SEXP {
 /// Function pointer type for standardGeneric dispatch.
 pub type R_stdGen_ptr_t = Option<unsafe extern "C" fn(arg: SEXP, env: SEXP, fdef: SEXP) -> SEXP>;
 
-// ---------------------------------------------------------------------------
-// Primitive method dispatch state
-// ---------------------------------------------------------------------------
-
-thread_local! { static MAX_METHODS_OFFSET: Cell<c_int> = Cell::new(0); }
-thread_local! { static CUR_MAX_OFFSET: Cell<c_int> = Cell::new(0); }
-thread_local! { static ALLOW_PRIMITIVE_METHODS: Cell<c_int> = Cell::new(TRUE); }
 const DEFAULT_N_PRIM_METHODS: c_int = 100;
 
 /// Primitive method status codes.
@@ -109,16 +101,52 @@ pub enum prim_methods_t {
     SUPPRESSED = 3,
 }
 
-// Storage for primitive method tables (initialized lazily).
-thread_local! { static PRIM_METHODS: Cell<*mut prim_methods_t> = Cell::new(ptr::null_mut()); }
-thread_local! { static PRIM_GENERICS: Cell<*mut SEXP> = Cell::new(ptr::null_mut()); }
-thread_local! { static PRIM_MLIST: Cell<*mut SEXP> = Cell::new(ptr::null_mut()); }
+pub(crate) struct ObjectsRuntimeState {
+    max_methods_offset: c_int,
+    cur_max_offset: c_int,
+    allow_primitive_methods: c_int,
+    prim_methods: Vec<prim_methods_t>,
+    prim_generics: Vec<SEXP>,
+    prim_mlist: Vec<SEXP>,
+    standard_generic_ptr: R_stdGen_ptr_t,
+    quick_method_check_ptr: R_stdGen_ptr_t,
+    deferred_default_object: SEXP,
+}
 
-thread_local! { static R_STANDARD_GENERIC_PTR: Cell<R_stdGen_ptr_t> = Cell::new(None); }
+impl Default for ObjectsRuntimeState {
+    fn default() -> Self {
+        Self {
+            max_methods_offset: 0,
+            cur_max_offset: 0,
+            allow_primitive_methods: TRUE,
+            prim_methods: Vec::new(),
+            prim_generics: Vec::new(),
+            prim_mlist: Vec::new(),
+            standard_generic_ptr: None,
+            quick_method_check_ptr: None,
+            deferred_default_object: ptr::null_mut(),
+        }
+    }
+}
 
-thread_local! { static QUICK_METHOD_CHECK_PTR: Cell<R_stdGen_ptr_t> = Cell::new(None); }
+impl ObjectsRuntimeState {
+    fn ensure_primitive_tables(&mut self) {
+        if self.prim_methods.is_empty() {
+            let n = DEFAULT_N_PRIM_METHODS as usize;
+            self.prim_methods.resize(n, prim_methods_t::NO_METHODS);
+            self.prim_generics.resize(n, ptr::null_mut());
+            self.prim_mlist.resize(n, ptr::null_mut());
+            self.max_methods_offset = DEFAULT_N_PRIM_METHODS;
+        }
+    }
+}
 
-thread_local! { static DEFERRED_DEFAULT_OBJECT: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+fn with_objects_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut ObjectsRuntimeState) -> R,
+{
+    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.objects_state))
+}
 
 // ---------------------------------------------------------------------------
 // Helper: CHAR wrapper that returns a *const c_char from a CHARSXP
@@ -2310,19 +2338,21 @@ pub unsafe fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
 
 /// Get the current standardGeneric function pointer.
 unsafe fn R_get_standardGeneric_ptr() -> R_stdGen_ptr_t {
-    R_STANDARD_GENERIC_PTR.with(|v| v.get())
+    with_objects_state(|state| state.standard_generic_ptr)
 }
 
 /// Set the standardGeneric function pointer.
 pub unsafe fn R_set_standardGeneric_ptr(val: R_stdGen_ptr_t, _envir: SEXP) -> R_stdGen_ptr_t {
-    let old = R_STANDARD_GENERIC_PTR.with(|v| v.get());
-    R_STANDARD_GENERIC_PTR.with(|v| v.set(val));
-    old
+    with_objects_state(|state| {
+        let old = state.standard_generic_ptr;
+        state.standard_generic_ptr = val;
+        old
+    })
 }
 
 /// Check whether S4 methods dispatch is currently enabled.
 pub unsafe fn isMethodsDispatchOn() -> c_int {
-    match R_STANDARD_GENERIC_PTR.with(|v| v.get()) {
+    match with_objects_state(|state| state.standard_generic_ptr) {
         None => FALSE,
         Some(_) => TRUE,
     }
@@ -2524,79 +2554,38 @@ pub unsafe fn do_set_prim_method(
             error("invalid object: must be a primitive function");
         };
 
-        // Allocate tables if needed (simplified)
-        if PRIM_METHODS.with(|v| v.get()).is_null() {
-            let n = DEFAULT_N_PRIM_METHODS as usize;
-            PRIM_METHODS.with(|v| {
-                v.set(
-                libc::malloc(std::mem::size_of::<prim_methods_t>() * n) as *mut prim_methods_t
-            )
-            });
-            PRIM_GENERICS
-                .with(|v| v.set(libc::malloc(std::mem::size_of::<SEXP>() * n) as *mut SEXP));
-            PRIM_MLIST.with(|v| v.set(libc::malloc(std::mem::size_of::<SEXP>() * n) as *mut SEXP));
-            if !PRIM_METHODS.with(|v| v.get()).is_null() {
-                for i in 0..n {
-                    *PRIM_METHODS.with(|v| v.get()).add(i) = prim_methods_t::NO_METHODS;
-                }
+        with_objects_state(|state| {
+            state.ensure_primitive_tables();
+            let offset = offset as usize;
+            if offset >= state.max_methods_offset as usize {
+                return R_NilValue();
             }
-            if !PRIM_GENERICS.with(|v| v.get()).is_null() {
-                libc::memset(
-                    PRIM_GENERICS.with(|v| v.get()) as *mut c_void,
-                    0,
-                    std::mem::size_of::<SEXP>() * n,
-                );
-            }
-            if !PRIM_MLIST.with(|v| v.get()).is_null() {
-                libc::memset(
-                    PRIM_MLIST.with(|v| v.get()) as *mut c_void,
-                    0,
-                    std::mem::size_of::<SEXP>() * n,
-                );
-            }
-            MAX_METHODS_OFFSET.with(|v| v.set(DEFAULT_N_PRIM_METHODS));
-        }
 
-        if !PRIM_METHODS.with(|v| v.get()).is_null()
-            && offset < MAX_METHODS_OFFSET.with(|v| v.get())
-        {
-            *PRIM_METHODS.with(|v| v.get()).add(offset as usize) = code;
-            if offset > CUR_MAX_OFFSET.with(|v| v.get()) {
-                CUR_MAX_OFFSET.with(|v| v.set(offset));
+            state.prim_methods[offset] = code;
+            if offset as c_int > state.cur_max_offset {
+                state.cur_max_offset = offset as c_int;
             }
-        }
 
-        // Store generic if provided
-        if !PRIM_GENERICS.with(|v| v.get()).is_null()
-            && offset < MAX_METHODS_OFFSET.with(|v| v.get())
-        {
             if code == prim_methods_t::NO_METHODS {
-                ptr::write(
-                    PRIM_GENERICS.with(|v| v.get()).add(offset as usize),
-                    ptr::null_mut(),
-                );
-                ptr::write(
-                    PRIM_MLIST.with(|v| v.get()).add(offset as usize),
-                    ptr::null_mut(),
-                );
+                state.prim_generics[offset] = ptr::null_mut();
+                state.prim_mlist[offset] = ptr::null_mut();
             } else if !fundef.is_null()
                 && fundef != R_NilValue()
-                && ptr::read(PRIM_GENERICS.with(|v| v.get()).add(offset as usize)).is_null()
+                && state.prim_generics[offset].is_null()
             {
-                ptr::write(PRIM_GENERICS.with(|v| v.get()).add(offset as usize), fundef);
+                state.prim_generics[offset] = fundef;
             }
-            if code == prim_methods_t::HAS_METHODS && !mlist.is_null() && mlist != R_NilValue() {
-                ptr::write(PRIM_MLIST.with(|v| v.get()).add(offset as usize), mlist);
-            }
-        }
 
-        if !PRIM_GENERICS.with(|v| v.get()).is_null()
-            && offset < MAX_METHODS_OFFSET.with(|v| v.get())
-        {
-            ptr::read(PRIM_GENERICS.with(|v| v.get()).add(offset as usize))
-        } else {
-            R_NilValue()
-        }
+            if code == prim_methods_t::HAS_METHODS && !mlist.is_null() && mlist != R_NilValue() {
+                state.prim_mlist[offset] = mlist;
+            }
+
+            if state.prim_generics[offset].is_null() {
+                R_NilValue()
+            } else {
+                state.prim_generics[offset]
+            }
+        })
     }
 }
 
@@ -2638,7 +2627,7 @@ pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
         if _op.is_null() || TYPEOF(_op) == SEXPTYPE::CLOSXP {
             return TRUE;
         }
-        if ALLOW_PRIMITIVE_METHODS.with(|v| v.get()) == FALSE {
+        if with_objects_state(|state| state.allow_primitive_methods) == FALSE {
             return FALSE;
         }
         FALSE
@@ -2648,20 +2637,21 @@ pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
 /// R_deferred_default_method -- return the deferred default method marker.
 pub unsafe fn R_deferred_default_method() -> SEXP {
     unsafe {
-        if DEFERRED_DEFAULT_OBJECT.with(|v| v.get()).is_null() {
-            DEFERRED_DEFAULT_OBJECT.with(|v| {
-                v.set(Rf_install(
-                    b"__Deferred_Default_Marker__\x00".as_ptr() as *const c_char
-                ))
-            });
-        }
-        DEFERRED_DEFAULT_OBJECT.with(|v| v.get())
+        with_objects_state(|state| {
+            if state.deferred_default_object.is_null() {
+                state.deferred_default_object =
+                    Rf_install(b"__Deferred_Default_Marker__\x00".as_ptr() as *const c_char);
+            }
+            state.deferred_default_object
+        })
     }
 }
 
 /// R_set_quick_method_check -- set the quick method check function pointer.
 pub unsafe fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
-    QUICK_METHOD_CHECK_PTR.with(|v| v.set(_value));
+    with_objects_state(|state| {
+        state.quick_method_check_ptr = _value;
+    });
 }
 
 /// R_possible_dispatch -- try to dispatch a formal method for a primitive.
@@ -2677,18 +2667,23 @@ pub unsafe fn R_possible_dispatch(
 ) -> SEXP {
     unsafe {
         let offset = PRIMOFFSET(op);
-        let cur_max = CUR_MAX_OFFSET.with(|v| v.get());
+        let cur_max = with_objects_state(|state| state.cur_max_offset);
         if offset < 0 || offset > cur_max {
             error("invalid primitive operation given for dispatch");
         }
 
-        let prim_methods_ptr = PRIM_METHODS.with(|v| v.get());
-        if prim_methods_ptr.is_null() {
+        let current = with_objects_state(|state| {
+            state
+                .prim_methods
+                .get(offset as usize)
+                .copied()
+                .unwrap_or(prim_methods_t::NO_METHODS)
+        });
+        if current == prim_methods_t::NO_METHODS {
             return ptr::null_mut();
         }
 
-        let current = *prim_methods_ptr.add(offset as usize);
-        if current == prim_methods_t::NO_METHODS || current == prim_methods_t::SUPPRESSED {
+        if current == prim_methods_t::SUPPRESSED {
             return ptr::null_mut();
         }
 
@@ -2709,16 +2704,17 @@ pub unsafe fn R_possible_dispatch(
             );
         }
 
-        let prim_mlist_ptr = PRIM_MLIST.with(|v| v.get());
-        let mlist = if prim_mlist_ptr.is_null() {
-            ptr::null_mut()
-        } else {
-            ptr::read(prim_mlist_ptr.add(offset as usize))
-        };
+        let mlist = with_objects_state(|state| {
+            state
+                .prim_mlist
+                .get(offset as usize)
+                .copied()
+                .unwrap_or(ptr::null_mut())
+        });
 
         // Try the quick method check
         if !mlist.is_null() && isNull(mlist) == FALSE {
-            let qmc = QUICK_METHOD_CHECK_PTR.with(|v| v.get());
+            let qmc = with_objects_state(|state| state.quick_method_check_ptr);
             if let Some(check_fn) = qmc {
                 let value = check_fn(args, mlist, op);
                 if isPrimitive(value) != FALSE {
@@ -2785,12 +2781,13 @@ pub unsafe fn R_possible_dispatch(
         }
 
         // Fall back to full generic dispatch via prim_generics
-        let prim_gen_ptr = PRIM_GENERICS.with(|v| v.get());
-        let fundef = if prim_gen_ptr.is_null() {
-            ptr::null_mut()
-        } else {
-            ptr::read(prim_gen_ptr.add(offset as usize))
-        };
+        let fundef = with_objects_state(|state| {
+            state
+                .prim_generics
+                .get(offset as usize)
+                .copied()
+                .unwrap_or(ptr::null_mut())
+        });
 
         if fundef.is_null() || TYPEOF(fundef) != SEXPTYPE::CLOSXP {
             error("primitive function has been set for methods but no generic function supplied");
@@ -2813,9 +2810,11 @@ pub unsafe fn R_possible_dispatch(
             }
             let value =
                 crate::eval::closure::applyClosure(call, fundef, s, rho, R_NilValue(), TRUE);
-            if !prim_methods_ptr.is_null() {
-                *prim_methods_ptr.add(offset as usize) = current;
-            }
+            with_objects_state(|state| {
+                if let Some(slot) = state.prim_methods.get_mut(offset as usize) {
+                    *slot = current;
+                }
+            });
             if value == R_deferred_default_method() {
                 return ptr::null_mut();
             }
@@ -2823,9 +2822,11 @@ pub unsafe fn R_possible_dispatch(
         } else {
             let value =
                 crate::eval::closure::applyClosure(call, fundef, args, rho, R_NilValue(), FALSE);
-            if !prim_methods_ptr.is_null() {
-                *prim_methods_ptr.add(offset as usize) = current;
-            }
+            with_objects_state(|state| {
+                if let Some(slot) = state.prim_methods.get_mut(offset as usize) {
+                    *slot = current;
+                }
+            });
             if value == R_deferred_default_method() {
                 return ptr::null_mut();
             }
@@ -3600,6 +3601,41 @@ mod tests {
             assert!(old.is_none());
             assert_eq!(isMethodsDispatchOn(), FALSE);
         }
+    }
+
+    unsafe extern "C" fn standard_generic_a(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
+        unsafe { R_NilValue() }
+    }
+
+    unsafe extern "C" fn standard_generic_b(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
+        unsafe { R_NilValue() }
+    }
+
+    #[test]
+    fn test_standard_generic_ptr_is_session_local() {
+        let mut left = crate::sexp::session::RSession::new();
+        let mut right = crate::sexp::session::RSession::new();
+
+        left.with_arena(|_| unsafe {
+            assert!(R_set_standardGeneric_ptr(Some(standard_generic_a), ptr::null_mut()).is_none());
+            assert_eq!(isMethodsDispatchOn(), TRUE);
+        });
+
+        right.with_arena(|_| unsafe {
+            assert_eq!(isMethodsDispatchOn(), FALSE);
+            assert!(R_set_standardGeneric_ptr(Some(standard_generic_b), ptr::null_mut()).is_none());
+            assert_eq!(isMethodsDispatchOn(), TRUE);
+        });
+
+        left.with_arena(|_| unsafe {
+            assert_eq!(isMethodsDispatchOn(), TRUE);
+            assert!(R_set_standardGeneric_ptr(None, ptr::null_mut()).is_some());
+            assert_eq!(isMethodsDispatchOn(), FALSE);
+        });
+
+        right.with_arena(|_| unsafe {
+            assert_eq!(isMethodsDispatchOn(), TRUE);
+        });
     }
 
     #[test]

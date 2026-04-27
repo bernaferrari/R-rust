@@ -254,6 +254,8 @@ pub struct RInstance {
     pub(crate) names_state: crate::mainutils::names::NamesRuntimeState,
     /// Per-instance bind.c cached sentinels.
     pub(crate) bind_state: crate::mainutils::bind::BindRuntimeState,
+    /// Per-instance S3/S4 object dispatch state.
+    pub(crate) objects_state: crate::mainutils::objects::ObjectsRuntimeState,
     /// Per-instance dotcode/native-call runtime policy cache.
     pub(crate) dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState,
     /// Per-instance startup/workspace metadata.
@@ -375,6 +377,7 @@ impl RInstance {
             eval_state: EvalControlState::default(),
             names_state: crate::mainutils::names::NamesRuntimeState::default(),
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
+            objects_state: crate::mainutils::objects::ObjectsRuntimeState::default(),
             dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
