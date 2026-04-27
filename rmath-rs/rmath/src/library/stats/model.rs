@@ -1017,15 +1017,29 @@ unsafe fn ExpandDots(object: SEXP, value: SEXP) -> SEXP {
 // termsform - workhorse to turn model formula into terms object
 // ---------------------------------------------------------------------------
 
-// Global state variables for terms computation
-thread_local! {
-    static ref INTERCEPT: std::cell::Cell<bool> = std::cell::Cell::new(false);
-    static ref PARITY: std::cell::Cell<bool> = std::cell::Cell::new(false);
-    static ref RESPONSE: std::cell::Cell<bool> = std::cell::Cell::new(false);
-    static ref NWORDS: std::cell::Cell<isize> = std::cell::Cell::new(0);
-    static ref VARLIST: std::cell::Cell<*mut std::ffi::c_void> = std::cell::Cell::new(ptr::null_mut());
-    static ref FRAMENAMES: std::cell::Cell<*mut std::ffi::c_void> = std::cell::Cell::new(ptr::null_mut());
-    static ref HAVE_DOT: std::cell::Cell<bool> = std::cell::Cell::new(false);
+#[derive(Clone, Copy)]
+struct TermsState {
+    intercept: bool,
+    parity: bool,
+    response: bool,
+    nwords: isize,
+    varlist: SEXP,
+    framenames: SEXP,
+    have_dot: bool,
+}
+
+impl Default for TermsState {
+    fn default() -> Self {
+        Self {
+            intercept: false,
+            parity: false,
+            response: false,
+            nwords: 0,
+            varlist: ptr::null_mut(),
+            framenames: ptr::null_mut(),
+            have_dot: false,
+        }
+    }
 }
 
 // Helper: isZeroOne
@@ -1076,13 +1090,13 @@ unsafe fn MatchVar(var1: SEXP, var2: SEXP) -> bool {
 }
 
 // Helper: InstallVar
-unsafe fn InstallVar(var: SEXP) -> isize {
+unsafe fn InstallVar(var: SEXP, state: &mut TermsState) -> isize {
     if !isSymbol(var) && !isLanguage(var) && !isZeroOne(var) {
         Rf_error(b"invalid term in model formula\0".as_ptr() as *const _);
         return 0;
     }
 
-    let varlist = VARLIST.get();
+    let varlist = state.varlist;
     if varlist.is_null() {
         return 1;
     }
@@ -1105,13 +1119,13 @@ unsafe fn InstallVar(var: SEXP) -> isize {
 }
 
 // Helper: CheckRHS
-unsafe fn CheckRHS(v: SEXP) {
+unsafe fn CheckRHS(mut v: SEXP, state: &TermsState) {
     while (isLanguage(v) || isNewList(v)) && v != R_NilValue() {
-        CheckRHS(CAR(v));
+        CheckRHS(CAR(v), state);
         v = CDR(v);
     }
     if isSymbol(v) {
-        let framenames = FRAMENAMES.get();
+        let framenames = state.framenames;
         if framenames.is_null() {
             return;
         }
@@ -1122,16 +1136,16 @@ unsafe fn CheckRHS(v: SEXP) {
 }
 
 // Helper: ExtractVars
-unsafe fn ExtractVars(formula: SEXP) {
+unsafe fn ExtractVars(formula: SEXP, state: &mut TermsState) {
     if isNull(formula) || isZeroOne(formula) {
         return;
     }
     if isSymbol(formula) {
         if formula == Rf_install(".") {
-            HAVE_DOT.set(true);
+            state.have_dot = true;
         }
-        if HAVE_DOT.get() {
-            let framenames = FRAMENAMES.get();
+        if state.have_dot {
+            let framenames = state.framenames;
             if !framenames.is_null() {
                 let flen = Rf_length(framenames as SEXP) as isize;
                 for i in 0..flen {
@@ -1140,15 +1154,15 @@ unsafe fn ExtractVars(formula: SEXP) {
                         .to_str()
                         .unwrap_or("");
                     let sym = Rf_install(s);
-                    if !MatchVar(sym, CADR(VARLIST.get() as SEXP)) {
-                        InstallVar(sym);
+                    if !MatchVar(sym, CADR(state.varlist)) {
+                        InstallVar(sym, state);
                     }
                 }
             } else {
-                InstallVar(formula);
+                InstallVar(formula, state);
             }
         } else {
-            InstallVar(formula);
+            InstallVar(formula, state);
         }
         return;
     }
@@ -1164,78 +1178,78 @@ unsafe fn ExtractVars(formula: SEXP) {
         let parenSymbol = Rf_install("(");
 
         if CAR(formula) == tildeSymbol {
-            if RESPONSE.get() {
+            if state.response {
                 Rf_error(b"invalid model formula\0".as_ptr() as *const _);
                 return;
             }
             if CDDR(formula) == R_NilValue() {
-                RESPONSE.set(false);
-                ExtractVars(CADR(formula));
+                state.response = false;
+                ExtractVars(CADR(formula), state);
             } else {
-                RESPONSE.set(true);
-                InstallVar(CADR(formula));
-                ExtractVars(CADDR(formula));
+                state.response = true;
+                InstallVar(CADR(formula), state);
+                ExtractVars(CADDR(formula), state);
             }
             return;
         }
         if CAR(formula) == plusSymbol {
             let len = Rf_length(formula);
             if len > 1 {
-                ExtractVars(CADR(formula));
+                ExtractVars(CADR(formula), state);
             }
             if len > 2 {
-                ExtractVars(CADDR(formula));
+                ExtractVars(CADDR(formula), state);
             }
             return;
         }
         if CAR(formula) == colonSymbol {
-            ExtractVars(CADR(formula));
-            ExtractVars(CADDR(formula));
+            ExtractVars(CADR(formula), state);
+            ExtractVars(CADDR(formula), state);
             return;
         }
         if CAR(formula) == powerSymbol {
-            ExtractVars(CADR(formula));
+            ExtractVars(CADR(formula), state);
             return;
         }
         if CAR(formula) == timesSymbol {
-            ExtractVars(CADR(formula));
-            ExtractVars(CADDR(formula));
+            ExtractVars(CADR(formula), state);
+            ExtractVars(CADDR(formula), state);
             return;
         }
         if CAR(formula) == inSymbol {
-            ExtractVars(CADR(formula));
-            ExtractVars(CADDR(formula));
+            ExtractVars(CADR(formula), state);
+            ExtractVars(CADDR(formula), state);
             return;
         }
         if CAR(formula) == slashSymbol {
-            ExtractVars(CADR(formula));
-            ExtractVars(CADDR(formula));
+            ExtractVars(CADR(formula), state);
+            ExtractVars(CADDR(formula), state);
             return;
         }
         if CAR(formula) == minusSymbol {
             let len = Rf_length(formula);
             if len == 2 {
-                ExtractVars(CADR(formula));
+                ExtractVars(CADR(formula), state);
             } else {
-                ExtractVars(CADR(formula));
-                ExtractVars(CADDR(formula));
+                ExtractVars(CADR(formula), state);
+                ExtractVars(CADDR(formula), state);
             }
             return;
         }
         if CAR(formula) == parenSymbol {
-            ExtractVars(CADR(formula));
+            ExtractVars(CADR(formula), state);
             return;
         }
         // All other calls
-        InstallVar(formula);
+        InstallVar(formula, state);
         return;
     }
     Rf_error(b"invalid model formula in ExtractVars\0".as_ptr() as *const _);
 }
 
 // Helper: AllocTerm
-unsafe fn AllocTerm() -> SEXP {
-    let nw = NWORDS.get();
+unsafe fn AllocTerm(state: &TermsState) -> SEXP {
+    let nw = state.nwords;
     let term = Rf_allocVector3(SEXPTYPE::INTSXP, nw as R_xlen_t);
     for i in 0..nw {
         *INTEGER(term).add(i as usize) = 0;
@@ -1264,9 +1278,9 @@ unsafe fn GetBit(term: SEXP, whichBit: isize) -> c_int {
 }
 
 // Helper: OrBits
-unsafe fn OrBits(term1: SEXP, term2: SEXP) -> SEXP {
-    let term = AllocTerm();
-    let nw = NWORDS.get();
+unsafe fn OrBits(term1: SEXP, term2: SEXP, state: &TermsState) -> SEXP {
+    let term = AllocTerm(state);
+    let nw = state.nwords;
     for i in 0..nw {
         *INTEGER(term).add(i as usize) =
             *INTEGER(term1).add(i as usize) | *INTEGER(term2).add(i as usize);
@@ -1284,8 +1298,8 @@ unsafe fn BitCount(term: SEXP, nvar: isize) -> c_int {
 }
 
 // Helper: TermZero
-unsafe fn TermZero(term: SEXP) -> bool {
-    let nw = NWORDS.get();
+unsafe fn TermZero(term: SEXP, state: &TermsState) -> bool {
+    let nw = state.nwords;
     for i in 0..nw {
         if *INTEGER(term).add(i as usize) != 0 {
             return false;
@@ -1295,8 +1309,8 @@ unsafe fn TermZero(term: SEXP) -> bool {
 }
 
 // Helper: TermEqual
-unsafe fn TermEqual(term1: SEXP, term2: SEXP) -> bool {
-    let nw = NWORDS.get();
+unsafe fn TermEqual(term1: SEXP, term2: SEXP, state: &TermsState) -> bool {
+    let nw = state.nwords;
     for i in 0..nw {
         if *INTEGER(term1).add(i as usize) != *INTEGER(term2).add(i as usize) {
             return false;
@@ -1306,14 +1320,14 @@ unsafe fn TermEqual(term1: SEXP, term2: SEXP) -> bool {
 }
 
 // Helper: StripTerm
-unsafe fn StripTerm(term: SEXP, mut list: SEXP) -> SEXP {
-    if TermZero(term) {
-        INTERCEPT.set(false);
+unsafe fn StripTerm(term: SEXP, mut list: SEXP, state: &mut TermsState) -> SEXP {
+    if TermZero(term, state) {
+        state.intercept = false;
     }
     let mut root: SEXP = R_NilValue();
     let mut prev: SEXP = R_NilValue();
     while list != R_NilValue() {
-        if TermEqual(term, CAR(list)) {
+        if TermEqual(term, CAR(list), state) {
             if prev != R_NilValue() {
                 SETCDR(prev, CDR(list));
             }
@@ -1329,10 +1343,10 @@ unsafe fn StripTerm(term: SEXP, mut list: SEXP) -> SEXP {
 }
 
 // Helper: TrimRepeats (simplified - remove duplicates)
-unsafe fn TrimRepeats(list: SEXP) -> SEXP {
+unsafe fn TrimRepeats(list: SEXP, state: &TermsState) -> SEXP {
     // Drop zero terms at start
     let mut list = list;
-    while list != R_NilValue() && TermZero(CAR(list)) {
+    while list != R_NilValue() && TermZero(CAR(list), state) {
         list = CDR(list);
     }
     if list == R_NilValue() || CDR(list) == R_NilValue() {
@@ -1343,16 +1357,16 @@ unsafe fn TrimRepeats(list: SEXP) -> SEXP {
 }
 
 // Helper: AllocTermSetBit1
-unsafe fn AllocTermSetBit1(var: SEXP) -> SEXP {
-    let whichBit = InstallVar(var);
-    let term = AllocTerm();
+unsafe fn AllocTermSetBit1(var: SEXP, state: &mut TermsState) -> SEXP {
+    let whichBit = InstallVar(var, state);
+    let term = AllocTerm(state);
     SetBit(term, whichBit, 1);
     term
 }
 
 // Helper: TermCode
-unsafe fn TermCode(termlist: SEXP, thisterm: SEXP, whichbit: isize, term: SEXP) -> c_int {
-    let nw = NWORDS.get();
+unsafe fn TermCode(termlist: SEXP, thisterm: SEXP, whichbit: isize, term: SEXP, state: &TermsState) -> c_int {
+    let nw = state.nwords;
     for i in 0..nw {
         *INTEGER(term).add(i as usize) = *INTEGER(CAR(thisterm)).add(i as usize);
     }
@@ -1394,6 +1408,7 @@ unsafe fn TermCode(termlist: SEXP, thisterm: SEXP, whichbit: isize, term: SEXP) 
 
 pub unsafe fn termsform(args: SEXP) -> SEXP {
     let args = CDR(args);
+    let mut state = TermsState::default();
 
     let tildeSymbol = Rf_install("~");
     let plusSymbol = Rf_install("+");
@@ -1414,7 +1429,7 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
         return R_NilValue();
     }
 
-    HAVE_DOT.set(false);
+    state.have_dot = false;
 
     let ans = crate::sexp::memory_ext::duplicate(CAR(args));
     let _ans_guard = protect(ans);
@@ -1431,11 +1446,11 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
 
     let framenames_val: SEXP;
     if isNull(data) || TYPEOF(data) == SEXPTYPE::ENVSXP {
-        FRAMENAMES.set(ptr::null_mut());
+        state.framenames = ptr::null_mut();
         framenames_val = R_NilValue();
     } else if isDataFrame(data) {
         let fn_val = getAttrib(data, R_NamesSymbol());
-        FRAMENAMES.set(fn_val as *mut std::ffi::c_void);
+        state.framenames = fn_val;
         framenames_val = fn_val;
     } else {
         Rf_error(b"'data' argument is of the wrong type\0".as_ptr() as *const _);
@@ -1454,28 +1469,28 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     };
 
     // Step 1: Extract variables
-    INTERCEPT.set(true);
-    PARITY.set(true);
-    RESPONSE.set(false);
+    state.intercept = true;
+    state.parity = true;
+    state.response = false;
 
     let varlist = Rf_cons(Rf_install("list"), R_NilValue());
     let _varlist_guard = protect(varlist);
-    VARLIST.set(varlist as *mut std::ffi::c_void);
+    state.varlist = varlist;
 
-    ExtractVars(CAR(args));
+    ExtractVars(CAR(args), &mut state);
 
-    let nvar = (Rf_length(VARLIST.get() as SEXP) - 1) as isize;
-    NWORDS.set(nvar / (8 * std::mem::size_of::<c_int>()) + 1);
+    let nvar = (Rf_length(state.varlist) - 1) as isize;
+    state.nwords = nvar / (8 * std::mem::size_of::<c_int>()) + 1;
 
     // Step 2: Encode variables
-    let formula = EncodeVars(CAR(args));
+    let formula = EncodeVars(CAR(args), &mut state);
     let _formula_guard = protect(formula);
 
     // Step 2a: Compute variable names
     let varnames = Rf_allocVector3(SEXPTYPE::STRSXP, nvar as R_xlen_t);
     let _varnames_guard = protect(varnames);
     {
-        let mut v = CDR(VARLIST.get() as SEXP);
+        let mut v = CDR(state.varlist);
         let mut idx: R_xlen_t = 0;
         while v != R_NilValue() {
             SET_STRING_ELT(
@@ -1521,14 +1536,15 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
         for idx in 0..(nterm * nvar) {
             *patn.add(idx) = 0;
         }
-        let term = AllocTerm();
+        let term = AllocTerm(&state);
         let _term_guard = protect(term);
         let mut nn: isize = -1;
         call = formula;
         for _idx in 0..nterm {
             for i in 1..=nvar {
                 if GetBit(CAR(call), i) != 0 {
-                    *patn.add(i as usize + nn as usize) = TermCode(formula, call, i, term);
+                    *patn.add(i as usize + nn as usize) =
+                        TermCode(formula, call, i, term, &state);
                 }
             }
             nn += nvar;
@@ -1592,16 +1608,16 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
 // EncodeVars - encode formula into bit string representation
 // ---------------------------------------------------------------------------
 
-unsafe fn EncodeVars(formula: SEXP) -> SEXP {
+unsafe fn EncodeVars(formula: SEXP, state: &mut TermsState) -> SEXP {
     if isNull(formula) {
         return R_NilValue();
     }
     if isOneS(formula) {
-        INTERCEPT.set(PARITY.get());
+        state.intercept = state.parity;
         return R_NilValue();
     }
     if isZeroS(formula) {
-        INTERCEPT.set(!PARITY.get());
+        state.intercept = !state.parity;
         return R_NilValue();
     }
 
@@ -1618,7 +1634,7 @@ unsafe fn EncodeVars(formula: SEXP) -> SEXP {
 
     if isSymbol(formula) {
         if formula == dotSymbol {
-            let framenames = FRAMENAMES.get();
+            let framenames = state.framenames;
             if !framenames.is_null() {
                 let flen = Rf_length(framenames as SEXP) as isize;
                 if flen == 0 {
@@ -1629,7 +1645,7 @@ unsafe fn EncodeVars(formula: SEXP) -> SEXP {
                 for i in 0..flen {
                     let c = translateChar(STRING_ELT(framenames as SEXP, i as R_xlen_t));
                     let sym = Rf_install(c);
-                    let term = AllocTermSetBit1(sym);
+                    let term = AllocTermSetBit1(sym, state);
                     if i == 0 {
                         r = Rf_cons(term, R_NilValue());
                         _r_guard = protect(r);
@@ -1640,45 +1656,45 @@ unsafe fn EncodeVars(formula: SEXP) -> SEXP {
                 }
                 r
             } else {
-                let term = AllocTermSetBit1(formula);
+                let term = AllocTermSetBit1(formula, state);
                 Rf_cons(term, R_NilValue())
             }
         }
     } else if isLanguage(formula) {
         if CAR(formula) == tildeSymbol {
             if CDDR(formula) == R_NilValue() {
-                EncodeVars(CADR(formula))
+                EncodeVars(CADR(formula), state)
             } else {
-                EncodeVars(CADDR(formula))
+                EncodeVars(CADDR(formula), state)
             }
         } else if CAR(formula) == plusSymbol {
             let len = Rf_length(formula);
             if len == 2 {
-                EncodeVars(CADR(formula))
+                EncodeVars(CADR(formula), state)
             } else {
-                PlusTerms(CADR(formula), CADDR(formula))
+                PlusTerms(CADR(formula), CADDR(formula), state)
             }
         } else if CAR(formula) == colonSymbol {
-            InteractTerms(CADR(formula), CADDR(formula))
+            InteractTerms(CADR(formula), CADDR(formula), state)
         } else if CAR(formula) == timesSymbol {
-            CrossTerms(CADR(formula), CADDR(formula))
+            CrossTerms(CADR(formula), CADDR(formula), state)
         } else if CAR(formula) == inSymbol {
-            InTerms(CADR(formula), CADDR(formula))
+            InTerms(CADR(formula), CADDR(formula), state)
         } else if CAR(formula) == slashSymbol {
-            NestTerms(CADR(formula), CADDR(formula))
+            NestTerms(CADR(formula), CADDR(formula), state)
         } else if CAR(formula) == powerSymbol {
-            PowerTerms(CADR(formula), CADDR(formula))
+            PowerTerms(CADR(formula), CADDR(formula), state)
         } else if CAR(formula) == minusSymbol {
             let len = Rf_length(formula);
             if len == 2 {
-                DeleteTerms(R_NilValue(), CADR(formula))
+                DeleteTerms(R_NilValue(), CADR(formula), state)
             } else {
-                DeleteTerms(CADR(formula), CADDR(formula))
+                DeleteTerms(CADR(formula), CADDR(formula), state)
             }
         } else if CAR(formula) == parenSymbol {
-            EncodeVars(CADR(formula))
+            EncodeVars(CADR(formula), state)
         } else {
-            let term = AllocTermSetBit1(formula);
+            let term = AllocTermSetBit1(formula, state);
             Rf_cons(term, R_NilValue())
         }
     } else {
@@ -1691,17 +1707,17 @@ unsafe fn EncodeVars(formula: SEXP) -> SEXP {
 // Term manipulation helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn PlusTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = EncodeVars(left);
+unsafe fn PlusTerms(left: SEXP, right: SEXP, state: &mut TermsState) -> SEXP {
+    let left = EncodeVars(left, state);
     let _left_guard = protect(left);
-    let right = EncodeVars(right);
-    TrimRepeats(listAppend(left, right))
+    let right = EncodeVars(right, state);
+    TrimRepeats(listAppend(left, right), state)
 }
 
-unsafe fn InteractTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = EncodeVars(left);
+unsafe fn InteractTerms(left: SEXP, right: SEXP, state: &mut TermsState) -> SEXP {
+    let left = EncodeVars(left, state);
     let _left_guard = protect(left);
-    let right = EncodeVars(right);
+    let right = EncodeVars(right, state);
     let _right_guard = protect(right);
     let term = allocList((Rf_length(left) * Rf_length(right)) as c_int);
     let _term_guard = protect(term);
@@ -1710,19 +1726,19 @@ unsafe fn InteractTerms(left: SEXP, right: SEXP) -> SEXP {
     while l != R_NilValue() {
         let mut r = right;
         while r != R_NilValue() {
-            SETCAR(t, OrBits(CAR(l), CAR(r)));
+            SETCAR(t, OrBits(CAR(l), CAR(r), state));
             t = CDR(t);
             r = CDR(r);
         }
         l = CDR(l);
     }
-    TrimRepeats(term)
+    TrimRepeats(term, state)
 }
 
-unsafe fn CrossTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = EncodeVars(left);
+unsafe fn CrossTerms(left: SEXP, right: SEXP, state: &mut TermsState) -> SEXP {
+    let left = EncodeVars(left, state);
     let _left_guard = protect(left);
-    let right = EncodeVars(right);
+    let right = EncodeVars(right, state);
     let _right_guard = protect(right);
     let term = allocList((Rf_length(left) * Rf_length(right)) as c_int);
     let _term_guard = protect(term);
@@ -1731,7 +1747,7 @@ unsafe fn CrossTerms(left: SEXP, right: SEXP) -> SEXP {
     while l != R_NilValue() {
         let mut r = right;
         while r != R_NilValue() {
-            SETCAR(t, OrBits(CAR(l), CAR(r)));
+            SETCAR(t, OrBits(CAR(l), CAR(r), state));
             t = CDR(t);
             r = CDR(r);
         }
@@ -1739,16 +1755,16 @@ unsafe fn CrossTerms(left: SEXP, right: SEXP) -> SEXP {
     }
     listAppend(right, term);
     listAppend(left, right);
-    TrimRepeats(left)
+    TrimRepeats(left, state)
 }
 
-unsafe fn PowerTerms(left: SEXP, right: SEXP) -> SEXP {
+unsafe fn PowerTerms(left: SEXP, right: SEXP, state: &mut TermsState) -> SEXP {
     let ip = asInteger(right);
     if ip == NA_INTEGER || ip <= 1 {
         Rf_error(b"invalid power in formula\0".as_ptr() as *const _);
         return R_NilValue();
     }
-    let left = EncodeVars(left);
+    let left = EncodeVars(left, state);
     let _left_guard = protect(left);
     let mut right_val = left;
     let mut term: SEXP = R_NilValue();
@@ -1761,25 +1777,25 @@ unsafe fn PowerTerms(left: SEXP, right: SEXP) -> SEXP {
         while l != R_NilValue() {
             let mut r = right_val;
             while r != R_NilValue() {
-                SETCAR(t, OrBits(CAR(l), CAR(r)));
+                SETCAR(t, OrBits(CAR(l), CAR(r), state));
                 t = CDR(t);
                 r = CDR(r);
             }
             l = CDR(l);
         }
-        right_val = TrimRepeats(term);
+        right_val = TrimRepeats(term, state);
     }
     term
 }
 
-unsafe fn InTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = EncodeVars(left);
+unsafe fn InTerms(left: SEXP, right: SEXP, state: &mut TermsState) -> SEXP {
+    let left = EncodeVars(left, state);
     let _left_guard = protect(left);
-    let right = EncodeVars(right);
+    let right = EncodeVars(right, state);
     let _right_guard = protect(right);
-    let term = AllocTerm();
+    let term = AllocTerm(state);
     let _term_guard = protect(term);
-    let nw = NWORDS.get();
+    let nw = state.nwords;
     let term_p = INTEGER(term);
     // Bitwise or of all terms on right
     let mut r = right;
@@ -1797,17 +1813,17 @@ unsafe fn InTerms(left: SEXP, right: SEXP) -> SEXP {
         }
         l = CDR(l);
     }
-    TrimRepeats(left) // simplified
+    TrimRepeats(left, state) // simplified
 }
 
-unsafe fn NestTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = EncodeVars(left);
+unsafe fn NestTerms(left: SEXP, right: SEXP, state: &mut TermsState) -> SEXP {
+    let left = EncodeVars(left, state);
     let _left_guard = protect(left);
-    let right = EncodeVars(right);
+    let right = EncodeVars(right, state);
     let _right_guard = protect(right);
-    let term = AllocTerm();
+    let term = AllocTerm(state);
     let _term_guard = protect(term);
-    let nw = NWORDS.get();
+    let nw = state.nwords;
     let term_p = INTEGER(term);
     // Bitwise or of all terms on left
     let mut l = left;
@@ -1825,19 +1841,19 @@ unsafe fn NestTerms(left: SEXP, right: SEXP) -> SEXP {
         }
         r = CDR(r);
     }
-    TrimRepeats(left) // simplified
+    TrimRepeats(left, state) // simplified
 }
 
-unsafe fn DeleteTerms(left: SEXP, right: SEXP) -> SEXP {
-    let mut left = EncodeVars(left);
+unsafe fn DeleteTerms(left: SEXP, right: SEXP, state: &mut TermsState) -> SEXP {
+    let mut left = EncodeVars(left, state);
     let _left_guard = protect(left);
-    PARITY.set(!PARITY.get());
-    let right = EncodeVars(right);
+    state.parity = !state.parity;
+    let right = EncodeVars(right, state);
     let _right_guard = protect(right);
-    PARITY.set(!PARITY.get());
+    state.parity = !state.parity;
     let mut r = right;
     while r != R_NilValue() {
-        left = StripTerm(CAR(r), left);
+        left = StripTerm(CAR(r), left, state);
         r = CDR(r);
     }
     left
