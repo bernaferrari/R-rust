@@ -29,6 +29,7 @@ use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, getAttrib};
 use crate::mainutils::coerce::coerceVector;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 pub use crate::special::mlutils::REprintf;
 
@@ -804,14 +805,13 @@ unsafe fn vsignalError(call: SEXP, format: *const c_char) {
                 let hooksym = Rf_install(b".handleSimpleError\0".as_ptr() as *const c_char);
                 let msg_cstr = std::ffi::CString::new(localbuf.as_str()).unwrap_or_default();
                 let msg_sexp = Rf_mkString(msg_cstr.as_ptr());
-                crate::sexp::protect::Rf_protect(msg_sexp);
+                let _msg_guard = protect(msg_sexp);
                 let handler = ENTRY_HANDLER(entry);
                 let inner = Rf_lang2(handler, msg_sexp);
-                crate::sexp::protect::Rf_protect(inner);
+                let _inner_guard = protect(inner);
                 let hcall = Rf_lang3(hooksym, inner, call);
-                crate::sexp::protect::Rf_protect(hcall);
+                let _hcall_guard = protect(hcall);
                 let _ = crate::eval::eval::Rf_eval(hcall, globals::R_BaseEnv());
-                crate::sexp::protect::Rf_unprotect(3);
             } else {
                 gotoExitingHandler(globals::R_NilValue(), call, entry);
             }
@@ -1137,11 +1137,10 @@ unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
             } else {
                 Rf_mkString(format)
             };
-            crate::sexp::protect::Rf_protect(msg);
+            let _msg_guard = protect(msg);
             let hcall = Rf_lang3(hooksym, msg, call);
-            crate::sexp::protect::Rf_protect(hcall);
+            let _hcall_guard = protect(hcall);
             let _ = crate::eval::eval::Rf_eval(hcall, globals::R_BaseEnv());
-            crate::sexp::protect::Rf_unprotect(2);
         } else {
             vwarningcall_dflt(call, format, ptr::null_mut());
         }
@@ -2159,12 +2158,11 @@ unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname
         };
         let rho = (*cptr).cloenv;
         let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
-        crate::sexp::protect::Rf_protect(klass);
+        let _klass_guard = protect(klass);
         let entry = mkHandlerEntry(klass, rho, h, rho, globals::R_NilValue(), 1);
         let old_stack = handler_stack();
         let new_top = Rf_cons(entry, old_stack);
         set_handler_stack(new_top);
-        crate::sexp::protect::Rf_unprotect(1);
 
         addInternalRestart(cptr, cname);
     }
@@ -2178,9 +2176,9 @@ unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *co
                 .unwrap_or_default()
                 .as_ptr(),
         );
-        crate::sexp::protect::Rf_protect(name);
+        let _name_guard = protect(name);
         let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        crate::sexp::protect::Rf_protect(entry);
+        let _entry_guard = protect(entry);
         crate::sexp::accessors::SET_VECTOR_ELT(entry, 0, name);
         let ext_ptr = crate::mainutils::memory_main::R_MakeExternalPtr(
             cptr as *mut c_void,
@@ -2196,7 +2194,6 @@ unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *co
         let old_stack = restart_stack();
         let new_top = Rf_cons(entry, old_stack);
         set_restart_stack(new_top);
-        crate::sexp::protect::Rf_unprotect(2);
     }
 }
 
@@ -2248,7 +2245,7 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let ecall = CADDR(args);
 
         let oldstack = handler_stack();
-        crate::sexp::protect::Rf_protect(oldstack);
+        let _oldstack_guard = protect(oldstack);
 
         let mut list = findConditionHandler(cond);
         while !list.is_null() && list != globals::R_NilValue() {
@@ -2267,9 +2264,8 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                     verrorcall_dflt(ecall, cmsg.as_ptr(), ptr::null_mut());
                 } else {
                     let hcall = Rf_lang2(h, cond);
-                    crate::sexp::protect::Rf_protect(hcall);
+                    let _hcall_guard = protect(hcall);
                     let _ = crate::eval::eval::Rf_eval(hcall, globals::R_GlobalEnv());
-                    crate::sexp::protect::Rf_unprotect(1);
                 }
             } else {
                 gotoExitingHandler(cond, ecall, entry);
@@ -2278,7 +2274,6 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         }
 
         set_handler_stack(oldstack);
-        crate::sexp::protect::Rf_unprotect(1);
         globals::R_NilValue()
     }
 }
@@ -2448,7 +2443,7 @@ pub unsafe fn R_tryCatchError(
 ) -> SEXP {
     unsafe {
         let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
-        crate::sexp::protect::Rf_protect(klass);
+        let _klass_guard = protect(klass);
         let handler_fn = if handler.is_some() {
             Rf_mkString(b"tryCatchError\0".as_ptr() as *const c_char)
         } else {
@@ -2462,10 +2457,10 @@ pub unsafe fn R_tryCatchError(
             globals::R_NilValue(),
             0,
         );
-        crate::sexp::protect::Rf_protect(entry);
+        let _entry_guard = protect(entry);
 
         let old_stack = handler_stack();
-        crate::sexp::protect::Rf_protect(old_stack);
+        let _old_stack_guard = protect(old_stack);
         let new_top = Rf_cons(entry, old_stack);
         set_handler_stack(new_top);
 
@@ -2478,8 +2473,6 @@ pub unsafe fn R_tryCatchError(
         }));
 
         set_handler_stack(old_stack);
-
-        crate::sexp::protect::Rf_unprotect(3);
 
         match result {
             Ok(val) => val,
@@ -2677,7 +2670,7 @@ pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *con
         } else {
             CStr::from_ptr(arg).to_str().unwrap_or("")
         };
-        crate::sexp::protect::Rf_protect(call);
+        let _call_guard = protect(call);
         let msg = if !arg_str.is_empty() {
             format!("argument \"{}\" is missing, with no default", arg_str)
         } else {
@@ -2691,9 +2684,8 @@ pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *con
             0,
             c_msg.as_ptr(),
         );
-        crate::sexp::protect::Rf_protect(cond);
+        let _cond_guard = protect(cond);
         R_signalErrorCondition(cond, call);
-        crate::sexp::protect::Rf_unprotect(2);
     }
 }
 
@@ -3040,7 +3032,7 @@ pub unsafe fn R_withCallingErrorHandler(
 ) -> SEXP {
     unsafe {
         let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
-        crate::sexp::protect::Rf_protect(klass);
+        let _klass_guard = protect(klass);
         let handler_fn = if let Some(h) = handler {
             Rf_mkString(b"withCallingErrorHandler\0".as_ptr() as *const c_char)
         } else {
@@ -3054,10 +3046,10 @@ pub unsafe fn R_withCallingErrorHandler(
             globals::R_NilValue(),
             1,
         );
-        crate::sexp::protect::Rf_protect(entry);
+        let _entry_guard = protect(entry);
 
         let old_stack = handler_stack();
-        crate::sexp::protect::Rf_protect(old_stack);
+        let _old_stack_guard = protect(old_stack);
         let new_top = Rf_cons(entry, old_stack);
         set_handler_stack(new_top);
 
@@ -3068,7 +3060,6 @@ pub unsafe fn R_withCallingErrorHandler(
         };
 
         set_handler_stack(old_stack);
-        crate::sexp::protect::Rf_unprotect(3);
         val
     }
 }
