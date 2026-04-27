@@ -12,10 +12,6 @@ use std::ptr;
 
 use super::types::*;
 
-fn gl_rwlock_rdlock(_: &mut [u8; 0]) {}
-fn gl_rwlock_wrlock(_: &mut [u8; 0]) {}
-fn gl_rwlock_unlock(_: &mut [u8; 0]) {}
-
 thread_local! { static _nl_loaded_domains: RefCell<*mut loaded_l10nfile> = RefCell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
@@ -137,9 +133,6 @@ pub unsafe fn _nl_find_domain(
         let mut normalized_codeset: *const c_char = ptr::null();
         let mask: c_int;
 
-        // Take the read lock and see if we already have a matching entry.
-        gl_rwlock_rdlock(&mut []);
-
         let dirname_len = if dirname.is_null() {
             0
         } else {
@@ -159,8 +152,6 @@ pub unsafe fn _nl_find_domain(
             domainname,
             0,
         );
-
-        gl_rwlock_unlock(&mut []);
 
         if !retval.is_null() {
             // We already know about this locale.
@@ -201,9 +192,6 @@ pub unsafe fn _nl_find_domain(
             return ptr::null_mut();
         }
 
-        // Take the write lock and create locale entries.
-        gl_rwlock_wrlock(&mut []);
-
         retval = _nl_make_l10nflist(
             _nl_loaded_domains.with(|v| std::ptr::addr_of_mut!(*v.borrow_mut())),
             dirname,
@@ -217,8 +205,6 @@ pub unsafe fn _nl_find_domain(
             domainname,
             1,
         );
-
-        gl_rwlock_unlock(&mut []);
 
         if retval.is_null() {
             // Out of memory.

@@ -10,7 +10,6 @@
 #![allow(non_snake_case)]
 
 use std::alloc::{self, Layout};
-use std::cell::Cell;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read as IoRead;
@@ -18,13 +17,6 @@ use std::os::raw::{c_char, c_ulong, c_void};
 use std::ptr;
 
 use super::types::*;
-
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-
-/// Lock for domain data loading.
-thread_local! { static _nl_msg_cat_cntr_lock: Cell<[u8; 0]> = Cell::new([]); }
 
 // ---------------------------------------------------------------------------
 // Helper: read a .mo file from disk (no mmap)

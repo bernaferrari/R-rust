@@ -5,22 +5,11 @@
 
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use super::types::*;
-
-// ---------------------------------------------------------------------------
-// Lock stub
-// ---------------------------------------------------------------------------
-
-/// Stub for the global state lock. In standalone mode this is a no-op.
-thread_local! { static _nl_state_lock: RefCell<[u8; 0]> = RefCell::new([]); }
-
-unsafe fn gl_rwlock_wrlock(_lock: &mut [u8; 0]) {}
-unsafe fn gl_rwlock_unlock(_lock: &mut [u8; 0]) {}
 
 // ---------------------------------------------------------------------------
 // Internal helper
@@ -50,8 +39,6 @@ unsafe fn set_binding_values(
             }
             return;
         }
-
-        gl_rwlock_wrlock(&mut _nl_state_lock.with(|v| v.borrow_mut()));
 
         let mut modified: c_int = 0;
         let mut binding: *mut binding = _nl_domain_bindings;
@@ -247,7 +234,6 @@ unsafe fn set_binding_values(
             _nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
         }
 
-        gl_rwlock_unlock(&mut _nl_state_lock.with(|v| v.borrow_mut()));
     }
 }
 

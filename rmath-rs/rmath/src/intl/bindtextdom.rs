@@ -5,23 +5,11 @@
 
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use super::types::*;
-
-// ---------------------------------------------------------------------------
-// Lock stub
-// ---------------------------------------------------------------------------
-
-thread_local! { static _nl_state_lock: RefCell<[u8; 0]> = RefCell::new([]); }
-
-#[allow(dead_code)]
-fn gl_rwlock_wrlock(_lock: &mut [u8; 0]) {}
-#[allow(dead_code)]
-fn gl_rwlock_unlock(_lock: &mut [u8; 0]) {}
 
 // ---------------------------------------------------------------------------
 // Internal helper
@@ -51,8 +39,6 @@ unsafe fn set_binding_values(
             }
             return;
         }
-
-        crate::intl::types::nl_state_lock_wrlock();
 
         let mut modified: c_int = 0;
         let mut binding: *mut binding = _nl_domain_bindings.with(|v| v.get());
@@ -253,8 +239,6 @@ unsafe fn set_binding_values(
         if modified != 0 {
             _nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
         }
-
-        crate::intl::types::nl_state_lock_unlock();
     }
 }
 

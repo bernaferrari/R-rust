@@ -4,7 +4,7 @@
 
 #![allow(non_snake_case, dead_code)]
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 
@@ -313,9 +313,6 @@ pub(crate) static _nl_default_default_domain: [c_char; 9] =
 /// Current default text domain (initially points to the default).
 thread_local! { pub(crate) static _nl_current_default_domain: Cell<*const c_char> = Cell::new(_nl_default_default_domain.as_ptr()); }
 
-/// Global state lock (no-op in standalone mode).
-thread_local! { pub(crate) static _nl_state_lock: RefCell<[u8; 0]> = RefCell::new([]); }
-
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
@@ -324,28 +321,6 @@ thread_local! { pub(crate) static _nl_state_lock: RefCell<[u8; 0]> = RefCell::ne
 #[inline]
 pub(crate) fn SWAP(i: nls_uint32) -> nls_uint32 {
     (i << 24) | ((i & 0xff00) << 8) | ((i >> 8) & 0xff00) | (i >> 24)
-}
-
-/// Thread-safety stubs (no-op in standalone mode).
-pub(crate) unsafe fn gl_rwlock_wrlock(_lock: &mut [u8; 0]) {
-    // No-op in standalone mode.
-}
-
-pub(crate) unsafe fn gl_rwlock_rdlock(_lock: &mut [u8; 0]) {
-    // No-op in standalone mode.
-}
-
-pub(crate) unsafe fn gl_rwlock_unlock(_lock: &mut [u8; 0]) {
-    // No-op in standalone mode.
-}
-
-/// Lock the global state lock (no-op in standalone mode).
-pub(crate) fn nl_state_lock_wrlock() {
-    unsafe { gl_rwlock_wrlock(&mut []) };
-}
-
-pub(crate) fn nl_state_lock_unlock() {
-    unsafe { gl_rwlock_unlock(&mut []) };
 }
 
 /// Duplicate a C string using `std::alloc`.

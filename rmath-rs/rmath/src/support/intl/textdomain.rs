@@ -26,8 +26,6 @@ pub unsafe fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
             return types::_nl_current_default_domain.with(|v| v.get()) as *mut c_char;
         }
 
-        types::nl_state_lock_wrlock();
-
         let old_domain = types::_nl_current_default_domain.with(|v| v.get());
 
         // If domain name is the null string, set to default domain "messages".
@@ -39,7 +37,6 @@ pub unsafe fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
             // Signal a change of the loaded catalogs.
             types::_nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
 
-            types::nl_state_lock_unlock();
             return new_domain;
         }
 
@@ -82,8 +79,6 @@ pub unsafe fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
                 c_free(old_domain as *mut c_char);
             }
         }
-
-        types::nl_state_lock_unlock();
 
         new_domain
     }

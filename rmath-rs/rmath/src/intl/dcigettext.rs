@@ -514,8 +514,6 @@ pub unsafe fn libintl_dcigettext(
             return msgid as *mut c_char;
         }
 
-        nl_state_lock_wrlock();
-
         // Determine the effective domain.
         let effective_domain = if !domainname.is_null() {
             domainname
@@ -524,7 +522,6 @@ pub unsafe fn libintl_dcigettext(
         };
 
         if effective_domain.is_null() {
-            nl_state_lock_unlock();
             return msgid as *mut c_char;
         }
 
@@ -558,7 +555,6 @@ pub unsafe fn libintl_dcigettext(
         }
 
         if locale.is_null() {
-            nl_state_lock_unlock();
             return msgid as *mut c_char;
         }
 
@@ -579,8 +575,6 @@ pub unsafe fn libintl_dcigettext(
                 .unwrap_or_else(|_| Layout::new::<u8>());
             std::alloc::dealloc(locale as *mut u8, layout);
         }
-
-        nl_state_lock_unlock();
 
         if result.is_null() {
             msgid as *mut c_char
