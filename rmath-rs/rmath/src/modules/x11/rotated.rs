@@ -17,7 +17,8 @@
 
 use core::ffi::{c_char, c_double, c_int, c_void};
 use libc::{free, malloc, strlen};
-use std::cell::RefCell;
+
+use crate::sexp::instance::with_required_current_instance;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -46,20 +47,16 @@ pub(crate) const ALIGN_BRIGHT: c_int = 9;
 pub(crate) const FONT_TYPE_ONE_FONT: c_int = 0;
 pub(crate) const FONT_TYPE_FONT_SET: c_int = 1;
 
-// ── State ────────────────────────────────────────────────────────────
-
-/// Current magnification factor and bounding box padding.
-/// These are mutable statics mirroring the C static `style` struct.
-struct StyleState {
-    magnify: c_double,
-    bbx_pad: c_int,
-}
-
-/// Safety: Only modified through XRotSetMagnification / XRotSetBoundingBoxPad
-/// which are called from the graphics engine in a single-threaded context.
-thread_local! { static STYLE: RefCell<StyleState> = RefCell::new(StyleState { magnify: 1.0, bbx_pad: 0 }); }
-
 // ── Helper functions ─────────────────────────────────────────────────
+
+fn with_rotated_style<R>(f: impl FnOnce(c_double, c_int) -> R) -> R {
+    with_required_current_instance(|instance| {
+        f(
+            instance.x11_state.rotated_magnify,
+            instance.x11_state.rotated_bbx_pad,
+        )
+    })
+}
 
 /// Round a double to the nearest integer value (as a double).
 /// Mirrors C's `static double myround(double x)`.
@@ -249,8 +246,7 @@ pub(crate) unsafe fn compute_text_extents(
     let cols_in = max_width;
     let rows_in = nl * height;
 
-    let magnify = STYLE.with(|v| v.borrow().magnify);
-    let bbx_pad = STYLE.with(|v| v.borrow().bbx_pad);
+    let (magnify, bbx_pad) = with_rotated_style(|magnify, bbx_pad| (magnify, bbx_pad));
 
     let (hot_x, hot_y) = compute_hotspot(align, max_width, rows_in, font_descent, magnify);
 
@@ -311,7 +307,9 @@ pub unsafe fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
 /// Only values > 0 are accepted.
 pub unsafe fn XRotSetMagnification(m: c_double) {
     if m > 0.0 {
-        STYLE.with(|v| v.borrow_mut().magnify = m);
+        with_required_current_instance(|instance| {
+            instance.x11_state.rotated_magnify = m;
+        });
     }
 }
 
@@ -319,7 +317,9 @@ pub unsafe fn XRotSetMagnification(m: c_double) {
 /// Only values >= 0 are accepted.
 pub unsafe fn XRotSetBoundingBoxPad(p: c_int) {
     if p >= 0 {
-        STYLE.with(|v| v.borrow_mut().bbx_pad = p);
+        with_required_current_instance(|instance| {
+            instance.x11_state.rotated_bbx_pad = p;
+        });
     }
 }
 
@@ -433,4 +433,35 @@ pub unsafe fn XRfRotDrawString(
     _str: *const c_char,
 ) -> c_int {
     0 // failure - no X11 support
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn rotated_style_is_session_local() {
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
+            XRotSetMagnification(2.0);
+            XRotSetBoundingBoxPad(3);
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            assert_eq!(with_rotated_style(|magnify, _| magnify), 1.0);
+            assert_eq!(with_rotated_style(|_, bbx_pad| bbx_pad), 0);
+            XRotSetMagnification(4.0);
+            XRotSetBoundingBoxPad(5);
+            replace_current_instance(previous);
+        }
+
+        assert_eq!(first.x11_state.rotated_magnify, 2.0);
+        assert_eq!(first.x11_state.rotated_bbx_pad, 3);
+        assert_eq!(second.x11_state.rotated_magnify, 4.0);
+        assert_eq!(second.x11_state.rotated_bbx_pad, 5);
+    }
 }

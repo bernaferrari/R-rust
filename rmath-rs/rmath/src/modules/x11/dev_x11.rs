@@ -402,6 +402,8 @@ pub(crate) struct X11RuntimeState {
     red_gamma: c_double,
     green_gamma: c_double,
     blue_gamma: c_double,
+    pub(crate) rotated_magnify: c_double,
+    pub(crate) rotated_bbx_pad: c_int,
 }
 
 impl Default for X11RuntimeState {
@@ -414,6 +416,8 @@ impl Default for X11RuntimeState {
             red_gamma: DEFAULT_RED_GAMMA,
             green_gamma: DEFAULT_GREEN_GAMMA,
             blue_gamma: DEFAULT_BLUE_GAMMA,
+            rotated_magnify: 1.0,
+            rotated_bbx_pad: 0,
         }
     }
 }
