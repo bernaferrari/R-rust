@@ -15756,19 +15756,21 @@ pub unsafe fn do_getGraphicsEvent(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEX
 // Complete R runtime — Rprof, Rprofmem, gc, gcinfo, memory.size, object.size
 // ---------------------------------------------------------------------------
 
-/// R's `Rprof(filename, ...)` — profiling (simplified: no-op).
-pub unsafe fn do_Rprof(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+/// R's `Rprof(filename, ...)` — session-owned profiling.
+pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let result = crate::eval::profiling::do_Rprof(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
+        result
     }
 }
 
-/// R's `Rprofmem(filename, ...)` — memory profiling (simplified: no-op).
-pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+/// R's `Rprofmem(filename, ...)` — session-owned memory profiling.
+pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        let result = crate::eval::profiling::do_Rprofmem(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
+        result
     }
 }
 

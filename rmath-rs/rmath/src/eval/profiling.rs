@@ -28,12 +28,12 @@ use crate::eval::attrib_core::getAttrib;
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
 };
-use crate::sexp::constructors::Rf_allocVector;
+use crate::sexp::constructors::{Rf_allocVector, Rf_mkString};
 use crate::sexp::context::R_GlobalContext;
 use crate::sexp::context::RCNTXT;
 use crate::sexp::context::ctxt_flags;
 use crate::sexp::envir::R_findVar;
-use crate::sexp::ffi::{NA_INTEGER, R_FINITE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, R_FINITE, TRUE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::{
@@ -883,32 +883,12 @@ fn profile_thread_entry(interval_us: u64, terminate_rx: std::sync::mpsc::Receive
 
 /// Stop profiling and close the output file.
 ///
-/// Ported from R's `R_EndProfiling()` in eval.c.
+/// This follows R's `R_EndProfiling()` state transition, but deliberately does
+/// not manipulate process-global profiling timers. Samples are emitted through
+/// `R_WriteProfile`, keeping profiler state session-owned for Android and
+/// parallel runtimes.
 unsafe fn R_EndProfiling() {
     unsafe {
-        // On Unix: disable the timer or signal the thread to terminate
-        // Simplified: just close the file and reset state
-
-        if with_profiling_state(|state| profiling_event_from_code(state.profiling_event))
-            == rpe_type::RPE_CPU
-        {
-            // Disable ITIMER_PROF
-            let zero_val = libc::itimerval {
-                it_interval: libc::timeval {
-                    tv_sec: 0,
-                    tv_usec: 0,
-                },
-                it_value: libc::timeval {
-                    tv_sec: 0,
-                    tv_usec: 0,
-                },
-            };
-            libc::setitimer(PROF_TIMER, &zero_val, ptr::null_mut());
-        }
-
-        // For elapsed-time profiling, the thread is stopped via terminate flag
-        // (handled externally via the global terminate flag)
-
         // Close the output file
         let outfile = with_profiling_state(|state| state.profile_outfile);
         if outfile >= 0 {
@@ -952,10 +932,12 @@ unsafe fn R_EndProfiling() {
 
 /// Initialize profiling with the given parameters.
 ///
-/// Opens the output file, sets up the timer or profiling thread,
-/// and enables the profiling signal handler.
+/// Opens the output file and enables session-local profiling.
 ///
-/// Ported from R's `R_InitProfiling()` in eval.c.
+/// R's C runtime uses process-global signals/timers for automatic sampling.
+/// This Rust/Android port avoids those globals so multiple `RSession`s can run
+/// in parallel without stealing each other's profiling timer. The active
+/// session can emit samples with `R_WriteProfile`.
 unsafe fn R_InitProfiling(
     filename: SEXP,
     append: c_int,
@@ -1051,31 +1033,6 @@ unsafe fn R_InitProfiling(
         }
 
         with_profiling_state(|state| state.profiling_event = profiling_event_code(event));
-
-        // Set up the timer or thread
-        if event == rpe_type::RPE_ELAPSED {
-            // For elapsed-time profiling, we would create a timer thread
-            // In this Rust port, threading is simplified
-        } else if event == rpe_type::RPE_CPU {
-            // Set up ITIMER_PROF for CPU-time profiling
-            let it_interval = libc::timeval {
-                tv_sec: (interval as i64 / 1000000) as libc::time_t,
-                tv_usec: (interval - (interval / 1000000) * 1000000) as libc::suseconds_t,
-            };
-            let itv = libc::itimerval {
-                it_interval,
-                it_value: it_interval,
-            };
-            if libc::setitimer(PROF_TIMER, &itv, ptr::null_mut()) == -1 {
-                // Failed to set timer
-                let outfile = with_profiling_state(|state| state.profile_outfile);
-                if outfile >= 0 {
-                    libc::close(outfile);
-                }
-                with_profiling_state(|state| state.profile_outfile = -1);
-                return;
-            }
-        }
 
         with_profiling_state(|state| state.profiling = 1);
     }
@@ -1186,8 +1143,49 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofmem()` function for memory profiling.
-pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let filename_arg = if args.is_null() || args == R_NilValue() {
+            Rf_mkString(c"Rprofmem.out".as_ptr())
+        } else {
+            let arg = CAR(args);
+            args = CDR(args);
+            arg
+        };
+
+        if filename_arg.is_null()
+            || TYPEOF(filename_arg) != SEXPTYPE::STRSXP
+            || LENGTH(filename_arg) != 1
+        {
+            return R_NilValue();
+        }
+
+        let append_mode = if args.is_null() || args == R_NilValue() {
+            FALSE
+        } else {
+            crate::mainutils::coerce::asLogical(CAR(args))
+        };
+        let filename_sexp = STRING_ELT(filename_arg, 0);
+
+        if LENGTH(filename_sexp) > 0 {
+            R_InitProfiling(
+                filename_sexp,
+                append_mode,
+                0.02,
+                TRUE,
+                FALSE,
+                FALSE,
+                FALSE,
+                100,
+                PROFBUFSIZ as c_int,
+                rpe_type::RPE_ELAPSED,
+            );
+        } else {
+            R_EndProfiling();
+        }
+
+        R_NilValue()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1353,7 +1351,11 @@ pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 ///
 /// Ported from R's `R_WriteProfile()` in eval.c.
 pub fn R_WriteProfile(_out: c_int) {
-    // Stub: used by external profiling tools
+    if R_Profiling_active() != 0 {
+        unsafe {
+            doprof(0);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1363,9 +1365,40 @@ pub fn R_WriteProfile(_out: c_int) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use crate::sexp::RSession;
+    use crate::sexp::constructors::{
+        Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons, Rf_mkString,
+    };
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::memory::with_arena;
+
+    unsafe fn r_string(text: &str) -> SEXP {
+        let c_text = std::ffi::CString::new(text).expect("test string without interior nul");
+        unsafe { Rf_mkString(c_text.as_ptr()) }
+    }
+
+    unsafe fn pairlist(values: &[SEXP]) -> SEXP {
+        unsafe {
+            values
+                .iter()
+                .rev()
+                .fold(R_NilValue(), |tail, value| Rf_cons(*value, tail))
+        }
+    }
+
+    fn unique_profile_path(prefix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos();
+        std::env::temp_dir()
+            .join(format!("{prefix}-{}-{nanos}.out", std::process::id()))
+            .to_string_lossy()
+            .into_owned()
+    }
 
     #[test]
     fn profiling_flags_are_session_local_on_same_thread() {
@@ -1494,5 +1527,120 @@ mod tests {
         assert!(fields[0] > 0);
         assert!(fields[1] >= fields[0]);
         assert!(fields[2] > 0);
+    }
+
+    #[test]
+    fn public_rprof_wrapper_uses_session_profiler() {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let path = unique_profile_path("rport-rprof");
+            let args = unsafe {
+                pairlist(&[
+                    r_string(&path),
+                    Rf_ScalarLogical(FALSE),
+                    Rf_ScalarReal(0.02),
+                    Rf_ScalarLogical(FALSE),
+                    Rf_ScalarLogical(FALSE),
+                    Rf_ScalarLogical(FALSE),
+                    Rf_ScalarLogical(FALSE),
+                    Rf_ScalarInteger(100),
+                    Rf_ScalarInteger(PROFBUFSIZ as c_int),
+                    r_string("elapsed"),
+                ])
+            };
+
+            unsafe {
+                crate::mainutils::essentials::do_Rprof(
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    args,
+                    R_NilValue(),
+                );
+            }
+            with_profiling_state(|state| {
+                assert_eq!(state.profiling, 1);
+                assert_eq!(state.mem_profiling, 0);
+                assert!(state.profile_outfile >= 0);
+            });
+
+            unsafe {
+                let stop_args = pairlist(&[r_string("")]);
+                crate::mainutils::essentials::do_Rprof(
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    stop_args,
+                    R_NilValue(),
+                );
+            }
+            with_profiling_state(|state| {
+                assert_eq!(state.profiling, 0);
+                assert_eq!(state.profile_outfile, -1);
+            });
+
+            let contents = fs::read_to_string(&path).expect("profile file");
+            assert!(contents.contains("sample.interval=20000"));
+            let _ = fs::remove_file(path);
+        });
+    }
+
+    #[test]
+    fn public_rprofmem_wrapper_writes_session_memory_sample() {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let path = unique_profile_path("rport-rprofmem");
+            let args = unsafe { pairlist(&[r_string(&path), Rf_ScalarLogical(FALSE)]) };
+
+            unsafe {
+                crate::mainutils::essentials::do_Rprofmem(
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    args,
+                    R_NilValue(),
+                );
+            }
+            with_profiling_state(|state| {
+                assert_eq!(state.profiling, 1);
+                assert_eq!(state.mem_profiling, 1);
+                assert!(state.profile_outfile >= 0);
+            });
+
+            with_arena(|arena| {
+                arena.alloc_vector(SEXPTYPE::INTSXP, 128);
+            });
+            R_WriteProfile(0);
+
+            unsafe {
+                let stop_args = pairlist(&[r_string("")]);
+                crate::mainutils::essentials::do_Rprofmem(
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    stop_args,
+                    R_NilValue(),
+                );
+            }
+            with_profiling_state(|state| {
+                assert_eq!(state.profiling, 0);
+                assert_eq!(state.mem_profiling, 0);
+                assert_eq!(state.profile_outfile, -1);
+            });
+
+            let contents = fs::read_to_string(&path).expect("memory profile file");
+            assert!(contents.contains("memory profiling: sample.interval=20000"));
+            let sample_line = contents
+                .lines()
+                .find(|line| line.starts_with(':'))
+                .expect("memory profile sample line");
+            let fields: Vec<u64> = sample_line
+                .trim_matches(':')
+                .split(':')
+                .take(4)
+                .map(|field| field.parse::<u64>().expect("numeric memory field"))
+                .collect();
+            assert_eq!(fields.len(), 4);
+            assert!(fields[0] > 0);
+            assert!(fields[1] >= fields[0]);
+            assert!(fields[2] > 0);
+            let _ = fs::remove_file(path);
+        });
     }
 }
