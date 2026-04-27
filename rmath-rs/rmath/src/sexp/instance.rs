@@ -329,6 +329,8 @@ pub struct RInstance {
     pub(crate) graphics_engine_state: crate::mainutils::engine::GraphicsEngineState,
     /// Per-instance grDevices color palette and scratch buffer state.
     pub(crate) graphics_color_state: crate::library::grdevices::colors::GraphicsColorState,
+    /// Per-instance main/colors.c dispatch pointers installed by grDevices.
+    pub(crate) color_dispatch_state: crate::mainutils::colors::ColorDispatchState,
     /// Per-instance grDevices PostScript/PDF font registry state.
     pub(crate) postscript_font_state: crate::library::grdevices::devps::PostScriptFontState,
     /// Per-instance grDevices Windows backend scratch state.
@@ -415,6 +417,7 @@ impl RInstance {
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
             graphics_engine_state: crate::mainutils::engine::GraphicsEngineState::default(),
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
+            color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
             windows_device_state:
                 crate::library::grdevices::devwindows::WindowsDeviceState::default(),
