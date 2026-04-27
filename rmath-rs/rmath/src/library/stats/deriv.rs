@@ -32,7 +32,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::{R_alloc, allocLang, vmaxget, vmaxset};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -867,12 +867,13 @@ unsafe fn Replace(sym: SEXP, expr: SEXP, lst: SEXP) -> SEXP {
 unsafe fn CreateGrad(names: SEXP) -> SEXP {
     let n = length(names);
 
-    let dimnames = Rf_protect(lang3(R_NilValue(), R_NilValue(), R_NilValue()));
+    let dimnames = lang3(R_NilValue(), R_NilValue(), R_NilValue());
+    let _dimnames_guard = protect(dimnames);
     SETCAR(dimnames, install_str("list"));
     let p = install_str("c");
-    let q = Rf_protect(crate::sexp::constructors::Rf_allocList(n));
+    let q = crate::sexp::constructors::Rf_allocList(n);
+    let _q_guard = protect(q);
     SETCADDR(dimnames, LCONS(p, q));
-    Rf_unprotect(1); // q
     let mut qq = CADDR(dimnames);
     // skip the LCONS head to get to the list chain
     qq = CDR(qq); // skip the "c" symbol
@@ -881,15 +882,17 @@ unsafe fn CreateGrad(names: SEXP) -> SEXP {
         qq = CDR(qq);
     }
 
-    let dim = Rf_protect(lang3(R_NilValue(), R_NilValue(), R_NilValue()));
+    let dim = lang3(R_NilValue(), R_NilValue(), R_NilValue());
+    let _dim_guard = protect(dim);
     SETCAR(dim, install_str("c"));
     SETCADR(dim, lang2(install_str("length"), install_str(".value")));
     SETCADDR(dim, Rf_ScalarInteger(n));
 
-    let data = Rf_protect(Rf_ScalarReal(0.0));
-    let p = Rf_protect(lang4(install_str("array"), data, dim, dimnames));
+    let data = Rf_ScalarReal(0.0);
+    let _data_guard = protect(data);
+    let p = lang4(install_str("array"), data, dim, dimnames);
+    let _p_guard = protect(p);
     let p = lang3(install_str("<-"), install_str(".grad"), p);
-    Rf_unprotect(4); // dimnames, dim, data, p(lang4)
     p
 }
 
@@ -900,17 +903,18 @@ unsafe fn CreateGrad(names: SEXP) -> SEXP {
 unsafe fn CreateHess(names: SEXP) -> SEXP {
     let n = length(names);
 
-    let dimnames = Rf_protect(lang4(
+    let dimnames = lang4(
         R_NilValue(),
         R_NilValue(),
         R_NilValue(),
         R_NilValue(),
-    ));
+    );
+    let _dimnames_guard = protect(dimnames);
     SETCAR(dimnames, install_str("list"));
     let p = install_str("c");
-    let q = Rf_protect(crate::sexp::constructors::Rf_allocList(n));
+    let q = crate::sexp::constructors::Rf_allocList(n);
+    let _q_guard = protect(q);
     SETCADDR(dimnames, LCONS(p, q));
-    Rf_unprotect(1); // q
     let mut qq = CADDR(dimnames);
     qq = CDR(qq); // skip the "c" symbol
     for i in 0..n {
@@ -919,21 +923,23 @@ unsafe fn CreateHess(names: SEXP) -> SEXP {
     }
     SETCADDDR(dimnames, duplicate(CADDR(dimnames)));
 
-    let dim = Rf_protect(lang4(
+    let dim = lang4(
         R_NilValue(),
         R_NilValue(),
         R_NilValue(),
         R_NilValue(),
-    ));
+    );
+    let _dim_guard = protect(dim);
     SETCAR(dim, install_str("c"));
     SETCADR(dim, lang2(install_str("length"), install_str(".value")));
     SETCADDR(dim, Rf_ScalarInteger(n));
     SETCADDDR(dim, Rf_ScalarInteger(n));
 
-    let data = Rf_protect(Rf_ScalarReal(0.0));
-    let p = Rf_protect(lang4(install_str("array"), data, dim, dimnames));
+    let data = Rf_ScalarReal(0.0);
+    let _data_guard = protect(data);
+    let p = lang4(install_str("array"), data, dim, dimnames);
+    let _p_guard = protect(p);
     let p = lang3(install_str("<-"), install_str(".hessian"), p);
-    Rf_unprotect(4); // dimnames, dim, data, p(lang4)
     p
 }
 
@@ -942,14 +948,15 @@ unsafe fn CreateHess(names: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn DerivAssign(name: SEXP, expr: SEXP) -> SEXP {
-    let ans = Rf_protect(lang3(install_str("<-"), R_NilValue(), expr));
-    let newname = Rf_protect(Rf_ScalarString(name));
+    let ans = lang3(install_str("<-"), R_NilValue(), expr);
+    let _ans_guard = protect(ans);
+    let newname = Rf_ScalarString(name);
+    let _newname_guard = protect(newname);
     let bracket_sym = crate::sexp::symbol::R_BracketSymbol();
     SETCADR(
         ans,
         lang4(bracket_sym, install_str(".grad"), R_MissingArg(), newname),
     );
-    Rf_unprotect(2);
     ans
 }
 
@@ -958,8 +965,10 @@ unsafe fn DerivAssign(name: SEXP, expr: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn HessAssign1(name: SEXP, expr: SEXP) -> SEXP {
-    let ans = Rf_protect(lang3(install_str("<-"), R_NilValue(), expr));
-    let newname = Rf_protect(Rf_ScalarString(name));
+    let ans = lang3(install_str("<-"), R_NilValue(), expr);
+    let _ans_guard = protect(ans);
+    let newname = Rf_ScalarString(name);
+    let _newname_guard = protect(newname);
     let bracket_sym = crate::sexp::symbol::R_BracketSymbol();
     SETCADR(
         ans,
@@ -971,7 +980,6 @@ unsafe fn HessAssign1(name: SEXP, expr: SEXP) -> SEXP {
             newname,
         ),
     );
-    Rf_unprotect(2);
     ans
 }
 
@@ -980,26 +988,30 @@ unsafe fn HessAssign1(name: SEXP, expr: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn HessAssign2(name1: SEXP, name2: SEXP, expr: SEXP) -> SEXP {
-    let newname1 = Rf_protect(Rf_ScalarString(name1));
-    let newname2 = Rf_protect(Rf_ScalarString(name2));
+    let newname1 = Rf_ScalarString(name1);
+    let _newname1_guard = protect(newname1);
+    let newname2 = Rf_ScalarString(name2);
+    let _newname2_guard = protect(newname2);
     let bracket_sym = crate::sexp::symbol::R_BracketSymbol();
-    let tmp1 = Rf_protect(lang5(
+    let tmp1 = lang5(
         bracket_sym,
         install_str(".hessian"),
         R_MissingArg(),
         newname1,
         newname2,
-    ));
-    let tmp2 = Rf_protect(lang5(
+    );
+    let _tmp1_guard = protect(tmp1);
+    let tmp2 = lang5(
         bracket_sym,
         install_str(".hessian"),
         R_MissingArg(),
         newname2,
         newname1,
-    ));
-    let tmp3 = Rf_protect(lang3(install_str("<-"), tmp2, expr));
+    );
+    let _tmp2_guard = protect(tmp2);
+    let tmp3 = lang3(install_str("<-"), tmp2, expr);
+    let _tmp3_guard = protect(tmp3);
     let ans = lang3(install_str("<-"), tmp1, tmp3);
-    Rf_unprotect(5);
     ans
 }
 
@@ -1008,12 +1020,13 @@ unsafe fn HessAssign2(name1: SEXP, name2: SEXP, expr: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn AddGrad() -> SEXP {
-    let mut ans = Rf_protect(crate::sexp::constructors::Rf_mkString(
+    let ans = crate::sexp::constructors::Rf_mkString(
         b"gradient\0".as_ptr() as *const c_char,
-    ));
-    ans = Rf_protect(lang3(install_str("attr"), install_str(".value"), ans));
-    ans = lang3(install_str("<-"), ans, install_str(".grad"));
-    Rf_unprotect(2);
+    );
+    let _string_guard = protect(ans);
+    let ans = lang3(install_str("attr"), install_str(".value"), ans);
+    let _attr_guard = protect(ans);
+    let ans = lang3(install_str("<-"), ans, install_str(".grad"));
     ans
 }
 
@@ -1022,12 +1035,13 @@ unsafe fn AddGrad() -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn AddHess() -> SEXP {
-    let mut ans = Rf_protect(crate::sexp::constructors::Rf_mkString(
+    let ans = crate::sexp::constructors::Rf_mkString(
         b"hessian\0".as_ptr() as *const c_char,
-    ));
-    ans = Rf_protect(lang3(install_str("attr"), install_str(".value"), ans));
-    ans = lang3(install_str("<-"), ans, install_str(".hessian"));
-    Rf_unprotect(2);
+    );
+    let _string_guard = protect(ans);
+    let ans = lang3(install_str("attr"), install_str(".value"), ans);
+    let _attr_guard = protect(ans);
+    let ans = lang3(install_str("<-"), ans, install_str(".hessian"));
     ans
 }
 
