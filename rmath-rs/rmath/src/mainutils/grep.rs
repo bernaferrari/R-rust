@@ -29,7 +29,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Local helper functions (matching patterns from match_mod.rs etc.)
@@ -807,28 +807,28 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Handle NA pattern
         if isNA_STRING(STRING_ELT(pat, 0)) {
             if value_opt {
-                let ans = Rf_protect(allocVector(SEXPTYPE::STRSXP, n));
+                let ans = allocVector(SEXPTYPE::STRSXP, n);
+                let _ans_guard = protect(ans);
                 for i in 0..n {
                     SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
                 }
-                Rf_unprotect(1);
                 return ans;
             } else if PRIMVAL(op) != 0 {
                 // grepl case
-                let ans = Rf_protect(allocVector(SEXPTYPE::LGLSXP, n));
+                let ans = allocVector(SEXPTYPE::LGLSXP, n);
+                let _ans_guard = protect(ans);
                 let p = LOGICAL(ans);
                 for i in 0..n {
                     *p.add(i as usize) = NA_LOGICAL;
                 }
-                Rf_unprotect(1);
                 return ans;
             } else {
-                let ans = Rf_protect(allocVector(SEXPTYPE::INTSXP, n));
+                let ans = allocVector(SEXPTYPE::INTSXP, n);
+                let _ans_guard = protect(ans);
                 let p = INTEGER(ans);
                 for i in 0..n {
                     *p.add(i as usize) = NA_INTEGER;
                 }
-                Rf_unprotect(1);
                 return ans;
             }
         }
@@ -854,7 +854,8 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         if value_opt {
             // value=TRUE: return matching strings
-            let ans = Rf_protect(allocVector(SEXPTYPE::STRSXP, n));
+            let ans = allocVector(SEXPTYPE::STRSXP, n);
+            let _ans_guard = protect(ans);
             for i in 0..n {
                 let text_charsxp = STRING_ELT(text, i as R_xlen_t);
                 if isNA_STRING(text_charsxp) {
@@ -877,11 +878,11 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(empty_str.as_ptr()));
                 }
             }
-            Rf_unprotect(1);
             return ans;
         } else if PRIMVAL(op) != 0 {
             // grepl: return logical vector
-            let ans = Rf_protect(allocVector(SEXPTYPE::LGLSXP, n));
+            let ans = allocVector(SEXPTYPE::LGLSXP, n);
+            let _ans_guard = protect(ans);
             let p = LOGICAL(ans);
             for i in 0..n {
                 let text_charsxp = STRING_ELT(text, i as R_xlen_t);
@@ -899,7 +900,6 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 );
                 *p.add(i as usize) = if invert { !matched } else { matched } as c_int;
             }
-            Rf_unprotect(1);
             return ans;
         } else {
             // grep: return integer indices
@@ -922,12 +922,12 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
             }
             let cnt = match_indices.len() as R_xlen_t;
-            let ans = Rf_protect(allocVector(SEXPTYPE::INTSXP, cnt));
+            let ans = allocVector(SEXPTYPE::INTSXP, cnt);
+            let _ans_guard = protect(ans);
             let p = INTEGER(ans);
             for (j, &idx) in match_indices.iter().enumerate() {
                 *p.add(j) = idx as c_int;
             }
-            Rf_unprotect(1);
             return ans;
         }
     }
@@ -996,11 +996,11 @@ pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Handle NA pattern
         if isNA_STRING(STRING_ELT(pat, 0)) {
-            let ans = Rf_protect(allocVector(SEXPTYPE::STRSXP, n));
+            let ans = allocVector(SEXPTYPE::STRSXP, n);
+            let _ans_guard = protect(ans);
             for i in 0..n {
                 SET_STRING_ELT(ans, i as R_xlen_t, NA_STRING());
             }
-            Rf_unprotect(1);
             return ans;
         }
 
@@ -1024,7 +1024,8 @@ pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         };
 
         // Process each text element
-        let ans = Rf_protect(allocVector(SEXPTYPE::STRSXP, n));
+        let ans = allocVector(SEXPTYPE::STRSXP, n);
+        let _ans_guard = protect(ans);
         for i in 0..n {
             let text_charsxp = STRING_ELT(text, i as R_xlen_t);
             if isNA_STRING(text_charsxp) {
@@ -1064,7 +1065,6 @@ pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             let result_charsxp = Rf_mkChar(result_cstr.as_ptr());
             SET_STRING_ELT(ans, i as R_xlen_t, result_charsxp);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1124,8 +1124,10 @@ pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         };
 
         // Allocate result vectors
-        let ans = Rf_protect(allocVector(SEXPTYPE::INTSXP, n));
-        let matchlen = Rf_protect(allocVector(SEXPTYPE::INTSXP, n));
+        let ans = allocVector(SEXPTYPE::INTSXP, n);
+        let _ans_guard = protect(ans);
+        let matchlen = allocVector(SEXPTYPE::INTSXP, n);
+        let _matchlen_guard = protect(matchlen);
         let p_ans = INTEGER(ans);
         let p_matchlen = INTEGER(matchlen);
 
@@ -1175,7 +1177,6 @@ pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let names_sym = Rf_mkChar(match_len_str.as_ptr());
         setAttrib(ans as SEXP, names_sym, matchlen);
 
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1238,15 +1239,16 @@ pub unsafe fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // or an integer vector [start, end, capture_start, capture_end, ...]
         // Since our ERE engine doesn't support capture groups, we return
         // [start, end] for the overall match only.
-        let ans = Rf_protect(allocVector(SEXPTYPE::VECSXP, n));
+        let ans = allocVector(SEXPTYPE::VECSXP, n);
+        let _ans_guard = protect(ans);
 
         for i in 0..n {
             let text_charsxp = STRING_ELT(text, i as R_xlen_t);
             if isNA_STRING(text_charsxp) {
-                let na_vec = Rf_protect(allocVector(SEXPTYPE::INTSXP, 1));
+                let na_vec = allocVector(SEXPTYPE::INTSXP, 1);
+                let _na_vec_guard = protect(na_vec);
                 *INTEGER(na_vec) = NA_INTEGER;
                 SET_VECTOR_ELT(ans, i as R_xlen_t, na_vec);
-                Rf_unprotect(1);
                 continue;
             }
 
@@ -1269,23 +1271,22 @@ pub unsafe fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             };
 
             if let Some(m) = result {
-                let match_vec = Rf_protect(allocVector(SEXPTYPE::INTSXP, 2));
+                let match_vec = allocVector(SEXPTYPE::INTSXP, 2);
+                let _match_vec_guard = protect(match_vec);
                 let p = INTEGER(match_vec);
                 // R uses 1-based indexing for start, and end is the position after the match
                 *p = (m.start + 1) as c_int;
                 *p.add(1) = m.end as c_int;
                 SET_VECTOR_ELT(ans, i as R_xlen_t, match_vec);
-                Rf_unprotect(1);
             } else {
                 // No match: -1, -1
-                let no_match = Rf_protect(allocVector(SEXPTYPE::INTSXP, 1));
+                let no_match = allocVector(SEXPTYPE::INTSXP, 1);
+                let _no_match_guard = protect(no_match);
                 *INTEGER(no_match) = -1;
                 SET_VECTOR_ELT(ans, i as R_xlen_t, no_match);
-                Rf_unprotect(1);
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1325,8 +1326,8 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let pat_len = XLENGTH(pat) as usize;
         let text_len = XLENGTH(text) as usize;
         if pat_len == 0 || text_len == 0 {
-            let ans = Rf_protect(allocVector(SEXPTYPE::INTSXP, 0));
-            Rf_unprotect(1);
+            let ans = allocVector(SEXPTYPE::INTSXP, 0);
+            let _ans_guard = protect(ans);
             return ans;
         }
 
@@ -1338,14 +1339,14 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         match fixed_search(text_slice, pat_slice, igcase_opt) {
             Some(pos) => {
-                let ans = Rf_protect(allocVector(SEXPTYPE::INTSXP, 1));
+                let ans = allocVector(SEXPTYPE::INTSXP, 1);
+                let _ans_guard = protect(ans);
                 *INTEGER(ans) = (pos + 1) as c_int; // 1-based
-                Rf_unprotect(1);
                 ans
             }
             None => {
-                let ans = Rf_protect(allocVector(SEXPTYPE::INTSXP, 0));
-                Rf_unprotect(1);
+                let ans = allocVector(SEXPTYPE::INTSXP, 0);
+                let _ans_guard = protect(ans);
                 ans
             }
         }
