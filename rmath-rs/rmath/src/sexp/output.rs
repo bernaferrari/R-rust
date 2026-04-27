@@ -89,6 +89,30 @@ fn format_aligned_values(vals: Vec<String>) -> String {
         .join(" ")
 }
 
+fn format_named_values(names: &[String], values: &[String]) -> String {
+    let widths: Vec<usize> = names
+        .iter()
+        .zip(values)
+        .map(|(name, value)| {
+            let width = name.len().max(value.len());
+            if name == "<NA>" { width.max(5) } else { width }
+        })
+        .collect();
+    let name_line = names
+        .iter()
+        .zip(&widths)
+        .map(|(name, width)| format!("{name:>width$}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let value_line = values
+        .iter()
+        .zip(&widths)
+        .map(|(value, width)| format!("{value:>width$}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{name_line}\n{value_line}")
+}
+
 fn format_integer_value(v: i32) -> String {
     if v == NA_INTEGER {
         "NA".to_string()
@@ -422,6 +446,43 @@ fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
     Some(values)
 }
 
+fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
+    let sexp = Sexp::from_raw(x)?;
+    if sexp.typeof_() != SEXPTYPE::STRSXP {
+        return None;
+    }
+    let mut values = Vec::with_capacity(sexp.len() as usize);
+    for i in 0..sexp.len() {
+        values.push(match string_element_text(sexp, i) {
+            Some(Some(value)) => value.to_string(),
+            Some(None) | None => "<NA>".to_string(),
+        });
+    }
+    Some(values)
+}
+
+fn vector_print_names(x: Sexp<'_>) -> Option<Vec<String>> {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let names = string_vector_labels(names)?;
+        if names.len() != x.len() as usize || names.iter().all(|name| name.is_empty()) {
+            None
+        } else {
+            Some(names)
+        }
+    }
+}
+
+fn format_named_atomic_vector(x: Sexp<'_>, values: Vec<String>) -> Option<String> {
+    let mut names = vector_print_names(x)?;
+    let limit = values.len();
+    names.truncate(limit);
+    Some(format_named_values(&names, &values))
+}
+
 fn string_element_text<'a>(x: Sexp<'a>, i: R_xlen_t) -> Option<Option<&'a str>> {
     let charsxp = x.try_string_elt(i).ok()?;
     if charsxp.as_raw() == unsafe { R_NaString() } {
@@ -491,6 +552,20 @@ fn table_names(x: Sexp<'_>) -> Option<Vec<String>> {
     }
 }
 
+fn table_title(x: Sexp<'_>) -> Option<String> {
+    unsafe {
+        let title = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::symbol::Rf_install(c"table.name".as_ptr()),
+        );
+        let title = Sexp::from_raw(title)?;
+        if title.typeof_() != SEXPTYPE::STRSXP || title.len() == 0 {
+            return None;
+        }
+        string_element_text(title, 0).flatten().map(str::to_string)
+    }
+}
+
 fn format_table(x: Sexp<'_>) -> Option<String> {
     let names = table_names(x)?;
     let values: Vec<String> = match x.typeof_() {
@@ -498,7 +573,28 @@ fn format_table(x: Sexp<'_>) -> Option<String> {
         SEXPTYPE::REALSXP => (0..x.len()).map(|i| format_real_element(x, i)).collect(),
         _ => return None,
     };
-    Some(format!("\n{}\n{}", names.join(" "), values.join(" ")))
+    if let Some(title) = table_title(x) {
+        let widths: Vec<usize> = names
+            .iter()
+            .zip(&values)
+            .map(|(name, value)| name.len().max(value.len()).max(4))
+            .collect();
+        let name_line = names
+            .iter()
+            .zip(&widths)
+            .map(|(name, width)| format!("{name:>width$}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let value_line = values
+            .iter()
+            .zip(&widths)
+            .map(|(value, width)| format!("{value:>width$}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        Some(format!("{title}\n{name_line}\n{value_line}"))
+    } else {
+        Some(format!("\n{}\n{}", names.join(" "), values.join(" ")))
+    }
 }
 
 fn list_names(x: Sexp<'_>) -> Vec<String> {
@@ -636,7 +732,11 @@ pub fn print_value(x: Sexp<'_>) {
                     .map(|i| format_integer_element(x, i))
                     .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+                if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
+                    emit(&format!("{output}{suffix}\n"));
+                } else {
+                    emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+                }
             }
         }
         SEXPTYPE::REALSXP => {
@@ -653,7 +753,11 @@ pub fn print_value(x: Sexp<'_>) {
             } else {
                 let vals = format_real_vector_values(x, 10);
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+                if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
+                    emit(&format!("{output}{suffix}\n"));
+                } else {
+                    emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+                }
             }
         }
         SEXPTYPE::LGLSXP => {
@@ -665,7 +769,11 @@ pub fn print_value(x: Sexp<'_>) {
                 .map(|i| format_logical_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+            if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
+                emit(&format!("{output}{suffix}\n"));
+            } else {
+                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+            }
         }
         SEXPTYPE::CPLXSXP => {
             if let Some(output) = format_matrix(x) {
@@ -676,10 +784,22 @@ pub fn print_value(x: Sexp<'_>) {
                 .map(|i| format_complex_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+            if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
+                emit(&format!("{output}{suffix}\n"));
+            } else {
+                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+            }
         }
         SEXPTYPE::STRSXP => {
-            emit(&format!("{}\n", format_string_vector(x)));
+            let vals: Vec<String> = (0..x.len().min(10))
+                .map(|i| format_string_element(x, i))
+                .collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            if let Some(output) = format_named_atomic_vector(x, vals) {
+                emit(&format!("{output}{suffix}\n"));
+            } else {
+                emit(&format!("{}\n", format_string_vector(x)));
+            }
         }
         SEXPTYPE::RAWSXP => {
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
@@ -748,7 +868,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                     .map(|i| format_integer_element(x, i))
                     .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                format!("[1] {}{}", format_aligned_values(vals), suffix)
+                format_named_atomic_vector(x, vals.clone())
+                    .map(|output| format!("{output}{suffix}"))
+                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
             };
             format!("{base}{}", format_regexpr_attributes(x))
         }
@@ -764,7 +886,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             } else {
                 let vals = format_real_vector_values(x, 10);
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                format!("[1] {}{}", format_aligned_values(vals), suffix)
+                format_named_atomic_vector(x, vals.clone())
+                    .map(|output| format!("{output}{suffix}"))
+                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
             }
         }
         SEXPTYPE::LGLSXP => {
@@ -778,7 +902,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 .map(|i| format_logical_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            format!("[1] {}{}", format_aligned_values(vals), suffix)
+            format_named_atomic_vector(x, vals.clone())
+                .map(|output| format!("{output}{suffix}"))
+                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
         }
         SEXPTYPE::CPLXSXP => {
             if x.len() == 0 {
@@ -791,7 +917,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 .map(|i| format_complex_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            format!("[1] {}{}", format_aligned_values(vals), suffix)
+            format_named_atomic_vector(x, vals.clone())
+                .map(|output| format!("{output}{suffix}"))
+                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
         }
         SEXPTYPE::STRSXP => format_string_vector(x),
         SEXPTYPE::RAWSXP => {

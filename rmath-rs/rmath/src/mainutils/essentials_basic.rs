@@ -381,7 +381,7 @@ fn arg_tag_name(cell: SEXP) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// R's `table(...)` — counts occurrences of each unique value.
-pub unsafe fn do_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -391,18 +391,26 @@ pub unsafe fn do_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if t != SEXPTYPE::INTSXP && t != SEXPTYPE::REALSXP && t != SEXPTYPE::LGLSXP {
             return R_NilValue();
         }
+        let use_na = table_use_na(args);
 
         let (labels, counts) = if let Some(levels) = factor_levels(x) {
             let mut counts = vec![0_i64; XLENGTH(levels) as usize];
+            let mut na_count = 0_i64;
             for i in 0..XLENGTH(x) {
                 let code = *INTEGER(x).add(i as usize);
                 if code > 0 && (code as usize) <= counts.len() {
                     counts[(code - 1) as usize] += 1;
+                } else if code == NA_INTEGER {
+                    na_count += 1;
                 }
             }
-            let labels: Vec<String> = (0..XLENGTH(levels))
+            let mut labels: Vec<String> = (0..XLENGTH(levels))
                 .map(|i| crate::mainutils::essentials::elt_to_string(levels, i))
                 .collect();
+            if use_na.should_include(na_count) {
+                labels.push("<NA>".to_string());
+                counts.push(na_count);
+            }
             (labels, counts)
         } else {
             let mut counts: BTreeMap<String, i64> = BTreeMap::new();
@@ -448,7 +456,78 @@ pub unsafe fn do_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 class,
             );
         }
+        if let Some(title) = table_title(call, args) {
+            let cstr = CString::new(title).unwrap_or_default();
+            let title_value = Rf_mkString(cstr.as_ptr());
+            let _title_p = protect(title_value);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(c"table.name".as_ptr()),
+                title_value,
+            );
+        }
         result
+    }
+}
+
+fn table_title(call: SEXP, args: SEXP) -> Option<String> {
+    unsafe {
+        let tag = arg_tag_name(args);
+        if tag.is_some() {
+            return tag;
+        }
+        if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+            return None;
+        }
+        let first_arg = CAR(CDR(call));
+        if first_arg.is_null() || first_arg == R_NilValue() || TYPEOF(first_arg) != SEXPTYPE::SYMSXP
+        {
+            return None;
+        }
+        let printname = PRINTNAME(first_arg);
+        if printname.is_null() {
+            return None;
+        }
+        let chars = CHAR(printname);
+        if chars.is_null() {
+            None
+        } else {
+            Some(std::ffi::CStr::from_ptr(chars).to_str().ok()?.to_string())
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TableUseNa {
+    No,
+    IfAny,
+    Always,
+}
+
+impl TableUseNa {
+    fn should_include(self, na_count: i64) -> bool {
+        match self {
+            Self::No => false,
+            Self::IfAny => na_count > 0,
+            Self::Always => true,
+        }
+    }
+}
+
+fn table_use_na(args: SEXP) -> TableUseNa {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if arg_tag_name(current).as_deref() == Some("useNA") {
+                return match crate::mainutils::essentials::elt_to_string(CAR(current), 0).as_str() {
+                    "ifany" => TableUseNa::IfAny,
+                    "always" => TableUseNa::Always,
+                    _ => TableUseNa::No,
+                };
+            }
+            current = CDR(current);
+        }
+        TableUseNa::No
     }
 }
 

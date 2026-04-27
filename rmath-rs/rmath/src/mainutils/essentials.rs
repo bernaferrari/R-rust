@@ -143,6 +143,8 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     for i in 0..n {
                         if t == SEXPTYPE::STRSXP {
                             SET_STRING_ELT(result, offset + i, STRING_ELT(arg, i));
+                        } else if element_coerces_to_character_na(arg, i) {
+                            SET_STRING_ELT(result, offset + i, crate::sexp::globals::R_NaString());
                         } else {
                             let value = elt_to_string(arg, i);
                             let cstr = CString::new(value).unwrap_or_default();
@@ -5127,6 +5129,27 @@ fn is_string_na(x: SEXP, i: R_xlen_t) -> bool {
             return false;
         }
         STRING_ELT(x, i % n) == crate::sexp::globals::R_NaString()
+    }
+}
+
+fn element_coerces_to_character_na(x: SEXP, i: R_xlen_t) -> bool {
+    unsafe {
+        let n = XLENGTH(x);
+        if x.is_null() || x == R_NilValue() || n == 0 {
+            return false;
+        }
+        let idx = i % n;
+        let ty = TYPEOF(x);
+        if ty == SEXPTYPE::STRSXP {
+            is_string_na(x, idx)
+        } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+            *INTEGER(x).add(idx as usize) == NA_INTEGER
+        } else if ty == SEXPTYPE::REALSXP {
+            let value = *REAL(x).add(idx as usize);
+            value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+        } else {
+            false
+        }
     }
 }
 
@@ -14938,7 +14961,7 @@ pub unsafe fn do_relevel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// R's `factor(x)` — create a minimal factor with sorted levels.
 pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
@@ -14948,14 +14971,18 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return x;
         }
 
-        let mut level_set = std::collections::BTreeSet::new();
-        let mut values = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let value = elt_to_string(x, i);
-            level_set.insert(value.clone());
-            values.push(value);
-        }
-        let levels: Vec<String> = level_set.into_iter().collect();
+        let levels_arg = arg_by_name_or_position(args, &["levels"], 1);
+        let levels = if levels_arg.is_null() || levels_arg == R_NilValue() {
+            let mut level_set = std::collections::BTreeSet::new();
+            for i in 0..n {
+                if !factor_element_is_na(x, i) {
+                    level_set.insert(elt_to_string(x, i));
+                }
+            }
+            level_set.into_iter().collect::<Vec<_>>()
+        } else {
+            explicit_factor_levels(levels_arg)
+        };
 
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
@@ -14964,12 +14991,18 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _p = protect(result);
 
         let dst = INTEGER(result);
-        for (i, value) in values.iter().enumerate() {
+        for i in 0..n {
+            if factor_element_is_na(x, i) {
+                *dst.add(i as usize) = NA_INTEGER;
+                continue;
+            }
+            let value = elt_to_string(x, i);
             let code = levels
-                .binary_search(value)
+                .iter()
+                .position(|level| level == &value)
                 .map(|idx| idx as i32 + 1)
                 .unwrap_or(NA_INTEGER);
-            *dst.add(i) = code;
+            *dst.add(i as usize) = code;
         }
 
         let levels_vec = Rf_allocVector3(SEXPTYPE::STRSXP, levels.len() as R_xlen_t);
@@ -14992,6 +15025,44 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             class,
         );
         result
+    }
+}
+
+fn factor_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
+    unsafe {
+        let ty = TYPEOF(x);
+        if ty == SEXPTYPE::STRSXP {
+            is_string_na(x, i)
+        } else if ty == SEXPTYPE::INTSXP {
+            let n = XLENGTH(x);
+            n != 0 && *INTEGER(x).add((i % n) as usize) == NA_INTEGER
+        } else if ty == SEXPTYPE::REALSXP {
+            let n = XLENGTH(x);
+            if n == 0 {
+                false
+            } else {
+                let value = *REAL(x).add((i % n) as usize);
+                value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || value.is_nan()
+            }
+        } else {
+            false
+        }
+    }
+}
+
+fn explicit_factor_levels(levels_arg: SEXP) -> Vec<String> {
+    unsafe {
+        let mut levels = Vec::new();
+        for i in 0..XLENGTH(levels_arg) {
+            if factor_element_is_na(levels_arg, i) {
+                continue;
+            }
+            let level = elt_to_string(levels_arg, i);
+            if !levels.iter().any(|existing| existing == &level) {
+                levels.push(level);
+            }
+        }
+        levels
     }
 }
 
