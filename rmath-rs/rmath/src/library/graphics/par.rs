@@ -493,8 +493,10 @@ pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         /* Build a named list with all R_NilValue entries */
-        let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nargs));
-        let newnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nargs));
+        let value = Rf_allocVector(SEXPTYPE::VECSXP, nargs);
+        let _value_guard = protect(value);
+        let newnames = Rf_allocVector(SEXPTYPE::STRSXP, nargs);
+        let _newnames_guard = protect(newnames);
 
         /* Try to get names from the argument */
         let oldnames = getAttrib(arg1, R_NamesSymbol());
@@ -510,7 +512,6 @@ pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         setAttrib(value, R_NamesSymbol(), newnames);
-        Rf_unprotect(2);
         value
     }
 }

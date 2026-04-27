@@ -31,7 +31,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::*;
 use crate::sexp::memory_ext::R_alloc;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---- internal helper functions (not exported) ----
 
@@ -2049,7 +2049,7 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
         let mult = asInteger_local(smult);
 
         let pars = coerceVector(pars, SEXPTYPE::REALSXP.as_c_int());
-        let pars = Rf_protect(pars);
+        let _pars_guard = protect(pars);
 
         let mut p: c_double = 0.;
         let mut prt: c_double = 0.;
@@ -2068,8 +2068,6 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
             ws,
             mult,
         );
-
-        Rf_unprotect(1);
 
         // ScalarReal: allocate a 1-element REALSXP
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);

@@ -1113,12 +1113,11 @@ unsafe fn read_child_ci(ci: *mut child_info_t) -> SEXP {
                 }
                 i += n as R_xlen_t;
             }
-            Rf_protect(rv);
+            let _rv_guard = protect(rv);
             let pa = Rf_ScalarInteger(pid as c_int);
-            Rf_protect(pa);
+            let _pa_guard = protect(pa);
             let pid_sym = Rf_install(b"pid\0".as_ptr() as *const c_char);
             setAttrib(rv, pid_sym, pa);
-            Rf_unprotect(2);
             rv
         }
     }

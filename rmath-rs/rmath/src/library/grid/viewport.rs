@@ -35,7 +35,7 @@ use crate::sexp::envir::findFun;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_GlobalEnv;
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::gcontextFromgpar;

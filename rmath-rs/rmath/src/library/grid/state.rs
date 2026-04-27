@@ -15,7 +15,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector, Rf_mkString};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::types::*;
