@@ -22,7 +22,7 @@ use crate::sexp::constructors::{Rf_cons, Rf_mkChar};
 use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -541,7 +541,7 @@ unsafe fn restore_tagbuf(save: &[u8; TAGBUFLEN0 * 2]) {
 unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
     unsafe {
         let t = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
-        Rf_protect(t);
+        let _t_guard = protect(t);
         set_current_print_data(data);
 
         let n = LENGTH(t);
@@ -551,7 +551,6 @@ unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
                 println!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
             }
         }
-        Rf_unprotect(1);
     }
 }
 
@@ -607,7 +606,7 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
 
         if s2 != R_UnboundValue() {
             let t = crate::mainutils::deparse::deparse1m(s2, false, DEFAULTDEPARSE);
-            Rf_protect(t);
+            let _t_guard = protect(t);
             set_current_print_data(data);
 
             let line = STRING_ELT(t, 0);
@@ -615,7 +614,6 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
                 print!("{} ", CStr::from_ptr(CHAR(line)).to_str().unwrap_or(""));
             }
             println!(".Primitive(\"{}\")", nm);
-            Rf_unprotect(1);
         } else {
             println!(".Primitive(\"{}\")", nm);
         }
@@ -629,7 +627,7 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
 unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
     unsafe {
         let u = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
-        Rf_protect(u);
+        let _u_guard = protect(u);
         set_current_print_data(data);
 
         let n = LENGTH(u);
@@ -639,7 +637,6 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
                 println!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
             }
         }
-        Rf_unprotect(1);
     }
 }
 
@@ -694,8 +691,9 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
 
         if dims != R_NilValue() && LENGTH(dims) > 1 {
             // Array-like list
-            Rf_protect(dims);
-            let t = Rf_protect(allocArray(SEXPTYPE::STRSXP.as_c_int(), dims));
+            let _dims_guard = protect(dims);
+            let t = allocArray(SEXPTYPE::STRSXP.as_c_int(), dims);
+            let _t_guard = protect(t);
 
             let limit = if ns <= data.max as i64 + 1 {
                 ns
@@ -934,14 +932,14 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                     t, 0, dims, 0, data.right, rl, cl, rn, cn,
                 );
             } else {
-                let names = Rf_protect(GetArrayDimnames(s));
+                let names = GetArrayDimnames(s);
+                let _names_guard = protect(names);
                 crate::mainutils::printarray::printArray(t, dims, 0, Rprt_adj_left, names);
-                Rf_unprotect(1);
             }
-            Rf_unprotect(2); // dims, t
         } else {
             // No dim
-            let names = Rf_protect(getAttrib(s, R_NamesSymbol()));
+            let names = getAttrib(s, R_NamesSymbol());
+            let _names_guard = protect(names);
 
             let taglen = tagbuf_strlen();
             let ptag = tagbuf_ptr_at(taglen);
@@ -1084,7 +1082,6 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                 }
                 println!("list()");
             }
-            Rf_unprotect(1); // names
         }
         printAttributes(s, data, false);
     }
@@ -1099,8 +1096,9 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
         let dims = getAttrib(s, R_DimSymbol());
 
         if dims != R_NilValue() && LENGTH(dims) > 1 {
-            Rf_protect(dims);
-            let t = Rf_protect(allocArray(SEXPTYPE::STRSXP.as_c_int(), dims));
+            let _dims_guard = protect(dims);
+            let t = allocArray(SEXPTYPE::STRSXP.as_c_int(), dims);
+            let _t_guard = protect(t);
             let mut i: i64 = 0;
             let mut cur = s;
 
@@ -1178,11 +1176,10 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     t, 0, dims, data.quote, data.right, rl, cl, rn, cn,
                 );
             } else {
-                let dimnames = Rf_protect(getAttrib(s, R_DimNamesSymbol()));
+                let dimnames = getAttrib(s, R_DimNamesSymbol());
+                let _dimnames_guard = protect(dimnames);
                 crate::mainutils::printarray::printArray(t, dims, 0, Rprt_adj_left, dimnames);
-                Rf_unprotect(1);
             }
-            Rf_unprotect(2); // dims, t
         } else {
             let mut i: c_int = 1;
             let mut cur = s;
@@ -1353,9 +1350,9 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
             println!("{}", tagbuf_string());
 
             if tag == R_RowNamesSymbol() {
-                let val = Rf_protect(getAttrib(s, R_RowNamesSymbol()));
+                let val = getAttrib(s, R_RowNamesSymbol());
+                let _val_guard = protect(val);
                 PrintValueRec_inner(val, data);
-                Rf_unprotect(1);
                 tagbuf_set(tagbuf_strlen(), 0);
                 a = CDR(a);
                 continue;
@@ -1404,13 +1401,12 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             }
             t if t == SEXPTYPE::SYMSXP => {
                 let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
-                Rf_protect(t);
+                let _t_guard = protect(t);
                 set_current_print_data(data);
                 let line = STRING_ELT(t, 0);
                 if !line.is_null() && line != R_NilValue() {
                     println!("{}", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
                 }
-                Rf_unprotect(1);
             }
             t if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP => {
                 PrintSpecial(s, data);
@@ -1469,7 +1465,8 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 || t == SEXPTYPE::CPLXSXP
                 || t == SEXPTYPE::RAWSXP =>
             {
-                let dim = Rf_protect(getAttrib(s, R_DimSymbol()));
+                let dim = getAttrib(s, R_DimSymbol());
+                let _dim_guard = protect(dim);
                 if TYPEOF(dim) == SEXPTYPE::INTSXP {
                     if LENGTH(dim) == 1 {
                         let dnames = getAttrib(s, R_DimNamesSymbol());
@@ -1504,15 +1501,15 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                             s, 0, dim, data.quote, data.right, rl, cl, rn, cn,
                         );
                     } else {
-                        let dimnames = Rf_protect(GetArrayDimnames(s));
+                        let dimnames = GetArrayDimnames(s);
+                        let _dimnames_guard = protect(dimnames);
                         crate::mainutils::printarray::printArray(
                             s, dim, data.quote, data.right, dimnames,
                         );
-                        Rf_unprotect(1);
                     }
                 } else {
-                    Rf_unprotect(1); // dim
-                    let names = Rf_protect(getAttrib(s, R_NamesSymbol()));
+                    let names = getAttrib(s, R_NamesSymbol());
+                    let _names_guard = protect(names);
                     if names != R_NilValue() {
                         crate::mainutils::printvector::printNamedVector(
                             s,
@@ -1523,11 +1520,9 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                     } else {
                         crate::mainutils::printvector::printVector(s, 1, data.quote);
                     }
-                    Rf_unprotect(1);
                     printAttributes(s, data, false);
                     return;
                 }
-                Rf_unprotect(1); // dim
             }
             t if t == SEXPTYPE::EXTPTRSXP => {
                 println!("<pointer: {:?}>", s);
@@ -1578,7 +1573,7 @@ pub unsafe fn PrintValueEnv(s: SEXP, env: SEXP) {
         PrintDefaults();
         tagbuf_clear();
 
-        Rf_protect(s);
+        let _s_guard = protect(s);
 
         let mut data = R_PRINT_INIT.clone();
         PrintInit(&mut data as *mut R_PrintData as *mut std::ffi::c_void, env);
@@ -1588,8 +1583,6 @@ pub unsafe fn PrintValueEnv(s: SEXP, env: SEXP) {
         } else {
             PrintDispatch(s, &data);
         }
-
-        Rf_unprotect(1);
     }
 }
 
@@ -1652,7 +1645,8 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         let mut missing_arg_ptr = LOGICAL(missings_vec);
         let mut all_missing: c_int = 1;
 
-        let orig = Rf_protect(Rf_cons(R_NilValue(), wrapped_args));
+        let orig = Rf_cons(R_NilValue(), wrapped_args);
+        let _orig_guard = protect(orig);
         let mut prev = orig;
         let mut cur_args = wrapped_args;
 
@@ -1800,7 +1794,6 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
 
         PrintDefaults();
-        Rf_unprotect(1); // orig
         x
     }
 }
