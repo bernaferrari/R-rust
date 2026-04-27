@@ -8,8 +8,6 @@
 //! by the active `RInstance`; new Rust code should protect owner-scoped
 //! [`Sexp`](super::object::Sexp) handles instead of raw pointers.
 
-use std::os::raw::c_int;
-
 use super::ffi::SEXP;
 use super::object::Sexp;
 
@@ -30,9 +28,7 @@ pub struct ProtectGuard {
 impl Drop for ProtectGuard {
     fn drop(&mut self) {
         if self.count > 0 {
-            unsafe {
-                Rf_unprotect(self.count as c_int);
-            }
+            unprotect_count(self.count);
         }
     }
 }
@@ -60,10 +56,10 @@ fn protect_raw(s: SEXP) -> ProtectGuard {
     }
 }
 
-/// Create a guard that will unprotect `n` stack entries on drop.
+/// Create a guard that will pop `n` stack entries on drop.
 ///
-/// This does not call `Rf_protect`; callers must already have pushed `n`
-/// entries and want RAII-style unwinding safety around a manual protect batch.
+/// Callers must already have pushed `n` entries and want RAII-style unwinding
+/// safety around a manual protect batch.
 pub(crate) fn protect_n(n: usize) -> ProtectGuard {
     ProtectGuard { count: n }
 }
@@ -127,24 +123,23 @@ pub fn preserve_sexp(value: Sexp<'_>) -> PreserveGuard {
 // Core protect/unprotect functions
 // ---------------------------------------------------------------------------
 
-/// Protect an SEXP from garbage collection for translated interpreter code.
-pub(crate) unsafe fn Rf_protect(s: SEXP) -> SEXP {
+/// Push a raw SEXP onto the protection stack and return it.
+pub(crate) fn protect_raw_pointer(s: SEXP) -> SEXP {
     push_protect(s);
     s
 }
 
-/// Unprotect the top `n` entries from the protection stack.
-pub(crate) unsafe fn Rf_unprotect(n: c_int) {
-    if n <= 0 {
+/// Pop the top `n` entries from the protection stack.
+pub(crate) fn unprotect_count(n: usize) {
+    if n == 0 {
         return;
     }
-    let to_remove = n as usize;
     super::instance::with_required_current_instance(|inst| {
         let len = inst.protect_stack.len();
-        if to_remove >= len {
+        if n >= len {
             inst.protect_stack.clear();
         } else {
-            inst.protect_stack.truncate(len - to_remove);
+            inst.protect_stack.truncate(len - n);
         }
     });
 }
@@ -152,7 +147,7 @@ pub(crate) unsafe fn Rf_unprotect(n: c_int) {
 /// Unprotect the top entry from the protection stack.
 ///
 /// This is the equivalent of R's `UNPROTECT_PTR()` macro.
-pub(crate) unsafe fn Rf_unprotect_ptr(s: SEXP) {
+pub(crate) fn unprotect_ptr(s: SEXP) {
     if s.is_null() {
         return;
     }
@@ -357,7 +352,7 @@ pub(crate) unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
 
 /// Permanently protect an SEXP from garbage collection.
 ///
-/// Unlike Rf_protect, this protection persists until explicitly released.
+/// Unlike a protection guard, this protection persists until explicitly released.
 /// This is the equivalent of R's `R_PreserveObject()`.
 pub(crate) unsafe fn R_PreserveObject(s: SEXP) {
     push_preserve(s);
@@ -388,10 +383,10 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| unsafe {
             let fake = 0x1 as SEXP;
-            let result = Rf_protect(fake);
+            let result = protect_raw_pointer(fake);
             assert_eq!(result, fake);
             assert_eq!(R_ProtectCount(), 1);
-            Rf_unprotect(1);
+            unprotect_count(1);
             assert_eq!(R_ProtectCount(), 0);
         });
     }
@@ -400,7 +395,7 @@ mod tests {
     fn test_protect_null() {
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            Rf_protect(ptr::null_mut());
+            protect_raw_pointer(ptr::null_mut());
             assert_eq!(R_ProtectCount(), 0);
         });
     }
@@ -412,13 +407,13 @@ mod tests {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
             let c = 0x3 as SEXP;
-            Rf_protect(a);
-            Rf_protect(b);
-            Rf_protect(c);
+            protect_raw_pointer(a);
+            protect_raw_pointer(b);
+            protect_raw_pointer(c);
             assert_eq!(R_ProtectCount(), 3);
-            Rf_unprotect(2);
+            unprotect_count(2);
             assert_eq!(R_ProtectCount(), 1);
-            Rf_unprotect(1);
+            unprotect_count(1);
             assert_eq!(R_ProtectCount(), 0);
         });
     }
@@ -429,12 +424,12 @@ mod tests {
         session.with_protected(|| unsafe {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
-            Rf_protect(a);
-            Rf_protect(b);
+            protect_raw_pointer(a);
+            protect_raw_pointer(b);
             assert_eq!(R_ProtectCount(), 2);
-            Rf_unprotect_ptr(a);
+            unprotect_ptr(a);
             assert_eq!(R_ProtectCount(), 1);
-            Rf_unprotect_ptr(b);
+            unprotect_ptr(b);
             assert_eq!(R_ProtectCount(), 0);
         });
     }
@@ -443,16 +438,16 @@ mod tests {
     fn test_unprotect_ptr_null() {
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            Rf_unprotect_ptr(ptr::null_mut());
+            unprotect_ptr(ptr::null_mut());
             assert_eq!(R_ProtectCount(), 0);
         });
     }
 
     #[test]
-    fn test_unprotect_negative() {
+    fn test_unprotect_zero() {
         let session = RSession::new();
-        session.with_protected(|| unsafe {
-            Rf_unprotect(-1);
+        session.with_protected(|| {
+            unprotect_count(0);
             assert_eq!(R_ProtectCount(), 0);
         });
     }
@@ -461,8 +456,8 @@ mod tests {
     fn test_unprotect_exceeds_stack() {
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            Rf_protect(0x1 as SEXP);
-            Rf_unprotect(5);
+            protect_raw_pointer(0x1 as SEXP);
+            unprotect_count(5);
             assert_eq!(R_ProtectCount(), 0);
         });
     }
@@ -586,9 +581,9 @@ mod tests {
         session.with_protected(|| {
             let depth_before = R_ProtectCount();
             unsafe {
-                Rf_protect(0x1 as SEXP);
-                Rf_protect(0x2 as SEXP);
-                Rf_protect(0x3 as SEXP);
+                protect_raw_pointer(0x1 as SEXP);
+                protect_raw_pointer(0x2 as SEXP);
+                protect_raw_pointer(0x3 as SEXP);
             }
             let _guard = protect_n(3);
             assert_eq!(R_ProtectCount(), depth_before + 3);
@@ -605,7 +600,7 @@ mod tests {
             let idx = R_ProtectWithIndex(fake);
             assert!(!idx.is_null());
             assert_eq!(R_ProtectCount(), 1);
-            Rf_unprotect(1);
+            unprotect_count(1);
             assert_eq!(R_ProtectCount(), 0);
         });
     }
@@ -629,7 +624,7 @@ mod tests {
             let idx = R_ProtectWithIndex(a);
             R_Reprotect(b, idx);
             with_protected_objects(|objects| assert_eq!(objects[0], b));
-            Rf_unprotect(1);
+            unprotect_count(1);
         });
     }
 
@@ -653,12 +648,12 @@ mod tests {
     fn test_with_protected_objects() {
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            Rf_protect(0x1 as SEXP);
-            Rf_protect(0x2 as SEXP);
+            protect_raw_pointer(0x1 as SEXP);
+            protect_raw_pointer(0x2 as SEXP);
             with_protected_objects(|objects| {
                 assert_eq!(objects.len(), 2);
             });
-            Rf_unprotect(2);
+            unprotect_count(2);
         });
     }
 
@@ -680,8 +675,8 @@ mod tests {
     fn test_update_protect_stack_refs() {
         let session = RSession::new();
         session.with_protected(|| unsafe {
-            Rf_protect(0x1 as SEXP);
-            Rf_protect(0x2 as SEXP);
+            protect_raw_pointer(0x1 as SEXP);
+            protect_raw_pointer(0x2 as SEXP);
             update_protect_stack_refs(|ptr| {
                 if ptr as usize == 0x1 {
                     0x100 as SEXP
@@ -693,7 +688,7 @@ mod tests {
                 assert_eq!(objects[0] as usize, 0x100);
                 assert_eq!(objects[1] as usize, 0x2);
             });
-            Rf_unprotect(2);
+            unprotect_count(2);
         });
     }
 
