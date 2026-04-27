@@ -9,7 +9,7 @@ use crate::nmath::dist::normal::qnorm5_inner;
 use crate::sexp::accessors::{LENGTH, REAL, TYPEOF};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // `crate::main::coerce::coerceVector` still takes `c_int`; keep the conversion
 // local so this module can use `SEXPTYPE` at the call site.
@@ -199,16 +199,17 @@ pub unsafe fn SWilk(x: SEXP) -> SEXP {
         let mut W: c_double = 0.0;
         let mut pw: c_double = 0.0;
 
-        let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP));
+        let x = coerceVector(x, SEXPTYPE::REALSXP);
+        let _x_guard = protect(x);
         let n = LENGTH(x);
         swilk(REAL(x), n, &mut W, &mut pw, &mut ifault);
         if ifault > 0 && ifault != 7 {
             eprintln!("ifault={}. This should not happen", ifault);
         }
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+        let _ans_guard = protect(ans);
         *REAL(ans) = W;
         *REAL(ans).add(1) = pw;
-        Rf_unprotect(2);
         ans
     }
 }

@@ -329,19 +329,20 @@ pub unsafe fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
         let lagmax = as_integer(lmax);
         let cor = as_logical(sCor) != 0;
         let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
-        Rf_protect(x);
+        let _x_guard = protect(x);
 
         let ans_size = (lagmax as isize + 1) * ns as isize * ns as isize;
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ans_size as c_int));
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, ans_size as c_int);
+        let _ans_guard = protect(ans);
         acf0(REAL(x), nx, ns, lagmax, cor, REAL(ans));
 
-        let d = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
+        let d = Rf_allocVector(SEXPTYPE::INTSXP, 3);
+        let _d_guard = protect(d);
         *INTEGER(d) = lagmax + 1;
         *INTEGER(d.add(1)) = ns;
         *INTEGER(d.add(2)) = ns;
         setAttrib(ans, R_DimSymbol(), d);
 
-        Rf_unprotect(3);
         ans
     }
 }

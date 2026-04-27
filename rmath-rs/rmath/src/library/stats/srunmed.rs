@@ -9,7 +9,7 @@ use crate::main::errors::Rf_error;
 use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 const NA_BIG_alternate_P: c_int = 1;
 const NA_BIG_alternate_M: c_int = 2;
@@ -244,12 +244,12 @@ pub unsafe fn runmed(
 ) -> SEXP {
     unsafe {
         let n = XLENGTH(sx);
-        let mut nprot: c_int = 1;
+        let mut guards = Vec::with_capacity(2);
 
         let mut sx = sx;
         if TYPEOF(sx) != SEXPTYPE::REALSXP {
-            sx = Rf_protect(coerceVector(sx, SEXPTYPE::REALSXP.as_c_int()));
-            nprot += 1;
+            sx = coerceVector(sx, SEXPTYPE::REALSXP.as_c_int());
+            guards.push(protect(sx));
         }
         let x = REAL(sx);
 
@@ -337,7 +337,8 @@ pub unsafe fn runmed(
             xx = x;
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+        guards.push(protect(ans));
 
         if type_ == 1 {
             // Trunmed takes &[f64] and &mut [f64]
@@ -388,7 +389,6 @@ pub unsafe fn runmed(
             }
         }
 
-        Rf_unprotect(nprot);
         ans
     }
 }
