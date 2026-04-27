@@ -28,7 +28,7 @@ use std::os::raw::c_int;
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, Rf_isNull, SET_VECTOR_ELT, VECTOR_ELT};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 
 use super::types::*;
 use super::unit::{pureNullUnitValue, transformHeight, transformWidth, unit};
@@ -761,16 +761,18 @@ mod tests {
 
     unsafe fn mk_unit_vec(values: &[f64], unit_id: c_int) -> SEXP {
         unsafe {
-            let amount = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, values.len() as c_int));
-            let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, values.len() as c_int));
-            let unit_type = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, values.len() as c_int));
+            let amount = Rf_allocVector(SEXPTYPE::REALSXP, values.len() as c_int);
+            let _amount_guard = protect(amount);
+            let data = Rf_allocVector(SEXPTYPE::VECSXP, values.len() as c_int);
+            let _data_guard = protect(data);
+            let unit_type = Rf_allocVector(SEXPTYPE::INTSXP, values.len() as c_int);
+            let _unit_type_guard = protect(unit_type);
             for (i, value) in values.iter().enumerate() {
                 *REAL(amount).add(i) = *value;
                 SET_VECTOR_ELT(data, i as R_xlen_t, R_NilValue());
                 *INTEGER(unit_type).add(i) = unit_id;
             }
             let result = constructUnits(amount, data, unit_type);
-            Rf_unprotect(3);
             result
         }
     }
@@ -783,31 +785,34 @@ mod tests {
         ncol: c_int,
     ) -> SEXP {
         unsafe {
-            let layout = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 9));
+            let layout = Rf_allocVector(SEXPTYPE::VECSXP, 9);
+            let _layout_guard = protect(layout);
             SET_VECTOR_ELT(layout, LAYOUT_NROW as R_xlen_t, Rf_ScalarInteger(nrow));
             SET_VECTOR_ELT(layout, LAYOUT_NCOL as R_xlen_t, Rf_ScalarInteger(ncol));
             SET_VECTOR_ELT(layout, LAYOUT_WIDTHS as R_xlen_t, widths);
             SET_VECTOR_ELT(layout, LAYOUT_HEIGHTS as R_xlen_t, heights);
             SET_VECTOR_ELT(layout, LAYOUT_RESPECT as R_xlen_t, Rf_ScalarInteger(0));
             SET_VECTOR_ELT(layout, LAYOUT_VRESPECT as R_xlen_t, Rf_ScalarInteger(0));
-            let respect = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, respect_mat.len() as c_int));
+            let respect = Rf_allocVector(SEXPTYPE::INTSXP, respect_mat.len() as c_int);
+            let _respect_guard = protect(respect);
             for (i, value) in respect_mat.iter().enumerate() {
                 *INTEGER(respect).add(i) = *value;
             }
             SET_VECTOR_ELT(layout, LAYOUT_MRESPECT as R_xlen_t, respect);
-            let just = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+            let just = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+            let _just_guard = protect(just);
             *REAL(just) = 0.0;
             *REAL(just).add(1) = 0.0;
             SET_VECTOR_ELT(layout, LAYOUT_JUST as R_xlen_t, R_NilValue());
             SET_VECTOR_ELT(layout, LAYOUT_VJUST as R_xlen_t, just);
-            Rf_unprotect(3);
             layout
         }
     }
 
     unsafe fn mk_viewport(layout: SEXP) -> SEXP {
         unsafe {
-            let vp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, PVP_MASK as c_int + 1));
+            let vp = Rf_allocVector(SEXPTYPE::VECSXP, PVP_MASK as c_int + 1);
+            let _vp_guard = protect(vp);
             SET_VECTOR_ELT(vp, VP_LAYOUT as R_xlen_t, layout);
             SET_VECTOR_ELT(vp, PVP_WIDTHCM as R_xlen_t, Rf_ScalarReal(10.0));
             SET_VECTOR_ELT(vp, PVP_HEIGHTCM as R_xlen_t, Rf_ScalarReal(6.0));
@@ -884,10 +889,12 @@ mod tests {
                 hjust: 0.0,
                 vjust: 0.0,
             };
-            let row = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+            let row = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+            let _row_guard = protect(row);
             *INTEGER(row) = 1;
             *INTEGER(row).add(1) = 2;
-            let col = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+            let col = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+            let _col_guard = protect(col);
             *INTEGER(col) = 2;
             *INTEGER(col).add(1) = 3;
 
@@ -902,7 +909,6 @@ mod tests {
             );
             assert_eq!(unitUnit(vpl.height, 0), L_CM);
             assert!((crate::library::grid::unit::unitValue(vpl.height, 0) - 2.0).abs() < 1e-12);
-            Rf_unprotect(2);
         }
     }
 }
