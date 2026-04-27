@@ -31,7 +31,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -184,17 +184,22 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
         let krn = asInteger(skrn);
         let bw = asReal(sbw);
 
-        let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.as_c_int()));
-        let y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.as_c_int()));
-        let xp = Rf_protect(coerceVector(xp, SEXPTYPE::REALSXP.as_c_int()));
+        let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+        let _x_guard = protect(x);
+        let y = coerceVector(y, SEXPTYPE::REALSXP.as_c_int());
+        let _y_guard = protect(y);
+        let xp = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
+        let _xp_guard = protect(xp);
 
         let nx = XLENGTH(x);
         let np = XLENGTH(xp);
-        let yp = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, np as c_int));
+        let yp = Rf_allocVector(SEXPTYPE::REALSXP, np as c_int);
+        let _yp_guard = protect(yp);
 
         BDRksmooth(REAL(x), REAL(y), nx, REAL(xp), REAL(yp), np, krn, bw);
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _ans_guard = protect(ans);
         SET_VECTOR_ELT(ans, 0, xp);
         SET_VECTOR_ELT(ans, 1, yp);
 
@@ -203,7 +208,6 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
         SET_STRING_ELT(nm, 0, mkChar("x"));
         SET_STRING_ELT(nm, 1, mkChar("y"));
 
-        Rf_unprotect(5);
         ans
     }
 }

@@ -14,7 +14,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::{mainutils::colors::RGBpar3, mainutils::engine as ge};
 
 use super::grid::getDevice;
@@ -558,7 +558,8 @@ mod tests {
 
     unsafe fn make_gpar() -> SEXP {
         unsafe {
-            let gp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1));
+            let gp = Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1);
+            let _gp_guard = protect(gp);
 
             SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(1));
             SET_VECTOR_ELT(gp, GP_COL as R_xlen_t, Rf_ScalarInteger(1));
@@ -608,6 +609,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let gp = make_gpar();
+            let _gp_guard = protect(gp);
             SET_VECTOR_ELT(
                 gp,
                 GP_LTY as R_xlen_t,
@@ -621,7 +623,6 @@ mod tests {
                 Rf_mkString(b"0f\0".as_ptr() as *const c_char),
             );
             assert_eq!(gpLineType(gp, 0), 0x0f);
-            Rf_unprotect(1);
         }
     }
 
@@ -639,6 +640,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let gp = make_gpar();
+            let _gp_guard = protect(gp);
 
             SET_VECTOR_ELT(
                 gp,
@@ -653,7 +655,6 @@ mod tests {
                 Rf_mkString(b"bevel\0".as_ptr() as *const c_char),
             );
             assert_eq!(gpLineJoin(gp, 0), ge::GE_BEVEL_JOIN);
-            Rf_unprotect(1);
         }
     }
 
@@ -662,6 +663,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let gp = make_gpar();
+            let _gp_guard = protect(gp);
             let mut flags = [c_int::MIN; GP_FONTFACE as usize + 1];
 
             initGContext(
@@ -690,7 +692,6 @@ mod tests {
             assert_eq!(flags[GP_LWD as usize], 1);
             assert_eq!(flags[GP_FONTFAMILY as usize], 0);
             assert_eq!(flags[GP_LINEJOIN as usize], 0);
-            Rf_unprotect(1);
         }
     }
 }

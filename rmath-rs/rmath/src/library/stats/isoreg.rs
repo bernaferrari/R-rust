@@ -32,7 +32,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_FINITE, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -52,14 +52,13 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     unsafe {
         let len = names.len() as c_int;
         let ans = Rf_allocVector(sexptype, len);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, len);
         for i in 0..names.len() {
             let c_str = std::ffi::CString::new(names[i]).unwrap_or_default();
             SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
         }
         crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), nm);
-        Rf_unprotect(1);
         ans
     }
 }
@@ -100,7 +99,8 @@ pub unsafe fn isoreg(y: SEXP) -> SEXP {
         let n = XLENGTH(y);
 
         let anms: [&str; 5] = ["y", "yc", "yf", "iKnots", ""];
-        let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP.into(), &anms));
+        let ans = mkNamed(SEXPTYPE::VECSXP.into(), &anms);
+        let _ans_guard = protect(ans);
 
         let yc = Rf_allocVector(SEXPTYPE::REALSXP, (n + 1) as c_int);
         let yf = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
@@ -112,7 +112,6 @@ pub unsafe fn isoreg(y: SEXP) -> SEXP {
         SET_VECTOR_ELT(ans, 3, iKnots);
 
         if n == 0 {
-            Rf_unprotect(1);
             return ans;
         }
 
@@ -129,7 +128,6 @@ pub unsafe fn isoreg(y: SEXP) -> SEXP {
                 "non-finite sum(y) == {} is not allowed",
                 *REAL(yc).add(n as usize)
             ));
-            Rf_unprotect(1);
             return R_NilValue();
         }
 
@@ -172,7 +170,6 @@ pub unsafe fn isoreg(y: SEXP) -> SEXP {
             SET_VECTOR_ELT(ans, 3, trimmed);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }

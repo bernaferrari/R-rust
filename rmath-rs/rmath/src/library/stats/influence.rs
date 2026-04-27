@@ -31,7 +31,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -103,13 +103,12 @@ unsafe fn ncols(x: SEXP) -> c_int {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(sexptype, nrow * ncol);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        Rf_protect(dim);
+        let _dim_guard = protect(dim);
         *INTEGER(dim) = nrow;
         *INTEGER(dim.add(1)) = ncol;
         setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -165,8 +164,10 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
         let q = ncols(e);
         let tol = asReal(stol);
 
-        let hat = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-        let sigma = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), n, q));
+        let hat = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _hat_guard = protect(hat);
+        let sigma = allocMatrix(SEXPTYPE::REALSXP.into(), n, q);
+        let _sigma_guard = protect(sigma);
 
         lminfl_(
             REAL(qr),
@@ -188,7 +189,8 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
             }
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _ans_guard = protect(ans);
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
         setAttrib(ans, R_NamesSymbol(), nm);
 
@@ -199,7 +201,6 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
         SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, sigma);
         SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("sigma"));
 
-        Rf_unprotect(3);
         ans
     }
 }

@@ -29,7 +29,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -103,12 +103,10 @@ pub unsafe fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
         let val = if isInteger(m) {
             // Coerce integer to real
             let coerced = Rf_allocVector(SEXPTYPE::REALSXP, n);
-            Rf_protect(coerced);
             for i in 0..n as usize {
                 let iv = *INTEGER(m).add(i);
                 *REAL(coerced).add(i) = iv as c_double;
             }
-            Rf_unprotect(1);
             coerced
         } else {
             if !isReal(m) {
@@ -118,23 +116,20 @@ pub unsafe fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
             duplicate(m)
         };
 
-        Rf_protect(val);
+        let _val_guard = protect(val);
 
         if n < 2 {
             error("length(m) must be at least two");
-            Rf_unprotect(1);
             return R_NilValue();
         }
         if !isReal(sx) || LENGTH(sx) != n - 1 {
             error("Argument Sx must be numeric vector one shorter than m[]");
-            Rf_unprotect(1);
             return R_NilValue();
         }
 
         // Fix up the slopes m[] := val[]:
         monoFC_mod(REAL(val), REAL(sx), n);
 
-        Rf_unprotect(1);
         val
     }
 }
