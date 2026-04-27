@@ -32,7 +32,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::{R_alloc, allocLang, vmaxget, vmaxset};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -457,12 +457,6 @@ unsafe fn isUminus(s: SEXP) -> bool {
     }
 }
 
-/// Pointer protect and return the argument
-unsafe fn PP(s: SEXP) -> SEXP {
-    Rf_protect(s);
-    s
-}
-
 // ---------------------------------------------------------------------------
 // simplify
 // ---------------------------------------------------------------------------
@@ -499,19 +493,13 @@ unsafe fn simplify(fun: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP {
         } else if isOne(arg2) {
             ans = arg1;
         } else if isUminus(arg1) {
-            ans = simplify(
-                MinusSymbol(),
-                PP(simplify(TimesSymbol(), CADR(arg1), arg2)),
-                R_MissingArg(),
-            );
-            Rf_unprotect(1);
+            let inner = simplify(TimesSymbol(), CADR(arg1), arg2);
+            let _inner_guard = protect(inner);
+            ans = simplify(MinusSymbol(), inner, R_MissingArg());
         } else if isUminus(arg2) {
-            ans = simplify(
-                MinusSymbol(),
-                PP(simplify(TimesSymbol(), arg1, CADR(arg2))),
-                R_MissingArg(),
-            );
-            Rf_unprotect(1);
+            let inner = simplify(TimesSymbol(), arg1, CADR(arg2));
+            let _inner_guard = protect(inner);
+            ans = simplify(MinusSymbol(), inner, R_MissingArg());
         } else {
             ans = lang3(TimesSymbol(), arg1, arg2);
         }
@@ -523,19 +511,13 @@ unsafe fn simplify(fun: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP {
         } else if isOne(arg2) {
             ans = arg1;
         } else if isUminus(arg1) {
-            ans = simplify(
-                MinusSymbol(),
-                PP(simplify(DivideSymbol(), CADR(arg1), arg2)),
-                R_MissingArg(),
-            );
-            Rf_unprotect(1);
+            let inner = simplify(DivideSymbol(), CADR(arg1), arg2);
+            let _inner_guard = protect(inner);
+            ans = simplify(MinusSymbol(), inner, R_MissingArg());
         } else if isUminus(arg2) {
-            ans = simplify(
-                MinusSymbol(),
-                PP(simplify(DivideSymbol(), arg1, CADR(arg2))),
-                R_MissingArg(),
-            );
-            Rf_unprotect(1);
+            let inner = simplify(DivideSymbol(), arg1, CADR(arg2));
+            let _inner_guard = protect(inner);
+            ans = simplify(MinusSymbol(), inner, R_MissingArg());
         } else {
             ans = lang3(DivideSymbol(), arg1, arg2);
         }
@@ -620,18 +602,6 @@ unsafe fn simplify(fun: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // D() -- symbolic derivative
 // ---------------------------------------------------------------------------
-
-macro_rules! PP_S {
-    ($f:expr, $a1:expr, $a2:expr) => {
-        PP(simplify($f, $a1, $a2))
-    };
-}
-
-macro_rules! PP_S2 {
-    ($f:expr, $a1:expr) => {
-        PP(simplify($f, $a1, R_MissingArg()))
-    };
-}
 
 unsafe fn D(expr: SEXP, var: SEXP) -> SEXP {
     let mut ans: SEXP = R_NilValue();
@@ -733,9 +703,8 @@ pub unsafe fn doD(args: SEXP) -> SEXP {
     InitDerivSymbols();
     let mut expr = expr;
     expr = D(expr, var);
-    Rf_protect(expr);
+    let _expr_guard = protect(expr);
     expr = AddParens(expr);
-    Rf_unprotect(1);
     expr
 }
 
@@ -1089,16 +1058,16 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
 
     let mut args = CDR(args);
     InitDerivSymbols();
-    let exprlist = Rf_protect(LCONS(crate::sexp::symbol::R_BraceSymbol(), R_NilValue()));
+    let exprlist = LCONS(crate::sexp::symbol::R_BraceSymbol(), R_NilValue());
+    let _exprlist_guard = protect(exprlist);
 
     /* expr: */
     if isExpression(CAR(args)) {
         expr = VECTOR_ELT(CAR(args), 0);
-        Rf_protect(expr);
     } else {
         expr = CAR(args);
-        Rf_protect(expr);
     }
+    let _expr_guard = protect(expr);
     args = CDR(args);
 
     /* namevec: */
@@ -1137,9 +1106,9 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
 
     /* NOTE: FindSubexprs is destructive, hence the duplication. */
     ans = duplicate(expr);
-    Rf_protect(ans);
+    let ans_guard = protect(ans);
     f_index = FindSubexprs(ans, exprlist, tag);
-    Rf_unprotect(1); // ans
+    drop(ans_guard);
 
     d_index = R_alloc(std::mem::size_of::<c_int>(), nderiv as usize) as *mut c_int;
     if hessian {
@@ -1155,27 +1124,32 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
     k = 0;
     while ii < nderiv {
         ans = duplicate(expr);
-        Rf_protect(ans);
+        let ans_dup_guard = protect(ans);
         ans = D(ans, installTrChar(STRING_ELT(names, ii as i64)));
-        Rf_protect(ans);
+        let ans_deriv_guard = protect(ans);
         ans2 = duplicate(ans);
-        Rf_protect(ans2);
+        let ans2_guard = protect(ans2);
         *d_index.add(ii as usize) = FindSubexprs(ans, exprlist, tag);
         ans = duplicate(ans2);
-        Rf_protect(ans);
+        let ans_guard = protect(ans);
         if hessian {
             j = ii;
             while j < nderiv {
                 ans2 = duplicate(ans);
-                Rf_protect(ans2);
+                let ans2_dup_guard = protect(ans2);
                 ans2 = D(ans2, installTrChar(STRING_ELT(names, j as i64)));
-                Rf_protect(ans2);
+                let ans2_deriv_guard = protect(ans2);
                 *d2_index.add(k as usize) = FindSubexprs(ans2, exprlist, tag);
                 k += 1;
-                Rf_unprotect(2);
+                drop(ans2_deriv_guard);
+                drop(ans2_dup_guard);
                 j += 1;
             }
         }
+        drop(ans_guard);
+        drop(ans2_guard);
+        drop(ans_deriv_guard);
+        drop(ans_dup_guard);
     }
 
     nexpr = length(exprlist) - 1;
@@ -1184,9 +1158,9 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
         Accumulate2(MakeVariable(f_index, tag), exprlist);
     } else {
         ans = duplicate(expr);
-        Rf_protect(ans);
+        let ans_guard = protect(ans);
         Accumulate2(expr, exprlist);
-        Rf_unprotect(1);
+        drop(ans_guard);
     }
     Accumulate2(R_NilValue(), exprlist);
     if hessian {
@@ -1200,22 +1174,25 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
             Accumulate2(MakeVariable(*d_index.add(ii as usize), tag), exprlist);
             if hessian {
                 ans = duplicate(expr);
-                Rf_protect(ans);
+                let ans_dup_guard = protect(ans);
                 ans = D(ans, installTrChar(STRING_ELT(names, ii as i64)));
-                Rf_protect(ans);
+                let ans_deriv_guard = protect(ans);
                 j = ii;
                 while j < nderiv {
                     if *d2_index.add(k as usize) != 0 {
                         Accumulate2(MakeVariable(*d2_index.add(k as usize), tag), exprlist);
                     } else {
                         ans2 = duplicate(ans);
-                        Rf_protect(ans2);
+                        let ans2_dup_guard = protect(ans2);
                         ans2 = D(ans2, installTrChar(STRING_ELT(names, j as i64)));
-                        Rf_protect(ans2);
+                        let ans2_deriv_guard = protect(ans2);
                         Accumulate2(ans2, exprlist);
-                        Rf_unprotect(2);
+                        drop(ans2_deriv_guard);
+                        drop(ans2_dup_guard);
                     }
                 }
+                drop(ans_deriv_guard);
+                drop(ans_dup_guard);
             }
         }
     }
@@ -1236,12 +1213,12 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
             );
             SETCAR(ans_ptr, R_MissingArg());
         } else {
-            let var = Rf_protect(MakeVariable(ii + 1, tag));
+            let var = MakeVariable(ii + 1, tag);
+            let _var_guard = protect(var);
             SETCAR(
                 ans_ptr,
                 lang3(install_str("<-"), var, AddParens(CAR(ans_ptr))),
             );
-            Rf_unprotect(1);
         }
     }
 
@@ -1324,8 +1301,9 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
         funarg = R_mkClosure(formals, exprlist, rho);
     } else if isString(funarg) {
         names = duplicate(funarg);
-        Rf_protect(names);
-        let a = Rf_protect(crate::sexp::constructors::Rf_allocList(length(names)));
+        let _names_guard = protect(names);
+        let a = crate::sexp::constructors::Rf_allocList(length(names));
+        let _a_guard = protect(a);
         let mut aa = a;
         for ii in 0..length(names) {
             SETTAG(aa, installTrChar(STRING_ELT(names, ii as i64)));
@@ -1335,7 +1313,6 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
     }
 
     vmaxset(vmax);
-    Rf_unprotect(2); // exprlist, expr
     funarg
 }
 
