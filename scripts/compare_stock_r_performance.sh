@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="$ROOT_DIR/target/stock-r-performance"
 ITERATIONS=5
 CHECK=0
+STRICT=0
 RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 
 usage() {
@@ -17,8 +18,10 @@ resident-memory measurements where /usr/bin/time exposes them.
 
 Options:
   --iterations N        Process runs per runtime and case, default 5.
+  --quick               Use 3 iterations for release-gate smoke.
   --output-dir DIR      Write report artifacts to DIR.
   --check               Fail on output mismatch or benchmark execution errors.
+  --strict              Require stock GNU R instead of skipping when Rscript is missing.
   -h, --help            Show this help.
 USAGE
 }
@@ -29,12 +32,20 @@ while (($# > 0)); do
             ITERATIONS="$2"
             shift 2
             ;;
+        --quick)
+            ITERATIONS=3
+            shift
+            ;;
         --output-dir)
             OUTPUT_DIR="$2"
             shift 2
             ;;
         --check)
             CHECK=1
+            shift
+            ;;
+        --strict)
+            STRICT=1
             shift
             ;;
         -h|--help)
@@ -55,8 +66,13 @@ if ! [[ "$ITERATIONS" =~ ^[0-9]+$ ]] || [[ "$ITERATIONS" -eq 0 ]]; then
 fi
 
 if ! command -v Rscript >/dev/null 2>&1; then
-    echo "SKIP: Rscript not found; stock C R comparison requires GNU R." >&2
-    exit 0
+    if [[ "$STRICT" -eq 1 ]]; then
+        echo "ERROR: Rscript not found; strict stock C R comparison requires GNU R." >&2
+        exit 1
+    else
+        echo "SKIP: Rscript not found; stock C R comparison requires GNU R." >&2
+        exit 0
+    fi
 fi
 
 find_rust_rlib() {
@@ -125,6 +141,10 @@ cases = {
     "startup_scalar": "print(1 + 1)\n",
     "vector_summary": "x <- 1:10000\nprint(c(sum(x), length(unique(c(x, x))), min(x), max(x)))\n",
     "vector_arithmetic": "x <- 1:20000\ny <- x + x * 2\nprint(c(length(y), sum(y), y[100], y[20000]))\n",
+    "matrix_transpose": "m <- matrix(1:2000, nrow = 40)\ntm <- t(m)\nprint(c(dim(tm), tm[1, 2], sum(diag(matrix(1:400, nrow = 20)))))\n",
+    "closure_lapply": "f <- function(x) x * x + 1\nprint(unlist(lapply(1:200, f))[c(1, 100, 200)])\n",
+    "data_frame_with": "d <- data.frame(a = 1:200, b = 201:400)\nprint(nrow(d))\nprint(sum(with(d, a + b)))\nprint(mean(d$a))\n",
+    "condition_handling": "print(tryCatch(stop('boom'), error = function(e) conditionMessage(e)))\n",
     "numeric_edges": (
         "print(c(1 / 0, -1 / 0, 0 / 0))\n"
         "print(suppressWarnings(c(1 %% 0, 1L %% 0L, 1 %/% 0, 1.5 %/% 0.0)))\n"
@@ -192,6 +212,13 @@ case_paths = write_cases()
 rows = []
 failures = []
 
+stock_r_version = subprocess.run(
+    ["Rscript", "--version"],
+    text=True,
+    capture_output=True,
+)
+stock_r_version_text = stock_r_version.stderr.strip() or stock_r_version.stdout.strip()
+
 for case, path in case_paths.items():
     runtimes = {
         "stock_c_r": ["Rscript", "--vanilla", str(path)],
@@ -236,6 +263,7 @@ report = {
         "machine": platform.machine(),
         "python": platform.python_version(),
     },
+    "stock_r": stock_r_version_text,
     "cases": rows,
     "failures": failures,
 }
@@ -248,9 +276,11 @@ lines = [
     "",
     "These measurements compare only R programs that both runtimes can execute and whose output matches.",
     "Wall time includes process startup, parsing, evaluation, and printing.",
+    "Resident memory is collected from `/usr/bin/time` when the host exposes it.",
     "",
     f"- Iterations per runtime/case: `{iterations}`",
     f"- Host: `{report['host']['system']} {report['host']['machine']}`",
+    f"- Stock R: `{report['stock_r']}`",
     "",
     "| Case | Parity | Stock C R avg ms | Rust avg ms | Rust/Stock | Stock RSS | Rust RSS |",
     "| --- | --- | ---: | ---: | ---: | ---: | ---: |",

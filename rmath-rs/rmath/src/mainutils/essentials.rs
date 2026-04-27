@@ -7177,6 +7177,60 @@ unsafe fn set_diagonal_identity_value(x: SEXP, i: R_xlen_t) {
     }
 }
 
+unsafe fn string_vector_contains_value(x: SEXP, needle: &str) -> bool {
+    unsafe {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        for i in 0..XLENGTH(x) {
+            let elt = STRING_ELT(x, i);
+            if elt.is_null() {
+                continue;
+            }
+            let ptr = CHAR(elt);
+            if !ptr.is_null() && CStr::from_ptr(ptr).to_str().ok() == Some(needle) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+unsafe fn is_data_frame_object(x: SEXP) -> bool {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+        );
+        string_vector_contains_value(class, "data.frame")
+    }
+}
+
+unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
+    unsafe {
+        let row_names = crate::sexp::attrib_core::getAttrib(
+            x,
+            Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
+        );
+        if !row_names.is_null() && TYPEOF(row_names) == SEXPTYPE::INTSXP && LENGTH(row_names) == 2 {
+            let first = *INTEGER(row_names);
+            let second = *INTEGER(row_names).add(1);
+            if first == NA_INTEGER && second < 0 {
+                return -(second as R_xlen_t);
+            }
+        }
+
+        let mut rows = 0;
+        for i in 0..XLENGTH(x) {
+            let col = VECTOR_ELT(x, i);
+            if !col.is_null() {
+                rows = rows.max(XLENGTH(col));
+            }
+        }
+        rows
+    }
+}
+
 /// R's `matrix(data, nrow, ncol, byrow)` — create a matrix.
 pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -7321,6 +7375,9 @@ pub unsafe fn do_nrow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
+        if is_data_frame_object(x) {
+            return Rf_ScalarInteger(data_frame_row_count(x) as c_int);
+        }
         let dim_attr = crate::sexp::attrib_core::getAttrib(
             x,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -7340,6 +7397,9 @@ pub unsafe fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
+        if is_data_frame_object(x) {
+            return Rf_ScalarInteger(XLENGTH(x) as c_int);
+        }
         let dim_attr = crate::sexp::attrib_core::getAttrib(
             x,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -7358,6 +7418,15 @@ pub unsafe fn do_dim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
+        }
+        if is_data_frame_object(x) {
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            if dim.is_null() {
+                return R_NilValue();
+            }
+            *INTEGER(dim) = data_frame_row_count(x) as c_int;
+            *INTEGER(dim).add(1) = XLENGTH(x) as c_int;
+            return dim;
         }
         let dim_attr = crate::sexp::attrib_core::getAttrib(
             x,

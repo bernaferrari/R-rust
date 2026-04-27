@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPORT_DIR="$ROOT_DIR/target/release-gate/conformance"
 UPSTREAM_REPORT_DIR="$ROOT_DIR/target/release-gate/upstream-core-slices"
+PERFORMANCE_REPORT_DIR="$ROOT_DIR/target/release-gate/performance"
 FULL=0
 RUN_ANDROID=1
 RUN_ANDROID_PACKAGE=0
@@ -180,6 +181,9 @@ run scripts/upstream_core_slices.sh --report "$UPSTREAM_REPORT_DIR"
 
 section "Artifact sanity"
 check_conformance_artifacts
+
+section "Stock R performance comparison"
+run scripts/compare_stock_r_performance.sh --quick --check --strict --output-dir "$PERFORMANCE_REPORT_DIR/stock-r"
 
 section "Public safe API audit"
 run scripts/audit_safe_api.sh

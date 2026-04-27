@@ -6,6 +6,7 @@ OUTPUT_DIR="$ROOT_DIR/target/performance"
 ITERATIONS=100
 CHECK=0
 RUN_ANDROID_SIZE=1
+RUN_STOCK_R=1
 
 usage() {
     cat <<'USAGE'
@@ -20,6 +21,7 @@ Options:
   --output-dir DIR      Write report artifacts to DIR.
   --check               Enforce loose thresholds for obvious regressions.
   --skip-android-size   Skip Android release shared-library size measurement.
+  --skip-stock-r        Skip stock GNU R versus Rust comparison.
   -h, --help            Show this help.
 USAGE
 }
@@ -46,6 +48,10 @@ while (($# > 0)); do
             RUN_ANDROID_SIZE=0
             shift
             ;;
+        --skip-stock-r)
+            RUN_STOCK_R=0
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -68,6 +74,14 @@ fi
 
 env RUSTFLAGS="${RUSTFLAGS:-}" cargo run -p r-embed --example performance_probe --release -- "${probe_args[@]}"
 
+if [[ "$RUN_STOCK_R" -eq 1 ]]; then
+    stock_args=(--iterations "$ITERATIONS" --output-dir "$OUTPUT_DIR/stock-r")
+    if [[ "$CHECK" -eq 1 ]]; then
+        stock_args+=(--check --strict)
+    fi
+    scripts/compare_stock_r_performance.sh "${stock_args[@]}"
+fi
+
 if [[ "$RUN_ANDROID_SIZE" -eq 1 ]]; then
     size_args=(--output-dir "$OUTPUT_DIR")
     if [[ "$CHECK" -eq 1 ]]; then
@@ -83,4 +97,8 @@ echo "  $OUTPUT_DIR/performance-summary.json"
 if [[ "$RUN_ANDROID_SIZE" -eq 1 ]]; then
     echo "  $OUTPUT_DIR/android-artifact-size.md"
     echo "  $OUTPUT_DIR/android-artifact-size.json"
+fi
+if [[ "$RUN_STOCK_R" -eq 1 ]]; then
+    echo "  $OUTPUT_DIR/stock-r/stock-r-performance-summary.md"
+    echo "  $OUTPUT_DIR/stock-r/stock-r-performance-summary.json"
 fi

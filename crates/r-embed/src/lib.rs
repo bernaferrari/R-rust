@@ -9,7 +9,6 @@ use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::AtomicBool};
 
 pub use rmath::android::{
     RArenaStats, RAttribute, RComplexValue, RMetadata, RResourceLimits, RRuntimeInfo, RValue,
@@ -113,29 +112,29 @@ pub struct RPackageInfo {
 /// not affect other sessions.
 #[derive(Debug, Clone)]
 pub struct CancellationToken {
-    inner: Arc<AtomicBool>,
+    inner: rmath::sexp::CancellationToken,
 }
 
 impl CancellationToken {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(AtomicBool::new(false)),
+            inner: rmath::sexp::CancellationToken::new(),
         }
     }
 
     pub fn cancel(&self) {
-        self.inner.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.inner.request();
     }
 
     pub fn reset(&self) {
-        self.inner.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.inner.reset();
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.inner.load(std::sync::atomic::Ordering::SeqCst)
+        self.inner.is_requested()
     }
 
-    fn flag(&self) -> Arc<AtomicBool> {
+    fn token(&self) -> rmath::sexp::CancellationToken {
         self.inner.clone()
     }
 }
@@ -179,7 +178,7 @@ impl RSession {
         code: &str,
         cancellation: &CancellationToken,
     ) -> Result<EvalOutput, RSessionError> {
-        self.eval_result_with_cancel(code, Some(cancellation.flag()))
+        self.eval_result_with_cancel(code, Some(cancellation.token()))
     }
 
     /// Configure Android app-private R runtime paths.
@@ -293,13 +292,13 @@ impl RSession {
     fn eval_result_with_cancel(
         &mut self,
         code: &str,
-        cancellation: Option<Arc<AtomicBool>>,
+        cancellation: Option<rmath::sexp::CancellationToken>,
     ) -> Result<EvalOutput, RSessionError> {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
 
-        let result = self.inner.eval_with_cancellation_flag(code, cancellation);
+        let result = self.inner.eval_with_cancellation_token(code, cancellation);
 
         if let Some(message) = result.output.strip_prefix("Error: ") {
             if message == "operation cancelled" {
