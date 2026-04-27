@@ -29,7 +29,7 @@ use crate::sexp::envir::{R_findVar as findVar, defineVar, findFun};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::R_alloc;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::clippath::{isClipPath, resolveClipPath};
@@ -1325,7 +1325,8 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
         let mut vpWidthCM: c_double = 0.0;
@@ -1351,7 +1352,8 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
         initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
 
         let nx = unitLength(x);
-        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nx));
+        let answer = Rf_allocVector(SEXPTYPE::REALSXP, nx);
+        let _answer_guard = protect(answer);
         let unitto_len = LENGTH(unitto).max(1);
         let from_axis = if LENGTH(whatfrom) > 0 {
             *INTEGER(whatfrom).add(0)
@@ -1502,7 +1504,6 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
             *REAL(answer).add(i as usize) = value_in;
         }
 
-        Rf_unprotect(2);
         answer
     }
 }
@@ -1515,7 +1516,8 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
         let mut vpWidthCM: c_double = 0.0;
@@ -1538,9 +1540,12 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         gcontextFromgpar(currentgp, 0, gc, dd);
 
         let maxn = unitLength(x).max(unitLength(y));
-        let devx = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-        let devy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let devx = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let _devx_guard = protect(devx);
+        let devy = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let _devy_guard = protect(devy);
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _result_guard = protect(result);
         let as_device =
             TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
 
@@ -1570,7 +1575,6 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
 
         SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
         SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
-        Rf_unprotect(4);
         result
     }
 }
@@ -1583,7 +1587,8 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"black".as_ptr());
 
         let mut vpWidthCM: c_double = 0.0;
@@ -1606,9 +1611,12 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
         gcontextFromgpar(currentgp, 0, gc, dd);
 
         let maxn = unitLength(x).max(unitLength(y));
-        let devx = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-        let devy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let devx = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let _devx_guard = protect(devx);
+        let devy = Rf_allocVector(SEXPTYPE::REALSXP, maxn);
+        let _devy_guard = protect(devy);
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _result_guard = protect(result);
         let as_device =
             TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
 
@@ -1638,7 +1646,6 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
 
         SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
         SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
-        Rf_unprotect(4);
         result
     }
 }
@@ -2062,11 +2069,14 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"transparent".as_ptr());
 
-        let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
-        let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+        let prevloc = gridStateElement(dd, GSS_PREVLOC);
+        let _prevloc_guard = protect(prevloc);
+        let devloc = gridStateElement(dd, GSS_CURRLOC);
+        let _devloc_guard = protect(devloc);
         let mut vpWidthCM: c_double = 0.0;
         let mut vpHeightCM: c_double = 0.0;
         let mut rotationAngle: c_double = 0.0;
@@ -2113,7 +2123,6 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
             *REAL(devloc).add(1) = yy;
         }
 
-        Rf_unprotect(3);
         R_NilValue()
     }
 }
@@ -2126,13 +2135,16 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
 
-        let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
-        let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+        let prevloc = gridStateElement(dd, GSS_PREVLOC);
+        let _prevloc_guard = protect(prevloc);
+        let devloc = gridStateElement(dd, GSS_CURRLOC);
+        let _devloc_guard = protect(devloc);
         let mut vpWidthCM: c_double = 0.0;
         let mut vpHeightCM: c_double = 0.0;
         let mut rotationAngle: c_double = 0.0;
@@ -2208,7 +2220,6 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(3);
         R_NilValue()
     }
 }
@@ -2221,7 +2232,8 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
@@ -2345,7 +2357,6 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
             }
         }
         GEMode(0, dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -2430,7 +2441,8 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
@@ -2521,7 +2533,6 @@ pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) ->
             }
         }
         GEMode(0, dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -2577,7 +2588,8 @@ pub unsafe fn L_arrows(
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         if gp_fill_is_pattern(currentgp) {
             set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
@@ -2619,10 +2631,16 @@ pub unsafe fn L_arrows(
             }
             updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
 
-            let mut devloc = R_NilValue();
-            if isNull(x1) {
-                devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
-            }
+            let devloc = if isNull(x1) {
+                gridStateElement(dd, GSS_CURRLOC)
+            } else {
+                R_NilValue()
+            };
+            let _devloc_guard = if isNull(x1) {
+                Some(protect(devloc))
+            } else {
+                None
+            };
 
             if first {
                 let mut xx1: c_double = NA_REAL;
@@ -2756,13 +2774,8 @@ pub unsafe fn L_arrows(
                     drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
                 }
             }
-
-            if isNull(x1) {
-                Rf_unprotect(1);
-            }
         }
         GEMode(0, dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -2775,7 +2788,8 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
         if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
             && LENGTH(resolving_path) > 0
@@ -2872,7 +2886,6 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
             }
         }
         GEMode(0, dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -2956,7 +2969,8 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
         if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
             && LENGTH(resolving_path) > 0
@@ -3048,7 +3062,6 @@ pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
         }
 
         GEMode(0, dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -3070,7 +3083,8 @@ pub unsafe fn L_raster(
     unsafe {
         let dd = getDevice();
         let currentvp = gridStateElement(dd, GSS_VP);
-        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let currentgp = Rf_duplicate(gridStateElement(dd, GSS_GPAR));
+        let _currentgp_guard = protect(currentgp);
         set_gp_fill_string(currentgp, c"transparent".as_ptr());
 
         let mut vpWidthCM: c_double = 0.0;
@@ -3196,8 +3210,10 @@ pub unsafe fn L_raster(
                 let mut xadj: c_double = 0.0;
                 let mut yadj: c_double = 0.0;
                 justification(ww, hh, hjust_i, vjust_i, &mut xadj, &mut yadj);
-                let xadjInches = Rf_protect(unit(xadj, L_INCHES));
-                let yadjInches = Rf_protect(unit(yadj, L_INCHES));
+                let xadjInches = unit(xadj, L_INCHES);
+                let _xadj_guard = protect(xadjInches);
+                let yadjInches = unit(yadj, L_INCHES);
+                let _yadj_guard = protect(yadjInches);
                 let mut dw: c_double = 0.0;
                 let mut dh: c_double = 0.0;
                 transformDimn(
@@ -3234,11 +3250,9 @@ pub unsafe fn L_raster(
                         dd,
                     );
                 }
-                Rf_unprotect(2);
             }
         }
         GEMode(0, dd);
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -3250,13 +3264,13 @@ pub unsafe fn L_raster(
 pub unsafe fn L_cap() -> SEXP {
     unsafe {
         let dd = getDevice();
-        let raster = Rf_protect(GECap(dd));
+        let raster = GECap(dd);
+        let _raster_guard = protect(raster);
         if isNull(raster) {
-            Rf_unprotect(1);
             R_NilValue()
         } else {
-            let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, LENGTH(raster)));
-            Rf_unprotect(2);
+            let image = Rf_allocVector(SEXPTYPE::STRSXP, LENGTH(raster));
+            let _image_guard = protect(image);
             image
         }
     }
@@ -3335,16 +3349,18 @@ pub unsafe fn L_textBounds(
 
 unsafe fn symbolCoords(x: *const f64, y: *const f64, n: c_int, _dd: pGEDevDesc) -> SEXP {
     unsafe {
-        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-        let xs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-        let ys = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _result_guard = protect(result);
+        let xs = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _xs_guard = protect(xs);
+        let ys = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _ys_guard = protect(ys);
         for i in 0..n as usize {
             *REAL(xs).add(i) = *x.add(i);
             *REAL(ys).add(i) = *y.add(i);
         }
         SET_VECTOR_ELT(result, 0 as R_xlen_t, xs);
         SET_VECTOR_ELT(result, 1 as R_xlen_t, ys);
-        Rf_unprotect(3);
         result
     }
 }
@@ -3534,13 +3550,13 @@ pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEX
                  * viewport gets popped again, the clip region returns to what was
                  * set by THIS clipGrob.
                  */
-                let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+                let currentClip = Rf_allocVector(SEXPTYPE::REALSXP, 4);
+                let _current_clip_guard = protect(currentClip);
                 *REAL(currentClip).add(0) = xx;
                 *REAL(currentClip).add(1) = yy;
                 *REAL(currentClip).add(2) = xx + ww_dev;
                 *REAL(currentClip).add(3) = yy + hh_dev;
                 SET_VECTOR_ELT(currentvp, PVP_CLIPRECT as R_xlen_t, currentClip);
-                Rf_unprotect(1);
             }
         } else {
             Rf_warning(c"unable to clip to rotated rectangle".as_ptr());
@@ -3632,9 +3648,12 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
             0
         };
 
-        let ascent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-        let descent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-        let width_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let ascent_vec = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _ascent_guard = protect(ascent_vec);
+        let descent_vec = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _descent_guard = protect(descent_vec);
+        let width_vec = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _width_guard = protect(width_vec);
 
         let mut gc: [u8; 256] = [0; 256];
         gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
@@ -3670,11 +3689,11 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
             *REAL(width_vec).add(i as usize) = width;
         }
 
-        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+        let _result_guard = protect(result);
         SET_VECTOR_ELT(result, 0, ascent_vec);
         SET_VECTOR_ELT(result, 1, descent_vec);
         SET_VECTOR_ELT(result, 2, width_vec);
-        Rf_unprotect(4);
         result
     }
 }
