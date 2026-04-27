@@ -30,7 +30,7 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory_ext::{allocList, allocSExp};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -1078,31 +1078,32 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
         }
 
         // Check for special matrix subscripting.
-        let mut s = Rf_protect(s);
+        let mut s = s;
+        let mut s_guard = protect(s);
         if !isNull(ATTRIB(s)) {
             let dim = getAttrib(x, R_DimSymbol());
             if isMatrix(s) && isArray(x) && ncols(s) == Rf_length(dim) {
                 if isString(s) {
-                    let dnames = Rf_protect(GetArrayDimnames(x));
-                    s = strmat2intmat(s, dnames, call, x);
-                    Rf_unprotect(2);
-                    s = Rf_protect(s);
+                    let dnames = GetArrayDimnames(x);
+                    let dnames_guard = protect(dnames);
+                    let intmat = strmat2intmat(s, dnames, call, x);
+                    drop(dnames_guard);
+                    drop(s_guard);
+                    s = intmat;
+                    s_guard = protect(s);
                 }
                 if isInteger(s) || isReal(s) {
-                    s = mat2indsub(dim, s, R_NilValue(), x);
-                    Rf_unprotect(1);
-                    s = Rf_protect(s);
+                    let indsub = mat2indsub(dim, s, R_NilValue(), x);
+                    drop(s_guard);
+                    s = indsub;
+                    s_guard = protect(s);
                 }
             }
         }
 
         let stretch: R_xlen_t = 1;
-        let indx = Rf_protect(makeSubscript(
-            x,
-            s,
-            &stretch as *const _ as *mut R_xlen_t,
-            R_NilValue(),
-        ));
+        let indx = makeSubscript(x, s, &stretch as *const _ as *mut R_xlen_t, R_NilValue());
+        let _indx_guard = protect(indx);
         let n = XLENGTH(indx);
 
         if XLENGTH(y) > 1 {
@@ -1120,13 +1121,12 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
         let which = SubassignTypeFix(&mut x, &mut y, stretch, 1, call, rho);
 
         if n == 0 {
-            Rf_unprotect(2);
             return x;
         }
 
         let ny = XLENGTH(y);
         let nx = XLENGTH(x);
-        Rf_protect(x);
+        let _x_guard = protect(x);
 
         if (TYPEOF(x) != VECSXP && TYPEOF(x) != EXPRSXP) || !isNull(y) {
             // Check length compatibility
@@ -1136,11 +1136,12 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
         }
 
         // Duplicate y if x == y
-        if x == y {
-            y = Rf_protect(shallow_duplicate(y));
+        let _y_guard = if x == y {
+            y = shallow_duplicate(y);
+            protect(y)
         } else {
-            Rf_protect(y);
-        }
+            protect(y)
+        };
 
         match which {
             1010 | 1310 | 1313 => {
@@ -1327,7 +1328,6 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
             1900 | 2000 => {
                 // vector/expression <- null
                 x = DeleteListElements(x, indx);
-                Rf_unprotect(4);
                 return x;
             }
 
@@ -1357,7 +1357,6 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
         // Check for additional named elements.
         // Note: R_UseNamesSymbol not fully implemented; skip for now.
 
-        Rf_unprotect(4);
         x
     }
 }
@@ -1418,12 +1417,13 @@ unsafe fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
             return x;
         }
 
-        Rf_protect(x);
-        if x == y {
-            y = Rf_protect(shallow_duplicate(y));
+        let _x_guard = protect(x);
+        let _y_guard = if x == y {
+            y = shallow_duplicate(y);
+            protect(y)
         } else {
-            Rf_protect(y);
-        }
+            protect(y)
+        };
 
         let NR = nr as R_xlen_t;
         let mut k: R_xlen_t = 0;
@@ -1565,7 +1565,6 @@ unsafe fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
             }
         }
 
-        Rf_unprotect(2);
         x
     }
 }
@@ -1580,13 +1579,13 @@ unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP 
         use crate::eval::attrib_core::R_DimSymbol;
 
         let mut k = 0i32;
-        let dims = Rf_protect(getAttrib(x, R_DimSymbol()));
+        let dims = getAttrib(x, R_DimSymbol());
+        let _dims_guard = protect(dims);
         if isNull(dims) || {
             k = LENGTH(dims);
             k != Rf_length(s)
         } {
             // Error: incorrect number of subscripts
-            Rf_unprotect(1);
             return x;
         }
 
@@ -1618,7 +1617,6 @@ unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP 
 
         if n > 0 && ny == 0 {
             // Error: replacement has length zero
-            Rf_unprotect(1);
             return x;
         }
 
@@ -1633,16 +1631,16 @@ unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP 
         let which = SubassignTypeFix(&mut x, &mut y, 0, 1, call, rho);
 
         if n == 0 {
-            Rf_unprotect(1);
             return x;
         }
 
-        Rf_protect(x);
-        if x == y {
-            y = Rf_protect(shallow_duplicate(y));
+        let _x_guard = protect(x);
+        let _y_guard = if x == y {
+            y = shallow_duplicate(y);
+            protect(y)
         } else {
-            Rf_protect(y);
-        }
+            protect(y)
+        };
 
         // Array assignment loop
         let mut iny: R_xlen_t = 0;
@@ -1736,7 +1734,6 @@ unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP 
             }
         }
 
-        Rf_unprotect(3);
         x
     }
 }
@@ -2091,13 +2088,13 @@ unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = op;
-        Rf_protect(args);
+        let _args_guard = protect(args);
 
         let mut subs: SEXP = ptr::null_mut();
         let mut y: SEXP = ptr::null_mut();
         let mut x: SEXP = ptr::null_mut();
         let nsubs = SubAssignArgs(args, &mut x, &mut subs, &mut y);
-        Rf_protect(y);
+        let _y_guard = protect(y);
 
         // Make sure LHS is duplicated if it matches one of the indices
         let mut s_iter = subs;
@@ -2129,7 +2126,6 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                     || TYPEOF(y) == VECSXP
                     || TYPEOF(y) == EXPRSXP)
             {
-                Rf_unprotect(2);
                 return x;
             } else {
                 if isNull(x) {
@@ -2137,7 +2133,7 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
                 }
             }
         }
-        Rf_protect(x);
+        let _x_guard = protect(x);
 
         match TYPEOF(x) {
             LGLSXP | INTSXP | REALSXP | CPLXSXP | STRSXP | EXPRSXP | VECSXP | RAWSXP => {
@@ -2167,7 +2163,6 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             SET_TYPEOF(x, LANGSXP);
         }
 
-        Rf_unprotect(3);
         SETTER_CLEAR_NAMED(x);
         if s4 != 0 {
             SET_S4_OBJECT(x);
@@ -2204,18 +2199,18 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
         use crate::sexp::globals::R_MissingArg;
 
-        Rf_protect(args);
+        let _args_guard = protect(args);
+        let mut dynamic_guards: Vec<crate::sexp::protect::ProtectGuard> = Vec::new();
 
         let mut subs: SEXP = ptr::null_mut();
         let mut y: SEXP = ptr::null_mut();
         let mut x: SEXP = ptr::null_mut();
         let nsubs = SubAssignArgs(args, &mut x, &mut subs, &mut y);
-        Rf_protect(y);
+        let _initial_y_guard = protect(y);
 
         // Handle NULL left-hand sides
         if isNull(x) {
             if isNull(y) {
-                Rf_unprotect(2);
                 return x;
             }
             x = Rf_allocVector3(VECSXP, 0);
@@ -2237,7 +2232,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             ptr::null_mut()
         };
 
-        Rf_protect(x);
+        let _initial_x_guard = protect(x);
         let xtop = x;
         let mut xup = x;
 
@@ -2258,11 +2253,9 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         if TYPEOF(x) == ENVSXP {
             if nsubs != 1 || !isString(CAR(subs)) || Rf_length(CAR(subs)) != 1 {
                 // Error: wrong args
-                Rf_unprotect(3);
                 return x;
             }
             defineVar(installTrChar(STRING_ELT(CAR(subs), 0 as R_xlen_t)), y, x);
-            Rf_unprotect(3);
             if s4 != 0 && !isNull(xOrig) {
                 return xOrig;
             }
@@ -2281,7 +2274,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             len = Rf_length(thesub);
             if len > 1 {
                 xup = vectorIndex(x, thesub, 0, len - 2, TRUE, call, TRUE);
-                Rf_protect(xup);
+                dynamic_guards.push(protect(xup));
                 off = OneIndex(
                     xup,
                     thesub,
@@ -2292,12 +2285,11 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                     R_NilValue(),
                 );
                 x = vectorIndex(xup, thesub, len - 2, len - 1, TRUE, call, TRUE);
-                Rf_unprotect(2);
-                Rf_protect(x);
+                dynamic_guards.push(protect(x));
                 recursed = true;
             }
         }
-        Rf_protect(xup);
+        let _xup_guard = protect(xup);
 
         let mut stretch: R_xlen_t = 0;
         let mut offset: R_xlen_t = 0;
@@ -2305,12 +2297,10 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         if isVector(x) {
             if !isVectorList(x) && Rf_length(y) == 0 {
                 // Error: replacement has length zero
-                Rf_unprotect(4);
                 return xtop;
             }
             if !isVectorList(x) && Rf_length(y) > 1 {
                 // Error: more elements supplied
-                Rf_unprotect(4);
                 return xtop;
             }
             if nsubs == 0 || CAR(subs) == R_MissingArg() {
@@ -2333,14 +2323,12 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                         if isVectorList(xup) {
                             SET_VECTOR_ELT(xup, off, x);
                         } else {
-                            Rf_protect(x);
+                            let _x_guard = protect(x);
                             xup = SimpleListAssign(call, xup, subs, x, len - 2, false);
-                            Rf_unprotect(1);
                         }
                     } else {
                         // xtop = x handled below
                     }
-                    Rf_unprotect(4);
                     if s4 != 0 && !isNull(xOrig) {
                         SET_S4_OBJECT(xOrig);
                     }
@@ -2355,10 +2343,10 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             } else {
                 if ndims != nsubs {
                     // Error: improper number of subscripts
-                    Rf_unprotect(4);
                     return xtop;
                 }
-                let indx = Rf_protect(Rf_allocVector3(INTSXP, ndims as R_xlen_t));
+                let indx = Rf_allocVector3(INTSXP, ndims as R_xlen_t);
+                let _indx_guard = protect(indx);
                 let pindx = INTEGER(indx);
                 let names = getAttrib(x, R_DimNamesSymbol());
                 let mut subs_tmp = subs;
@@ -2397,13 +2385,12 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                         });
                 }
                 offset += *pindx.add(0) as R_xlen_t;
-                Rf_unprotect(1);
             }
 
             let old_x = x;
             let which = SubassignTypeFix(&mut x, &mut y, stretch, 2, call, rho);
-            Rf_protect(x);
-            Rf_protect(y);
+            dynamic_guards.push(protect(x));
+            dynamic_guards.push(protect(y));
 
             match which {
                 1010 | 1310 | 1313 => {
@@ -2463,20 +2450,19 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             if stretch > 0 && !isNull(newname) {
                 let names = getAttrib(x, R_NamesSym());
                 if isNull(names) {
-                    let names_new = Rf_protect(Rf_allocVector3(STRSXP, Rf_length(x) as R_xlen_t));
+                    let names_new = Rf_allocVector3(STRSXP, Rf_length(x) as R_xlen_t);
+                    let _names_new_guard = protect(names_new);
                     SET_STRING_ELT(names_new, offset, newname);
                     setAttrib(x, R_NamesSym(), names_new);
-                    Rf_unprotect(1);
                 } else {
                     SET_STRING_ELT(names, offset, newname);
                 }
             }
 
-            Rf_unprotect(4);
-            Rf_protect(x);
-            Rf_protect(xup);
+            dynamic_guards.push(protect(x));
+            dynamic_guards.push(protect(xup));
         } else if isPairList(x) {
-            Rf_protect(y);
+            dynamic_guards.push(protect(y));
             if nsubs == 1 {
                 if isNull(y) {
                     x = listRemove(x, CAR(subs), len - 1);
@@ -2486,10 +2472,10 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             } else {
                 if ndims != nsubs {
                     // Error
-                    Rf_unprotect(3);
                     return xtop;
                 }
-                let indx = Rf_protect(Rf_allocVector3(INTSXP, ndims as R_xlen_t));
+                let indx = Rf_allocVector3(INTSXP, ndims as R_xlen_t);
+                let _indx_guard = protect(indx);
                 let pindx = INTEGER(indx);
                 let names = getAttrib(x, R_DimNamesSymbol());
                 let mut subs_tmp = subs;
@@ -2526,11 +2512,9 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                 offset += *pindx.add(0) as R_xlen_t;
                 let slot = nthcdr(x, offset as c_int);
                 SETCAR(slot, y);
-                Rf_unprotect(1);
             }
-            Rf_unprotect(3);
-            Rf_protect(x);
-            Rf_protect(xup);
+            dynamic_guards.push(protect(x));
+            dynamic_guards.push(protect(xup));
         } else {
             errorNotSubsettable(x);
         }
@@ -2549,7 +2533,6 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             xtop = x;
         }
 
-        Rf_unprotect(4);
         SETTER_CLEAR_NAMED(xtop);
         if s4 != 0 {
             SET_S4_OBJECT(xtop);
@@ -2564,7 +2547,7 @@ unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut nlist: SEXP = R_NilValue();
         checkArity(op, args);
         let args = fixSubset3Args(call, args, env, &mut nlist);
-        Rf_protect(args);
+        let _args_guard = protect(args);
 
         let mut ans: SEXP = ptr::null_mut();
         if R_DispatchOrEvalSP(
@@ -2576,15 +2559,13 @@ unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             &mut ans,
         ) != 0
         {
-            Rf_unprotect(1);
             return ans;
         }
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         if isNull(nlist) {
             nlist = installTrChar(STRING_ELT(CADR(args), 0 as R_xlen_t));
         }
         let result = R_subassign3_dflt(call, CAR(ans), nlist, CADDR(ans));
-        Rf_unprotect(2);
         result
     }
 }
@@ -2964,7 +2945,8 @@ mod tests {
     fn test_gi_integer() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let v = Rf_protect(Rf_allocVector3(INTSXP, 3));
+            let v = Rf_allocVector3(INTSXP, 3);
+            let _v_guard = protect(v);
             let p = INTEGER(v);
             *p.add(0) = 10;
             *p.add(1) = 20;
@@ -2972,7 +2954,6 @@ mod tests {
             assert_eq!(gi(v, 0), 10);
             assert_eq!(gi(v, 1), 20);
             assert_eq!(gi(v, 2), NA_INTEGER as R_xlen_t);
-            Rf_unprotect(1);
         }
     }
 
@@ -2981,8 +2962,10 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create args: x, y (no subscripts)
-            let y_val = Rf_protect(Rf_allocVector3(INTSXP, 1));
-            let args = Rf_protect(Rf_cons(R_NilValue(), Rf_cons(y_val, R_NilValue())));
+            let y_val = Rf_allocVector3(INTSXP, 1);
+            let _y_val_guard = protect(y_val);
+            let args = Rf_cons(R_NilValue(), Rf_cons(y_val, R_NilValue()));
+            let _args_guard = protect(args);
 
             let mut x: SEXP = ptr::null_mut();
             let mut s: SEXP = ptr::null_mut();
@@ -2992,7 +2975,6 @@ mod tests {
             assert_eq!(x, R_NilValue());
             assert_eq!(s, R_NilValue());
             assert_eq!(y, y_val);
-            Rf_unprotect(2);
         }
     }
 
@@ -3000,12 +2982,13 @@ mod tests {
     fn test_SubassignTypeFix_same_type() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let mut xv: SEXP = Rf_protect(Rf_allocVector3(INTSXP, 1));
-            let mut yv: SEXP = Rf_protect(Rf_allocVector3(INTSXP, 1));
+            let mut xv: SEXP = Rf_allocVector3(INTSXP, 1);
+            let _xv_guard = protect(xv);
+            let mut yv: SEXP = Rf_allocVector3(INTSXP, 1);
+            let _yv_guard = protect(yv);
             let which = SubassignTypeFix(&mut xv, &mut yv, 0, 1, ptr::null_mut(), ptr::null_mut());
             // 100 * 13 + 13 = 1313
             assert_eq!(which, 1313);
-            Rf_unprotect(2);
         }
     }
 }

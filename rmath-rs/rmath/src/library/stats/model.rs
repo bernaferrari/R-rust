@@ -8,7 +8,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::*;
-use crate::sexp::protect::{protect, Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -476,10 +476,8 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     let mut nVar: isize = 0;
     let mut nterms: isize = 0;
 
-    let factors = Rf_protect(crate::sexp::memory_ext::duplicate(getAttrib(
-        terms,
-        Rf_install("factors"),
-    )));
+    let factors = crate::sexp::memory_ext::duplicate(getAttrib(terms, Rf_install("factors")));
+    let _factors_guard = protect(factors);
     if Rf_length(factors) == 0 {
         nVar = 1;
         nterms = 0;
@@ -511,13 +509,18 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     let n = nrows(VECTOR_ELT(vars, 0));
-    let rnames = Rf_protect(getAttrib(vars, Rf_install("row.names")));
+    let rnames = getAttrib(vars, Rf_install("row.names"));
+    let _rnames_guard = protect(rnames);
 
     // Check variable types and set up variable info
-    let variable = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t));
-    let nlevs = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nVar as R_xlen_t));
-    let ordered = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, nVar as R_xlen_t));
-    let columns = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nVar as R_xlen_t));
+    let variable = Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t);
+    let _variable_guard = protect(variable);
+    let nlevs = Rf_allocVector3(SEXPTYPE::INTSXP, nVar as R_xlen_t);
+    let _nlevs_guard = protect(nlevs);
+    let ordered = Rf_allocVector3(SEXPTYPE::LGLSXP, nVar as R_xlen_t);
+    let _ordered_guard = protect(ordered);
+    let columns = Rf_allocVector3(SEXPTYPE::INTSXP, nVar as R_xlen_t);
+    let _columns_guard = protect(columns);
 
     for i in 0..nVar {
         let mut var_i = VECTOR_ELT(vars, i as R_xlen_t);
@@ -558,7 +561,8 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             *INTEGER(nlevs).add(i as usize) = 2;
             *INTEGER(columns).add(i as usize) = ncols(var_i) as c_int;
         } else if isNumeric(var_i) {
-            var_i = Rf_protect(coerceVector(var_i, SEXPTYPE::REALSXP.as_c_int()));
+            var_i = coerceVector(var_i, SEXPTYPE::REALSXP.as_c_int());
+            let _var_i_guard = protect(var_i);
             SET_VECTOR_ELT(variable, i as R_xlen_t, var_i);
             *LOGICAL(ordered).add(i as usize) = 0;
             *INTEGER(nlevs).add(i as usize) = 0;
@@ -573,14 +577,13 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     // No intercept adjustment (simplified - skip the factor pattern adjustment)
 
     // Compute contrasts
-    let contr1 = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t));
-    let contr2 = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t));
+    let contr1 = Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t);
+    let _contr1_guard = protect(contr1);
+    let contr2 = Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t);
+    let _contr2_guard = protect(contr2);
 
-    let expr = Rf_protect(Rf_lang3(
-        Rf_install("contrasts"),
-        R_NilValue(),
-        Rf_ScalarLogical(0),
-    ));
+    let expr = Rf_lang3(Rf_install("contrasts"), R_NilValue(), Rf_ScalarLogical(0));
+    let _expr_guard = protect(expr);
 
     for i in 0..nVar {
         if *INTEGER(nlevs).add(i as usize) > 0 {
@@ -608,7 +611,8 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     // Compute column counts
-    let count = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nterms as R_xlen_t));
+    let count = Rf_allocVector3(SEXPTYPE::INTSXP, nterms as R_xlen_t);
+    let _count_guard = protect(count);
     let mut dnc: f64 = if intrcept != 0 { 1.0 } else { 0.0 };
 
     for j in 0..nterms {
@@ -632,7 +636,8 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     let nc = dnc as isize;
 
     // Compute assign vector
-    let assign = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nc as R_xlen_t));
+    let assign = Rf_allocVector3(SEXPTYPE::INTSXP, nc as R_xlen_t);
+    let _assign_guard = protect(assign);
     let mut k: isize = 0;
     if intrcept != 0 {
         *INTEGER(assign).add(k) = 0;
@@ -646,7 +651,8 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     // Create column labels
-    let xnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nc as R_xlen_t));
+    let xnames = Rf_allocVector3(SEXPTYPE::STRSXP, nc as R_xlen_t);
+    let _xnames_guard = protect(xnames);
     k = 0;
     if intrcept != 0 {
         SET_STRING_ELT(xnames, k, Rf_mkChar("(Intercept)"));
@@ -714,7 +720,8 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     // Allocate and compute the design matrix
-    let x = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, n as c_int, nc as c_int));
+    let x = allocMatrix(SEXPTYPE::REALSXP, n as c_int, nc as c_int);
+    let _x_guard = protect(x);
     let rx = REAL(x);
 
     // Begin with intercept column
@@ -738,10 +745,9 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
             if fik != 0 {
                 let contrast = if fik == 1 { contr1 } else { contr2 };
-                let contrast = Rf_protect(coerceVector(
-                    VECTOR_ELT(contrast, i as R_xlen_t),
-                    SEXPTYPE::REALSXP.as_c_int(),
-                ));
+                let contrast =
+                    coerceVector(VECTOR_ELT(contrast, i as R_xlen_t), SEXPTYPE::REALSXP.as_c_int());
+                let _contrast_guard = protect(contrast);
 
                 if jnext == jstart {
                     if *INTEGER(nlevs).add(i as usize) > 0 {
@@ -795,7 +801,6 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                         jnext += (jnext - jstart) * (ncols(var_i) - 1);
                     }
                 }
-                Rf_unprotect(1);
             }
         }
         jstart = jnext;
@@ -803,12 +808,11 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
     // Set dimnames
     let tnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+    let _tnames_guard = protect(tnames);
     SET_VECTOR_ELT(tnames, 0, rnames);
     SET_VECTOR_ELT(tnames, 1, xnames);
     setAttrib(x, R_DimNamesSymbol(), tnames);
     setAttrib(x, Rf_install("assign"), assign);
-
-    Rf_unprotect(9);
     x
 }
 
@@ -828,7 +832,8 @@ pub unsafe fn updateform(old: SEXP, new_: SEXP) -> SEXP {
     let parenSymbol = Rf_install("(");
     let inSymbol = Rf_install("%in%");
 
-    let _new = Rf_protect(crate::sexp::memory_ext::duplicate(new_));
+    let _new = crate::sexp::memory_ext::duplicate(new_);
+    let _new_guard = protect(_new);
 
     if TYPEOF(old) != SEXPTYPE::LANGSXP
         || (TYPEOF(_new) != SEXPTYPE::LANGSXP && CAR(old) != tildeSymbol)
@@ -846,10 +851,9 @@ pub unsafe fn updateform(old: SEXP, new_: SEXP) -> SEXP {
             SETCDR(_new, Rf_cons(lhs, CDR(_new)));
         }
 
-        Rf_protect(rhs);
+        let _rhs_guard = protect(rhs);
         SETCADR(_new, ExpandDots(CADR(_new), lhs));
         SETCADDR(_new, ExpandDots(CADDR(_new), rhs));
-        Rf_unprotect(1);
     } else {
         let rhs = CADR(old);
         if Rf_length(_new) == 3 {
@@ -868,7 +872,6 @@ pub unsafe fn updateform(old: SEXP, new_: SEXP) -> SEXP {
         getAttrib(old, Rf_install(".Environment")),
     );
 
-    Rf_unprotect(1);
     _new
 }
 
@@ -877,6 +880,15 @@ pub unsafe fn updateform(old: SEXP, new_: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn ExpandDots(object: SEXP, value: SEXP) -> SEXP {
+    let dotSymbol = Rf_install(".");
+    let plusSymbol = Rf_install("+");
+    let minusSymbol = Rf_install("-");
+    let timesSymbol = Rf_install("*");
+    let slashSymbol = Rf_install("/");
+    let colonSymbol = Rf_install(":");
+    let powerSymbol = Rf_install("^");
+    let parenSymbol = Rf_install("(");
+
     if isSymbol(object) {
         if object == dotSymbol {
             return crate::sexp::memory_ext::duplicate(value);
@@ -890,7 +902,7 @@ unsafe fn ExpandDots(object: SEXP, value: SEXP) -> SEXP {
         } else {
             R_NilValue()
         };
-        Rf_protect(object);
+        let _object_guard = protect(object);
 
         if CAR(object) == plusSymbol {
             let len = Rf_length(object);
@@ -995,7 +1007,6 @@ unsafe fn ExpandDots(object: SEXP, value: SEXP) -> SEXP {
                 op2 = CDR(op2);
             }
         }
-        Rf_unprotect(1);
         return object;
     }
 
@@ -1405,7 +1416,8 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
 
     HAVE_DOT.set(false);
 
-    let ans = Rf_protect(crate::sexp::memory_ext::duplicate(CAR(args)));
+    let ans = crate::sexp::memory_ext::duplicate(CAR(args));
+    let _ans_guard = protect(ans);
 
     let specials = CADR(args);
     if Rf_length(specials) > 0 && !isString(specials) {
@@ -1446,7 +1458,8 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     PARITY.set(true);
     RESPONSE.set(false);
 
-    let varlist = Rf_protect(Rf_cons(Rf_install("list"), R_NilValue()));
+    let varlist = Rf_cons(Rf_install("list"), R_NilValue());
+    let _varlist_guard = protect(varlist);
     VARLIST.set(varlist as *mut std::ffi::c_void);
 
     ExtractVars(CAR(args));
@@ -1455,10 +1468,12 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     NWORDS.set(nvar / (8 * std::mem::size_of::<c_int>()) + 1);
 
     // Step 2: Encode variables
-    let formula = Rf_protect(EncodeVars(CAR(args)));
+    let formula = EncodeVars(CAR(args));
+    let _formula_guard = protect(formula);
 
     // Step 2a: Compute variable names
-    let varnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nvar as R_xlen_t));
+    let varnames = Rf_allocVector3(SEXPTYPE::STRSXP, nvar as R_xlen_t);
+    let _varnames_guard = protect(varnames);
     {
         let mut v = CDR(VARLIST.get() as SEXP);
         let mut idx: R_xlen_t = 0;
@@ -1479,8 +1494,10 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     // Skip offset removal for simplicity (would need deparse1line)
 
     // Step 3: Reorder terms
-    let ord = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nterm as R_xlen_t));
-    let pattern = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nterm as R_xlen_t));
+    let ord = Rf_allocVector3(SEXPTYPE::INTSXP, nterm as R_xlen_t);
+    let _ord_guard = protect(ord);
+    let pattern = Rf_allocVector3(SEXPTYPE::VECSXP, nterm as R_xlen_t);
+    let _pattern_guard = protect(pattern);
 
     let mut call = formula;
     let mut bitmax: c_int = 0;
@@ -1496,17 +1513,16 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
 
     // Step 4: Compute factor pattern
     let pat: SEXP;
+    let mut _pat_guard = protect(R_NilValue());
     if nterm > 0 {
-        pat = Rf_protect(allocMatrix(
-            SEXPTYPE::INTSXP.as_c_int(),
-            nvar as c_int,
-            nterm as c_int,
-        ));
+        pat = allocMatrix(SEXPTYPE::INTSXP.as_c_int(), nvar as c_int, nterm as c_int);
+        _pat_guard = protect(pat);
         let patn = INTEGER(pat);
         for idx in 0..(nterm * nvar) {
             *patn.add(idx) = 0;
         }
-        let term = Rf_protect(AllocTerm());
+        let term = AllocTerm();
+        let _term_guard = protect(term);
         let mut nn: isize = -1;
         call = formula;
         for _idx in 0..nterm {
@@ -1518,11 +1534,13 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
             nn += nvar;
         }
     } else {
-        pat = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, 0));
+        pat = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        _pat_guard = protect(pat);
     }
 
     // Step 5: Compute term labels
-    let termlabs = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nterm as R_xlen_t));
+    let termlabs = Rf_allocVector3(SEXPTYPE::STRSXP, nterm as R_xlen_t);
+    let _termlabs_guard = protect(termlabs);
     {
         let mut call = formula;
         let mut idx: R_xlen_t = 0;
@@ -1567,7 +1585,6 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     setAttrib(ans, R_NilValue(), R_NilValue());
     SET_OBJECT(ans, 0);
 
-    Rf_unprotect(7);
     ans
 }
 
@@ -1608,18 +1625,19 @@ unsafe fn EncodeVars(formula: SEXP) -> SEXP {
                     return R_NilValue();
                 }
                 let mut r: SEXP = R_NilValue();
+                let mut _r_guard = protect(R_NilValue());
                 for i in 0..flen {
                     let c = translateChar(STRING_ELT(framenames as SEXP, i as R_xlen_t));
                     let sym = Rf_install(c);
                     let term = AllocTermSetBit1(sym);
                     if i == 0 {
-                        r = Rf_protect(Rf_cons(term, R_NilValue()));
+                        r = Rf_cons(term, R_NilValue());
+                        _r_guard = protect(r);
                     } else {
                         SETCDR(r as SEXP, Rf_cons(term, R_NilValue()));
                         r = CDR(r as SEXP);
                     }
                 }
-                Rf_unprotect(1);
                 r
             } else {
                 let term = AllocTermSetBit1(formula);
@@ -1674,16 +1692,19 @@ unsafe fn EncodeVars(formula: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn PlusTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = Rf_protect(EncodeVars(left));
+    let left = EncodeVars(left);
+    let _left_guard = protect(left);
     let right = EncodeVars(right);
-    Rf_unprotect(1);
     TrimRepeats(listAppend(left, right))
 }
 
 unsafe fn InteractTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = Rf_protect(EncodeVars(left));
-    let right = Rf_protect(EncodeVars(right));
-    let term = Rf_protect(allocList((Rf_length(left) * Rf_length(right)) as c_int));
+    let left = EncodeVars(left);
+    let _left_guard = protect(left);
+    let right = EncodeVars(right);
+    let _right_guard = protect(right);
+    let term = allocList((Rf_length(left) * Rf_length(right)) as c_int);
+    let _term_guard = protect(term);
     let mut t = term;
     let mut l = left;
     while l != R_NilValue() {
@@ -1695,14 +1716,16 @@ unsafe fn InteractTerms(left: SEXP, right: SEXP) -> SEXP {
         }
         l = CDR(l);
     }
-    Rf_unprotect(3);
     TrimRepeats(term)
 }
 
 unsafe fn CrossTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = Rf_protect(EncodeVars(left));
-    let right = Rf_protect(EncodeVars(right));
-    let term = Rf_protect(allocList((Rf_length(left) * Rf_length(right)) as c_int));
+    let left = EncodeVars(left);
+    let _left_guard = protect(left);
+    let right = EncodeVars(right);
+    let _right_guard = protect(right);
+    let term = allocList((Rf_length(left) * Rf_length(right)) as c_int);
+    let _term_guard = protect(term);
     let mut t = term;
     let mut l = left;
     while l != R_NilValue() {
@@ -1716,7 +1739,6 @@ unsafe fn CrossTerms(left: SEXP, right: SEXP) -> SEXP {
     }
     listAppend(right, term);
     listAppend(left, right);
-    Rf_unprotect(3);
     TrimRepeats(left)
 }
 
@@ -1726,12 +1748,14 @@ unsafe fn PowerTerms(left: SEXP, right: SEXP) -> SEXP {
         Rf_error(b"invalid power in formula\0".as_ptr() as *const _);
         return R_NilValue();
     }
-    let left = Rf_protect(EncodeVars(left));
+    let left = EncodeVars(left);
+    let _left_guard = protect(left);
     let mut right_val = left;
     let mut term: SEXP = R_NilValue();
     for _i in 1..ip {
-        Rf_protect(right_val);
-        term = Rf_protect(allocList((Rf_length(left) * Rf_length(right_val)) as c_int));
+        let _right_val_guard = protect(right_val);
+        term = allocList((Rf_length(left) * Rf_length(right_val)) as c_int);
+        let _term_guard = protect(term);
         let mut t = term;
         let mut l = left;
         while l != R_NilValue() {
@@ -1743,17 +1767,18 @@ unsafe fn PowerTerms(left: SEXP, right: SEXP) -> SEXP {
             }
             l = CDR(l);
         }
-        Rf_unprotect(2);
         right_val = TrimRepeats(term);
     }
-    Rf_unprotect(1);
     term
 }
 
 unsafe fn InTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = Rf_protect(EncodeVars(left));
-    let right = Rf_protect(EncodeVars(right));
-    let term = Rf_protect(AllocTerm());
+    let left = EncodeVars(left);
+    let _left_guard = protect(left);
+    let right = EncodeVars(right);
+    let _right_guard = protect(right);
+    let term = AllocTerm();
+    let _term_guard = protect(term);
     let nw = NWORDS.get();
     let term_p = INTEGER(term);
     // Bitwise or of all terms on right
@@ -1772,14 +1797,16 @@ unsafe fn InTerms(left: SEXP, right: SEXP) -> SEXP {
         }
         l = CDR(l);
     }
-    Rf_unprotect(3);
     TrimRepeats(left) // simplified
 }
 
 unsafe fn NestTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = Rf_protect(EncodeVars(left));
-    let right = Rf_protect(EncodeVars(right));
-    let term = Rf_protect(AllocTerm());
+    let left = EncodeVars(left);
+    let _left_guard = protect(left);
+    let right = EncodeVars(right);
+    let _right_guard = protect(right);
+    let term = AllocTerm();
+    let _term_guard = protect(term);
     let nw = NWORDS.get();
     let term_p = INTEGER(term);
     // Bitwise or of all terms on left
@@ -1798,21 +1825,21 @@ unsafe fn NestTerms(left: SEXP, right: SEXP) -> SEXP {
         }
         r = CDR(r);
     }
-    Rf_unprotect(3);
     TrimRepeats(left) // simplified
 }
 
 unsafe fn DeleteTerms(left: SEXP, right: SEXP) -> SEXP {
-    let left = Rf_protect(EncodeVars(left));
+    let mut left = EncodeVars(left);
+    let _left_guard = protect(left);
     PARITY.set(!PARITY.get());
     let right = EncodeVars(right);
+    let _right_guard = protect(right);
     PARITY.set(!PARITY.get());
     let mut r = right;
     while r != R_NilValue() {
         left = StripTerm(CAR(r), left);
         r = CDR(r);
     }
-    Rf_unprotect(2);
     left
 }
 

@@ -2646,38 +2646,37 @@ mod tests {
             let open = test_ok(CString::new("r"));
             let desc_sxp = Rf_mkString(desc.as_ptr());
             let open_sxp = Rf_mkString(open.as_ptr());
-            Rf_protect(desc_sxp);
-            Rf_protect(open_sxp);
+            let _desc_guard = protect(desc_sxp);
+            let _open_guard = protect(open_sxp);
 
             // Build args pairlist: (description, open, encoding, blocking, method, raw)
             let raw_sxp = Rf_ScalarLogical(0);
-            Rf_protect(raw_sxp);
+            let _raw_guard = protect(raw_sxp);
             let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
-            Rf_protect(enc_sxp);
+            let _enc_guard = protect(enc_sxp);
             let block_sxp = Rf_ScalarLogical(1);
-            Rf_protect(block_sxp);
+            let _block_guard = protect(block_sxp);
             let method_sxp = Rf_mkString(test_ok(CString::new("default")).as_ptr());
-            Rf_protect(method_sxp);
+            let _method_guard = protect(method_sxp);
 
             let p5 = Rf_cons(raw_sxp, R_NilValue());
-            Rf_protect(p5);
+            let _p5_guard = protect(p5);
             let p4 = Rf_cons(method_sxp, p5);
-            Rf_protect(p4);
+            let _p4_guard = protect(p4);
             let p3 = Rf_cons(block_sxp, p4);
-            Rf_protect(p3);
+            let _p3_guard = protect(p3);
             let p2 = Rf_cons(enc_sxp, p3);
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(open_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let args = Rf_cons(desc_sxp, p1);
-            Rf_protect(args);
+            let _args_guard = protect(args);
 
             let result = do_file(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
 
             // Clean up
             let _ = fs::remove_file(&tmp);
-            Rf_unprotect(12);
         }
     }
 
@@ -2687,7 +2686,7 @@ mod tests {
         unsafe {
             // Create a raw vector
             let raw = Rf_allocVector(SEXPTYPE::RAWSXP, 5);
-            Rf_protect(raw);
+            let _raw_guard = protect(raw);
             let raw_data = RAW(raw);
             *raw_data.add(0) = 1;
             *raw_data.add(1) = 2;
@@ -2696,28 +2695,26 @@ mod tests {
             *raw_data.add(4) = 5;
 
             let desc_sxp = Rf_mkString(test_ok(CString::new("test_raw")).as_ptr());
-            Rf_protect(desc_sxp);
+            let _desc_guard = protect(desc_sxp);
             let open_sxp = Rf_mkString(test_ok(CString::new("rb")).as_ptr());
-            Rf_protect(open_sxp);
+            let _open_guard = protect(open_sxp);
             let local_sxp = Rf_ScalarLogical(0);
-            Rf_protect(local_sxp);
+            let _local_guard = protect(local_sxp);
 
             let p2 = Rf_cons(local_sxp, R_NilValue());
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(open_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let args = Rf_cons(raw, p1);
-            Rf_protect(args);
+            let _args_guard = protect(args);
             let args2 = Rf_cons(desc_sxp, args);
-            Rf_protect(args2);
+            let _args2_guard = protect(args2);
 
             let result = do_rawConnection(ptr::null_mut(), ptr::null_mut(), args2, ptr::null_mut());
             assert!(!result.is_null());
 
             let idx = as_integer(result);
             assert!(idx >= 3);
-
-            Rf_unprotect(8);
         }
     }
 
@@ -2727,27 +2724,27 @@ mod tests {
         unsafe {
             // Create a text vector
             let text = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-            Rf_protect(text);
+            let _text_guard = protect(text);
             let c1 = Rf_mkChar(test_ok(CString::new("line1")).as_ptr());
             let c2 = Rf_mkChar(test_ok(CString::new("line2")).as_ptr());
             SET_STRING_ELT(text, 0, c1);
             SET_STRING_ELT(text, 1, c2);
 
             let desc_sxp = Rf_mkString(test_ok(CString::new("test_text")).as_ptr());
-            Rf_protect(desc_sxp);
+            let _desc_guard = protect(desc_sxp);
             let open_sxp = Rf_mkString(test_ok(CString::new("r")).as_ptr());
-            Rf_protect(open_sxp);
+            let _open_guard = protect(open_sxp);
             let local_sxp = Rf_ScalarLogical(0);
-            Rf_protect(local_sxp);
+            let _local_guard = protect(local_sxp);
 
             let p2 = Rf_cons(local_sxp, R_NilValue());
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(open_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let args = Rf_cons(text, p1);
-            Rf_protect(args);
+            let _args_guard = protect(args);
             let args2 = Rf_cons(desc_sxp, args);
-            Rf_protect(args2);
+            let _args2_guard = protect(args2);
 
             let result =
                 do_textConnection(ptr::null_mut(), ptr::null_mut(), args2, ptr::null_mut());
@@ -2765,8 +2762,6 @@ mod tests {
             assert!(conn.isopen);
             assert!(conn.canread);
             assert_eq!(conn.text_data, "line1\nline2\n");
-
-            Rf_unprotect(8);
         }
     }
 
@@ -2777,19 +2772,17 @@ mod tests {
             R_InitConnections();
             // stdin should be open
             let stdin_sxp = Rf_ScalarInteger(0);
-            Rf_protect(stdin_sxp);
+            let _stdin_guard = protect(stdin_sxp);
             let rw_sxp = Rf_ScalarInteger(0);
-            Rf_protect(rw_sxp);
+            let _rw_guard = protect(rw_sxp);
             let tail = Rf_cons(rw_sxp, R_NilValue());
-            Rf_protect(tail);
+            let _tail_guard = protect(tail);
             let args = Rf_cons(stdin_sxp, tail);
-            Rf_protect(args);
+            let _args_guard = protect(args);
 
             let result = do_isopen(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(as_integer(result), 1);
-
-            Rf_unprotect(4);
         }
     }
 
@@ -2799,16 +2792,14 @@ mod tests {
         unsafe {
             R_InitConnections();
             let all_sxp = Rf_ScalarLogical(1);
-            Rf_protect(all_sxp);
+            let _all_guard = protect(all_sxp);
             let args = Rf_cons(all_sxp, R_NilValue());
-            Rf_protect(args);
+            let _args_guard = protect(args);
 
             let result =
                 do_showConnections(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             assert!(LENGTH(result) >= 3);
-
-            Rf_unprotect(2);
         }
     }
 
@@ -2825,24 +2816,23 @@ mod tests {
             }
             let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
             let desc_sxp = Rf_mkString(desc.as_ptr());
-            Rf_protect(desc_sxp);
+            let _desc_guard = protect(desc_sxp);
             let open_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
-            Rf_protect(open_sxp);
+            let _open_guard = protect(open_sxp);
             let comp_sxp = Rf_ScalarInteger(6);
-            Rf_protect(comp_sxp);
+            let _comp_guard = protect(comp_sxp);
 
             let p2 = Rf_cons(comp_sxp, R_NilValue());
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(open_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let args = Rf_cons(desc_sxp, p1);
-            Rf_protect(args);
+            let _args_guard = protect(args);
 
             let result = do_gzfile(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
 
             let _ = fs::remove_file(&tmp);
-            Rf_unprotect(6);
         }
     }
 
@@ -2852,43 +2842,41 @@ mod tests {
         unsafe {
             // Create a raw vector with some bytes
             let raw = Rf_allocVector(SEXPTYPE::RAWSXP, 8);
-            Rf_protect(raw);
+            let _raw_guard = protect(raw);
             let raw_data = RAW(raw);
             // Write 2 integers (4 bytes each): 42 and 100
             let vals: [i32; 2] = [42, 100];
             ptr::copy_nonoverlapping(vals.as_ptr() as *const u8, raw_data, 8);
 
             let what_sxp = Rf_mkString(test_ok(CString::new("integer")).as_ptr());
-            Rf_protect(what_sxp);
+            let _what_guard = protect(what_sxp);
             let n_sxp = Rf_ScalarInteger(2);
-            Rf_protect(n_sxp);
+            let _n_guard = protect(n_sxp);
             let size_sxp = Rf_ScalarInteger(NA_INTEGER);
-            Rf_protect(size_sxp);
+            let _size_guard = protect(size_sxp);
             let signed_sxp = Rf_ScalarLogical(1);
-            Rf_protect(signed_sxp);
+            let _signed_guard = protect(signed_sxp);
             let swap_sxp = Rf_ScalarLogical(0);
-            Rf_protect(swap_sxp);
+            let _swap_guard = protect(swap_sxp);
 
             let p5 = Rf_cons(swap_sxp, R_NilValue());
-            Rf_protect(p5);
+            let _p5_guard = protect(p5);
             let p4 = Rf_cons(signed_sxp, p5);
-            Rf_protect(p4);
+            let _p4_guard = protect(p4);
             let p3 = Rf_cons(size_sxp, p4);
-            Rf_protect(p3);
+            let _p3_guard = protect(p3);
             let p2 = Rf_cons(n_sxp, p3);
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(what_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let args = Rf_cons(raw, p1);
-            Rf_protect(args);
+            let _args_guard = protect(args);
 
             let result = do_readBin(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(LENGTH(result), 2);
             assert_eq!(*INTEGER(result), 42);
             assert_eq!(*INTEGER(result).add(1), 100);
-
-            Rf_unprotect(12);
         }
     }
 
@@ -2898,52 +2886,52 @@ mod tests {
         unsafe {
             // Create a raw output connection
             let desc_sxp = Rf_mkString(test_ok(CString::new("test_write_raw")).as_ptr());
-            Rf_protect(desc_sxp);
+            let _desc_guard = protect(desc_sxp);
             let raw_sxp = Rf_allocVector(SEXPTYPE::RAWSXP, 0);
-            Rf_protect(raw_sxp);
+            let _raw_guard = protect(raw_sxp);
             let open_sxp = Rf_mkString(test_ok(CString::new("wb")).as_ptr());
-            Rf_protect(open_sxp);
+            let _open_guard = protect(open_sxp);
             let local_sxp = Rf_ScalarLogical(0);
-            Rf_protect(local_sxp);
+            let _local_guard = protect(local_sxp);
 
             let p2 = Rf_cons(local_sxp, R_NilValue());
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(open_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let raw_args = Rf_cons(raw_sxp, p1);
-            Rf_protect(raw_args);
+            let _raw_args_guard = protect(raw_args);
             let conn_args = Rf_cons(desc_sxp, raw_args);
-            Rf_protect(conn_args);
+            let _conn_args_guard = protect(conn_args);
 
             let conn_result =
                 do_rawConnection(ptr::null_mut(), ptr::null_mut(), conn_args, ptr::null_mut());
-            Rf_protect(conn_result);
+            let _conn_result_guard = protect(conn_result);
             let conn_idx = as_integer(conn_result);
 
             // Create an integer vector to write
             let obj = Rf_allocVector(SEXPTYPE::INTSXP, 3);
-            Rf_protect(obj);
+            let _obj_guard = protect(obj);
             *INTEGER(obj) = 10;
             *INTEGER(obj).add(1) = 20;
             *INTEGER(obj).add(2) = 30;
 
             let size_sxp = Rf_ScalarInteger(NA_INTEGER);
-            Rf_protect(size_sxp);
+            let _size_guard = protect(size_sxp);
             let swap_sxp = Rf_ScalarLogical(0);
-            Rf_protect(swap_sxp);
+            let _swap_guard = protect(swap_sxp);
             let use_bytes_sxp = Rf_ScalarLogical(0);
-            Rf_protect(use_bytes_sxp);
+            let _use_bytes_guard = protect(use_bytes_sxp);
 
             let p3 = Rf_cons(use_bytes_sxp, R_NilValue());
-            Rf_protect(p3);
+            let _p3_guard = protect(p3);
             let p2b = Rf_cons(swap_sxp, p3);
-            Rf_protect(p2b);
+            let _p2b_guard = protect(p2b);
             let p1b = Rf_cons(size_sxp, p2b);
-            Rf_protect(p1b);
+            let _p1b_guard = protect(p1b);
             let write_args = Rf_cons(conn_result, p1b);
-            Rf_protect(write_args);
+            let _write_args_guard = protect(write_args);
             let write_args2 = Rf_cons(obj, write_args);
-            Rf_protect(write_args2);
+            let _write_args2_guard = protect(write_args2);
 
             let result = do_writeBin(
                 ptr::null_mut(),
@@ -2959,8 +2947,6 @@ mod tests {
                 panic!("expected connection to exist");
             };
             assert_eq!(conn.raw_data.len(), 12); // 3 * 4 bytes
-
-            Rf_unprotect(18);
         }
     }
 
@@ -2969,15 +2955,13 @@ mod tests {
         let _lock = reset_connections();
         unsafe {
             let type_sxp = Rf_ScalarLogical(0);
-            Rf_protect(type_sxp);
+            let _type_guard = protect(type_sxp);
             let args = Rf_cons(type_sxp, R_NilValue());
-            Rf_protect(args);
+            let _args_guard = protect(args);
 
             let result = do_sinkNumber(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(as_integer(result), 0);
-
-            Rf_unprotect(2);
         }
     }
 
@@ -3055,59 +3039,59 @@ mod tests {
             let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
             let open = test_ok(CString::new("r"));
             let desc_sxp = Rf_mkString(desc.as_ptr());
-            Rf_protect(desc_sxp);
+            let _desc_guard = protect(desc_sxp);
             let open_sxp = Rf_mkString(open.as_ptr());
-            Rf_protect(open_sxp);
+            let _open_guard = protect(open_sxp);
             let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
-            Rf_protect(enc_sxp);
+            let _enc_guard = protect(enc_sxp);
             let block_sxp = Rf_ScalarLogical(1);
-            Rf_protect(block_sxp);
+            let _block_guard = protect(block_sxp);
             let method_sxp = Rf_mkString(test_ok(CString::new("default")).as_ptr());
-            Rf_protect(method_sxp);
+            let _method_guard = protect(method_sxp);
             let raw_sxp = Rf_ScalarLogical(0);
-            Rf_protect(raw_sxp);
+            let _raw_guard = protect(raw_sxp);
 
             let p5 = Rf_cons(raw_sxp, R_NilValue());
-            Rf_protect(p5);
+            let _p5_guard = protect(p5);
             let p4 = Rf_cons(method_sxp, p5);
-            Rf_protect(p4);
+            let _p4_guard = protect(p4);
             let p3 = Rf_cons(block_sxp, p4);
-            Rf_protect(p3);
+            let _p3_guard = protect(p3);
             let p2 = Rf_cons(enc_sxp, p3);
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(open_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let file_args = Rf_cons(desc_sxp, p1);
-            Rf_protect(file_args);
+            let _file_args_guard = protect(file_args);
 
             let conn_result = do_file(ptr::null_mut(), ptr::null_mut(), file_args, ptr::null_mut());
-            Rf_protect(conn_result);
+            let _conn_result_guard = protect(conn_result);
             let conn_idx = as_integer(conn_result);
 
             // Now read lines
             let n_sxp = Rf_ScalarInteger(-1);
-            Rf_protect(n_sxp);
+            let _n_guard = protect(n_sxp);
             let ok_sxp = Rf_ScalarLogical(1);
-            Rf_protect(ok_sxp);
+            let _ok_guard = protect(ok_sxp);
             let warn_sxp = Rf_ScalarLogical(1);
-            Rf_protect(warn_sxp);
+            let _warn_guard = protect(warn_sxp);
             let enc2_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
-            Rf_protect(enc2_sxp);
+            let _enc2_guard = protect(enc2_sxp);
             let skipnul_sxp = Rf_ScalarLogical(0);
-            Rf_protect(skipnul_sxp);
+            let _skipnul_guard = protect(skipnul_sxp);
 
             let p5r = Rf_cons(skipnul_sxp, R_NilValue());
-            Rf_protect(p5r);
+            let _p5r_guard = protect(p5r);
             let p4r = Rf_cons(enc2_sxp, p5r);
-            Rf_protect(p4r);
+            let _p4r_guard = protect(p4r);
             let p3r = Rf_cons(warn_sxp, p4r);
-            Rf_protect(p3r);
+            let _p3r_guard = protect(p3r);
             let p2r = Rf_cons(ok_sxp, p3r);
-            Rf_protect(p2r);
+            let _p2r_guard = protect(p2r);
             let p1r = Rf_cons(n_sxp, p2r);
-            Rf_protect(p1r);
+            let _p1r_guard = protect(p1r);
             let rl_args = Rf_cons(conn_result, p1r);
-            Rf_protect(rl_args);
+            let _rl_args_guard = protect(rl_args);
 
             let lines_result =
                 do_readLines(ptr::null_mut(), ptr::null_mut(), rl_args, ptr::null_mut());
@@ -3124,7 +3108,7 @@ mod tests {
 
             // Close the connection
             let close_args = Rf_cons(conn_result, R_NilValue());
-            Rf_protect(close_args);
+            let _close_args_guard = protect(close_args);
             let close_result = do_close(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -3135,7 +3119,6 @@ mod tests {
 
             // Clean up
             let _ = fs::remove_file(&tmp);
-            Rf_unprotect(25);
         }
     }
 
@@ -3149,62 +3132,62 @@ mod tests {
             let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
             let open = test_ok(CString::new("w"));
             let desc_sxp = Rf_mkString(desc.as_ptr());
-            Rf_protect(desc_sxp);
+            let _desc_guard = protect(desc_sxp);
             let open_sxp = Rf_mkString(open.as_ptr());
-            Rf_protect(open_sxp);
+            let _open_guard = protect(open_sxp);
             let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
-            Rf_protect(enc_sxp);
+            let _enc_guard = protect(enc_sxp);
             let block_sxp = Rf_ScalarLogical(1);
-            Rf_protect(block_sxp);
+            let _block_guard = protect(block_sxp);
             let method_sxp = Rf_mkString(test_ok(CString::new("default")).as_ptr());
-            Rf_protect(method_sxp);
+            let _method_guard = protect(method_sxp);
             let raw_sxp = Rf_ScalarLogical(0);
-            Rf_protect(raw_sxp);
+            let _raw_guard = protect(raw_sxp);
 
             let p5 = Rf_cons(raw_sxp, R_NilValue());
-            Rf_protect(p5);
+            let _p5_guard = protect(p5);
             let p4 = Rf_cons(method_sxp, p5);
-            Rf_protect(p4);
+            let _p4_guard = protect(p4);
             let p3 = Rf_cons(block_sxp, p4);
-            Rf_protect(p3);
+            let _p3_guard = protect(p3);
             let p2 = Rf_cons(enc_sxp, p3);
-            Rf_protect(p2);
+            let _p2_guard = protect(p2);
             let p1 = Rf_cons(open_sxp, p2);
-            Rf_protect(p1);
+            let _p1_guard = protect(p1);
             let file_args = Rf_cons(desc_sxp, p1);
-            Rf_protect(file_args);
+            let _file_args_guard = protect(file_args);
 
             let conn_result = do_file(ptr::null_mut(), ptr::null_mut(), file_args, ptr::null_mut());
-            Rf_protect(conn_result);
+            let _conn_result_guard = protect(conn_result);
 
             // Create text to write
             let text = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-            Rf_protect(text);
+            let _text_guard = protect(text);
             let c1 = Rf_mkChar(test_ok(CString::new("hello")).as_ptr());
             let c2 = Rf_mkChar(test_ok(CString::new("world")).as_ptr());
             SET_STRING_ELT(text, 0, c1);
             SET_STRING_ELT(text, 1, c2);
 
             let sep_sxp = Rf_mkString(test_ok(CString::new("\n")).as_ptr());
-            Rf_protect(sep_sxp);
+            let _sep_guard = protect(sep_sxp);
             let usebytes_sxp = Rf_ScalarLogical(0);
-            Rf_protect(usebytes_sxp);
+            let _usebytes_guard = protect(usebytes_sxp);
 
             let p2w = Rf_cons(usebytes_sxp, R_NilValue());
-            Rf_protect(p2w);
+            let _p2w_guard = protect(p2w);
             let p1w = Rf_cons(sep_sxp, p2w);
-            Rf_protect(p1w);
+            let _p1w_guard = protect(p1w);
             let wl_args = Rf_cons(conn_result, p1w);
-            Rf_protect(wl_args);
+            let _wl_args_guard = protect(wl_args);
             let wl_args2 = Rf_cons(text, wl_args);
-            Rf_protect(wl_args2);
+            let _wl_args2_guard = protect(wl_args2);
 
             let result = do_writeLines(ptr::null_mut(), ptr::null_mut(), wl_args2, ptr::null_mut());
             assert_eq!(result, R_NilValue());
 
             // Close the connection
             let close_args = Rf_cons(conn_result, R_NilValue());
-            Rf_protect(close_args);
+            let _close_args_guard = protect(close_args);
             do_close(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -3218,7 +3201,6 @@ mod tests {
 
             // Clean up
             let _ = fs::remove_file(&tmp);
-            Rf_unprotect(21);
         }
     }
 }

@@ -18,7 +18,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::{R_PreserveObject, Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::{R_PreserveObject, protect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -864,8 +864,10 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             n = length(args);
         }
 
-        let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
-        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+        let value = Rf_allocVector(SEXPTYPE::VECSXP, n);
+        let _value_guard = protect(value);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, n);
+        let _names_guard = protect(names);
 
         // Get argnames for VECSXP args
         let mut argnames: SEXP = R_NilValue();
@@ -883,7 +885,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 r_error("invalid argument type for options");
             }
         }
-        let _ = Rf_protect(argnames);
+        let _argnames_guard = protect(argnames);
 
         let mut visible: c_int = FALSE;
 
@@ -977,18 +979,16 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         ));
                     }
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("deparse.cutoff").unwrap_or_default().as_ptr(),
                 ) {
                     let k = asInteger(argi);
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("digits").unwrap_or_default().as_ptr(),
@@ -1001,9 +1001,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         ));
                     }
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("expressions").unwrap_or_default().as_ptr(),
@@ -1019,9 +1018,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     crate::mainutils::errors::R_SetExpressions(k);
                     crate::mainutils::errors::R_SetExpressionsKeep(k);
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("keep.source").unwrap_or_default().as_ptr(),
@@ -1034,9 +1032,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'keep.source'");
                     }
                     let v = Rf_ScalarLogical(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("continue").unwrap_or_default().as_ptr(),
@@ -1046,9 +1043,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'continue'");
                     }
                     let new_val = Rf_mkString(translateChar(s));
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("prompt").unwrap_or_default().as_ptr(),
@@ -1058,9 +1054,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'prompt'");
                     }
                     let new_val = Rf_mkString(translateChar(s));
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("contrasts").unwrap_or_default().as_ptr(),
@@ -1069,9 +1064,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'contrasts'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("check.bounds").unwrap_or_default().as_ptr(),
@@ -1081,9 +1075,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     let k = asLogical(argi);
                     let v = Rf_ScalarLogical(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(name_cstr, CString::new("warn").unwrap_or_default().as_ptr()) {
                     if isNumeric(argi) == 0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'warn'");
@@ -1093,9 +1086,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'warn'");
                     }
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("warning.length").unwrap_or_default().as_ptr(),
@@ -1106,9 +1098,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     crate::mainutils::errors::R_SetWarnLength(k);
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("warning.expression")
@@ -1119,9 +1110,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'warning.expression'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("max.print").unwrap_or_default().as_ptr(),
@@ -1131,18 +1121,16 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'max.print'");
                     }
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("scipen").unwrap_or_default().as_ptr(),
                 ) {
                     let k = FixupScipen(argi, iWARN);
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("nwarnings").unwrap_or_default().as_ptr(),
@@ -1153,24 +1141,22 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     crate::mainutils::main::R_SetCollectWarnings(0); // force a reset
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("error").unwrap_or_default().as_ptr(),
                 ) {
                     if isFunction(argi) != 0 {
                         // Wrap in a call: makeErrorCall
-                        let error_call = Rf_protect(allocLang(1));
+                        let error_call = allocLang(1);
+                        let _guard = protect(error_call);
                         SETCAR(error_call, argi);
                         SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, error_call));
-                        Rf_unprotect(1);
                     } else if isLanguage(argi) != 0 || isExpression(argi) != 0 {
                         let new_val = duplicate_sexp(argi);
-                        let _p = Rf_protect(new_val);
+                        let _guard = protect(new_val);
                         SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                        Rf_unprotect(1);
                     } else {
                         r_error("invalid value for 'error'");
                     }
@@ -1188,9 +1174,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     crate::mainutils::errors::R_SetShowErrorMessages(*LOGICAL(argi).add(0) != 0);
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("catch.script.errors")
@@ -1204,18 +1189,16 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'catch.script.errors'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(name_cstr, CString::new("echo").unwrap_or_default().as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'echo'");
                     }
                     let k = asLogical(argi);
                     let v = Rf_ScalarLogical(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("OutDec").unwrap_or_default().as_ptr(),
@@ -1224,9 +1207,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'OutDec'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("max.contour.segments")
@@ -1238,9 +1220,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'max.contour.segments'");
                     }
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("warnPartialMatchDollar")
@@ -1254,9 +1235,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'warnPartialMatchDollar'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("warnPartialMatchArgs")
@@ -1270,9 +1250,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'warnPartialMatchArgs'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("warnPartialMatchAttr")
@@ -1286,9 +1265,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'warnPartialMatchAttr'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("showWarnCalls").unwrap_or_default().as_ptr(),
@@ -1300,9 +1278,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'showWarnCalls'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("showErrorCalls").unwrap_or_default().as_ptr(),
@@ -1314,9 +1291,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'showErrorCalls'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("showNCalls").unwrap_or_default().as_ptr(),
@@ -1326,9 +1302,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'showNCalls'");
                     }
                     let v = Rf_ScalarInteger(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("browserNLdisabled")
@@ -1342,9 +1317,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'browserNLdisabled'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("CBoundsCheck").unwrap_or_default().as_ptr(),
@@ -1356,9 +1330,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'CBoundsCheck'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("quiet").unwrap_or_default().as_ptr(),
@@ -1368,9 +1341,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     let k = asLogical(argi);
                     let v = Rf_ScalarLogical(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("verbose").unwrap_or_default().as_ptr(),
@@ -1380,9 +1352,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     let k = asLogical(argi);
                     let v = Rf_ScalarLogical(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("matprod").unwrap_or_default().as_ptr(),
@@ -1392,9 +1363,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'matprod'");
                     }
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("PCRE_study").unwrap_or_default().as_ptr(),
@@ -1402,15 +1372,13 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     if TYPEOF(argi) == SEXPTYPE::LGLSXP {
                         let k = asLogical(argi);
                         let v = Rf_ScalarLogical(k);
-                        let _p = Rf_protect(v);
+                        let _guard = protect(v);
                         SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                        Rf_unprotect(1);
                     } else {
                         let k = asInteger(argi);
                         let v = Rf_ScalarInteger(k);
-                        let _p = Rf_protect(v);
+                        let _guard = protect(v);
                         SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                        Rf_unprotect(1);
                     }
                 } else if streql(
                     name_cstr,
@@ -1418,9 +1386,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 ) {
                     let use_jit = asLogical(argi);
                     let v = Rf_ScalarLogical(use_jit);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("PCRE_limit_recursion")
@@ -1428,9 +1395,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .as_ptr(),
                 ) {
                     let v = Rf_ScalarLogical(asLogical(argi));
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("stringsAsFactors")
@@ -1442,9 +1408,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                     let k = asLogical(argi);
                     let v = Rf_ScalarLogical(k);
-                    let _p = Rf_protect(v);
+                    let _guard = protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("editor").unwrap_or_default().as_ptr(),
@@ -1454,9 +1419,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         r_error("invalid value for 'editor'");
                     }
                     let new_val = Rf_mkString(translateChar(s));
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
                     CString::new("par.ask.default").unwrap_or_default().as_ptr(),
@@ -1465,9 +1429,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else {
                     // Generic: accept any value
                     let new_val = duplicate_sexp(argi);
-                    let _p = Rf_protect(new_val);
+                    let _guard = protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
-                    Rf_unprotect(1);
                 }
             } else {
                 // Querying: get the value of the named option
@@ -1490,7 +1453,6 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         setAttrib(value, R_NamesSymbol(), names);
-        Rf_unprotect(3); // value, names, argnames
         set_R_Visible(visible);
         value
     }
@@ -1504,18 +1466,16 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 mod tests {
     use super::*;
     use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
-    use crate::sexp::protect::R_ProtectCount;
+    use crate::sexp::protect::{R_ProtectCount, protect_n};
     use std::ffi::CString;
 
     fn reset_protect_stack() {
         if !crate::sexp::instance::has_current_instance() {
             return;
         }
-        unsafe {
-            let n = R_ProtectCount();
-            if n > 0 {
-                Rf_unprotect(n as c_int);
-            }
+        let n = R_ProtectCount();
+        if n > 0 {
+            drop(protect_n(n));
         }
     }
 
@@ -1748,9 +1708,8 @@ mod tests {
                     .as_ptr(),
             );
             let val = Rf_ScalarInteger(42);
-            let _p = Rf_protect(val);
+            let _guard = protect(val);
             let old = R_SetOption(tag, val);
-            Rf_unprotect(1);
 
             // Should not have existed before
             assert_eq!(old, R_NilValue());

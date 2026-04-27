@@ -21,7 +21,7 @@ use crate::sexp::context::{R_GlobalContext, RCNTXT};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocList;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -667,7 +667,7 @@ unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEX
         // Shallow-duplicate supplied arguments
         let n_supplied = length(supplied);
         let prsupplied = crate::sexp::memory_ext::allocList(n_supplied);
-        Rf_protect(prsupplied);
+        let _prsupplied_guard = protect(prsupplied);
         let mut b = supplied;
         let mut a = prsupplied;
         while !b.is_null() && b != R_NilValue() {
@@ -772,7 +772,6 @@ unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEX
             }
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         prsupplied
     }
 }
@@ -987,14 +986,14 @@ unsafe fn dispatchMethod(
     unsafe {
         // Create the S3 dispatch variables
         let generic_str = Rf_mkString(generic);
-        Rf_protect(generic_str);
+        let _generic_str_guard = protect(generic_str);
 
         let blank_str = Rf_mkString(b"\x00".as_ptr() as *const c_char);
-        Rf_protect(blank_str);
+        let _blank_str_guard = protect(blank_str);
 
         let method_name = PRINTNAME(method);
         let method_str = Rf_ScalarString(method_name);
-        Rf_protect(method_str);
+        let _method_str_guard = protect(method_str);
 
         let newvars = createS3Vars(
             generic_str,
@@ -1004,7 +1003,7 @@ unsafe fn dispatchMethod(
             callrho,
             defrho,
         );
-        Rf_protect(newvars);
+        let _newvars_guard = protect(newvars);
 
         // Create the new call
         let mut newcall = R_NilValue();
@@ -1014,7 +1013,7 @@ unsafe fn dispatchMethod(
                 SETCAR(newcall, method);
             }
         }
-        Rf_protect(newcall);
+        let _newcall_guard = protect(newcall);
 
         let mut matchedarg = if !cptr.is_null() {
             (*cptr).promiseargs
@@ -1024,11 +1023,9 @@ unsafe fn dispatchMethod(
         if matchedarg.is_null() || matchedarg == R_NilValue() {
             matchedarg = CDR(newcall);
         }
-        Rf_protect(matchedarg);
+        let _matchedarg_guard = protect(matchedarg);
 
         let ans = applyMethod(newcall, sxp, matchedarg, rho, newvars);
-
-        Rf_unprotect(6);
         ans
     }
 }
@@ -1131,11 +1128,10 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
 
         // Search from callrho up to the top environment
         let top = topenv(R_NilValue(), callrho);
-        Rf_protect(top);
+        let _top_guard = protect(top);
 
         let val = findFunInEnvRange(method, callrho, top);
         if val != R_UnboundValue() {
-            Rf_unprotect(1);
             return val;
         }
 
@@ -1148,7 +1144,7 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
             let s3_table_sym = S3MethodsTable_symbol();
             let table = crate::sexp::envir::R_findVarInFrame(effective_defrho, s3_table_sym);
             if table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
-                Rf_protect(table);
+                let _table_guard = protect(table);
                 let val2 = crate::sexp::envir::R_findVarInFrame(table, method);
                 if val2 != R_UnboundValue() {
                     let t = TYPEOF(val2);
@@ -1156,11 +1152,9 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
                         || t == SEXPTYPE::BUILTINSXP
                         || t == SEXPTYPE::SPECIALSXP
                     {
-                        Rf_unprotect(2);
                         return val2;
                     }
                 }
-                Rf_unprotect(1);
             }
         }
 
@@ -1172,12 +1166,10 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         if !search_start.is_null() && search_start != R_EmptyEnv() {
             let val3 = findFunWithBaseEnvAfterGlobalEnv(method, search_start);
             if val3 != R_UnboundValue() {
-                Rf_unprotect(1);
                 return val3;
             }
         }
 
-        Rf_unprotect(1);
         R_UnboundValue()
     }
 }
@@ -1339,22 +1331,21 @@ pub unsafe fn usemethod(
 
         let op = (*cptr).closure;
         let klass = R_data_class2(obj);
-        Rf_protect(klass);
+        let _klass_guard = protect(klass);
 
         let generic_name = std::ffi::CStr::from_ptr(generic).to_string_lossy();
         let Some(method_match) =
             lookup_s3_method_for_classes(&generic_name, klass, rho, callrho, defrho, true)
         else {
-            Rf_unprotect(1); // klass
             return 0;
         };
 
-        Rf_protect(method_match.method);
+        let _method_guard = protect(method_match.method);
         match method_match.class_index {
             Some(i) => {
                 if i > 0 {
                     let dotClass = stringSuffix(klass, i);
-                    Rf_protect(dotClass);
+                    let _dotclass_guard = protect(dotClass);
                     setAttrib(dotClass, sym("previous"), klass);
                     *ans = dispatchMethod(
                         op,
@@ -1367,7 +1358,6 @@ pub unsafe fn usemethod(
                         callrho,
                         defrho,
                     );
-                    Rf_unprotect(1); // dotClass
                 } else {
                     *ans = dispatchMethod(
                         op,
@@ -1396,7 +1386,6 @@ pub unsafe fn usemethod(
                 );
             }
         }
-        Rf_unprotect(2); // klass, sxp
         1
     }
 }
@@ -1491,11 +1480,10 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
         // No method found -- construct error message
         let klass = R_data_class2(obj);
-        Rf_protect(klass);
+        let _klass_guard = protect(klass);
         let nclass = length(klass);
 
         if nclass == 0 {
-            Rf_unprotect(1);
             let msg = format!(
                 "no applicable method for '{}' applied to an object of class \"\"",
                 std::ffi::CStr::from_ptr(generic_cstr).to_string_lossy()
@@ -1513,8 +1501,6 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
                 class_str.push_str(&std::ffi::CStr::from_ptr(cs).to_string_lossy());
             }
         }
-
-        Rf_unprotect(1);
 
         let msg = format!(
             "no applicable method for '{}' applied to an object of class \"{}\"",
@@ -1622,11 +1608,10 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         if newcall.is_null() || newcall == R_NilValue() {
             return R_NilValue();
         }
-        Rf_protect(newcall);
+        let _newcall_guard = protect(newcall);
 
         // Check that the call's first element is a symbol
         if TYPEOF(CAR(newcall)) != SEXPTYPE::SYMSXP {
-            Rf_unprotect(1);
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "'NextMethod' called from an anonymous function".to_string(),
             });
@@ -1665,13 +1650,11 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         let s_callfun = (*found_cptr).callfun;
         if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP {
             if s_callfun == R_UnboundValue() {
-                Rf_unprotect(1);
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "no calling generic was found: was a method called directly?"
                         .to_string(),
                 });
             } else {
-                Rf_unprotect(1);
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: format!(
                         "'function' is not a function, but of type {}",
@@ -1685,7 +1668,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         // Use patchArgsByActuals instead of raw promiseargs
         let mut matchedarg =
             patchArgsByActuals(formals, (*found_cptr).promiseargs, (*found_cptr).cloenv);
-        Rf_protect(matchedarg);
+        let mut _matchedarg_guard = protect(matchedarg);
 
         // Handle ... arguments (C: s = CADDR(args), check R_DotsSymbol)
         let dotarg = CADDR(args);
@@ -1694,13 +1677,12 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             if !t.is_null() && t != R_NilValue() && t != R_MissingArg() {
                 (*t).sxpinfo.set_type(SEXPTYPE::LISTSXP);
                 let s = matchmethargs(matchedarg, t);
-                Rf_unprotect(1);
+                drop(_matchedarg_guard);
                 matchedarg = s;
-                Rf_protect(matchedarg);
+                _matchedarg_guard = protect(matchedarg);
                 newcall = fixcall(newcall, matchedarg);
             }
         } else {
-            Rf_unprotect(2);
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "wrong argument ...".to_string(),
             });
@@ -1710,7 +1692,6 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         if klass == R_UnboundValue() {
             let obj = GetObject(found_cptr);
             if isObject(obj) == FALSE {
-                Rf_unprotect(2);
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "object not specified".to_string(),
                 });
@@ -1723,15 +1704,13 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             generic = Rf_eval(CAR(args), env);
         }
         if generic == R_NilValue() || generic.is_null() {
-            Rf_unprotect(2);
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "generic function not specified".to_string(),
             });
         }
-        Rf_protect(generic);
+        let _generic_guard = protect(generic);
 
         if isString(generic) == FALSE || LENGTH(generic) != 1 {
-            Rf_unprotect(3);
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "invalid generic argument to 'NextMethod'".to_string(),
             });
@@ -1739,7 +1718,6 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         let generic_cstr = CHAR(STRING_ELT(generic, 0));
         if generic_cstr.is_null() || *generic_cstr == 0 {
-            Rf_unprotect(3);
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "generic function not specified".to_string(),
             });
@@ -1753,7 +1731,6 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             // basename stays as generic
         } else {
             if isString(group_val) == FALSE || LENGTH(group_val) != 1 {
-                Rf_unprotect(3);
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "invalid 'group' argument found in 'NextMethod'".to_string(),
                 });
@@ -1763,7 +1740,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                 basename = group_val;
             }
         }
-        Rf_protect(group_val);
+        let _group_guard = protect(group_val);
 
         // Find current method in .Class
         let mut nextfun: SEXP = R_NilValue();
@@ -1773,7 +1750,6 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         let mut method_idx: c_int = 0;
         if method != R_UnboundValue() {
             if isString(method) == FALSE {
-                Rf_unprotect(4);
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "wrong value for .Method".to_string(),
                 });
@@ -1860,12 +1836,10 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                 let t = Rf_install(sg);
                 nextfun = crate::sexp::envir::R_findVar(t, env);
                 if TYPEOF(nextfun) == SEXPTYPE::PROMSXP {
-                    Rf_protect(nextfun);
+                    let _nextfun_eval_guard = protect(nextfun);
                     nextfun = Rf_eval(nextfun, env);
-                    Rf_unprotect(1);
                 }
                 if isFunction(nextfun) == FALSE {
-                    Rf_unprotect(4);
                     crate::sexp::memory_ext::vmaxset(_vmax);
                     std::panic::panic_any(crate::sexp::context::RError {
                         message: "no method to invoke".to_string(),
@@ -1878,7 +1852,6 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                     } else {
                         nextfun = getPrimitive(t);
                         if nextfun == R_NilValue() {
-                            Rf_unprotect(4);
                             crate::sexp::memory_ext::vmaxset(_vmax);
                             std::panic::panic_any(crate::sexp::context::RError {
                                 message: "no method to invoke".to_string(),
@@ -1889,16 +1862,17 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
         }
 
-        Rf_protect(nextfun);
+        let _nextfun_guard = protect(nextfun);
         let s = stringSuffix(klass, i);
-        Rf_protect(s);
+        let _s_guard = protect(s);
         setAttrib(s, sym("previous"), klass);
 
         // Set up method name (C: duplicate(method) and update elements)
         let method_name: SEXP;
+        let _method_name_guard;
         if method != R_UnboundValue() {
             method_name = crate::mainutils::duplicate::duplicate(method);
-            Rf_protect(method_name);
+            _method_name_guard = protect(method_name);
             for jj in 0..LENGTH(method_name) {
                 let mc = CHAR(STRING_ELT(method_name, jj as R_xlen_t));
                 if !mc.is_null() && *mc != 0 && libc::strlen(mc) > 0 {
@@ -1907,12 +1881,12 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
         } else {
             method_name = PRINTNAME(nextfunSignature);
-            Rf_protect(method_name);
+            _method_name_guard = protect(method_name);
         }
 
         // Create S3 vars
         let newvars = createS3Vars(generic, group_val, s, method_name, callenv, defenv);
-        Rf_protect(newvars);
+        let _newvars_guard = protect(newvars);
 
         SETCAR(newcall, nextfunSignature);
 
@@ -1925,7 +1899,6 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         let ans = applyMethod(newcall, nextfun, matchedarg, env, newvars);
 
         crate::sexp::memory_ext::vmaxset(_vmax);
-        Rf_unprotect(9);
         ans
     }
 }
@@ -1983,16 +1956,14 @@ pub unsafe fn inherits2(x: SEXP, what: *const c_char) -> c_int {
             } else {
                 R_data_class(x)
             };
-            Rf_protect(klass);
+            let _klass_guard = protect(klass);
             let nclass = length(klass);
             for i in 0..nclass {
                 let cs = CHAR(STRING_ELT(klass, i as R_xlen_t));
                 if !cs.is_null() && libc::strcmp(cs, what) == 0 {
-                    Rf_unprotect(1);
                     return TRUE;
                 }
             }
-            Rf_unprotect(1);
         }
         FALSE
     }
@@ -2017,10 +1988,9 @@ unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
         } else {
             R_data_class(x)
         };
-        Rf_protect(klass);
+        let _klass_guard = protect(klass);
 
         if isString(what) == FALSE {
-            Rf_unprotect(1);
             std::panic::panic_any(crate::sexp::context::RError {
                 message:
                     "'what' must be a character vector or an object with a nameOfClass() method"
@@ -2038,7 +2008,7 @@ unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
         let rval: SEXP;
         if isvec {
             rval = Rf_allocVector(SEXPTYPE::INTSXP, nwhat);
-            Rf_protect(rval);
+            let _rval_guard = protect(rval);
         } else {
             rval = R_NilValue();
         }
@@ -2049,12 +2019,10 @@ unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
             if isvec {
                 *INTEGER_ELT_mut(rval, j) = idx + 1; // 0 when not found
             } else if idx >= 0 {
-                Rf_unprotect(if isvec { 2 } else { 1 });
                 return Rf_ScalarLogical(TRUE);
             }
         }
 
-        Rf_unprotect(if isvec { 2 } else { 1 });
         if isvec { rval } else { Rf_ScalarLogical(FALSE) }
     }
 }
@@ -2104,9 +2072,8 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
         if OBJECT(what) != FALSE && TYPEOF(what) != SEXPTYPE::STRSXP {
             let name = nameOfClass(what, env);
             if name != R_NilValue() && !name.is_null() {
-                Rf_protect(name);
+                let _name_guard = protect(name);
                 let val = inherits3(x, name, which);
-                Rf_unprotect(1);
                 return val;
             }
         }
@@ -2310,7 +2277,7 @@ pub unsafe fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho
         if isObject(x) != FALSE {
             let clattr = getAttrib(x, R_ClassSymbol());
             let cl = asChar(clattr);
-            Rf_protect(cl);
+            let _cl_guard = protect(cl);
 
             let class_cstr = if !cl.is_null() { CHAR(cl) } else { ptr::null() };
             if !class_cstr.is_null() {
@@ -2319,13 +2286,11 @@ pub unsafe fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho
                     && *(*valid.offset(ans as isize)) != 0
                 {
                     if libc::strcmp(class_cstr, *valid.offset(ans as isize)) == 0 {
-                        Rf_unprotect(1);
                         return ans;
                     }
                     ans += 1;
                 }
             }
-            Rf_unprotect(1);
         }
         -1
     }
@@ -2770,7 +2735,7 @@ pub unsafe fn R_possible_dispatch(
 
                     let prim_name_ptr = crate::mainutils::relop::PRIMNAME(op);
                     let suppliedvars = crate::sexp::memory_ext::allocList(1);
-                    Rf_protect(suppliedvars);
+                    let _suppliedvars_guard = protect(suppliedvars);
                     SETCAR(suppliedvars, Rf_mkString(prim_name_ptr));
                     SETTAG(
                         suppliedvars,
@@ -2779,7 +2744,7 @@ pub unsafe fn R_possible_dispatch(
 
                     if promisedArgs == FALSE {
                         let s = crate::eval::dispatch::promiseArgs(CDR(call), rho);
-                        Rf_protect(s);
+                        let _s_guard = protect(s);
                         if length(s) != length(args) {
                             error("dispatch error");
                         }
@@ -2803,7 +2768,6 @@ pub unsafe fn R_possible_dispatch(
                             suppliedvars,
                             TRUE,
                         );
-                        crate::sexp::protect::Rf_unprotect(2);
                         return value;
                     } else {
                         let value = crate::eval::closure::applyClosure(
@@ -2814,7 +2778,6 @@ pub unsafe fn R_possible_dispatch(
                             suppliedvars,
                             FALSE,
                         );
-                        crate::sexp::protect::Rf_unprotect(1);
                         return value;
                     }
                 }
@@ -2835,7 +2798,7 @@ pub unsafe fn R_possible_dispatch(
 
         if promisedArgs == FALSE {
             let s = crate::eval::dispatch::promiseArgs(CDR(call), rho);
-            Rf_protect(s);
+            let _s_guard = protect(s);
             if length(s) != length(args) {
                 error("dispatch error");
             }
@@ -2850,7 +2813,6 @@ pub unsafe fn R_possible_dispatch(
             }
             let value =
                 crate::eval::closure::applyClosure(call, fundef, s, rho, R_NilValue(), TRUE);
-            crate::sexp::protect::Rf_unprotect(1);
             if !prim_methods_ptr.is_null() {
                 *prim_methods_ptr.add(offset as usize) = current;
             }
@@ -2965,7 +2927,7 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
         if flag == IS_S4_OBJECT(s) {
             return s;
         }
-        Rf_protect(s);
+        let _s_guard = protect(s);
 
         if flag != FALSE {
             SET_S4_OBJECT(s);
@@ -2989,18 +2951,15 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
                         "object of class \"{}\" does not correspond to a valid S3 object",
                         class_str
                     );
-                    Rf_unprotect(1);
                     std::panic::panic_any(crate::sexp::context::RError { message: msg });
                 } else {
                     // complete == 2: conditional, return unchanged
-                    Rf_unprotect(1);
                     return s;
                 }
             }
             UNSET_S4_OBJECT(s);
         }
 
-        Rf_unprotect(1);
         s
     }
 }
@@ -3072,7 +3031,7 @@ pub unsafe fn findmethod(
         }
 
         let klass = R_data_class2(obj);
-        Rf_protect(klass);
+        let _klass_guard = protect(klass);
         let nclass = length(klass);
 
         for i in 0..nclass {
@@ -3081,7 +3040,6 @@ pub unsafe fn findmethod(
             let sxp = R_LookupMethod(m, ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             if isFunction(sxp) != FALSE {
                 *method = sxp;
-                Rf_unprotect(1);
                 return i + 1; // 1-based index
             }
         }
@@ -3094,11 +3052,9 @@ pub unsafe fn findmethod(
         let sxp = R_LookupMethod(m, ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
         if isFunction(sxp) != FALSE {
             *method = sxp;
-            Rf_unprotect(1);
             return 0; // default
         }
 
-        Rf_unprotect(1);
         -1 // not found
     }
 }
@@ -3134,7 +3090,7 @@ pub unsafe fn DispatchGroup(
         }
 
         let klass = R_data_class(obj);
-        Rf_protect(klass);
+        let _klass_guard = protect(klass);
         let nclass = length(klass);
 
         // Try each class in order
@@ -3173,12 +3129,10 @@ pub unsafe fn DispatchGroup(
             if isFunction(method_val) != FALSE {
                 // Found a group method -- dispatch
                 // Full implementation would call applyMethod
-                Rf_unprotect(1);
                 return 1;
             }
         }
 
-        Rf_unprotect(1);
         0
     }
 }
@@ -3215,7 +3169,7 @@ pub(crate) unsafe fn DispatchOrEval_objects(
         }
 
         let klass = R_data_class(obj);
-        Rf_protect(klass);
+        let _klass_guard = protect(klass);
         let nclass = length(klass);
 
         for i in 0..nclass {
@@ -3227,12 +3181,10 @@ pub(crate) unsafe fn DispatchOrEval_objects(
                 // Dispatch to the method
                 // Full implementation would call applyMethod
                 *ans = method_val;
-                Rf_unprotect(1);
                 return 1;
             }
         }
 
-        Rf_unprotect(1);
         0
     }
 }
@@ -3528,7 +3480,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            Rf_protect(class_vec);
+            let _class_vec_guard = protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
                 0,
@@ -3541,7 +3493,6 @@ mod tests {
                 inherits2(v, b"otherclass\0".as_ptr() as *const c_char),
                 FALSE
             );
-            Rf_unprotect(1);
         }
     }
 
@@ -3693,7 +3644,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            Rf_protect(class_vec);
+            let _class_vec_guard = protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
                 0,
@@ -3709,7 +3660,6 @@ mod tests {
             let result = R_check_class_and_super(v, valid.as_ptr(), ptr::null_mut());
             // Result should be >= 0 (found) or -1 (not found)
             // If class attribute infrastructure works, result should be 1
-            Rf_unprotect(1);
             if isObject(v) != FALSE {
                 assert_eq!(result, 1);
             }
@@ -3885,7 +3835,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
-            Rf_protect(klass);
+            let _klass_guard = protect(klass);
             SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 2, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
@@ -3910,7 +3860,6 @@ mod tests {
                 stringPositionTr(klass, b"\x00".as_ptr() as *const c_char),
                 -1
             );
-            Rf_unprotect(1);
         }
     }
 
@@ -3919,7 +3868,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
-            Rf_protect(klass);
+            let _klass_guard = protect(klass);
             SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 2, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
@@ -3935,8 +3884,6 @@ mod tests {
 
             let suffix_empty = stringSuffix(klass, 3);
             assert!(suffix_empty.is_null() || suffix_empty == R_NilValue());
-
-            Rf_unprotect(1);
         }
     }
 
@@ -4261,7 +4208,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            Rf_protect(class_vec);
+            let _class_vec_guard = protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
                 0,
@@ -4277,7 +4224,6 @@ mod tests {
             assert!(!result.is_null());
             // Verify class was cleared by reading attribute directly
             assert_eq!(getAttrib(result, R_ClassSymbol()), R_NilValue());
-            Rf_unprotect(1);
         }
     }
 
@@ -4301,7 +4247,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let what = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-            Rf_protect(what);
+            let _what_guard = protect(what);
             SET_STRING_ELT(what, 0, Rf_mkChar(b"numeric\0".as_ptr() as *const c_char));
             SET_STRING_ELT(what, 1, Rf_mkChar(b"integer\0".as_ptr() as *const c_char));
             let which = Rf_ScalarLogical(TRUE);
@@ -4309,7 +4255,6 @@ mod tests {
             assert!(!result.is_null());
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 2);
-            Rf_unprotect(1);
         }
     }
 
@@ -4319,13 +4264,13 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-            Rf_protect(class_vec);
+            let _class_vec_guard = protect(class_vec);
             SET_STRING_ELT(class_vec, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(class_vec, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
             setAttrib(v, R_ClassSymbol(), class_vec);
 
             let what = Rf_allocVector(SEXPTYPE::STRSXP, 3);
-            Rf_protect(what);
+            let _what_guard = protect(what);
             SET_STRING_ELT(what, 0, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
             SET_STRING_ELT(what, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
             SET_STRING_ELT(what, 2, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
@@ -4337,7 +4282,6 @@ mod tests {
             assert_eq!(*INTEGER_ELT_mut(result, 0), 0);
             assert_eq!(*INTEGER_ELT_mut(result, 1), 2);
             assert_eq!(*INTEGER_ELT_mut(result, 2), 1);
-            Rf_unprotect(2);
         }
     }
 
@@ -4396,7 +4340,7 @@ mod tests {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            Rf_protect(class_vec);
+            let _class_vec_guard = protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
                 0,
@@ -4409,7 +4353,6 @@ mod tests {
             let result = do_oldClass(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(isObject(CAR(args)), TRUE);
-            Rf_unprotect(1);
         }
     }
 
@@ -4420,7 +4363,7 @@ mod tests {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-            Rf_protect(class_vec);
+            let _class_vec_guard = protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
                 0,
@@ -4435,7 +4378,6 @@ mod tests {
             assert!(!result.is_null());
             // Class should be cleared
             assert_eq!(getAttrib(v, R_ClassSymbol()), R_NilValue());
-            Rf_unprotect(1);
         }
     }
 }
