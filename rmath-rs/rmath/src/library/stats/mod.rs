@@ -116,7 +116,7 @@ mod family;
     unused_assignments,
     non_camel_case_types
 )]
-mod fexact;
+pub(crate) mod fexact;
 #[allow(
     dead_code,
     unused_imports,

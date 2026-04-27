@@ -30,10 +30,20 @@ use crate::nmath::dist::gamma::pgamma;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::protect;
 
 // ---- internal helper functions (not exported) ----
+
+#[derive(Default)]
+pub(crate) struct FexactState {
+    f5xact_itp: c_int,
+}
+
+fn with_fexact_state<R>(f: impl FnOnce(&mut FexactState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.fexact_state))
+}
 
 unsafe fn prterr(icode: c_int, mes: &str) {
     unsafe {
@@ -1448,14 +1458,6 @@ unsafe fn f5xact(
     psh: bool,
 ) {
     unsafe {
-        // Static variables carried across calls (C uses static)
-        thread_local! {
-            static ITMP: std::cell::Cell<c_int> = std::cell::Cell::new(0);
-            static IRD: std::cell::Cell<c_int> = std::cell::Cell::new(0);
-            static IPN: std::cell::Cell<c_int> = std::cell::Cell::new(0);
-            static ITP: std::cell::Cell<c_int> = std::cell::Cell::new(0);
-        }
-
         // All arrays are 1-based
 
         if psh {
@@ -1501,7 +1503,7 @@ unsafe fn f5xact(
             }
 
             // L30: Update KEY
-            ITP.set(itp_val);
+            with_fexact_state(|state| state.f5xact_itp = itp_val);
             *key.add(itp_val as usize) = *kval;
             *itop += 1;
             *ipoin.add(itp_val as usize) = *itop;
@@ -1526,7 +1528,7 @@ unsafe fn f5xact(
         }
 
         // L40: Find location, if any, of pastp
-        let itp_val = ITP.get();
+        let itp_val = with_fexact_state(|state| state.f5xact_itp);
         let mut ipn = *ipoin.add(itp_val as usize);
 
         let test1 = pastp - tol;
@@ -2073,5 +2075,21 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
         *REAL(ans).add(0) = p;
         ans
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sexp::instance::RInstance;
+
+    #[test]
+    fn fexact_continuation_state_is_instance_local() {
+        let mut first = RInstance::new();
+        let second = RInstance::new();
+
+        first.fexact_state.f5xact_itp = 11;
+
+        assert_eq!(first.fexact_state.f5xact_itp, 11);
+        assert_eq!(second.fexact_state.f5xact_itp, 0);
     }
 }
