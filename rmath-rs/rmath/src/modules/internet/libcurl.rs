@@ -7,11 +7,11 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::protect;
 use crate::sexp::*;
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
 use libc::{FILE, size_t, ssize_t};
-use std::cell::{Cell, RefCell};
 
 // ============================================================
 // libcurl FFI types and constants
@@ -211,13 +211,6 @@ unsafe extern "C" {
 }
 
 // ============================================================
-// Module-level state (statics matching C code)
-// ============================================================
-
-thread_local! { static current_timeout: Cell<c_int> = Cell::new(0); }
-thread_local! { static current_time: Cell<c_double> = Cell::new(0.0); }
-
-// ============================================================
 // Internal helper functions
 // ============================================================
 
@@ -300,8 +293,101 @@ fn r_min<T: PartialOrd>(a: T, b: T) -> T {
 const MAX_HEADERS: usize = 500;
 const MAX_HEADER_LEN: usize = 2049;
 
-thread_local! { static HEADERS: RefCell<[[c_char; MAX_HEADER_LEN]; MAX_HEADERS]> = RefCell::new([[0; MAX_HEADER_LEN]; MAX_HEADERS]); }
-thread_local! { static headers_used: Cell<c_int> = Cell::new(0); }
+pub(crate) struct LibcurlRuntimeState {
+    current_timeout: c_int,
+    current_time: c_double,
+    headers: Vec<[c_char; MAX_HEADER_LEN]>,
+    headers_used: c_int,
+    total: c_double,
+    ndashes: c_int,
+}
+
+impl Default for LibcurlRuntimeState {
+    fn default() -> Self {
+        Self {
+            current_timeout: 0,
+            current_time: 0.0,
+            headers: vec![[0; MAX_HEADER_LEN]; MAX_HEADERS],
+            headers_used: 0,
+            total: 0.0,
+            ndashes: 0,
+        }
+    }
+}
+
+fn with_libcurl_state<R>(f: impl FnOnce(&mut LibcurlRuntimeState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.libcurl_state))
+}
+
+fn current_timeout() -> c_int {
+    with_libcurl_state(|state| state.current_timeout)
+}
+
+fn set_current_timeout(value: c_int) {
+    with_libcurl_state(|state| {
+        state.current_timeout = value;
+    });
+}
+
+fn current_time() -> c_double {
+    with_libcurl_state(|state| state.current_time)
+}
+
+fn set_current_time(value: c_double) {
+    with_libcurl_state(|state| {
+        state.current_time = value;
+    });
+}
+
+fn total() -> c_double {
+    with_libcurl_state(|state| state.total)
+}
+
+fn set_total(value: c_double) {
+    with_libcurl_state(|state| {
+        state.total = value;
+    });
+}
+
+fn ndashes() -> c_int {
+    with_libcurl_state(|state| state.ndashes)
+}
+
+fn set_ndashes(value: c_int) {
+    with_libcurl_state(|state| {
+        state.ndashes = value;
+    });
+}
+
+fn reset_headers() {
+    with_libcurl_state(|state| {
+        state.headers_used = 0;
+    });
+}
+
+fn headers_used() -> c_int {
+    with_libcurl_state(|state| state.headers_used)
+}
+
+fn header_ptr(index: usize) -> *const c_char {
+    with_libcurl_state(|state| state.headers[index].as_ptr())
+}
+
+unsafe fn push_header(buffer: *const c_char, len: usize) {
+    with_libcurl_state(|state| {
+        let used = state.headers_used as usize;
+        if used >= MAX_HEADERS {
+            return;
+        }
+        let copy_len = len.min(MAX_HEADER_LEN - 1);
+        state.headers[used].fill(0);
+        unsafe {
+            std::ptr::copy_nonoverlapping(buffer, state.headers[used].as_mut_ptr(), copy_len);
+        }
+        state.headers[used][copy_len] = 0;
+        state.headers_used += 1;
+    });
+}
 
 /// rcvHeaders - callback for receiving HTTP headers (used by curlGetHeaders)
 unsafe fn rcvHeaders(
@@ -314,23 +400,10 @@ unsafe fn rcvHeaders(
         let d = buffer as *mut c_char;
         let result = size * nmemb;
         let res = if result > 2048 { 2048 } else { result };
-        if (headers_used.with(|v| v.get()) as usize) >= MAX_HEADERS {
+        if (headers_used() as usize) >= MAX_HEADERS {
             return result;
         }
-        HEADERS.with(|headers| {
-            libc::strncpy(
-                headers.borrow_mut()[headers_used.with(|v| v.get()) as usize].as_mut_ptr(),
-                d,
-                res,
-            )
-        });
-        // Header line is NOT zero terminated
-        HEADERS.with(|headers| {
-            *headers.borrow_mut()[headers_used.with(|v| v.get()) as usize]
-                .as_mut_ptr()
-                .add(res) = 0
-        });
-        headers_used.with(|v| v.set(v.get() + 1));
+        push_header(d, res);
         result
     }
 }
@@ -493,7 +566,7 @@ unsafe fn download_report_url_error(msg: *mut CURLMsg) {
 
             if timedout {
                 Rf_warning1(b"URL '%s': Timeout was reached\0".as_ptr() as *const c_char);
-                let _ = current_timeout.with(|v| v.get());
+                let _ = current_timeout();
             } else {
                 Rf_warning1(b"URL '%s': status was unknown\0".as_ptr() as *const c_char);
                 let _ = strerr;
@@ -574,7 +647,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
         } else {
             1000 * timeout0 as c_long
         };
-        current_timeout.with(|v| v.set(if timeout0 == NA_INTEGER { 0 } else { timeout0 }));
+        set_current_timeout(if timeout0 == NA_INTEGER { 0 } else { timeout0 });
         curl_easy_setopt(hnd, CURLOPT_CONNECTTIMEOUT_MS, timeout);
         curl_easy_setopt(hnd, CURLOPT_TIMEOUT_MS, timeout);
 
@@ -606,9 +679,6 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
 // ============================================================
 // Progress callbacks for downloads
 // ============================================================
-
-thread_local! { static total: Cell<c_double> = Cell::new(0.0); }
-thread_local! { static ndashes: Cell<c_int> = Cell::new(0); }
 
 /// putdashes - print download progress dashes (Unix)
 #[cfg(unix)]
@@ -646,8 +716,8 @@ unsafe fn progress(
 
         // We only use downloads. dltotal may be zero.
         if status < 300 && dltotal > 0.0 {
-            if total.with(|v| v.get()) == 0.0 {
-                total.with(|v| v.set(dltotal));
+            if total() == 0.0 {
+                set_total(dltotal);
                 let mut content_type: *mut c_char = std::ptr::null_mut();
                 curl_easy_getinfo(
                     hnd,
@@ -662,7 +732,7 @@ unsafe fn progress(
                         std::ffi::CStr::from_ptr(content_type).to_string_lossy()
                     );
                 }
-                let total_val = total.with(|v| v.get());
+                let total_val = total();
                 if total_val > 1024.0 * 1024.0 {
                     eprintln!(
                         " length {:.0} bytes ({:.1} MB)",
@@ -679,12 +749,9 @@ unsafe fn progress(
                     eprintln!(" length {} bytes", total_val as c_int);
                 }
             }
-            let mut ndashes_ref = ndashes.with(|v| v.get());
-            putdashes(
-                &mut ndashes_ref,
-                (50.0 * dlnow / total.with(|v| v.get())) as c_int,
-            );
-            ndashes.with(|v| v.set(ndashes_ref));
+            let mut ndashes_ref = ndashes();
+            putdashes(&mut ndashes_ref, (50.0 * dlnow / total()) as c_int);
+            set_ndashes(ndashes_ref);
         }
         0
     }
@@ -702,10 +769,8 @@ unsafe fn progress_multi(
         let tstart = clientp as *mut c_double;
         if !tstart.is_null() {
             if *tstart == 0.0 && (dlnow > 0.0 || dltotal > 0.0) {
-                *tstart = current_time.with(|v| v.get());
-            } else if *tstart > 0.0
-                && (current_time.with(|v| v.get()) - *tstart)
-                    > (current_timeout.with(|v| v.get()) as c_double)
+                *tstart = current_time();
+            } else if *tstart > 0.0 && (current_time() - *tstart) > (current_timeout() as c_double)
             {
                 return 1; // abort transfer
             }
@@ -725,7 +790,7 @@ unsafe fn prereq_multi(
     unsafe {
         let tstart = clientp as *mut c_double;
         if !tstart.is_null() {
-            *tstart = current_time.with(|v| v.get());
+            *tstart = current_time();
         }
         CURL_PREREQFUNC_OK
     }
@@ -791,10 +856,10 @@ unsafe fn download_add_url(
             c_ref.errs.add(i as usize) as *mut c_void,
         );
 
-        total.with(|v| v.set(0.0));
+        set_total(0.0);
         if quiet == 0 && single != 0 {
             curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);
-            ndashes.with(|v| v.set(0));
+            set_ndashes(0);
             curl_easy_setopt(hnd, CURLOPT_XFERINFOFUNCTION, progress as *const c_void);
             curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, hnd);
         } else if quiet != 0 && single != 0 {
@@ -813,11 +878,7 @@ unsafe fn download_add_url(
             curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, tstart_ptr as *mut c_void);
             curl_easy_setopt(hnd, CURLOPT_PREREQFUNCTION, prereq_multi as *const c_void);
             curl_easy_setopt(hnd, CURLOPT_PREREQDATA, tstart_ptr as *mut c_void);
-            curl_easy_setopt(
-                hnd,
-                CURLOPT_LOW_SPEED_TIME,
-                current_timeout.with(|v| v.get()) as c_long,
-            );
+            curl_easy_setopt(hnd, CURLOPT_LOW_SPEED_TIME, current_timeout() as c_long);
             curl_easy_setopt(hnd, CURLOPT_LOW_SPEED_LIMIT, 1);
         }
 
@@ -993,7 +1054,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
         }
         let url = translateChar(STRING_ELT(scmd, 0));
 
-        headers_used.with(|v| v.set(0));
+        reset_headers();
 
         // redirect
         let redirect = asLogical(CADR(args));
@@ -1039,7 +1100,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
 
         if timeout > 0 {
             curl_easy_setopt(hnd, CURLOPT_TIMEOUT, timeout as c_long);
-            current_timeout.with(|v| v.set(timeout));
+            set_current_timeout(timeout);
         }
 
         // TLS version
@@ -1089,16 +1150,10 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
         );
         curl_easy_cleanup(hnd);
 
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, headers_used.with(|v| v.get()));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, headers_used());
         let _ans_guard = protect(ans);
-        for i in 0..headers_used.with(|v| v.get()) {
-            HEADERS.with(|headers| {
-                SET_STRING_ELT(
-                    ans,
-                    i as R_xlen_t,
-                    Rf_mkChar(headers.borrow()[i as usize].as_ptr()),
-                )
-            });
+        for i in 0..headers_used() {
+            SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(header_ptr(i as usize)));
         }
 
         let sStatus = install(b"status\0".as_ptr() as *const c_char);
@@ -1239,7 +1294,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
         curl_multi_setopt(mhnd, CURLMOPT_MAX_HOST_CONNECTIONS, 6);
 
         if single == 0 {
-            current_time.with(|v| v.set(currentTime()));
+            set_current_time(currentTime());
         }
 
         let mut next_url: c_int = 0;
@@ -1263,7 +1318,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
         );
 
         if single == 0 {
-            current_time.with(|v| v.set(currentTime()));
+            set_current_time(currentTime());
         }
 
         let mut still_running: c_int = 0;
@@ -1272,7 +1327,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
         let mut repeats: c_int = 0;
         loop {
             if single == 0 {
-                current_time.with(|v| v.set(currentTime()));
+                set_current_time(currentTime());
             }
             let mut numfds: c_int = 0;
             let mc = curl_multi_wait(mhnd, std::ptr::null_mut(), 0, 100, &mut numfds);
@@ -1290,7 +1345,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
             }
 
             if single == 0 {
-                current_time.with(|v| v.set(currentTime()));
+                set_current_time(currentTime());
             }
             curl_multi_perform(mhnd, &mut still_running);
 
@@ -1317,7 +1372,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
             );
 
             if single == 0 {
-                current_time.with(|v| v.set(currentTime()));
+                set_current_time(currentTime());
             }
             curl_multi_perform(mhnd, &mut still_running);
 
@@ -1327,7 +1382,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
         }
 
         // Final newline if progress was shown
-        if total.with(|v| v.get()) > 0.0 {
+        if total() > 0.0 {
             eprintln!();
         }
 
@@ -1500,4 +1555,63 @@ unsafe fn CAD4R(args: SEXP) -> SEXP {
 /// isString - check if SEXP is a character vector
 unsafe fn isString(x: SEXP) -> c_int {
     unsafe { if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 } }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CStr;
+
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+    use super::*;
+
+    #[test]
+    fn libcurl_runtime_state_is_session_local() {
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            set_current_timeout(30);
+            set_current_time(10.5);
+            set_total(100.0);
+            set_ndashes(7);
+            push_header(c"first-header".as_ptr(), "first-header".len());
+
+            assert_eq!(current_timeout(), 30);
+            assert_eq!(current_time(), 10.5);
+            assert_eq!(total(), 100.0);
+            assert_eq!(ndashes(), 7);
+            assert_eq!(headers_used(), 1);
+            assert_eq!(
+                CStr::from_ptr(header_ptr(0)).to_str().unwrap_or(""),
+                "first-header"
+            );
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            assert_eq!(current_timeout(), 0);
+            assert_eq!(current_time(), 0.0);
+            assert_eq!(total(), 0.0);
+            assert_eq!(ndashes(), 0);
+            assert_eq!(headers_used(), 0);
+            set_current_timeout(9);
+            push_header(c"second-header".as_ptr(), "second-header".len());
+
+            set_current_instance(&mut first);
+            assert_eq!(current_timeout(), 30);
+            assert_eq!(headers_used(), 1);
+            assert_eq!(
+                CStr::from_ptr(header_ptr(0)).to_str().unwrap_or(""),
+                "first-header"
+            );
+
+            set_current_instance(&mut second);
+            assert_eq!(current_timeout(), 9);
+            assert_eq!(
+                CStr::from_ptr(header_ptr(0)).to_str().unwrap_or(""),
+                "second-header"
+            );
+
+            clear_current_instance();
+        }
+    }
 }

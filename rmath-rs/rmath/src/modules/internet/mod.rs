@@ -17,7 +17,7 @@ pub(crate) mod internet;
     unused_assignments,
     non_camel_case_types
 )]
-mod libcurl;
+pub(crate) mod libcurl;
 #[allow(
     dead_code,
     unused_imports,
