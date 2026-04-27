@@ -18,8 +18,9 @@
 // SIAM J. Scientific Computing, 16, 1190--1208.
 
 use libm::*;
-use std::cell::RefCell;
 use std::os::raw::{c_char, c_int};
+
+use crate::sexp::instance::with_required_current_instance;
 
 // =====================================================================
 // Inline BLAS replacements
@@ -212,7 +213,7 @@ unsafe fn cstrcpy(dst: *mut c_char, src: &[u8]) {
 // Persistent state for mainlb (replaces C static locals)
 // =====================================================================
 
-struct LbfgsbState {
+pub(crate) struct LbfgsbState {
     prjctd: i32,
     cnstnd: i32,
     boxed: i32,
@@ -344,8 +345,10 @@ impl LbfgsbState {
     }
 }
 
-thread_local! {
-    static LBFGSB_STATE: RefCell<Option<Box<LbfgsbState>>> = RefCell::new(None);
+impl Default for LbfgsbState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // =====================================================================
@@ -370,12 +373,8 @@ pub unsafe fn lbfgsb(
     isave: *mut c_int,
 ) {
     unsafe {
-        LBFGSB_STATE.with(|s| {
-            let mut sr = s.borrow_mut();
-            sr.get_or_insert_with(|| Box::new(LbfgsbState::new()));
-            let st = sr
-                .as_mut()
-                .unwrap_or_else(|| panic!("LBFGSB_STATE should be initialized"));
+        with_required_current_instance(|instance| {
+            let st = &mut instance.lbfgsb_state;
             let mut csave: [c_char; 60] = [0; 60];
 
             if cstrncmp(task, b"START", 5) {
@@ -2868,5 +2867,24 @@ unsafe fn prn3lb(
                 _ => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sexp::instance::RInstance;
+
+    #[test]
+    fn lbfgsb_state_is_owned_by_instance() {
+        let mut first = RInstance::new();
+        let second = RInstance::new();
+
+        first.lbfgsb_state.iter = 42;
+        first.lbfgsb_state.theta = 7.5;
+
+        assert_eq!(first.lbfgsb_state.iter, 42);
+        assert_eq!(first.lbfgsb_state.theta, 7.5);
+        assert_eq!(second.lbfgsb_state.iter, 0);
+        assert_eq!(second.lbfgsb_state.theta, 1.0);
     }
 }
