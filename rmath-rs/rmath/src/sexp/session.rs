@@ -28,7 +28,6 @@
 
 use std::ffi::CString;
 use std::marker::PhantomData;
-use std::os::raw::c_int;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(test)]
 use std::ptr;
@@ -47,8 +46,8 @@ use super::instance::{
 use super::memory::{ArenaBudget, RArena};
 use super::object::Sexp;
 #[cfg(test)]
-use super::protect::Rf_protect;
-use super::protect::{R_ProtectCount, Rf_unprotect};
+use super::protect::protect;
+use super::protect::{R_ProtectCount, protect_n};
 
 /// Error returned by safe session evaluation APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -543,9 +542,7 @@ impl RSession {
             let result = f();
             let new_depth = R_ProtectCount();
             if new_depth > depth {
-                unsafe {
-                    Rf_unprotect((new_depth - depth) as c_int);
-                }
+                drop(protect_n(new_depth - depth));
             }
             result
         })
@@ -963,9 +960,9 @@ mod tests {
     fn test_session_protected_scope() {
         let session = RSession::new();
         let depth_before = R_ProtectCount();
-        session.with_protected(|| unsafe {
-            Rf_protect(ptr::null_mut());
-            Rf_protect(ptr::null_mut());
+        session.with_protected(|| {
+            std::mem::forget(protect(0x1 as SEXP));
+            std::mem::forget(protect(0x2 as SEXP));
         });
         let depth_after = R_ProtectCount();
         assert_eq!(depth_before, depth_after);
@@ -978,9 +975,11 @@ mod tests {
         let protected = 0x1 as SEXP;
         let preserved = 0x2 as SEXP;
 
-        left.with_arena(|_| unsafe {
-            Rf_protect(protected);
-            R_PreserveObject(preserved);
+        left.with_arena(|_| {
+            std::mem::forget(protect(protected));
+            unsafe {
+                R_PreserveObject(preserved);
+            }
             assert_eq!(R_ProtectCount(), 1);
             with_preserved_objects(|objects| assert_eq!(objects, &[preserved]));
         });
@@ -990,9 +989,11 @@ mod tests {
             with_preserved_objects(|objects| assert!(objects.is_empty()));
         });
 
-        left.with_arena(|_| unsafe {
-            Rf_unprotect(1);
-            R_ReleaseObject(preserved);
+        left.with_arena(|_| {
+            drop(protect_n(1));
+            unsafe {
+                R_ReleaseObject(preserved);
+            }
             assert_eq!(R_ProtectCount(), 0);
             with_preserved_objects(|objects| assert!(objects.is_empty()));
         });

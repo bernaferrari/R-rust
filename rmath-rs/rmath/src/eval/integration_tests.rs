@@ -639,17 +639,15 @@ fn test_arena_independent_sessions() {
 fn test_protect_stack_integrity() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+        use crate::sexp::protect::protect;
 
         let v1 = Rf_ScalarInteger(1);
         let v2 = Rf_ScalarReal(2.0);
         let v3 = Rf_allocVector(SEXPTYPE::INTSXP, 10);
 
         let _guard = protect(v1);
-        Rf_protect(v2);
-        Rf_protect(v3);
-
-        Rf_unprotect(2);
+        let _v2_guard = protect(v2);
+        let _v3_guard = protect(v3);
     }
 }
 

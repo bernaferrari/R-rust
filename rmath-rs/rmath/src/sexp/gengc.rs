@@ -1767,24 +1767,21 @@ mod tests {
     fn test_gc_with_protected_objects() {
         let _session = RSession::new();
 
-        use super::super::protect::Rf_protect;
+        use super::super::protect::protect;
 
         with_arena(|arena| {
             reset_gc_test_arena(arena);
             let obj = arena.alloc_node(SEXPTYPE::INTSXP);
             unsafe {
                 (*obj).sxpinfo.set_gcgen(Generation::Young as u8);
-                Rf_protect(obj);
             }
+            std::mem::forget(protect(obj));
         });
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 1);
         assert_eq!(freed, 0);
 
-        unsafe {
-            use super::super::protect::Rf_unprotect;
-            Rf_unprotect(1);
-        }
+        drop(super::super::protect::protect_n(1));
     }
 
     #[test]
