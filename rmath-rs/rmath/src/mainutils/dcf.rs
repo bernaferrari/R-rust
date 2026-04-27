@@ -392,7 +392,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         if retval.is_null() {
             return R_NilValue();
         }
-        Rf_protect(retval);
+        let _retval_guard = protect(retval);
 
         // Fill with NA first
         for i in 0..total as isize {
@@ -416,7 +416,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
         // Build dim attribute: integer vector c(nrows, nfields)
         let dims = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-        Rf_protect(dims);
+        let _dims_guard = protect(dims);
         let dim_data = INTEGER(dims);
         if !dim_data.is_null() {
             *dim_data = nrows as c_int;
@@ -425,12 +425,12 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
         // Build dimnames: list(NULL, field_names_vector)
         let dimnames = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        Rf_protect(dimnames);
+        let _dimnames_guard = protect(dimnames);
         // First element: NULL (no row names)
         SET_VECTOR_ELT(dimnames, 0, R_NilValue());
         // Second element: STRSXP of field names
         let col_names = Rf_allocVector(SEXPTYPE::STRSXP, nfields as c_int);
-        Rf_protect(col_names);
+        let _col_names_guard = protect(col_names);
         for (i, name) in field_names.iter().enumerate() {
             let cs = CString::new(name.as_str()).unwrap_or_default();
             let charsxp = Rf_mkChar(cs.as_ptr());
@@ -446,7 +446,6 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             dimnames,
         );
 
-        Rf_unprotect(4); // retval, dims, dimnames, col_names
         retval
     }
 }

@@ -21,7 +21,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -134,7 +134,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             },
             nlevs as R_xlen_t,
         );
-        Rf_protect(counts);
+        let _counts_guard = protect(counts);
 
         if is_long {
             // Long vector path: counts stored as R_xlen_t in REALSXP
@@ -161,7 +161,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
             // Allocate result list
             let vec = Rf_allocVector3(SEXPTYPE::VECSXP, nlevs as R_xlen_t);
-            Rf_protect(vec);
+            let _vec_guard = protect(vec);
 
             for i in 0..nlevs as R_xlen_t {
                 let count = *counts_data.add(i as usize) as R_xlen_t;
@@ -229,7 +229,6 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
 
             setAttrib(vec, R_NamesSymbol(), getAttrib(f, R_LevelsSymbol()));
-            Rf_unprotect(2);
             vec
         } else {
             // Normal (non-long) vector path: counts stored as c_int in INTSXP
@@ -256,7 +255,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
             // Allocate result list
             let vec = Rf_allocVector3(SEXPTYPE::VECSXP, nlevs as R_xlen_t);
-            Rf_protect(vec);
+            let _vec_guard = protect(vec);
 
             for i in 0..nlevs as R_xlen_t {
                 let count = *counts_data.add(i as usize) as R_xlen_t;
@@ -324,7 +323,6 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
 
             setAttrib(vec, R_NamesSymbol(), getAttrib(f, R_LevelsSymbol()));
-            Rf_unprotect(2);
             vec
         }
     }

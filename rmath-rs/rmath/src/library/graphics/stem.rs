@@ -239,11 +239,11 @@ pub unsafe fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP
         }
 
         /* Make a mutable copy since R_rsort sorts in place */
-        let xcopy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let xcopy = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        let _xcopy_guard = protect(xcopy);
         std::ptr::copy_nonoverlapping(REAL(x), REAL(xcopy), n as usize);
         stem_leaf(REAL(xcopy), n, sc, width, sa);
 
-        Rf_unprotect(1);
         R_NilValue()
     }
 }
@@ -296,9 +296,9 @@ pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SE
 
     unsafe {
         let x = coerceVector(x, SEXPTYPE::REALSXP.into());
-        Rf_protect(x);
+        let _x_guard = protect(x);
         let breaks = coerceVector(breaks, SEXPTYPE::REALSXP.into());
-        Rf_protect(breaks);
+        let _breaks_guard = protect(breaks);
 
         let n = XLENGTH(x);
         let nB = XLENGTH(breaks);
@@ -311,10 +311,10 @@ pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SE
             Rf_error(b"invalid 'include.lowest' argument\0".as_ptr() as *const libc::c_char);
         }
 
-        let counts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, (nB - 1) as c_int));
+        let counts = Rf_allocVector(SEXPTYPE::INTSXP, (nB - 1) as c_int);
+        let _counts_guard = protect(counts);
         C_bincount(REAL(x), n, REAL(breaks), nB, INTEGER(counts), sr, sl);
 
-        Rf_unprotect(3);
         counts
     }
 }

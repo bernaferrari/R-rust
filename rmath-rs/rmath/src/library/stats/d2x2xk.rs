@@ -13,7 +13,7 @@ use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::memory_ext::R_alloc;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 /// Internal function: compute exact conditional distribution for
 /// Cochran-Mantel-Haenszel test across K strata.
@@ -98,18 +98,17 @@ pub unsafe fn d2x2xk(sK: SEXP, m: SEXP, n: SEXP, t: SEXP, srn: SEXP) -> SEXP {
         let rn = asInteger(srn);
 
         let m = coerceVector(m, SEXPTYPE::REALSXP.as_c_int());
-        let m = Rf_protect(m);
+        let _m_guard = protect(m);
         let n = coerceVector(n, SEXPTYPE::REALSXP.as_c_int());
-        let n = Rf_protect(n);
+        let _n_guard = protect(n);
         let t = coerceVector(t, SEXPTYPE::REALSXP.as_c_int());
-        let t = Rf_protect(t);
+        let _t_guard = protect(t);
 
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, rn as i32);
-        let ans = Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         int_d2x2xk(K, REAL(m), REAL(n), REAL(t), REAL(ans));
 
-        Rf_unprotect(4);
         ans
     }
 }
