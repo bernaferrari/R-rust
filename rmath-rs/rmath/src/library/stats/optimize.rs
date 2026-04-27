@@ -14,7 +14,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_warning};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -53,15 +53,13 @@ struct CallInfo {
 
 unsafe extern "C" fn fcn1(x: c_double, arg_info: *mut std::ffi::c_void) -> c_double {
     let info = &mut *(arg_info as *mut CallInfo);
-    let sx = Rf_protect(Rf_ScalarReal(x));
+    let sx = Rf_ScalarReal(x);
+    let _sx_guard = protect(sx);
     SETCADR(info.R_fcall, sx);
-    let s = Rf_protect(eval(info.R_fcall, info.R_env));
+    let s = eval(info.R_fcall, info.R_env);
+    let _s_guard = protect(s);
 
-    if TYPEOF(s) == SEXPTYPE::INTSXP {
-        if LENGTH(s) != 1 {
-            Rf_error(b"invalid function value in 'optimize'\0".as_ptr() as *const _);
-        }
-    }
+    scalar_callback_value(s, b"invalid function value in 'optimize'\0".as_ptr() as *const _)
 }
 
 // ---------------------------------------------------------------------------
@@ -72,13 +70,53 @@ unsafe extern "C" fn fcn1(x: c_double, arg_info: *mut std::ffi::c_void) -> c_dou
 
 unsafe extern "C" fn fcn2(x: c_double, arg_info: *mut std::ffi::c_void) -> c_double {
     let info = &mut *(arg_info as *mut CallInfo);
-    let sx = Rf_protect(Rf_ScalarReal(x));
+    let sx = Rf_ScalarReal(x);
+    let _sx_guard = protect(sx);
     SETCADR(info.R_fcall, sx);
-    let s = Rf_protect(eval(info.R_fcall, info.R_env));
+    let s = eval(info.R_fcall, info.R_env);
+    let _s_guard = protect(s);
 
-    if TYPEOF(s) == SEXPTYPE::INTSXP {
-        if LENGTH(s) != 1 {
-            Rf_error(b"invalid function value in 'zeroin'\0".as_ptr() as *const _);
+    scalar_callback_value(s, b"invalid function value in 'zeroin'\0".as_ptr() as *const _)
+}
+
+unsafe fn scalar_callback_value(s: SEXP, bad_value_message: *const c_char) -> c_double {
+    match TYPEOF(s) {
+        SEXPTYPE::INTSXP => {
+            if LENGTH(s) != 1 {
+                Rf_error(bad_value_message);
+            }
+            let value = *INTEGER(s);
+            if value == NA_INTEGER {
+                Rf_warning(b"NA replaced by maximum positive value\0".as_ptr() as *const _);
+                f64::MAX
+            } else {
+                value as c_double
+            }
+        }
+        SEXPTYPE::REALSXP => {
+            if LENGTH(s) != 1 {
+                Rf_error(bad_value_message);
+            }
+            let value = *REAL(s);
+            if R_FINITE(value) {
+                value
+            } else if value == f64::NEG_INFINITY {
+                Rf_warning(b"-Inf replaced by maximally negative value\0".as_ptr() as *const _);
+                -f64::MAX
+            } else {
+                Rf_warning(
+                    if ISNAN(value) {
+                        b"NA/NaN replaced by maximum positive value\0".as_ptr()
+                    } else {
+                        b"Inf replaced by maximum positive value\0".as_ptr()
+                    } as *const _,
+                );
+                f64::MAX
+            }
+        }
+        _ => {
+            Rf_error(bad_value_message);
+            0.0
         }
     }
 }
@@ -134,9 +172,82 @@ pub unsafe fn Brent_fmin(
         tol1 = eps * libm::fabs(x) + tol3;
         let t2 = tol1 * 2.0;
 
-        /* check stopping criterion */
         if libm::fabs(x - xm) <= t2 - (b - a) * 0.5 {
             break;
+        }
+
+        let mut p = 0.0;
+        let mut q = 0.0;
+        let mut r = 0.0;
+        if libm::fabs(e) > tol1 {
+            r = (x - w) * (fx - fv);
+            q = (x - v) * (fx - fw);
+            p = (x - v) * q - (x - w) * r;
+            q = (q - r) * 2.0;
+            if q > 0.0 {
+                p = -p;
+            } else {
+                q = -q;
+            }
+            r = e;
+            e = d;
+        }
+
+        if libm::fabs(p) >= libm::fabs(q * 0.5 * r)
+            || p <= q * (a - x)
+            || p >= q * (b - x)
+        {
+            if x < xm {
+                e = b - x;
+            } else {
+                e = a - x;
+            }
+            d = c * e;
+        } else {
+            d = p / q;
+            let u = x + d;
+            if u - a < t2 || b - u < t2 {
+                d = if x >= xm { -tol1 } else { tol1 };
+            }
+        }
+
+        let u = if libm::fabs(d) >= tol1 {
+            x + d
+        } else if d > 0.0 {
+            x + tol1
+        } else {
+            x - tol1
+        };
+
+        let fu = f(u, info);
+
+        if fu <= fx {
+            if u < x {
+                b = x;
+            } else {
+                a = x;
+            }
+            v = w;
+            w = x;
+            x = u;
+            fv = fw;
+            fw = fx;
+            fx = fu;
+        } else {
+            if u < x {
+                a = u;
+            } else {
+                b = u;
+            }
+            if fu <= fw || w == x {
+                v = w;
+                fv = fw;
+                w = u;
+                fw = fu;
+            } else if fu <= fv || v == x || v == w {
+                v = u;
+                fv = fu;
+            }
         }
     }
 
@@ -148,26 +259,7 @@ pub unsafe fn Brent_fmin(
 // ---------------------------------------------------------------------------
 
 unsafe fn as_real(x: SEXP) -> c_double {
-    if x.is_null() {
-        return NA_REAL;
-    }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::REALSXP {
-        return *REAL(x);
-    }
-    if t == SEXPTYPE::INTSXP {
-        let v = *INTEGER(x);
-        if v == NA_INTEGER {
-            return NA_REAL;
-        }
-    }
-    if t == SEXPTYPE::LGLSXP {
-        let v = *INTEGER(x);
-        if v == NA_INTEGER {
-            return NA_REAL;
-        }
-    }
-    NA_REAL
+    crate::main::coerce::asReal(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -175,23 +267,7 @@ unsafe fn as_real(x: SEXP) -> c_double {
 // ---------------------------------------------------------------------------
 
 unsafe fn as_integer(x: SEXP) -> c_int {
-    if x.is_null() {
-        return NA_INTEGER;
-    }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP {
-        return *INTEGER(x);
-    }
-    if t == SEXPTYPE::REALSXP {
-        let v = *REAL(x);
-        if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
-            return NA_INTEGER;
-        }
-    }
-    if t == SEXPTYPE::LGLSXP {
-        return *INTEGER(x);
-    }
-    NA_INTEGER
+    crate::main::coerce::asInteger(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -258,10 +334,11 @@ pub unsafe fn do_fmin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         R_fcall: ptr::null_mut(),
         R_env: rho,
     };
-    info.R_fcall = Rf_protect(Rf_lang2(v, R_NilValue()));
-    let res = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+    info.R_fcall = Rf_lang2(v, R_NilValue());
+    let _fcall_guard = protect(info.R_fcall);
+    let res = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+    let _res_guard = protect(res);
     *REAL(res) = Brent_fmin(xmin, xmax, fcn1, &mut info as *mut CallInfo as *mut std::ffi::c_void, tol);
-    Rf_unprotect(2);
     res
 }
 
@@ -330,8 +407,10 @@ pub unsafe fn do_zeroin2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         R_fcall: ptr::null_mut(),
         R_env: rho,
     };
-    info.R_fcall = Rf_protect(Rf_lang2(v, R_NilValue()));
-    let res = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 3));
+    info.R_fcall = Rf_lang2(v, R_NilValue());
+    let _fcall_guard = protect(info.R_fcall);
+    let res = Rf_allocVector(SEXPTYPE::REALSXP, 3);
+    let _res_guard = protect(res);
 
     let root = R_zeroin2(
         xmin,
@@ -348,7 +427,6 @@ pub unsafe fn do_zeroin2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     *REAL(res).add(1) = iter as c_double;
     *REAL(res).add(2) = tol;
 
-    Rf_unprotect(2);
     res
 }
 
@@ -494,37 +572,40 @@ unsafe extern "C" fn fcn(
     let s = Rf_allocVector(SEXPTYPE::REALSXP, n);
     SETCADR(R_fcall, s);
     for i in 0..n {
-        if !R_FINITE(*x.add(i as usize)) {
+        let value = *x.add(i as usize);
+        if !R_FINITE(value) {
             Rf_error(b"non-finite value supplied by 'nlm'\0".as_ptr() as *const _);
         }
+        *REAL(s).add(i as usize) = value;
     }
 
-    let s = Rf_protect(eval(state.R_fcall, state.R_env));
-    if TYPEOF(s) == SEXPTYPE::INTSXP {
-        if LENGTH(s) != 1 {
-            Rf_error(b"invalid function value in 'nlm' optimizer\0".as_ptr() as *const _);
-        }
-    }
+    let s = eval(state.R_fcall, state.R_env);
+    let _s_guard = protect(s);
+    *f_out = scalar_callback_value(
+        s,
+        b"invalid function value in 'nlm' optimizer\0".as_ptr() as *const _,
+    );
 
     let mut g: *mut c_double = ptr::null_mut();
     let mut h: *mut c_double = ptr::null_mut();
-    let mut nprotect: c_int = 1;
+    let mut guards = Vec::new();
 
     if state.have_gradient != 0 {
         let grad_sym = crate::sexp::symbol::Rf_install(b"gradient\0".as_ptr() as *const c_char);
         let gv = getAttrib(s, grad_sym);
-        g = REAL(Rf_protect(coerceVector(gv, SEXPTYPE::REALSXP.as_c_int())));
-        nprotect += 1;
+        let coerced = coerceVector(gv, SEXPTYPE::REALSXP.as_c_int());
+        guards.push(protect(coerced));
+        g = REAL(coerced);
         if state.have_hessian != 0 {
             let hess_sym = crate::sexp::symbol::Rf_install(b"hessian\0".as_ptr() as *const c_char);
             let hv = getAttrib(s, hess_sym);
-            h = REAL(Rf_protect(coerceVector(hv, SEXPTYPE::REALSXP.as_c_int())));
-            nprotect += 1;
+            let coerced = coerceVector(hv, SEXPTYPE::REALSXP.as_c_int());
+            guards.push(protect(coerced));
+            h = REAL(coerced);
         }
     }
 
     FT_store(n, *f_out, x, g, h, state);
-    Rf_unprotect(nprotect);
 }
 
 // ---------------------------------------------------------------------------
@@ -663,20 +744,7 @@ unsafe fn is_numeric(x: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe fn as_logical(x: SEXP) -> c_int {
-    if x.is_null() {
-        return NA_INTEGER;
-    }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
-        return *INTEGER(x);
-    }
-    if t == SEXPTYPE::REALSXP {
-        let v = *REAL(x);
-        if v.is_nan() {
-            return NA_INTEGER;
-        }
-    }
-    NA_INTEGER
+    crate::main::coerce::asLogical(x)
 }
 
 // ---------------------------------------------------------------------------
@@ -712,12 +780,13 @@ fn optcode(code: c_int) {
 // ---------------------------------------------------------------------------
 
 unsafe fn alloc_matrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    let ans = Rf_protect(Rf_allocVector(sexptype, nrow * ncol));
-    let dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+    let ans = Rf_allocVector(sexptype, nrow * ncol);
+    let _ans_guard = protect(ans);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+    let _dim_guard = protect(dim);
     *INTEGER(dim) = nrow;
     *INTEGER(dim).add(1) = ncol;
     crate::attrib_core::setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-    Rf_unprotect(2);
     ans
 }
 
@@ -748,7 +817,8 @@ pub unsafe fn nlm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     if !is_function(v) {
         Rf_error(b"attempt to minimize non-function\0".as_ptr() as *const _);
     }
-    state.R_fcall = Rf_protect(Rf_lang2(v, R_NilValue()));
+    state.R_fcall = Rf_lang2(v, R_NilValue());
+    let _fcall_guard = protect(state.R_fcall);
     args = CDR(args);
 
     /* `p' : initial parameter value */
@@ -828,7 +898,8 @@ pub unsafe fn nlm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         *REAL(vv).add(i as usize) = *x.add(i as usize);
     }
     SETCADR(state.R_fcall, vv);
-    let value = Rf_protect(eval(state.R_fcall, state.R_env));
+    let value = eval(state.R_fcall, state.R_env);
+    let _value_guard = protect(value);
 
     let gv = getAttrib(value, r_gradient_symbol);
     if Rf_isNull(gv) == 0 {
@@ -843,14 +914,19 @@ pub unsafe fn nlm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     iahflg = 1;
                     state.have_hessian = 1;
                 } else {
-                    eprintln!(
-                        "hessian supplied is of the wrong length or mode, so ignored"
+                    Rf_warning(
+                        b"hessian supplied is of the wrong length or mode, so ignored\0".as_ptr()
+                            as *const _,
                     );
                 }
             }
+        } else {
+            Rf_warning(
+                b"gradient supplied is of the wrong length or mode, so ignored\0".as_ptr()
+                    as *const _,
+            );
         }
     }
-    Rf_unprotect(1); /* value */
 
     if ((msg / 4) % 2) != 0 && iahflg == 0 {
         msg -= 4;
@@ -910,10 +986,13 @@ pub unsafe fn nlm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         optcode(code);
     }
 
-    let (value, names);
+    let output_len = if want_hessian != 0 { 6 } else { 5 };
+    let value = Rf_allocVector(SEXPTYPE::VECSXP, output_len);
+    let _value_guard = protect(value);
+    let names = Rf_allocVector(SEXPTYPE::STRSXP, output_len);
+    let _names_guard = protect(names);
+
     if want_hessian != 0 {
-        value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 6));
-        names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 6));
         crate::appl::uncmin::fdhess(
             n,
             xpls,
@@ -929,16 +1008,10 @@ pub unsafe fn nlm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         );
         for i in 0..n {
             for j in 0..i {
-                let a_ij = *a.add((i + j * n) as usize);
                 let a_ji = *a.add((j + i * n) as usize);
-                let avg = (a_ij + a_ji) * 0.5;
-                *a.add((i + j * n) as usize) = avg;
-                *a.add((j + i * n) as usize) = avg;
+                *a.add((i + j * n) as usize) = a_ji;
             }
         }
-    } else {
-        value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 5));
-        names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 5));
     }
 
     let mut k: R_xlen_t = 0;
@@ -965,10 +1038,13 @@ pub unsafe fn nlm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     if want_hessian != 0 {
         SET_STRING_ELT(names, k, Rf_mkChar(b"hessian\0".as_ptr() as *const c_char));
-        let hess = Rf_protect(alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n, n));
+        let hess = alloc_matrix(SEXPTYPE::REALSXP.as_c_int(), n, n);
+        let _hess_guard = protect(hess);
         for i in 0..(n * n) as usize {
             *REAL(hess).add(i) = *a.add(i);
         }
+        SET_VECTOR_ELT(value, k, hess);
+        k += 1;
     }
 
     SET_STRING_ELT(names, k, Rf_mkChar(b"code\0".as_ptr() as *const c_char));
@@ -985,6 +1061,5 @@ pub unsafe fn nlm(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     k += 1;
 
     setAttrib(value, R_NamesSymbol(), names);
-    Rf_unprotect(3); /* value, names, + state.R_fcall */
     value
 }
