@@ -16,22 +16,60 @@
  * Ported from r-source/src/library/stats/src/loessc.c
  */
 
-use std::cell::Cell;
 use std::cmp;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 
 use crate::sexp::ffi::*;
+use crate::sexp::instance::with_required_current_instance;
 
 const GAUSSIAN: c_int = 1;
 const SYMMETRIC: c_int = 0;
 
-// Global variables (static in C)
-thread_local! { static IV: Cell<*mut c_int> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static LIV: Cell<c_int> = Cell::new(0); }
-thread_local! { static LV: Cell<c_int> = Cell::new(0); }
-thread_local! { static TAU: Cell<c_int> = Cell::new(0); }
-thread_local! { static V: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+pub(crate) struct LoessWorkspaceState {
+    iv: Vec<c_int>,
+    v: Vec<c_double>,
+    liv: c_int,
+    lv: c_int,
+    tau: c_int,
+}
+
+impl Default for LoessWorkspaceState {
+    fn default() -> Self {
+        Self {
+            iv: Vec::new(),
+            v: Vec::new(),
+            liv: 0,
+            lv: 0,
+            tau: 0,
+        }
+    }
+}
+
+impl LoessWorkspaceState {
+    fn clear(&mut self) {
+        self.iv = Vec::new();
+        self.v = Vec::new();
+        self.liv = 0;
+        self.lv = 0;
+    }
+
+    fn allocate(&mut self, liv: c_int, lv: c_int) -> (*mut c_int, *mut c_double) {
+        self.liv = liv;
+        self.lv = lv;
+        self.iv = vec![0; liv as usize];
+        self.v = vec![0.0; lv as usize];
+        (self.iv.as_mut_ptr(), self.v.as_mut_ptr())
+    }
+
+    fn ptrs(&mut self) -> (*mut c_int, *mut c_double) {
+        (self.iv.as_mut_ptr(), self.v.as_mut_ptr())
+    }
+}
+
+fn with_loess_workspace_state<R>(f: impl FnOnce(&mut LoessWorkspaceState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.loess_workspace_state))
+}
 
 fn r_min<T: Ord>(a: T, b: T) -> T {
     if a < b { a } else { b }
@@ -41,20 +79,7 @@ fn r_max<T: Ord>(a: T, b: T) -> T {
 }
 
 unsafe fn loess_free() {
-    unsafe {
-        let v = V.with(|v| v.get());
-        let lv = LV.with(|v| v.get());
-        if !v.is_null() {
-            let _ = Vec::from_raw_parts(v, lv as usize, lv as usize);
-            V.with(|v| v.set(std::ptr::null_mut()));
-        }
-        let iv = IV.with(|v| v.get());
-        let liv = LIV.with(|v| v.get());
-        if !iv.is_null() {
-            let _ = Vec::from_raw_parts(iv, liv as usize, liv as usize);
-            IV.with(|v| v.set(std::ptr::null_mut()));
-        }
-    }
+    with_loess_workspace_state(LoessWorkspaceState::clear);
 }
 
 #[cfg(feature = "fortran-backend")]
@@ -273,10 +298,6 @@ pub unsafe fn loess_raw(
     unsafe {
         use crate::main::errors::Rf_error;
 
-        let iv = IV.with(|v| v.get());
-        let v = V.with(|v| v.get());
-        let mut tau = TAU.with(|v| v.get());
-
         let mut i0: c_int = 0;
         let mut one: c_int = 1;
         let mut two: c_int = 2;
@@ -294,10 +315,11 @@ pub unsafe fn loess_raw(
             *sum_drop_sqr,
             *setLf != 0,
         );
-        {
-            let v = V.with(|v| v.get());
-            *v.add(1) = *cell;
-        }
+        let (iv, v, mut tau) = with_loess_workspace_state(|state| {
+            let (iv, v) = state.ptrs();
+            (iv, v, state.tau)
+        });
+        *v.add(1) = *cell;
 
         let surf = CStr::from_ptr(*surf_stat).to_str().unwrap_or("");
 
@@ -438,7 +460,7 @@ pub unsafe fn loess_raw(
         } else {
             Rf_error(b"invalid surface statistic type\0".as_ptr() as *const libc::c_char);
         }
-        TAU.with(|v| v.set(tau));
+        with_loess_workspace_state(|state| state.tau = tau);
         loess_free();
     }
 }
@@ -472,12 +494,13 @@ pub unsafe fn loess_dfit(
             *sum_drop_sqr,
             false,
         );
+        let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
         lowesf(
             x,
             y,
             weights,
-            IV.with(|v| v.get()),
-            V.with(|v| v.get()),
+            iv,
+            v,
             m,
             x_evaluate,
             std::ptr::addr_of_mut!(d0),
@@ -519,8 +542,7 @@ pub unsafe fn loess_dfitse(
         );
 
         let mut i2: c_int = 2;
-        let iv = IV.with(|v| v.get());
-        let v = V.with(|v| v.get());
+        let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
         if *family == GAUSSIAN {
             lowesf(
                 x,
@@ -578,13 +600,8 @@ pub unsafe fn loess_ifit(
 ) {
     unsafe {
         loess_grow(parameter, a, xi, vert, vval);
-        lowese(
-            IV.with(|v| v.get()),
-            V.with(|v| v.get()),
-            m,
-            x_evaluate,
-            fit,
-        );
+        let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
+        lowese(iv, v, m, x_evaluate, fit);
         loess_free();
     }
 }
@@ -620,24 +637,23 @@ pub unsafe fn loess_ise(
 
         let mut i0: c_int = 0;
         let mut d0: c_double = 0.0;
-        V.with(|v| {
-            *v.get().add(1) = *cell;
-        });
+        let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
+        *v.add(1) = *cell;
         lowesb(
             x,
             y,
             weights,
             std::ptr::addr_of_mut!(d0),
             std::ptr::addr_of_mut!(i0),
-            IV.with(|v| v.get()),
-            V.with(|v| v.get()),
+            iv,
+            v,
         );
-        lowesl(IV.with(|v| v.get()), V.with(|v| v.get()), m, x_evaluate, L);
+        lowesl(iv, v, m, x_evaluate, L);
         loess_free();
     }
 }
 
-/// Set global variables tau, lv, liv, and allocate global arrays v[1..lv], iv[1..liv]
+/// Set per-instance tau/lv/liv and allocate workspace arrays v[1..lv], iv[1..liv].
 unsafe fn loess_workspace(
     d: c_int,
     n: c_int,
@@ -662,7 +678,7 @@ unsafe fn loess_workspace(
         } else {
             d + 1
         };
-        TAU.with(|v| v.set(tau0 - sum_drop_sqr));
+        with_loess_workspace_state(|state| state.tau = tau0 - sum_drop_sqr);
 
         let dlv =
             50.0 + (3 * d + 3) as f64 * nvmax as f64 + n as f64 + (tau0 as f64 + 2.0) * nf as f64;
@@ -689,17 +705,7 @@ unsafe fn loess_workspace(
             }
         };
 
-        LV.with(|v| v.set(new_lv));
-        LIV.with(|v| v.set(new_liv));
-
-        let liv_val = LIV.with(|v| v.get());
-        let lv_val = LV.with(|v| v.get());
-        let mut iv_vec = vec![0i32; liv_val as usize];
-        let mut v_vec = vec![0.0f64; lv_val as usize];
-        IV.with(|v| v.set(iv_vec.as_mut_ptr()));
-        V.with(|v| v.set(v_vec.as_mut_ptr()));
-        std::mem::forget(iv_vec);
-        std::mem::forget(v_vec);
+        let (iv, v) = with_loess_workspace_state(|state| state.allocate(new_liv, new_lv));
 
         let mut iset_lf = if set_lf { 1 } else { 0 };
         let mut d_out = d;
@@ -708,13 +714,13 @@ unsafe fn loess_workspace(
         let mut degree_out = degree;
         let mut nf_out = nf;
         let mut nvmax_out = nvmax;
-        let mut liv_local = LIV.with(|v| v.get());
-        let mut lv_local = LV.with(|v| v.get());
+        let mut liv_local = new_liv;
+        let mut lv_local = new_lv;
         lowesd(
-            IV.with(|v| v.get()),
+            iv,
             &mut liv_local,
             &mut lv_local,
-            V.with(|v| v.get()),
+            v,
             std::ptr::addr_of_mut!(d_out),
             std::ptr::addr_of_mut!(n_out),
             std::ptr::addr_of_mut!(span_out),
@@ -723,9 +729,10 @@ unsafe fn loess_workspace(
             std::ptr::addr_of_mut!(nvmax_out),
             std::ptr::addr_of_mut!(iset_lf),
         );
-        LIV.with(|v| v.set(liv_local));
-        LV.with(|v| v.set(lv_local));
-        let iv = IV.with(|v| v.get());
+        with_loess_workspace_state(|state| {
+            state.liv = liv_local;
+            state.lv = lv_local;
+        });
         *iv.add(32) = nonparametric;
         for i in 0..(d as usize) {
             *iv.add(40 + i) = *drop_square.add(i);
@@ -741,8 +748,7 @@ unsafe fn loess_prune(
     vval: *mut c_double,
 ) {
     unsafe {
-        let iv = IV.with(|v| v.get());
-        let v = V.with(|v| v.get());
+        let (iv, v) = with_loess_workspace_state(LoessWorkspaceState::ptrs);
         let d = *iv.add(1);
         let vc = *iv.add(3) - 1;
         let nc = *iv.add(4);
@@ -789,20 +795,7 @@ unsafe fn loess_grow(
         let mut nv = *parameter.add(4);
         let new_liv = *parameter.add(5);
         let new_lv = *parameter.add(6);
-        LIV.with(|v| v.set(new_liv));
-        LV.with(|v| v.set(new_lv));
-
-        let liv_val = LIV.with(|v| v.get());
-        let lv_val = LV.with(|v| v.get());
-        let mut iv_vec = vec![0i32; liv_val as usize];
-        let mut v_vec = vec![0.0f64; lv_val as usize];
-        IV.with(|v| v.set(iv_vec.as_mut_ptr()));
-        V.with(|v| v.set(v_vec.as_mut_ptr()));
-        std::mem::forget(iv_vec);
-        std::mem::forget(v_vec);
-
-        let iv = IV.with(|v| v.get());
-        let v = V.with(|v| v.get());
+        let (iv, v) = with_loess_workspace_state(|state| state.allocate(new_liv, new_lv));
         *iv.add(1) = d;
         *iv.add(2) = *parameter.add(1);
         *iv.add(3) = vc;
@@ -944,5 +937,43 @@ pub unsafe fn ehg184a(
         }
         mess.push('\n');
         crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const libc::c_char);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn loess_workspace_is_session_local_and_owned() {
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+        let drop_square = [0, 0, 0];
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
+            loess_workspace(2, 20, 0.75, 2, 0, drop_square.as_ptr(), 0, false);
+            assert!(!first.loess_workspace_state.iv.is_empty());
+            assert!(!first.loess_workspace_state.v.is_empty());
+            assert_eq!(first.loess_workspace_state.tau, 6);
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            assert!(second.loess_workspace_state.iv.is_empty());
+            assert!(second.loess_workspace_state.v.is_empty());
+            loess_workspace(1, 10, 0.5, 1, 0, drop_square.as_ptr(), 0, false);
+            assert!(!second.loess_workspace_state.iv.is_empty());
+            assert!(!second.loess_workspace_state.v.is_empty());
+            loess_free();
+            assert!(second.loess_workspace_state.iv.is_empty());
+            assert!(second.loess_workspace_state.v.is_empty());
+            replace_current_instance(previous);
+        }
+
+        assert!(!first.loess_workspace_state.iv.is_empty());
+        assert!(!first.loess_workspace_state.v.is_empty());
+        assert!(second.loess_workspace_state.iv.is_empty());
+        assert!(second.loess_workspace_state.v.is_empty());
     }
 }

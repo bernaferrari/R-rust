@@ -251,7 +251,7 @@ mod lm;
     unused_assignments,
     non_camel_case_types
 )]
-mod loessc;
+pub(crate) mod loessc;
 #[allow(
     dead_code,
     unused_imports,
