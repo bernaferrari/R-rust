@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
@@ -17,6 +18,7 @@ pub(crate) struct GraphAppRuntimeState {
     pub dialogs: DialogState,
     pub events: EventState,
     pub fonts: FontState,
+    pub gdraw: GDrawState,
     pub menus: MenuState,
     pub objects: ObjectState,
     pub windows: WindowState,
@@ -33,6 +35,7 @@ impl Default for GraphAppRuntimeState {
             dialogs: DialogState::default(),
             events: EventState::default(),
             fonts: FontState::default(),
+            gdraw: GDrawState::default(),
             menus: MenuState::default(),
             objects: ObjectState::default(),
             windows: WindowState::default(),
@@ -156,6 +159,27 @@ pub(crate) struct FontState {
     pub times: font,
     pub helvetica: font,
     pub courier: font,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FontInfo {
+    pub height: c_int,
+    pub style: c_int,
+    pub quality: c_int,
+    pub use_points: c_int,
+}
+
+#[derive(Default)]
+pub(crate) struct DrawingState {
+    pub clip: Option<rect>,
+    pub pixels: BTreeMap<(c_int, c_int), rgb>,
+    pub odd_even_fill: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct GDrawState {
+    pub drawings: HashMap<usize, DrawingState>,
+    pub fonts: HashMap<usize, FontInfo>,
 }
 
 pub(crate) struct MenuState {

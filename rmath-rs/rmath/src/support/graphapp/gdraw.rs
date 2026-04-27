@@ -5,38 +5,17 @@
 //!
 //! Ported from gdraw.c - thread-safe and extended drawing functions.
 
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use super::objects;
+use super::runtime::{with_graphapp_runtime, DrawingState, FontInfo};
 use super::strings;
 use super::types::*;
 
 const DEFAULT_FONT_HEIGHT: c_int = 14;
 const MAX_RASTER_PIXELS: usize = 262_144;
-
-#[derive(Clone, Copy, Default)]
-struct FontInfo {
-    height: c_int,
-    style: c_int,
-    quality: c_int,
-    use_points: c_int,
-}
-
-#[derive(Default)]
-struct DrawingState {
-    clip: Option<rect>,
-    pixels: BTreeMap<(c_int, c_int), rgb>,
-    odd_even_fill: bool,
-}
-
-thread_local! {
-    static DRAWING_STATE: RefCell<HashMap<usize, DrawingState>> = RefCell::new(HashMap::new());
-    static FONT_STATE: RefCell<HashMap<usize, FontInfo>> = RefCell::new(HashMap::new());
-}
 
 fn drawing_key(d: drawing) -> usize {
     d as usize
@@ -96,9 +75,8 @@ fn get_clip(d: drawing, state: &DrawingState) -> Option<rect> {
 }
 
 fn with_state<R>(d: drawing, f: impl FnOnce(&DrawingState) -> R) -> R {
-    DRAWING_STATE.with(|states| {
-        let states = states.borrow();
-        match states.get(&drawing_key(d)) {
+    with_graphapp_runtime(|runtime| {
+        match runtime.gdraw.drawings.get(&drawing_key(d)) {
             Some(state) => f(state),
             None => f(&DrawingState::default()),
         }
@@ -106,9 +84,8 @@ fn with_state<R>(d: drawing, f: impl FnOnce(&DrawingState) -> R) -> R {
 }
 
 fn with_state_mut<R>(d: drawing, f: impl FnOnce(&mut DrawingState) -> R) -> R {
-    DRAWING_STATE.with(|states| {
-        let mut states = states.borrow_mut();
-        let state = states.entry(drawing_key(d)).or_default();
+    with_graphapp_runtime(|runtime| {
+        let state = runtime.gdraw.drawings.entry(drawing_key(d)).or_default();
         f(state)
     })
 }
@@ -428,13 +405,18 @@ fn font_info(f: font) -> FontInfo {
         };
     }
 
-    FONT_STATE.with(|fonts| {
-        fonts.borrow().get(&font_key(f)).copied().unwrap_or(FontInfo {
+    with_graphapp_runtime(|runtime| {
+        runtime
+            .gdraw
+            .fonts
+            .get(&font_key(f))
+            .copied()
+            .unwrap_or(FontInfo {
             height: unsafe { (*f).value.max(1) },
             style: unsafe { (*f).flags as c_int },
             quality: unsafe { (*f).max },
             use_points: unsafe { (*f).size },
-        })
+            })
     })
 }
 
@@ -866,8 +848,8 @@ pub unsafe fn gnewfont2(
         (*font).size = usePoints;
         (*font).max = quality;
     }
-    FONT_STATE.with(|fonts| {
-        fonts.borrow_mut().insert(
+    with_graphapp_runtime(|runtime| {
+        runtime.gdraw.fonts.insert(
             font_key(font),
             FontInfo {
                 height: size.max(1),
