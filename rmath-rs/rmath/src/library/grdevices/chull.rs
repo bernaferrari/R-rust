@@ -466,7 +466,8 @@ pub unsafe fn chull(x: SEXP) -> SEXP {
         let mut ib_vec: Vec<c_int> = vec![0; (4 * n) as usize];
         let mut il_vec: Vec<c_int> = vec![0; (4 * n) as usize];
 
-        let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.into()));
+        let x = coerceVector(x, SEXPTYPE::REALSXP.into());
+        let _x_guard = protect(x);
         let x_data = REAL(x) as *mut c_double;
 
         let mut n_mut = n;
@@ -485,8 +486,8 @@ pub unsafe fn chull(x: SEXP) -> SEXP {
             il_vec.as_mut_ptr().add(3 * n as usize),
         );
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nh));
-        let _protect = protect_n(2);
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, nh);
+        let _ans_guard = protect(ans);
         let ians = INTEGER(ans);
         for i in 0..nh as usize {
             // Reverse order to match C output

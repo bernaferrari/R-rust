@@ -26,7 +26,7 @@ use std::os::raw::{c_char, c_int};
 use crate::sexp::accessors::CAR;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Constants from scan.c
@@ -359,16 +359,15 @@ pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let prompt = CAR(args);
 
-        Rf_protect(prompt);
+        let _prompt_guard = protect(prompt);
 
         // In library/embedded mode (UniFFI, Android), there is no interactive console.
         // Return an empty string, matching R's non-interactive behaviour.
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         let empty_char = Rf_mkChar(b"\0".as_ptr() as *const c_char);
         crate::sexp::accessors::SET_STRING_ELT(ans, 0, empty_char);
 
-        Rf_unprotect(2);
         ans
     }
 }

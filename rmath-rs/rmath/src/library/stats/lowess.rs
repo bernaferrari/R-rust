@@ -10,7 +10,7 @@ use crate::sexp::accessors::{LENGTH, REAL, TYPEOF};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::NA_INTEGER;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 #[inline]
 fn fsquare(x: c_double) -> c_double {
@@ -314,7 +314,8 @@ pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> S
             Rf_error(b"'delta' must be finite and > 0\0".as_ptr() as *const _);
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nx));
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx);
+        let _ans_guard = protect(ans);
         let mut rw = vec![0.0f64; nx as usize];
         let mut res = vec![0.0f64; nx as usize];
         clowess(
@@ -328,7 +329,6 @@ pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> S
             rw.as_mut_ptr(),
             res.as_mut_ptr(),
         );
-        Rf_unprotect(1);
         ans
     }
 }

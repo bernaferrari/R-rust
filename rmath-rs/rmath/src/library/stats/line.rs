@@ -161,7 +161,8 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
             Rf_error(b"insufficient observations\0".as_ptr() as *const libc::c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
+        let _ans_guard = protect(ans);
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
         setAttrib(ans, R_NamesSymbol(), nm);
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const libc::c_char));
@@ -199,7 +200,6 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
             REAL(coef),
         );
 
-        Rf_unprotect(1);
         ans
     }
 }

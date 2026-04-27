@@ -10,7 +10,7 @@ use crate::main::relop::R_NamesSymbol;
 use crate::sexp::accessors::{LENGTH, REAL, SET_STRING_ELT, SET_VECTOR_ELT, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 const sm_NO_ENDRULE: c_int = 0;
 const sm_COPY_ENDRULE: c_int = 1;
@@ -314,7 +314,8 @@ pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
         let type_ = asInteger(stype);
         let n = XLENGTH(x);
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n as c_int));
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, n as c_int);
+        let _ans_guard = protect(ans);
         let y = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
         SET_VECTOR_ELT(ans, 0, y);
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
@@ -375,7 +376,6 @@ pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
             SET_STRING_ELT(nm, 1, Rf_mkChar(b"changed\0".as_ptr() as *const _));
         }
 
-        Rf_unprotect(1);
         ans
     }
 }

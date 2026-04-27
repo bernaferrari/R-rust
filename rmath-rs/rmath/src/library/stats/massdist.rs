@@ -11,7 +11,7 @@ use std::os::raw::{c_double, c_int};
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, XLENGTH};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{NA_INTEGER, R_FINITE, R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Helper: asInteger -- extract a scalar integer from an SEXP
@@ -86,7 +86,7 @@ pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEX
 
         let n_xlen = n as R_xlen_t;
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         let xlo = as_real(slo);
         let xhi = as_real(shi);
@@ -130,7 +130,6 @@ pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEX
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }

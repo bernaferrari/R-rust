@@ -18,7 +18,7 @@ use crate::sexp::accessors::{CADDR, CADR, CAR, CHAR, LENGTH, SET_STRING_ELT, STR
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::os::raw::c_int;
@@ -392,7 +392,7 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         let names = Rf_allocVector(crate::sexp::ffi::SEXPTYPE::STRSXP.as_c_int(), n);
-        Rf_protect(names);
+        let _names_guard = protect(names);
 
         for i in 0..n as i64 {
             let _name_res = InIntegerAscii(&mut reader);
@@ -402,7 +402,6 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             SET_STRING_ELT(names, i, placeholder);
         }
 
-        Rf_unprotect(1);
         names
     }
 }
