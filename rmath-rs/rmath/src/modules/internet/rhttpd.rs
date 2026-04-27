@@ -22,6 +22,7 @@ use crate::sexp::constructors::{
 use crate::sexp::envir::R_findVarInFrame as findVarInFrame;
 use crate::sexp::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install as install;
@@ -33,7 +34,6 @@ use libc::{
     socket, socklen_t, ssize_t,
 };
 use std::alloc::{Layout, alloc, dealloc};
-use std::cell::Cell;
 
 // ============================================================
 // Constants
@@ -153,18 +153,63 @@ fn http_sig(c: &HttpdConn) -> &'static [u8] {
 }
 
 // ============================================================
-// Static state
+// Runtime state
 // ============================================================
 
-thread_local! { static WORKERS: Cell<[*mut HttpdConn; MAX_WORKERS]> = Cell::new([std::ptr::null_mut(); MAX_WORKERS]); }
-thread_local! { static NEEDS_INIT: Cell<c_int> = Cell::new(1); }
-thread_local! { static SRV_SOCK: Cell<c_int> = Cell::new(INVALID_SOCKET); }
-thread_local! { static IN_PROCESS: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_IGNORE_SIGPIPE: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_CONTENT_TYPE_NAME: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static R_HANDLERS_NAME: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static CUSTOM_HANDLERS_ENV: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static SRV_HANDLER: Cell<*mut c_void> = Cell::new(std::ptr::null_mut()); }
+pub(crate) struct HttpdRuntimeState {
+    workers: [*mut HttpdConn; MAX_WORKERS],
+    needs_init: c_int,
+    srv_sock: c_int,
+    in_process: c_int,
+    ignore_sigpipe: c_int,
+    content_type_name: SEXP,
+    handlers_name: SEXP,
+    custom_handlers_env: SEXP,
+    srv_handler: *mut c_void,
+}
+
+impl Default for HttpdRuntimeState {
+    fn default() -> Self {
+        Self {
+            workers: [std::ptr::null_mut(); MAX_WORKERS],
+            needs_init: 1,
+            srv_sock: INVALID_SOCKET,
+            in_process: 0,
+            ignore_sigpipe: 0,
+            content_type_name: std::ptr::null_mut(),
+            handlers_name: std::ptr::null_mut(),
+            custom_handlers_env: std::ptr::null_mut(),
+            srv_handler: std::ptr::null_mut(),
+        }
+    }
+}
+
+impl Drop for HttpdRuntimeState {
+    fn drop(&mut self) {
+        unsafe {
+            if self.srv_sock != INVALID_SOCKET {
+                close(self.srv_sock);
+                self.srv_sock = INVALID_SOCKET;
+            }
+            if !self.srv_handler.is_null() {
+                removeInputHandler(R_InputHandlers(), self.srv_handler);
+                self.srv_handler = std::ptr::null_mut();
+            }
+            for worker in &mut self.workers {
+                if !worker.is_null() {
+                    finalize_worker(*worker);
+                    let layout = Layout::new::<HttpdConn>();
+                    dealloc(*worker as *mut u8, layout);
+                    *worker = std::ptr::null_mut();
+                }
+            }
+        }
+    }
+}
+
+fn with_httpd_state<R>(f: impl FnOnce(&mut HttpdRuntimeState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.httpd_state))
+}
 
 // ============================================================
 // Local Rust adapters for R runtime services not yet represented as modules
@@ -232,7 +277,7 @@ unsafe fn R_InputHandlers() -> *mut c_void {
 
 /// One-time initialization (Unix: no-op beyond setting flag)
 fn first_init() {
-    NEEDS_INIT.with(|v| v.set(0));
+    with_httpd_state(|state| state.needs_init = 0);
 }
 
 // ============================================================
@@ -396,12 +441,8 @@ unsafe fn add_worker(c: *mut HttpdConn) -> c_int {
     unsafe {
         let mut i: c_uint = 0;
         while i < MAX_WORKERS as c_uint {
-            if WORKERS.with(|v| v.get()[i as usize].is_null()) {
-                WORKERS.with(|v| {
-                    let mut workers = v.get();
-                    workers[i as usize] = c;
-                    v.set(workers);
-                });
+            if with_httpd_state(|state| state.workers[i as usize].is_null()) {
+                with_httpd_state(|state| state.workers[i as usize] = c);
                 return 0;
             }
             i += 1;
@@ -427,12 +468,8 @@ unsafe fn remove_worker(c: *mut HttpdConn) {
         finalize_worker(c);
         let mut i: c_uint = 0;
         while i < MAX_WORKERS as c_uint {
-            if WORKERS.with(|v| v.get()[i as usize]) == c {
-                WORKERS.with(|v| {
-                    let mut workers = v.get();
-                    workers[i as usize] = std::ptr::null_mut();
-                    v.set(workers);
-                });
+            if with_httpd_state(|state| state.workers[i as usize]) == c {
+                with_httpd_state(|state| state.workers[i as usize] = std::ptr::null_mut());
             }
             i += 1;
         }
@@ -464,7 +501,7 @@ unsafe fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mu
 unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
     unsafe {
         let mut i: c_uint = 0;
-        R_IGNORE_SIGPIPE.with(|v| v.set(1));
+        with_httpd_state(|state| state.ignore_sigpipe = 1);
         while i < len as c_uint {
             let flags: c_int = 0;
             let n = send(
@@ -474,12 +511,12 @@ unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
                 flags,
             );
             if n < 1 {
-                R_IGNORE_SIGPIPE.with(|v| v.set(0));
+                with_httpd_state(|state| state.ignore_sigpipe = 0);
                 return -1;
             }
             i += n as c_uint;
         }
-        R_IGNORE_SIGPIPE.with(|v| v.set(0));
+        with_httpd_state(|state| state.ignore_sigpipe = 0);
         0
     }
 }
@@ -500,9 +537,9 @@ unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
             libc::strcpy(local_buf.as_mut_ptr().offset(8), text);
             send_response((*c).sock, local_buf.as_ptr(), l + 8);
         } else {
-            R_IGNORE_SIGPIPE.with(|v| v.set(1));
+            with_httpd_state(|state| state.ignore_sigpipe = 1);
             let res = send((*c).sock, sig.as_ptr() as *const c_void, 8, 0);
-            R_IGNORE_SIGPIPE.with(|v| v.set(0));
+            with_httpd_state(|state| state.ignore_sigpipe = 0);
             if res < 8 {
                 return;
             }
@@ -694,13 +731,15 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
                 );
             }
             if !(*c).content_type.is_null() {
-                if R_CONTENT_TYPE_NAME.with(|v| v.get()).is_null() {
-                    R_CONTENT_TYPE_NAME
-                        .with(|v| v.set(install(b"content-type\0".as_ptr() as *const c_char)));
+                if with_httpd_state(|state| state.content_type_name).is_null() {
+                    with_httpd_state(|state| {
+                        state.content_type_name =
+                            install(b"content-type\0".as_ptr() as *const c_char)
+                    });
                 }
                 setAttrib(
                     res,
-                    R_CONTENT_TYPE_NAME.with(|v| v.get()),
+                    with_httpd_state(|state| state.content_type_name),
                     mkString((*c).content_type),
                 );
             }
@@ -746,23 +785,30 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
                 *fn_buf.as_mut_ptr().offset(name_len) = 0;
 
                 // Cache custom_handlers_env
-                if CUSTOM_HANDLERS_ENV.with(|v| v.get()).is_null() {
-                    if R_HANDLERS_NAME.with(|v| v.get()).is_null() {
-                        R_HANDLERS_NAME.with(|v| {
-                            v.set(install(b".httpd.handlers.env\0".as_ptr() as *const c_char))
+                if with_httpd_state(|state| state.custom_handlers_env).is_null() {
+                    if with_httpd_state(|state| state.handlers_name).is_null() {
+                        with_httpd_state(|state| {
+                            state.handlers_name =
+                                install(b".httpd.handlers.env\0".as_ptr() as *const c_char)
                         });
                     }
                     let tools_ns = R_FindNamespace(mkString(b"tools\0".as_ptr() as *const c_char));
                     let _tools_ns_guard = protect(tools_ns);
                     let eval_sym = install(b"eval\0".as_ptr() as *const c_char);
-                    let call = lang3(eval_sym, R_HANDLERS_NAME.with(|v| v.get()), tools_ns);
+                    let call = lang3(
+                        eval_sym,
+                        with_httpd_state(|state| state.handlers_name),
+                        tools_ns,
+                    );
                     let _call_guard = protect(call);
-                    CUSTOM_HANDLERS_ENV.with(|v| v.set(Rf_eval(call, R_NilValue())));
+                    with_httpd_state(|state| {
+                        state.custom_handlers_env = Rf_eval(call, R_NilValue())
+                    });
                 }
                 // Only proceed if .httpd.handlers.env really exists
-                if TYPEOF(CUSTOM_HANDLERS_ENV.with(|v| v.get())) == SEXPTYPE::ENVSXP {
+                if TYPEOF(with_httpd_state(|state| state.custom_handlers_env)) == SEXPTYPE::ENVSXP {
                     let cl = findVarInFrame(
-                        CUSTOM_HANDLERS_ENV.with(|v| v.get()),
+                        with_httpd_state(|state| state.custom_handlers_env),
                         install(fn_buf.as_ptr() as *const c_char),
                     );
                     if cl != R_UnboundValue() && TYPEOF(cl) == SEXPTYPE::CLOSXP {
@@ -1050,9 +1096,9 @@ unsafe fn process_request_(ptr: *mut c_void) {
 /// Process request - wraps the actual call with ToplevelExec
 unsafe fn process_request(c: *mut HttpdConn) {
     unsafe {
-        IN_PROCESS.with(|v| v.set(1));
+        with_httpd_state(|state| state.in_process = 1);
         R_ToplevelExec(Some(process_request_), c as *mut c_void);
-        IN_PROCESS.with(|v| v.set(0));
+        with_httpd_state(|state| state.in_process = 0);
     }
 }
 
@@ -1203,7 +1249,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
             return;
         }
 
-        if IN_PROCESS.with(|v| v.get()) != 0 {
+        if with_httpd_state(|state| state.in_process) != 0 {
             return; // don't allow recursive entrance
         }
 
@@ -1696,7 +1742,7 @@ unsafe fn srv_input_handler(_data: *mut c_void) {
         let mut peer_sa: sockaddr_in = std::mem::zeroed();
         let mut peer_sal: socklen_t = core::mem::size_of::<sockaddr_in>() as socklen_t;
         let cl_sock = accept(
-            SRV_SOCK.with(|v| v.get()),
+            with_httpd_state(|state| state.srv_sock),
             &mut peer_sa as *mut sockaddr_in as *mut sockaddr,
             &mut peer_sal,
         );
@@ -1738,25 +1784,25 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
         let reuse: c_int = 1;
         let mut srv_sa: sockaddr_in = std::mem::zeroed();
 
-        if NEEDS_INIT.with(|v| v.get()) != 0 {
+        if with_httpd_state(|state| state.needs_init) != 0 {
             first_init();
         }
 
         // If already in use, close the current socket
-        if SRV_SOCK.with(|v| v.get()) != INVALID_SOCKET {
-            close(SRV_SOCK.with(|v| v.get()));
+        if with_httpd_state(|state| state.srv_sock) != INVALID_SOCKET {
+            close(with_httpd_state(|state| state.srv_sock));
         }
 
         // Create a new socket
-        SRV_SOCK.with(|v| v.set(socket(AF_INET, SOCK_STREAM, 0)));
-        if SRV_SOCK.with(|v| v.get()) == INVALID_SOCKET {
+        with_httpd_state(|state| state.srv_sock = socket(AF_INET, SOCK_STREAM, 0));
+        if with_httpd_state(|state| state.srv_sock) == INVALID_SOCKET {
             Rf_error(b"unable to create socket\0".as_ptr() as *const c_char);
             unreachable!();
         }
 
         // Set socket for reuse
         setsockopt(
-            SRV_SOCK.with(|v| v.get()),
+            with_httpd_state(|state| state.srv_sock),
             SOL_SOCKET,
             SO_REUSEADDR,
             &reuse as *const c_int as *const c_void,
@@ -1765,43 +1811,46 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
 
         // Bind to the desired port
         if bind(
-            SRV_SOCK.with(|v| v.get()),
+            with_httpd_state(|state| state.srv_sock),
             build_sin(&mut srv_sa, ip, port),
             core::mem::size_of::<sockaddr_in>() as u32,
         ) != 0
         {
             let err = get_errno();
             if err == libc::EADDRINUSE {
-                close(SRV_SOCK.with(|v| v.get()));
-                SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
+                close(with_httpd_state(|state| state.srv_sock));
+                with_httpd_state(|state| state.srv_sock = INVALID_SOCKET);
                 return -2;
             } else {
-                close(SRV_SOCK.with(|v| v.get()));
-                SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
+                close(with_httpd_state(|state| state.srv_sock));
+                with_httpd_state(|state| state.srv_sock = INVALID_SOCKET);
                 Rf_error(b"unable to bind socket to TCP port\0".as_ptr() as *const c_char);
                 unreachable!();
             }
         }
 
         // Setup listen
-        if listen(SRV_SOCK.with(|v| v.get()), 8) != 0 {
-            close(SRV_SOCK.with(|v| v.get()));
-            SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
+        if listen(with_httpd_state(|state| state.srv_sock), 8) != 0 {
+            close(with_httpd_state(|state| state.srv_sock));
+            with_httpd_state(|state| state.srv_sock = INVALID_SOCKET);
             Rf_error(b"cannot listen to TCP port\0".as_ptr() as *const c_char);
             unreachable!();
         }
 
         // Register the socket as an input handler
-        if !SRV_HANDLER.with(|v| v.get()).is_null() {
-            removeInputHandler(R_InputHandlers(), SRV_HANDLER.with(|v| v.get()));
-        }
-        SRV_HANDLER.with(|v| {
-            v.set(addInputHandler(
+        if !with_httpd_state(|state| state.srv_handler).is_null() {
+            removeInputHandler(
                 R_InputHandlers(),
-                SRV_SOCK.with(|v| v.get()),
+                with_httpd_state(|state| state.srv_handler),
+            );
+        }
+        with_httpd_state(|state| {
+            state.srv_handler = addInputHandler(
+                R_InputHandlers(),
+                state.srv_sock,
                 Some(srv_input_handler),
                 HttpdServerActivity,
-            ))
+            )
         });
 
         0
@@ -1811,13 +1860,16 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
 /// Stop the HTTP daemon.
 pub(crate) unsafe fn in_R_HTTPDStop() {
     unsafe {
-        if SRV_SOCK.with(|v| v.get()) != INVALID_SOCKET {
-            close(SRV_SOCK.with(|v| v.get()));
-            SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
+        if with_httpd_state(|state| state.srv_sock) != INVALID_SOCKET {
+            close(with_httpd_state(|state| state.srv_sock));
+            with_httpd_state(|state| state.srv_sock = INVALID_SOCKET);
         }
-        if !SRV_HANDLER.with(|v| v.get()).is_null() {
-            removeInputHandler(R_InputHandlers(), SRV_HANDLER.with(|v| v.get()));
-            SRV_HANDLER.with(|v| v.set(std::ptr::null_mut()));
+        if !with_httpd_state(|state| state.srv_handler).is_null() {
+            removeInputHandler(
+                R_InputHandlers(),
+                with_httpd_state(|state| state.srv_handler),
+            );
+            with_httpd_state(|state| state.srv_handler = std::ptr::null_mut());
         }
     }
 }
@@ -1841,5 +1893,45 @@ pub(crate) unsafe fn R_init_httpd(sIP: SEXP, sPort: SEXP) -> SEXP {
         let ans = Rf_ScalarInteger(in_R_HTTPDCreate(ip, asInteger(sPort)));
         vmaxset(vmax);
         ans
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn httpd_runtime_state_is_session_local() {
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+        let first_symbol = first.base_env;
+        let second_symbol = second.global_env;
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
+            with_httpd_state(|state| {
+                state.needs_init = 0;
+                state.in_process = 1;
+                state.ignore_sigpipe = 1;
+                state.content_type_name = first_symbol;
+            });
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            assert_eq!(with_httpd_state(|state| state.needs_init), 1);
+            assert_eq!(with_httpd_state(|state| state.in_process), 0);
+            with_httpd_state(|state| state.handlers_name = second_symbol);
+            replace_current_instance(previous);
+        }
+
+        assert_eq!(first.httpd_state.needs_init, 0);
+        assert_eq!(first.httpd_state.in_process, 1);
+        assert_eq!(first.httpd_state.ignore_sigpipe, 1);
+        assert_eq!(first.httpd_state.content_type_name, first_symbol);
+        assert_eq!(second.httpd_state.needs_init, 1);
+        assert_eq!(second.httpd_state.in_process, 0);
+        assert_eq!(second.httpd_state.handlers_name, second_symbol);
+        assert!(second.httpd_state.content_type_name.is_null());
     }
 }

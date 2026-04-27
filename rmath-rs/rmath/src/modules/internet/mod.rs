@@ -35,7 +35,7 @@ mod libcurl_wrap;
     unused_assignments,
     non_camel_case_types
 )]
-mod rhttpd;
+pub(crate) mod rhttpd;
 #[allow(
     dead_code,
     unused_imports,

@@ -268,6 +268,8 @@ pub struct RInstance {
     pub(crate) internet_state: crate::modules::internet::internet::InternetRuntimeState,
     /// Per-instance libcurl module scratch/progress state.
     pub(crate) libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState,
+    /// Per-instance embedded HTTP server socket, worker, and handler state.
+    pub(crate) httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState,
     /// Per-instance Unix standard console/event callback state.
     pub(crate) sys_std_state: crate::unix::sys_std::SysStdRuntimeState,
     /// Per-instance Unix platform scratch buffer and process timing state.
@@ -405,6 +407,7 @@ impl RInstance {
             lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
             internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
             libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
+            httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState::default(),
             sys_std_state: crate::unix::sys_std::SysStdRuntimeState::default(),
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
