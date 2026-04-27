@@ -10,7 +10,6 @@
 //! - fpu_setup: FPU initialization
 //! - R_OpenInitFile: open R initialization file (.Rprofile)
 
-use std::cell::{Cell, RefCell};
 use std::env;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int};
@@ -20,6 +19,7 @@ use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar, Rf_mkString};
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -29,8 +29,28 @@ const R_PATH_MAX: usize = 4096;
 const STRSXP_VAL: c_int = 16;
 
 // ---------------------------------------------------------------------------
-// Stub functions
+// Runtime state and stub functions
 // ---------------------------------------------------------------------------
+
+pub(crate) struct SysUnixRuntimeState {
+    new_file_name: [c_char; R_PATH_MAX + 1],
+    clk_tck: c_double,
+    start_time: c_double,
+}
+
+impl Default for SysUnixRuntimeState {
+    fn default() -> Self {
+        Self {
+            new_file_name: [0; R_PATH_MAX + 1],
+            clk_tck: 100.0,
+            start_time: 0.0,
+        }
+    }
+}
+
+fn with_sys_unix_state<R>(f: impl FnOnce(&mut SysUnixRuntimeState) -> R) -> R {
+    with_required_current_instance(|instance| f(&mut instance.sys_unix_state))
+}
 
 unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
 unsafe fn setAttrib(_x: SEXP, _what: SEXP, _val: SEXP) {}
@@ -38,13 +58,9 @@ unsafe fn R_NamesSymbol() -> SEXP {
     ptr::null_mut()
 }
 
-thread_local! { static LoadInitFile: Cell<c_int> = Cell::new(1); }
-
 // ---------------------------------------------------------------------------
 // R_ExpandFileName
 // ---------------------------------------------------------------------------
-
-thread_local! { static newFileName: RefCell<[c_char; R_PATH_MAX + 1]> = RefCell::new([0; R_PATH_MAX + 1]); }
 
 /// Expand ~ in file paths.
 /// Handles ~, ~user, and ~user/path forms using HOME env and getpwnam.
@@ -122,8 +138,9 @@ pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
         }
 
         let bytes = expanded.as_bytes();
-        let result = newFileName.with(|buf_cell| {
-            let buf = &mut *buf_cell.borrow_mut();
+        let result = with_sys_unix_state(|state| {
+            let buf = &mut state.new_file_name;
+            buf.fill(0);
             ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr() as *mut u8, bytes.len());
             *buf.as_mut_ptr().add(bytes.len()) = 0;
             buf.as_ptr()
@@ -144,9 +161,6 @@ pub unsafe fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 // Process timing
 // ---------------------------------------------------------------------------
-
-thread_local! { static clk_tck: Cell<c_double> = Cell::new(100.0); }
-thread_local! { static StartTime: Cell<c_double> = Cell::new(0.0); }
 
 /// Get current time in seconds.
 /// On Android uses clock_gettime(CLOCK_MONOTONIC) since gettimeofday is deprecated
@@ -171,15 +185,20 @@ unsafe fn currentTime() -> c_double {
 /// Record the start time for proc.time().
 pub unsafe fn R_setStartTime() {
     unsafe {
-        clk_tck.with(|v| v.set(libc::sysconf(libc::_SC_CLK_TCK) as c_double));
-        StartTime.with(|v| v.set(currentTime()));
+        let clock_ticks = libc::sysconf(libc::_SC_CLK_TCK) as c_double;
+        let start_time = currentTime();
+        with_sys_unix_state(|state| {
+            state.clk_tck = clock_ticks;
+            state.start_time = start_time;
+        });
     }
 }
 
 /// Get process timing data: [user, system, elapsed, child_user, child_system].
 pub unsafe fn R_getProcTime(data: *mut c_double) {
     unsafe {
-        let et = currentTime() - StartTime.with(|v| v.get());
+        let start_time = with_sys_unix_state(|state| state.start_time);
+        let et = currentTime() - start_time;
         *data.add(2) = 1e-3 * (1000.0 * et).round();
 
         let mut self_usage: libc::rusage = std::mem::zeroed();
@@ -200,7 +219,7 @@ pub unsafe fn R_getProcTime(data: *mut c_double) {
 
 /// Get the clock increment in seconds.
 pub fn R_getClockIncrement() -> c_double {
-    1.0 / clk_tck.with(|v| v.get())
+    1.0 / with_sys_unix_state(|state| state.clk_tck)
 }
 
 // ---------------------------------------------------------------------------
@@ -352,7 +371,9 @@ pub fn fpu_setup(start: c_int) {
 /// Checks R_PROFILE_USER env var, then ./.Rprofile, then ~/.Rprofile.
 pub unsafe fn R_OpenInitFile() -> *mut libc::FILE {
     unsafe {
-        if LoadInitFile.with(|v| v.get()) == 0 {
+        let load_init_file =
+            with_required_current_instance(|instance| instance.startup_state.load_init_file != 0);
+        if !load_init_file {
             return ptr::null_mut();
         }
 
@@ -466,8 +487,10 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_setStartTime();
-            assert!(clk_tck.with(|v| v.get()) > 0.0);
-            assert!(StartTime.with(|v| v.get()) > 0.0);
+            with_sys_unix_state(|state| {
+                assert!(state.clk_tck > 0.0);
+                assert!(state.start_time > 0.0);
+            });
         }
     }
 
@@ -492,6 +515,41 @@ mod tests {
             // Elapsed time should be non-negative
             assert!(data[2] >= 0.0);
         }
+    }
+
+    #[test]
+    fn sys_unix_runtime_state_is_session_local() {
+        use crate::sexp::instance::{RInstance, replace_current_instance};
+
+        let mut first = RInstance::new();
+        let mut second = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut first as *mut RInstance));
+            let path = CString::new("~").unwrap_or_default();
+            let first_expanded = R_ExpandFileName(path.as_ptr());
+            assert!(!first_expanded.is_null());
+            first.sys_unix_state.clk_tck = 250.0;
+            first.sys_unix_state.start_time = 12345.0;
+            replace_current_instance(previous);
+
+            let previous = replace_current_instance(Some(&mut second as *mut RInstance));
+            assert_eq!(R_getClockIncrement(), 0.01);
+            let second_expanded = R_ExpandFileName(path.as_ptr());
+            assert!(!second_expanded.is_null());
+            second.sys_unix_state.clk_tck = 500.0;
+            second.sys_unix_state.start_time = 67890.0;
+            replace_current_instance(previous);
+        }
+
+        assert_eq!(first.sys_unix_state.clk_tck, 250.0);
+        assert_eq!(first.sys_unix_state.start_time, 12345.0);
+        assert_eq!(second.sys_unix_state.clk_tck, 500.0);
+        assert_eq!(second.sys_unix_state.start_time, 67890.0);
+        assert_ne!(
+            first.sys_unix_state.new_file_name.as_ptr(),
+            second.sys_unix_state.new_file_name.as_ptr()
+        );
     }
 
     #[test]
