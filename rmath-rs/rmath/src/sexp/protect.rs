@@ -9,7 +9,9 @@
 //! [`Sexp`](super::object::Sexp) handles instead of raw pointers.
 
 use super::ffi::SEXP;
+use super::instance::{RInstance, with_required_current_instance};
 use super::object::Sexp;
+use std::ptr::NonNull;
 
 /// RAII guard for the protection stack.
 /// Automatically unprotects when dropped.
@@ -22,13 +24,21 @@ use super::object::Sexp;
 /// // guard automatically unprotects when it goes out of scope
 /// ```
 pub struct ProtectGuard {
+    owner: Option<NonNull<RInstance>>,
     count: usize,
 }
 
 impl Drop for ProtectGuard {
     fn drop(&mut self) {
-        if self.count > 0 {
-            unprotect_count(self.count);
+        if let (Some(mut owner), count) = (self.owner, self.count)
+            && count > 0
+        {
+            // SAFETY: The guard is created only while its owning RInstance is
+            // active and the session APIs keep that instance alive across the
+            // scoped interpreter call that owns the guard.
+            unsafe {
+                unprotect_count_in(owner.as_mut(), count);
+            }
         }
     }
 }
@@ -50,9 +60,21 @@ pub(crate) fn protect(s: SEXP) -> ProtectGuard {
 }
 
 fn protect_raw(s: SEXP) -> ProtectGuard {
-    push_protect(s);
+    if s.is_null() {
+        return ProtectGuard {
+            owner: None,
+            count: 0,
+        };
+    }
+
+    let owner = with_required_current_instance(|inst| {
+        push_protect_in(inst, s);
+        NonNull::from(inst)
+    });
+
     ProtectGuard {
-        count: if s.is_null() { 0 } else { 1 },
+        owner: Some(owner),
+        count: 1,
     }
 }
 
@@ -61,7 +83,16 @@ fn protect_raw(s: SEXP) -> ProtectGuard {
 /// Callers must already have pushed `n` entries and want RAII-style unwinding
 /// safety around a manual protect batch.
 pub(crate) fn protect_n(n: usize) -> ProtectGuard {
-    ProtectGuard { count: n }
+    ProtectGuard {
+        owner: if n == 0 {
+            None
+        } else {
+            Some(with_required_current_instance(|inst| {
+                NonNull::from(&mut *inst)
+            }))
+        },
+        count: n,
+    }
 }
 
 fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
@@ -70,56 +101,82 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
     }
 }
 
-fn push_protect(s: SEXP) {
+fn push_protect_in(inst: &mut RInstance, s: SEXP) {
     if !s.is_null() {
-        super::instance::with_required_current_instance(|inst| {
-            let mut stack = inst.protect_stack.borrow_mut();
-            reserve_slot_or_fail(&mut stack, "protect");
-            stack.push(s);
-        });
+        let mut stack = inst.protect_stack.borrow_mut();
+        reserve_slot_or_fail(&mut stack, "protect");
+        stack.push(s);
+    }
+}
+
+fn push_protect(s: SEXP) {
+    with_required_current_instance(|inst| push_protect_in(inst, s));
+}
+
+fn push_preserve_in(inst: &mut RInstance, s: SEXP) {
+    if !s.is_null() {
+        let mut stack = inst.preserve_stack.borrow_mut();
+        reserve_slot_or_fail(&mut stack, "preserve");
+        stack.push(s);
     }
 }
 
 fn push_preserve(s: SEXP) {
-    if !s.is_null() {
-        super::instance::with_required_current_instance(|inst| {
-            let mut stack = inst.preserve_stack.borrow_mut();
-            reserve_slot_or_fail(&mut stack, "preserve");
-            stack.push(s);
-        });
+    with_required_current_instance(|inst| push_preserve_in(inst, s));
+}
+
+pub(crate) fn release_preserved_in(inst: &mut RInstance, s: SEXP) {
+    if s.is_null() {
+        return;
+    }
+    let mut stack = inst.preserve_stack.borrow_mut();
+    if let Some(pos) = stack.iter().position(|&x| x == s) {
+        stack.remove(pos);
     }
 }
 
 fn release_preserved(s: SEXP) {
-    if s.is_null() {
-        return;
-    }
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.preserve_stack.borrow_mut();
-        if let Some(pos) = stack.iter().position(|&x| x == s) {
-            stack.remove(pos);
-        }
-    });
+    with_required_current_instance(|inst| release_preserved_in(inst, s));
 }
 
 /// RAII guard for the preserve stack.
 ///
 /// Dropping the guard releases the preserved object from the active session.
 pub struct PreserveGuard {
+    owner: Option<NonNull<RInstance>>,
     value: SEXP,
 }
 
 impl Drop for PreserveGuard {
     fn drop(&mut self) {
-        release_preserved(self.value);
+        if let Some(mut owner) = self.owner {
+            // SAFETY: See ProtectGuard::drop; preserve guards are scoped to the
+            // owning session entrypoint that created them.
+            unsafe {
+                release_preserved_in(owner.as_mut(), self.value);
+            }
+        }
     }
 }
 
 /// Preserve an owner-scoped SEXP handle until the returned guard is dropped.
 pub fn preserve_sexp(value: Sexp<'_>) -> PreserveGuard {
     let raw = value.as_raw();
-    push_preserve(raw);
-    PreserveGuard { value: raw }
+    if raw.is_null() {
+        return PreserveGuard {
+            owner: None,
+            value: raw,
+        };
+    }
+
+    let owner = with_required_current_instance(|inst| {
+        push_preserve_in(inst, raw);
+        NonNull::from(inst)
+    });
+    PreserveGuard {
+        owner: Some(owner),
+        value: raw,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -133,41 +190,50 @@ pub(crate) fn protect_raw_pointer(s: SEXP) -> SEXP {
 }
 
 /// Pop the top `n` entries from the protection stack.
-pub(crate) fn unprotect_count(n: usize) {
+pub(crate) fn unprotect_count_in(inst: &mut RInstance, n: usize) {
     if n == 0 {
         return;
     }
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.protect_stack.borrow_mut();
-        let len = stack.len();
-        if n >= len {
-            stack.clear();
-        } else {
-            stack.truncate(len - n);
-        }
-    });
+    let mut stack = inst.protect_stack.borrow_mut();
+    let len = stack.len();
+    if n >= len {
+        stack.clear();
+    } else {
+        stack.truncate(len - n);
+    }
+}
+
+/// Pop the top `n` entries from the protection stack.
+pub(crate) fn unprotect_count(n: usize) {
+    with_required_current_instance(|inst| unprotect_count_in(inst, n));
 }
 
 /// Unprotect the top entry from the protection stack.
 ///
 /// This is the equivalent of R's `UNPROTECT_PTR()` macro.
 pub(crate) fn unprotect_ptr(s: SEXP) {
+    with_required_current_instance(|inst| unprotect_ptr_in(inst, s));
+}
+
+pub(crate) fn unprotect_ptr_in(inst: &mut RInstance, s: SEXP) {
     if s.is_null() {
         return;
     }
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.protect_stack.borrow_mut();
-        if let Some(pos) = stack.iter().rposition(|&x| x == s) {
-            stack.remove(pos);
-        }
-    });
+    let mut stack = inst.protect_stack.borrow_mut();
+    if let Some(pos) = stack.iter().rposition(|&x| x == s) {
+        stack.remove(pos);
+    }
 }
 
 /// Get the current number of entries on the protection stack.
 ///
 /// Used by the context system to track protect depth.
 pub(crate) fn R_ProtectCount() -> usize {
-    super::instance::with_required_current_instance(|inst| inst.protect_stack.borrow().len())
+    with_required_current_instance(R_ProtectCount_in)
+}
+
+pub(crate) fn R_ProtectCount_in(inst: &mut RInstance) -> usize {
+    inst.protect_stack.borrow().len()
 }
 
 /// Iterate over all protected SEXP values on the stack.
@@ -176,38 +242,53 @@ pub(crate) fn with_protected_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    super::instance::with_required_current_instance(|inst| {
-        let stack = inst.protect_stack.borrow();
-        f(&stack)
-    })
+    with_required_current_instance(|inst| with_protected_objects_in(inst, f))
+}
+
+pub(crate) fn with_protected_objects_in<F, R>(inst: &mut RInstance, f: F) -> R
+where
+    F: FnOnce(&[SEXP]) -> R,
+{
+    let stack = inst.protect_stack.borrow();
+    f(&stack)
 }
 
 /// Update all protect stack references using the given mapping function.
 /// Used by the GC compaction phase to update moved object pointers.
-pub(crate) fn update_protect_stack_refs<F>(mut update_fn: F)
+pub(crate) fn update_protect_stack_refs<F>(update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.protect_stack.borrow_mut();
-        for slot in stack.iter_mut() {
-            *slot = update_fn(*slot);
-        }
-    });
+    with_required_current_instance(|inst| update_protect_stack_refs_in(inst, update_fn));
+}
+
+pub(crate) fn update_protect_stack_refs_in<F>(inst: &mut RInstance, mut update_fn: F)
+where
+    F: FnMut(SEXP) -> SEXP,
+{
+    let mut stack = inst.protect_stack.borrow_mut();
+    for slot in stack.iter_mut() {
+        *slot = update_fn(*slot);
+    }
 }
 
 /// Update all preserve stack references using the given mapping function.
 /// Used by the GC compaction phase to update moved object pointers.
-pub(crate) fn update_preserve_stack_refs<F>(mut update_fn: F)
+pub(crate) fn update_preserve_stack_refs<F>(update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.preserve_stack.borrow_mut();
-        for slot in stack.iter_mut() {
-            *slot = update_fn(*slot);
-        }
-    });
+    with_required_current_instance(|inst| update_preserve_stack_refs_in(inst, update_fn));
+}
+
+pub(crate) fn update_preserve_stack_refs_in<F>(inst: &mut RInstance, mut update_fn: F)
+where
+    F: FnMut(SEXP) -> SEXP,
+{
+    let mut stack = inst.preserve_stack.borrow_mut();
+    for slot in stack.iter_mut() {
+        *slot = update_fn(*slot);
+    }
 }
 
 /// Iterate over all preserved SEXP values.
@@ -216,10 +297,15 @@ pub(crate) fn with_preserved_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    super::instance::with_required_current_instance(|inst| {
-        let stack = inst.preserve_stack.borrow();
-        f(&stack)
-    })
+    with_required_current_instance(|inst| with_preserved_objects_in(inst, f))
+}
+
+pub(crate) fn with_preserved_objects_in<F, R>(inst: &mut RInstance, f: F) -> R
+where
+    F: FnOnce(&[SEXP]) -> R,
+{
+    let stack = inst.preserve_stack.borrow();
+    f(&stack)
 }
 
 // ---------------------------------------------------------------------------
@@ -268,43 +354,50 @@ impl ProtectionSlot {
 }
 
 fn protect_raw_with_slot(s: SEXP, api: &str) -> ProtectionSlot {
+    with_required_current_instance(|inst| protect_raw_with_slot_in(inst, s, api))
+}
+
+fn protect_raw_with_slot_in(inst: &mut RInstance, s: SEXP, api: &str) -> ProtectionSlot {
     if s.is_null() {
         return ProtectionSlot::inactive();
     }
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.protect_stack.borrow_mut();
-        reserve_slot_or_fail(&mut stack, api);
-        stack.push(s);
-        ProtectionSlot::from_stack_index(stack.len() - 1)
-    })
+    let mut stack = inst.protect_stack.borrow_mut();
+    reserve_slot_or_fail(&mut stack, api);
+    stack.push(s);
+    ProtectionSlot::from_stack_index(stack.len() - 1)
 }
 
 fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
+    with_required_current_instance(|inst| reprotect_slot_in(inst, slot, s));
+}
+
+fn reprotect_slot_in(inst: &mut RInstance, slot: ProtectionSlot, s: SEXP) {
     let Some(index) = slot.index else {
         return;
     };
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.protect_stack.borrow_mut();
-        if index < stack.len() {
-            stack[index] = s;
-        }
-    });
+    let mut stack = inst.protect_stack.borrow_mut();
+    if index < stack.len() {
+        stack[index] = s;
+    }
 }
 
 fn release_protect_slot(slot: ProtectionSlot) {
+    with_required_current_instance(|inst| release_protect_slot_in(inst, slot));
+}
+
+fn release_protect_slot_in(inst: &mut RInstance, slot: ProtectionSlot) {
     let Some(index) = slot.index else {
         return;
     };
-    super::instance::with_required_current_instance(|inst| {
-        let mut stack = inst.protect_stack.borrow_mut();
-        if index < stack.len() {
-            stack.remove(index);
-        }
-    });
+    let mut stack = inst.protect_stack.borrow_mut();
+    if index < stack.len() {
+        stack.remove(index);
+    }
 }
 
 /// RAII guard for a replaceable protection stack slot.
 pub struct IndexedProtectGuard {
+    owner: Option<NonNull<RInstance>>,
     slot: ProtectionSlot,
 }
 
@@ -314,7 +407,12 @@ impl IndexedProtectGuard {
     }
 
     pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
-        reprotect_slot(self.slot, value);
+        if let Some(mut owner) = self.owner {
+            // SAFETY: See ProtectGuard::drop.
+            unsafe {
+                reprotect_slot_in(owner.as_mut(), self.slot, value);
+            }
+        }
     }
 
     pub fn reprotect_sexp(&mut self, value: Sexp<'_>) {
@@ -324,7 +422,12 @@ impl IndexedProtectGuard {
 
 impl Drop for IndexedProtectGuard {
     fn drop(&mut self) {
-        release_protect_slot(self.slot);
+        if let Some(mut owner) = self.owner {
+            // SAFETY: See ProtectGuard::drop.
+            unsafe {
+                release_protect_slot_in(owner.as_mut(), self.slot);
+            }
+        }
     }
 }
 
@@ -338,9 +441,17 @@ pub fn protect_sexp_with_index(value: Sexp<'_>) -> IndexedProtectGuard {
 /// Legacy compatibility helper for translated Rust modules. Prefer
 /// [`protect_sexp_with_index`] when the caller has an owner-scoped value.
 pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard {
-    IndexedProtectGuard {
-        slot: protect_raw_with_slot(s, api),
+    if s.is_null() {
+        return IndexedProtectGuard {
+            owner: None,
+            slot: ProtectionSlot::inactive(),
+        };
     }
+
+    with_required_current_instance(|inst| IndexedProtectGuard {
+        owner: Some(NonNull::from(&mut *inst)),
+        slot: protect_raw_with_slot_in(inst, s, api),
+    })
 }
 
 /// Protect an SEXP and return a legacy encoded index for later replacement.
@@ -390,6 +501,7 @@ mod tests {
     use std::ptr;
 
     use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -589,6 +701,99 @@ mod tests {
             drop(guard);
             assert_eq!(R_ProtectCount(), depth_before);
         });
+    }
+
+    #[test]
+    fn test_protect_guard_drops_against_original_instance() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+        let previous = unsafe { replace_current_instance(Some(&mut left)) };
+
+        let guard = protect(0x1 as SEXP);
+        assert_eq!(R_ProtectCount_in(&mut left), 1);
+        assert_eq!(R_ProtectCount_in(&mut right), 0);
+
+        unsafe {
+            replace_current_instance(Some(&mut right));
+        }
+        drop(guard);
+
+        assert_eq!(R_ProtectCount_in(&mut left), 0);
+        assert_eq!(R_ProtectCount_in(&mut right), 0);
+        unsafe {
+            replace_current_instance(previous);
+        }
+    }
+
+    #[test]
+    fn test_protect_n_guard_drops_against_original_instance() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+        let previous = unsafe { replace_current_instance(Some(&mut left)) };
+
+        protect_raw_pointer(0x1 as SEXP);
+        protect_raw_pointer(0x2 as SEXP);
+        let guard = protect_n(2);
+        assert_eq!(R_ProtectCount_in(&mut left), 2);
+
+        unsafe {
+            replace_current_instance(Some(&mut right));
+        }
+        drop(guard);
+
+        assert_eq!(R_ProtectCount_in(&mut left), 0);
+        assert_eq!(R_ProtectCount_in(&mut right), 0);
+        unsafe {
+            replace_current_instance(previous);
+        }
+    }
+
+    #[test]
+    fn test_preserve_guard_drops_against_original_instance() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+        let previous = unsafe { replace_current_instance(Some(&mut left)) };
+        let raw = left.arena.alloc_node(SEXPTYPE::INTSXP);
+        let value = Sexp::from_raw(raw).expect("left arena object should wrap");
+
+        let guard = preserve_sexp(value);
+        with_preserved_objects_in(&mut left, |objects| assert_eq!(objects, &[raw]));
+        with_preserved_objects_in(&mut right, |objects| assert!(objects.is_empty()));
+
+        unsafe {
+            replace_current_instance(Some(&mut right));
+        }
+        drop(guard);
+
+        with_preserved_objects_in(&mut left, |objects| assert!(objects.is_empty()));
+        with_preserved_objects_in(&mut right, |objects| assert!(objects.is_empty()));
+        unsafe {
+            replace_current_instance(previous);
+        }
+    }
+
+    #[test]
+    fn test_indexed_guard_drops_against_original_instance() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+        let previous = unsafe { replace_current_instance(Some(&mut left)) };
+
+        let mut guard = protect_with_index_raw(0x1 as SEXP, "test");
+        assert_eq!(R_ProtectCount_in(&mut left), 1);
+
+        unsafe {
+            replace_current_instance(Some(&mut right));
+        }
+        guard.reprotect_raw(0x2 as SEXP);
+        with_protected_objects_in(&mut left, |objects| assert_eq!(objects, &[0x2 as SEXP]));
+        with_protected_objects_in(&mut right, |objects| assert!(objects.is_empty()));
+        drop(guard);
+
+        assert_eq!(R_ProtectCount_in(&mut left), 0);
+        assert_eq!(R_ProtectCount_in(&mut right), 0);
+        unsafe {
+            replace_current_instance(previous);
+        }
     }
 
     #[test]
