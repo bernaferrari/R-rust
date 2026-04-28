@@ -7,7 +7,7 @@
 use std::ptr;
 
 use crate::sexp::ffi::SEXP;
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::instance::{RInstance, with_required_current_instance};
 
 // ---------------------------------------------------------------------------
 // R_bcstack_t — bytecode interpreter stack
@@ -107,7 +107,14 @@ pub fn with_bc_stack<F, R>(f: F) -> R
 where
     F: FnOnce(&mut R_bcstack_t) -> R,
 {
-    with_required_current_instance(|inst| f(&mut inst.eval_state.bc_stack))
+    with_required_current_instance(|inst| with_bc_stack_in(inst, f))
+}
+
+pub(crate) fn with_bc_stack_in<F, R>(inst: &mut RInstance, f: F) -> R
+where
+    F: FnOnce(&mut R_bcstack_t) -> R,
+{
+    f(&mut inst.eval_state.bc_stack)
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +123,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -202,5 +210,25 @@ mod tests {
             });
         })
         .unwrap();
+    }
+
+    #[test]
+    fn test_bc_stack_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        with_bc_stack_in(&mut left, |stack| unsafe {
+            stack.push(0x1 as SEXP);
+            assert_eq!(stack.depth(), 1);
+        });
+
+        with_bc_stack_in(&mut right, |stack| {
+            assert_eq!(stack.depth(), 0);
+        });
+
+        with_bc_stack_in(&mut left, |stack| unsafe {
+            assert_eq!(stack.pop(), 0x1 as SEXP);
+            assert_eq!(stack.depth(), 0);
+        });
     }
 }

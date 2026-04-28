@@ -20,7 +20,7 @@ use crate::sexp::accessors::{BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -93,13 +93,15 @@ fn current_env_settings() -> JitSettings {
 }
 
 fn apply_jit_settings(settings: JitSettings) {
-    with_required_current_instance(|inst| {
-        inst.eval_state.jit_enabled = settings.jit_enabled;
-        inst.eval_state.compile_pkgs = settings.compile_pkgs;
-        inst.eval_state.disable_bytecode = settings.disable_bytecode;
-        inst.eval_state.min_jit_score = settings.min_jit_score;
-        inst.eval_state.loop_jit_score = settings.loop_jit_score;
-    });
+    with_required_current_instance(|inst| apply_jit_settings_in(inst, settings));
+}
+
+fn apply_jit_settings_in(inst: &mut RInstance, settings: JitSettings) {
+    inst.eval_state.jit_enabled = settings.jit_enabled;
+    inst.eval_state.compile_pkgs = settings.compile_pkgs;
+    inst.eval_state.disable_bytecode = settings.disable_bytecode;
+    inst.eval_state.min_jit_score = settings.min_jit_score;
+    inst.eval_state.loop_jit_score = settings.loop_jit_score;
 }
 
 pub fn bytecode_compiler_available() -> bool {
@@ -430,8 +432,8 @@ pub(crate) unsafe fn r_parse_string(str: *const c_char) -> SEXP {
 unsafe fn checkCompilerOptions(jitEnabled: c_int) {
     let (min_jit_score, loop_jit_score) = jit_thresholds(jitEnabled);
     with_required_current_instance(|inst| {
-        inst.eval_state.min_jit_score = min_jit_score;
-        inst.eval_state.loop_jit_score = loop_jit_score;
+        set_R_min_jit_score_in(inst, min_jit_score);
+        set_R_loop_jit_score_in(inst, loop_jit_score);
     });
 }
 
@@ -468,7 +470,7 @@ pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
             return FALSE; // Already compiled
         }
         let score = JIT_score(op);
-        if score >= with_required_current_instance(|inst| inst.eval_state.min_jit_score) {
+        if score >= with_required_current_instance(get_R_min_jit_score_in) {
             R_cmpfun(op);
             TRUE
         } else {
@@ -479,27 +481,63 @@ pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
 
 /// Get whether JIT is enabled.
 pub fn get_R_jit_enabled() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.jit_enabled)
+    with_required_current_instance(get_R_jit_enabled_in)
+}
+
+pub(crate) fn get_R_jit_enabled_in(inst: &mut RInstance) -> c_int {
+    inst.eval_state.jit_enabled
 }
 
 /// Set whether JIT is enabled.
 pub fn set_R_jit_enabled(val: c_int) {
-    with_required_current_instance(|inst| inst.eval_state.jit_enabled = val);
+    with_required_current_instance(|inst| set_R_jit_enabled_in(inst, val));
+}
+
+pub(crate) fn set_R_jit_enabled_in(inst: &mut RInstance, val: c_int) {
+    inst.eval_state.jit_enabled = val;
 }
 
 /// Get whether to compile packages.
 pub fn get_R_compile_pkgs() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.compile_pkgs)
+    with_required_current_instance(get_R_compile_pkgs_in)
+}
+
+pub(crate) fn get_R_compile_pkgs_in(inst: &mut RInstance) -> c_int {
+    inst.eval_state.compile_pkgs
 }
 
 /// Get whether bytecode is disabled.
 pub fn get_R_disable_bytecode() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.disable_bytecode)
+    with_required_current_instance(get_R_disable_bytecode_in)
+}
+
+pub(crate) fn get_R_disable_bytecode_in(inst: &mut RInstance) -> c_int {
+    inst.eval_state.disable_bytecode
 }
 
 /// Get the constant checking level.
 pub fn get_R_check_constants() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.check_constants)
+    with_required_current_instance(get_R_check_constants_in)
+}
+
+pub(crate) fn get_R_check_constants_in(inst: &mut RInstance) -> c_int {
+    inst.eval_state.check_constants
+}
+
+pub(crate) fn get_R_min_jit_score_in(inst: &mut RInstance) -> c_int {
+    inst.eval_state.min_jit_score
+}
+
+pub(crate) fn set_R_min_jit_score_in(inst: &mut RInstance, val: c_int) {
+    inst.eval_state.min_jit_score = val;
+}
+
+pub(crate) fn get_R_loop_jit_score_in(inst: &mut RInstance) -> c_int {
+    inst.eval_state.loop_jit_score
+}
+
+pub(crate) fn set_R_loop_jit_score_in(inst: &mut RInstance, val: c_int) {
+    inst.eval_state.loop_jit_score = val;
 }
 
 // ---------------------------------------------------------------------------
@@ -645,6 +683,33 @@ mod tests {
             assert_eq!(get_R_disable_bytecode(), FALSE);
         })
         .unwrap();
+    }
+
+    #[test]
+    fn test_jit_settings_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        apply_jit_settings_in(
+            &mut left,
+            JitSettings::from_env_values(Some("3"), Some("1"), Some("0")),
+        );
+        apply_jit_settings_in(
+            &mut right,
+            JitSettings::from_env_values(Some("0"), Some("0"), Some("1")),
+        );
+
+        assert_eq!(get_R_jit_enabled_in(&mut left), 0);
+        assert_eq!(get_R_compile_pkgs_in(&mut left), TRUE);
+        assert_eq!(get_R_disable_bytecode_in(&mut left), FALSE);
+        assert_eq!(get_R_min_jit_score_in(&mut left), c_int::MAX);
+        assert_eq!(get_R_loop_jit_score_in(&mut left), c_int::MAX);
+
+        assert_eq!(get_R_jit_enabled_in(&mut right), 0);
+        assert_eq!(get_R_compile_pkgs_in(&mut right), FALSE);
+        assert_eq!(get_R_disable_bytecode_in(&mut right), TRUE);
+        assert_eq!(get_R_min_jit_score_in(&mut right), c_int::MAX);
+        assert_eq!(get_R_loop_jit_score_in(&mut right), c_int::MAX);
     }
 
     #[test]

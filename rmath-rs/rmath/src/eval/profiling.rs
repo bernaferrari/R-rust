@@ -37,7 +37,8 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, R_FINITE, TRUE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::{
-    NO_PROFILING_OPCODE, PROFILING_OPCODE_COUNT, ProfilingState, with_required_current_instance,
+    NO_PROFILING_OPCODE, PROFILING_OPCODE_COUNT, ProfilingState, RInstance,
+    with_required_current_instance,
 };
 use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject};
 
@@ -109,7 +110,14 @@ fn with_profiling_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ProfilingState) -> R,
 {
-    with_required_current_instance(|instance| f(&mut instance.eval_state.profiling))
+    with_required_current_instance(|instance| with_profiling_state_in(instance, f))
+}
+
+pub(crate) fn with_profiling_state_in<F, R>(instance: &mut RInstance, f: F) -> R
+where
+    F: FnOnce(&mut ProfilingState) -> R,
+{
+    f(&mut instance.eval_state.profiling)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -121,23 +129,25 @@ struct MemoryProfileSnapshot {
 }
 
 fn memory_profile_snapshot() -> MemoryProfileSnapshot {
-    with_required_current_instance(|instance| {
-        let current_bytes = instance.arena.total_bytes_allocated();
-        let peak_bytes = instance
-            .eval_state
-            .profiling
-            .memory_peak_bytes
-            .max(current_bytes)
-            .max(instance.gc_state.stats.peak_memory);
-        instance.eval_state.profiling.memory_peak_bytes = peak_bytes;
+    with_required_current_instance(memory_profile_snapshot_in)
+}
 
-        MemoryProfileSnapshot {
-            current_bytes: current_bytes as u64,
-            peak_bytes: peak_bytes as u64,
-            active_nodes: instance.arena.node_count() as u64,
-            gc_freed_nodes: instance.gc_state.stats.freed as u64,
-        }
-    })
+fn memory_profile_snapshot_in(instance: &mut RInstance) -> MemoryProfileSnapshot {
+    let current_bytes = instance.arena.total_bytes_allocated();
+    let peak_bytes = instance
+        .eval_state
+        .profiling
+        .memory_peak_bytes
+        .max(current_bytes)
+        .max(instance.gc_state.stats.peak_memory);
+    instance.eval_state.profiling.memory_peak_bytes = peak_bytes;
+
+    MemoryProfileSnapshot {
+        current_bytes: current_bytes as u64,
+        peak_bytes: peak_bytes as u64,
+        active_nodes: instance.arena.node_count() as u64,
+        gc_freed_nodes: instance.gc_state.stats.freed as u64,
+    }
 }
 
 unsafe fn write_memory_profile_prefix(pb: *mut profbuf, snapshot: MemoryProfileSnapshot) {
@@ -160,7 +170,11 @@ unsafe fn write_memory_profile_prefix(pb: *mut profbuf, snapshot: MemoryProfileS
 
 /// Check whether R profiling is currently active.
 pub fn R_Profiling_active() -> c_int {
-    with_profiling_state(|state| state.profiling)
+    with_required_current_instance(R_Profiling_active_in)
+}
+
+pub(crate) fn R_Profiling_active_in(instance: &mut RInstance) -> c_int {
+    instance.eval_state.profiling.profiling
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +183,11 @@ pub fn R_Profiling_active() -> c_int {
 
 /// Check if R profiling is enabled (public API).
 pub fn R_isRprofiling() -> c_int {
-    with_profiling_state(|state| state.profiling)
+    with_required_current_instance(R_isRprofiling_in)
+}
+
+pub(crate) fn R_isRprofiling_in(instance: &mut RInstance) -> c_int {
+    instance.eval_state.profiling.profiling
 }
 
 // ---------------------------------------------------------------------------
@@ -1373,6 +1391,7 @@ mod tests {
         Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons, Rf_mkString,
     };
     use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::instance::RInstance;
     use crate::sexp::memory::with_arena;
 
     unsafe fn r_string(text: &str) -> SEXP {
@@ -1436,6 +1455,29 @@ mod tests {
     }
 
     #[test]
+    fn profiling_flags_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        with_profiling_state_in(&mut left, |state| {
+            state.profiling = 1;
+            state.bc_profiling = 1;
+            state.current_opcode = 9;
+            state.opcode_counts[9] = 17;
+        });
+
+        assert_eq!(R_Profiling_active_in(&mut left), 1);
+        assert_eq!(R_isRprofiling_in(&mut left), 1);
+        assert_eq!(R_Profiling_active_in(&mut right), 0);
+        assert_eq!(R_isRprofiling_in(&mut right), 0);
+        with_profiling_state_in(&mut right, |state| {
+            assert_eq!(state.bc_profiling, 0);
+            assert_eq!(state.current_opcode, NO_CURRENT_OPCODE);
+            assert_eq!(state.opcode_counts[9], 0);
+        });
+    }
+
+    #[test]
     fn bytecode_profiler_samples_current_session_only() {
         let left = RSession::new();
         let right = RSession::new();
@@ -1490,6 +1532,24 @@ mod tests {
             assert!(right_snapshot.current_bytes < left_after.current_bytes);
             assert!(right_snapshot.active_nodes < left_after.active_nodes);
         });
+    }
+
+    #[test]
+    fn memory_profile_snapshot_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        let before = memory_profile_snapshot_in(&mut left);
+        left.arena.alloc_vector(SEXPTYPE::REALSXP, 64);
+        left.arena.alloc_charsxp(b"profile-explicit-left");
+        let after = memory_profile_snapshot_in(&mut left);
+        let right_snapshot = memory_profile_snapshot_in(&mut right);
+
+        assert!(after.current_bytes > before.current_bytes);
+        assert!(after.active_nodes > before.active_nodes);
+        assert!(after.peak_bytes >= after.current_bytes);
+        assert!(right_snapshot.current_bytes < after.current_bytes);
+        assert!(right_snapshot.active_nodes < after.active_nodes);
     }
 
     #[test]

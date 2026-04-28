@@ -38,7 +38,7 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{
     R_BaseEnv, R_MissingArg, R_NilValue, R_UnboundValue, R_Visible, set_R_Visible,
 };
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::memory_ext::{NewEnvironment, allocLang, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -999,13 +999,21 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
 /// Get whether the bytecode interpreter is active.
 #[inline]
 pub fn get_R_BCIntActive() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.bc_int_active)
+    with_required_current_instance(get_R_BCIntActive_in)
+}
+
+pub(crate) fn get_R_BCIntActive_in(inst: &mut RInstance) -> c_int {
+    inst.eval_state.bc_int_active
 }
 
 /// Set whether the bytecode interpreter is active.
 #[inline]
 pub fn set_R_BCIntActive(val: c_int) {
-    with_required_current_instance(|inst| inst.eval_state.bc_int_active = val);
+    with_required_current_instance(|inst| set_R_BCIntActive_in(inst, val));
+}
+
+pub(crate) fn set_R_BCIntActive_in(inst: &mut RInstance, val: c_int) {
+    inst.eval_state.bc_int_active = val;
 }
 
 // ---------------------------------------------------------------------------
@@ -1188,6 +1196,7 @@ pub unsafe fn R_ensureNamedMax(x: SEXP) {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -1216,5 +1225,17 @@ mod tests {
             set_R_BCIntActive(0);
         })
         .unwrap();
+    }
+
+    #[test]
+    fn test_bc_int_active_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        set_R_BCIntActive_in(&mut left, 1);
+        set_R_BCIntActive_in(&mut right, 2);
+
+        assert_eq!(get_R_BCIntActive_in(&mut left), 1);
+        assert_eq!(get_R_BCIntActive_in(&mut right), 2);
     }
 }
