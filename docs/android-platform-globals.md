@@ -19,8 +19,11 @@ The checked policy is:
 - `disabled-android`: desktop, fork, Tcl/Tk, X11, or process-startup code that
   is outside the Android embedding surface.
 
-The scanner ignores declarations inside `#[cfg(test)] mod tests` and
-`OnceLock<usize>` immutable sentinels; neither is Android runtime state.
+The scanner ignores declarations inside `#[cfg(test)] mod tests`,
+`OnceLock<usize>` immutable sentinels, and the legacy `src/support/` mirror
+tree. The compiled root modules (`src/graphapp`, `src/intl`, `src/tzone`) own
+the Android-relevant state and are already wired through `RInstance`; the
+support mirror is not part of the crate root module graph.
 
 Run the ratchet with:
 

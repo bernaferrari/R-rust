@@ -80,9 +80,9 @@ scan_kind() {
 
     {
         if [[ -n "$engine" ]]; then
-            rg "$engine" -n --no-heading --glob '*.rs' "$pattern" rmath-rs/rmath/src || true
+            rg "$engine" -n --no-heading --glob '*.rs' --glob '!**/support/**' "$pattern" rmath-rs/rmath/src || true
         else
-            rg -n --no-heading --glob '*.rs' "$pattern" rmath-rs/rmath/src || true
+            rg -n --no-heading --glob '*.rs' --glob '!**/support/**' "$pattern" rmath-rs/rmath/src || true
         fi
     } | awk -F: -v kind="$kind" '
         {
@@ -139,4 +139,4 @@ if [[ -s "$tmp_new" || -s "$tmp_stale" ]]; then
 fi
 
 echo "Android mutable-global allowlist is current."
-echo "Scanned declaration kinds: static mut, thread_local!, lazy_static!/static ref, and static OnceLock/LazyLock/Mutex/RwLock/Atomic* definitions (excluding #[cfg(test)] modules and OnceLock<usize> immutable sentinels)."
+echo "Scanned declaration kinds: static mut, thread_local!, lazy_static!/static ref, and static OnceLock/LazyLock/Mutex/RwLock/Atomic* definitions (excluding #[cfg(test)] modules, the uncompiled legacy support tree, and OnceLock<usize> immutable sentinels)."

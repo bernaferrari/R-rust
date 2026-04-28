@@ -3,6 +3,3 @@
 # Scanner intentionally skips #[cfg(test)] modules and OnceLock<usize> singleton sentinels so non-Android tests and immutable leaked-box sentinels do not create extra Android audit noise.
 rmath-rs/rmath/src/sexp/context.rs	process-panic-hook	allow-process	rport-t57	Only the Rust panic hook installation guard remains process-global; context and in-error stacks are session-owned.
 rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
-rmath-rs/rmath/src/support/graphapp/runtime.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp runtime thread-local UI state; Android uses host-owned app lifecycle and headless graphics.
-rmath-rs/rmath/src/support/intl/types.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext global domain state; Android localization bridge pending.
-rmath-rs/rmath/src/support/tzone.rs	platform-timezone	platform-replace	rport-dg0.2	Time-zone global cache; Android timezone bridge should own it.
