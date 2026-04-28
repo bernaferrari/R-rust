@@ -338,7 +338,18 @@ unsafe fn length(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        LENGTH(x)
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP => {
+                let mut n = 0;
+                let mut current = x;
+                while !current.is_null() && current != R_NilValue() {
+                    n += 1;
+                    current = CDR(current);
+                }
+                n
+            }
+            _ => LENGTH(x),
+        }
     }
 }
 
@@ -1182,12 +1193,16 @@ unsafe fn simple_next_method_dispatch(
                     continue;
                 };
                 let next_call = crate::mainutils::duplicate::shallow_duplicate(current_call);
+                let _next_call_guard = protect(next_call);
                 if !next_call.is_null() && next_call != R_NilValue() {
                     SETCAR(next_call, next_match.method_symbol);
                 }
                 let next_class = stringSuffix(klass, i);
+                let _next_class_guard = protect(next_class);
                 let method_name = Rf_ScalarString(PRINTNAME(next_match.method_symbol));
+                let _method_name_guard = protect(method_name);
                 let blank_group = Rf_mkString(b"\0".as_ptr() as *const c_char);
+                let _blank_group_guard = protect(blank_group);
                 let next_vars = createS3Vars(
                     generic,
                     blank_group,
@@ -1196,7 +1211,9 @@ unsafe fn simple_next_method_dispatch(
                     callenv,
                     defenv,
                 );
+                let _next_vars_guard = protect(next_vars);
                 let args = frame_args_for_method(FORMALS(next_match.method), env);
+                let _args_guard = protect(args);
                 return Some(crate::eval::closure::applyClosureWithFrameVars(
                     next_call,
                     next_match.method,
@@ -3459,6 +3476,20 @@ mod tests {
             },
             FALSE
         );
+    }
+
+    #[test]
+    fn test_length_counts_pairlists_by_cdr_chain() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let tail = Rf_cons(R_NilValue(), R_NilValue());
+            let _tail_guard = protect(tail);
+            let pairlist = Rf_cons(R_NilValue(), tail);
+            let _pairlist_guard = protect(pairlist);
+
+            assert_eq!(TYPEOF(pairlist), SEXPTYPE::LISTSXP);
+            assert_eq!(length(pairlist), 2);
+        }
     }
 
     #[test]

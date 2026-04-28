@@ -3,8 +3,7 @@
 use std::os::raw::c_int;
 use std::time::{Duration, Instant};
 
-use crate::sexp::globals::{R_EvalDepth, set_R_EvalDepth};
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::object::Sexp;
 
 use super::error::EvalError;
@@ -59,43 +58,95 @@ pub fn reset_eval_limits() {
 
 pub struct EvalTimerGuard {
     started: bool,
+    instance: *mut RInstance,
 }
 
 impl EvalTimerGuard {
     pub fn start_if_needed() -> Self {
-        let started = with_required_current_instance(|inst| {
+        let (started, instance) = with_required_current_instance(|inst| {
             if inst.eval_state.start_time.is_some() {
-                false
+                (false, inst as *mut RInstance)
             } else {
                 inst.eval_state.start_time = Some(Instant::now());
-                true
+                (true, inst as *mut RInstance)
             }
         });
-        EvalTimerGuard { started }
+        EvalTimerGuard { started, instance }
     }
 }
 
 impl Drop for EvalTimerGuard {
     fn drop(&mut self) {
         if self.started {
-            with_required_current_instance(|inst| inst.eval_state.start_time = None);
+            // The timer must be cleared from the same session that started it.
+            // During unwinding or nested evaluation another compatibility
+            // instance may be current, so do not dispatch through TLS here.
+            unsafe {
+                (*self.instance).eval_state.start_time = None;
+            }
+        }
+    }
+}
+
+struct EvalLimitsOverrideGuard {
+    instance: *mut RInstance,
+    previous_limits: EvalLimits,
+    previous_start_time: Option<Instant>,
+}
+
+impl EvalLimitsOverrideGuard {
+    fn install(limits: EvalLimits) -> Self {
+        with_required_current_instance(|inst| {
+            let guard = EvalLimitsOverrideGuard {
+                instance: inst as *mut RInstance,
+                previous_limits: inst.eval_state.limits,
+                previous_start_time: inst.eval_state.start_time,
+            };
+            inst.eval_state.limits = limits;
+            inst.eval_state.start_time = Some(Instant::now());
+            guard
+        })
+    }
+}
+
+impl Drop for EvalLimitsOverrideGuard {
+    fn drop(&mut self) {
+        // Restore the exact session that installed the override, independent
+        // of whichever compatibility instance is current at drop time.
+        unsafe {
+            (*self.instance).eval_state.limits = self.previous_limits;
+            (*self.instance).eval_state.start_time = self.previous_start_time;
         }
     }
 }
 
 /// Depth guard that decrements R_EvalDepth when dropped.
-pub struct DepthGuard(c_int);
+pub struct DepthGuard {
+    instance: *mut RInstance,
+    depth: c_int,
+}
 
 impl Drop for DepthGuard {
     fn drop(&mut self) {
-        unsafe { set_R_EvalDepth(self.0 - 1) };
+        // Match the decrement to the exact instance whose depth was
+        // incremented. This keeps cleanup correct even if another session is
+        // ambient when the guard drops.
+        unsafe {
+            (*self.instance).eval_state.eval_depth = self.depth - 1;
+        }
     }
 }
 
 /// Check evaluation depth and time limits, returning a guard that decrements on drop.
 pub fn check_eval_depth() -> Result<DepthGuard, String> {
-    let limits = get_eval_limits();
-    let depth = unsafe { R_EvalDepth() } + 1;
+    let (instance, limits, depth, elapsed) = with_required_current_instance(|inst| {
+        (
+            inst as *mut RInstance,
+            inst.eval_state.limits,
+            inst.eval_state.eval_depth + 1,
+            inst.eval_state.start_time.map(|start| start.elapsed()),
+        )
+    });
     let max_depth = if limits.max_eval_depth > 0 {
         limits.max_eval_depth
     } else {
@@ -106,9 +157,6 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
     }
 
     if limits.max_execution_time_ms > 0 {
-        let elapsed = with_required_current_instance(|inst| {
-            inst.eval_state.start_time.map(|start| start.elapsed())
-        });
         if let Some(elapsed) = elapsed {
             if elapsed > Duration::from_millis(limits.max_execution_time_ms) {
                 return Err(EvalError::TimeLimitExceeded.to_string());
@@ -116,8 +164,10 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
         }
     }
 
-    unsafe { set_R_EvalDepth(depth) };
-    Ok(DepthGuard(depth))
+    unsafe {
+        (*instance).eval_state.eval_depth = depth;
+    }
+    Ok(DepthGuard { instance, depth })
 }
 
 /// Evaluate an R expression with custom limits.
@@ -129,11 +179,6 @@ pub fn eval_with_limits<'a>(
     env: Sexp<'a>,
     limits: EvalLimits,
 ) -> Result<Sexp<'a>, String> {
-    let previous = get_eval_limits();
-    set_eval_limits(limits);
-    with_required_current_instance(|inst| inst.eval_state.start_time = Some(Instant::now()));
-    let result = super::eval::eval_safe(expr, env);
-    with_required_current_instance(|inst| inst.eval_state.start_time = None);
-    set_eval_limits(previous);
-    result
+    let _guard = EvalLimitsOverrideGuard::install(limits);
+    super::eval::eval_safe(expr, env)
 }

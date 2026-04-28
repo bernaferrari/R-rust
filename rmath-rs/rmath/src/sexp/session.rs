@@ -1005,6 +1005,81 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_depth_guard_drops_against_original_session() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_active(|| {
+            let guard = crate::eval::eval::check_eval_depth().expect("left depth should increment");
+            assert_eq!(left.instance.eval_state.eval_depth, 1);
+            assert_eq!(right.instance.eval_state.eval_depth, 0);
+
+            let previous = unsafe { replace_current_instance(Some(right.instance_ptr())) };
+            drop(guard);
+            assert_eq!(left.instance.eval_state.eval_depth, 0);
+            assert_eq!(right.instance.eval_state.eval_depth, 0);
+            unsafe {
+                replace_current_instance(previous);
+            }
+        });
+    }
+
+    #[test]
+    fn test_eval_timer_guard_drops_against_original_session() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_active(|| {
+            let guard = crate::eval::eval::EvalTimerGuard::start_if_needed();
+            assert!(left.instance.eval_state.start_time.is_some());
+            assert!(right.instance.eval_state.start_time.is_none());
+
+            let previous = unsafe { replace_current_instance(Some(right.instance_ptr())) };
+            drop(guard);
+            assert!(left.instance.eval_state.start_time.is_none());
+            assert!(right.instance.eval_state.start_time.is_none());
+            unsafe {
+                replace_current_instance(previous);
+            }
+        });
+    }
+
+    #[test]
+    fn test_eval_with_limits_restores_session_state() {
+        let mut session = RSession::new();
+        let original_limits = crate::eval::eval::EvalLimits {
+            max_eval_depth: 11,
+            max_execution_time_ms: 0,
+            max_alloc_bytes: 0,
+        };
+        session.set_eval_limits(original_limits);
+        session.instance.eval_state.start_time = Some(std::time::Instant::now());
+
+        let expr = session
+            .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+            .expect("session should be active");
+        let expr = session.sexp(expr).expect("expr belongs to session");
+        assert!(expr.set_integer_elt(0, 7));
+        let env = session.global_env().expect("session has global env");
+
+        let result = session.with_active(|| {
+            crate::eval::eval::eval_with_limits(
+                expr,
+                env,
+                crate::eval::eval::EvalLimits {
+                    max_eval_depth: 3,
+                    max_execution_time_ms: 1_000,
+                    max_alloc_bytes: 0,
+                },
+            )
+        });
+        let result = result.expect("self-evaluating vector should evaluate");
+        assert_eq!(result.integer_elt(0), Some(7));
+        assert_eq!(session.instance.eval_state.limits, original_limits);
+        assert!(session.instance.eval_state.start_time.is_some());
+    }
+
+    #[test]
     fn test_session_cancellation_token_is_session_owned() {
         let mut cancelled = RSession::new();
         let mut active = RSession::new();
