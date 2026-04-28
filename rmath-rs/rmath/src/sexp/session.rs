@@ -223,6 +223,23 @@ impl RSession {
         }
     }
 
+    /// Create a session without leaving it installed as the thread's ambient
+    /// compatibility instance.
+    ///
+    /// This is the preferred constructor for app-facing embedding layers.
+    /// Session methods still activate the instance for legacy internals, but
+    /// merely constructing an Android worker session no longer changes what
+    /// unrelated translated code on the same thread sees as current.
+    pub(crate) fn new_detached() -> Self {
+        let previous = unsafe { replace_current_instance(None) };
+        let session = Self::new();
+        clear_current_instance_if(&*session.instance);
+        unsafe {
+            replace_current_instance(previous);
+        }
+        session
+    }
+
     fn instance_ptr(&self) -> *mut RInstance {
         (&*self.instance as *const RInstance).cast_mut()
     }
@@ -773,6 +790,22 @@ mod tests {
         assert!(session.is_active());
         assert!(session.global_env().is_some());
         assert!(session.base_env().is_some());
+    }
+
+    #[test]
+    fn test_detached_session_constructor_restores_current_instance() {
+        let current = RSession::new();
+        let current_ptr = current.instance_ptr();
+
+        let detached = RSession::new_detached();
+        assert!(detached.is_active());
+        assert_eq!(current_instance_ptr(), Some(current_ptr));
+
+        let result = detached.with_output_capture(|| {
+            crate::sexp::output::capture_stdout("detached");
+        });
+        assert_eq!(result.1.stdout, "detached");
+        assert_eq!(current_instance_ptr(), Some(current_ptr));
     }
 
     #[test]

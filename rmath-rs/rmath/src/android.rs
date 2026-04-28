@@ -93,7 +93,7 @@ fn is_valid_package_name(package: &str) -> bool {
 impl RSession {
     pub fn new() -> Self {
         RSession {
-            core: CoreRSession::new(),
+            core: CoreRSession::new_detached(),
         }
     }
 
@@ -667,6 +667,18 @@ mod tests {
                 .unwrap_or(false)
         );
         assert_eq!(session.eval("1 + 1").output, "[1] 2");
+    }
+
+    #[test]
+    fn test_android_session_constructor_does_not_replace_current_instance() {
+        let _current = crate::sexp::session::RSession::new();
+        let current = crate::sexp::instance::current_instance_ptr();
+        assert!(current.is_some());
+
+        let mut android = RSession::new();
+        assert_eq!(crate::sexp::instance::current_instance_ptr(), current);
+        assert_eq!(android.eval("1 + 1").output, "[1] 2");
+        assert_eq!(crate::sexp::instance::current_instance_ptr(), current);
     }
 
     #[test]
