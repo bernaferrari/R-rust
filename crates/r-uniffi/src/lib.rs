@@ -4,10 +4,7 @@
 //! for use from Kotlin (Android), Swift (iOS), and Python.
 
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicU64, Ordering},
-};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use r_embed::CancellationToken;
@@ -399,7 +396,7 @@ pub struct RSession {
     cmd_tx: Mutex<Option<Sender<SessionCommand>>>,
     cancelled: CancellationToken,
     callback: Arc<Mutex<Option<Arc<dyn SessionCallback>>>>,
-    operation_id: AtomicU64,
+    next_operation_id: Mutex<u64>,
 }
 
 fn current_callback(
@@ -575,6 +572,16 @@ impl RSession {
             let _ = tx.send(SessionCommand::Shutdown);
         }
     }
+
+    fn allocate_operation_id(&self) -> u64 {
+        let mut next = self
+            .next_operation_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let id = *next;
+        *next = next.wrapping_add(1);
+        id
+    }
 }
 
 #[uniffi::export]
@@ -592,7 +599,7 @@ impl RSession {
             cmd_tx: Mutex::new(Some(cmd_tx)),
             cancelled,
             callback,
-            operation_id: AtomicU64::new(0),
+            next_operation_id: Mutex::new(0),
         })
     }
 
@@ -673,7 +680,7 @@ impl RSession {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, _) = channel();
-        let op_id = self.operation_id.fetch_add(1, Ordering::Relaxed);
+        let op_id = self.allocate_operation_id();
         self.cancelled.reset();
         tx.send(SessionCommand::Eval {
             code,
@@ -698,7 +705,7 @@ impl RSession {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, _) = channel();
-        let op_id = self.operation_id.fetch_add(1, Ordering::Relaxed);
+        let op_id = self.allocate_operation_id();
         tx.send(SessionCommand::Render {
             code,
             width,
@@ -736,7 +743,7 @@ pub fn android_runtime_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Barrier};
+    use std::sync::{Arc, Barrier, Condvar};
     use std::time::Duration;
 
     fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
@@ -769,6 +776,95 @@ mod tests {
         .expect("description");
         std::fs::write(r_dir.join("tiny.R"), "tiny_value <- function() 42L\n").expect("R source");
         (root, pkg)
+    }
+
+    #[derive(Debug, Clone)]
+    enum CallbackEvent {
+        EvalComplete {
+            output: String,
+            kind: RValueKind,
+        },
+        PlotReady {
+            width: u32,
+            height: u32,
+            bytes: usize,
+        },
+        Error(String),
+    }
+
+    struct RecordingCallback {
+        events: Arc<(Mutex<Vec<CallbackEvent>>, Condvar)>,
+    }
+
+    impl RecordingCallback {
+        fn new() -> (Self, Arc<(Mutex<Vec<CallbackEvent>>, Condvar)>) {
+            let events = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
+            (
+                Self {
+                    events: events.clone(),
+                },
+                events,
+            )
+        }
+
+        fn push(&self, event: CallbackEvent) {
+            let (lock, ready) = &*self.events;
+            lock.lock().unwrap_or_else(|e| e.into_inner()).push(event);
+            ready.notify_all();
+        }
+    }
+
+    impl SessionCallback for RecordingCallback {
+        fn on_progress(&self, _update: ProgressUpdate) {}
+
+        fn on_output(&self, _line: String) {}
+
+        fn on_plot_ready(&self, plot: PlotResult) {
+            self.push(CallbackEvent::PlotReady {
+                width: plot.width,
+                height: plot.height,
+                bytes: plot.pixels.len(),
+            });
+        }
+
+        fn on_eval_complete(&self, result: EvalResult) {
+            self.push(CallbackEvent::EvalComplete {
+                output: result.output,
+                kind: result.value.kind,
+            });
+        }
+
+        fn on_error(&self, error: String) {
+            self.push(CallbackEvent::Error(error));
+        }
+    }
+
+    fn wait_for_callback(
+        events: &Arc<(Mutex<Vec<CallbackEvent>>, Condvar)>,
+        matches: impl Fn(&CallbackEvent) -> bool,
+    ) -> CallbackEvent {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let (lock, ready) = &**events;
+        let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+
+        loop {
+            if let Some(index) = guard.iter().position(&matches) {
+                return guard.remove(index);
+            }
+
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                panic!("timed out waiting for callback; observed events: {guard:?}");
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            let (next_guard, timeout) = ready
+                .wait_timeout(guard, remaining)
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+            if timeout.timed_out() {
+                panic!("timed out waiting for callback; observed events: {guard:?}");
+            }
+        }
     }
 
     #[test]
@@ -1160,6 +1256,67 @@ mod tests {
             .expect("worker should not panic")
             .expect_err("eval should be cancelled");
         assert!(matches!(err, RError::Cancelled));
+    }
+
+    #[test]
+    fn async_operations_report_callbacks_and_recover_after_cancel() {
+        let session = RSession::new().expect("session");
+        let (callback, events) = RecordingCallback::new();
+        session.set_callback(Box::new(callback));
+
+        assert_eq!(session.eval_async("1 + 1".to_string()).expect("eval id"), 0);
+        match wait_for_callback(
+            &events,
+            |event| matches!(event, CallbackEvent::EvalComplete { output, .. } if output == "[1] 2"),
+        ) {
+            CallbackEvent::EvalComplete { kind, .. } => assert_eq!(kind, RValueKind::Real),
+            event => panic!("unexpected callback event: {event:?}"),
+        }
+
+        assert_eq!(
+            session
+                .render_async(
+                    "plot(c(1, 2, 3), c(3, 1, 4), col = \"green\", type = \"p\")".to_string(),
+                    240,
+                    180,
+                )
+                .expect("render id"),
+            1
+        );
+        match wait_for_callback(&events, |event| {
+            matches!(
+                event,
+                CallbackEvent::PlotReady {
+                    width: 240,
+                    height: 180,
+                    bytes
+                } if *bytes > 256
+            )
+        }) {
+            CallbackEvent::PlotReady { bytes, .. } => assert!(bytes > 256),
+            event => panic!("unexpected callback event: {event:?}"),
+        }
+
+        assert_eq!(
+            session
+                .eval_async("repeat { 1 + 1 }".to_string())
+                .expect("cancelled eval id"),
+            2
+        );
+        std::thread::sleep(Duration::from_millis(10));
+        session.cancel_current_operation();
+        match wait_for_callback(
+            &events,
+            |event| matches!(event, CallbackEvent::Error(message) if message.contains("cancelled")),
+        ) {
+            CallbackEvent::Error(message) => assert!(message.contains("cancelled")),
+            event => panic!("unexpected callback event: {event:?}"),
+        }
+
+        assert_eq!(
+            session.eval("2 + 2".to_string()).expect("recovered eval"),
+            "[1] 4"
+        );
     }
 }
 
