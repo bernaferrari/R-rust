@@ -896,6 +896,8 @@ mod tests {
         strings
             .try_set_string_elt(1, na_string)
             .expect("set string");
+        assert_eq!(strings.try_string_text_elt(0).expect("text"), Some("hello"));
+        assert_eq!(strings.try_string_text_elt(1).expect("NA text"), None);
 
         let raw = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::RAWSXP, 2)));
         raw.try_set_raw_elt(0, 0x41).expect("set raw");

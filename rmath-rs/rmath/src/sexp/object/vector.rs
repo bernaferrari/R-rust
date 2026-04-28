@@ -2,7 +2,7 @@ use std::os::raw::{c_double, c_int};
 
 use super::{Sexp, SexpResult};
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_NaString, R_NilValue};
 
 impl<'a> Sexp<'a> {
     // --- Vector element access with bounds checking ---
@@ -107,6 +107,30 @@ impl<'a> Sexp<'a> {
         let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
         let i = self.try_index(i)?;
         Self::checked_child(unsafe { *data.add(i) })
+    }
+
+    /// Return the i-th string value as UTF-8 text, preserving R's `NA_STRING`.
+    ///
+    /// `Ok(None)` means the element is `NA_character_`; `Ok(Some(_))` is a
+    /// present CHARSXP value. Type, bounds, missing-data, and UTF-8 failures are
+    /// reported as [`SexpError`](super::SexpError).
+    #[inline]
+    pub fn try_string_text_elt(self, i: R_xlen_t) -> SexpResult<Option<&'a str>> {
+        let chars = self.try_string_elt(i)?;
+        if chars.as_raw() == unsafe { R_NaString() } {
+            Ok(None)
+        } else {
+            chars.try_as_str().map(Some)
+        }
+    }
+
+    /// Return the i-th string value as optional UTF-8 text.
+    ///
+    /// The outer `None` is an access/type error; the inner `None` is R's
+    /// `NA_character_`.
+    #[inline]
+    pub fn string_text_elt(self, i: R_xlen_t) -> Option<Option<&'a str>> {
+        self.try_string_text_elt(i).ok()
     }
 
     /// Get the i-th vector element with bounds checking.

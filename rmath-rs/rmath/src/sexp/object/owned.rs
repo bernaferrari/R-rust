@@ -1,5 +1,4 @@
 use super::super::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, SEXPTYPE};
-use super::super::globals::R_NaString;
 use super::pairlist::PairlistIter;
 use super::value::{
     OWNED_VALUE_ATTRIBUTE_DEPTH_LIMIT, SexpAttribute, SexpComplex, SexpMetadata, SexpValue,
@@ -176,12 +175,8 @@ impl<'a> Sexp<'a> {
     fn try_string_values(self) -> SexpResult<Vec<Option<String>>> {
         (0..self.len())
             .map(|i| {
-                let chars = self.try_string_elt(i)?;
-                if chars.as_raw() == unsafe { R_NaString() } {
-                    Ok(None)
-                } else {
-                    chars.try_as_str().map(|value| Some(value.to_string()))
-                }
+                self.try_string_text_elt(i)
+                    .map(|value| value.map(str::to_string))
             })
             .collect()
     }

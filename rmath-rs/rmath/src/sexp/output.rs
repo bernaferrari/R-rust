@@ -5,7 +5,6 @@
 //! to stdout/stderr.
 
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
-use super::globals::R_NaString;
 use super::object::Sexp;
 
 /// Captured R output.
@@ -484,12 +483,7 @@ fn format_named_atomic_vector(x: Sexp<'_>, values: Vec<String>) -> Option<String
 }
 
 fn string_element_text<'a>(x: Sexp<'a>, i: R_xlen_t) -> Option<Option<&'a str>> {
-    let charsxp = x.try_string_elt(i).ok()?;
-    if charsxp.as_raw() == unsafe { R_NaString() } {
-        Some(None)
-    } else {
-        charsxp.try_as_str().ok().map(Some)
-    }
+    x.string_text_elt(i)
 }
 
 fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
@@ -1100,7 +1094,8 @@ mod tests {
                 let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 2);
                 let sexp = Sexp::from_raw(ptr).expect("string vector allocation failed");
                 let value = Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("CHARSXP");
-                let missing = Sexp::from_raw(unsafe { R_NaString() }).expect("NA_STRING");
+                let missing = Sexp::from_raw(unsafe { crate::sexp::globals::R_NaString() })
+                    .expect("NA_STRING");
                 sexp.try_set_string_elt(0, value).expect("set string");
                 sexp.try_set_string_elt(1, missing).expect("set string");
 
