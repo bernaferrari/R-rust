@@ -31,6 +31,8 @@ facades:
 | `RSession::reset_eval_limits` | Restore this session's defaults without touching other sessions. |
 | `RSession::replace_cancellation_flag` | Scope a cooperative cancellation token to one owner session. |
 | `android::RSession::eval_with_cancellation_flag` | Android embedding path that restores the previous flag after each eval. |
+| `sexp::context::*_in` | Context-stack operations that take an explicit `RInstance` instead of redispatching through the active-session slot. |
+| `sexp::context::ContextGuard` | RAII context guard that unwinds the same `RInstance` that created the context, even if another session is ambient at drop time. |
 
 ## Compatibility State Still Allowed
 

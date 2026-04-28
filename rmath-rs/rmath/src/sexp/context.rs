@@ -14,6 +14,7 @@ use std::sync::OnceLock;
 
 use super::ffi::{SEXP, SexprecCore};
 use super::instance;
+use super::instance::RInstance;
 
 // ---------------------------------------------------------------------------
 // Context type constants (from Defn.h CTXT_* defines)
@@ -137,17 +138,48 @@ fn context_ptr(ctx: &RCNTXT) -> *mut RCNTXT {
 
 /// Get a reference to the current (top) context, if any.
 pub unsafe fn R_GlobalContext() -> *mut RCNTXT {
-    instance::with_current_instance(|instance| {
-        instance.context_stack.last().map(|ctx| context_ptr(ctx))
-    })
-    .flatten()
-    .unwrap_or(ptr::null_mut())
+    instance::with_current_instance(|instance| unsafe { R_GlobalContext_in(instance) })
+        .unwrap_or(ptr::null_mut())
+}
+
+/// Get the top context from an explicit runtime instance.
+pub unsafe fn R_GlobalContext_in(instance: &mut RInstance) -> *mut RCNTXT {
+    instance
+        .context_stack
+        .last()
+        .map(|ctx| context_ptr(ctx))
+        .unwrap_or(ptr::null_mut())
 }
 
 /// Push a new context onto the stack and return a mutable pointer to it.
 ///
 /// This is the equivalent of R's `begincontext()`.
 pub unsafe fn Rf_begincontext(
+    callflag: c_int,
+    call: SEXP,
+    cloenv: SEXP,
+    sysparent: SEXP,
+    cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
+    closure: SEXP,
+    promiseargs: SEXP,
+) -> *mut RCNTXT {
+    instance::with_required_current_instance(|instance| unsafe {
+        Rf_begincontext_in(
+            instance,
+            callflag,
+            call,
+            cloenv,
+            sysparent,
+            cfn,
+            closure,
+            promiseargs,
+        )
+    })
+}
+
+/// Push a context onto an explicit runtime instance.
+pub unsafe fn Rf_begincontext_in(
+    instance: &mut RInstance,
     callflag: c_int,
     call: SEXP,
     cloenv: SEXP,
@@ -168,56 +200,116 @@ pub unsafe fn Rf_begincontext(
         ..RCNTXT::new()
     });
 
-    instance::with_required_current_instance(|instance| {
-        let prev = instance
-            .context_stack
-            .last()
-            .map(|prev_ctx| context_ptr(prev_ctx))
-            .unwrap_or(ptr::null_mut());
-        ctx.nextcontext = prev;
-        ctx.protectCount = super::protect::R_ProtectCount();
+    let prev = instance
+        .context_stack
+        .last()
+        .map(|prev_ctx| context_ptr(prev_ctx))
+        .unwrap_or(ptr::null_mut());
+    ctx.nextcontext = prev;
+    ctx.protectCount = instance.protect_stack.borrow().len();
 
-        let ptr: *mut RCNTXT = &mut *ctx;
-        instance.context_stack.push(ctx);
-        ptr
-    })
+    let ptr: *mut RCNTXT = &mut *ctx;
+    instance.context_stack.push(ctx);
+    ptr
 }
 
 /// Pop the top context from the stack.
 ///
 /// This is the equivalent of R's `endcontext()`.
 pub unsafe fn Rf_endcontext(c: *mut RCNTXT) {
-    instance::with_required_current_instance(|instance| {
-        if let Some(top) = instance.context_stack.last() {
-            let top_ptr = context_ptr(top);
-            if top_ptr == c {
-                instance.context_stack.pop();
-            }
-        }
+    instance::with_required_current_instance(|instance| unsafe {
+        Rf_endcontext_in(instance, c);
     });
+}
+
+/// Pop the top context from an explicit runtime instance.
+pub unsafe fn Rf_endcontext_in(instance: &mut RInstance, c: *mut RCNTXT) {
+    if let Some(top) = instance.context_stack.last() {
+        let top_ptr = context_ptr(top);
+        if top_ptr == c {
+            instance.context_stack.pop();
+        }
+    }
+}
+
+/// RAII context guard bound to the instance that created the context.
+pub struct ContextGuard {
+    instance: *mut RInstance,
+    context: *mut RCNTXT,
+}
+
+impl ContextGuard {
+    pub fn context(&self) -> *mut RCNTXT {
+        self.context
+    }
+}
+
+impl Drop for ContextGuard {
+    fn drop(&mut self) {
+        unsafe {
+            Rf_endcontext_in(&mut *self.instance, self.context);
+        }
+    }
+}
+
+/// Push a context on the active instance and return an owner-bound guard.
+pub unsafe fn begin_context_guard(
+    callflag: c_int,
+    call: SEXP,
+    cloenv: SEXP,
+    sysparent: SEXP,
+    cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
+    closure: SEXP,
+    promiseargs: SEXP,
+) -> ContextGuard {
+    instance::with_required_current_instance(|instance| unsafe {
+        let instance_ptr = instance as *mut RInstance;
+        let context = Rf_begincontext_in(
+            instance,
+            callflag,
+            call,
+            cloenv,
+            sysparent,
+            cfn,
+            closure,
+            promiseargs,
+        );
+        ContextGuard {
+            instance: instance_ptr,
+            context,
+        }
+    })
 }
 
 /// Find a context of the given type, searching from the top of the stack.
 ///
 /// This is the equivalent of R's `findcontext()`.
 pub unsafe fn Rf_findcontext(ctxt_type: c_int, cloenv: SEXP, call: SEXP) -> *mut RCNTXT {
+    instance::with_required_current_instance(|instance| unsafe {
+        Rf_findcontext_in(instance, ctxt_type, cloenv, call)
+    })
+}
+
+/// Find a context on an explicit runtime instance.
+pub unsafe fn Rf_findcontext_in(
+    instance: &mut RInstance,
+    ctxt_type: c_int,
+    cloenv: SEXP,
+    _call: SEXP,
+) -> *mut RCNTXT {
     unsafe {
-        instance::with_required_current_instance(|instance| {
-            for ctx in instance.context_stack.iter().rev() {
-                let c = context_ptr(ctx);
-                if !c.is_null() {
-                    let ctx_ref = &*c;
-                    // Match by type
-                    if ctxt_type == 0 || (ctx_ref.callflag & ctxt_type) != 0 {
-                        // If cloenv specified, match environment
-                        if cloenv.is_null() || ctx_ref.cloenv == cloenv {
-                            return c;
-                        }
+        for ctx in instance.context_stack.iter().rev() {
+            let c = context_ptr(ctx);
+            if !c.is_null() {
+                let ctx_ref = &*c;
+                if ctxt_type == 0 || (ctx_ref.callflag & ctxt_type) != 0 {
+                    if cloenv.is_null() || ctx_ref.cloenv == cloenv {
+                        return c;
                     }
                 }
             }
-            ptr::null_mut()
-        })
+        }
+        ptr::null_mut()
     }
 }
 
@@ -365,6 +457,7 @@ pub fn context_env_exists(target_env: SEXP) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
     use crate::sexp::session::RSession;
 
     #[test]
@@ -529,6 +622,35 @@ mod tests {
             assert!(R_GlobalContext().is_null());
         })
         .unwrap();
+    }
+
+    #[test]
+    fn test_context_guard_drops_against_original_instance() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut left as *mut RInstance));
+            let guard = begin_context_guard(
+                ctxt_flags::CTXT_FUNCTION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+
+            assert_eq!(left.context_stack.len(), 1);
+            assert!(right.context_stack.is_empty());
+
+            replace_current_instance(Some(&mut right as *mut RInstance));
+            drop(guard);
+
+            assert!(left.context_stack.is_empty());
+            assert!(right.context_stack.is_empty());
+            replace_current_instance(previous);
+        }
     }
 
     #[test]

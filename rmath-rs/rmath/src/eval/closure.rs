@@ -195,7 +195,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         } else {
             suppliedenv
         };
-        let ctx = crate::sexp::context::Rf_begincontext(
+        let ctx_guard = crate::sexp::context::begin_context_guard(
             crate::sexp::context::ctxt_flags::CTXT_FUNCTION
                 | crate::sexp::context::ctxt_flags::CTXT_RETURN,
             call,
@@ -205,16 +205,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             op,
             arglist,
         );
-
-        struct CtxGuard(*mut crate::sexp::context::RCNTXT);
-        impl Drop for CtxGuard {
-            fn drop(&mut self) {
-                unsafe {
-                    crate::sexp::context::Rf_endcontext(self.0);
-                }
-            }
-        }
-        let _ctx_guard = CtxGuard(ctx);
+        let ctx = ctx_guard.context();
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(body, newrho)
