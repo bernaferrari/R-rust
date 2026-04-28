@@ -231,9 +231,9 @@ pub struct RInstance {
     /// Whether this instance has completed R-level initialization.
     pub(crate) initialized: bool,
     /// The protection stack for this instance.
-    pub protect_stack: Vec<SEXP>,
+    pub(crate) protect_stack: RefCell<Vec<SEXP>>,
     /// The permanent preserve stack for this instance.
-    pub preserve_stack: Vec<SEXP>,
+    pub(crate) preserve_stack: RefCell<Vec<SEXP>>,
     /// Per-instance execution context stack.
     #[allow(clippy::vec_box)]
     pub(crate) context_stack: Vec<Box<super::context::RCNTXT>>,
@@ -300,12 +300,8 @@ pub struct RInstance {
     pub(crate) main_rng_state: crate::mainutils::rng::MainRngState,
     /// Per-instance R RNG.c-style state used by mainutils::random.
     pub(crate) random_state: crate::mainutils::random::RNGState,
-    /// Per-instance stdout capture buffer.
-    pub(crate) capture_stdout: Option<String>,
-    /// Per-instance stderr capture buffer.
-    pub(crate) capture_stderr: Option<String>,
-    /// Suspended outer capture buffers for nested output capture.
-    pub(crate) capture_stack: Vec<(Option<String>, Option<String>)>,
+    /// Per-instance stdout/stderr capture buffers.
+    pub(crate) output_capture: RefCell<super::output::OutputCaptureState>,
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
     pub options: HashMap<String, SEXP>,
     /// Whether the instance options have been initialized with defaults.
@@ -408,8 +404,8 @@ impl RInstance {
             empty_env,
             env_nodes,
             initialized: false,
-            protect_stack: Vec::new(),
-            preserve_stack: Vec::new(),
+            protect_stack: RefCell::new(Vec::new()),
+            preserve_stack: RefCell::new(Vec::new()),
             context_stack: Vec::new(),
             in_error: false,
             gc_state: super::gengc::GcState::default(),
@@ -443,9 +439,7 @@ impl RInstance {
             rng_kind: 0,
             main_rng_state: crate::mainutils::rng::MainRngState::default(),
             random_state: crate::mainutils::random::RNGState::new(),
-            capture_stdout: None,
-            capture_stderr: None,
-            capture_stack: Vec::new(),
+            output_capture: RefCell::new(super::output::OutputCaptureState::default()),
             options: HashMap::new(),
             options_initialized: false,
             env_hash_tables: hashbrown::HashMap::new(),

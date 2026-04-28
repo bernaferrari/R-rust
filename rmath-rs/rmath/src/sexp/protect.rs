@@ -73,8 +73,9 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
 fn push_protect(s: SEXP) {
     if !s.is_null() {
         super::instance::with_required_current_instance(|inst| {
-            reserve_slot_or_fail(&mut inst.protect_stack, "protect");
-            inst.protect_stack.push(s);
+            let mut stack = inst.protect_stack.borrow_mut();
+            reserve_slot_or_fail(&mut stack, "protect");
+            stack.push(s);
         });
     }
 }
@@ -82,8 +83,9 @@ fn push_protect(s: SEXP) {
 fn push_preserve(s: SEXP) {
     if !s.is_null() {
         super::instance::with_required_current_instance(|inst| {
-            reserve_slot_or_fail(&mut inst.preserve_stack, "preserve");
-            inst.preserve_stack.push(s);
+            let mut stack = inst.preserve_stack.borrow_mut();
+            reserve_slot_or_fail(&mut stack, "preserve");
+            stack.push(s);
         });
     }
 }
@@ -93,8 +95,9 @@ fn release_preserved(s: SEXP) {
         return;
     }
     super::instance::with_required_current_instance(|inst| {
-        if let Some(pos) = inst.preserve_stack.iter().position(|&x| x == s) {
-            inst.preserve_stack.remove(pos);
+        let mut stack = inst.preserve_stack.borrow_mut();
+        if let Some(pos) = stack.iter().position(|&x| x == s) {
+            stack.remove(pos);
         }
     });
 }
@@ -135,11 +138,12 @@ pub(crate) fn unprotect_count(n: usize) {
         return;
     }
     super::instance::with_required_current_instance(|inst| {
-        let len = inst.protect_stack.len();
+        let mut stack = inst.protect_stack.borrow_mut();
+        let len = stack.len();
         if n >= len {
-            inst.protect_stack.clear();
+            stack.clear();
         } else {
-            inst.protect_stack.truncate(len - n);
+            stack.truncate(len - n);
         }
     });
 }
@@ -152,8 +156,9 @@ pub(crate) fn unprotect_ptr(s: SEXP) {
         return;
     }
     super::instance::with_required_current_instance(|inst| {
-        if let Some(pos) = inst.protect_stack.iter().rposition(|&x| x == s) {
-            inst.protect_stack.remove(pos);
+        let mut stack = inst.protect_stack.borrow_mut();
+        if let Some(pos) = stack.iter().rposition(|&x| x == s) {
+            stack.remove(pos);
         }
     });
 }
@@ -162,7 +167,7 @@ pub(crate) fn unprotect_ptr(s: SEXP) {
 ///
 /// Used by the context system to track protect depth.
 pub(crate) fn R_ProtectCount() -> usize {
-    super::instance::with_required_current_instance(|inst| inst.protect_stack.len())
+    super::instance::with_required_current_instance(|inst| inst.protect_stack.borrow().len())
 }
 
 /// Iterate over all protected SEXP values on the stack.
@@ -171,7 +176,10 @@ pub(crate) fn with_protected_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    super::instance::with_required_current_instance(|inst| f(&inst.protect_stack))
+    super::instance::with_required_current_instance(|inst| {
+        let stack = inst.protect_stack.borrow();
+        f(&stack)
+    })
 }
 
 /// Update all protect stack references using the given mapping function.
@@ -181,7 +189,8 @@ where
     F: FnMut(SEXP) -> SEXP,
 {
     super::instance::with_required_current_instance(|inst| {
-        for slot in inst.protect_stack.iter_mut() {
+        let mut stack = inst.protect_stack.borrow_mut();
+        for slot in stack.iter_mut() {
             *slot = update_fn(*slot);
         }
     });
@@ -194,7 +203,8 @@ where
     F: FnMut(SEXP) -> SEXP,
 {
     super::instance::with_required_current_instance(|inst| {
-        for slot in inst.preserve_stack.iter_mut() {
+        let mut stack = inst.preserve_stack.borrow_mut();
+        for slot in stack.iter_mut() {
             *slot = update_fn(*slot);
         }
     });
@@ -206,7 +216,10 @@ pub(crate) fn with_preserved_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    super::instance::with_required_current_instance(|inst| f(&inst.preserve_stack))
+    super::instance::with_required_current_instance(|inst| {
+        let stack = inst.preserve_stack.borrow();
+        f(&stack)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -259,9 +272,10 @@ fn protect_raw_with_slot(s: SEXP, api: &str) -> ProtectionSlot {
         return ProtectionSlot::inactive();
     }
     super::instance::with_required_current_instance(|inst| {
-        reserve_slot_or_fail(&mut inst.protect_stack, api);
-        inst.protect_stack.push(s);
-        ProtectionSlot::from_stack_index(inst.protect_stack.len() - 1)
+        let mut stack = inst.protect_stack.borrow_mut();
+        reserve_slot_or_fail(&mut stack, api);
+        stack.push(s);
+        ProtectionSlot::from_stack_index(stack.len() - 1)
     })
 }
 
@@ -270,8 +284,9 @@ fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
         return;
     };
     super::instance::with_required_current_instance(|inst| {
-        if index < inst.protect_stack.len() {
-            inst.protect_stack[index] = s;
+        let mut stack = inst.protect_stack.borrow_mut();
+        if index < stack.len() {
+            stack[index] = s;
         }
     });
 }
@@ -281,8 +296,9 @@ fn release_protect_slot(slot: ProtectionSlot) {
         return;
     };
     super::instance::with_required_current_instance(|inst| {
-        if index < inst.protect_stack.len() {
-            inst.protect_stack.remove(index);
+        let mut stack = inst.protect_stack.borrow_mut();
+        if index < stack.len() {
+            stack.remove(index);
         }
     });
 }

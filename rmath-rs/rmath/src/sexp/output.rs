@@ -14,59 +14,81 @@ pub struct RCapturedOutput {
     pub stderr: String,
 }
 
+/// Per-session output capture buffers.
+#[derive(Debug, Default)]
+pub(crate) struct OutputCaptureState {
+    stdout: Option<String>,
+    stderr: Option<String>,
+    stack: Vec<(Option<String>, Option<String>)>,
+}
+
+impl OutputCaptureState {
+    pub(crate) fn start(&mut self) {
+        let outer = (self.stdout.take(), self.stderr.take());
+        if outer.0.is_some() || outer.1.is_some() {
+            self.stack.push(outer);
+        }
+        self.stdout = Some(String::new());
+        self.stderr = Some(String::new());
+    }
+
+    pub(crate) fn stop(&mut self) -> RCapturedOutput {
+        let stdout = self.stdout.take().unwrap_or_default();
+        let stderr = self.stderr.take().unwrap_or_default();
+        if let Some((outer_stdout, outer_stderr)) = self.stack.pop() {
+            self.stdout = outer_stdout;
+            self.stderr = outer_stderr;
+        }
+        RCapturedOutput { stdout, stderr }
+    }
+
+    pub(crate) fn is_capturing(&self) -> bool {
+        self.stdout.is_some() || self.stderr.is_some()
+    }
+
+    pub(crate) fn capture_stdout(&mut self, msg: &str) {
+        if let Some(stdout) = self.stdout.as_mut() {
+            stdout.push_str(msg);
+        }
+    }
+
+    pub(crate) fn capture_stderr(&mut self, msg: &str) {
+        if let Some(stderr) = self.stderr.as_mut() {
+            stderr.push_str(msg);
+        }
+    }
+}
+
 /// Start capturing R output.
 pub fn start_capture() {
     super::instance::with_required_current_instance(|inst| {
-        let outer = (inst.capture_stdout.take(), inst.capture_stderr.take());
-        if outer.0.is_some() || outer.1.is_some() {
-            inst.capture_stack.push(outer);
-        }
-        inst.capture_stdout = Some(String::new());
-        inst.capture_stderr = Some(String::new());
+        inst.output_capture.borrow_mut().start();
     });
 }
 
 /// Stop capturing and return the captured output.
 pub fn stop_capture() -> RCapturedOutput {
-    super::instance::with_required_current_instance(|inst| {
-        let stdout = inst.capture_stdout.take().unwrap_or_default();
-        let stderr = inst.capture_stderr.take().unwrap_or_default();
-        if let Some((outer_stdout, outer_stderr)) = inst.capture_stack.pop() {
-            inst.capture_stdout = outer_stdout;
-            inst.capture_stderr = outer_stderr;
-        }
-        RCapturedOutput { stdout, stderr }
-    })
+    super::instance::with_required_current_instance(|inst| inst.output_capture.borrow_mut().stop())
 }
 
 /// Check if output capture is active.
 pub fn is_capturing() -> bool {
-    super::instance::with_current_instance(|inst| {
-        inst.capture_stdout.is_some() || inst.capture_stderr.is_some()
-    })
-    .unwrap_or(false)
+    super::instance::with_current_instance(|inst| inst.output_capture.borrow().is_capturing())
+        .unwrap_or(false)
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
 pub fn capture_stdout(msg: &str) {
-    if is_capturing() {
-        super::instance::with_current_instance(|inst| {
-            if let Some(s) = inst.capture_stdout.as_mut() {
-                s.push_str(msg);
-            }
-        });
-    }
+    super::instance::with_current_instance(|inst| {
+        inst.output_capture.borrow_mut().capture_stdout(msg);
+    });
 }
 
 /// Append to captured stderr. Called by the REprintf hook.
 pub fn capture_stderr(msg: &str) {
-    if is_capturing() {
-        super::instance::with_current_instance(|inst| {
-            if let Some(s) = inst.capture_stderr.as_mut() {
-                s.push_str(msg);
-            }
-        });
-    }
+    super::instance::with_current_instance(|inst| {
+        inst.output_capture.borrow_mut().capture_stderr(msg);
+    });
 }
 
 pub(crate) fn format_sexp(x: SEXP) -> String {

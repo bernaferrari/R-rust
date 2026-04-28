@@ -26,6 +26,7 @@
 //! [`RSession::close`]. Once closed, evaluation and variable definition
 //! operations become no-ops or return errors.
 
+use std::cell::RefCell;
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -50,6 +51,7 @@ use super::memory::{ArenaBudget, RArena};
 use super::object::Sexp;
 #[cfg(test)]
 use super::protect::protect;
+#[cfg(test)]
 use super::protect::{R_ProtectCount, protect_n};
 
 /// Error returned by safe session evaluation APIs.
@@ -159,6 +161,24 @@ impl Drop for CurrentInstanceGuard {
         unsafe {
             replace_current_instance(self.previous);
         }
+    }
+}
+
+struct ProtectScope<'a> {
+    stack: &'a RefCell<Vec<SEXP>>,
+    depth: usize,
+}
+
+impl<'a> ProtectScope<'a> {
+    fn new(stack: &'a RefCell<Vec<SEXP>>) -> Self {
+        let depth = stack.borrow().len();
+        Self { stack, depth }
+    }
+}
+
+impl Drop for ProtectScope<'_> {
+    fn drop(&mut self) {
+        self.stack.borrow_mut().truncate(self.depth);
     }
 }
 
@@ -345,10 +365,10 @@ impl RSession {
             );
         }
         self.with_active(|| {
-            super::output::start_capture();
+            self.instance.output_capture.borrow_mut().start();
             let result = self.eval_sexp(expr);
-            let visible = super::globals::R_Visible() != 0;
-            let output = super::output::stop_capture();
+            let visible = self.instance.eval_state.visible != 0;
+            let output = self.instance.output_capture.borrow_mut().stop();
             (result, output, visible)
         })
     }
@@ -417,10 +437,10 @@ impl RSession {
             }
         };
         self.with_active(|| {
-            super::output::start_capture();
+            self.instance.output_capture.borrow_mut().start();
             let result = self.eval_sexp(expr);
-            let visible = super::globals::R_Visible() != 0;
-            let output = super::output::stop_capture();
+            let visible = self.instance.eval_state.visible != 0;
+            let output = self.instance.output_capture.borrow_mut().stop();
             f(result, output, visible)
         })
     }
@@ -614,13 +634,8 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            let depth = R_ProtectCount();
-            let result = f();
-            let new_depth = R_ProtectCount();
-            if new_depth > depth {
-                drop(protect_n(new_depth - depth));
-            }
-            result
+            let _scope = ProtectScope::new(&self.instance.protect_stack);
+            f()
         })
     }
 
@@ -699,9 +714,9 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            super::output::start_capture();
+            self.instance.output_capture.borrow_mut().start();
             let value = f();
-            let output = super::output::stop_capture();
+            let output = self.instance.output_capture.borrow_mut().stop();
             (value, output)
         })
     }
@@ -1057,6 +1072,22 @@ mod tests {
             std::mem::forget(protect(0x1 as SEXP));
             std::mem::forget(protect(0x2 as SEXP));
         });
+        let depth_after = session.with_active(R_ProtectCount);
+        assert_eq!(depth_before, depth_after);
+    }
+
+    #[test]
+    fn test_session_protected_scope_unwinds_on_panic() {
+        let session = RSession::new();
+        let depth_before = session.with_active(R_ProtectCount);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            session.with_protected(|| {
+                std::mem::forget(protect(0x1 as SEXP));
+                panic!("forced protected-scope unwind");
+            });
+        }));
+
+        assert!(result.is_err());
         let depth_after = session.with_active(R_ProtectCount);
         assert_eq!(depth_before, depth_after);
     }

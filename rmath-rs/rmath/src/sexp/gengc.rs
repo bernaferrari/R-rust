@@ -276,11 +276,17 @@ fn mark_instance_roots(
     mark_reachable(instance.base_env, traceable, visited);
     mark_reachable(instance.global_env, traceable, visited);
 
-    for &obj in &instance.protect_stack {
-        mark_reachable(obj, traceable, visited);
+    {
+        let stack = instance.protect_stack.borrow();
+        for &obj in stack.iter() {
+            mark_reachable(obj, traceable, visited);
+        }
     }
-    for &obj in &instance.preserve_stack {
-        mark_reachable(obj, traceable, visited);
+    {
+        let stack = instance.preserve_stack.borrow();
+        for &obj in stack.iter() {
+            mark_reachable(obj, traceable, visited);
+        }
     }
     for ctxt in &instance.context_stack {
         mark_context_roots(ctxt, traceable, visited);
@@ -774,11 +780,17 @@ fn update_instance_roots(old_to_new: &HashMap<usize, SEXP>) {
         update_field(&mut instance.base_env, old_to_new);
         update_field(&mut instance.global_env, old_to_new);
 
-        for obj in &mut instance.protect_stack {
-            update_field(obj, old_to_new);
+        {
+            let mut stack = instance.protect_stack.borrow_mut();
+            for obj in stack.iter_mut() {
+                update_field(obj, old_to_new);
+            }
         }
-        for obj in &mut instance.preserve_stack {
-            update_field(obj, old_to_new);
+        {
+            let mut stack = instance.preserve_stack.borrow_mut();
+            for obj in stack.iter_mut() {
+                update_field(obj, old_to_new);
+            }
         }
         for ctxt in &mut instance.context_stack {
             update_context_roots(ctxt, old_to_new);
