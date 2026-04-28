@@ -1426,6 +1426,68 @@ mod tests {
         write_fixture_package(
             &bundled,
             FixturePackage {
+                name: "corps4",
+                description: concat!(
+                    "Package: corps4\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus S4 Package\n",
+                    "Description: Exercises pure-R package S4 class creation and slot access.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(make_person, person_name, person_slots)\n",
+                sources: &[(
+                    "s4.R",
+                    concat!(
+                        "setClass(\"CorpusPerson\", name = \"character\", score = \"numeric\")\n",
+                        "make_person <- function() new(\"CorpusPerson\", name = \"Ada\", score = 42)\n",
+                        "person_name <- function(x) slot(x, \"name\")\n",
+                        "person_slots <- function() slotNames(\"CorpusPerson\")\n",
+                    ),
+                )],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corpdataenv",
+                description: concat!(
+                    "Package: corpdataenv\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Data Environment Package\n",
+                    "Description: Exercises data(..., envir=) package loading.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(dataenv_value)\n",
+                sources: &[("dataenv.R", "dataenv_value <- function() 5L\n")],
+                data_sources: &[("env_data.R", "env_data <- 88L\n")],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corppaths",
+                description: concat!(
+                    "Package: corppaths\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Runtime Paths Package\n",
+                    "Description: Exercises package-visible Android library paths.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(corpus_lib_paths)\n",
+                sources: &[("paths.R", "corpus_lib_paths <- function() .libPaths()\n")],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
                 name: "corpnative",
                 description: concat!(
                     "Package: corpnative\n",
@@ -1494,11 +1556,14 @@ mod tests {
             vec![
                 "corpbase",
                 "corpcompiled",
+                "corpdataenv",
                 "corpfrom",
                 "corpimport",
                 "corplazydata",
                 "corpnative",
+                "corppaths",
                 "corppattern",
+                "corps4",
             ]
         );
         assert_eq!(
@@ -1545,6 +1610,35 @@ mod tests {
             .eval("hidden_value")
             .expect_err("hidden pattern symbol should not be attached");
         assert!(hidden.to_string().contains("not found"), "{hidden}");
+
+        session.load_package("corps4").expect("load S4 package");
+        assert_eq!(
+            session
+                .eval("p <- make_person(); all(c(isS4(p), is(p, \"CorpusPerson\"), person_name(p) == \"Ada\", all(person_slots() == c(\"name\", \"score\"))))")
+                .expect("S4 package value"),
+            "[1] TRUE"
+        );
+
+        session
+            .load_package("corpdataenv")
+            .expect("load data env package");
+        assert_eq!(
+            session
+                .eval("e <- new.env(); data(\"env_data\", package = \"corpdataenv\", envir = e); c(exists(\"env_data\", envir = e), exists(\"env_data\"), get(\"env_data\", envir = e))")
+                .expect("data envir"),
+            "[1]  1  0 88"
+        );
+
+        session
+            .load_package("corppaths")
+            .expect("load paths package");
+        assert_eq!(
+            session
+                .eval_result("corpus_lib_paths()")
+                .expect("package-visible library paths")
+                .value,
+            RValue::StringVector(paths.library_paths().into_iter().map(Some).collect())
+        );
 
         let native = session
             .load_package("corpnative")
