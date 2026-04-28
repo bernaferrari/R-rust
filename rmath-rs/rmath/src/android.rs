@@ -317,11 +317,11 @@ impl RSession {
     /// Parses and evaluates code against this session's isolated global
     /// environment.
     pub fn eval(&mut self, code: &str) -> RResult {
-        let (result, captured, visible) = self.core.eval_code_with_output_capture(code);
-        match result {
-            Ok(result) => result_from_eval(result, captured, visible),
-            Err(e) => error_result(e.to_string()),
-        }
+        self.core
+            .eval_code_with_output_capture_then(code, |result, captured, visible| match result {
+                Ok(result) => result_from_eval(result, captured, visible),
+                Err(e) => error_result(e.to_string()),
+            })
     }
 }
 

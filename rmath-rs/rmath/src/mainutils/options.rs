@@ -1470,13 +1470,12 @@ mod tests {
     use std::ffi::CString;
 
     fn reset_protect_stack() {
-        if !crate::sexp::instance::has_current_instance() {
-            return;
-        }
-        let n = R_ProtectCount();
-        if n > 0 {
-            drop(protect_n(n));
-        }
+        crate::sexp::instance::with_current_instance(|_| {
+            let n = R_ProtectCount();
+            if n > 0 {
+                drop(protect_n(n));
+            }
+        });
     }
 
     struct ProtectStackGuard;

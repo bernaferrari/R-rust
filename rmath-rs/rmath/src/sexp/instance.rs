@@ -6,15 +6,14 @@
 //! thread-local, enabling multiple independent R sessions to run concurrently
 //! within the same process and on the same thread (sequentially).
 //!
-//! # Thread-local dispatch
+//! # Scoped compatibility dispatch
 //!
-//! The [`set_current_instance`] / [`clear_current_instance`] functions set a
-//! thread-local pointer to the "active" instance. When an instance is active,
-//! the global accessor functions (`R_GlobalEnv`, protection APIs, `with_arena`,
-//! etc.) dispatch to that instance's fields. Code that touches mutable runtime
-//! state must enter through `RSession` or explicitly install an active
-//! `RInstance`; unscoped mutable process-global fallback state is intentionally
-//! not supported.
+//! Ported C-shaped internals still expect ambient accessors such as
+//! `R_GlobalEnv`, protection APIs, and `with_arena`. Rust code should reach
+//! them through `RSession`, which owns the instance and scopes method
+//! activation so nested calls restore the previous instance. Low-level
+//! translated tests may still explicitly install an instance while the port is
+//! moving toward fully explicit session parameters.
 
 use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
@@ -586,12 +585,12 @@ thread_local! {
     static CURRENT_INSTANCE: RefCell<Option<*mut RInstance>> = const { RefCell::new(None) };
 }
 
-/// Set the current thread-local R instance.
+/// Set the current thread-local R instance for translated compatibility code.
 ///
 /// # Safety
 ///
 /// The caller must ensure that `instance` points to a valid, live `RInstance`
-/// and that no other instance is currently active on this thread.
+/// and that it is restored or cleared before the pointed-to instance is dropped.
 pub unsafe fn set_current_instance(instance: *mut RInstance) {
     CURRENT_INSTANCE.with(|ci| {
         *ci.borrow_mut() = Some(instance);
@@ -679,12 +678,6 @@ where
     F: FnOnce(&mut RInstance) -> R,
 {
     with_current_instance(f).expect("mutable R runtime state requires an active RInstance")
-}
-
-/// Returns `true` if a current instance is active on this thread.
-#[inline]
-pub fn has_current_instance() -> bool {
-    CURRENT_INSTANCE.with(|ci| ci.borrow().is_some())
 }
 
 /// Return whether the active session has requested cooperative cancellation.

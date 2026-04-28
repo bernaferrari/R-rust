@@ -1,6 +1,6 @@
 //! R session context — an explicit context for R operations.
 //!
-//! Instead of relying solely on thread_local! globals, this struct
+//! Instead of relying solely on scattered thread-local globals, this struct
 //! provides a unified interface to all R interpreter state.
 //!
 //! # Overview
@@ -166,8 +166,8 @@ impl Drop for CurrentInstanceGuard {
 ///
 /// Each `RSession` owns an [`RInstance`] containing a private arena,
 /// environment chain, and protection stack. When a session is active,
-/// all global accessor functions (`R_GlobalEnv`, protection APIs, `with_arena`,
-/// etc.) dispatch to the session's instance.
+/// all compatibility accessor functions (`R_GlobalEnv`, protection APIs,
+/// `with_arena`, etc.) dispatch to the session's instance.
 ///
 /// # Thread Safety
 ///
@@ -187,7 +187,9 @@ impl RSession {
     /// Create a new R session with its own isolated instance.
     ///
     /// Initializes a fresh [`RInstance`] with its own arena and environment
-    /// chain, and sets it as the current thread-local instance.
+    /// chain, and installs it as the current compatibility instance on this
+    /// thread. Session methods still scope activation explicitly, so nested
+    /// operations restore the previous instance.
     pub fn new() -> Self {
         super::context::install_r_panic_hook();
         let mut instance = Box::new(RInstance::new());
@@ -210,7 +212,7 @@ impl RSession {
         CurrentInstanceGuard { previous }
     }
 
-    fn with_active<F, T>(&self, f: F) -> T
+    pub(crate) fn with_active<F, T>(&self, f: F) -> T
     where
         F: FnOnce() -> T,
     {
@@ -363,8 +365,27 @@ impl RSession {
         super::output::RCapturedOutput,
         bool,
     ) {
+        self.eval_code_with_output_capture_then(code, |result, output, visible| {
+            (result, output, visible)
+        })
+    }
+
+    /// Parse and evaluate source code, then map the result while this session
+    /// is still the scoped active instance.
+    ///
+    /// Embedding facades use this to convert a borrowed `Sexp` into owned
+    /// values without depending on any ambient current session after the eval
+    /// call has returned.
+    pub(crate) fn eval_code_with_output_capture_then<'session, T, F>(
+        &'session mut self,
+        code: &str,
+        f: F,
+    ) -> T
+    where
+        F: FnOnce(RResult<Sexp<'session>>, super::output::RCapturedOutput, bool) -> T,
+    {
         if !self.active {
-            return (
+            return f(
                 Err(REvalError {
                     message: "session is closed".to_string(),
                 }),
@@ -380,7 +401,7 @@ impl RSession {
         let raw_expr = match raw_expr {
             Ok(expr) => expr_or_nil(expr),
             Err(err) => {
-                return (
+                return f(
                     Err(REvalError {
                         message: err.to_string(),
                     }),
@@ -392,10 +413,16 @@ impl RSession {
         let expr = match self.owned_sexp(raw_expr, "parsed expression") {
             Ok(expr) => expr,
             Err(err) => {
-                return (Err(err), super::output::RCapturedOutput::default(), false);
+                return f(Err(err), super::output::RCapturedOutput::default(), false);
             }
         };
-        self.eval_sexp_with_output_capture(expr)
+        self.with_active(|| {
+            super::output::start_capture();
+            let result = self.eval_sexp(expr);
+            let visible = super::globals::R_Visible() != 0;
+            let output = super::output::stop_capture();
+            f(result, output, visible)
+        })
     }
 
     /// Evaluate an expression with a custom environment.
@@ -720,8 +747,9 @@ impl Drop for RSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::instance::{current_instance_ptr, with_current_instance};
-    use crate::sexp::memory::with_arena;
+    use crate::sexp::instance::{
+        current_instance_ptr, replace_current_instance, with_current_instance,
+    };
     use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
 
     #[test]
@@ -810,6 +838,7 @@ mod tests {
         let newer = RSession::new();
         let newer_instance = &*newer.instance as *const RInstance;
 
+        let previous = unsafe { replace_current_instance(Some(newer.instance_ptr())) };
         older.close();
 
         assert!(
@@ -817,6 +846,9 @@ mod tests {
                 .unwrap_or(false)
         );
         assert!(newer.is_active());
+        unsafe {
+            replace_current_instance(previous);
+        }
     }
 
     #[test]
@@ -825,6 +857,7 @@ mod tests {
         let newer = RSession::new();
         let newer_instance = &*newer.instance as *const RInstance;
 
+        let previous = unsafe { replace_current_instance(Some(newer.instance_ptr())) };
         drop(older);
 
         assert!(
@@ -832,6 +865,9 @@ mod tests {
                 .unwrap_or(false)
         );
         assert!(newer.is_active());
+        unsafe {
+            replace_current_instance(previous);
+        }
     }
 
     #[test]
@@ -841,6 +877,7 @@ mod tests {
         let newer = RSession::new();
         let newer_instance = &*newer.instance as *const RInstance;
 
+        let previous = unsafe { replace_current_instance(Some(newer.instance_ptr())) };
         assert!(
             current_instance_ptr()
                 .map(|ptr| std::ptr::eq(ptr as *const RInstance, newer_instance))
@@ -859,6 +896,9 @@ mod tests {
                 .map(|ptr| std::ptr::eq(ptr as *const RInstance, newer_instance))
                 .unwrap_or(false)
         );
+        unsafe {
+            replace_current_instance(previous);
+        }
     }
 
     #[test]
@@ -942,8 +982,10 @@ mod tests {
 
     #[test]
     fn test_session_define_and_find_var_with_rust_str() {
-        let session = RSession::new();
-        let value = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+            .expect("session should be active");
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
         assert!(sexp.set_integer_elt(0, 42));
 
@@ -993,8 +1035,10 @@ mod tests {
 
     #[test]
     fn test_session_rejects_interior_nul_symbol_names() {
-        let session = RSession::new();
-        let value = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+            .expect("session should be active");
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
         assert!(sexp.set_integer_elt(0, 99));
 
@@ -1008,12 +1052,12 @@ mod tests {
     #[test]
     fn test_session_protected_scope() {
         let session = RSession::new();
-        let depth_before = R_ProtectCount();
+        let depth_before = session.with_active(R_ProtectCount);
         session.with_protected(|| {
             std::mem::forget(protect(0x1 as SEXP));
             std::mem::forget(protect(0x2 as SEXP));
         });
-        let depth_after = R_ProtectCount();
+        let depth_after = session.with_active(R_ProtectCount);
         assert_eq!(depth_before, depth_after);
     }
 

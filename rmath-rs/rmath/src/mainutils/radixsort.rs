@@ -1912,11 +1912,8 @@ unsafe fn libc_free(ptr: *mut c_void) {
 /// # Returns
 /// A vector of 1-based indices giving the sort order.
 pub fn integer_radixsort(data: &[i32], decreasing: bool, na_last: Option<bool>) -> Vec<i32> {
-    if crate::sexp::instance::has_current_instance() {
-        return integer_radixsort_inner(data, decreasing, na_last);
-    }
-    let _session = crate::sexp::session::RSession::new();
-    integer_radixsort_inner(data, decreasing, na_last)
+    let session = crate::sexp::session::RSession::new();
+    session.with_active(|| integer_radixsort_inner(data, decreasing, na_last))
 }
 
 fn integer_radixsort_inner(data: &[i32], decreasing: bool, na_last: Option<bool>) -> Vec<i32> {
