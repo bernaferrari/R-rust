@@ -659,14 +659,23 @@ pub fn with_arena<F, R>(f: F) -> R
 where
     F: FnOnce(&mut RArena) -> R,
 {
-    super::instance::with_required_current_instance(|inst| f(&mut inst.arena))
+    super::instance::with_required_current_instance(|inst| with_arena_in(inst, f))
+}
+
+pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -> R
+where
+    F: FnOnce(&mut RArena) -> R,
+{
+    f(&mut inst.arena)
 }
 
 /// Reset the active instance evaluation arena, freeing all allocations.
 pub fn reset_arena() {
-    with_arena(|arena| {
-        *arena = RArena::new();
-    });
+    super::instance::with_required_current_instance(reset_arena_in);
+}
+
+pub(crate) fn reset_arena_in(inst: &mut super::instance::RInstance) {
+    inst.arena = RArena::new();
 }
 
 /// Access the active instance arena for GC operations.
@@ -1043,6 +1052,43 @@ mod tests {
             arena
                 .add_node(Box::new(SexprecCore::new(SEXPTYPE::REALSXP)))
                 .is_null()
+        );
+    }
+
+    #[test]
+    fn test_arena_can_target_instance_explicitly() {
+        let mut left = super::super::instance::RInstance::new();
+        let mut right = super::super::instance::RInstance::new();
+        let left_before = with_arena_in(&mut left, |arena| arena.node_count());
+        let right_before = with_arena_in(&mut right, |arena| arena.node_count());
+
+        let left_node = with_arena_in(&mut left, |arena| arena.alloc_node(SEXPTYPE::INTSXP));
+        assert!(!left_node.is_null());
+        assert_eq!(
+            with_arena_in(&mut left, |arena| arena.node_count()),
+            left_before + 1
+        );
+        assert_eq!(
+            with_arena_in(&mut right, |arena| arena.node_count()),
+            right_before
+        );
+
+        let right_node = with_arena_in(&mut right, |arena| arena.alloc_node(SEXPTYPE::REALSXP));
+        assert!(!right_node.is_null());
+        assert_eq!(
+            with_arena_in(&mut left, |arena| arena.node_count()),
+            left_before + 1
+        );
+        assert_eq!(
+            with_arena_in(&mut right, |arena| arena.node_count()),
+            right_before + 1
+        );
+
+        reset_arena_in(&mut left);
+        assert_eq!(with_arena_in(&mut left, |arena| arena.node_count()), 0);
+        assert_eq!(
+            with_arena_in(&mut right, |arena| arena.node_count()),
+            right_before + 1
         );
     }
 }

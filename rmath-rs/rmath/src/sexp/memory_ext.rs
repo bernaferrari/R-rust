@@ -16,6 +16,7 @@ use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::globals::{R_NilValue, R_UnboundValue};
+use super::instance::RInstance;
 use super::memory;
 
 // ---------------------------------------------------------------------------
@@ -122,11 +123,24 @@ fn with_raw_cons<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Vec<*mut SexprecCore>) -> R,
 {
-    super::instance::with_required_current_instance(|instance| f(&mut instance.raw_cons))
+    super::instance::with_required_current_instance(|instance| with_raw_cons_in(instance, f))
+}
+
+fn with_raw_cons_in<F, R>(instance: &mut RInstance, f: F) -> R
+where
+    F: FnOnce(&mut Vec<*mut SexprecCore>) -> R,
+{
+    f(&mut instance.raw_cons)
 }
 
 /// Create a cons cell tracked for cleanup.
 pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
+    super::instance::with_required_current_instance(|instance| unsafe {
+        cons_raw_in(instance, car, cdr)
+    })
+}
+
+pub(crate) unsafe fn cons_raw_in(instance: &mut RInstance, car: SEXP, cdr: SEXP) -> SEXP {
     let boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
     let ptr: SEXP = Box::into_raw(boxed);
     unsafe {
@@ -134,16 +148,22 @@ pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
         (*ptr).data.listsxp.cdrval = cdr;
         (*ptr).data.listsxp.tagval = ptr::null_mut();
     }
-    with_raw_cons(|rc| rc.push(ptr));
+    with_raw_cons_in(instance, |rc| rc.push(ptr));
     ptr
 }
 
 /// Free a raw cons cell allocated by cons_raw.
 pub unsafe fn free_raw_cons(ptr: SEXP) {
+    super::instance::with_required_current_instance(|instance| unsafe {
+        free_raw_cons_in(instance, ptr);
+    });
+}
+
+pub(crate) unsafe fn free_raw_cons_in(instance: &mut RInstance, ptr: SEXP) {
     if ptr.is_null() {
         return;
     }
-    with_raw_cons(|cells| {
+    with_raw_cons_in(instance, |cells| {
         if let Some(pos) = cells.iter().position(|&p| p == ptr) {
             cells.remove(pos);
             unsafe {
@@ -274,7 +294,14 @@ fn with_vmax<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Vec<(*mut u8, Layout)>) -> R,
 {
-    super::instance::with_required_current_instance(|instance| f(&mut instance.vmax))
+    super::instance::with_required_current_instance(|instance| with_vmax_in(instance, f))
+}
+
+fn with_vmax_in<F, R>(instance: &mut RInstance, f: F) -> R
+where
+    F: FnOnce(&mut Vec<(*mut u8, Layout)>) -> R,
+{
+    f(&mut instance.vmax)
 }
 
 /// Allocate transient memory (freed by vmaxset).
@@ -283,6 +310,16 @@ where
 /// In Rust, the active session owns a transient allocation buffer that's freed
 /// on vmaxset().
 pub(crate) unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
+    super::instance::with_required_current_instance(|instance| unsafe {
+        R_alloc_in(instance, _size, nelem)
+    })
+}
+
+pub(crate) unsafe fn R_alloc_in(
+    instance: &mut RInstance,
+    _size: usize,
+    nelem: usize,
+) -> *mut c_void {
     unsafe {
         let total = _size.checked_mul(nelem).unwrap_or(0);
         if total == 0 {
@@ -298,7 +335,7 @@ pub(crate) unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
         }
         // Zero-initialize
         std::ptr::write_bytes(ptr, 0, total);
-        with_vmax(|vmax| vmax.push((ptr, layout)));
+        with_vmax_in(instance, |vmax| vmax.push((ptr, layout)));
         ptr as *mut c_void
     }
 }
@@ -307,15 +344,25 @@ pub(crate) unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
 ///
 /// Returns an opaque value to pass to vmaxset().
 pub unsafe fn vmaxget() -> *mut c_void {
-    with_vmax(|vmax| vmax.len() as *mut c_void)
+    super::instance::with_required_current_instance(vmaxget_in)
+}
+
+pub(crate) fn vmaxget_in(instance: &mut RInstance) -> *mut c_void {
+    with_vmax_in(instance, |vmax| vmax.len() as *mut c_void)
 }
 
 /// Reset transient allocations to the given watermark.
 ///
 /// Frees all transient allocations made since the corresponding vmaxget().
 pub unsafe fn vmaxset(value: *mut c_void) {
+    super::instance::with_required_current_instance(|instance| unsafe {
+        vmaxset_in(instance, value);
+    });
+}
+
+pub(crate) unsafe fn vmaxset_in(instance: &mut RInstance, value: *mut c_void) {
     let mark = value as usize;
-    with_vmax(|vmax| {
+    with_vmax_in(instance, |vmax| {
         let drain_start = mark.min(vmax.len());
         for (ptr, layout) in vmax.drain(drain_start..) {
             if !ptr.is_null() && layout.size() > 0 {
@@ -333,8 +380,18 @@ fn raw_cons_len() -> usize {
 }
 
 #[cfg(test)]
+fn raw_cons_len_in(instance: &mut RInstance) -> usize {
+    with_raw_cons_in(instance, |rc| rc.len())
+}
+
+#[cfg(test)]
 fn vmax_len() -> usize {
     with_vmax(|vmax| vmax.len())
+}
+
+#[cfg(test)]
+fn vmax_len_in(instance: &mut RInstance) -> usize {
+    with_vmax_in(instance, |vmax| vmax.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +402,7 @@ fn vmax_len() -> usize {
 mod tests {
     use super::super::constructors::*;
     use super::super::ffi::*;
+    use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -456,5 +514,43 @@ mod tests {
             assert_eq!(raw_cons_len(), 0);
         })
         .unwrap();
+    }
+
+    #[test]
+    fn test_raw_cons_and_vmax_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        unsafe {
+            let left_cons = cons_raw_in(&mut left, ptr::null_mut(), ptr::null_mut());
+            assert_eq!(raw_cons_len_in(&mut left), 1);
+            assert_eq!(raw_cons_len_in(&mut right), 0);
+
+            let right_cons = cons_raw_in(&mut right, ptr::null_mut(), ptr::null_mut());
+            assert_eq!(raw_cons_len_in(&mut left), 1);
+            assert_eq!(raw_cons_len_in(&mut right), 1);
+
+            let left_mark = vmaxget_in(&mut left);
+            let right_mark = vmaxget_in(&mut right);
+            let left_ptr = R_alloc_in(&mut left, 1, 8);
+            assert!(!left_ptr.is_null());
+            assert_eq!(vmax_len_in(&mut left), 1);
+            assert_eq!(vmax_len_in(&mut right), 0);
+
+            let right_ptr = R_alloc_in(&mut right, 1, 4);
+            assert!(!right_ptr.is_null());
+            assert_eq!(vmax_len_in(&mut left), 1);
+            assert_eq!(vmax_len_in(&mut right), 1);
+
+            vmaxset_in(&mut left, left_mark);
+            assert_eq!(vmax_len_in(&mut left), 0);
+            assert_eq!(vmax_len_in(&mut right), 1);
+
+            vmaxset_in(&mut right, right_mark);
+            free_raw_cons_in(&mut left, left_cons);
+            free_raw_cons_in(&mut right, right_cons);
+            assert_eq!(raw_cons_len_in(&mut left), 0);
+            assert_eq!(raw_cons_len_in(&mut right), 0);
+        }
     }
 }

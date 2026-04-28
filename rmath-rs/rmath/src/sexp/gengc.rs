@@ -19,7 +19,8 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
-    update_preserve_stack_refs, update_protect_stack_refs, with_protected_objects,
+    update_preserve_stack_refs, update_preserve_stack_refs_in, update_protect_stack_refs,
+    update_protect_stack_refs_in, with_protected_objects,
 };
 
 /// Card size in bytes for the card marking table.
@@ -572,7 +573,14 @@ fn with_gc_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GcState) -> R,
 {
-    instance::with_required_current_instance(|instance| f(&mut instance.gc_state))
+    instance::with_required_current_instance(|instance| with_gc_state_in(instance, f))
+}
+
+fn with_gc_state_in<F, R>(instance: &mut instance::RInstance, f: F) -> R
+where
+    F: FnOnce(&mut GcState) -> R,
+{
+    f(&mut instance.gc_state)
 }
 
 // ---------------------------------------------------------------------------
@@ -666,6 +674,13 @@ fn update_protect_stack(old_to_new: &HashMap<usize, SEXP>) {
     });
 }
 
+fn update_protect_stack_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    update_protect_stack_refs_in(instance, |ptr| {
+        let addr = ptr as usize;
+        old_to_new.get(&addr).copied().unwrap_or(ptr)
+    });
+}
+
 fn update_preserve_stack(old_to_new: &HashMap<usize, SEXP>) {
     update_preserve_stack_refs(|ptr| {
         let addr = ptr as usize;
@@ -673,8 +688,21 @@ fn update_preserve_stack(old_to_new: &HashMap<usize, SEXP>) {
     });
 }
 
+fn update_preserve_stack_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    update_preserve_stack_refs_in(instance, |ptr| {
+        let addr = ptr as usize;
+        old_to_new.get(&addr).copied().unwrap_or(ptr)
+    });
+}
+
 fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
-    with_gc_state(|state| {
+    instance::with_required_current_instance(|instance| {
+        update_remembered_set_in(instance, old_to_new)
+    });
+}
+
+fn update_remembered_set_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    with_gc_state_in(instance, |state| {
         for entry in state.remembered_set.entries_mut() {
             let addr = *entry as usize;
             if let Some(&new_ptr) = old_to_new.get(&addr) {
@@ -1424,6 +1452,48 @@ mod tests {
 
             assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
         });
+    }
+
+    #[test]
+    fn test_gc_root_updates_can_target_instance_explicitly() {
+        let mut left = instance::RInstance::new();
+        let mut right = instance::RInstance::new();
+        let old = left.arena.alloc_node(SEXPTYPE::INTSXP);
+        let new = left.arena.alloc_node(SEXPTYPE::REALSXP);
+        let right_obj = right.arena.alloc_node(SEXPTYPE::INTSXP);
+        let mut old_to_new = HashMap::new();
+        old_to_new.insert(old as usize, new);
+        unsafe {
+            (*old).sxpinfo.set_gcgen(Generation::Old as u8);
+            (*new).sxpinfo.set_gcgen(Generation::Old as u8);
+            (*right_obj).sxpinfo.set_gcgen(Generation::Old as u8);
+        }
+
+        left.protect_stack.borrow_mut().push(old);
+        left.preserve_stack.borrow_mut().push(old);
+        left.gc_state.remembered_set.add(old);
+        right.protect_stack.borrow_mut().push(right_obj);
+        right.preserve_stack.borrow_mut().push(right_obj);
+        right.gc_state.remembered_set.add(right_obj);
+
+        update_protect_stack_in(&mut left, &old_to_new);
+        update_preserve_stack_in(&mut left, &old_to_new);
+        update_remembered_set_in(&mut left, &old_to_new);
+
+        assert_eq!(left.protect_stack.borrow()[0], new);
+        assert_eq!(left.preserve_stack.borrow()[0], new);
+        assert!(left.gc_state.remembered_set.iter().any(|obj| obj == new));
+        assert!(!left.gc_state.remembered_set.iter().any(|obj| obj == old));
+
+        assert_eq!(right.protect_stack.borrow()[0], right_obj);
+        assert_eq!(right.preserve_stack.borrow()[0], right_obj);
+        assert!(
+            right
+                .gc_state
+                .remembered_set
+                .iter()
+                .any(|obj| obj == right_obj)
+        );
     }
 
     #[test]
