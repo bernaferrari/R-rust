@@ -1,21 +1,8 @@
 # path	class	android_policy	owner	notes
 # Scanner scope: declaration sites only (thread_local!, static mut, lazy_static!/static ref, and static OnceLock/LazyLock/Mutex/RwLock/Atomic* definitions).
-# Scanner intentionally skips OnceLock<usize> singleton sentinels so immutable leaked-box sentinels do not create extra Android audit noise.
-rmath-rs/rmath/src/graphapp/controls.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp controls; not linked into Android UI surface.
-rmath-rs/rmath/src/graphapp/events.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp event loop state; Android event loop is host-owned.
-rmath-rs/rmath/src/graphapp/menus.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp menu state; Android menus are host UI state.
-rmath-rs/rmath/src/intl/lock.rs	intl-cache	platform-replace	rport-dg0.2	gettext lock shim; Android replacement pending.
-rmath-rs/rmath/src/intl/tsearch.rs	intl-cache	platform-replace	rport-dg0.2	gettext tree traversal scratch; Android localization replacement pending.
-rmath-rs/rmath/src/library/grdevices/device_registry.rs	test-only	allow-test	rport-dg0.1	Remaining Mutex is a unit-test serialization lock.
-rmath-rs/rmath/src/mainutils/connections.rs	test-only	allow-test	rport-dg0.1	Remaining Mutex is a unit-test serialization lock.
+# Scanner intentionally skips #[cfg(test)] modules and OnceLock<usize> singleton sentinels so non-Android tests and immutable leaked-box sentinels do not create extra Android audit noise.
 rmath-rs/rmath/src/sexp/context.rs	process-panic-hook	allow-process	rport-t57	Only the Rust panic hook installation guard remains process-global; context and in-error stacks are session-owned.
-rmath-rs/rmath/src/sexp/globals.rs	process-sentinels	allow-immutable	rport-dg0.2	Immutable leaked R sentinel values only; mutable environments are session-owned through RInstance.
 rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
-rmath-rs/rmath/src/support/graphapp/controls.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp controls; disabled for Android.
-rmath-rs/rmath/src/support/graphapp/events.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp events; disabled for Android.
-rmath-rs/rmath/src/support/graphapp/menus.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp menus; disabled for Android.
 rmath-rs/rmath/src/support/graphapp/runtime.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp runtime thread-local UI state; Android uses host-owned app lifecycle and headless graphics.
-rmath-rs/rmath/src/support/intl/lock.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext lock shim; Android localization bridge pending.
-rmath-rs/rmath/src/support/intl/tsearch.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext tree traversal scratch; Android localization bridge pending.
 rmath-rs/rmath/src/support/intl/types.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext global domain state; Android localization bridge pending.
 rmath-rs/rmath/src/support/tzone.rs	platform-timezone	platform-replace	rport-dg0.2	Time-zone global cache; Android timezone bridge should own it.

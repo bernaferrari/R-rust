@@ -19,6 +19,9 @@ The checked policy is:
 - `disabled-android`: desktop, fork, Tcl/Tk, X11, or process-startup code that
   is outside the Android embedding surface.
 
+The scanner ignores declarations inside `#[cfg(test)] mod tests` and
+`OnceLock<usize>` immutable sentinels; neither is Android runtime state.
+
 Run the ratchet with:
 
 ```bash

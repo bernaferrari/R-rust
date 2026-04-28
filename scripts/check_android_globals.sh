@@ -21,6 +21,58 @@ trap cleanup EXIT
 
 cd "$ROOT_DIR"
 
+line_is_in_cfg_test_module() {
+    local file="$1"
+    local target_line="$2"
+    awk -v target="$target_line" '
+        function count_lbraces(s, tmp) {
+            tmp = s
+            return gsub(/\{/, "", tmp)
+        }
+        function count_rbraces(s, tmp) {
+            tmp = s
+            return gsub(/\}/, "", tmp)
+        }
+        NR > target { exit }
+        {
+            if (in_test) {
+                depth += count_lbraces($0) - count_rbraces($0)
+                if (NR == target) {
+                    found = 1
+                    exit
+                }
+                if (depth <= 0) {
+                    in_test = 0
+                }
+            }
+
+            if ($0 ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
+                pending_cfg_test = 1
+                next
+            }
+
+            if (pending_cfg_test && $0 ~ /^[[:space:]]*mod[[:space:]]+tests[[:space:]]*\{/) {
+                in_test = 1
+                depth = count_lbraces($0) - count_rbraces($0)
+                pending_cfg_test = 0
+                if (NR == target) {
+                    found = 1
+                    exit
+                }
+                if (depth <= 0) {
+                    in_test = 0
+                }
+                next
+            }
+
+            if (pending_cfg_test && $0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*#/) {
+                pending_cfg_test = 0
+            }
+        }
+        END { exit found ? 0 : 1 }
+    ' "$file"
+}
+
 scan_kind() {
     local kind="$1"
     local pattern="$2"
@@ -51,7 +103,13 @@ scan_kind() {
     scan_kind "sync-static" \
         '^\s*static\s+(?!ref\b)[A-Za-z_][A-Za-z0-9_]*\s*:\s*.*\b(?:OnceLock|LazyLock|Mutex|RwLock|Atomic[A-Za-z]+)\b' \
         '-P'
-} | awk -F '\t' '$4 !~ /\bOnceLock<usize>\b/ { print }' | sort -u > "$tmp_details"
+} | while IFS=$'\t' read -r file kind line text; do
+    [[ -n "$file" ]] || continue
+    if line_is_in_cfg_test_module "$file" "$line"; then
+        continue
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$file" "$kind" "$line" "$text"
+done | awk -F '\t' '$4 !~ /OnceLock<usize>/ { print }' | sort -u > "$tmp_details"
 
 awk -F '\t' 'NF { print $1 }' "$tmp_details" | sort -u > "$tmp_found"
 
@@ -81,4 +139,4 @@ if [[ -s "$tmp_new" || -s "$tmp_stale" ]]; then
 fi
 
 echo "Android mutable-global allowlist is current."
-echo "Scanned declaration kinds: static mut, thread_local!, lazy_static!/static ref, and static OnceLock/LazyLock/Mutex/RwLock/Atomic* definitions (excluding OnceLock<usize> immutable sentinels)."
+echo "Scanned declaration kinds: static mut, thread_local!, lazy_static!/static ref, and static OnceLock/LazyLock/Mutex/RwLock/Atomic* definitions (excluding #[cfg(test)] modules and OnceLock<usize> immutable sentinels)."
