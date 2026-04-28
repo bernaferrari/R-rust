@@ -153,6 +153,28 @@ pub unsafe fn applyClosure(
     _R_verbose: c_int,
 ) -> SEXP {
     unsafe {
+        applyClosureWithFrameVars(
+            call,
+            op,
+            arglist,
+            rho,
+            suppliedenv,
+            R_NilValue(),
+            _R_verbose,
+        )
+    }
+}
+
+pub(crate) unsafe fn applyClosureWithFrameVars(
+    call: SEXP,
+    op: SEXP,
+    arglist: SEXP,
+    rho: SEXP,
+    suppliedenv: SEXP,
+    frame_vars: SEXP,
+    _R_verbose: c_int,
+) -> SEXP {
+    unsafe {
         if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
             return R_NilValue();
         }
@@ -166,16 +188,22 @@ pub unsafe fn applyClosure(
         if body.is_null() {
             return R_NilValue();
         }
+        install_frame_vars(frame_vars, newrho);
 
+        let sysparent = if suppliedenv.is_null() || suppliedenv == R_NilValue() {
+            rho
+        } else {
+            suppliedenv
+        };
         let ctx = crate::sexp::context::Rf_begincontext(
             crate::sexp::context::ctxt_flags::CTXT_FUNCTION
                 | crate::sexp::context::ctxt_flags::CTXT_RETURN,
             call,
             newrho,
-            rho,
+            sysparent,
             None,
             op,
-            ptr::null_mut(),
+            arglist,
         );
 
         struct CtxGuard(*mut crate::sexp::context::RCNTXT);
@@ -202,6 +230,18 @@ pub unsafe fn applyClosure(
         match result {
             Ok(val) => val,
             Err(payload) => crate::sexp::context::handle_closure_signal(payload),
+        }
+    }
+}
+
+unsafe fn install_frame_vars(mut vars: SEXP, rho: SEXP) {
+    unsafe {
+        while !vars.is_null() && vars != R_NilValue() {
+            let tag = TAG(vars);
+            if !tag.is_null() && tag != R_NilValue() {
+                crate::sexp::envir::defineVar(tag, CAR(vars), rho);
+            }
+            vars = CDR(vars);
         }
     }
 }

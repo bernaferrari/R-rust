@@ -162,6 +162,7 @@ pub unsafe fn Rf_begincontext(
         cloenv,
         sysparent,
         cfn,
+        callfun: closure,
         closure,
         promiseargs,
         ..RCNTXT::new()

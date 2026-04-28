@@ -618,6 +618,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::objects::do_usemethod,
     },
     EvaluatedBuiltin {
+        name: "NextMethod",
+        handler: crate::mainutils::objects::do_nextmethod,
+    },
+    EvaluatedBuiltin {
         name: "useMethod",
         handler: crate::mainutils::objects::do_usemethod,
     },
@@ -664,6 +668,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "file.create",
         handler: crate::mainutils::essentials::do_file_create,
+    },
+    EvaluatedBuiltin {
+        name: "dir.create",
+        handler: crate::mainutils::platform::do_dircreate,
     },
     EvaluatedBuiltin {
         name: "unlink",
@@ -1135,7 +1143,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "writeLines",
-        handler: crate::mainutils::connections::do_writeLines,
+        handler: crate::mainutils::essentials::do_writeLines,
     },
     EvaluatedBuiltin {
         name: "sink",

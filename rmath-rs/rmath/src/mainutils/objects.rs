@@ -631,11 +631,14 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
         }
 
         if TYPEOF(s) == SEXPTYPE::PROMSXP {
-            if PROMISE_IS_EVALUATED(s) == FALSE {
-                s = Rf_eval(s, R_BaseEnv());
+            s = crate::sexp::envir::forcePromise(s);
+        } else if !s.is_null() && s != R_NilValue() && s != R_MissingArg() {
+            let eval_env = if (*cptr).sysparent.is_null() || (*cptr).sysparent == R_NilValue() {
+                R_BaseEnv()
             } else {
-                s = PRVALUE(s);
-            }
+                (*cptr).sysparent
+            };
+            s = Rf_eval(s, eval_env);
         }
 
         s
@@ -667,11 +670,9 @@ unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, newvars: SEXP
                 return fn_ptr(call, op, evald_args, rho);
             }
         } else if t == SEXPTYPE::CLOSXP {
-            // applyClosure expects an environment for promise evaluation. The
-            // S3 dispatch variables are still represented as a pairlist in this
-            // translated layer, so keep promise forcing rooted in the caller
-            // environment until the full S3 frame model is ported.
-            return crate::eval::closure::applyClosure(call, op, args, rho, rho, 0);
+            return crate::eval::closure::applyClosureWithFrameVars(
+                call, op, args, rho, rho, newvars, 0,
+            );
         }
 
         R_NilValue()
@@ -735,7 +736,7 @@ unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEX
         let _prsupplied_guard = protect(prsupplied);
         let mut b = supplied;
         let mut a = prsupplied;
-        while !b.is_null() && b != R_NilValue() {
+        while !b.is_null() && b != R_NilValue() && !a.is_null() && a != R_NilValue() {
             SETCAR(a, CAR(b));
             // SET_ARGUSED(a, 0) — clear the argused flag
             let gp = (*a).sxpinfo.gp();
@@ -1092,6 +1093,122 @@ unsafe fn dispatchMethod(
 
         let ans = applyMethod(newcall, sxp, matchedarg, rho, newvars);
         ans
+    }
+}
+
+unsafe fn frame_args_for_method(formals: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        let mut tags = Vec::new();
+        let mut formal = formals;
+        while !formal.is_null() && formal != R_NilValue() {
+            let tag = TAG(formal);
+            if tag != R_DotsSymbol_fn() {
+                tags.push(tag);
+            }
+            formal = CDR(formal);
+        }
+
+        let mut args = R_NilValue();
+        for tag in tags.into_iter().rev() {
+            let mut value = if tag.is_null() || tag == R_NilValue() {
+                R_MissingArg()
+            } else {
+                crate::sexp::envir::R_findVarInFrame(env, tag)
+            };
+            if value.is_null() || value == R_UnboundValue() {
+                value = R_MissingArg();
+            }
+            let cell = Rf_cons(value, args);
+            SETTAG(cell, tag);
+            args = cell;
+        }
+        args
+    }
+}
+
+unsafe fn simple_next_method_dispatch(
+    current_call: SEXP,
+    generic: SEXP,
+    klass: SEXP,
+    method: SEXP,
+    env: SEXP,
+    callenv: SEXP,
+    defenv: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        if !current_call.is_null()
+            && current_call != R_NilValue()
+            && TYPEOF(generic) == SEXPTYPE::STRSXP
+            && LENGTH(generic) == 1
+            && TYPEOF(klass) == SEXPTYPE::STRSXP
+            && TYPEOF(method) == SEXPTYPE::STRSXP
+        {
+            let generic_name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(generic, 0)))
+                .to_string_lossy()
+                .into_owned();
+            let mut current_method = String::new();
+            for i in 0..LENGTH(method) {
+                let chars = CHAR(STRING_ELT(method, i as R_xlen_t));
+                if !chars.is_null() && *chars != 0 {
+                    current_method = std::ffi::CStr::from_ptr(chars)
+                        .to_string_lossy()
+                        .into_owned();
+                    break;
+                }
+            }
+
+            let mut start = 0;
+            for i in 0..LENGTH(klass) {
+                let class_chars = CHAR(STRING_ELT(klass, i as R_xlen_t));
+                if class_chars.is_null() {
+                    continue;
+                }
+                let class_name = std::ffi::CStr::from_ptr(class_chars).to_string_lossy();
+                if current_method == format!("{generic_name}.{class_name}") {
+                    start = i + 1;
+                    break;
+                }
+            }
+
+            for i in start..LENGTH(klass) {
+                let class_chars = CHAR(STRING_ELT(klass, i as R_xlen_t));
+                if class_chars.is_null() {
+                    continue;
+                }
+                let class_name = std::ffi::CStr::from_ptr(class_chars).to_string_lossy();
+                let Some(next_match) =
+                    lookup_s3_method_for_class(&generic_name, &class_name, env, callenv, defenv)
+                else {
+                    continue;
+                };
+                let next_call = crate::mainutils::duplicate::shallow_duplicate(current_call);
+                if !next_call.is_null() && next_call != R_NilValue() {
+                    SETCAR(next_call, next_match.method_symbol);
+                }
+                let next_class = stringSuffix(klass, i);
+                let method_name = Rf_ScalarString(PRINTNAME(next_match.method_symbol));
+                let blank_group = Rf_mkString(b"\0".as_ptr() as *const c_char);
+                let next_vars = createS3Vars(
+                    generic,
+                    blank_group,
+                    next_class,
+                    method_name,
+                    callenv,
+                    defenv,
+                );
+                let args = frame_args_for_method(FORMALS(next_match.method), env);
+                return Some(crate::eval::closure::applyClosureWithFrameVars(
+                    next_call,
+                    next_match.method,
+                    args,
+                    env,
+                    callenv,
+                    next_vars,
+                    0,
+                ));
+            }
+        }
+        None
     }
 }
 
@@ -1641,11 +1758,18 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             });
         }
 
-        // Mark this context as generic (C: cptr->callflag = CTXT_GENERIC)
-        (*cptr).callflag = crate::sexp::context::ctxt_flags::CTXT_GENERIC;
+        // Mark this context as generic while preserving its function/return
+        // bits; NextMethod still needs to rediscover the current closure frame.
+        (*cptr).callflag |= crate::sexp::context::ctxt_flags::CTXT_GENERIC;
 
-        // Get the env NextMethod was called from (C: sysp = R_GlobalContext->sysparent)
-        let sysp = (*cptr).sysparent;
+        // In this port S3 dispatch variables are installed directly in the
+        // method closure frame. Prefer that frame, falling back to sysparent
+        // for older call paths that still mirror C's context layout.
+        let sysp = if !(*cptr).cloenv.is_null() {
+            (*cptr).cloenv
+        } else {
+            (*cptr).sysparent
+        };
 
         // Walk the context stack to find the function context matching sysp
         let mut found_cptr: *mut RCNTXT = ptr::null_mut();
@@ -1731,26 +1855,33 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         let formals = FORMALS(s_callfun);
         // Use patchArgsByActuals instead of raw promiseargs
-        let mut matchedarg =
-            patchArgsByActuals(formals, (*found_cptr).promiseargs, (*found_cptr).cloenv);
+        let supplied_args =
+            if (*found_cptr).promiseargs.is_null() || (*found_cptr).promiseargs == R_NilValue() {
+                CDR((*found_cptr).call)
+            } else {
+                (*found_cptr).promiseargs
+            };
+        let mut matchedarg = patchArgsByActuals(formals, supplied_args, (*found_cptr).cloenv);
         let mut _matchedarg_guard = protect(matchedarg);
 
         // Handle ... arguments (C: s = CADDR(args), check R_DotsSymbol)
-        let dotarg = CADDR(args);
-        if dotarg == R_DotsSymbol_fn() {
-            let t = crate::sexp::envir::R_findVarInFrame(env, dotarg);
-            if !t.is_null() && t != R_NilValue() && t != R_MissingArg() {
-                (*t).sxpinfo.set_type(SEXPTYPE::LISTSXP);
-                let s = matchmethargs(matchedarg, t);
-                drop(_matchedarg_guard);
-                matchedarg = s;
-                _matchedarg_guard = protect(matchedarg);
-                newcall = fixcall(newcall, matchedarg);
+        if !args.is_null() && args != R_NilValue() {
+            let dotarg = CADDR(args);
+            if dotarg == R_DotsSymbol_fn() {
+                let t = crate::sexp::envir::R_findVarInFrame(env, dotarg);
+                if !t.is_null() && t != R_NilValue() && t != R_MissingArg() {
+                    (*t).sxpinfo.set_type(SEXPTYPE::LISTSXP);
+                    let s = matchmethargs(matchedarg, t);
+                    drop(_matchedarg_guard);
+                    matchedarg = s;
+                    _matchedarg_guard = protect(matchedarg);
+                    newcall = fixcall(newcall, matchedarg);
+                }
+            } else {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "wrong argument ...".to_string(),
+                });
             }
-        } else {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "wrong argument ...".to_string(),
-            });
         }
 
         // Get klass if unbound
@@ -1806,6 +1937,20 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
         }
         let _group_guard = protect(group_val);
+
+        if (args.is_null() || args == R_NilValue())
+            && let Some(value) = simple_next_method_dispatch(
+                (*found_cptr).call,
+                generic,
+                klass,
+                method,
+                env,
+                callenv,
+                defenv,
+            )
+        {
+            return value;
+        }
 
         // Find current method in .Class
         let mut nextfun: SEXP = R_NilValue();
