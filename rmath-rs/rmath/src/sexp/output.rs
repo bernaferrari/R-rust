@@ -5,6 +5,7 @@
 //! to stdout/stderr.
 
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
+use super::instance::RInstance;
 use super::object::Sexp;
 
 /// Captured R output.
@@ -61,34 +62,47 @@ impl OutputCaptureState {
 
 /// Start capturing R output.
 pub fn start_capture() {
-    super::instance::with_required_current_instance(|inst| {
-        inst.output_capture.borrow_mut().start();
-    });
+    super::instance::with_required_current_instance(start_capture_in);
+}
+
+pub(crate) fn start_capture_in(inst: &mut RInstance) {
+    inst.output_capture.borrow_mut().start();
 }
 
 /// Stop capturing and return the captured output.
 pub fn stop_capture() -> RCapturedOutput {
-    super::instance::with_required_current_instance(|inst| inst.output_capture.borrow_mut().stop())
+    super::instance::with_required_current_instance(stop_capture_in)
+}
+
+pub(crate) fn stop_capture_in(inst: &mut RInstance) -> RCapturedOutput {
+    inst.output_capture.borrow_mut().stop()
 }
 
 /// Check if output capture is active.
 pub fn is_capturing() -> bool {
-    super::instance::with_current_instance(|inst| inst.output_capture.borrow().is_capturing())
-        .unwrap_or(false)
+    super::instance::with_current_instance(is_capturing_in).unwrap_or(false)
+}
+
+pub(crate) fn is_capturing_in(inst: &mut RInstance) -> bool {
+    inst.output_capture.borrow().is_capturing()
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
 pub fn capture_stdout(msg: &str) {
-    super::instance::with_current_instance(|inst| {
-        inst.output_capture.borrow_mut().capture_stdout(msg);
-    });
+    super::instance::with_current_instance(|inst| capture_stdout_in(inst, msg));
+}
+
+pub(crate) fn capture_stdout_in(inst: &mut RInstance, msg: &str) {
+    inst.output_capture.borrow_mut().capture_stdout(msg);
 }
 
 /// Append to captured stderr. Called by the REprintf hook.
 pub fn capture_stderr(msg: &str) {
-    super::instance::with_current_instance(|inst| {
-        inst.output_capture.borrow_mut().capture_stderr(msg);
-    });
+    super::instance::with_current_instance(|inst| capture_stderr_in(inst, msg));
+}
+
+pub(crate) fn capture_stderr_in(inst: &mut RInstance, msg: &str) {
+    inst.output_capture.borrow_mut().capture_stderr(msg);
 }
 
 pub(crate) fn format_sexp(x: SEXP) -> String {
@@ -1039,6 +1053,7 @@ pub(crate) unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
 
     #[test]
@@ -1087,6 +1102,28 @@ mod tests {
         assert_eq!(outer.stdout, "outer resumed");
         assert_eq!(outer.stderr, "outer err resumed err");
         assert!(!is_capturing());
+    }
+
+    #[test]
+    fn test_capture_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        start_capture_in(&mut left);
+        capture_stdout_in(&mut left, "left");
+        capture_stderr_in(&mut left, "left err");
+        assert!(is_capturing_in(&mut left));
+        assert!(!is_capturing_in(&mut right));
+
+        start_capture_in(&mut right);
+        capture_stdout_in(&mut right, "right");
+        let right_output = stop_capture_in(&mut right);
+        assert_eq!(right_output.stdout, "right");
+        assert_eq!(right_output.stderr, "");
+
+        let left_output = stop_capture_in(&mut left);
+        assert_eq!(left_output.stdout, "left");
+        assert_eq!(left_output.stderr, "left err");
     }
 
     #[test]

@@ -11,6 +11,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::instance::RInstance;
 
 // ---------------------------------------------------------------------------
 // Symbol table helpers
@@ -87,12 +88,13 @@ pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
     if sym.is_null() {
         return None;
     }
-    super::instance::with_current_instance(|inst| {
-        inst.symbols
-            .iter()
-            .find_map(|(name, &ptr)| if ptr == sym { Some(name.clone()) } else { None })
-    })
-    .flatten()
+    super::instance::with_current_instance(|inst| symbol_name_from_ptr_in(inst, sym)).flatten()
+}
+
+pub(crate) fn symbol_name_from_ptr_in(inst: &mut RInstance, sym: SEXP) -> Option<String> {
+    inst.symbols
+        .iter()
+        .find_map(|(name, &ptr)| if ptr == sym { Some(name.clone()) } else { None })
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +107,10 @@ pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
 /// Otherwise creates a new SYMSXP node and adds it to the table.
 /// This is the equivalent of R's `Rf_install()`.
 pub(crate) unsafe fn Rf_install(name: *const c_char) -> SEXP {
+    super::instance::with_required_current_instance(|inst| unsafe { Rf_install_in(inst, name) })
+}
+
+pub(crate) unsafe fn Rf_install_in(inst: &mut RInstance, name: *const c_char) -> SEXP {
     unsafe {
         if name.is_null() {
             return ptr::null_mut();
@@ -116,38 +122,36 @@ pub(crate) unsafe fn Rf_install(name: *const c_char) -> SEXP {
             Err(_) => return ptr::null_mut(),
         };
 
-        super::instance::with_required_current_instance(|inst| {
-            intern_symbol_with_pname(
-                &mut inst.symbols,
-                &mut inst.symbol_nodes,
-                name_str.clone(),
-                || super::constructors::persistent_mkChar(name),
-            )
+        intern_symbol_with_pname(&mut inst.symbols, &mut inst.symbol_nodes, name_str, || {
+            super::constructors::persistent_mkChar(name)
         })
     }
 }
 
 /// Install a symbol with a known length (not null-terminated).
 pub unsafe fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> SEXP {
-    unsafe {
-        if name.is_null() || len < 0 {
-            return ptr::null_mut();
-        }
-        let bytes = std::slice::from_raw_parts(name as *const u8, len as usize);
-        let name_str = match std::str::from_utf8(bytes) {
-            Ok(s) => s.to_string(),
-            Err(_) => return ptr::null_mut(),
-        };
+    super::instance::with_required_current_instance(|inst| unsafe {
+        Rf_installChar_in(inst, name, len)
+    })
+}
 
-        super::instance::with_required_current_instance(|inst| {
-            intern_symbol_with_pname(
-                &mut inst.symbols,
-                &mut inst.symbol_nodes,
-                name_str.clone(),
-                || persistent_charsxp_from_bytes(bytes),
-            )
-        })
+pub(crate) unsafe fn Rf_installChar_in(
+    inst: &mut RInstance,
+    name: *const c_char,
+    len: R_xlen_t,
+) -> SEXP {
+    if name.is_null() || len < 0 {
+        return ptr::null_mut();
     }
+    let bytes = unsafe { std::slice::from_raw_parts(name as *const u8, len as usize) };
+    let name_str = match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => return ptr::null_mut(),
+    };
+
+    intern_symbol_with_pname(&mut inst.symbols, &mut inst.symbol_nodes, name_str, || {
+        persistent_charsxp_from_bytes(bytes)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +265,7 @@ pub unsafe fn R_AsSymbol() -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
 
     fn with_session<F, T>(f: F) -> T
@@ -315,6 +320,35 @@ mod tests {
 
         assert_eq!(left_a, left_b);
         assert_ne!(left_a, right_a);
+    }
+
+    #[test]
+    fn test_symbol_table_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        unsafe {
+            let left_a = Rf_install_in(&mut left, c"runtime_bound_symbol".as_ptr());
+            let left_b = Rf_install_in(&mut left, c"runtime_bound_symbol".as_ptr());
+            let right_a = Rf_install_in(&mut right, c"runtime_bound_symbol".as_ptr());
+
+            assert_eq!(left_a, left_b);
+            assert_ne!(left_a, right_a);
+            assert_eq!(
+                symbol_name_from_ptr_in(&mut left, left_a).as_deref(),
+                Some("runtime_bound_symbol")
+            );
+            assert_eq!(symbol_name_from_ptr_in(&mut right, left_a), None);
+
+            let bytes = b"runtime_bound_char_extra";
+            let left_char = Rf_installChar_in(&mut left, bytes.as_ptr() as *const c_char, 18);
+            let right_char = Rf_installChar_in(&mut right, bytes.as_ptr() as *const c_char, 18);
+            assert_ne!(left_char, right_char);
+            assert_eq!(
+                symbol_name_from_ptr_in(&mut left, left_char).as_deref(),
+                Some("runtime_bound_char")
+            );
+        }
     }
 
     #[test]
