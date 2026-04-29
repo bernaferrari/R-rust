@@ -24,7 +24,7 @@
 use std::ffi::CString;
 
 use crate::sexp::builder::{
-    scalar_integer_in, scalar_logical_in, scalar_real_in, scalar_string_in,
+    scalar_complex_in, scalar_integer_in, scalar_logical_in, scalar_real_in, scalar_string_in,
 };
 use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
@@ -38,6 +38,7 @@ use crate::sexp::symbol::Rf_install;
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     Number(f64),
+    Complex(f64),
     Int(i32),
     Str(String),
     Ident(String),
@@ -354,6 +355,13 @@ impl Lexer {
                     break;
                 }
             }
+            if self.peek_char() == Some('i') {
+                self.advance();
+                if let Ok(v) = i64::from_str_radix(&s[2..], 16) {
+                    return Token::Complex(v as f64);
+                }
+                return Token::Complex(0.0);
+            }
             if let Ok(v) = i64::from_str_radix(&s[2..], 16) {
                 return Token::Int(v as i32);
             }
@@ -390,7 +398,10 @@ impl Lexer {
         }
 
         let v: f64 = s.parse().unwrap_or(0.0);
-        if !has_dot && s.parse::<i32>().is_ok() {
+        if self.peek_char() == Some('i') {
+            self.advance();
+            Token::Complex(v)
+        } else if !has_dot && s.parse::<i32>().is_ok() {
             let int_val: i32 = s.parse().unwrap_or(0);
             Token::Number(int_val as f64)
         } else {
@@ -546,6 +557,10 @@ impl<'arena> Parser<'arena> {
 
     fn scalar_real(&mut self, value: f64) -> SEXP {
         scalar_real_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    }
+
+    fn scalar_complex(&mut self, imaginary: f64) -> SEXP {
+        scalar_complex_in(self.arena, 0.0, imaginary).map_or(std::ptr::null_mut(), |s| s.as_raw())
     }
 
     fn scalar_integer(&mut self, value: i32) -> SEXP {
@@ -1340,6 +1355,10 @@ impl<'arena> Parser<'arena> {
                 self.advance();
                 Ok(self.scalar_real(n))
             }
+            Token::Complex(n) => {
+                self.advance();
+                Ok(self.scalar_complex(n))
+            }
             Token::Int(n) => {
                 self.advance();
                 Ok(self.scalar_integer(n))
@@ -1464,7 +1483,7 @@ pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
 mod tests {
     use super::*;
 
-    use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, PRINTNAME, TYPEOF};
+    use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, TYPEOF, XLENGTH};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::session::RSession;
@@ -1557,6 +1576,18 @@ mod tests {
         unsafe {
             let result = must(parse_str("3.14"));
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+        }
+    }
+
+    #[test]
+    fn test_complex_literal() {
+        unsafe {
+            let result = must(parse_str("2i"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::CPLXSXP);
+            assert_eq!(XLENGTH(result), 1);
+            let data = COMPLEX(result);
+            assert_eq!((*data).r, 0.0);
+            assert_eq!((*data).i, 2.0);
         }
     }
 
