@@ -97,6 +97,12 @@ impl<'a> EvalContext<'a> {
 
     /// Evaluate an expression in this context.
     pub fn eval(self, expr: Sexp<'a>) -> Result<Sexp<'a>, String> {
+        if !self.env.is_owner_scoped() {
+            return Err("eval context environment is not owner-scoped".to_string());
+        }
+        if !expr.is_owner_scoped() {
+            return Err("eval expression is not owner-scoped".to_string());
+        }
         eval_expr(expr, self.env)
     }
 }
@@ -684,5 +690,20 @@ mod tests {
             .eval(bcode)
             .expect_err("disabled bytecode should not execute");
         assert!(err.contains("bytecode evaluation is disabled"));
+    }
+
+    #[test]
+    fn eval_context_rejects_unowned_expression_handles() {
+        let mut session = RSession::new();
+        let raw = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let expr = Sexp::from_raw(raw).expect("legacy raw wrapper should construct");
+        let env = session.global_env().expect("global env should exist");
+
+        let err = EvalContext::new(env)
+            .eval(expr)
+            .expect_err("unowned expression should be rejected");
+        assert!(err.contains("expression is not owner-scoped"));
     }
 }

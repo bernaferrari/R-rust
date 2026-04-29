@@ -343,7 +343,8 @@ impl RSession {
             let env = self.global_env().ok_or_else(|| REvalError {
                 message: "session has no global environment".to_string(),
             })?;
-            catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))
+            let result = catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))?;
+            self.owned_sexp(result.as_raw(), "evaluation result")
         })
     }
 
@@ -498,7 +499,8 @@ impl RSession {
         self.with_active(|| {
             let expr = self.owned_sexp(expr.as_raw(), "expression")?;
             let env = self.owned_sexp(env.as_raw(), "environment")?;
-            catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))
+            let result = catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))?;
+            self.owned_sexp(result.as_raw(), "evaluation result")
         })
     }
 
@@ -853,6 +855,7 @@ mod tests {
             .expect("self-evaluating scalar should evaluate");
 
         assert_eq!(result.integer_elt(0), Some(7));
+        assert!(result.is_owner_scoped());
     }
 
     #[test]
