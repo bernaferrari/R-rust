@@ -57,7 +57,9 @@ You can also choose explicit output paths:
 ## Upstream Core Slices
 
 `scripts/upstream_core_slices.sh` runs curated excerpts adapted from GNU R's
-`r-source/tests/arith.R`, `arith-true.R`, `eval-etc.R`, and `conditions.R`.
+`r-source/tests/arith.R`, `arith-true.R`, `eval-etc.R`, `conditions.R`,
+`any-all.R`, `structure.R`, `complex.R`, `primitives.R`, `eval-fns.R`, and
+`simple-true.R`.
 Unlike the numbered conformance fixtures, these cases compare live stock
 `Rscript --vanilla` output directly against the Rust runtime. They are intended
 for evaluator/arithmetic regression work and the release gate:
@@ -89,8 +91,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 211 |
-| Passing | 211 |
+| Total parity cases | 216 |
+| Passing | 216 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -99,17 +101,20 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 34 | Arithmetic, scalar values, comments, infix continuation, early object smoke cases |
+| Parser and scalar basics | 39 | Arithmetic, scalar values, comments, infix continuation, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
-| Vectors, lists, attributes, and objects | 31 | Vectors, lists, names, subsetting, factors, class replacement, arithmetic attributes |
+| Vectors, lists, attributes, and objects | 30 | Vectors, lists, names, subsetting, factors, class replacement, arithmetic attributes |
 | Base functions, conditions, and platform helpers | 72 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
-| Stats, math, and RNG | 58 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, `sample`/`sample.int` invariants |
-| Packages, namespaces, and S3 | 0 | Covered by the pure-R package corpus gate; expression parity fixtures remain tracked separately |
+| Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, `sample`/`sample.int` invariants |
+| Packages, namespaces, and S3 | 3 | Package namespace and S3 fixtures plus the pure-R package corpus gate |
 | Graphics and Android embedding | 0 | Covered by renderer/unit tests today; parity fixtures are tracked by `rport-c6ap` and `rport-89pz` |
 | Error semantics | 6 | Missing argument, `stop`, `stopifnot`, sampling errors, and selected expected errors |
 
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
+
+The curated upstream slice gate currently passes 14/14 live stock-R comparison
+cases with zero expected failures.
 
 ## Status Policy
 

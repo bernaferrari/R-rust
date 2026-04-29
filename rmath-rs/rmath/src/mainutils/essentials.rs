@@ -7697,47 +7697,100 @@ pub unsafe fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+unsafe fn logical_arg_value(x: SEXP, index: R_xlen_t) -> Option<c_int> {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP.as_c_int() || t == SEXPTYPE::INTSXP.as_c_int() => {
+                Some(*INTEGER(x).add(index as usize))
+            }
+            t if t == SEXPTYPE::REALSXP.as_c_int() => {
+                let value = *REAL(x).add(index as usize);
+                if value.is_nan() {
+                    Some(NA_INTEGER)
+                } else {
+                    Some((value != 0.0) as c_int)
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+unsafe fn logical_na_rm_from_args(args: SEXP) -> bool {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some("na.rm") {
+                let value = CAR(current);
+                if !value.is_null() && value != R_NilValue() && XLENGTH(value) > 0 {
+                    return logical_arg_value(value, 0) == Some(TRUE);
+                }
+            }
+            current = CDR(current);
+        }
+        false
+    }
+}
+
 /// R's `any(...)` — TRUE if any element is TRUE.
 pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let t = TYPEOF(x);
-        if t != SEXPTYPE::LGLSXP && t != SEXPTYPE::INTSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        for i in 0..n {
-            let v = *INTEGER(x).add(i as usize);
-            if v != 0 && v != NA_INTEGER {
-                return Rf_ScalarLogical(TRUE);
+        let na_rm = logical_na_rm_from_args(args);
+        let mut has_na = false;
+        let mut current = args;
+
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some("na.rm") {
+                current = CDR(current);
+                continue;
             }
+
+            let x = CAR(current);
+            if !x.is_null() && x != R_NilValue() {
+                let n = XLENGTH(x);
+                for i in 0..n {
+                    match logical_arg_value(x, i) {
+                        Some(TRUE) => return Rf_ScalarLogical(TRUE),
+                        Some(NA_INTEGER) if !na_rm => has_na = true,
+                        Some(_) | None => {}
+                    }
+                }
+            }
+            current = CDR(current);
         }
-        Rf_ScalarLogical(FALSE)
+
+        Rf_ScalarLogical(if has_na { NA_INTEGER } else { FALSE })
     }
 }
 
 /// R's `all(...)` — TRUE if all elements are TRUE.
 pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_ScalarLogical(TRUE);
-        }
-        let t = TYPEOF(x);
-        if t != SEXPTYPE::LGLSXP && t != SEXPTYPE::INTSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
-        let n = XLENGTH(x);
-        for i in 0..n {
-            let v = *INTEGER(x).add(i as usize);
-            if v == 0 {
-                return Rf_ScalarLogical(FALSE);
+        let na_rm = logical_na_rm_from_args(args);
+        let mut has_na = false;
+        let mut current = args;
+
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some("na.rm") {
+                current = CDR(current);
+                continue;
             }
+
+            let x = CAR(current);
+            if !x.is_null() && x != R_NilValue() {
+                let n = XLENGTH(x);
+                for i in 0..n {
+                    match logical_arg_value(x, i) {
+                        Some(FALSE) => return Rf_ScalarLogical(FALSE),
+                        Some(NA_INTEGER) if !na_rm => has_na = true,
+                        Some(_) | None => {}
+                    }
+                }
+            }
+            current = CDR(current);
         }
-        Rf_ScalarLogical(TRUE)
+
+        Rf_ScalarLogical(if has_na { NA_INTEGER } else { TRUE })
     }
 }
 

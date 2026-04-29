@@ -1,0 +1,17 @@
+## Curated from r-source/tests/any-all.R:
+## direct any()/all() truth-table and NA behavior.
+print(any(c(TRUE, FALSE)))
+print(all(c(TRUE, FALSE)))
+print(any(c(FALSE, FALSE)))
+print(all(c(FALSE, FALSE)))
+print(any(c(TRUE, TRUE)))
+print(all(c(TRUE, TRUE)))
+print(any(c(FALSE, TRUE)))
+print(all(c(FALSE, TRUE)))
+print(any(c(NA, FALSE)))
+print(all(c(NA, FALSE)))
+print(any(c(NA, FALSE), na.rm = TRUE))
+print(all(c(NA, TRUE)))
+print(all(c(NA, TRUE), na.rm = TRUE))
+print(any(c(TRUE, NA, FALSE), na.rm = TRUE))
+print(all(c(TRUE, NA, FALSE), na.rm = TRUE))
