@@ -19,7 +19,8 @@ use super::accessors::{
 };
 use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
-use super::globals::{R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
+use super::globals::{R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
+use super::instance::with_required_current_instance;
 use super::memory_ext::NewEnvironment;
 use super::object::{PairlistIter, Sexp, SexpError};
 use super::symbol::Rf_install;
@@ -36,6 +37,11 @@ pub type EnvResult<T> = Result<T, String>;
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
+}
+
+fn global_env_handle<'a>() -> Sexp<'a> {
+    let raw = with_required_current_instance(R_GlobalEnv_in);
+    unsafe { Sexp::from_raw_unchecked(raw) }
 }
 
 /// Typed, owner-scoped environment facade.
@@ -346,7 +352,7 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
         };
     }
 
-    let global_env = unsafe { Sexp::from_raw_unchecked(R_GlobalEnv()) };
+    let global_env = global_env_handle();
     if !global_env.as_raw().is_null() {
         define_var_safe(symbol, value, global_env);
     }
@@ -874,7 +880,8 @@ mod tests {
     use super::super::accessors::TYPEOF;
     use super::super::constructors::*;
     use super::super::ffi::*;
-    use super::super::globals::set_R_GlobalEnv;
+    use super::super::globals::set_R_GlobalEnv_in;
+    use super::super::instance::with_required_current_instance;
     use super::super::memory;
     use super::super::symbol::Rf_install;
     use super::*;
@@ -883,7 +890,7 @@ mod tests {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             if !env.is_null() {
-                set_R_GlobalEnv(env);
+                with_required_current_instance(|inst| set_R_GlobalEnv_in(inst, env));
             }
         }
     }

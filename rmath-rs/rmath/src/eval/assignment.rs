@@ -11,7 +11,7 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::envir::Environment;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_NilValue, set_R_Visible};
+use crate::sexp::globals::R_NilValue;
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::protect;
 
@@ -55,7 +55,7 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 rhs
             }
             t if t == SEXPTYPE::LANGSXP => {
-                set_R_Visible(FALSE);
+                super::runtime::set_visible(FALSE);
                 return applydefine(call, op, args, rho);
             }
             _ => {
@@ -68,7 +68,7 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 unsafe fn assign_to_symbol(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
     unsafe {
         bind_assignment(sym, value, primval, rho);
-        set_R_Visible(FALSE);
+        super::runtime::set_visible(FALSE);
     }
 }
 
@@ -215,7 +215,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
             }
 
-            set_R_Visible(FALSE);
+            super::runtime::set_visible(FALSE);
             rhs
         } else {
             // Simple single-level assignment: x[i] <- val
@@ -261,7 +261,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 bind_assignment(var_sym, result, primval, rho);
             }
 
-            set_R_Visible(FALSE);
+            super::runtime::set_visible(FALSE);
             rhs
         }
     }

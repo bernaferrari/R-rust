@@ -16,7 +16,7 @@ use crate::sexp::accessors::{CHAR, LENGTH, TYPEOF};
 use crate::sexp::builder::int_sequence_current;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_BaseEnv, R_NilValue};
+use crate::sexp::globals::R_NilValue;
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -145,7 +145,7 @@ unsafe fn getPrimitive(name: *const c_char, kind: c_int) -> SEXP {
             return R_NilValue();
         }
         // Look up the symbol's value in the base environment
-        crate::sexp::envir::R_findVar(sym, R_BaseEnv())
+        crate::sexp::envir::R_findVar(sym, super::runtime::base_env())
     }
 }
 

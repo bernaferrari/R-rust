@@ -21,7 +21,7 @@ use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, REAL, Rf_isNull, TYPEOF, 
 use crate::sexp::constructors::*;
 use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_NilValue, R_UnboundValue, set_R_Visible};
+use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 
 use super::bc_stack::R_bcstack_t;
 
@@ -244,7 +244,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     };
                     let val = stack.pop();
                     defineVar(sym, val, rho);
-                    set_R_Visible(FALSE);
+                    super::runtime::set_visible(FALSE);
                 }
 
                 opcodes::OP_DUP => {
@@ -278,11 +278,11 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_visible => {
-                    set_R_Visible(TRUE);
+                    super::runtime::set_visible(TRUE);
                 }
 
                 opcodes::OPinvisible => {
-                    set_R_Visible(FALSE);
+                    super::runtime::set_visible(FALSE);
                 }
 
                 opcodes::OP_NOOP => {
@@ -411,7 +411,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         let result = crate::eval::eval::Rf_eval(call, rho);
                         stack.push(result);
                     }
-                    set_R_Visible(TRUE);
+                    super::runtime::set_visible(TRUE);
                 }
 
                 opcodes::OP_CALLSPECIAL => {
@@ -430,7 +430,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         let result = crate::eval::eval::Rf_eval(call, rho);
                         stack.push(result);
                     }
-                    set_R_Visible(FALSE);
+                    super::runtime::set_visible(FALSE);
                 }
 
                 opcodes::OP_STARTASSIGN => {
@@ -453,7 +453,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let sym = stack.pop();
                     defineVar(sym, val, rho);
                     stack.push(val);
-                    set_R_Visible(FALSE);
+                    super::runtime::set_visible(FALSE);
                 }
 
                 opcodes::OP_STEPFOR => {
@@ -543,7 +543,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         let result = crate::eval::eval::Rf_eval(call, rho);
                         stack.push(result);
                     }
-                    set_R_Visible(FALSE);
+                    super::runtime::set_visible(FALSE);
                 }
 
                 opcodes::OP_PUSHARG => {
@@ -717,11 +717,11 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let sym = stack.pop();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
-                            defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
+                            defineVar(sym, val, super::runtime::base_env());
                         }
                     }
                     stack.push(val);
-                    set_R_Visible(FALSE);
+                    super::runtime::set_visible(FALSE);
                 }
 
                 opcodes::OP_PUTBASE_SEP => {
@@ -732,7 +732,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let sym = stack.pop();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
-                            defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
+                            defineVar(sym, val, super::runtime::base_env());
                         }
                     }
                     stack.push(val);

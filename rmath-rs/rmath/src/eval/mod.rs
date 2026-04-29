@@ -32,6 +32,7 @@ pub(crate) mod missing;
 pub(crate) mod parser;
 pub(crate) mod primitive;
 pub(crate) mod profiling;
+pub(crate) mod runtime;
 pub(crate) mod special;
 pub(crate) mod symbols;
 

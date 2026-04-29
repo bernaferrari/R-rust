@@ -10,7 +10,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_NilValue, set_R_Visible};
+use crate::sexp::globals::R_NilValue;
 use crate::sexp::symbol::R_BraceSymbol;
 
 use super::eval::Rf_eval;
@@ -197,7 +197,7 @@ pub(crate) unsafe fn do_on_exit_from_args(args: SEXP, rho: SEXP) -> SEXP {
                 }
             }
         }
-        set_R_Visible(FALSE);
+        super::runtime::set_visible(FALSE);
         R_NilValue()
     }
 }
@@ -211,7 +211,7 @@ unsafe fn do_invisible(args: SEXP, rho: SEXP) -> SEXP {
             CAR(args)
         };
         let value = Rf_eval(expr, rho);
-        set_R_Visible(FALSE);
+        super::runtime::set_visible(FALSE);
         value
     }
 }

@@ -35,9 +35,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVar, R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{
-    R_BaseEnv, R_MissingArg, R_NilValue, R_UnboundValue, R_Visible, set_R_Visible,
-};
+use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::memory_ext::{NewEnvironment, allocLang, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::protect::protect;
@@ -295,7 +293,7 @@ unsafe fn tryDispatch(
             pargs,
             rho1,
             rho,
-            R_BaseEnv(),
+            super::runtime::base_env(),
             &mut result,
         );
         if dispatch_result != FALSE {
@@ -756,11 +754,11 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
             let evaled_args = evalList(rest, rho, call, 0);
             let _evaled_args_guard = protect(evaled_args);
             let flag = super::eval::PRIMPRINT(fun);
-            set_R_Visible(if flag != 1 { TRUE } else { FALSE });
+            super::runtime::set_visible_for_print_flag(flag);
             if let Some(primfun) = super::eval::get_primfun(fun) {
                 let tmp = primfun(call, fun, evaled_args, rho);
                 if flag < 2 {
-                    set_R_Visible(if flag != 1 { TRUE } else { FALSE });
+                    super::runtime::set_visible_for_print_flag(flag);
                 }
                 tmp
             } else {
@@ -788,11 +786,11 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
             applyClosure(call, fun, pargs, rho, R_NilValue(), TRUE)
         } else if TYPEOF(fun) == SEXPTYPE::SPECIALSXP {
             let flag = super::eval::PRIMPRINT(fun);
-            set_R_Visible(if flag != 1 { TRUE } else { FALSE });
+            super::runtime::set_visible_for_print_flag(flag);
             if let Some(primfun) = super::eval::get_primfun(fun) {
                 let tmp = primfun(call, fun, rest, rho);
                 if flag < 2 {
-                    set_R_Visible(if flag != 1 { TRUE } else { FALSE });
+                    super::runtime::set_visible_for_print_flag(flag);
                 }
                 tmp
             } else {
@@ -824,7 +822,7 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Handle enclos
         let mut encl_val = encl;
         if encl_val.is_null() || encl_val == R_NilValue() {
-            encl_val = R_BaseEnv();
+            encl_val = super::runtime::base_env();
         }
 
         // Handle different environment types
@@ -870,9 +868,8 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Evaluate the expression
-        let old_vis = R_Visible();
+        let _visibility = super::runtime::VisibilityGuard::new();
         let val = Rf_eval(expr, env);
-        set_R_Visible(old_vis);
         val
     }
 }

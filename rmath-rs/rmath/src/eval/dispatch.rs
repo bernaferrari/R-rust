@@ -23,7 +23,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::*;
 use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue};
+use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::object::{PairlistBuilder, Sexp};
 use crate::sexp::protect::protect;
@@ -495,7 +495,7 @@ pub unsafe fn DispatchOrEval(
                     pargs,
                     rho1,
                     rho,
-                    R_BaseEnv(),
+                    super::runtime::base_env(),
                     ans,
                 );
 
@@ -570,7 +570,8 @@ unsafe fn findmethod(
             // Try generic.class
             let m = crate::mainutils::names::installS3Signature(generic, ss);
             *meth = m;
-            let val = crate::mainutils::objects::R_LookupMethod(m, rho, rho, R_BaseEnv());
+            let val =
+                crate::mainutils::objects::R_LookupMethod(m, rho, rho, super::runtime::base_env());
             *sxp = val;
             if isFunction(val) != FALSE {
                 *gr = R_BlankScalarString_val();
@@ -580,7 +581,8 @@ unsafe fn findmethod(
             // Try group.class
             let mg = crate::mainutils::names::installS3Signature(group, ss);
             *meth = mg;
-            let valg = crate::mainutils::objects::R_LookupMethod(mg, rho, rho, R_BaseEnv());
+            let valg =
+                crate::mainutils::objects::R_LookupMethod(mg, rho, rho, super::runtime::base_env());
             *sxp = valg;
             if isFunction(valg) != FALSE {
                 *gr = R_mkString(group);
@@ -757,7 +759,7 @@ pub unsafe fn DispatchGroup(
             dot_class,
             m,
             rho,
-            R_BaseEnv(),
+            super::runtime::base_env(),
         );
         guards.push(protect(newvars));
 

@@ -686,7 +686,7 @@ fn test_eval_arithmetic_direct() {
     let mut arena = crate::sexp::memory::RArena::new();
     let expr = must(parser::parse("1 + 2", &mut arena));
 
-    let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+    let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
     let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
 
@@ -714,7 +714,7 @@ fn test_eval_abs_debug() {
     }
 
     let mut arena = crate::sexp::memory::RArena::new();
-    let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+    let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
     let expr = must(parser::parse("abs(-5)", &mut arena));
@@ -772,7 +772,7 @@ fn test_eval_math_builtins() {
     }
 
     let mut arena = crate::sexp::memory::RArena::new();
-    let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+    let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
     let cases: Vec<(&str, f64)> = vec![
@@ -828,7 +828,7 @@ fn test_eval_length_builtin() {
     }
 
     let mut arena = crate::sexp::memory::RArena::new();
-    let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+    let global_env = super::runtime::global_env();
     let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
     let expr = must(parser::parse("length(42)", &mut arena));

@@ -13,7 +13,7 @@ use crate::sexp::context::{R_GlobalContext, RCNTXT, ctxt_flags};
 use crate::sexp::ffi::NA_INTEGER;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::SEXPTYPE;
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
+use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Local error helper
@@ -54,7 +54,7 @@ pub unsafe fn framedepth(cptr: *mut RCNTXT) -> c_int {
 pub unsafe fn R_sysframe(n: c_int, cptr: *mut RCNTXT) -> SEXP {
     unsafe {
         if n == 0 {
-            return R_GlobalEnv();
+            return super::runtime::global_env();
         }
         if n == NA_INTEGER {
             error("NA argument is invalid");
@@ -81,7 +81,7 @@ pub unsafe fn R_sysframe(n: c_int, cptr: *mut RCNTXT) -> SEXP {
             c = (*c).nextcontext;
         }
         if n == 0 && (*c).nextcontext.is_null() {
-            return R_GlobalEnv();
+            return super::runtime::global_env();
         }
         error("not that many frames on the stack");
         R_NilValue()
@@ -175,7 +175,7 @@ pub unsafe fn R_sysparent(n: c_int, cptr: *mut RCNTXT) -> c_int {
             c = (*c).nextcontext;
         }
         let s = (*c).sysparent;
-        if s == R_GlobalEnv() {
+        if s == super::runtime::global_env() {
             return 0;
         }
         let mut j: c_int = 0;
@@ -391,7 +391,7 @@ pub unsafe fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         if !cptr.is_null() {
             (*cptr).sysparent
         } else {
-            R_GlobalEnv()
+            super::runtime::global_env()
         }
     }
 }
@@ -505,6 +505,6 @@ pub unsafe fn R_GetCurrentEnv() -> SEXP {
             }
             c = (*c).nextcontext;
         }
-        R_GlobalEnv()
+        super::runtime::global_env()
     }
 }

@@ -4,7 +4,7 @@ use std::os::raw::c_int;
 
 use crate::sexp::accessors::{CAR, CDR, CLOENV, PRINTNAME, TYPEOF};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue, set_R_Visible};
+use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::object::Sexp;
@@ -120,7 +120,7 @@ enum VisibilityRestore {
 }
 
 fn set_visibility_for_print_flag(flag: c_int) {
-    unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+    super::runtime::set_visible_for_print_flag(flag);
 }
 
 fn finish_application<'a>(
@@ -349,7 +349,7 @@ fn do_parent_frame_impl(n: c_int, rho: SEXP) -> SEXP {
         // Walk up the context stack to find the parent environment
         let ctx = crate::sexp::context::R_GlobalContext();
         if ctx.is_null() {
-            return R_GlobalEnv();
+            return super::runtime::global_env();
         }
 
         // Use the R_findParentContext helper
@@ -364,7 +364,7 @@ fn do_parent_frame_impl(n: c_int, rho: SEXP) -> SEXP {
         for _ in 0..n {
             match current.try_enclos() {
                 Ok(enclos) if enclos.is_environment() => current = enclos,
-                _ => return R_GlobalEnv(),
+                _ => return super::runtime::global_env(),
             }
         }
         current.as_raw()

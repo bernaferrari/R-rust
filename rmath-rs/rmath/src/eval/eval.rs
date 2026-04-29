@@ -22,7 +22,7 @@ use std::os::raw::c_int;
 
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
+use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::object::{PairlistIter, Sexp, SexpError};
 use crate::sexp::symbol::R_DotsSymbol;
 use crate::sexp::symbol::symbol_name_from_ptr;
@@ -109,7 +109,7 @@ impl<'a> EvalContext<'a> {
 pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let _timer = EvalTimerGuard::start_if_needed();
     crate::sexp::instance::check_cancellation();
-    set_R_Visible(TRUE);
+    super::runtime::set_visible(TRUE);
 
     match eval_safe(expr, env) {
         Ok(result) => Ok(result),
@@ -323,7 +323,7 @@ unsafe fn eval_inner_safe<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
         return Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
     }
 
-    set_R_Visible(TRUE);
+    super::runtime::set_visible(TRUE);
 
     let expr = unsafe { Sexp::from_raw_unchecked(e) };
     let env = unsafe { Sexp::from_raw_unchecked(rho) };
@@ -475,9 +475,8 @@ unsafe fn eval_closure<'a>(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'a>, Str
 ///
 /// This is the equivalent of R's `evalKeepVis()` from errors.c.
 pub(crate) unsafe fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
-    let oldvis = crate::sexp::globals::R_Visible();
+    let _visibility = super::runtime::VisibilityGuard::new();
     let val = unsafe { Rf_eval(e, rho) };
-    set_R_Visible(oldvis);
     val
 }
 
@@ -494,7 +493,6 @@ pub(crate) unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
     use crate::sexp::accessors::{CAR, SET_STRING_ELT, SET_VECTOR_ELT};
     use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_mkChar};
     use crate::sexp::ffi::SEXPTYPE;
-    use crate::sexp::globals::R_Visible;
     use crate::sexp::protect::protect;
     use std::os::raw::c_char;
 
@@ -512,7 +510,7 @@ pub(crate) unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"visible\0".as_ptr() as *const c_char));
 
         SET_VECTOR_ELT(ret, 0, x);
-        SET_VECTOR_ELT(ret, 1, Rf_ScalarLogical(R_Visible()));
+        SET_VECTOR_ELT(ret, 1, Rf_ScalarLogical(super::runtime::visible()));
 
         setAttrib(ret, R_NamesSymbol(), nm);
 
