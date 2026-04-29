@@ -4,24 +4,56 @@
 //! environment chain itself is owned by `RInstance`; there is intentionally no
 //! process-global fallback interpreter.
 
-use super::instance::with_required_current_instance;
-use super::symbol::Rf_install;
+use super::ffi::SEXP;
+use super::instance::{
+    RInstance, current_instance_ptr, replace_current_instance, with_required_current_instance,
+};
+use super::symbol::Rf_install_in;
 use std::ffi::CString;
 
+struct ScopedCurrentInstance {
+    previous: Option<*mut RInstance>,
+}
+
+impl ScopedCurrentInstance {
+    unsafe fn install(instance: *mut RInstance) -> Self {
+        let previous = unsafe { replace_current_instance(Some(instance)) };
+        Self { previous }
+    }
+}
+
+impl Drop for ScopedCurrentInstance {
+    fn drop(&mut self) {
+        unsafe {
+            replace_current_instance(self.previous);
+        }
+    }
+}
+
 pub fn is_initialized() -> bool {
-    with_required_current_instance(|inst| inst.initialized)
+    with_required_current_instance(is_initialized_in)
+}
+
+pub(crate) fn is_initialized_in(inst: &mut RInstance) -> bool {
+    inst.initialized
 }
 
 pub unsafe fn initialize_r() {
+    let instance = current_instance_ptr()
+        .expect("mutable R runtime state requires an active RInstance for initialize_r");
+    unsafe {
+        initialize_r_in(&mut *instance);
+    }
+}
+
+pub(crate) unsafe fn initialize_r_in(inst: &mut RInstance) {
     unsafe {
         super::context::install_r_panic_hook();
-
-        with_required_current_instance(|inst| {
-            if !inst.initialized {
-                initialize_base_bindings(inst.base_env);
-                inst.initialized = true;
-            }
-        });
+        if !inst.initialized {
+            let base_env = inst.base_env;
+            initialize_base_bindings_in(inst, base_env);
+            inst.initialized = true;
+        }
     }
 }
 
@@ -30,10 +62,21 @@ pub unsafe fn initialize_r() {
 /// This is used both by the legacy process-global initializer and by
 /// per-session `RInstance` construction. It intentionally does not mutate the
 /// process-global environment pointers.
-pub unsafe fn initialize_base_bindings(base_env: super::ffi::SEXP) {
+pub unsafe fn initialize_base_bindings(base_env: SEXP) {
+    let instance = current_instance_ptr().expect(
+        "mutable R runtime state requires an active RInstance for initialize_base_bindings",
+    );
     unsafe {
-        pre_intern_symbols();
-        crate::eval::jit::R_init_jit_enabled();
+        initialize_base_bindings_in(&mut *instance, base_env);
+    }
+}
+
+pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env: SEXP) {
+    unsafe {
+        let _scope = ScopedCurrentInstance::install(inst as *mut RInstance);
+
+        pre_intern_symbols_in(inst);
+        crate::eval::jit::R_init_jit_enabled_in(inst);
 
         crate::eval::arithmetic::register_arithmetic_builtins(base_env);
         crate::eval::arithmetic::register_special_forms(base_env);
@@ -43,6 +86,10 @@ pub unsafe fn initialize_base_bindings(base_env: super::ffi::SEXP) {
 }
 
 unsafe fn pre_intern_symbols() {
+    with_required_current_instance(|inst| unsafe { pre_intern_symbols_in(inst) });
+}
+
+unsafe fn pre_intern_symbols_in(inst: &mut RInstance) {
     unsafe {
         let symbols = [
             "if",
@@ -161,19 +208,27 @@ unsafe fn pre_intern_symbols() {
 
         for name in &symbols {
             let c_name = CString::new(*name).expect("static R symbol name has no interior NUL");
-            Rf_install(c_name.as_ptr());
+            Rf_install_in(inst, c_name.as_ptr());
         }
     }
 }
 
 pub unsafe fn shutdown_r() {
-    with_required_current_instance(|inst| inst.initialized = false);
+    with_required_current_instance(shutdown_r_in);
+}
+
+pub(crate) fn shutdown_r_in(inst: &mut RInstance) {
+    inst.initialized = false;
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::ffi::SEXPTYPE;
-    use super::super::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv};
+    use super::super::globals::{
+        R_BaseEnv, R_BaseEnv_in, R_EmptyEnv, R_EmptyEnv_in, R_GlobalEnv, R_GlobalEnv_in,
+    };
+    use super::super::instance::RInstance;
+    use super::super::symbol::Rf_install;
     use super::*;
 
     #[test]
@@ -302,5 +357,38 @@ mod tests {
 
             shutdown_r();
         }
+    }
+
+    #[test]
+    fn test_initialization_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        shutdown_r_in(&mut left);
+        shutdown_r_in(&mut right);
+        assert!(!is_initialized_in(&mut left));
+        assert!(!is_initialized_in(&mut right));
+
+        unsafe {
+            initialize_r_in(&mut left);
+        }
+
+        assert!(is_initialized_in(&mut left));
+        assert!(!is_initialized_in(&mut right));
+        assert!(!R_GlobalEnv_in(&mut left).is_null());
+        assert!(!R_BaseEnv_in(&mut left).is_null());
+        assert!(!R_EmptyEnv_in(&mut left).is_null());
+        assert!(!R_GlobalEnv_in(&mut right).is_null());
+
+        let plus = unsafe { Rf_install_in(&mut left, c"+".as_ptr()) };
+        let left_plus = unsafe {
+            let _scope = ScopedCurrentInstance::install(&mut left as *mut RInstance);
+            crate::sexp::envir::R_findVarInFrame(left.base_env, plus)
+        };
+        assert!(
+            unsafe { crate::eval::primitive::PrimitiveDescriptor::from_raw(left_plus) }
+                .is_some_and(|descriptor| descriptor.name == "+")
+        );
+        assert!(!is_initialized_in(&mut right));
     }
 }

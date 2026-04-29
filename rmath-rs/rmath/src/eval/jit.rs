@@ -21,8 +21,9 @@ use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::{RInstance, with_required_current_instance};
+use crate::sexp::memory::with_arena_in;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
+use crate::sexp::symbol::Rf_install_in;
 
 const BYTECODE_COMPILER_AVAILABLE: bool = false;
 
@@ -452,6 +453,14 @@ pub unsafe fn R_init_jit_enabled() {
     }
 }
 
+pub(crate) fn R_init_jit_enabled_in(inst: &mut RInstance) {
+    let settings = current_env_settings();
+    let (min_jit_score, loop_jit_score) = jit_thresholds(settings.jit_enabled);
+    set_R_min_jit_score_in(inst, min_jit_score);
+    set_R_loop_jit_score_in(inst, loop_jit_score);
+    apply_jit_settings_in(inst, settings);
+}
+
 /// Check if a function should be JIT-compiled.
 ///
 /// Ported from R's `R_CheckJIT()` in eval.c. Returns TRUE if the
@@ -546,16 +555,34 @@ pub(crate) fn set_R_loop_jit_score_in(inst: &mut RInstance, val: c_int) {
 
 // Initialize the exec token for tail call support.
 pub unsafe fn init_exec_token() {
-    unsafe {
-        let sym = Rf_install(b".__EXEC__.\x00".as_ptr() as *const c_char);
-        let token = Rf_cons(sym, R_NilValue());
-        with_required_current_instance(|inst| inst.eval_state.exec_token = token);
-    }
+    with_required_current_instance(|inst| unsafe { init_exec_token_in(inst) });
     // In the full implementation, R_PreserveObject would be called here
+}
+
+pub(crate) unsafe fn init_exec_token_in(inst: &mut RInstance) {
+    unsafe {
+        let sym = Rf_install_in(inst, b".__EXEC__.\x00".as_ptr() as *const c_char);
+        let token = with_arena_in(inst, |arena| {
+            arena.cons(sym, R_NilValue(), std::ptr::null_mut())
+        });
+        set_R_exec_token_in(inst, token);
+    }
+}
+
+pub(crate) fn get_R_exec_token_in(inst: &mut RInstance) -> SEXP {
+    inst.eval_state.exec_token
+}
+
+pub(crate) fn set_R_exec_token_in(inst: &mut RInstance, token: SEXP) {
+    inst.eval_state.exec_token = token;
 }
 
 /// Check if a value is an exec continuation (for tail call optimization).
 pub unsafe fn is_exec_continuation(val: SEXP) -> c_int {
+    with_required_current_instance(|inst| unsafe { is_exec_continuation_in(inst, val) })
+}
+
+pub(crate) unsafe fn is_exec_continuation_in(inst: &mut RInstance, val: SEXP) -> c_int {
     unsafe {
         if val.is_null() || TYPEOF(val) != SEXPTYPE::VECSXP {
             return FALSE;
@@ -564,7 +591,7 @@ pub unsafe fn is_exec_continuation(val: SEXP) -> c_int {
         if len != 4 {
             return FALSE;
         }
-        let token = with_required_current_instance(|inst| inst.eval_state.exec_token);
+        let token = get_R_exec_token_in(inst);
         if token.is_null() {
             return FALSE;
         }
@@ -729,7 +756,7 @@ mod tests {
 
         unsafe {
             set_R_jit_enabled(3);
-            with_required_current_instance(|inst| inst.eval_state.min_jit_score = 0);
+            with_required_current_instance(|inst| set_R_min_jit_score_in(inst, 0));
 
             assert_eq!(R_CheckJIT(fun), FALSE);
             assert_ne!(TYPEOF(BODY(fun)), SEXPTYPE::BCODESXP);
@@ -744,7 +771,7 @@ mod tests {
         left.with_arena(|_| unsafe {
             set_R_jit_enabled(3);
             init_exec_token();
-            let left_token = with_required_current_instance(|inst| inst.eval_state.exec_token);
+            let left_token = with_required_current_instance(get_R_exec_token_in);
             assert_eq!(get_R_jit_enabled(), 3);
             assert!(!left_token.is_null());
         })
@@ -753,12 +780,10 @@ mod tests {
         right
             .with_arena(|_| unsafe {
                 assert_eq!(get_R_jit_enabled(), 0);
-                assert!(
-                    with_required_current_instance(|inst| inst.eval_state.exec_token).is_null()
-                );
+                assert!(with_required_current_instance(get_R_exec_token_in).is_null());
                 set_R_jit_enabled(1);
                 init_exec_token();
-                let right_token = with_required_current_instance(|inst| inst.eval_state.exec_token);
+                let right_token = with_required_current_instance(get_R_exec_token_in);
                 assert_eq!(get_R_jit_enabled(), 1);
                 assert!(!right_token.is_null());
             })
@@ -766,8 +791,30 @@ mod tests {
 
         left.with_arena(|_| {
             assert_eq!(get_R_jit_enabled(), 3);
-            assert!(!with_required_current_instance(|inst| inst.eval_state.exec_token).is_null());
+            assert!(!with_required_current_instance(get_R_exec_token_in).is_null());
         })
         .unwrap();
+    }
+
+    #[test]
+    fn test_exec_token_can_target_instance_explicitly() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        unsafe {
+            init_exec_token_in(&mut left);
+            let left_token = get_R_exec_token_in(&mut left);
+            assert!(!left_token.is_null());
+            assert!(get_R_exec_token_in(&mut right).is_null());
+
+            let continuation = with_arena_in(&mut left, |arena| {
+                let vec = arena.alloc_vector(SEXPTYPE::VECSXP, 4);
+                crate::sexp::accessors::SET_VECTOR_ELT(vec, 0, left_token);
+                vec
+            });
+
+            assert_eq!(is_exec_continuation_in(&mut left, continuation), TRUE);
+            assert_eq!(is_exec_continuation_in(&mut right, continuation), FALSE);
+        }
     }
 }
