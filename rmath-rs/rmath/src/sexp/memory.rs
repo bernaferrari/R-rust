@@ -534,7 +534,7 @@ impl RArena {
     /// to the arena borrow.
     pub(crate) fn sexp(&self, ptr: SEXP) -> Option<Sexp<'_>> {
         if self.contains(ptr) {
-            Sexp::from_raw(ptr)
+            Sexp::from_arena_raw(ptr, self).ok()
         } else {
             None
         }

@@ -51,6 +51,22 @@ use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
 use value::sexptype_name;
 
+/// Provenance for a `Sexp` handle.
+///
+/// R object identity is still the raw pointer, but Rust-facing handles can
+/// distinguish values wrapped from a checked owner from values crossing a
+/// legacy raw boundary. This is intentionally lightweight: it gives safe APIs
+/// a way to reject or audit unknown handles without changing R's pointer model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SexpOwner {
+    /// Wrapped from raw translated code without owner validation.
+    Unknown,
+    /// Immutable process singleton such as `NULL`.
+    Static,
+    /// Object was validated against a concrete arena owner.
+    Arena(usize),
+}
+
 // ---------------------------------------------------------------------------
 // Sexp — safe wrapper around SEXP
 // ---------------------------------------------------------------------------
@@ -89,6 +105,7 @@ use value::sexptype_name;
 #[derive(Clone, Copy, Debug)]
 pub struct Sexp<'a> {
     ptr: SEXP,
+    owner: SexpOwner,
     _marker: std::marker::PhantomData<&'a SexprecCore>,
 }
 
@@ -96,7 +113,7 @@ impl<'a> Sexp<'a> {
     /// Return R's immutable `NULL` singleton as an owner-independent handle.
     #[inline]
     pub fn nil() -> Sexp<'static> {
-        unsafe { Sexp::from_raw_unchecked(R_NilValue()) }
+        unsafe { Sexp::from_static_raw_unchecked(R_NilValue()) }
     }
 
     /// Create a `Sexp` from a raw SEXP pointer for internal boundary code.
@@ -123,9 +140,21 @@ impl<'a> Sexp<'a> {
         } else {
             Ok(Sexp {
                 ptr,
+                owner: SexpOwner::Unknown,
                 _marker: std::marker::PhantomData,
             })
         }
+    }
+
+    /// Wrap a pointer that has already been validated against `arena`.
+    #[inline]
+    pub(crate) fn from_arena_raw<'arena>(
+        ptr: SEXP,
+        arena: &'arena crate::sexp::memory::RArena,
+    ) -> SexpResult<Sexp<'arena>> {
+        let mut sexp = Sexp::try_from_raw(ptr)?;
+        sexp.owner = SexpOwner::Arena(Self::arena_owner_token(arena));
+        Ok(sexp)
     }
 
     /// Create a `Sexp` from a raw pointer without null checking.
@@ -138,6 +167,17 @@ impl<'a> Sexp<'a> {
     pub(crate) const unsafe fn from_raw_unchecked(ptr: SEXP) -> Self {
         Sexp {
             ptr,
+            owner: SexpOwner::Unknown,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Create a `Sexp` from a known immutable singleton.
+    #[inline]
+    pub(crate) const unsafe fn from_static_raw_unchecked(ptr: SEXP) -> Self {
+        Sexp {
+            ptr,
+            owner: SexpOwner::Static,
             _marker: std::marker::PhantomData,
         }
     }
@@ -149,6 +189,30 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn as_raw(self) -> SEXP {
         self.ptr
+    }
+
+    /// Return the owner provenance attached to this handle.
+    #[inline]
+    pub fn owner(self) -> SexpOwner {
+        self.owner
+    }
+
+    /// Return true when this handle was created through a checked owner.
+    #[inline]
+    pub fn is_owner_scoped(self) -> bool {
+        !matches!(self.owner, SexpOwner::Unknown)
+    }
+
+    /// Return true when this handle is scoped to `arena` and the arena still
+    /// contains the raw pointer.
+    #[inline]
+    pub fn belongs_to_arena(self, arena: &crate::sexp::memory::RArena) -> bool {
+        self.owner == SexpOwner::Arena(Self::arena_owner_token(arena)) && arena.contains(self.ptr)
+    }
+
+    #[inline]
+    fn arena_owner_token(arena: &crate::sexp::memory::RArena) -> usize {
+        arena as *const crate::sexp::memory::RArena as usize
     }
 
     #[inline]
@@ -544,6 +608,32 @@ mod tests {
     #[test]
     fn test_sexp_from_raw_misaligned_pointer() {
         assert!(Sexp::from_raw(0x1 as SEXP).is_none());
+    }
+
+    #[test]
+    fn test_raw_wrapped_sexp_has_unknown_owner() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
+        let sexp = some(Sexp::from_raw(ptr));
+        assert_eq!(sexp.owner(), SexpOwner::Unknown);
+        assert!(!sexp.is_owner_scoped());
+    }
+
+    #[test]
+    fn test_nil_has_static_owner() {
+        let nil = Sexp::nil();
+        assert_eq!(nil.owner(), SexpOwner::Static);
+        assert!(nil.is_owner_scoped());
+    }
+
+    #[test]
+    fn test_arena_wrapped_sexp_has_arena_owner() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
+        let sexp = arena.sexp(ptr).expect("arena-owned pointer should wrap");
+        assert!(matches!(sexp.owner(), SexpOwner::Arena(_)));
+        assert!(sexp.is_owner_scoped());
+        assert!(sexp.belongs_to_arena(&arena));
     }
 
     #[test]
