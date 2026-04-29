@@ -530,7 +530,7 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     use crate::eval::closure::applyClosure;
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{CAR, TYPEOF};
-    use crate::sexp::context::{R_GlobalContext, ctxt_flags::CTXT_RETURN};
+    use crate::sexp::context::ctxt_flags::CTXT_RETURN;
     use crate::sexp::envir::findFun;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
@@ -538,7 +538,8 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     use std::os::raw::c_char;
 
     unsafe {
-        let mut cptr = R_GlobalContext();
+        let top = super::runtime::global_context();
+        let mut cptr = top;
 
         // Walk context stack to find the closure context for this environment
         while !cptr.is_null() {
@@ -557,10 +558,13 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         };
 
         // Get the sysparent (the env Recall was called from)
-        let s = (*R_GlobalContext()).sysparent;
+        if top.is_null() {
+            Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
+        }
+        let s = (*top).sysparent;
 
         // Walk context stack again to find the closure context for sysparent
-        let mut cptr2 = R_GlobalContext();
+        let mut cptr2 = top;
         while !cptr2.is_null() {
             let ctx = &*cptr2;
             if ctx.callflag == CTXT_RETURN && ctx.cloenv == s {

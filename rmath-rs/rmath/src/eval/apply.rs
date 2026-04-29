@@ -347,7 +347,7 @@ fn do_parent_frame_impl(n: c_int, rho: SEXP) -> SEXP {
         }
 
         // Walk up the context stack to find the parent environment
-        let ctx = crate::sexp::context::R_GlobalContext();
+        let ctx = super::runtime::global_context();
         if ctx.is_null() {
             return super::runtime::global_env();
         }

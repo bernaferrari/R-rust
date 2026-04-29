@@ -29,7 +29,6 @@ use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkString};
-use crate::sexp::context::R_GlobalContext;
 use crate::sexp::context::RCNTXT;
 use crate::sexp::context::ctxt_flags;
 use crate::sexp::envir::R_findVar;
@@ -61,7 +60,7 @@ unsafe fn get_R_InBCInterpreter() -> SEXP {
 }
 
 unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
-    unsafe { R_GlobalContext() }
+    super::runtime::global_context()
 }
 
 unsafe fn R_findBCInterpreterSrcref(_cptr: *mut RCNTXT) -> SEXP {
@@ -725,7 +724,7 @@ unsafe fn doprof(_sig: c_int) {
         }
 
         // Walk the context stack
-        let mut cptr = R_GlobalContext();
+        let mut cptr = super::runtime::global_context();
         while !cptr.is_null() {
             cptr = findProfContext(cptr);
             if cptr.is_null() {

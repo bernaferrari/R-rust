@@ -9,6 +9,7 @@
 
 use std::os::raw::c_int;
 
+use crate::sexp::context::{R_GlobalContext_in, RCNTXT};
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::{
     R_BaseEnv_in, R_GlobalEnv_in, R_Visible_in, set_R_GlobalEnv_in, set_R_Visible_in,
@@ -28,6 +29,11 @@ pub(crate) fn global_env() -> SEXP {
 #[inline]
 pub(crate) fn base_env() -> SEXP {
     unsafe { R_BaseEnv_in(&mut *active_instance_ptr()) }
+}
+
+#[inline]
+pub(crate) fn global_context() -> *mut RCNTXT {
+    unsafe { R_GlobalContext_in(&mut *active_instance_ptr()) }
 }
 
 #[inline]

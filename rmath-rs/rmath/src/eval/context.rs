@@ -9,11 +9,13 @@ use crate::mainutils::relop::{PRIMVAL, checkArity};
 use crate::sexp::accessors::{CAR, CDR, INTEGER, SETCAR};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::constructors::{Rf_allocVector, Rf_length};
-use crate::sexp::context::{R_GlobalContext, RCNTXT, ctxt_flags};
+use crate::sexp::context::{R_GlobalContext_in, RCNTXT, ctxt_flags};
 use crate::sexp::ffi::NA_INTEGER;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::SEXPTYPE;
+use crate::sexp::globals::R_GlobalEnv_in;
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::{RInstance, with_required_current_instance};
 
 // ---------------------------------------------------------------------------
 // Local error helper
@@ -37,6 +39,9 @@ pub unsafe fn framedepth(cptr: *mut RCNTXT) -> c_int {
     unsafe {
         let mut nframe: c_int = 0;
         let mut c = cptr;
+        if c.is_null() {
+            return 0;
+        }
         while !(*c).nextcontext.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 nframe += 1;
@@ -52,14 +57,19 @@ pub unsafe fn framedepth(cptr: *mut RCNTXT) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_sysframe(n: c_int, cptr: *mut RCNTXT) -> SEXP {
+    with_required_current_instance(|instance| unsafe { R_sysframe_in(instance, n, cptr) })
+}
+
+pub unsafe fn R_sysframe_in(instance: &mut RInstance, n: c_int, cptr: *mut RCNTXT) -> SEXP {
     unsafe {
         if n == 0 {
-            return super::runtime::global_env();
+            return R_GlobalEnv_in(instance);
         }
         if n == NA_INTEGER {
             error("NA argument is invalid");
         }
 
+        let cptr = context_or_top_in(instance, cptr);
         let mut n = n;
         if n > 0 {
             n = framedepth(cptr) - n;
@@ -81,7 +91,7 @@ pub unsafe fn R_sysframe(n: c_int, cptr: *mut RCNTXT) -> SEXP {
             c = (*c).nextcontext;
         }
         if n == 0 && (*c).nextcontext.is_null() {
-            return super::runtime::global_env();
+            return R_GlobalEnv_in(instance);
         }
         error("not that many frames on the stack");
         R_NilValue()
@@ -159,11 +169,18 @@ pub unsafe fn R_sysfunction(n: c_int, cptr: *mut RCNTXT) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_sysparent(n: c_int, cptr: *mut RCNTXT) -> c_int {
+    with_required_current_instance(|instance| unsafe { R_sysparent_in(instance, n, cptr) })
+}
+
+pub unsafe fn R_sysparent_in(instance: &mut RInstance, n: c_int, cptr: *mut RCNTXT) -> c_int {
     unsafe {
         if n <= 0 {
             error("only positive values of 'n' are allowed");
         }
-        let mut c = cptr;
+        let mut c = context_or_top_in(instance, cptr);
+        if c.is_null() {
+            return 0;
+        }
         let mut n = n;
         while !(*c).nextcontext.is_null() && n > 1 {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
@@ -175,7 +192,7 @@ pub unsafe fn R_sysparent(n: c_int, cptr: *mut RCNTXT) -> c_int {
             c = (*c).nextcontext;
         }
         let s = (*c).sysparent;
-        if s == super::runtime::global_env() {
+        if s == R_GlobalEnv_in(instance) {
             return 0;
         }
         let mut j: c_int = 0;
@@ -200,9 +217,15 @@ pub unsafe fn R_sysparent(n: c_int, cptr: *mut RCNTXT) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn countContexts(ctxttype: c_int, browser: c_int) -> c_int {
+    with_required_current_instance(|instance| unsafe {
+        countContexts_in(instance, ctxttype, browser)
+    })
+}
+
+pub unsafe fn countContexts_in(instance: &mut RInstance, ctxttype: c_int, browser: c_int) -> c_int {
     unsafe {
         let mut n: c_int = 0;
-        let mut c = R_GlobalContext();
+        let mut c = R_GlobalContext_in(instance);
         while !c.is_null() {
             if (*c).callflag == ctxttype
                 || (browser != 0 && (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0)
@@ -222,6 +245,9 @@ pub unsafe fn countContexts(ctxttype: c_int, browser: c_int) -> c_int {
 pub unsafe fn R_findExecContext(cptr: *mut RCNTXT, envir: SEXP) -> *mut RCNTXT {
     unsafe {
         let mut c = cptr;
+        if c.is_null() {
+            return ptr::null_mut();
+        }
         while !(*c).nextcontext.is_null() {
             if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv == envir {
                 return c;
@@ -239,6 +265,9 @@ pub unsafe fn R_findExecContext(cptr: *mut RCNTXT, envir: SEXP) -> *mut RCNTXT {
 pub unsafe fn R_findParentContext(cptr: *mut RCNTXT, mut n: c_int) -> *mut RCNTXT {
     unsafe {
         let mut c = cptr;
+        if c.is_null() {
+            return ptr::null_mut();
+        }
         loop {
             c = R_findExecContext(c, (*c).sysparent);
             if c.is_null() {
@@ -257,15 +286,22 @@ pub unsafe fn R_findParentContext(cptr: *mut RCNTXT, mut n: c_int) -> *mut RCNTX
 // ---------------------------------------------------------------------------
 
 pub unsafe fn getLexicalContext(rho: SEXP) -> *mut RCNTXT {
+    with_required_current_instance(|instance| unsafe { getLexicalContext_in(instance, rho) })
+}
+
+pub unsafe fn getLexicalContext_in(instance: &mut RInstance, rho: SEXP) -> *mut RCNTXT {
     unsafe {
-        let mut c = R_GlobalContext();
+        let mut c = R_GlobalContext_in(instance);
+        if c.is_null() {
+            return ptr::null_mut();
+        }
         while !(*c).nextcontext.is_null() {
             if ((*c).callflag & ctxt_flags::CTXT_FUNCTION) != 0 && (*c).cloenv == rho {
                 return c;
             }
             c = (*c).nextcontext;
         }
-        R_GlobalContext()
+        R_GlobalContext_in(instance)
     }
 }
 
@@ -274,11 +310,28 @@ pub unsafe fn getLexicalContext(rho: SEXP) -> *mut RCNTXT {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    with_required_current_instance(|instance| unsafe { do_sys_in(instance, call, op, args, rho) })
+}
+
+pub unsafe fn do_sys_in(
+    instance: &mut RInstance,
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         checkArity(op, args);
 
-        let t = (*R_GlobalContext()).sysparent;
-        let cptr = getLexicalContext(t);
+        let top = R_GlobalContext_in(instance);
+        if top.is_null() {
+            return R_NilValue();
+        }
+        let t = (*top).sysparent;
+        let cptr = getLexicalContext_in(instance, t);
+        if cptr.is_null() {
+            return R_NilValue();
+        }
 
         let mut n: c_int = -1;
         if Rf_length(args) == 1 {
@@ -296,7 +349,7 @@ pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let mut i = nframe;
                 let mut count = n;
                 while count > 0 {
-                    i = R_sysparent(nframe - i + 1, cptr);
+                    i = R_sysparent_in(instance, nframe - i + 1, cptr);
                     count -= 1;
                 }
                 crate::sexp::constructors::Rf_ScalarInteger(i)
@@ -313,7 +366,7 @@ pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if n == NA_INTEGER {
                     error("invalid 'which' argument");
                 }
-                R_sysframe(n, cptr)
+                R_sysframe_in(instance, n, cptr)
             }
             4 => {
                 // sys.nframe
@@ -336,7 +389,7 @@ pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let rval = crate::sexp::constructors::Rf_allocList(nframe);
                 let mut t = rval;
                 for i in 1..=nframe {
-                    SETCAR(t, R_sysframe(i, cptr));
+                    SETCAR(t, R_sysframe_in(instance, i, cptr));
                     t = CDR(t);
                 }
                 rval
@@ -357,7 +410,7 @@ pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let nframe = framedepth(cptr);
                 let rval = Rf_allocVector(SEXPTYPE::INTSXP, nframe);
                 for i in 0..nframe {
-                    *INTEGER(rval).add(i as usize) = R_sysparent(nframe - i, cptr);
+                    *INTEGER(rval).add(i as usize) = R_sysparent_in(instance, nframe - i, cptr);
                 }
                 rval
             }
@@ -381,17 +434,33 @@ pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    with_required_current_instance(|instance| unsafe {
+        do_parentframe_in(instance, call, op, args, rho)
+    })
+}
+
+pub unsafe fn do_parentframe_in(
+    instance: &mut RInstance,
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         checkArity(op, args);
         let n = asInteger(CAR(args));
         if n == NA_INTEGER || n < 1 {
             error("invalid 'n' value");
         }
-        let cptr = R_findParentContext(R_GlobalContext(), n);
+        let top = R_GlobalContext_in(instance);
+        if top.is_null() {
+            return R_GlobalEnv_in(instance);
+        }
+        let cptr = R_findParentContext(top, n);
         if !cptr.is_null() {
             (*cptr).sysparent
         } else {
-            super::runtime::global_env()
+            R_GlobalEnv_in(instance)
         }
     }
 }
@@ -401,6 +470,18 @@ pub unsafe fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    with_required_current_instance(|instance| unsafe {
+        do_sysbrowser_in(instance, call, op, args, rho)
+    })
+}
+
+pub unsafe fn do_sysbrowser_in(
+    instance: &mut RInstance,
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> SEXP {
     unsafe {
         checkArity(op, args);
         let n = asInteger(CAR(args));
@@ -408,7 +489,7 @@ pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             error("number of contexts must be positive");
         }
 
-        let mut cptr = R_GlobalContext();
+        let mut cptr = R_GlobalContext_in(instance);
         while !cptr.is_null() {
             if (*cptr).callflag == ctxt_flags::CTXT_BROWSER {
                 break;
@@ -453,8 +534,12 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
 }
 
 pub fn R_run_onexits() {
+    with_required_current_instance(|instance| unsafe { R_run_onexits_in(instance) });
+}
+
+pub unsafe fn R_run_onexits_in(instance: &mut RInstance) {
     unsafe {
-        R_run_onexits_for_context(R_GlobalContext());
+        R_run_onexits_for_context(R_GlobalContext_in(instance));
     }
 }
 
@@ -497,14 +582,26 @@ pub unsafe fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {}
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_GetCurrentEnv() -> SEXP {
+    with_required_current_instance(|instance| unsafe { R_GetCurrentEnv_in(instance) })
+}
+
+pub unsafe fn R_GetCurrentEnv_in(instance: &mut RInstance) -> SEXP {
     unsafe {
-        let mut c = R_GlobalContext();
+        let mut c = R_GlobalContext_in(instance);
         while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 return (*c).cloenv;
             }
             c = (*c).nextcontext;
         }
-        super::runtime::global_env()
+        R_GlobalEnv_in(instance)
+    }
+}
+
+unsafe fn context_or_top_in(instance: &mut RInstance, cptr: *mut RCNTXT) -> *mut RCNTXT {
+    if cptr.is_null() {
+        unsafe { R_GlobalContext_in(instance) }
+    } else {
+        cptr
     }
 }

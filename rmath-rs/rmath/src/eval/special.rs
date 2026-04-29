@@ -120,7 +120,7 @@ unsafe fn list_append(s: SEXP, t: SEXP) -> SEXP {
 
 unsafe fn find_function_context(rho: SEXP) -> *mut crate::sexp::context::RCNTXT {
     unsafe {
-        let mut ctxt = crate::sexp::context::R_GlobalContext();
+        let mut ctxt = super::runtime::global_context();
         while !ctxt.is_null()
             && !((*ctxt).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0
                 && (*ctxt).cloenv == rho)
