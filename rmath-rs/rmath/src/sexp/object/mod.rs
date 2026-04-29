@@ -65,6 +65,8 @@ pub enum SexpOwner {
     Static,
     /// Object was validated against a concrete arena owner.
     Arena(usize),
+    /// Object was validated against persistent storage owned by a session.
+    Session(usize),
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +159,18 @@ impl<'a> Sexp<'a> {
         Ok(sexp)
     }
 
+    /// Wrap a pointer that has already been validated against session-owned
+    /// persistent storage.
+    #[inline]
+    pub(crate) fn from_session_raw<'session>(
+        ptr: SEXP,
+        instance: &'session crate::sexp::instance::RInstance,
+    ) -> SexpResult<Sexp<'session>> {
+        let mut sexp = Sexp::try_from_raw(ptr)?;
+        sexp.owner = SexpOwner::Session(Self::session_owner_token(instance));
+        Ok(sexp)
+    }
+
     /// Create a `Sexp` from a raw pointer without null checking.
     ///
     /// # Safety
@@ -210,9 +224,22 @@ impl<'a> Sexp<'a> {
         self.owner == SexpOwner::Arena(Self::arena_owner_token(arena)) && arena.contains(self.ptr)
     }
 
+    /// Return true when this handle is scoped to persistent storage owned by
+    /// `instance` and the instance still owns the raw pointer.
+    #[inline]
+    pub fn belongs_to_session(self, instance: &crate::sexp::instance::RInstance) -> bool {
+        self.owner == SexpOwner::Session(Self::session_owner_token(instance))
+            && instance.owns_sexp(self.ptr)
+    }
+
     #[inline]
     fn arena_owner_token(arena: &crate::sexp::memory::RArena) -> usize {
         arena as *const crate::sexp::memory::RArena as usize
+    }
+
+    #[inline]
+    fn session_owner_token(instance: &crate::sexp::instance::RInstance) -> usize {
+        instance as *const crate::sexp::instance::RInstance as usize
     }
 
     #[inline]

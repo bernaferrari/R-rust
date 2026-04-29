@@ -10,8 +10,27 @@
 
 use super::ffi::SEXP;
 use super::instance::{RInstance, with_required_current_instance};
-use super::object::Sexp;
+use super::object::{Sexp, SexpOwner};
 use std::ptr::NonNull;
+
+/// Error returned when a safe protection API receives a handle whose owner was
+/// not validated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProtectError {
+    UnownedHandle { api: &'static str, owner: SexpOwner },
+}
+
+impl std::fmt::Display for ProtectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProtectError::UnownedHandle { api, owner } => {
+                write!(f, "{api}: SEXP handle is not owner-scoped ({owner:?})")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProtectError {}
 
 /// RAII guard for the protection stack.
 /// Automatically unprotects when dropped.
@@ -48,7 +67,13 @@ impl Drop for ProtectGuard {
 /// This is the Rust API exposed to embedders. Raw pointer protection remains
 /// crate-local translation scaffolding for ported interpreter modules.
 pub fn protect_sexp(value: Sexp<'_>) -> ProtectGuard {
-    protect_raw(value.as_raw())
+    try_protect_sexp(value).expect("protect_sexp requires an owner-scoped Sexp")
+}
+
+/// Try to protect an owner-scoped SEXP handle.
+pub fn try_protect_sexp(value: Sexp<'_>) -> Result<ProtectGuard, ProtectError> {
+    ensure_owner_scoped(value, "protect_sexp")?;
+    Ok(protect_raw(value.as_raw()))
 }
 
 /// Protect a raw SEXP and return an RAII guard.
@@ -161,22 +186,28 @@ impl Drop for PreserveGuard {
 
 /// Preserve an owner-scoped SEXP handle until the returned guard is dropped.
 pub fn preserve_sexp(value: Sexp<'_>) -> PreserveGuard {
+    try_preserve_sexp(value).expect("preserve_sexp requires an owner-scoped Sexp")
+}
+
+/// Try to preserve an owner-scoped SEXP handle until the returned guard is dropped.
+pub fn try_preserve_sexp(value: Sexp<'_>) -> Result<PreserveGuard, ProtectError> {
+    ensure_owner_scoped(value, "preserve_sexp")?;
     let raw = value.as_raw();
     if raw.is_null() {
-        return PreserveGuard {
+        return Ok(PreserveGuard {
             owner: None,
             value: raw,
-        };
+        });
     }
 
     let owner = with_required_current_instance(|inst| {
         push_preserve_in(inst, raw);
         NonNull::from(inst)
     });
-    PreserveGuard {
+    Ok(PreserveGuard {
         owner: Some(owner),
         value: raw,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +447,14 @@ impl IndexedProtectGuard {
     }
 
     pub fn reprotect_sexp(&mut self, value: Sexp<'_>) {
+        self.try_reprotect_sexp(value)
+            .expect("reprotect_sexp requires an owner-scoped Sexp");
+    }
+
+    pub fn try_reprotect_sexp(&mut self, value: Sexp<'_>) -> Result<(), ProtectError> {
+        ensure_owner_scoped(value, "reprotect_sexp")?;
         self.reprotect_raw(value.as_raw());
+        Ok(())
     }
 }
 
@@ -433,7 +471,17 @@ impl Drop for IndexedProtectGuard {
 
 /// Protect an owner-scoped SEXP handle in a replaceable stack slot.
 pub fn protect_sexp_with_index(value: Sexp<'_>) -> IndexedProtectGuard {
-    protect_with_index_raw(value.as_raw(), "protect_sexp_with_index")
+    try_protect_sexp_with_index(value)
+        .expect("protect_sexp_with_index requires an owner-scoped Sexp")
+}
+
+/// Try to protect an owner-scoped SEXP handle in a replaceable stack slot.
+pub fn try_protect_sexp_with_index(value: Sexp<'_>) -> Result<IndexedProtectGuard, ProtectError> {
+    ensure_owner_scoped(value, "protect_sexp_with_index")?;
+    Ok(protect_with_index_raw(
+        value.as_raw(),
+        "protect_sexp_with_index",
+    ))
 }
 
 /// Protect a raw SEXP in a replaceable stack slot.
@@ -490,6 +538,17 @@ pub(crate) unsafe fn R_PreserveObject(s: SEXP) {
 /// This is the equivalent of R's `R_ReleaseObject()`.
 pub(crate) unsafe fn R_ReleaseObject(s: SEXP) {
     release_preserved(s);
+}
+
+fn ensure_owner_scoped(value: Sexp<'_>, api: &'static str) -> Result<(), ProtectError> {
+    if value.is_owner_scoped() {
+        Ok(())
+    } else {
+        Err(ProtectError::UnownedHandle {
+            api,
+            owner: value.owner(),
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -650,6 +709,39 @@ mod tests {
     }
 
     #[test]
+    fn test_safe_protect_rejects_unknown_owner() {
+        let mut session = RSession::new();
+        let raw = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = Sexp::from_raw(raw).expect("raw value should wrap as legacy boundary");
+
+        session.with_protected(|| {
+            assert!(matches!(
+                try_protect_sexp(value),
+                Err(ProtectError::UnownedHandle {
+                    api: "protect_sexp",
+                    owner: SexpOwner::Unknown,
+                })
+            ));
+            assert!(matches!(
+                try_preserve_sexp(value),
+                Err(ProtectError::UnownedHandle {
+                    api: "preserve_sexp",
+                    owner: SexpOwner::Unknown,
+                })
+            ));
+            assert!(matches!(
+                try_protect_sexp_with_index(value),
+                Err(ProtectError::UnownedHandle {
+                    api: "protect_sexp_with_index",
+                    owner: SexpOwner::Unknown,
+                })
+            ));
+        });
+    }
+
+    #[test]
     fn test_preserve_sexp_guard() {
         let mut session = RSession::new();
         let value = session
@@ -754,7 +846,7 @@ mod tests {
         let mut right = RInstance::new();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
         let raw = left.arena.alloc_node(SEXPTYPE::INTSXP);
-        let value = Sexp::from_raw(raw).expect("left arena object should wrap");
+        let value = left.arena.sexp(raw).expect("left arena object should wrap");
 
         let guard = preserve_sexp(value);
         with_preserved_objects_in(&mut left, |objects| assert_eq!(objects, &[raw]));

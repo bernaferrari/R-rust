@@ -288,8 +288,12 @@ impl RSession {
         if ptr.is_null() {
             return None;
         }
-        if self.instance.owns_sexp(ptr) || is_immutable_singleton(ptr) {
-            Sexp::from_raw(ptr)
+        if is_immutable_singleton(ptr) {
+            Some(unsafe { Sexp::from_static_raw_unchecked(ptr) })
+        } else if self.instance.arena.contains(ptr) {
+            Sexp::from_arena_raw(ptr, &self.instance.arena).ok()
+        } else if self.instance.owns_sexp(ptr) {
+            Sexp::from_session_raw(ptr, &self.instance).ok()
         } else {
             None
         }
@@ -790,6 +794,13 @@ mod tests {
         assert!(session.is_active());
         assert!(session.global_env().is_some());
         assert!(session.base_env().is_some());
+        assert!(matches!(
+            session
+                .global_env()
+                .expect("session has global env")
+                .owner(),
+            crate::sexp::object::SexpOwner::Session(_)
+        ));
     }
 
     #[test]
@@ -817,7 +828,11 @@ mod tests {
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
             .expect("left session should be active");
 
-        assert!(left.sexp(ptr).is_some());
+        let left_value = left.sexp(ptr).expect("left owns pointer");
+        assert!(matches!(
+            left_value.owner(),
+            crate::sexp::object::SexpOwner::Arena(_)
+        ));
         assert!(right.sexp(ptr).is_none());
     }
 
