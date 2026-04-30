@@ -724,6 +724,83 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
+/// R's `file.size(...)` — return file sizes in bytes.
+pub unsafe fn do_filesize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, LENGTH, REAL, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
+        use crate::sexp::ffi::SEXPTYPE;
+        use crate::sexp::globals::R_NilValue;
+
+        let files = CAR(args);
+        let n = LENGTH(files);
+        let ans = Rf_allocVector3(
+            SEXPTYPE::REALSXP.as_c_int(),
+            n as crate::sexp::ffi::R_xlen_t,
+        );
+        let _ans_guard = protect(ans);
+        let out = REAL(ans);
+        for i in 0..n as usize {
+            let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
+            *out.add(i) = if elt.is_null() || elt == R_NilValue() {
+                crate::sexp::ffi::NA_REAL
+            } else {
+                let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                    .to_str()
+                    .unwrap_or("");
+                std::fs::metadata(path)
+                    .map(|meta| meta.len() as f64)
+                    .unwrap_or(crate::sexp::ffi::NA_REAL)
+            };
+        }
+        ans
+    }
+}
+
+/// R's `file.mtime(...)` — return modification times as POSIXct.
+pub unsafe fn do_filemtime(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, LENGTH, REAL, SET_STRING_ELT, STRING_ELT};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::ffi::SEXPTYPE;
+        use crate::sexp::globals::R_NilValue;
+
+        let files = CAR(args);
+        let n = LENGTH(files);
+        let ans = Rf_allocVector3(
+            SEXPTYPE::REALSXP.as_c_int(),
+            n as crate::sexp::ffi::R_xlen_t,
+        );
+        let _ans_guard = protect(ans);
+        let out = REAL(ans);
+        for i in 0..n as usize {
+            let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
+            *out.add(i) = if elt.is_null() || elt == R_NilValue() {
+                crate::sexp::ffi::NA_REAL
+            } else {
+                let path = CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                    .to_str()
+                    .unwrap_or("");
+                std::fs::metadata(path)
+                    .ok()
+                    .and_then(|meta| meta.modified().ok())
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|duration| {
+                        duration.as_secs() as f64 + duration.subsec_nanos() as f64 / 1e9
+                    })
+                    .unwrap_or(crate::sexp::ffi::NA_REAL)
+            };
+        }
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let _class_guard = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(b"POSIXct\0".as_ptr() as *const _));
+        SET_STRING_ELT(class, 1, Rf_mkChar(b"POSIXt\0".as_ptr() as *const _));
+        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
+        ans
+    }
+}
+
 /// R's `dir.exists()` — check if directory exists.
 pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

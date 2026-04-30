@@ -2557,6 +2557,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_fileinfo,
     },
     EvaluatedBuiltin {
+        name: "file.size",
+        handler: crate::mainutils::platform::do_filesize,
+    },
+    EvaluatedBuiltin {
+        name: "file.mtime",
+        handler: crate::mainutils::platform::do_filemtime,
+    },
+    EvaluatedBuiltin {
         name: "list.files",
         handler: crate::mainutils::platform::do_listfiles,
     },
