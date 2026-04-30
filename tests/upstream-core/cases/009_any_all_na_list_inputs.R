@@ -1,5 +1,5 @@
 ## Curated from r-source/tests/any-all.R:
-## direct any()/all() truth-table and NA behavior.
+## direct any()/all() truth-table, NA behavior, and helper/do.call paths.
 print(any(c(TRUE, FALSE)))
 print(all(c(TRUE, FALSE)))
 print(any(c(FALSE, FALSE)))
@@ -15,3 +15,41 @@ print(all(c(NA, TRUE)))
 print(all(c(NA, TRUE), na.rm = TRUE))
 print(any(c(TRUE, NA, FALSE), na.rm = TRUE))
 print(all(c(TRUE, NA, FALSE), na.rm = TRUE))
+
+cases <- list(
+  list(input = c(TRUE, FALSE), any = TRUE, all = FALSE),
+  list(input = c(FALSE, FALSE), any = FALSE, all = FALSE),
+  list(input = c(NA, FALSE), any = NA, all = FALSE),
+  list(input = c(NA, TRUE), any = TRUE, all = NA),
+  list(input = list(FALSE, NA), any = NA, all = FALSE),
+  list(input = list(TRUE, NA), any = TRUE, all = NA)
+)
+
+run <- function(f, input, na.rm = FALSE) {
+  if (is.list(input)) {
+    do.call(f, c(input, list(na.rm = na.rm)))
+  } else {
+    f(input, na.rm = na.rm)
+  }
+}
+
+check_case <- function(case, foo) {
+  fun <- deparse(substitute(foo))
+  print(identical(case[[fun]], run(foo, case$input)))
+}
+
+check_case(cases[[1]], any)
+check_case(cases[[1]], all)
+check_case(cases[[2]], any)
+check_case(cases[[2]], all)
+check_case(cases[[3]], any)
+check_case(cases[[3]], all)
+check_case(cases[[4]], any)
+check_case(cases[[4]], all)
+check_case(cases[[5]], any)
+check_case(cases[[5]], all)
+check_case(cases[[6]], any)
+check_case(cases[[6]], all)
+
+print(run(any, list(FALSE, NA), na.rm = TRUE))
+print(run(all, list(TRUE, NA), na.rm = TRUE))

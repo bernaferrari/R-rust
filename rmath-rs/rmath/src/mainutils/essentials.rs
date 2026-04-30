@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
-    REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -39,6 +39,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
         let mut total_len: R_xlen_t = 0;
         let mut has_names = false;
+        let names_symbol = crate::sexp::attrib_core::R_NamesSymbol();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
@@ -48,16 +49,31 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     has_names = true;
                 }
                 let t = TYPEOF(arg);
-                if t == SEXPTYPE::STRSXP {
+                let arg_names = crate::sexp::attrib_core::getAttrib(arg, names_symbol);
+                if !arg_names.is_null()
+                    && arg_names != R_NilValue()
+                    && TYPEOF(arg_names) == SEXPTYPE::STRSXP
+                    && XLENGTH(arg_names) > 0
+                {
+                    has_names = true;
+                }
+                if t == SEXPTYPE::VECSXP {
+                    result_type = SEXPTYPE::VECSXP.as_c_int();
+                } else if t == SEXPTYPE::STRSXP && result_type != SEXPTYPE::VECSXP {
                     result_type = SEXPTYPE::STRSXP.as_c_int();
-                } else if t == SEXPTYPE::CPLXSXP && result_type != SEXPTYPE::STRSXP {
+                } else if t == SEXPTYPE::CPLXSXP
+                    && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::STRSXP
+                {
                     result_type = SEXPTYPE::CPLXSXP.as_c_int();
                 } else if t == SEXPTYPE::REALSXP
+                    && result_type != SEXPTYPE::VECSXP
                     && result_type != SEXPTYPE::STRSXP
                     && result_type != SEXPTYPE::CPLXSXP
                 {
                     result_type = SEXPTYPE::REALSXP.as_c_int();
                 } else if t == SEXPTYPE::INTSXP
+                    && result_type != SEXPTYPE::VECSXP
                     && result_type != SEXPTYPE::STRSXP
                     && result_type != SEXPTYPE::CPLXSXP
                     && result_type != SEXPTYPE::REALSXP
@@ -98,6 +114,48 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             None
         };
+
+        if result_type == SEXPTYPE::VECSXP {
+            current = args;
+            while !current.is_null() && current != R_NilValue() {
+                let arg = CAR(current);
+                if !arg.is_null() && arg != R_NilValue() {
+                    let t = TYPEOF(arg);
+                    let n = XLENGTH(arg);
+                    let arg_names = crate::sexp::attrib_core::getAttrib(arg, names_symbol);
+                    for i in 0..n {
+                        let value = if t == SEXPTYPE::VECSXP {
+                            VECTOR_ELT(arg, i)
+                        } else {
+                            extract_element(arg, i)
+                        };
+                        SET_VECTOR_ELT(result, offset + i, value);
+
+                        if has_names {
+                            if !arg_names.is_null()
+                                && arg_names != R_NilValue()
+                                && TYPEOF(arg_names) == SEXPTYPE::STRSXP
+                                && i < XLENGTH(arg_names)
+                            {
+                                SET_STRING_ELT(names, offset + i, STRING_ELT(arg_names, i));
+                            } else {
+                                let tag = TAG(current);
+                                if !tag.is_null() && tag != R_NilValue() && i == 0 {
+                                    SET_STRING_ELT(names, offset + i, PRINTNAME(tag));
+                                }
+                            }
+                        }
+                    }
+                    offset += n;
+                }
+                current = CDR(current);
+            }
+
+            if has_names {
+                crate::sexp::attrib_core::setAttrib(result, names_symbol, names);
+            }
+            return result;
+        }
 
         current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -3820,6 +3878,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "is.logical",
             "is.character",
             "is.null",
+            "identical",
             // Complete special functions for libRmath
             "lgamma",
             "gamma",
@@ -3841,7 +3900,11 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;
         for name in all_fns {
-            let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
+            let kind = match name {
+                "quote" | "substitute" => SEXPTYPE::SPECIALSXP,
+                _ => SEXPTYPE::BUILTINSXP,
+            };
+            let prim = crate::eval::primitive::make_primitive_binding(name, kind);
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
@@ -5484,12 +5547,31 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         } else {
             0
         };
+        let names = if TYPEOF(arg_list) == SEXPTYPE::VECSXP {
+            crate::sexp::attrib_core::getAttrib(arg_list, crate::sexp::attrib_core::R_NamesSymbol())
+        } else {
+            R_NilValue()
+        };
         let mut call_args = R_NilValue();
         for i in (0..n).rev() {
-            call_args = Rf_cons(
+            let cell = Rf_cons(
                 crate::sexp::accessors::VECTOR_ELT(arg_list, i as i64),
                 call_args,
             );
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names)
+            {
+                let name = STRING_ELT(names, i);
+                if !name.is_null() {
+                    let chars = CHAR(name);
+                    if !chars.is_null() && *chars != 0 {
+                        SETTAG(cell, Rf_install(chars));
+                    }
+                }
+            }
+            call_args = cell;
         }
         let call_sexp = Rf_cons(fun, call_args);
         if !call_sexp.is_null() {
@@ -8831,7 +8913,19 @@ pub unsafe fn do_deparse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return Rf_mkString(CString::new("NULL").unwrap_or_default().as_ptr());
         }
         let t = TYPEOF(x);
-        let n = XLENGTH(x).max(1);
+        let n = if t == SEXPTYPE::SYMSXP
+            || t == SEXPTYPE::LANGSXP
+            || t == SEXPTYPE::CHARSXP
+            || t == SEXPTYPE::SPECIALSXP
+            || t == SEXPTYPE::BUILTINSXP
+            || t == SEXPTYPE::PROMSXP
+            || t == SEXPTYPE::CLOSXP
+            || t == SEXPTYPE::ENVSXP
+        {
+            1
+        } else {
+            XLENGTH(x).max(1)
+        };
         let mut parts: Vec<String> = Vec::new();
 
         if n == 1 {

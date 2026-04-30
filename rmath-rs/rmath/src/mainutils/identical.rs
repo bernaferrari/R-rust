@@ -525,101 +525,95 @@ pub unsafe fn R_identical(s1: SEXP, s2: SEXP) -> c_int {
 ///            ignore.bytecode, ignore.environment, ignore.srcref, extptr.as.ref
 pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADDDR, CADDR, CADR, CDDDR};
         use crate::sexp::constructors::Rf_ScalarLogical;
+        use crate::sexp::globals::R_NilValue;
 
-        // Extract the 5 required arguments from the pairlist.
-        // args = [x, y, num.eq, single.NA, attrib.as.set, ...]
         let x = CAR(args);
-        let y = CADR(args);
-        let num_eq = CADDR(args);
-        let single_na = CAR(CDDDR(args));
-        let attrib_as_set = CADDDR(CDDDR(args));
+        let rest = CDR(args);
+        let y = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(rest)
+        };
 
         // Parse the flag arguments
         let mut flags: c_int = 0;
+        let mut opt = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CDR(rest)
+        };
+
+        let mut next_arg = || {
+            if opt.is_null() || opt == R_NilValue() {
+                None
+            } else {
+                let value = CAR(opt);
+                opt = CDR(opt);
+                Some(value)
+            }
+        };
+
+        let logical_false = |value: SEXP| -> bool {
+            !value.is_null() && TYPEOF(value) == SEXPTYPE::LGLSXP && {
+                let ptr = LOGICAL(value);
+                !ptr.is_null() && *ptr == 0
+            }
+        };
+
+        let logical_true = |value: SEXP| -> bool {
+            !value.is_null() && TYPEOF(value) == SEXPTYPE::LGLSXP && {
+                let ptr = LOGICAL(value);
+                !ptr.is_null() && *ptr != 0
+            }
+        };
 
         // num.eq: default TRUE. If num.eq=FALSE, set IDENT_NUM_AS_BITS
-        {
-            let v = CAR(num_eq);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let lv = LOGICAL(v);
-                if !lv.is_null() && *lv == 0 {
-                    flags |= IDENT_NUM_AS_BITS;
-                }
+        if let Some(v) = next_arg() {
+            if logical_false(v) {
+                flags |= IDENT_NUM_AS_BITS;
             }
         }
 
         // single.NA: default TRUE. If single.NA=FALSE, set IDENT_NA_AS_BITS
-        {
-            let v = CAR(single_na);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let lv = LOGICAL(v);
-                if !lv.is_null() && *lv == 0 {
-                    flags |= IDENT_NA_AS_BITS;
-                }
+        if let Some(v) = next_arg() {
+            if logical_false(v) {
+                flags |= IDENT_NA_AS_BITS;
             }
         }
 
         // attrib.as.set: default TRUE. If FALSE, set IDENT_ATTR_BY_ORDER
-        {
-            let v = CAR(attrib_as_set);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let lv = LOGICAL(v);
-                if !lv.is_null() && *lv == 0 {
-                    flags |= IDENT_ATTR_BY_ORDER;
-                }
+        if let Some(v) = next_arg() {
+            if logical_false(v) {
+                flags |= IDENT_ATTR_BY_ORDER;
             }
         }
 
-        // Optional args after the first 5 pairlist elements
-        let mut opt = CDR(CDDDR(args)); // skip past attrib.as.set
-        // opt now points to the 6th element (ignore.bytecode)
-
         // ignore.bytecode: default TRUE
-        if !opt.is_null() {
-            let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let lv = LOGICAL(v);
-                if !lv.is_null() && *lv != 0 {
-                    flags |= IDENT_USE_BYTECODE;
-                }
+        if let Some(v) = next_arg() {
+            if logical_true(v) {
+                flags |= IDENT_USE_BYTECODE;
             }
-            opt = CDR(opt);
         }
 
         // ignore.environment: default FALSE
-        if !opt.is_null() {
-            let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let lv = LOGICAL(v);
-                if !lv.is_null() && *lv != 0 {
-                    flags |= IDENT_USE_CLOENV;
-                }
+        if let Some(v) = next_arg() {
+            if logical_true(v) {
+                flags |= IDENT_USE_CLOENV;
             }
-            opt = CDR(opt);
         }
 
         // ignore.srcref: default TRUE
-        if !opt.is_null() {
-            let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let lv = LOGICAL(v);
-                if !lv.is_null() && *lv != 0 {
-                    flags |= IDENT_USE_SRCREF;
-                }
+        if let Some(v) = next_arg() {
+            if logical_true(v) {
+                flags |= IDENT_USE_SRCREF;
             }
-            opt = CDR(opt);
         }
 
         // extptr.as.ref: default FALSE
-        if !opt.is_null() {
-            let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
-                let lv = LOGICAL(v);
-                if !lv.is_null() && *lv != 0 {
-                    flags |= IDENT_EXTPTR_AS_REF;
-                }
+        if let Some(v) = next_arg() {
+            if logical_true(v) {
+                flags |= IDENT_EXTPTR_AS_REF;
             }
         }
 

@@ -148,6 +148,16 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_do_call,
         restore_visibility_always: false,
     },
+    UnevaluatedBuiltin {
+        name: "substitute",
+        handler: crate::mainutils::coerce::do_substitute,
+        restore_visibility_always: true,
+    },
+    UnevaluatedBuiltin {
+        name: "quote",
+        handler: crate::mainutils::essentials::do_quote,
+        restore_visibility_always: true,
+    },
 ];
 
 #[derive(Clone, Copy)]
@@ -304,6 +314,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "is.null",
         handler: super::arithmetic::do_is_type,
+    },
+    EvaluatedBuiltin {
+        name: "identical",
+        handler: crate::mainutils::identical::do_identical,
     },
     EvaluatedBuiltin {
         name: "c",
@@ -972,14 +986,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "eval",
         handler: crate::mainutils::essentials::do_eval,
-    },
-    EvaluatedBuiltin {
-        name: "substitute",
-        handler: crate::mainutils::essentials::do_substitute,
-    },
-    EvaluatedBuiltin {
-        name: "quote",
-        handler: crate::mainutils::essentials::do_quote,
     },
     EvaluatedBuiltin {
         name: "parse",

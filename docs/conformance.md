@@ -114,7 +114,9 @@ The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
 
 The curated upstream slice gate currently passes 14/14 live stock-R comparison
-cases with zero expected failures.
+cases with zero expected failures, including the `any-all.R` helper path through
+`deparse(substitute(.))`, `do.call()`, list concatenation, named `na.rm`, and
+`identical()`.
 
 ## Status Policy
 

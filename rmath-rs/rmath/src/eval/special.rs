@@ -63,6 +63,8 @@ unsafe fn dispatch_special_by_name(
             "next" => do_next(),
             "function" => do_function(CDR(call), rho),
             "return" => do_return(CDR(call), rho),
+            "quote" => crate::mainutils::essentials::do_quote(call, op, args, rho),
+            "substitute" => crate::mainutils::coerce::do_substitute(call, op, args, rho),
             "invisible" => do_invisible(CDR(call), rho),
             "on.exit" => do_on_exit_from_args(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
