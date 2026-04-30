@@ -6,8 +6,8 @@ session-owned Rust runtime that can eventually power an RStudio-like Android
 app while keeping enough source-shape discipline that upstream R behavior can be
 reapplied and compared.
 
-Current release proof: **211/211 stock C R conformance cases pass** in the local
-parity suite, plus **5/5 curated upstream GNU R core slices**, with focused unit
+Current release proof: **225/225 stock C R conformance cases pass** in the local
+parity suite, plus **14/14 curated upstream GNU R core slices**, with focused unit
 coverage for packages, S3 registration, multi-session isolation, UniFFI, and
 Android plot rendering.
 
@@ -72,8 +72,10 @@ flowchart TD
 
 - This is not a full R implementation yet. The parity suite is strong in the
   covered surface but is not a whole-CRAN compatibility claim.
-- Native package loading through `useDynLib()` is intentionally rejected until
-  an Android host-owned native-library policy exists.
+- Native package loading through `useDynLib()` and direct native entrypoints
+  (`.Call`, `.C`, `.Fortran`, `.External`, `dyn.load`, and `library.dynam`) is
+  intentionally rejected until an Android host-owned native-library policy
+  exists. Pure-R packages remain the supported Android package scope.
 - Graphics are useful for demos but not yet a full R graphics device.
 - Exact byte-for-byte `.Random.seed` stream parity is not claimed; RNG state is
   session-owned and behavior fixtures assert shape/type/error contracts.
