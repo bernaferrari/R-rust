@@ -317,6 +317,41 @@ pub fn complex_tan(z: Rcomplex) -> Rcomplex {
     }
 }
 
+/// Complex hyperbolic sine.
+pub fn complex_sinh(z: Rcomplex) -> Rcomplex {
+    Rcomplex {
+        r: z.r.sinh() * z.i.cos(),
+        i: z.r.cosh() * z.i.sin(),
+    }
+}
+
+/// Complex hyperbolic cosine.
+pub fn complex_cosh(z: Rcomplex) -> Rcomplex {
+    Rcomplex {
+        r: z.r.cosh() * z.i.cos(),
+        i: z.r.sinh() * z.i.sin(),
+    }
+}
+
+/// Complex hyperbolic tangent.
+pub fn complex_tanh(z: Rcomplex) -> Rcomplex {
+    if z.r.is_finite() && z.r.abs() > 20.0 {
+        return Rcomplex {
+            r: if z.r.is_sign_negative() { -1.0 } else { 1.0 },
+            i: 0.0,
+        };
+    }
+
+    let denominator = (2.0 * z.r).cosh() + (2.0 * z.i).cos();
+    if denominator == 0.0 {
+        return NA_COMPLEX;
+    }
+    Rcomplex {
+        r: (2.0 * z.r).sinh() / denominator,
+        i: (2.0 * z.i).sin() / denominator,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // do_complex: handle complex(re, im) built-in
 // ---------------------------------------------------------------------------
@@ -469,5 +504,19 @@ mod tests {
         let z = complex_sqrt(Rcomplex { r: -1.0, i: 0.0 });
         assert!(z.r.abs() < 1e-10);
         assert!((z.i - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_complex_hyperbolic_identity() {
+        let _session = crate::sexp::session::RSession::new();
+        let z = Rcomplex { r: 1.25, i: -0.5 };
+        let cosh_z = complex_cosh(z);
+        let cos_iz = complex_cos(Rcomplex { r: -z.i, i: z.r });
+        assert!((cosh_z.r - cos_iz.r).abs() < 1e-12);
+        assert!((cosh_z.i - cos_iz.i).abs() < 1e-12);
+
+        let tanh_large = complex_tanh(Rcomplex { r: 356.0, i: 0.0 });
+        assert_eq!(tanh_large.r, 1.0);
+        assert_eq!(tanh_large.i, 0.0);
     }
 }

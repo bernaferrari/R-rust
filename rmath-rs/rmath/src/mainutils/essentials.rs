@@ -3921,6 +3921,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "log",
             "log10",
             "exp",
+            "sinh",
+            "cosh",
+            "tanh",
             // Type checks — dispatched via do_is_type in eval.rs
             "is.numeric",
             "is.integer",

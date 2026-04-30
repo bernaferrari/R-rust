@@ -329,6 +329,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: super::arithmetic::do_math1,
     },
     EvaluatedBuiltin {
+        name: "sinh",
+        handler: super::arithmetic::do_math1,
+    },
+    EvaluatedBuiltin {
+        name: "cosh",
+        handler: super::arithmetic::do_math1,
+    },
+    EvaluatedBuiltin {
+        name: "tanh",
+        handler: super::arithmetic::do_math1,
+    },
+    EvaluatedBuiltin {
         name: "ceiling",
         handler: super::arithmetic::do_math1,
     },

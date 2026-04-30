@@ -500,6 +500,15 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "exp" => {
                     super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_exp)
                 }
+                "sinh" => {
+                    super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_sinh)
+                }
+                "cosh" => {
+                    super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_cosh)
+                }
+                "tanh" => {
+                    super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_tanh)
+                }
                 _ => R_NilValue(),
             };
         }
@@ -511,6 +520,9 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             "log2" => |v: f64| libm::log2(v),
             "log10" => |v: f64| libm::log10(v),
             "exp" => |v: f64| libm::exp(v),
+            "sinh" => f64::sinh,
+            "cosh" => f64::cosh,
+            "tanh" => f64::tanh,
             "ceiling" => f64::ceil,
             "floor" => f64::floor,
             "trunc" => f64::trunc,
@@ -859,6 +871,9 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
                 "log2" => "log2",
                 "log10" => "log10",
                 "exp" => "exp",
+                "sinh" => "sinh",
+                "cosh" => "cosh",
+                "tanh" => "tanh",
                 "ceiling" => "ceiling",
                 "floor" => "floor",
                 "trunc" => "trunc",

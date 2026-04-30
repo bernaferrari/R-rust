@@ -1,0 +1,8 @@
+z <- c(1+2i, -3+4i, 0+1i)
+print(all(abs(Re(cosh(z) - cos(1i * z))) < 1e-5))
+print(all(abs(Im(cosh(z) - cos(1i * z))) < 1e-5))
+print(all(abs(Re(sinh(z) - sin(1i * z) / 1i)) < 1e-5))
+print(all(abs(Im(sinh(z) - sin(1i * z) / 1i)) < 1e-5))
+print(identical(tanh(356 + 0i), 1 + 0i))
+print(as.complex(NaN))
+print(as.complex(NaN) + as.complex(NaN))
