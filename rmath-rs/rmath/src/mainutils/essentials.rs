@@ -13495,17 +13495,93 @@ pub unsafe fn do_str_wrap(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-/// R-like `path_package(package, ...)` — find package path (simplified: return empty string).
+/// R-like `path_package(package, ...)` — find package paths through the session library policy.
 pub unsafe fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let _pkg = CAR(args);
-        Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
+        let package_arg = arg_by_name_or_position(args, &["package"], 0);
+        if package_arg.is_null() || package_arg == R_NilValue() || XLENGTH(package_arg) == 0 {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+
+        let mut paths = Vec::new();
+        for i in 0..XLENGTH(package_arg) {
+            let package = elt_to_string(package_arg, i);
+            let path = find_package_path(&package);
+            if !path.is_empty() {
+                paths.push(path);
+            }
+        }
+        string_vector(&paths)
     }
 }
 
-/// R's `system.file(..., package)` — find system file (simplified: return empty string).
+/// R's `system.file(..., package)` — find files inside an installed package.
 pub unsafe fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_mkString(CString::new("").unwrap_or_default().as_ptr()) }
+    unsafe {
+        let package_arg = arg_by_name_or_position(args, &["package"], usize::MAX);
+        let package = if package_arg.is_null() || package_arg == R_NilValue() {
+            "base".to_string()
+        } else {
+            let n = XLENGTH(package_arg);
+            if n != 1 {
+                package_error("'package' must be of length 1");
+            }
+            elt_to_string(package_arg, 0)
+        };
+
+        let package_path = find_package_path(&package);
+        let must_work = named_logical_arg(args, "mustWork").unwrap_or(false);
+        if package_path.is_empty() {
+            if must_work {
+                package_error(format!("no file found for package '{}'", package));
+            }
+            return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+        }
+
+        let mut path = PathBuf::from(package_path);
+        for part in system_file_parts(args) {
+            if !part.is_empty() {
+                path.push(part);
+            }
+        }
+
+        if path.exists() {
+            Rf_mkString(
+                CString::new(path.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+                    .as_ptr(),
+            )
+        } else {
+            if must_work {
+                package_error(format!(
+                    "no file found for requested path in package '{}'",
+                    package
+                ));
+            }
+            Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
+        }
+    }
+}
+
+fn system_file_parts(args: SEXP) -> Vec<String> {
+    unsafe {
+        let mut parts = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).is_none() {
+                let value = CAR(current);
+                if !value.is_null() && value != R_NilValue() && TYPEOF(value) == SEXPTYPE::STRSXP {
+                    for i in 0..XLENGTH(value) {
+                        if !is_string_na(value, i) {
+                            parts.push(elt_to_string(value, i));
+                        }
+                    }
+                }
+            }
+            current = CDR(current);
+        }
+        parts
+    }
 }
 
 // ---------------------------------------------------------------------------
