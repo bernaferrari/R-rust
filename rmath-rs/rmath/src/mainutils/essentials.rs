@@ -16450,31 +16450,53 @@ pub unsafe fn do_R_home(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// R's `Sys.getenv(x)` — get environment variable.
 pub unsafe fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             let s = CString::new("").unwrap_or_default();
             return Rf_mkString(s.as_ptr());
         }
-        let name = elt_to_string(x, 0);
-        let val = std::env::var(&name).unwrap_or_default();
-        let s = CString::new(val).unwrap_or_default();
-        Rf_mkString(s.as_ptr())
+        let unset_arg = arg_by_name_or_position(args, &["unset"], 1);
+        let unset = if !unset_arg.is_null()
+            && unset_arg != R_NilValue()
+            && TYPEOF(unset_arg) == SEXPTYPE::STRSXP
+            && XLENGTH(unset_arg) > 0
+            && STRING_ELT(unset_arg, 0) == crate::sexp::globals::R_NaString()
+        {
+            None
+        } else if !unset_arg.is_null() && unset_arg != R_NilValue() && XLENGTH(unset_arg) > 0 {
+            Some(elt_to_string(unset_arg, 0))
+        } else {
+            Some(String::new())
+        };
+
+        let values = (0..XLENGTH(x))
+            .map(|i| {
+                let name = elt_to_string(x, i);
+                std::env::var(&name).ok().or_else(|| unset.clone())
+            })
+            .collect::<Vec<_>>();
+        optional_string_vector(&values)
     }
 }
 
 /// R's `Sys.setenv(...)` — set environment variables.
 pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        // Each argument is name=value
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
-            if !arg.is_null() && !arg.is_null() {
-                let s = elt_to_string(arg, 0);
-                if let Some(pos) = s.find('=') {
-                    let key = &s[..pos];
-                    let val = &s[pos + 1..];
-                    std::env::set_var(key, val);
+            if !arg.is_null() && arg != R_NilValue() {
+                if let Some(key) = tag_name(current)
+                    && !key.is_empty()
+                {
+                    std::env::set_var(key, elt_to_string(arg, 0));
+                } else {
+                    let s = elt_to_string(arg, 0);
+                    if let Some(pos) = s.find('=') {
+                        let key = &s[..pos];
+                        let val = &s[pos + 1..];
+                        std::env::set_var(key, val);
+                    }
                 }
             }
             current = CDR(current);
@@ -16486,12 +16508,16 @@ pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `Sys.unsetenv(x)` — unset environment variable.
 pub unsafe fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let name = elt_to_string(x, 0);
-        std::env::remove_var(&name);
+        for i in 0..XLENGTH(x) {
+            let name = elt_to_string(x, i);
+            if !name.is_empty() && name != "NA" {
+                std::env::remove_var(name);
+            }
+        }
         Rf_ScalarLogical(TRUE)
     }
 }
