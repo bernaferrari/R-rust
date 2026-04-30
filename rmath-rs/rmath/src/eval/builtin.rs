@@ -159,6 +159,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "bquote",
+        handler: crate::mainutils::essentials::do_bquote,
+        restore_visibility_always: true,
+    },
+    UnevaluatedBuiltin {
         name: "::",
         handler: crate::mainutils::essentials::do_namespace_get,
         restore_visibility_always: false,
@@ -1440,10 +1445,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "dget",
         handler: crate::mainutils::essentials::do_dget,
-    },
-    EvaluatedBuiltin {
-        name: "bquote",
-        handler: crate::mainutils::essentials::do_bquote,
     },
     EvaluatedBuiltin {
         name: "rownames_to_column",

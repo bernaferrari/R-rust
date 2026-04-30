@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
-    PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT,
-    TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR, SETTAG,
+    STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -13730,14 +13730,68 @@ pub unsafe fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `bquote(expr)` — backquote substitution (simplified: return expr as-is).
-pub unsafe fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// R's `bquote(expr)` — quote with `.(...)` substitution.
+pub unsafe fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         if expr.is_null() {
             return R_NilValue();
         }
-        expr
+        bquote_walk(expr, rho)
+    }
+}
+
+unsafe fn bquote_walk(expr: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if expr.is_null() || expr == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let expr_type = TYPEOF(expr);
+        if expr_type == SEXPTYPE::LANGSXP && is_bquote_unquote_call(expr) {
+            let unquoted = CAR(CDR(expr));
+            return crate::eval::eval::Rf_eval(unquoted, rho);
+        }
+
+        if expr_type != SEXPTYPE::LANGSXP && expr_type != SEXPTYPE::LISTSXP {
+            return expr;
+        }
+
+        let mut source = expr;
+        let mut head = R_NilValue();
+        let mut tail = R_NilValue();
+        while !source.is_null() && source != R_NilValue() {
+            let value = bquote_walk(CAR(source), rho);
+            let cell = Rf_cons(value, R_NilValue());
+            SETTAG(cell, TAG(source));
+            if head == R_NilValue() {
+                head = cell;
+            } else {
+                SETCDR(tail, cell);
+            }
+            tail = cell;
+            source = CDR(source);
+        }
+        if expr_type == SEXPTYPE::LANGSXP && !head.is_null() && head != R_NilValue() {
+            (*head).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        head
+    }
+}
+
+unsafe fn is_bquote_unquote_call(expr: SEXP) -> bool {
+    unsafe {
+        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return false;
+        }
+        let head = CAR(expr);
+        if TYPEOF(head) != SEXPTYPE::SYMSXP || symbol_name(head).as_deref() != Some(".") {
+            return false;
+        }
+        let args = CDR(expr);
+        !args.is_null()
+            && args != R_NilValue()
+            && (CDR(args).is_null() || CDR(args) == R_NilValue())
     }
 }
 
