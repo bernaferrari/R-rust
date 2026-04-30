@@ -785,6 +785,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_file_create,
     },
     EvaluatedBuiltin {
+        name: "file.append",
+        handler: crate::mainutils::platform::do_fileappend,
+    },
+    EvaluatedBuiltin {
         name: "file.remove",
         handler: crate::mainutils::platform::do_fileremove,
     },

@@ -297,60 +297,86 @@ pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     }
 }
 
-/// R's `file.append()` — append files.
+fn platform_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
+}
+
+unsafe fn is_na_charsxp(s: SEXP) -> bool {
+    unsafe { s.is_null() || (*s).sxpinfo.gp() & 1 != 0 }
+}
+
+unsafe fn path_at(paths: SEXP, index: usize) -> Option<String> {
+    unsafe {
+        let elt = crate::sexp::accessors::STRING_ELT(paths, index as crate::sexp::ffi::R_xlen_t);
+        if is_na_charsxp(elt) {
+            return None;
+        }
+        CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+            .to_str()
+            .ok()
+            .map(str::to_owned)
+    }
+}
+
+fn append_file(destination: &str, source: &str) -> bool {
+    let Ok(metadata) = std::fs::metadata(source) else {
+        return false;
+    };
+    if metadata.is_dir() {
+        return false;
+    }
+
+    let Ok(mut input) = std::fs::File::open(source) else {
+        return false;
+    };
+    let Ok(mut output) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(destination)
+    else {
+        return false;
+    };
+
+    std::io::copy(&mut input, &mut output).is_ok()
+}
+
+/// R's `file.append(file1, file2)` — append source files in `file2` to destinations in `file1`.
 pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADDR, CADR, CAR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::Rf_ScalarLogical;
-        use crate::sexp::ffi::{FALSE, TRUE};
-        use crate::sexp::globals::R_NilValue;
-        use std::fs::OpenOptions;
-        use std::io::Write;
+        use crate::sexp::accessors::{CADR, CAR, LENGTH, LOGICAL, TYPEOF};
+        use crate::sexp::constructors::Rf_allocVector3;
+        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
 
-        let files = CAR(args);
-        let output = CADR(args);
-        let append = CADDR(args);
+        let file1 = CAR(args);
+        let file2 = CADR(args);
+        if TYPEOF(file1) != SEXPTYPE::STRSXP.as_c_int() {
+            platform_error("invalid 'file1' argument");
+        }
+        if TYPEOF(file2) != SEXPTYPE::STRSXP.as_c_int() {
+            platform_error("invalid 'file2' argument");
+        }
 
-        let do_append = if !append.is_null() && append != R_NilValue() {
-            let v = *crate::sexp::accessors::LOGICAL(append);
-            v != 0 && v != crate::sexp::ffi::NA_INTEGER
-        } else {
-            true
-        };
-
-        let out_str = if !output.is_null() && output != R_NilValue() {
-            let out_elt = STRING_ELT(output, 0);
-            if !out_elt.is_null() && out_elt != R_NilValue() {
-                let c = CStr::from_ptr(crate::sexp::accessors::CHAR(out_elt));
-                c.to_str().unwrap_or("").to_string()
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        };
-
-        let ans = Rf_ScalarLogical(FALSE);
+        let n1 = LENGTH(file1) as usize;
+        let n2 = LENGTH(file2) as usize;
+        if n1 == 0 {
+            platform_error("nothing to append to");
+        }
+        if n2 == 0 {
+            return Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), 0);
+        }
+        let n = n1.max(n2);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         let _ans_guard = protect(ans);
-        let n = LENGTH(files);
+        let out = LOGICAL(ans);
 
-        for i in 0..n as usize {
-            let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                continue;
-            }
-            let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-            let path = c.to_str().unwrap_or("");
-            if let Ok(data) = std::fs::read(path)
-                && let Ok(mut file) = OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .append(do_append)
-                    .open(&out_str)
-            {
-                let _ = file.write_all(&data);
-                *crate::sexp::accessors::LOGICAL(ans) = TRUE;
-            }
+        for i in 0..n {
+            let ok = match (path_at(file1, i % n1), path_at(file2, i % n2)) {
+                (Some(destination), Some(source)) => append_file(&destination, &source),
+                _ => false,
+            };
+            *out.add(i) = if ok { TRUE } else { FALSE };
         }
         ans
     }

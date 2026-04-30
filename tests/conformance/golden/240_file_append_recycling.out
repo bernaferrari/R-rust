@@ -1,0 +1,6 @@
+[1] TRUE TRUE
+[1] "a" "x" "y"
+[1] TRUE TRUE TRUE
+[1] "a" "x" "y" "x" "z"
+[1] "b" "y"
+[1] FALSE

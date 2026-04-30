@@ -1,0 +1,18 @@
+target1 <- tempfile()
+target2 <- tempfile()
+source1 <- tempfile()
+source2 <- tempfile()
+source3 <- tempfile()
+
+writeLines("a", target1)
+writeLines("b", target2)
+writeLines("x", source1)
+writeLines("y", source2)
+writeLines("z", source3)
+
+print(file.append(target1, c(source1, source2)))
+print(readLines(target1))
+print(file.append(c(target1, target2), c(source1, source2, source3)))
+print(readLines(target1))
+print(readLines(target2))
+print(file.append(target1, paste0(source1, "-missing")))

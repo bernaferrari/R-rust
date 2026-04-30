@@ -3712,6 +3712,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "dir.exists",
             "dir.create",
             "file.create",
+            "file.append",
             "file.remove",
             "file.rename",
             "file.copy",
