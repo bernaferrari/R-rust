@@ -2069,6 +2069,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_find_package,
     },
     EvaluatedBuiltin {
+        name: "packageVersion",
+        handler: crate::mainutils::essentials::do_package_version,
+    },
+    EvaluatedBuiltin {
+        name: "packageDescription",
+        handler: crate::mainutils::essentials::do_package_description,
+    },
+    EvaluatedBuiltin {
         name: "data",
         handler: crate::mainutils::essentials::do_data,
     },

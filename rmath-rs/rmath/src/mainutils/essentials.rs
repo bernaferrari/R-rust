@@ -3118,6 +3118,53 @@ pub unsafe fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// R's `packageVersion(pkg)` — read a package version from DESCRIPTION.
+pub unsafe fn do_package_version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let package_arg = arg_by_name_or_position(args, &["pkg", "package"], 0);
+        let package = elt_to_string(package_arg, 0);
+        match package_description_fields(&package) {
+            Ok(fields) => match fields.get("Version") {
+                Some(version) => string_vector(std::slice::from_ref(version)),
+                None => package_error(format!("package '{}' has no Version field", package)),
+            },
+            Err(message) => package_error(message),
+        }
+    }
+}
+
+/// R's `packageDescription(pkg, fields = NULL)` — read DESCRIPTION metadata.
+pub unsafe fn do_package_description(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let package_arg = arg_by_name_or_position(args, &["pkg", "package"], 0);
+        let fields_arg = arg_by_name_or_position(args, &["fields"], 1);
+        let package = elt_to_string(package_arg, 0);
+        let fields = match package_description_fields(&package) {
+            Ok(fields) => fields,
+            Err(message) => package_error(message),
+        };
+
+        if !fields_arg.is_null() && fields_arg != R_NilValue() && XLENGTH(fields_arg) > 0 {
+            let selected = (0..XLENGTH(fields_arg))
+                .map(|i| {
+                    let name = elt_to_string(fields_arg, i);
+                    fields
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or_else(|| "NA".to_string())
+                })
+                .collect::<Vec<_>>();
+            return string_vector(&selected);
+        }
+
+        named_string_list(
+            fields
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        )
+    }
+}
+
 /// R's `data(..., package, envir)` — load package data.
 ///
 /// The Android runtime intentionally supports source-form package data
@@ -3870,6 +3917,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "require",
             "installed.packages",
             "find.package",
+            "packageVersion",
+            "packageDescription",
             "data",
             "detach",
             "search",
@@ -3989,6 +4038,40 @@ unsafe fn string_vector(values: &[String]) -> SEXP {
     }
 }
 
+unsafe fn named_string_list(items: impl IntoIterator<Item = (String, String)>) -> SEXP {
+    unsafe {
+        let items = items.into_iter().collect::<Vec<_>>();
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, items.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, items.len() as R_xlen_t);
+        if names.is_null() {
+            return R_NilValue();
+        }
+        let _names_guard = protect(names);
+
+        for (i, (name, value)) in items.iter().enumerate() {
+            let value_vec = string_vector(std::slice::from_ref(value));
+            SET_VECTOR_ELT(result, i as R_xlen_t, value_vec);
+            SET_STRING_ELT(
+                names,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(name.as_str()).unwrap_or_default().as_ptr()),
+            );
+        }
+
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        result
+    }
+}
+
 /// Try to find a package by name in this session's configured library paths.
 fn find_package_path(package: &str) -> String {
     crate::sexp::instance::with_required_current_instance(|inst| {
@@ -3997,6 +4080,22 @@ fn find_package_path(package: &str) -> String {
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default()
     })
+}
+
+fn package_description_fields(package: &str) -> Result<BTreeMap<String, String>, String> {
+    if package.is_empty() || package == "NA" {
+        return Err("invalid package name".to_string());
+    }
+
+    let package_path = find_package_path(package);
+    if package_path.is_empty() {
+        return Err(format!("there is no package called '{}'", package));
+    }
+
+    let description = Path::new(&package_path).join("DESCRIPTION");
+    let content = std::fs::read_to_string(&description)
+        .map_err(|err| format!("could not read {}: {err}", description.display()))?;
+    Ok(description_fields(&content))
 }
 
 const INSTALLED_PACKAGE_COLUMNS: [&str; 16] = [

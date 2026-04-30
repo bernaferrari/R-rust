@@ -1593,6 +1593,24 @@ mod tests {
             session.package_path("corpbase"),
             Some(base_pkg.to_string_lossy().into_owned())
         );
+        assert_eq!(
+            session
+                .eval("packageVersion(\"corpbase\") == \"0.1.0\"")
+                .expect("package version"),
+            "[1] TRUE"
+        );
+        assert_eq!(
+            session
+                .eval("packageDescription(\"corpbase\")$Title")
+                .expect("package description title"),
+            "[1] \"Corpus Base Package\""
+        );
+        assert_eq!(
+            session
+                .eval("packageDescription(\"corpbase\", fields = c(\"Package\", \"Version\"))")
+                .expect("package description fields"),
+            "[1] \"corpbase\" \"0.1.0\""
+        );
 
         session.load_package("corpbase").expect("load corpbase");
         assert_eq!(session.eval("base_value()").expect("base value"), "[1] 10");
