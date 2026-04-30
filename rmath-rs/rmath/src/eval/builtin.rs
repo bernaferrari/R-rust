@@ -77,6 +77,20 @@ pub(super) fn unevaluated_builtin_handler(name: &str) -> Option<UnevaluatedBuilt
         .copied()
 }
 
+/// Return whether the Rust evaluator has a builtin implementation for `name`.
+///
+/// Builtins are dispatched directly by the evaluator rather than being eagerly
+/// materialized into every session environment, so reflective helpers such as
+/// `exists()` need a shared view of this table.
+pub(crate) fn has_builtin_handler(name: &str) -> bool {
+    EVALUATED_BUILTINS
+        .iter()
+        .any(|builtin| builtin.name == name)
+        || UNEVALUATED_BUILTINS
+            .iter()
+            .any(|builtin| builtin.name == name)
+}
+
 pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
         name: "missing",
@@ -245,6 +259,26 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "!=",
         handler: super::arithmetic::do_relop,
+    },
+    EvaluatedBuiltin {
+        name: "&",
+        handler: crate::mainutils::logic::do_logic,
+    },
+    EvaluatedBuiltin {
+        name: "|",
+        handler: crate::mainutils::logic::do_logic,
+    },
+    EvaluatedBuiltin {
+        name: "!",
+        handler: crate::mainutils::logic::do_logic,
+    },
+    EvaluatedBuiltin {
+        name: "&&",
+        handler: crate::mainutils::logic::do_logic2,
+    },
+    EvaluatedBuiltin {
+        name: "||",
+        handler: crate::mainutils::logic::do_logic2,
     },
     EvaluatedBuiltin {
         name: "abs",
@@ -604,6 +638,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "rownames",
+        handler: crate::mainutils::essentials::do_rownames,
+    },
+    EvaluatedBuiltin {
+        name: "row.names",
         handler: crate::mainutils::essentials::do_rownames,
     },
     EvaluatedBuiltin {
@@ -2332,6 +2370,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "rownames<-",
+        handler: crate::mainutils::essentials::do_rownames_set,
+    },
+    EvaluatedBuiltin {
+        name: "row.names<-",
         handler: crate::mainutils::essentials::do_rownames_set,
     },
     EvaluatedBuiltin {

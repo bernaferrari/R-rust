@@ -3441,6 +3441,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "ncol",
             "lengths",
             "rownames",
+            "row.names",
             "colnames",
             "class",
             "list",
@@ -3454,6 +3455,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "names<-",
             "dimnames<-",
             "rownames<-",
+            "row.names<-",
             "colnames<-",
             "class<-",
             "noquote",
@@ -6473,7 +6475,7 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let name_arg = arg_by_name_or_position(args, &["x"], 0);
         let name = elt_to_string(name_arg, 0);
-        let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
         let env = environment_arg_or_default(args, &["envir", "where", "frame"], 1, rho);
         let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
         let val = if inherits {
@@ -6481,13 +6483,9 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             crate::sexp::envir::R_findVarInFrame(env, sym)
         };
-        Rf_ScalarLogical(
-            if !val.is_null() && val != crate::sexp::globals::R_UnboundValue() {
-                TRUE
-            } else {
-                FALSE
-            },
-        )
+        let found = (!val.is_null() && val != crate::sexp::globals::R_UnboundValue())
+            || crate::eval::builtin::has_builtin_handler(&name);
+        Rf_ScalarLogical(if found { TRUE } else { FALSE })
     }
 }
 
@@ -8581,6 +8579,9 @@ pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         );
         if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 1 {
             return VECTOR_ELT(dimnames, 0);
+        }
+        if is_data_frame_like(x) {
+            return string_vector(&data_frame_row_names(x));
         }
         crate::sexp::attrib_core::getAttrib(
             x,
@@ -13799,37 +13800,223 @@ unsafe fn is_bquote_unquote_call(expr: SEXP) -> bool {
 // Complete S3
 // ---------------------------------------------------------------------------
 
-/// R-like `rownames_to_column(x, var)` — convert rownames to a column (simplified).
+/// R-like `rownames_to_column(x, var)` — convert row names to a leading column.
 pub unsafe fn do_rownames_to_column(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
+        if !is_data_frame_like(x) {
+            data_frame_error("rownames_to_column() requires a data frame");
         }
-        x
+        let var_arg = arg_by_name_or_position(args, &["var"], 1);
+        let var = if var_arg.is_null() || var_arg == R_NilValue() || XLENGTH(var_arg) == 0 {
+            "rowname".to_string()
+        } else {
+            elt_to_string(var_arg, 0)
+        };
+
+        let mut names = data_frame_column_names(x);
+        let mut columns = data_frame_columns(x);
+        names.insert(0, var);
+        columns.insert(0, string_vector(&data_frame_row_names(x)));
+        build_data_frame(columns, names, data_frame_row_names_attr(x))
     }
 }
 
-/// R-like `column_to_rownames(x, var)` — convert column to rownames (simplified).
+/// R-like `column_to_rownames(x, var)` — convert a column to row names.
 pub unsafe fn do_column_to_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
+        if !is_data_frame_like(x) {
+            data_frame_error("column_to_rownames() requires a data frame");
         }
-        x
+        let var_arg = arg_by_name_or_position(args, &["var"], 1);
+        let var = if var_arg.is_null() || var_arg == R_NilValue() || XLENGTH(var_arg) == 0 {
+            "rowname".to_string()
+        } else {
+            elt_to_string(var_arg, 0)
+        };
+        let names = data_frame_column_names(x);
+        let Some(row_col) = names.iter().position(|name| name == &var) else {
+            data_frame_error(format!("column '{}' not found", var));
+        };
+
+        let mut out_names = Vec::new();
+        let mut out_columns = Vec::new();
+        for (i, name) in names.into_iter().enumerate() {
+            if i != row_col {
+                out_names.push(name);
+                out_columns.push(VECTOR_ELT(x, i as R_xlen_t));
+            }
+        }
+        build_data_frame(
+            out_columns,
+            out_names,
+            string_vector(&vector_to_string_values(VECTOR_ELT(x, row_col as R_xlen_t))),
+        )
     }
 }
 
-/// R-like `relocate(...cols, .before, .after)` — reorder columns (simplified: return x).
+/// R-like `relocate(x, cols, .before, .after)` — reorder data-frame columns.
 pub unsafe fn do_relocate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() {
+        if !is_data_frame_like(x) {
+            data_frame_error("relocate() requires a data frame");
+        }
+        let cols_arg = arg_by_name_or_position(args, &["cols", ".cols"], 1);
+        let before_arg = arg_by_name_or_position(args, &[".before", "before"], usize::MAX);
+        let after_arg = arg_by_name_or_position(args, &[".after", "after"], usize::MAX);
+        let names = data_frame_column_names(x);
+        let requested = string_arg_values(cols_arg);
+        let moving: Vec<String> = requested
+            .into_iter()
+            .filter(|name| names.iter().any(|column| column == name))
+            .collect();
+        if moving.is_empty() {
+            return x;
+        }
+
+        let mut rest: Vec<String> = names
+            .iter()
+            .filter(|name| !moving.iter().any(|moving_name| moving_name == *name))
+            .cloned()
+            .collect();
+        let insert_at = if !before_arg.is_null() && before_arg != R_NilValue() {
+            let before = elt_to_string(before_arg, 0);
+            rest.iter()
+                .position(|name| name == &before)
+                .unwrap_or(rest.len())
+        } else if !after_arg.is_null() && after_arg != R_NilValue() {
+            let after = elt_to_string(after_arg, 0);
+            rest.iter()
+                .position(|name| name == &after)
+                .map(|idx| idx + 1)
+                .unwrap_or(rest.len())
+        } else {
+            0
+        };
+        for (offset, name) in moving.into_iter().enumerate() {
+            rest.insert(insert_at + offset, name);
+        }
+
+        let mut out_columns = Vec::new();
+        for name in &rest {
+            if let Some(idx) = names.iter().position(|column| column == name) {
+                out_columns.push(VECTOR_ELT(x, idx as R_xlen_t));
+            }
+        }
+        build_data_frame(out_columns, rest, data_frame_row_names_attr(x))
+    }
+}
+
+fn is_data_frame_like(x: SEXP) -> bool {
+    unsafe {
+        !x.is_null()
+            && x != R_NilValue()
+            && TYPEOF(x) == SEXPTYPE::VECSXP
+            && is_data_frame_object(x)
+    }
+}
+
+fn data_frame_column_names(x: SEXP) -> Vec<String> {
+    unsafe {
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return (0..XLENGTH(x)).map(|i| format!("V{}", i + 1)).collect();
+        }
+        (0..XLENGTH(x)).map(|i| elt_to_string(names, i)).collect()
+    }
+}
+
+fn data_frame_columns(x: SEXP) -> Vec<SEXP> {
+    unsafe { (0..XLENGTH(x)).map(|i| VECTOR_ELT(x, i)).collect() }
+}
+
+fn data_frame_row_names_attr(x: SEXP) -> SEXP {
+    unsafe {
+        crate::sexp::attrib_core::getAttrib(
+            x,
+            Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
+        )
+    }
+}
+
+fn data_frame_row_names(x: SEXP) -> Vec<String> {
+    unsafe {
+        let attr = data_frame_row_names_attr(x);
+        if attr.is_null() || attr == R_NilValue() {
+            return (1..=data_frame_row_count(x))
+                .map(|i| i.to_string())
+                .collect();
+        }
+        if TYPEOF(attr) == SEXPTYPE::STRSXP {
+            return (0..XLENGTH(attr)).map(|i| elt_to_string(attr, i)).collect();
+        }
+        if TYPEOF(attr) == SEXPTYPE::INTSXP && LENGTH(attr) == 2 {
+            let first = *INTEGER(attr);
+            let second = *INTEGER(attr).add(1);
+            if first == NA_INTEGER && second < 0 {
+                return (1..=(-second as R_xlen_t)).map(|i| i.to_string()).collect();
+            }
+        }
+        vector_to_string_values(attr)
+    }
+}
+
+fn vector_to_string_values(x: SEXP) -> Vec<String> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Vec::new();
+        }
+        (0..XLENGTH(x)).map(|i| elt_to_string(x, i)).collect()
+    }
+}
+
+fn string_arg_values(x: SEXP) -> Vec<String> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Vec::new();
+        }
+        (0..XLENGTH(x)).map(|i| elt_to_string(x, i)).collect()
+    }
+}
+
+fn build_data_frame(columns: Vec<SEXP>, names: Vec<String>, row_names: SEXP) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
+        if result.is_null() {
             return R_NilValue();
         }
-        x
+        let _result_guard = protect(result);
+        for (i, column) in columns.into_iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, column);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            string_vector(&names),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+            Rf_mkString(CString::new("data.frame").unwrap_or_default().as_ptr()),
+        );
+        if !row_names.is_null() && row_names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
+                row_names,
+            );
+        }
+        result
     }
+}
+
+fn data_frame_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    })
 }
 
 // ---------------------------------------------------------------------------

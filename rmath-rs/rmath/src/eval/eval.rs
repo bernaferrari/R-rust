@@ -18,6 +18,7 @@
 //! The C-shaped [`Rf_eval`] entrypoint is crate-local translation scaffolding
 //! for ported code that still passes raw `SEXP` pointers.
 
+use std::ffi::CString;
 use std::os::raw::c_int;
 
 use crate::sexp::envir::forcePromise;
@@ -163,7 +164,18 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
     match classify_expr(expr) {
         EvalKind::SelfEvaluating => Ok(expr),
         EvalKind::Symbol => {
-            find_var_result(expr, env)?.ok_or_else(|| format!("object '{}' not found", expr))
+            if let Some(value) = find_var_result(expr, env)? {
+                return Ok(value);
+            }
+            let name = unsafe { get_symbol_name(expr.as_raw()) };
+            let primitive = CString::new(name.as_str())
+                .ok()
+                .map(|name| unsafe { crate::mainutils::names::R_Primitive(name.as_ptr()) })
+                .filter(|primitive| !primitive.is_null() && *primitive != unsafe { R_NilValue() });
+            match primitive {
+                Some(primitive) => Ok(unsafe { Sexp::from_raw_unchecked(primitive) }),
+                None => Err(format!("object '{}' not found", expr)),
+            }
         }
         EvalKind::Language => eval_lang_safe(expr, env),
         EvalKind::Closure => Ok(expr),
