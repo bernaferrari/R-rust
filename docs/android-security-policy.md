@@ -32,6 +32,9 @@ runtime core.
 - Serialized package data and lazy-load databases (`*.rda`, `*.RData`,
   `Rdata.rdb`, `Rdata.rdx`) are rejected with policy errors until the Rust
   serializer can prove GNU R file-format parity.
+- Byte-compiled/lazyload package code databases under `R/*.rdb` or `R/*.rdx`
+  are rejected with policy errors. Android-facing packages must ship source
+  `R/*.R` files for now.
 - Native package loading is intentionally rejected. A `useDynLib()` directive
   returns a clear error because Android app package loading needs an explicit
   host-owned native-library policy, not implicit `dlopen` behavior.

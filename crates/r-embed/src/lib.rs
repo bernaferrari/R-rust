@@ -1546,6 +1546,24 @@ mod tests {
         write_fixture_package(
             &bundled,
             FixturePackage {
+                name: "corpbytecode",
+                description: concat!(
+                    "Package: corpbytecode\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Bytecode Policy Package\n",
+                    "Description: Exercises lazyload bytecode rejection.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(byte_value)\n",
+                sources: &[],
+                data_sources: &[],
+                extra_files: &[("R/corpbytecode.rdb", b"unsupported lazyload code")],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
                 name: "corplazydata",
                 description: concat!(
                     "Package: corplazydata\n",
@@ -1577,6 +1595,7 @@ mod tests {
             installed_names,
             vec![
                 "corpbase",
+                "corpbytecode",
                 "corpcompiled",
                 "corpdataenv",
                 "corpfrom",
@@ -1732,6 +1751,15 @@ mod tests {
         assert!(
             compiled.to_string().contains("NeedsCompilation: yes"),
             "{compiled}"
+        );
+        let bytecode = session
+            .load_package("corpbytecode")
+            .expect_err("bytecode package should be rejected");
+        assert!(
+            bytecode
+                .to_string()
+                .contains("unsupported byte-compiled/lazyload R code"),
+            "{bytecode}"
         );
         session
             .load_package("corplazydata")

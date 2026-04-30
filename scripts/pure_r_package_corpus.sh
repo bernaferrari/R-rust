@@ -15,7 +15,7 @@ readers, namespace-only loading, namespace-qualified access,
 imports/importFrom/exportPattern, source-form package data, explicit data
 environments, source-form LazyData, serialized data policy errors, same-name
 package isolation across sessions, S4 package code, package-visible library
-paths, and explicit rejection of native/compiled packages.
+paths, and explicit rejection of native/compiled/bytecode packages.
 
 Options:
   --check          Fail when any corpus test fails.
@@ -89,7 +89,7 @@ scenarios = [
     "S4 class creation and slot access from package code",
     "package-visible Android library paths",
     "serialized lazy-data policy rejection",
-    "explicit native-code package rejection",
+    "explicit native-code, compiled-code, and bytecode package rejection",
     "same-name package isolation across sessions",
 ]
 

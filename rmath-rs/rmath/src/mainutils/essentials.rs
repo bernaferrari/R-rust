@@ -4493,6 +4493,7 @@ unsafe fn load_package_namespace(
 
         define_package_metadata(package, package_env);
         reject_unsupported_internal_data(package, package_dir)?;
+        reject_unsupported_lazyload_code(package, package_dir)?;
         let namespace = populate_package_namespace(package, package_dir, package_env, loading)?;
         cache_package_namespace(package, package_dir, package_env);
         Ok((package_env, namespace))
@@ -4654,6 +4655,32 @@ fn reject_unsupported_internal_data(package: &str, package_dir: &Path) -> Result
             ));
         }
     }
+    Ok(())
+}
+
+fn reject_unsupported_lazyload_code(package: &str, package_dir: &Path) -> Result<(), String> {
+    let r_dir = package_dir.join("R");
+    if !r_dir.is_dir() {
+        return Ok(());
+    }
+
+    let entries = std::fs::read_dir(&r_dir)
+        .map_err(|err| format!("could not read R directory for package '{package}': {err}"))?;
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let unsupported = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("rdb") || ext.eq_ignore_ascii_case("rdx"));
+        if unsupported {
+            return Err(format!(
+                "package '{}' uses unsupported byte-compiled/lazyload R code {}; this pure-R Android runtime supports source R/*.R files only",
+                package,
+                path.display()
+            ));
+        }
+    }
+
     Ok(())
 }
 
