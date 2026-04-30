@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 239 |
-| Passing | 239 |
+| Total parity cases | 240 |
+| Passing | 240 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -106,7 +106,7 @@ Current domain coverage:
 | --- | ---: | --- |
 | Parser and scalar basics | 49 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname cases, named-argument IO smoke including readLines/writeLines, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
-| Vectors, lists, attributes, and objects | 31 | Vectors, lists, names, subsetting, factors, class replacement, data-frame helper transforms, arithmetic attributes |
+| Vectors, lists, attributes, and objects | 32 | Vectors, lists, names, subsetting, factors, class replacement, date/time class attributes, data-frame helper transforms, arithmetic attributes |
 | Base functions, conditions, and platform helpers | 83 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, options/getOption including defaults, `sprintf` width/precision basics, `proc.time`, file/temp helpers including `file.info`, `cat(file=...)`, path-string `readLines`, `file.access`/copy/rename/remove, and unique per-session `tempfile()`, wrapping helpers |
 | Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int` invariants |
 | Packages, namespaces, and S3 | 4 | Package namespace and S3 fixtures plus `system.file()` and the pure-R package corpus gate |

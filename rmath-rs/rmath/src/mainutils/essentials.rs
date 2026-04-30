@@ -16683,16 +16683,20 @@ pub unsafe fn do_Sys_time(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             .unwrap_or_default();
         let secs = dur.as_secs() as f64 + dur.subsec_nanos() as f64 / 1e9;
         let result = Rf_ScalarReal(secs);
-        // Set class to POSIXct
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        // Set class to c("POSIXct", "POSIXt").
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
         if !class.is_null() {
             let _p2 = protect(class);
-            let cstr = CString::new("POSIXct").unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let data = (*class).gengc_next_node as *mut SEXP;
-                *data.add(0) = charsxp;
-            }
+            SET_STRING_ELT(
+                class,
+                0,
+                Rf_mkChar(CString::new("POSIXct").unwrap_or_default().as_ptr()),
+            );
+            SET_STRING_ELT(
+                class,
+                1,
+                Rf_mkChar(CString::new("POSIXt").unwrap_or_default().as_ptr()),
+            );
             crate::sexp::attrib_core::setAttrib(
                 result,
                 Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
@@ -16723,7 +16727,7 @@ pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let dur = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
-        let days = dur.as_secs() as f64 / 86400.0;
+        let days = (dur.as_secs() / 86400) as f64;
         let result = Rf_ScalarReal(days);
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class.is_null() {
