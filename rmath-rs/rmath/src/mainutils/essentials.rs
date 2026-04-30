@@ -8394,13 +8394,34 @@ pub unsafe fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // I/O builtins: cat() to file, writeLines(), file.exists()
 // ---------------------------------------------------------------------------
 
-/// R's `writeLines(text, con)` — write lines to file.
+/// R's `writeLines(text, con = stdout(), sep = "\n", useBytes = FALSE)`.
 pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let text = CAR(args);
-        let con = CAR(CDR(args));
         if text.is_null() || text == R_NilValue() {
             return R_NilValue();
+        }
+
+        let mut con = R_NilValue();
+        let mut sep = "\n".to_string();
+        let mut positional = 0;
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            let arg = CAR(current);
+            match tag_name(current).as_deref() {
+                Some("con") => con = arg,
+                Some("sep") => sep = elt_to_string(arg, 0),
+                Some("useBytes") => {}
+                _ => {
+                    match positional {
+                        0 => con = arg,
+                        1 => sep = elt_to_string(arg, 0),
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
         }
 
         let path = if con.is_null() || con == R_NilValue() {
@@ -8415,13 +8436,21 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             1
         };
         if path == "/dev/stdout" {
+            let mut output = String::new();
             for i in 0..n {
-                println!("{}", elt_to_string(text, i));
+                output.push_str(&elt_to_string(text, i));
+                output.push_str(&sep);
+            }
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stdout(&output);
+            } else {
+                print!("{}", output);
             }
         } else if let Ok(mut file) = std::fs::File::create(&path) {
             use std::io::Write;
             for i in 0..n {
-                let _ = writeln!(file, "{}", elt_to_string(text, i));
+                let _ = file.write_all(elt_to_string(text, i).as_bytes());
+                let _ = file.write_all(sep.as_bytes());
             }
         }
         crate::sexp::globals::set_R_Visible(FALSE);
