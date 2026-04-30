@@ -409,6 +409,38 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_c,
     },
     EvaluatedBuiltin {
+        name: "logical",
+        handler: crate::mainutils::essentials::do_logical_constructor,
+    },
+    EvaluatedBuiltin {
+        name: "integer",
+        handler: crate::mainutils::essentials::do_integer_constructor,
+    },
+    EvaluatedBuiltin {
+        name: "numeric",
+        handler: crate::mainutils::essentials::do_numeric_constructor,
+    },
+    EvaluatedBuiltin {
+        name: "double",
+        handler: crate::mainutils::essentials::do_numeric_constructor,
+    },
+    EvaluatedBuiltin {
+        name: "complex",
+        handler: crate::mainutils::essentials::do_complex_constructor,
+    },
+    EvaluatedBuiltin {
+        name: "character",
+        handler: crate::mainutils::essentials::do_character_constructor,
+    },
+    EvaluatedBuiltin {
+        name: "raw",
+        handler: crate::mainutils::essentials::do_raw_constructor,
+    },
+    EvaluatedBuiltin {
+        name: "vector",
+        handler: crate::mainutils::essentials::do_vector_constructor,
+    },
+    EvaluatedBuiltin {
         name: "seq",
         handler: crate::mainutils::essentials::do_seq,
     },

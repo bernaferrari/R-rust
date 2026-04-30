@@ -3536,6 +3536,14 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "typeof",
             "is.na",
             "names",
+            "logical",
+            "integer",
+            "numeric",
+            "double",
+            "complex",
+            "character",
+            "raw",
+            "vector",
             "which",
             "ifelse",
             "any",
@@ -15547,6 +15555,154 @@ fn elt_to_sexp(x: SEXP, i: R_xlen_t) -> SEXP {
         } else {
             R_NilValue()
         }
+    }
+}
+
+fn base_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
+}
+
+unsafe fn constructor_length(value: SEXP) -> R_xlen_t {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return 0;
+        }
+        if XLENGTH(value) == 0 {
+            return 0;
+        }
+
+        let raw_len = match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => *INTEGER(value),
+            t if t == SEXPTYPE::REALSXP => {
+                let value = *REAL(value);
+                if value.is_nan() || value < 0.0 {
+                    base_error("invalid 'length' argument");
+                }
+                value.trunc() as i32
+            }
+            t if t == SEXPTYPE::STRSXP => elt_to_string(value, 0)
+                .parse::<i32>()
+                .unwrap_or_else(|_| base_error("invalid 'length' argument")),
+            _ => base_error("invalid 'length' argument"),
+        };
+
+        if raw_len == NA_INTEGER || raw_len < 0 {
+            base_error("invalid 'length' argument");
+        }
+        raw_len as R_xlen_t
+    }
+}
+
+unsafe fn first_constructor_arg(args: SEXP, name: &str, position: usize) -> SEXP {
+    unsafe {
+        let mut current = args;
+        let mut positional = 0;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match tag_name(current).as_deref() {
+                Some(tag) if tag == name => return value,
+                Some(_) => {}
+                None => {
+                    if positional == position {
+                        return value;
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn allocate_initialized_vector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(sexptype, length);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _guard = protect(result);
+        match sexptype {
+            t if t == SEXPTYPE::STRSXP => {
+                let empty = Rf_mkChar(c"".as_ptr());
+                for i in 0..length {
+                    SET_STRING_ELT(result, i, empty);
+                }
+            }
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                for i in 0..length {
+                    SET_VECTOR_ELT(result, i, R_NilValue());
+                }
+            }
+            _ => {}
+        }
+        result
+    }
+}
+
+unsafe fn do_typed_vector_constructor(args: SEXP, sexptype: SEXPTYPE) -> SEXP {
+    unsafe {
+        let length_arg = first_constructor_arg(args, "length", 0);
+        let length = constructor_length(length_arg);
+        allocate_initialized_vector(sexptype, length)
+    }
+}
+
+/// R's `logical(length = 0)` constructor.
+pub unsafe fn do_logical_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_typed_vector_constructor(args, SEXPTYPE::LGLSXP) }
+}
+
+/// R's `integer(length = 0)` constructor.
+pub unsafe fn do_integer_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_typed_vector_constructor(args, SEXPTYPE::INTSXP) }
+}
+
+/// R's `numeric(length = 0)` / `double(length = 0)` constructor.
+pub unsafe fn do_numeric_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_typed_vector_constructor(args, SEXPTYPE::REALSXP) }
+}
+
+/// R's `complex(length = 0)` constructor.
+pub unsafe fn do_complex_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_typed_vector_constructor(args, SEXPTYPE::CPLXSXP) }
+}
+
+/// R's `character(length = 0)` constructor.
+pub unsafe fn do_character_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_typed_vector_constructor(args, SEXPTYPE::STRSXP) }
+}
+
+/// R's `raw(length = 0)` constructor.
+pub unsafe fn do_raw_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_typed_vector_constructor(args, SEXPTYPE::RAWSXP) }
+}
+
+/// R's `vector(mode = "logical", length = 0)` constructor.
+pub unsafe fn do_vector_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mode_arg = first_constructor_arg(args, "mode", 0);
+        let length_arg = first_constructor_arg(args, "length", 1);
+        let mode = if mode_arg.is_null() || mode_arg == R_NilValue() {
+            "logical".to_string()
+        } else {
+            elt_to_string(mode_arg, 0)
+        };
+        let sexptype = match mode.as_str() {
+            "logical" => SEXPTYPE::LGLSXP,
+            "integer" => SEXPTYPE::INTSXP,
+            "numeric" | "double" => SEXPTYPE::REALSXP,
+            "complex" => SEXPTYPE::CPLXSXP,
+            "character" => SEXPTYPE::STRSXP,
+            "raw" => SEXPTYPE::RAWSXP,
+            "list" => SEXPTYPE::VECSXP,
+            "expression" => SEXPTYPE::EXPRSXP,
+            _ => base_error(format!("vector: cannot make a vector of mode '{mode}'")),
+        };
+        let length = constructor_length(length_arg);
+        allocate_initialized_vector(sexptype, length)
     }
 }
 
