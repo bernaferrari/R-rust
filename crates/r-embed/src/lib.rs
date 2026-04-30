@@ -1632,6 +1632,12 @@ mod tests {
         );
         assert_eq!(
             session
+                .eval("is.na(packageDescription(\"corpbase\", fields = \"NoSuchField\"))")
+                .expect("missing package description field"),
+            "[1] TRUE"
+        );
+        assert_eq!(
+            session
                 .eval("c(requireNamespace(\"corpbase\"), exists(\"base_value\"), \"corpbase\" %in% loadedNamespaces())")
                 .expect("namespace load without attach"),
             "[1]  TRUE FALSE  TRUE"

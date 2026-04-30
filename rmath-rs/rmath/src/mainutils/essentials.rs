@@ -3148,13 +3148,10 @@ pub unsafe fn do_package_description(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
             let selected = (0..XLENGTH(fields_arg))
                 .map(|i| {
                     let name = elt_to_string(fields_arg, i);
-                    fields
-                        .get(&name)
-                        .cloned()
-                        .unwrap_or_else(|| "NA".to_string())
+                    fields.get(&name).cloned()
                 })
                 .collect::<Vec<_>>();
-            return string_vector(&selected);
+            return optional_string_vector(&selected);
         }
 
         named_string_list(
@@ -4097,6 +4094,24 @@ unsafe fn string_vector(values: &[String]) -> SEXP {
                 i as R_xlen_t,
                 Rf_mkChar(CString::new(value.as_str()).unwrap_or_default().as_ptr()),
             );
+        }
+        result
+    }
+}
+
+unsafe fn optional_string_vector(values: &[Option<String>]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for (i, value) in values.iter().enumerate() {
+            let charsxp = match value {
+                Some(value) => Rf_mkChar(CString::new(value.as_str()).unwrap_or_default().as_ptr()),
+                None => crate::sexp::globals::R_NaString(),
+            };
+            SET_STRING_ELT(result, i as R_xlen_t, charsxp);
         }
         result
     }
