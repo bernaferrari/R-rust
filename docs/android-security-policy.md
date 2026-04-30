@@ -28,6 +28,10 @@ runtime core.
 - Native package loading is intentionally rejected. A `useDynLib()` directive
   returns a clear error because Android app package loading needs an explicit
   host-owned native-library policy, not implicit `dlopen` behavior.
+- Direct native entrypoints are rejected too: `.Call()`, `.C()`, `.Fortran()`,
+  `.External()`, `dyn.load()`, `dyn.unload()`, and `library.dynam()` report
+  policy errors instead of silently returning `NULL` or attempting process-wide
+  native loading.
 
 ## Processes And Shell
 

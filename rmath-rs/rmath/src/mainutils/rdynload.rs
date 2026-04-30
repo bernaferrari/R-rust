@@ -42,6 +42,18 @@ unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
     })
 }
 
+unsafe fn native_dynamic_loading_policy_error(entrypoint: &str) -> ! {
+    unsafe {
+        error(&format!(
+            "{entrypoint} loads native extension code, which is disabled in this pure-R Android runtime; use bundled pure-R packages or define a host-owned native-library policy"
+        ))
+    }
+}
+
+fn native_dynamic_loading_policy_enabled() -> bool {
+    true
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -1322,6 +1334,10 @@ pub unsafe fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
 /// `.Internal(dyn.load(...))` handler.
 pub unsafe fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        if native_dynamic_loading_policy_enabled() {
+            native_dynamic_loading_policy_error("dyn.load()");
+        }
+
         checkArity(op, args);
         if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
             error("character argument expected");
@@ -1362,6 +1378,10 @@ pub unsafe fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `.Internal(dyn.unload(...))` handler.
 pub unsafe fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        if native_dynamic_loading_policy_enabled() {
+            native_dynamic_loading_policy_error("dyn.unload()");
+        }
+
         checkArity(op, args);
         if Rf_isString(CAR(args)) == 0 || Rf_length(CAR(args)) != 1 {
             error("character argument expected");

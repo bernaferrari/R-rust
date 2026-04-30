@@ -993,6 +993,31 @@ mod tests {
     }
 
     #[test]
+    fn test_native_entrypoints_fail_with_android_policy_errors() {
+        let mut session = RSession::new();
+        for (expr, entrypoint) in [
+            (".Call(\"native_symbol\")", ".Call"),
+            (".C(\"native_symbol\", 1L)", ".C"),
+            (".Fortran(\"native_symbol\", 1L)", ".Fortran"),
+            (".External(\"native_symbol\")", ".External"),
+            (".External2(\"native_symbol\")", ".External"),
+            ("dyn.load(\"libnative.so\")", "dyn.load"),
+            ("dyn.unload(\"libnative.so\")", "dyn.unload"),
+            ("library.dynam(\"nativepkg\")", "library.dynam"),
+        ] {
+            let result = session.eval(expr);
+            match result.typed {
+                RValue::Error(message) => {
+                    assert!(message.contains(entrypoint), "{entrypoint}: {message}");
+                    assert!(message.contains("native extension code"), "{message}");
+                    assert!(message.contains("pure-R Android runtime"), "{message}");
+                }
+                other => panic!("expected native policy error for {expr}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn test_data_rejects_serialized_package_data_explicitly() {
         let root = unique_test_root("android-data-policy");
         let files = root.join("files");

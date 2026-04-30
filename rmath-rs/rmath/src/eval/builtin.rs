@@ -261,6 +261,30 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: super::arithmetic::do_relop,
     },
     EvaluatedBuiltin {
+        name: ".C",
+        handler: crate::mainutils::dotcode::do_dotCode,
+    },
+    EvaluatedBuiltin {
+        name: ".Fortran",
+        handler: crate::mainutils::dotcode::do_dotCode,
+    },
+    EvaluatedBuiltin {
+        name: ".Call",
+        handler: crate::mainutils::dotcode::do_dotcall,
+    },
+    EvaluatedBuiltin {
+        name: ".Call.graphics",
+        handler: crate::mainutils::dotcode::do_dotcall,
+    },
+    EvaluatedBuiltin {
+        name: ".External",
+        handler: crate::mainutils::dotcode::do_External,
+    },
+    EvaluatedBuiltin {
+        name: ".External2",
+        handler: crate::mainutils::dotcode::do_External,
+    },
+    EvaluatedBuiltin {
         name: "&",
         handler: crate::mainutils::logic::do_logic,
     },
@@ -2003,6 +2027,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: ".libPaths",
         handler: crate::mainutils::essentials::do_lib_paths,
+    },
+    EvaluatedBuiltin {
+        name: "dyn.load",
+        handler: crate::mainutils::rdynload::do_dynload,
+    },
+    EvaluatedBuiltin {
+        name: "dyn.unload",
+        handler: crate::mainutils::rdynload::do_dynunload,
+    },
+    EvaluatedBuiltin {
+        name: "library.dynam",
+        handler: crate::mainutils::essentials::do_library_dynam,
     },
     EvaluatedBuiltin {
         name: "library",

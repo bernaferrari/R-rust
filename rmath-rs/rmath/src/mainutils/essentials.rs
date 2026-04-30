@@ -3027,6 +3027,13 @@ pub unsafe fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// R's `library.dynam()` — native package loading is outside the pure-R Android runtime.
+pub unsafe fn do_library_dynam(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    package_error(
+        "library.dynam() loads native extension code, which is disabled in this pure-R Android runtime; use Rust-ported internals or a host-owned native-library policy",
+    )
+}
+
 /// R's `library(package, ...)` — load a package.
 pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -3717,6 +3724,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "get",
             "assign",
             "rm",
+            "dyn.load",
+            "dyn.unload",
+            "library.dynam",
             // Complete S3 coercion
             "as.complex",
             "as.raw",

@@ -80,6 +80,10 @@ Android embedding is app-owned and session-owned:
   parity and conformance checks.
 - Native package loading through `useDynLib()` is rejected until an Android
   host-owned native-library policy exists.
+- Native entrypoints (`.Call`, `.C`, `.Fortran`, `.External`, `dyn.load`, and
+  `library.dynam`) fail loudly at the R boundary. Ported base/library internals
+  should be exposed as Rust evaluator builtins rather than hidden behind C ABI
+  compatibility.
 - Mutable-global additions must pass `scripts/check_android_globals.sh`.
 
 ## Upstream Sync Workflow

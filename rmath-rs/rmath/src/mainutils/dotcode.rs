@@ -167,6 +167,21 @@ unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
     })
 }
 
+unsafe fn native_extension_policy_error(call: SEXP, entrypoint: &str) -> ! {
+    unsafe {
+        errorcall(
+            call,
+            &format!(
+                "{entrypoint} calls native extension code, which is disabled in this pure-R Android runtime; package authors should use Rust-ported internals or a host-owned native-library policy"
+            ),
+        )
+    }
+}
+
+fn native_extension_policy_enabled() -> bool {
+    true
+}
+
 unsafe fn warning(msg: &str) {
     eprintln!("WARNING: {}", msg);
 }
@@ -802,6 +817,10 @@ pub fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP) -> SE
 /// .External / .External2 handler.
 pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        if native_extension_policy_enabled() {
+            native_extension_policy_error(call, ".External");
+        }
+
         let mut ofun: DL_FUNC = None;
         let mut symbol = R_RegisteredNativeSymbol::new(R_EXTERNAL_SYM);
         let _vmax = vmaxget();
@@ -851,6 +870,10 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// .Call handler.
 pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        if native_extension_policy_enabled() {
+            native_extension_policy_error(call, ".Call");
+        }
+
         let mut ofun: DL_FUNC = None;
         let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
         let _vmax = vmaxget();
@@ -904,6 +927,11 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// calls the native routine, then marshals results back.
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        let entrypoint = if PRIMVAL(op) == 0 { ".C" } else { ".Fortran" };
+        if native_extension_policy_enabled() {
+            native_extension_policy_error(call, entrypoint);
+        }
+
         let mut naok: c_int = 0;
         let mut nargs_val: c_int = 0;
         let mut fun: DL_FUNC = None;
