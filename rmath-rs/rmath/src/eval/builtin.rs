@@ -1410,6 +1410,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_str_interp,
     },
     EvaluatedBuiltin {
+        name: "strwrap",
+        handler: crate::mainutils::essentials::do_str_wrap,
+    },
+    EvaluatedBuiltin {
         name: "str_wrap",
         handler: crate::mainutils::essentials::do_str_wrap,
     },

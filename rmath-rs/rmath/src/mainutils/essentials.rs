@@ -3686,6 +3686,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "is_complete",
             // Complete string/vector
             "str_interp",
+            "strwrap",
             "str_wrap",
             "path_package",
             "system.file",
@@ -13498,15 +13499,53 @@ pub unsafe fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// R-like `str_wrap(x, width)` — wrap text to width (simplified: just return x).
+/// R-like `strwrap(x, width)` / `str_wrap(x, width)` — wrap text to width.
 pub unsafe fn do_str_wrap(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() {
-            return R_NilValue();
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
-        x
+        let width_arg = arg_by_name_or_position(args, &["width"], 1);
+        let width =
+            if width_arg.is_null() || width_arg == R_NilValue() || XLENGTH(width_arg) == 0 {
+                0
+            } else {
+                numeric_elt_as_count(width_arg, 0)
+            }
+            .max(1);
+
+        let mut lines = Vec::new();
+        for i in 0..XLENGTH(x) {
+            lines.extend(wrap_text_words(&elt_to_string(x, i), width));
+        }
+        string_vector(&lines)
     }
+}
+
+fn wrap_text_words(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        let current_len = current.chars().count();
+        let word_len = word.chars().count();
+        let next_len = if current.is_empty() {
+            word_len
+        } else {
+            current_len + 1 + word_len
+        };
+        if !current.is_empty() && next_len >= width {
+            lines.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
 }
 
 /// R-like `path_package(package, ...)` — find package paths through the session library policy.
