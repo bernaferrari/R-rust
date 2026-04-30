@@ -3803,6 +3803,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "path_package",
             "system.file",
             "system",
+            "system2",
             // Complete R runtime
             "ls_args",
             "deparse1",
@@ -8562,6 +8563,58 @@ pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     crate::sexp::globals::set_R_Visible(FALSE);
                     Rf_ScalarInteger(out.status.code().unwrap_or(1))
                 }
+            }
+            Err(_) => {
+                crate::sexp::globals::set_R_Visible(FALSE);
+                Rf_ScalarInteger(127)
+            }
+        }
+    }
+}
+
+/// R's `system2(command, args, stdout, stderr, wait, input)` — run a command.
+pub unsafe fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let command_arg = arg_by_name_or_position(args, &["command"], 0);
+        if command_arg.is_null() || command_arg == R_NilValue() {
+            return R_NilValue();
+        }
+        let command = elt_to_string(command_arg, 0);
+        let argv_arg = arg_by_name_or_position(args, &["args"], 1);
+        let argv = if argv_arg.is_null() || argv_arg == R_NilValue() {
+            Vec::new()
+        } else {
+            (0..XLENGTH(argv_arg))
+                .map(|i| elt_to_string(argv_arg, i))
+                .filter(|arg| !arg.is_empty() && arg != "NA")
+                .collect::<Vec<_>>()
+        };
+        let stdout_arg = arg_by_name_or_position(args, &["stdout"], 2);
+        let capture_stdout = logical_arg(stdout_arg, false);
+
+        if system_commands_disabled_by_runtime_policy() {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "system2() is disabled by the Android runtime policy".to_string(),
+            });
+        }
+
+        let output = std::process::Command::new(&command).args(&argv).output();
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                if capture_stdout {
+                    let lines = stdout.lines().map(str::to_string).collect::<Vec<_>>();
+                    return string_vector(&lines);
+                }
+                if !stdout.is_empty() {
+                    crate::sexp::output::capture_stdout(&stdout);
+                }
+                if !stderr.is_empty() {
+                    crate::sexp::output::capture_stderr(&stderr);
+                }
+                crate::sexp::globals::set_R_Visible(FALSE);
+                Rf_ScalarInteger(out.status.code().unwrap_or(1))
             }
             Err(_) => {
                 crate::sexp::globals::set_R_Visible(FALSE);

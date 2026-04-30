@@ -2517,6 +2517,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_system,
     },
     EvaluatedBuiltin {
+        name: "system2",
+        handler: crate::mainutils::essentials::do_system2,
+    },
+    EvaluatedBuiltin {
         name: "tempdir",
         handler: crate::mainutils::essentials::do_tempdir,
     },
