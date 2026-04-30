@@ -13641,9 +13641,32 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `dget(file)` — read dump (simplified: return NULL).
-pub unsafe fn do_dget(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+/// R's `dget(file)` — read, parse, and evaluate a dumped expression.
+pub unsafe fn do_dget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let file_arg = arg_by_name_or_position(args, &["file"], 0);
+        if file_arg.is_null() || file_arg == R_NilValue() || XLENGTH(file_arg) == 0 {
+            std::panic::panic_any(RError {
+                message: "invalid 'file' argument".to_string(),
+            });
+        }
+
+        let path = elt_to_string(file_arg, 0);
+        let code = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            std::panic::panic_any(RError {
+                message: format!("cannot read dump file '{}': {err}", path),
+            })
+        });
+        let expr = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
+        })
+        .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
+        if expr.is_null() || expr == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }
+    }
 }
 
 /// R's `bquote(expr)` — backquote substitution (simplified: return expr as-is).
