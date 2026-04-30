@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
-    PRINTNAME, RAW, REAL, REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG,
-    TYPEOF, VECTOR_ELT, XLENGTH,
+    PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT,
+    TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -13757,18 +13757,23 @@ pub unsafe fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// R's `set_parent.env(env, parent)` — set the parent environment (simplified: no-op).
+/// R's `set_parent.env(env, parent)` — set the parent environment.
 pub unsafe fn do_set_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let env = CAR(args);
-        if env.is_null() {
+        let parent = CAR(CDR(args));
+        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
             return R_NilValue();
         }
+        if parent.is_null() || parent == R_NilValue() || TYPEOF(parent) != SEXPTYPE::ENVSXP {
+            return env;
+        }
+        SET_ENCLOS(env, parent);
         env
     }
 }
 
-/// R's `env_name(env)` — returns the name of an environment (simplified).
+/// R's `env_name(env)` — returns the name of an environment.
 pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let env = CAR(args);
@@ -13789,7 +13794,7 @@ pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if env == crate::sexp::globals::R_BaseEnv() {
             return Rf_mkString(CString::new("base").unwrap_or_default().as_ptr());
         }
-        Rf_mkString(CString::new("<environment>").unwrap_or_default().as_ptr())
+        Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
     }
 }
 
