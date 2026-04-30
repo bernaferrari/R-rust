@@ -16757,21 +16757,57 @@ pub unsafe fn do_Sys_timezone(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-/// R's `Sys.localeconv()` — locale settings (simplified).
+/// R's `Sys.localeconv()` — locale formatting conventions.
 pub unsafe fn do_Sys_localeconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        // Return a character vector with basic locale info
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        let names = [
+            "decimal_point",
+            "thousands_sep",
+            "grouping",
+            "int_curr_symbol",
+            "currency_symbol",
+            "mon_decimal_point",
+            "mon_thousands_sep",
+            "mon_grouping",
+            "positive_sign",
+            "negative_sign",
+            "int_frac_digits",
+            "frac_digits",
+            "p_cs_precedes",
+            "p_sep_by_space",
+            "n_cs_precedes",
+            "n_sep_by_space",
+            "p_sign_posn",
+            "n_sign_posn",
+        ];
+        let values = [
+            ".", "", "", "", "", ".", "", "", "", "", "127", "127", "127", "127", "127", "127",
+            "127", "127",
+        ];
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = protect(result);
-        let cstr = CString::new("UTF-8").unwrap_or_default();
-        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-        if !charsxp.is_null() {
-            let data = (*result).gengc_next_node as *mut SEXP;
-            *data.add(0) = charsxp;
+        let _result_guard = protect(result);
+        let name_vec = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+        let _names_guard = protect(name_vec);
+        for (i, (name, value)) in names.iter().zip(values.iter()).enumerate() {
+            SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(*value).unwrap_or_default().as_ptr()),
+            );
+            SET_STRING_ELT(
+                name_vec,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+            );
         }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            name_vec,
+        );
         result
     }
 }
