@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 242 |
-| Passing | 242 |
+| Total parity cases | 243 |
+| Passing | 243 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -104,7 +104,7 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 50 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname cases, named-argument IO smoke including readLines/writeLines, locale shape smoke, early object smoke cases |
+| Parser and scalar basics | 51 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname cases, named-argument IO smoke including readLines/writeLines, locale/capability shape smoke, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
 | Vectors, lists, attributes, and objects | 32 | Vectors, lists, names, subsetting, factors, class replacement, date/time class attributes, data-frame helper transforms, arithmetic attributes |
 | Base functions, conditions, and platform helpers | 84 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, options/getOption including defaults, `sprintf` width/precision basics, `proc.time`, file/temp helpers including `file.info`, `file.size`, `file.mtime`, `cat(file=...)`, path-string `readLines`, `file.access`/copy/rename/remove, and unique per-session `tempfile()`, wrapping helpers |

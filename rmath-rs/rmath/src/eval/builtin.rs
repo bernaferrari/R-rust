@@ -1893,6 +1893,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_Sys_setlocale,
     },
     EvaluatedBuiltin {
+        name: "capabilities",
+        handler: crate::mainutils::platform::do_capabilities,
+    },
+    EvaluatedBuiltin {
         name: "subset",
         handler: crate::mainutils::essentials::do_subset_named,
     },
