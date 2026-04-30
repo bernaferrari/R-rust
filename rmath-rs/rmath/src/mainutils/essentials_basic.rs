@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
-    STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
+    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -240,6 +240,13 @@ pub unsafe fn do_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::ENVSXP {
+            return names_from_environment(x);
+        }
+        if t == SEXPTYPE::LISTSXP {
+            return names_from_pairlist(x);
+        }
         // Get names attribute
         let names = crate::sexp::attrib_core::getAttrib(
             x,
@@ -249,6 +256,75 @@ pub unsafe fn do_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         names
+    }
+}
+
+unsafe fn names_from_environment(env: SEXP) -> SEXP {
+    unsafe {
+        let mut names = Vec::new();
+        let mut frame = FRAME(env);
+        while !frame.is_null() && frame != R_NilValue() {
+            if let Some(name) = tag_name(TAG(frame)) {
+                names.push(name);
+            }
+            frame = CDR(frame);
+        }
+        names.sort();
+        string_vector(&names)
+    }
+}
+
+unsafe fn names_from_pairlist(list: SEXP) -> SEXP {
+    unsafe {
+        let mut names = Vec::new();
+        let mut has_name = false;
+        let mut cell = list;
+        while !cell.is_null() && cell != R_NilValue() {
+            if let Some(name) = tag_name(TAG(cell)) {
+                has_name = true;
+                names.push(name);
+            } else {
+                names.push(String::new());
+            }
+            cell = CDR(cell);
+        }
+        if has_name {
+            string_vector(&names)
+        } else {
+            R_NilValue()
+        }
+    }
+}
+
+unsafe fn tag_name(tag: SEXP) -> Option<String> {
+    unsafe {
+        if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let print_name = PRINTNAME(tag);
+        if print_name.is_null() || print_name == R_NilValue() {
+            return None;
+        }
+        let chars = CHAR(print_name);
+        if chars.is_null() {
+            return None;
+        }
+        Some(CStr::from_ptr(chars).to_string_lossy().into_owned())
+    }
+}
+
+unsafe fn string_vector(names: &[String]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for (i, name) in names.iter().enumerate() {
+            let c_name = CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(c_name.as_ptr()));
+        }
+        result
     }
 }
 
@@ -614,6 +690,9 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if t == SEXPTYPE::VECSXP {
             return x;
         }
+        if t == SEXPTYPE::ENVSXP {
+            return environment_as_list(x);
+        }
         // Convert atomic vector to list
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
@@ -633,6 +712,38 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             }
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, elem);
         }
+        result
+    }
+}
+
+unsafe fn environment_as_list(env: SEXP) -> SEXP {
+    unsafe {
+        let mut entries = Vec::new();
+        let mut frame = FRAME(env);
+        while !frame.is_null() && frame != R_NilValue() {
+            if let Some(name) = tag_name(TAG(frame)) {
+                entries.push((name, CAR(frame)));
+            }
+            frame = CDR(frame);
+        }
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, entries.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let mut names = Vec::with_capacity(entries.len());
+        for (i, (name, value)) in entries.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, *value);
+            names.push(name.clone());
+        }
+        let names_vec = string_vector(&names);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+            names_vec,
+        );
         result
     }
 }

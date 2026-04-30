@@ -9,9 +9,9 @@ use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW,
-    REAL, REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
-    XLENGTH,
+    ATTRIB, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
+    PRINTNAME, RAW, REAL, REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG,
+    TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -5475,12 +5475,7 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _result_guard = protect(result);
         for i in 0..n {
             let elem = extract_element(x, i);
-            let call_args = Rf_cons(elem, R_NilValue());
-            let call_sexp = Rf_cons(fun, call_args);
-            if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            }
-            let val = crate::eval::eval::Rf_eval(call_sexp, rho);
+            let val = apply_unary_value(fun, elem, rho);
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
         result
@@ -5521,12 +5516,7 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _result_guard = protect(result);
         for i in 0..n {
             let elem = extract_element(x, i);
-            let call_args = Rf_cons(elem, R_NilValue());
-            let call_sexp = Rf_cons(fun, call_args);
-            if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            }
-            let val = crate::eval::eval::Rf_eval(call_sexp, rho);
+            let val = apply_unary_value(fun, elem, rho);
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
         result
@@ -5545,12 +5535,7 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut kept: Vec<R_xlen_t> = Vec::new();
         for i in 0..n {
             let elem = extract_element(x, i);
-            let call_args = Rf_cons(elem, R_NilValue());
-            let call_sexp = Rf_cons(fun, call_args);
-            if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            }
-            let val = crate::eval::eval::Rf_eval(call_sexp, rho);
+            let val = apply_unary_value(fun, elem, rho);
             if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP && *LOGICAL(val) != 0 {
                 kept.push(i);
             }
@@ -5682,6 +5667,21 @@ fn fun_value_type(template_expr: SEXP, rho: SEXP) -> SEXPTYPE {
             crate::eval::eval::Rf_eval(template_expr, rho)
         };
         SEXPTYPE(TYPEOF(template))
+    }
+}
+
+fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let arg_sym = Rf_install(c"..rport_apply_value".as_ptr());
+        let call_env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+        crate::sexp::envir::defineVar(arg_sym, value, call_env);
+
+        let call_args = Rf_cons(arg_sym, R_NilValue());
+        let call_sexp = Rf_cons(fun, call_args);
+        if !call_sexp.is_null() {
+            (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        crate::eval::eval::Rf_eval(call_sexp, call_env)
     }
 }
 
@@ -8912,6 +8912,33 @@ pub unsafe fn do_namespace_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             elt_to_string(package, 0)
         };
 
+        if package_name == "tools" {
+            if TYPEOF(name) != SEXPTYPE::SYMSXP {
+                std::panic::panic_any(RError {
+                    message: "namespace lookup requires a name".to_string(),
+                });
+            }
+            let symbol_name = symbol_name(name).unwrap_or_default();
+            if symbol_name == "langElts" {
+                let values = crate::sexp::init::LANGUAGE_ELEMENTS;
+                let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let _result_guard = protect(result);
+                for (i, value) in values.iter().enumerate() {
+                    let c_value =
+                        CString::new(*value).expect("static language element has no NUL byte");
+                    SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(c_value.as_ptr()));
+                }
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                return result;
+            }
+            std::panic::panic_any(RError {
+                message: format!("object '{symbol_name}' not found in tools namespace"),
+            });
+        }
+
         if package_name != "base" {
             std::panic::panic_any(RError {
                 message: format!("namespace '{package_name}' is not available"),
@@ -10964,17 +10991,46 @@ pub unsafe fn do_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if fn_arg.is_null() || fn_arg == R_NilValue() {
             return R_NilValue();
         }
+
         let t = TYPEOF(fn_arg);
         if t == SEXPTYPE::CLOSXP {
-            let formals = crate::sexp::accessors::FORMALS(fn_arg);
-            // Return a closure with same formals but body = NULL
-            formals
-        } else if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            // Builtins have no formals
-            R_NilValue()
-        } else {
-            R_NilValue()
+            return crate::mainutils::dstruct::mkCLOSXP(
+                FORMALS(fn_arg),
+                R_NilValue(),
+                crate::sexp::globals::R_GlobalEnv(),
+            );
         }
+
+        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
+            return R_NilValue();
+        }
+
+        let primitive_name = crate::eval::primitive::PRIMNAME(fn_arg);
+        let primitive_symbol =
+            Rf_install(CString::new(primitive_name).unwrap_or_default().as_ptr());
+
+        for registry in [".ArgsEnv", ".GenericArgsEnv"] {
+            let registry_symbol = Rf_install(CString::new(registry).unwrap_or_default().as_ptr());
+            let registry_env = crate::sexp::envir::R_findVarInFrame(
+                crate::sexp::globals::R_BaseEnv(),
+                registry_symbol,
+            );
+            if registry_env == crate::sexp::globals::R_UnboundValue() {
+                continue;
+            }
+            let prototype = crate::sexp::envir::R_findVarInFrame(registry_env, primitive_symbol);
+            if prototype != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(prototype) == SEXPTYPE::CLOSXP
+            {
+                return crate::mainutils::dstruct::mkCLOSXP(
+                    FORMALS(prototype),
+                    R_NilValue(),
+                    crate::sexp::globals::R_GlobalEnv(),
+                );
+            }
+        }
+
+        R_NilValue()
     }
 }
 

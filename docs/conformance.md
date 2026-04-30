@@ -123,7 +123,10 @@ The structure slice covers `structure()` attribute attachment, dotted stock-R
 attribute remapping for `.Dim`, `.Dimnames`, and `.Label`, `attributes()` named
 list results, and factor/class preservation.
 The primitive slice includes base namespace-qualified primitive lookup through
-`base::`, including primitive classification and callable builtin resolution.
+`base::`, primitive classification, callable builtin resolution, per-session
+`.ArgsEnv`/`.GenericArgsEnv` prototype metadata for `args()`, and the
+`tools::langElts` language-element registry used by GNU R's primitive
+accounting checks.
 
 ## Status Policy
 
