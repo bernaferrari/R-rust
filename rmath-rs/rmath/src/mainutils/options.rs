@@ -806,7 +806,12 @@ pub unsafe fn do_getOption(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 .unwrap_or(""),
         );
         if val == R_NilValue() {
-            R_NilValue()
+            let default_cell = CDR(args);
+            if default_cell.is_null() || default_cell == R_NilValue() {
+                R_NilValue()
+            } else {
+                duplicate_sexp(CAR(default_cell))
+            }
         } else {
             duplicate_sexp(val)
         }
