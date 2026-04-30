@@ -489,6 +489,20 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+            return match op_name {
+                "sqrt" => {
+                    super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_sqrt)
+                }
+                "log" => {
+                    super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_log)
+                }
+                "exp" => {
+                    super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_exp)
+                }
+                _ => R_NilValue(),
+            };
+        }
 
         let f: fn(f64) -> f64 = match op_name {
             "abs" => f64::abs,

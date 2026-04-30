@@ -2096,6 +2096,26 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_dimnames,
     },
     EvaluatedBuiltin {
+        name: "Re",
+        handler: crate::mainutils::complex_cmath::do_cmathfuns,
+    },
+    EvaluatedBuiltin {
+        name: "Im",
+        handler: crate::mainutils::complex_cmath::do_cmathfuns,
+    },
+    EvaluatedBuiltin {
+        name: "Mod",
+        handler: crate::mainutils::complex_cmath::do_cmathfuns,
+    },
+    EvaluatedBuiltin {
+        name: "Arg",
+        handler: crate::mainutils::complex_cmath::do_cmathfuns,
+    },
+    EvaluatedBuiltin {
+        name: "Conj",
+        handler: crate::mainutils::complex_cmath::do_cmathfuns,
+    },
+    EvaluatedBuiltin {
         name: "pi",
         handler: crate::mainutils::essentials::do_pi,
     },

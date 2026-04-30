@@ -305,13 +305,15 @@ pub fn complex_cos(z: Rcomplex) -> Rcomplex {
 
 /// Complex tangent.
 pub fn complex_tan(z: Rcomplex) -> Rcomplex {
-    let d = z.r.cos() * z.i.cosh();
+    let s = complex_sin(z);
+    let c = complex_cos(z);
+    let d = c.r * c.r + c.i * c.i;
     if d == 0.0 {
         return NA_COMPLEX;
     }
     Rcomplex {
-        r: z.r.sin() * z.i.cosh() / d,
-        i: z.r.cos() * z.i.sinh() / d,
+        r: (s.r * c.r + s.i * c.i) / d,
+        i: (s.i * c.r - s.r * c.i) / d,
     }
 }
 

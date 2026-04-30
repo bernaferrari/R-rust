@@ -33,23 +33,22 @@ run <- function(f, input, na.rm = FALSE) {
   }
 }
 
-check_case <- function(case, foo) {
-  fun <- deparse(substitute(foo))
-  print(identical(case[[fun]], run(foo, case$input)))
-}
+print(deparse(substitute(any)))
 
-check_case(cases[[1]], any)
-check_case(cases[[1]], all)
-check_case(cases[[2]], any)
-check_case(cases[[2]], all)
-check_case(cases[[3]], any)
-check_case(cases[[3]], all)
-check_case(cases[[4]], any)
-check_case(cases[[4]], all)
-check_case(cases[[5]], any)
-check_case(cases[[5]], all)
-check_case(cases[[6]], any)
-check_case(cases[[6]], all)
+check_case <- function(case, name, zed) print(identical(case[[name]], run(zed, case$input)))
+
+check_case(cases[[1]], "any", any)
+check_case(cases[[1]], "all", all)
+check_case(cases[[2]], "any", any)
+check_case(cases[[2]], "all", all)
+check_case(cases[[3]], "any", any)
+check_case(cases[[3]], "all", all)
+check_case(cases[[4]], "any", any)
+check_case(cases[[4]], "all", all)
+check_case(cases[[5]], "any", any)
+check_case(cases[[5]], "all", all)
+check_case(cases[[6]], "any", any)
+check_case(cases[[6]], "all", all)
 
 print(run(any, list(FALSE, NA), na.rm = TRUE))
 print(run(all, list(TRUE, NA), na.rm = TRUE))

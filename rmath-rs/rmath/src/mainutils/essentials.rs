@@ -197,6 +197,34 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         };
                         *dst.add((offset + i) as usize) = val;
                     }
+                } else if result_type == SEXPTYPE::CPLXSXP {
+                    let dst = COMPLEX(result);
+                    for i in 0..n {
+                        let val = if t == SEXPTYPE::CPLXSXP {
+                            *COMPLEX(arg).add(i as usize)
+                        } else if t == SEXPTYPE::REALSXP {
+                            Rcomplex {
+                                r: REAL_ELT(arg, i as c_int),
+                                i: 0.0,
+                            }
+                        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                            let v = INTEGER_ELT(arg, i as c_int);
+                            if v == NA_INTEGER {
+                                Rcomplex { r: NA_REAL, i: 0.0 }
+                            } else {
+                                Rcomplex {
+                                    r: v as f64,
+                                    i: 0.0,
+                                }
+                            }
+                        } else {
+                            Rcomplex {
+                                r: NA_REAL,
+                                i: NA_REAL,
+                            }
+                        };
+                        *dst.add((offset + i) as usize) = val;
+                    }
                 } else if result_type == SEXPTYPE::STRSXP {
                     for i in 0..n {
                         if t == SEXPTYPE::STRSXP {
@@ -210,7 +238,6 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         }
                     }
                 }
-                // CPLXSXP requires COMPLEX support which needs more work.
                 if has_names {
                     let tag = TAG(current);
                     if !tag.is_null() && tag != R_NilValue() {
@@ -3850,6 +3877,11 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "cummin",
             "cummax",
             "dimnames",
+            "Re",
+            "Im",
+            "Mod",
+            "Arg",
+            "Conj",
             "pi",
             "sin",
             "cos",
@@ -18437,6 +18469,12 @@ pub unsafe fn do_sin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
+        if t == SEXPTYPE::CPLXSXP {
+            return crate::eval::complex_arith::complex_unary_vec(
+                x,
+                crate::eval::complex_arith::complex_sin,
+            );
+        }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -18474,6 +18512,12 @@ pub unsafe fn do_cos(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
+        if t == SEXPTYPE::CPLXSXP {
+            return crate::eval::complex_arith::complex_unary_vec(
+                x,
+                crate::eval::complex_arith::complex_cos,
+            );
+        }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -18511,6 +18555,12 @@ pub unsafe fn do_tan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
+        if t == SEXPTYPE::CPLXSXP {
+            return crate::eval::complex_arith::complex_unary_vec(
+                x,
+                crate::eval::complex_arith::complex_tan,
+            );
+        }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -18719,6 +18769,9 @@ pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let t = TYPEOF(x_arg);
+        if t == SEXPTYPE::CPLXSXP {
+            return crate::eval::complex_arith::complex_abs_vec(x_arg);
+        }
         if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
             return R_NilValue();
         }
