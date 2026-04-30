@@ -540,6 +540,24 @@ unsafe fn check_string_arg(arg: SEXP, name: &str) -> String {
     }
 }
 
+unsafe fn connection_arg_tag_name(cell: SEXP) -> Option<String> {
+    unsafe {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            return None;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() {
+            return None;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            return None;
+        }
+        CStr::from_ptr(chars).to_str().ok().map(str::to_string)
+    }
+}
+
 /// Extract an integer from an SEXP (length-1 INTSXP or similar scalar).
 unsafe fn as_integer(arg: SEXP) -> c_int {
     unsafe {
@@ -1431,43 +1449,38 @@ pub unsafe fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
 // do_readLines — readLines(con, n = -1, ok = TRUE, warn = TRUE, encoding = "", skipNul = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
-        args = CDR(args);
-        let n_val = if args.is_null() || args == R_NilValue() {
-            -1
-        } else {
-            let value = as_integer(CAR(args));
-            args = CDR(args);
-            value
-        };
-        let _ok = if args.is_null() || args == R_NilValue() {
-            1
-        } else {
-            let value = check_logical_arg(CAR(args), "ok");
-            args = CDR(args);
-            value
-        };
-        let _warn = if args.is_null() || args == R_NilValue() {
-            1
-        } else {
-            let value = check_logical_arg(CAR(args), "warn");
-            args = CDR(args);
-            value
-        };
-        let _encoding = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            let value = CAR(args);
-            args = CDR(args);
-            value
-        };
-        let _skipNul = if args.is_null() || args == R_NilValue() {
-            0
-        } else {
-            check_logical_arg(CAR(args), "skipNul")
-        };
+        let mut n_val = -1;
+        let mut _ok = 1;
+        let mut _warn = 1;
+        let mut _encoding = R_NilValue();
+        let mut _skipNul = 0;
+        let mut positional = 0;
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            let arg = CAR(current);
+            match connection_arg_tag_name(current).as_deref() {
+                Some("n") => n_val = as_integer(arg),
+                Some("ok") => _ok = check_logical_arg(arg, "ok"),
+                Some("warn") => _warn = check_logical_arg(arg, "warn"),
+                Some("encoding") => _encoding = arg,
+                Some("skipNul") => _skipNul = check_logical_arg(arg, "skipNul"),
+                _ => {
+                    match positional {
+                        0 => n_val = as_integer(arg),
+                        1 => _ok = check_logical_arg(arg, "ok"),
+                        2 => _warn = check_logical_arg(arg, "warn"),
+                        3 => _encoding = arg,
+                        4 => _skipNul = check_logical_arg(arg, "skipNul"),
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
 
         let n = if n_val < 0 {
             i64::MAX as usize
