@@ -9187,8 +9187,8 @@ pub unsafe fn do_attr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's namespace lookup operators for the base namespace.
-pub unsafe fn do_namespace_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// R's namespace lookup operators, `pkg::name` and `pkg:::name`.
+pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let package = CAR(args);
         let name = CAR(CDR(args));
@@ -9207,14 +9207,15 @@ pub unsafe fn do_namespace_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             elt_to_string(package, 0)
         };
 
+        if TYPEOF(name) != SEXPTYPE::SYMSXP {
+            std::panic::panic_any(RError {
+                message: "namespace lookup requires a name".to_string(),
+            });
+        }
+        let lookup_name = symbol_name(name).unwrap_or_default();
+
         if package_name == "tools" {
-            if TYPEOF(name) != SEXPTYPE::SYMSXP {
-                std::panic::panic_any(RError {
-                    message: "namespace lookup requires a name".to_string(),
-                });
-            }
-            let symbol_name = symbol_name(name).unwrap_or_default();
-            if symbol_name == "langElts" {
+            if lookup_name == "langElts" {
                 let values = crate::sexp::init::LANGUAGE_ELEMENTS;
                 let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
                 if result.is_null() {
@@ -9230,32 +9231,49 @@ pub unsafe fn do_namespace_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                 return result;
             }
             std::panic::panic_any(RError {
-                message: format!("object '{symbol_name}' not found in tools namespace"),
+                message: format!("object '{lookup_name}' not found in tools namespace"),
             });
         }
 
         if package_name != "base" {
-            std::panic::panic_any(RError {
-                message: format!("namespace '{package_name}' is not available"),
-            });
-        }
-
-        if TYPEOF(name) != SEXPTYPE::SYMSXP {
-            std::panic::panic_any(RError {
-                message: "namespace lookup requires a name".to_string(),
-            });
+            let namespace = match load_package_namespace_by_name(&package_name) {
+                Ok(env) => env,
+                Err(message) => {
+                    std::panic::panic_any(RError { message });
+                }
+            };
+            let private_lookup = symbol_name(CAR(call)).as_deref() == Some(":::")
+                || crate::eval::builtin::PRIMNAME(op) == ":::";
+            if !private_lookup {
+                let package_path = find_package_path(&package_name);
+                let directives = read_namespace_directives(Path::new(&package_path))
+                    .ok()
+                    .flatten();
+                let exports = namespace_exports(directives.as_ref(), namespace);
+                if !exports.iter().any(|export| export == &lookup_name) {
+                    std::panic::panic_any(RError {
+                        message: format!(
+                            "'{lookup_name}' is not an exported object from namespace '{package_name}'"
+                        ),
+                    });
+                }
+            }
+            let value = crate::sexp::envir::R_findVarInFrame(namespace, name);
+            if value == crate::sexp::globals::R_UnboundValue() {
+                std::panic::panic_any(RError {
+                    message: format!(
+                        "object '{lookup_name}' not found in namespace '{package_name}'"
+                    ),
+                });
+            }
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+            return value;
         }
 
         let value = crate::sexp::envir::R_findVar(name, crate::sexp::globals::R_BaseEnv());
         if value == crate::sexp::globals::R_UnboundValue() {
-            let pname = PRINTNAME(name);
-            let symbol_name = if pname.is_null() {
-                "<unknown>".to_string()
-            } else {
-                CStr::from_ptr(CHAR(pname)).to_string_lossy().into_owned()
-            };
             std::panic::panic_any(RError {
-                message: format!("object '{symbol_name}' not found in base namespace"),
+                message: format!("object '{lookup_name}' not found in base namespace"),
             });
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);

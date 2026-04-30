@@ -1623,6 +1623,12 @@ mod tests {
                 .expect("namespace access"),
             "[1]  1 10"
         );
+        assert_eq!(
+            session
+                .eval("c(corpbase::base_value(), corpbase:::corp_generic.corpclass(corpbase::make_corp()))")
+                .expect("namespace operators"),
+            "[1]  10 123"
+        );
 
         session.load_package("corpbase").expect("load corpbase");
         assert_eq!(session.eval("base_value()").expect("base value"), "[1] 10");
