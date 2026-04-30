@@ -821,6 +821,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_fileappend,
     },
     EvaluatedBuiltin {
+        name: "file.link",
+        handler: crate::mainutils::platform::do_filelink,
+    },
+    EvaluatedBuiltin {
+        name: "file.symlink",
+        handler: crate::mainutils::platform::do_filesymlink,
+    },
+    EvaluatedBuiltin {
         name: "file.remove",
         handler: crate::mainutils::platform::do_fileremove,
     },
@@ -1927,6 +1935,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "Sys.setlocale",
         handler: crate::mainutils::essentials::do_Sys_setlocale,
+    },
+    EvaluatedBuiltin {
+        name: "Sys.readlink",
+        handler: crate::mainutils::platform::do_readlink,
     },
     EvaluatedBuiltin {
         name: "l10n_info",

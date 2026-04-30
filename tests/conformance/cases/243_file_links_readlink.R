@@ -1,0 +1,15 @@
+root <- tempdir()
+source <- file.path(root, "rport-link-source.txt")
+hard <- file.path(root, "rport-link-hard.txt")
+sym <- file.path(root, "rport-link-sym.txt")
+missing <- file.path(root, "rport-link-missing.txt")
+
+cat("link-target", file = source)
+unlink(c(hard, sym))
+
+print(file.link(source, hard))
+print(file.exists(hard))
+print(file.symlink(source, sym))
+print(basename(Sys.readlink(sym)))
+print(Sys.readlink(source))
+print(is.na(Sys.readlink(missing)))

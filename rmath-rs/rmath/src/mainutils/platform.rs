@@ -1747,7 +1747,7 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 SET_STRING_ELT(
                     ans,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(b"NA\0".as_ptr() as *const _),
+                    crate::sexp::globals::R_NaString(),
                 );
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
@@ -1765,11 +1765,12 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                         );
                     }
                     Err(_) => {
-                        SET_STRING_ELT(
-                            ans,
-                            i as crate::sexp::ffi::R_xlen_t,
-                            Rf_mkChar(b"NA\0".as_ptr() as *const _),
-                        );
+                        let value = if std::fs::metadata(path).is_ok() {
+                            Rf_mkChar(c"".as_ptr())
+                        } else {
+                            crate::sexp::globals::R_NaString()
+                        };
+                        SET_STRING_ELT(ans, i as crate::sexp::ffi::R_xlen_t, value);
                     }
                 }
             }
