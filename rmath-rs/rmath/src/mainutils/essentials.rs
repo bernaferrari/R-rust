@@ -654,7 +654,7 @@ pub unsafe fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-/// R's `sprintf(fmt, ...)` — formatted string (simplified: concatenate with placeholder replacement).
+/// R's `sprintf(fmt, ...)` for common scalar/vector `%s`, `%d`, `%i`, and `%f` formats.
 pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fmt_arg = CAR(args);
@@ -662,50 +662,167 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
         }
         let fmt = elt_to_string(fmt_arg, 0);
-        let mut parts: Vec<String> = Vec::new();
+        let mut values: Vec<SEXP> = Vec::new();
+        let mut max_len: R_xlen_t = 1;
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
-                let n = XLENGTH(arg).max(1);
-                for i in 0..n {
-                    parts.push(elt_to_string(arg, i));
-                }
+                max_len = max_len.max(XLENGTH(arg).max(1));
+                values.push(arg);
             }
             current = CDR(current);
         }
-        // Replace %s, %d, %f, %i placeholders with parts
-        let mut part_idx = 0;
-        let mut chars = fmt.chars().peekable();
-        let mut out = String::new();
-        while let Some(ch) = chars.next() {
-            if ch == '%' {
-                if let Some(&next_ch) = chars.peek() {
-                    if next_ch == '%' {
-                        out.push('%');
-                        chars.next();
-                        continue;
-                    }
-                    if (next_ch == 's' || next_ch == 'd' || next_ch == 'f' || next_ch == 'i')
-                        && part_idx < parts.len()
-                    {
-                        out.push_str(&parts[part_idx]);
-                        part_idx += 1;
-                        chars.next();
-                        continue;
-                    }
+
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, max_len);
+        let _result_guard = protect(result);
+        for row in 0..max_len {
+            let mut value_idx = 0usize;
+            let mut out = String::new();
+            let fmt_chars: Vec<char> = fmt.chars().collect();
+            let mut i = 0usize;
+            while i < fmt_chars.len() {
+                if fmt_chars[i] != '%' {
+                    out.push(fmt_chars[i]);
+                    i += 1;
+                    continue;
                 }
-                out.push(ch);
-            } else {
-                out.push(ch);
+                if i + 1 < fmt_chars.len() && fmt_chars[i + 1] == '%' {
+                    out.push('%');
+                    i += 2;
+                    continue;
+                }
+
+                let mut j = i + 1;
+                let zero_pad = if j < fmt_chars.len() && fmt_chars[j] == '0' {
+                    j += 1;
+                    true
+                } else {
+                    false
+                };
+                let mut width = String::new();
+                while j < fmt_chars.len() && fmt_chars[j].is_ascii_digit() {
+                    width.push(fmt_chars[j]);
+                    j += 1;
+                }
+                let width = width.parse::<usize>().ok();
+                let precision = if j < fmt_chars.len() && fmt_chars[j] == '.' {
+                    j += 1;
+                    let mut digits = String::new();
+                    while j < fmt_chars.len() && fmt_chars[j].is_ascii_digit() {
+                        digits.push(fmt_chars[j]);
+                        j += 1;
+                    }
+                    Some(digits.parse::<usize>().unwrap_or(0))
+                } else {
+                    None
+                };
+                if j >= fmt_chars.len() {
+                    out.push('%');
+                    i += 1;
+                    continue;
+                }
+
+                let spec = fmt_chars[j];
+                if matches!(spec, 's' | 'd' | 'i' | 'f') && value_idx < values.len() {
+                    out.push_str(&format_sprintf_value(
+                        values[value_idx],
+                        row,
+                        spec,
+                        width,
+                        precision,
+                        zero_pad,
+                    ));
+                    value_idx += 1;
+                    i = j + 1;
+                } else {
+                    out.push('%');
+                    i += 1;
+                }
             }
+            SET_STRING_ELT(
+                result,
+                row,
+                Rf_mkChar(CString::new(out).unwrap_or_default().as_ptr()),
+            );
         }
-        // Append remaining parts
-        while part_idx < parts.len() {
-            out.push_str(&parts[part_idx]);
-            part_idx += 1;
+        result
+    }
+}
+
+unsafe fn format_sprintf_value(
+    value: SEXP,
+    index: R_xlen_t,
+    spec: char,
+    width: Option<usize>,
+    precision: Option<usize>,
+    zero_pad: bool,
+) -> String {
+    unsafe {
+        let len = XLENGTH(value);
+        let idx = if len == 0 { 0 } else { index % len };
+        let rendered = match spec {
+            's' => {
+                let mut s = elt_to_string(value, idx);
+                if let Some(limit) = precision {
+                    s = s.chars().take(limit).collect();
+                }
+                s
+            }
+            'd' | 'i' => sprintf_integer_value(value, idx).to_string(),
+            'f' => {
+                let value = sprintf_real_value(value, idx);
+                match precision {
+                    Some(places) => format!("{value:.places$}"),
+                    None => format!("{value:.6}"),
+                }
+            }
+            _ => elt_to_string(value, idx),
+        };
+        pad_sprintf(rendered, width, zero_pad && spec != 's')
+    }
+}
+
+unsafe fn sprintf_integer_value(value: SEXP, index: R_xlen_t) -> i64 {
+    unsafe {
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                INTEGER_ELT(value, index as c_int) as i64
+            }
+            t if t == SEXPTYPE::REALSXP => REAL_ELT(value, index as c_int) as i64,
+            _ => elt_to_string(value, index).parse::<i64>().unwrap_or(0),
         }
-        Rf_mkString(CString::new(out).unwrap_or_default().as_ptr())
+    }
+}
+
+unsafe fn sprintf_real_value(value: SEXP, index: R_xlen_t) -> f64 {
+    unsafe {
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::REALSXP => REAL_ELT(value, index as c_int),
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                INTEGER_ELT(value, index as c_int) as f64
+            }
+            _ => elt_to_string(value, index)
+                .parse::<f64>()
+                .unwrap_or(f64::NAN),
+        }
+    }
+}
+
+fn pad_sprintf(rendered: String, width: Option<usize>, zero_pad: bool) -> String {
+    let Some(width) = width else {
+        return rendered;
+    };
+    let len = rendered.chars().count();
+    if len >= width {
+        return rendered;
+    }
+    let pad = width - len;
+    let ch = if zero_pad { '0' } else { ' ' };
+    if zero_pad && rendered.starts_with('-') {
+        format!("-{}{}", ch.to_string().repeat(pad), &rendered[1..])
+    } else {
+        format!("{}{}", ch.to_string().repeat(pad), rendered)
     }
 }
 
