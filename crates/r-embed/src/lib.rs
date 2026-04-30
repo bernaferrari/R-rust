@@ -1611,6 +1611,18 @@ mod tests {
                 .expect("package description fields"),
             "[1] \"corpbase\" \"0.1.0\""
         );
+        assert_eq!(
+            session
+                .eval("c(requireNamespace(\"corpbase\"), exists(\"base_value\"), \"corpbase\" %in% loadedNamespaces())")
+                .expect("namespace load without attach"),
+            "[1]  TRUE FALSE  TRUE"
+        );
+        assert_eq!(
+            session
+                .eval("f <- get(\"base_value\", envir = asNamespace(\"corpbase\")); c(is.environment(getNamespace(\"corpbase\")), f())")
+                .expect("namespace access"),
+            "[1]  1 10"
+        );
 
         session.load_package("corpbase").expect("load corpbase");
         assert_eq!(session.eval("base_value()").expect("base value"), "[1] 10");
@@ -1701,6 +1713,12 @@ mod tests {
         assert!(
             native.to_string().contains("pure-R Android runtime"),
             "{native}"
+        );
+        assert_eq!(
+            session
+                .eval("requireNamespace(\"corpnative\", quietly = TRUE)")
+                .expect("native namespace policy"),
+            "[1] FALSE"
         );
         let compiled = session
             .load_package("corpcompiled")

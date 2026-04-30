@@ -2077,6 +2077,26 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_package_description,
     },
     EvaluatedBuiltin {
+        name: "loadNamespace",
+        handler: crate::mainutils::essentials::do_load_namespace,
+    },
+    EvaluatedBuiltin {
+        name: "requireNamespace",
+        handler: crate::mainutils::essentials::do_require_namespace,
+    },
+    EvaluatedBuiltin {
+        name: "getNamespace",
+        handler: crate::mainutils::essentials::do_get_namespace,
+    },
+    EvaluatedBuiltin {
+        name: "asNamespace",
+        handler: crate::mainutils::essentials::do_as_namespace,
+    },
+    EvaluatedBuiltin {
+        name: "loadedNamespaces",
+        handler: crate::mainutils::essentials::do_loaded_namespaces,
+    },
+    EvaluatedBuiltin {
         name: "data",
         handler: crate::mainutils::essentials::do_data,
     },

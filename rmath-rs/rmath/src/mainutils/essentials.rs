@@ -3165,6 +3165,65 @@ pub unsafe fn do_package_description(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
     }
 }
 
+/// R's `loadNamespace(package)` — load a package namespace without attaching it.
+pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let package_arg = arg_by_name_or_position(args, &["package", "name"], 0);
+        let package = elt_to_string(package_arg, 0);
+        match load_package_namespace_by_name(&package) {
+            Ok(env) => env,
+            Err(message) => package_error(message),
+        }
+    }
+}
+
+/// R's `requireNamespace(package, quietly = FALSE)` — namespace availability probe.
+pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let package_arg = arg_by_name_or_position(args, &["package", "quietly"], 0);
+        let package = elt_to_string(package_arg, 0);
+        Rf_ScalarLogical(if load_package_namespace_by_name(&package).is_ok() {
+            TRUE
+        } else {
+            FALSE
+        })
+    }
+}
+
+/// R's `getNamespace(name)` — return a loaded namespace, loading on demand.
+pub unsafe fn do_get_namespace(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_load_namespace(_call, _op, args, rho) }
+}
+
+/// R's `asNamespace(ns)` — coerce a package name or environment to a namespace.
+pub unsafe fn do_as_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let ns = CAR(args);
+        if !ns.is_null() && TYPEOF(ns) == SEXPTYPE::ENVSXP {
+            return ns;
+        }
+        let package = elt_to_string(ns, 0);
+        match load_package_namespace_by_name(&package) {
+            Ok(env) => env,
+            Err(message) => package_error(message),
+        }
+    }
+}
+
+/// R's `loadedNamespaces()` — list namespaces loaded in this session.
+pub unsafe fn do_loaded_namespaces(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut names = crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.package_namespace_cache
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+        });
+        names.sort();
+        string_vector(&names)
+    }
+}
+
 /// R's `data(..., package, envir)` — load package data.
 ///
 /// The Android runtime intentionally supports source-form package data
@@ -3919,6 +3978,11 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "find.package",
             "packageVersion",
             "packageDescription",
+            "loadNamespace",
+            "requireNamespace",
+            "getNamespace",
+            "asNamespace",
+            "loadedNamespaces",
             "data",
             "detach",
             "search",
@@ -4096,6 +4160,32 @@ fn package_description_fields(package: &str) -> Result<BTreeMap<String, String>,
     let content = std::fs::read_to_string(&description)
         .map_err(|err| format!("could not read {}: {err}", description.display()))?;
     Ok(description_fields(&content))
+}
+
+unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEXP, String> {
+    unsafe {
+        if package.is_empty() || package == "NA" {
+            return Err("invalid package name".to_string());
+        }
+
+        let package_path = find_package_path(package);
+        if package_path.is_empty() {
+            return Err(format!("there is no package called '{}'", package));
+        }
+
+        let package_dir = Path::new(&package_path);
+        let description = package_dir.join("DESCRIPTION");
+        if package_needs_compilation(&description)? {
+            return Err(format!(
+                "package '{}' declares NeedsCompilation: yes; this pure-R Android runtime does not load compiled package code",
+                package
+            ));
+        }
+
+        let mut loading = vec![package.to_string()];
+        let (env, _) = load_package_namespace(package, package_dir, &mut loading)?;
+        Ok(env)
+    }
 }
 
 const INSTALLED_PACKAGE_COLUMNS: [&str; 16] = [

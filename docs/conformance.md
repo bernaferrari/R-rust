@@ -82,10 +82,10 @@ stock R installed; release gates should install stock R and require this command
 runs the Android-style pure-R package corpus and writes JSON/Markdown proof.
 The corpus covers package metadata discovery, `library()` loading, namespace
 exports/imports/S3 directives, `packageVersion()`/`packageDescription()`,
-source-form package data, explicit `envir` loading, source-form `LazyData`,
-serialized data policy errors, same-name package isolation across sessions, and
-explicit native-code package rejection. The release gate runs this script after
-the stock-R performance comparison.
+namespace-only loading, source-form package data, explicit `envir` loading,
+source-form `LazyData`, serialized data policy errors, same-name package
+isolation across sessions, and explicit native-code package rejection. The
+release gate runs this script after the stock-R performance comparison.
 
 ## Current Status
 
