@@ -1,0 +1,8 @@
+x <- structure(1:3, names = c("a", "b", "c"), class = "foo")
+print(as.vector(x))
+print(names(as.vector(x)))
+print(attributes(as.vector(x)))
+print(as.vector(x, "character"))
+y <- setNames(c(TRUE, FALSE), c("yes", "no"))
+print(as.vector(y))
+print(names(as.vector(y)))

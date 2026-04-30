@@ -4,8 +4,8 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_ATTRIB,
+    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -676,7 +676,43 @@ pub unsafe fn do_as_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// R's `as.vector(x)` — strips attributes, returns simple vector.
 pub unsafe fn do_as_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { CAR(args) } // simplified: just return as-is
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let mode = vector_mode_arg(args);
+        match mode.as_deref() {
+            None | Some("any") => duplicate_without_attributes(x),
+            Some("numeric") | Some("double") => coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int()),
+            Some("integer") => coerce_to_type(args, SEXPTYPE::INTSXP.as_c_int()),
+            Some("logical") => coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int()),
+            Some("character") => coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int()),
+            Some("list") => do_as_list(_call, _op, args, _rho),
+            _ => duplicate_without_attributes(x),
+        }
+    }
+}
+
+unsafe fn duplicate_without_attributes(x: SEXP) -> SEXP {
+    unsafe {
+        let result = crate::mainutils::duplicate::duplicate(x);
+        if !result.is_null() && result != R_NilValue() {
+            SET_ATTRIB(result, R_NilValue());
+        }
+        result
+    }
+}
+
+fn vector_mode_arg(args: SEXP) -> Option<String> {
+    unsafe {
+        let mode = CAR(CDR(args));
+        if mode.is_null() || mode == R_NilValue() || XLENGTH(mode) == 0 {
+            return None;
+        }
+        Some(crate::mainutils::essentials::elt_to_string(mode, 0))
+    }
 }
 
 /// R's `as.list(x)` — converts to VECSXP (list).
@@ -758,7 +794,7 @@ unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
         let n = XLENGTH(x);
 
         if src_t == target {
-            return x; // Already the right type
+            return duplicate_without_attributes(x);
         }
 
         if target == SEXPTYPE::REALSXP {
@@ -829,8 +865,43 @@ unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
                 }
             }
             result
+        } else if target == SEXPTYPE::STRSXP {
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = protect(result);
+            for i in 0..n {
+                let value = if src_t == SEXPTYPE::INTSXP || src_t == SEXPTYPE::LGLSXP {
+                    let v = *INTEGER(x).add(i as usize);
+                    if v == NA_INTEGER {
+                        crate::sexp::globals::R_NaString()
+                    } else if src_t == SEXPTYPE::LGLSXP {
+                        let text = if v == TRUE { "TRUE" } else { "FALSE" };
+                        Rf_mkChar(CString::new(text).unwrap_or_default().as_ptr())
+                    } else {
+                        Rf_mkChar(CString::new(v.to_string()).unwrap_or_default().as_ptr())
+                    }
+                } else if src_t == SEXPTYPE::REALSXP {
+                    let v = *REAL(x).add(i as usize);
+                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        crate::sexp::globals::R_NaString()
+                    } else if v.is_nan() {
+                        Rf_mkChar(c"NaN".as_ptr())
+                    } else if v.is_infinite() {
+                        let text = if v.is_sign_negative() { "-Inf" } else { "Inf" };
+                        Rf_mkChar(CString::new(text).unwrap_or_default().as_ptr())
+                    } else {
+                        Rf_mkChar(CString::new(v.to_string()).unwrap_or_default().as_ptr())
+                    }
+                } else {
+                    crate::sexp::globals::R_NaString()
+                };
+                SET_STRING_ELT(result, i, value);
+            }
+            result
         } else {
-            x // Unsupported coercion, return as-is
+            duplicate_without_attributes(x)
         }
     }
 }
