@@ -13617,27 +13617,49 @@ pub unsafe fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         } else {
             elt_to_string(collapse_arg, 0)
         };
-        // Simple deparse: convert to string representation
-        let s = if expr.is_null() || expr == R_NilValue() {
-            "NULL".to_string()
-        } else {
-            elt_to_string(expr, 0)
-        };
-        Rf_mkString(CString::new(s).unwrap_or_default().as_ptr())
+        let lines = deparse_lines(expr);
+        Rf_mkString(CString::new(lines.join(&sep)).unwrap_or_default().as_ptr())
     }
 }
 
-/// R's `dput(x, file)` — dump object (simplified: return deparse string).
+/// R's `dput(x, file)` — dump object using the deparser.
 pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let s = if x.is_null() || x == R_NilValue() {
-            "NULL".to_string()
+        let file_arg = arg_by_name_or_position(args, &["file"], 1);
+        let lines = deparse_lines(x);
+        let output = format!("{}\n", lines.join("\n"));
+
+        let file = if file_arg.is_null() || file_arg == R_NilValue() || XLENGTH(file_arg) == 0 {
+            String::new()
         } else {
-            elt_to_string(x, 0)
+            elt_to_string(file_arg, 0)
         };
-        println!("{}", s);
-        Rf_mkString(CString::new(s).unwrap_or_default().as_ptr())
+        if file.is_empty() {
+            if crate::sexp::output::is_capturing() {
+                crate::sexp::output::capture_stdout(&output);
+            } else {
+                print!("{}", output);
+            }
+        } else {
+            std::fs::write(&file, output).unwrap_or_else(|err| {
+                std::panic::panic_any(RError {
+                    message: format!("cannot write dump file '{}': {err}", file),
+                })
+            });
+        }
+        x
+    }
+}
+
+fn deparse_lines(expr: SEXP) -> Vec<String> {
+    unsafe {
+        let deparsed = crate::mainutils::deparse::deparse1(expr, false, 0);
+        let n = XLENGTH(deparsed);
+        if deparsed.is_null() || deparsed == R_NilValue() || n == 0 {
+            return vec!["NULL".to_string()];
+        }
+        (0..n).map(|i| elt_to_string(deparsed, i)).collect()
     }
 }
 

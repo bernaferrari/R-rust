@@ -1,0 +1,6 @@
+print(deparse1(quote(1 + 2 * y)))
+print(deparse1(c(1, 2)))
+f <- tempfile()
+x <- dput(c(1, 2), f)
+print(dget(f))
+print(deparse1(x))
