@@ -414,6 +414,23 @@ unsafe fn getPPinfo(symval: SEXP) -> PPinfo {
     }
 }
 
+unsafe fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
+    unsafe {
+        if !isSymbol(sym) {
+            return None;
+        }
+        let name = CHAR(PRINTNAME(sym));
+        if name.is_null() {
+            return None;
+        }
+        let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes_with_nul();
+        crate::mainutils::names::R_FunTab
+            .iter()
+            .find(|entry| entry.name == name_bytes)
+            .map(|entry| entry.pp)
+    }
+}
+
 /// Get PPinfo for an argument to needsparens (takes kind/prec/rightassoc directly).
 unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
     unsafe {
@@ -427,7 +444,7 @@ unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
         let symval = SYMVALUE(op);
         let t = TYPEOF(symval);
         if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
-            return None;
+            return getPPinfo_for_symbol(op);
         }
         Some(getPPinfo(symval))
     }
@@ -1895,6 +1912,11 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 let symval_type = TYPEOF(symval);
                 let is_builtin =
                     symval_type == SEXPTYPE::BUILTINSXP || symval_type == SEXPTYPE::SPECIALSXP;
+                let syntax_pp = if is_builtin {
+                    None
+                } else {
+                    getPPinfo_for_symbol(op)
+                };
                 if is_builtin {
                     userbinop = 0;
                 } else if isUserBinop(op) {
@@ -1903,7 +1925,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                     userbinop = 0;
                 }
 
-                if is_builtin || userbinop != 0 {
+                if is_builtin || userbinop != 0 || syntax_pp.is_some() {
                     let mut fop: PPinfo;
                     let s = CDR(s);
                     if userbinop != 0 {
@@ -1914,7 +1936,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                             fop = PPinfo::new(PP_FUNCALL, 0, 0);
                         }
                     } else {
-                        fop = getPPinfo(symval);
+                        fop = syntax_pp.unwrap_or_else(|| getPPinfo(symval));
                     }
 
                     // Adjust kind based on argument count

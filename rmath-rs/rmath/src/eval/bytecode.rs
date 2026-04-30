@@ -6,12 +6,30 @@
 
 use std::os::raw::{c_double, c_int};
 
-use crate::sexp::ffi::SEXPTYPE;
+use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::memory::with_arena;
 use crate::sexp::object::{Sexp, SexpError};
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
+}
+
+unsafe fn format_expression_vector(exprs: SEXP) -> String {
+    unsafe {
+        let n = XLENGTH(exprs);
+        if n == 0 {
+            return "expression()".to_string();
+        }
+
+        let mut parts = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let expr = VECTOR_ELT(exprs, i);
+            let deparsed = crate::mainutils::deparse::deparse1line(expr, false);
+            parts.push(crate::mainutils::essentials::elt_to_string(deparsed, 0));
+        }
+        format!("expression({})", parts.join(", "))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -449,32 +467,35 @@ fn eval_bytecode_loop<'a>(
             }
             BCprint => {
                 if let Some(top) = stack.last() {
-                    let type_name = match top.typeof_() {
-                        SEXPTYPE::NILSXP => "NULL",
-                        SEXPTYPE::INTSXP => "integer",
-                        SEXPTYPE::REALSXP => "double",
-                        SEXPTYPE::LGLSXP => "logical",
-                        SEXPTYPE::STRSXP => "character",
-                        SEXPTYPE::VECSXP => "list",
-                        SEXPTYPE::EXPRSXP => "expression",
-                        SEXPTYPE::RAWSXP => "raw",
-                        SEXPTYPE::CPLXSXP => "complex",
-                        SEXPTYPE::SYMSXP => "symbol",
-                        SEXPTYPE::CLOSXP => "closure",
-                        SEXPTYPE::ENVSXP => "environment",
-                        SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => "pairlist",
-                        SEXPTYPE::CHARSXP => "charsxp",
-                        SEXPTYPE::PROMSXP => "promise",
-                        SEXPTYPE::DOTSXP => "...",
-                        SEXPTYPE::SPECIALSXP => "special",
-                        SEXPTYPE::BUILTINSXP => "builtin",
-                        SEXPTYPE::EXTPTRSXP => "externalptr",
-                        SEXPTYPE::WEAKREFSXP => "weakref",
-                        SEXPTYPE::BCODESXP => "bytecode",
-                        SEXPTYPE::OBJSXP => "object",
-                        _ => "unknown",
+                    let output = if top.typeof_() == SEXPTYPE::EXPRSXP {
+                        unsafe { format_expression_vector(top.as_raw()) }
+                    } else {
+                        let type_name = match top.typeof_() {
+                            SEXPTYPE::NILSXP => "NULL",
+                            SEXPTYPE::INTSXP => "integer",
+                            SEXPTYPE::REALSXP => "double",
+                            SEXPTYPE::LGLSXP => "logical",
+                            SEXPTYPE::STRSXP => "character",
+                            SEXPTYPE::VECSXP => "list",
+                            SEXPTYPE::RAWSXP => "raw",
+                            SEXPTYPE::CPLXSXP => "complex",
+                            SEXPTYPE::SYMSXP => "symbol",
+                            SEXPTYPE::CLOSXP => "closure",
+                            SEXPTYPE::ENVSXP => "environment",
+                            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => "pairlist",
+                            SEXPTYPE::CHARSXP => "charsxp",
+                            SEXPTYPE::PROMSXP => "promise",
+                            SEXPTYPE::DOTSXP => "...",
+                            SEXPTYPE::SPECIALSXP => "special",
+                            SEXPTYPE::BUILTINSXP => "builtin",
+                            SEXPTYPE::EXTPTRSXP => "externalptr",
+                            SEXPTYPE::WEAKREFSXP => "weakref",
+                            SEXPTYPE::BCODESXP => "bytecode",
+                            SEXPTYPE::OBJSXP => "object",
+                            _ => "unknown",
+                        };
+                        format!("[{}; length={}]", type_name, top.len())
                     };
-                    let output = format!("[{}; length={}]", type_name, top.len());
                     if crate::sexp::output::is_capturing() {
                         crate::sexp::output::capture_stdout(&output);
                         crate::sexp::output::capture_stdout("\n");

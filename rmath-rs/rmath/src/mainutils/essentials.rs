@@ -11492,35 +11492,49 @@ pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `parse(text)` — parse R code string into expression.
-/// Simplified: returns the text as a symbol or expression.
+/// R's `parse(text)` — parse R code strings into an expression vector.
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let text_arg = CAR(args);
+        let text_arg = arg_by_name_or_position(args, &["text"], 0);
         if text_arg.is_null() || text_arg == R_NilValue() {
-            return R_NilValue();
+            return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
         }
-        let text = elt_to_string(text_arg, 0);
-        // Simplified: install as symbol for simple identifiers
-        // A full implementation would use the R parser
-        let cstr = CString::new(text.trim()).unwrap_or_default();
-        if cstr.to_str().unwrap_or("").is_empty() {
-            return R_NilValue();
+
+        let n = XLENGTH(text_arg);
+        if n == 0 {
+            return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
         }
-        // Try to evaluate the parsed text (simplified: treat as symbol lookup)
-        let sym = Rf_install(cstr.as_ptr());
-        if !sym.is_null() {
-            // Return an expression containing the symbol
-            let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
-            if !result.is_null() {
-                let _p = protect(result);
-                // For EXPRSXP, store the symbol
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data = sym;
-                return result;
+
+        let mut parsed = Vec::new();
+        for i in 0..n {
+            if TYPEOF(text_arg) == SEXPTYPE::STRSXP && is_string_na(text_arg, i) {
+                std::panic::panic_any(RError {
+                    message: "invalid 'text' argument".to_string(),
+                });
+            }
+            let text = elt_to_string(text_arg, i);
+            if text.trim().is_empty() {
+                continue;
+            }
+            let expr = crate::sexp::memory::with_arena(|arena| {
+                crate::eval::parser::parse(&text, arena).map_err(|err| err.to_string())
+            });
+            match expr {
+                Ok(value) if !value.is_null() && value != R_NilValue() => parsed.push(value),
+                Ok(_) => {}
+                Err(message) => std::panic::panic_any(RError { message }),
             }
         }
-        R_NilValue()
+
+        let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, parsed.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for (i, value) in parsed.into_iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, value);
+        }
+        result
     }
 }
 

@@ -4,6 +4,7 @@
 //! so they can be returned to the caller instead of printing
 //! to stdout/stderr.
 
+use super::accessors::{CHAR, STRING_ELT, VECTOR_ELT, XLENGTH};
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
 use super::instance::RInstance;
 use super::object::Sexp;
@@ -728,6 +729,41 @@ fn format_list(x: Sexp<'_>) -> String {
     sections.join("\n\n")
 }
 
+fn deparse_expression_one(expr: SEXP) -> String {
+    unsafe {
+        let text = crate::mainutils::deparse::deparse1line(expr, false);
+        if text.is_null() || XLENGTH(text) == 0 {
+            return String::new();
+        }
+        let charsxp = STRING_ELT(text, 0);
+        if charsxp.is_null() {
+            return String::new();
+        }
+        let chars = CHAR(charsxp);
+        if chars.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(chars)
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+}
+
+fn format_expression_vector(x: Sexp<'_>) -> String {
+    unsafe {
+        let raw = x.as_raw();
+        let n = XLENGTH(raw);
+        if n == 0 {
+            return "expression()".to_string();
+        }
+        let parts = (0..n)
+            .map(|i| deparse_expression_one(VECTOR_ELT(raw, i)))
+            .collect::<Vec<_>>();
+        format!("expression({})", parts.join(", "))
+    }
+}
+
 /// Print an R object to the captured output (or stdout if not capturing).
 ///
 /// This is the Rust implementation of R's Rf_PrintValue. For Android
@@ -843,9 +879,11 @@ pub fn print_value(x: Sexp<'_>) {
             }
             emit(&format!("{}\n", format_list(x)));
         }
+        SEXPTYPE::EXPRSXP => {
+            emit(&format!("{}\n", format_expression_vector(x)));
+        }
         tp => {
             let type_name = match tp {
-                SEXPTYPE::EXPRSXP => "expression",
                 SEXPTYPE::RAWSXP => "raw",
                 SEXPTYPE::CPLXSXP => "complex",
                 SEXPTYPE::SYMSXP => "symbol",
@@ -961,9 +999,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format!("[1] {}{}", vals.join(" "), suffix)
         }
         SEXPTYPE::VECSXP => format_list(x),
+        SEXPTYPE::EXPRSXP => format_expression_vector(x),
         tp => {
             let type_name = match tp {
-                SEXPTYPE::EXPRSXP => "expression",
                 SEXPTYPE::RAWSXP => "raw",
                 SEXPTYPE::CPLXSXP => "complex",
                 SEXPTYPE::SYMSXP => "symbol",
