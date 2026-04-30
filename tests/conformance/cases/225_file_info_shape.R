@@ -1,0 +1,6 @@
+f <- tempfile()
+ok <- file.create(f)
+info <- file.info(f)
+print(is.data.frame(info))
+print(info$size == 0)
+print(info$isdir)

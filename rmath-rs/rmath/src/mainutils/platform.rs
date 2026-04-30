@@ -683,7 +683,6 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 SET_STRING_ELT(rn, i as crate::sexp::ffi::R_xlen_t, elt);
             }
         }
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), rn);
 
         // Set column names
         let cn = Rf_allocVector3(
@@ -698,18 +697,13 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         SET_STRING_ELT(cn, 4, Rf_mkChar(b"ctime\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 5, Rf_mkChar(b"atime\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 6, Rf_mkChar(b"exe\0".as_ptr() as *const _));
-        crate::eval::attrib_core::setAttrib(
-            crate::eval::attrib_core::getAttrib(ans, crate::eval::attrib_core::R_NamesSymbol()),
-            crate::eval::attrib_core::R_NamesSymbol(),
-            cn,
-        );
+        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
+        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_RowNamesSymbol(), rn);
 
-        // Set dim
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        guards.push(protect(dim));
-        *crate::sexp::accessors::INTEGER(dim).add(0) = n as c_int;
-        *crate::sexp::accessors::INTEGER(dim).add(1) = ncols;
-        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_DimSymbol(), dim);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        guards.push(protect(class));
+        SET_STRING_ELT(class, 0, Rf_mkChar(b"data.frame\0".as_ptr() as *const _));
+        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
 
         ans
     }

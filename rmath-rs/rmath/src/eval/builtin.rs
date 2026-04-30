@@ -2533,6 +2533,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_fileexists,
     },
     EvaluatedBuiltin {
+        name: "file.info",
+        handler: crate::mainutils::platform::do_fileinfo,
+    },
+    EvaluatedBuiltin {
         name: "list.files",
         handler: crate::mainutils::platform::do_listfiles,
     },

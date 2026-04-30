@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 229 |
-| Passing | 229 |
+| Total parity cases | 230 |
+| Passing | 230 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -107,7 +107,7 @@ Current domain coverage:
 | Parser and scalar basics | 46 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS cases, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
 | Vectors, lists, attributes, and objects | 31 | Vectors, lists, names, subsetting, factors, class replacement, data-frame helper transforms, arithmetic attributes |
-| Base functions, conditions, and platform helpers | 76 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, `proc.time`, file/temp helpers, wrapping helpers |
+| Base functions, conditions, and platform helpers | 77 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, `proc.time`, file/temp helpers including `file.info`, wrapping helpers |
 | Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int` invariants |
 | Packages, namespaces, and S3 | 4 | Package namespace and S3 fixtures plus `system.file()` and the pure-R package corpus gate |
 | Graphics and Android embedding | 0 | Covered by renderer/unit tests today; parity fixtures are tracked by `rport-c6ap` and `rport-89pz` |

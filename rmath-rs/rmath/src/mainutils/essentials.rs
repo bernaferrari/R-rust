@@ -3584,6 +3584,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "dirname",
             "file.path",
             "file.exists",
+            "file.info",
             "list.files",
             "normalizePath",
             "tempdir",
