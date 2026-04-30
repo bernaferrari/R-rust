@@ -350,6 +350,8 @@ pub struct RInstance {
     pub(crate) connections_state: crate::mainutils::connections::ConnectionsState,
     /// Per-instance library, cache, and temporary-directory policy.
     pub(crate) path_policy: crate::mainutils::paths::RuntimePathPolicy,
+    /// Per-instance counter for unique `tempfile()` names.
+    pub(crate) tempfile_counter: u64,
     /// Per-instance cache of pure-R package namespaces keyed by package name.
     pub(crate) package_namespace_cache: HashMap<String, (std::path::PathBuf, SEXP)>,
     /// Per-instance headless graphics device registry.
@@ -464,6 +466,7 @@ impl RInstance {
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
             path_policy: crate::mainutils::paths::RuntimePathPolicy::default(),
+            tempfile_counter: 0,
             package_namespace_cache: HashMap::new(),
             graphics_device_registry:
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),

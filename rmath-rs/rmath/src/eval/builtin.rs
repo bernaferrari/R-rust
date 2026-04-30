@@ -781,6 +781,22 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_file_create,
     },
     EvaluatedBuiltin {
+        name: "file.remove",
+        handler: crate::mainutils::platform::do_fileremove,
+    },
+    EvaluatedBuiltin {
+        name: "file.rename",
+        handler: crate::mainutils::platform::do_filerename,
+    },
+    EvaluatedBuiltin {
+        name: "file.copy",
+        handler: crate::mainutils::platform::do_filecopy,
+    },
+    EvaluatedBuiltin {
+        name: "file.access",
+        handler: crate::mainutils::platform::do_fileaccess,
+    },
+    EvaluatedBuiltin {
         name: "dir.create",
         handler: crate::mainutils::platform::do_dircreate,
     },

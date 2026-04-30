@@ -399,32 +399,47 @@ pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `file.remove()` — remove file(s).
 pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use std::fs;
 
-        let s = CAR(args);
+        let mut paths = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let s = CAR(current);
+            if s.is_null() || s == R_NilValue() {
+                paths.push(None);
+            } else {
+                for i in 0..LENGTH(s) as usize {
+                    let elt = STRING_ELT(s, i as crate::sexp::ffi::R_xlen_t);
+                    if elt.is_null() || elt == R_NilValue() {
+                        paths.push(None);
+                    } else {
+                        let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
+                        paths.push(Some(c.to_str().unwrap_or("").to_string()));
+                    }
+                }
+            }
+            current = CDR(current);
+        }
         let ans = Rf_allocVector3(
             SEXPTYPE::LGLSXP.as_c_int(),
-            LENGTH(s) as crate::sexp::ffi::R_xlen_t,
+            paths.len() as crate::sexp::ffi::R_xlen_t,
         );
         let _ans_guard = protect(ans);
         let pa = crate::sexp::accessors::LOGICAL(ans);
 
-        for i in 0..LENGTH(s) as usize {
-            let elt = STRING_ELT(s, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
-            } else {
-                let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-                let path = c.to_str().unwrap_or("");
+        for (i, path) in paths.iter().enumerate() {
+            if let Some(path) = path {
                 *pa.add(i) = if fs::remove_file(path).is_ok() {
                     TRUE
                 } else {
                     FALSE
                 };
+            } else {
+                *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
             }
         }
         ans
@@ -987,7 +1002,7 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, INTEGER, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
+        use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
         use std::path::Path;
 
@@ -1013,12 +1028,12 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
                 let p = Path::new(path);
-                *pa.add(i) = match mode {
+                let allowed = match mode {
                     0 => {
                         if p.exists() {
-                            TRUE
+                            true
                         } else {
-                            FALSE
+                            false
                         }
                     }
                     1 => {
@@ -1032,14 +1047,14 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                                 })
                                 .unwrap_or(false)
                             {
-                                TRUE
+                                true
                             } else {
-                                FALSE
+                                false
                             }
                         }
                         #[cfg(not(unix))]
                         {
-                            FALSE
+                            false
                         }
                     }
                     2 => {
@@ -1047,22 +1062,24 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                             .map(|m| !m.permissions().readonly())
                             .unwrap_or(false)
                         {
-                            TRUE
+                            true
                         } else {
-                            FALSE
+                            false
                         }
                     }
                     4 => {
                         if std::fs::metadata(path).is_ok() {
-                            TRUE
+                            true
                         } else {
-                            FALSE
+                            false
                         }
                     }
-                    _ => FALSE,
+                    _ => false,
                 };
+                *pa.add(i) = if allowed { 0 } else { -1 };
             }
         }
+        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), files);
         ans
     }
 }

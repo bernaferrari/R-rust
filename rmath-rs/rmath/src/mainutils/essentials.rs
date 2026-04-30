@@ -3592,6 +3592,10 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "dir.exists",
             "dir.create",
             "file.create",
+            "file.remove",
+            "file.rename",
+            "file.copy",
+            "file.access",
             "unlink",
             "nzchar",
             "lapply",
@@ -17566,11 +17570,48 @@ pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
-/// R tempfile()
-pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+/// R tempfile(pattern = "file", tmpdir = tempdir(), fileext = "")
+pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let tmp = session_temp_dir();
-        let path = tmp.join(format!("RtmpXXXXXX{}", std::process::id()));
+        let mut pattern = "file".to_string();
+        let mut tmpdir: Option<PathBuf> = None;
+        let mut fileext = String::new();
+        if !args.is_null() && args != R_NilValue() {
+            let first = CAR(args);
+            if !first.is_null() && first != R_NilValue() && XLENGTH(first) > 0 {
+                pattern = elt_to_string(first, 0);
+            }
+            let rest = CDR(args);
+            if !rest.is_null() && rest != R_NilValue() {
+                let second = CAR(rest);
+                if !second.is_null() && second != R_NilValue() && XLENGTH(second) > 0 {
+                    tmpdir = Some(PathBuf::from(elt_to_string(second, 0)));
+                }
+                let third_cell = CDR(rest);
+                if !third_cell.is_null() && third_cell != R_NilValue() {
+                    let third = CAR(third_cell);
+                    if !third.is_null() && third != R_NilValue() && XLENGTH(third) > 0 {
+                        fileext = elt_to_string(third, 0);
+                    }
+                }
+            }
+        }
+        let (default_tmp, counter) =
+            crate::sexp::instance::with_required_current_instance(|inst| {
+                inst.tempfile_counter = inst.tempfile_counter.saturating_add(1);
+                (
+                    inst.path_policy.temp_dir().to_path_buf(),
+                    inst.tempfile_counter,
+                )
+            });
+        let tmp = tmpdir.unwrap_or(default_tmp);
+        let path = tmp.join(format!(
+            "{}{:x}{:x}{}",
+            pattern,
+            std::process::id(),
+            counter,
+            fileext
+        ));
         Rf_mkString(
             CString::new(path.to_string_lossy().as_ref())
                 .unwrap_or_default()
