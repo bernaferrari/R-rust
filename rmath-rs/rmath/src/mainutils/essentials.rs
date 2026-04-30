@@ -3562,6 +3562,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "structure",
             "::",
             ":::",
+            "unname",
             "names<-",
             "dimnames<-",
             "rownames<-",

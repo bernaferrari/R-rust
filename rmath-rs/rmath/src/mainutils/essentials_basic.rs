@@ -297,6 +297,31 @@ pub unsafe fn do_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// R's `unname(obj, force = FALSE)` — return a copy without names/dimnames.
+pub unsafe fn do_unname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let result = crate::mainutils::duplicate::duplicate(x);
+        if result.is_null() || result == R_NilValue() {
+            return result;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            R_NilValue(),
+        );
+        result
+    }
+}
+
 unsafe fn names_from_environment(env: SEXP) -> SEXP {
     unsafe {
         let mut names = Vec::new();

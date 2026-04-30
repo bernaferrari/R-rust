@@ -449,6 +449,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_names,
     },
     EvaluatedBuiltin {
+        name: "unname",
+        handler: crate::mainutils::essentials::do_unname,
+    },
+    EvaluatedBuiltin {
         name: "which",
         handler: crate::mainutils::essentials::do_which,
     },
