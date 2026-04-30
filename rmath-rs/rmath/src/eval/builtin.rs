@@ -1929,6 +1929,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_Sys_setlocale,
     },
     EvaluatedBuiltin {
+        name: "l10n_info",
+        handler: crate::mainutils::platform::do_l10n_info,
+    },
+    EvaluatedBuiltin {
+        name: "Cstack_info",
+        handler: crate::mainutils::platform::do_Cstack_info,
+    },
+    EvaluatedBuiltin {
+        name: "extSoftVersion",
+        handler: crate::mainutils::platform::do_eSoftVersion,
+    },
+    EvaluatedBuiltin {
         name: "Sys.getpid",
         handler: crate::mainutils::platform::do_sysgetpid,
     },

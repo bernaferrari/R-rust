@@ -1652,20 +1652,25 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
     unsafe {
         use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
         use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkChar};
-        use crate::sexp::ffi::{SEXPTYPE, TRUE};
+        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
 
-        // Returns a named list with 3 elements: MBCS, UTF-8, Latin-1
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 4);
         let _ans_guard = protect(ans);
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
         let _cn_guard = protect(cn);
         SET_STRING_ELT(cn, 0, Rf_mkChar(b"MBCS\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 1, Rf_mkChar(b"UTF-8\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 2, Rf_mkChar(b"Latin-1\0".as_ptr() as *const _));
+        SET_STRING_ELT(cn, 3, Rf_mkChar(b"codeset\0".as_ptr() as *const _));
 
-        SET_VECTOR_ELT(ans, 0, Rf_ScalarLogical(TRUE)); // MBCS always supported
-        SET_VECTOR_ELT(ans, 1, Rf_ScalarLogical(TRUE)); // UTF-8 supported
-        SET_VECTOR_ELT(ans, 2, Rf_ScalarLogical(TRUE)); // Latin-1 supported
+        SET_VECTOR_ELT(ans, 0, Rf_ScalarLogical(TRUE));
+        SET_VECTOR_ELT(ans, 1, Rf_ScalarLogical(TRUE));
+        SET_VECTOR_ELT(ans, 2, Rf_ScalarLogical(FALSE));
+        SET_VECTOR_ELT(
+            ans,
+            3,
+            crate::sexp::constructors::Rf_mkString(c"UTF-8".as_ptr()),
+        );
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
         ans
@@ -1776,35 +1781,31 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 /// R's `Cstack_info()` — C stack usage information.
 pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::accessors::{INTEGER, SET_STRING_ELT};
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
 
-        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 4);
         let _ans_guard = protect(ans);
-        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        let cn = Rf_allocVector3(SEXPTYPE::STRSXP, 4);
         let _cn_guard = protect(cn);
-        SET_STRING_ELT(cn, 0, Rf_mkChar(b"used\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 1, Rf_mkChar(b"limit\0".as_ptr() as *const _));
-        SET_STRING_ELT(cn, 2, Rf_mkChar(b"status\0".as_ptr() as *const _));
+        SET_STRING_ELT(cn, 0, Rf_mkChar(b"size\0".as_ptr() as *const _));
+        SET_STRING_ELT(cn, 1, Rf_mkChar(b"current\0".as_ptr() as *const _));
+        SET_STRING_ELT(cn, 2, Rf_mkChar(b"direction\0".as_ptr() as *const _));
+        SET_STRING_ELT(cn, 3, Rf_mkChar(b"eval_depth\0".as_ptr() as *const _));
 
-        // Estimate stack usage (platform-specific)
-        let stack_ptr = std::ptr::null::<u8>() as usize;
-        // Use a reasonable estimate: 8MB default stack
-        let used = 0i32; // Can't easily get accurate used amount
-        let limit = 8 * 1024 * 1024i32;
-        let status = 0i32; // 0 = OK
-
-        SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(used));
-        SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(limit));
-        SET_VECTOR_ELT(ans, 2, Rf_ScalarInteger(status));
+        let values = INTEGER(ans);
+        *values.add(0) = 8 * 1024 * 1024;
+        *values.add(1) = 0;
+        *values.add(2) = 1;
+        *values.add(3) = 0;
 
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), cn);
         ans
     }
 }
 
-/// R's `.Platform` — external software version information.
+/// R's `extSoftVersion()` — external software version information.
 pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::SET_STRING_ELT;
@@ -1812,19 +1813,16 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
         use crate::sexp::ffi::SEXPTYPE;
 
         let fields = [
-            ("OS.type", "unix"),
-            ("OS.version", ""),
-            ("OS.name", "Darwin"),
-            ("png", "no"),
-            ("jpeg", "no"),
-            ("tiff", "no"),
-            ("tcltk", "no"),
-            ("X11", "no"),
-            ("aqua", "no"),
-            ("cairo", "no"),
-            ("ICU", "no"),
-            ("libcurl", "no"),
             ("zlib", "yes"),
+            ("bzlib", "yes"),
+            ("xz", "yes"),
+            ("libdeflate", ""),
+            ("PCRE", "yes"),
+            ("ICU", "yes"),
+            ("TRE", "yes"),
+            ("iconv", "yes"),
+            ("readline", "yes"),
+            ("BLAS", ""),
         ];
 
         let n = fields.len();

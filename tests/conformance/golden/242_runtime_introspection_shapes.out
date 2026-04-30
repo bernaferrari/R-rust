@@ -1,0 +1,9 @@
+[1] "MBCS,UTF-8,Latin-1,codeset"
+[1] TRUE
+[1] TRUE
+[1] "integer"
+[1] "size,current,direction,eval_depth"
+[1] 4
+[1] TRUE
+[1] "zlib,bzlib,xz,libdeflate,PCRE,ICU,TRE,iconv,readline,BLAS"
+[1] 10

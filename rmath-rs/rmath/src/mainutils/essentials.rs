@@ -4032,6 +4032,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Sys.localeconv",
             "Sys.getlocale",
             "Sys.setlocale",
+            "l10n_info",
+            "Cstack_info",
+            "extSoftVersion",
             "Sys.getpid",
             "capabilities",
             // Complete data operations — subset
