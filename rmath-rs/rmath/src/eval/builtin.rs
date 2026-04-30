@@ -1893,6 +1893,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_Sys_setlocale,
     },
     EvaluatedBuiltin {
+        name: "Sys.getpid",
+        handler: crate::mainutils::platform::do_sysgetpid,
+    },
+    EvaluatedBuiltin {
         name: "capabilities",
         handler: crate::mainutils::platform::do_capabilities,
     },

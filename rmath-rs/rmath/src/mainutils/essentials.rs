@@ -4023,6 +4023,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Sys.localeconv",
             "Sys.getlocale",
             "Sys.setlocale",
+            "Sys.getpid",
             "capabilities",
             // Complete data operations — subset
             "subset",
