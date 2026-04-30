@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 226 |
-| Passing | 226 |
+| Total parity cases | 227 |
+| Passing | 227 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -104,7 +104,7 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 45 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote cases, early object smoke cases |
+| Parser and scalar basics | 46 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS cases, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
 | Vectors, lists, attributes, and objects | 31 | Vectors, lists, names, subsetting, factors, class replacement, data-frame helper transforms, arithmetic attributes |
 | Base functions, conditions, and platform helpers | 74 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers, wrapping helpers |

@@ -1,0 +1,8 @@
+f <- tempfile()
+saveRDS(c(1L, 2L, NA_integer_), f)
+print(readRDS(f))
+print(identical(readRDS(f), c(1L, 2L, NA_integer_)))
+saveRDS(c("a", NA_character_), f)
+x <- readRDS(f)
+print(x)
+print(is.na(x[2]))

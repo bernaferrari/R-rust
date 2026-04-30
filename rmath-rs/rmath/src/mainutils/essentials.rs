@@ -3957,6 +3957,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // Complete R runtime — serialization
             "Random.seed",
             "loadRDS",
+            "readRDS",
             "saveRDS",
             // Complete R runtime — parallel operations
             "mclapply",
@@ -18295,45 +18296,24 @@ pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let file_arg = CAR(args);
         let file_path = elt_to_string(file_arg, 0);
-
-        // Try to read the file and return as a raw vector
-        match std::fs::read(&file_path) {
-            Ok(bytes) => {
-                if bytes.len() < 2 {
-                    return R_NilValue();
-                }
-                // Check for RDS magic: "RDX2\n"
-                let is_rds =
-                    bytes.len() >= 5 && bytes[0] == b'R' && bytes[1] == b'D' && bytes[2] == b'X';
-
-                if !is_rds {
-                    eprintln!("Warning: '{}' does not appear to be an RDS file", file_path);
-                }
-
-                // Return as a list with a single element containing the data
-                // This is a simplified implementation
-                let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
-                if result.is_null() {
-                    return R_NilValue();
-                }
-                let _p = protect(result);
-
-                let raw_vec = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
-                if !raw_vec.is_null() {
-                    let dst = (*raw_vec).gengc_next_node as *mut u8;
-                    for (i, &b) in bytes.iter().enumerate() {
-                        *dst.add(i) = b;
-                    }
-                }
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(0) = raw_vec;
-                result
+        let bytes = match std::fs::read(&file_path) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                std::panic::panic_any(RError {
+                    message: format!("cannot open compressed file '{}': {err}", file_path),
+                });
             }
-            Err(e) => {
-                eprintln!("Error reading '{}': {}", file_path, e);
-                R_NilValue()
-            }
+        };
+
+        let raw_vec = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
+        if raw_vec.is_null() {
+            return R_NilValue();
         }
+        let _raw_guard = protect(raw_vec);
+        if !bytes.is_empty() {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw_vec), bytes.len());
+        }
+        crate::mainutils::serialize::R_unserialize(raw_vec, R_NilValue())
     }
 }
 
@@ -18352,48 +18332,33 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return R_NilValue();
         }
 
-        let file_path = elt_to_string(file_arg, 0);
+        let ascii_arg = if CDR(CDR(args)).is_null() || CDR(CDR(args)) == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(CDR(CDR(args)))
+        };
 
-        // Create RDS header
-        let mut data: Vec<u8> = Vec::new();
-        data.extend_from_slice(b"RDX2\n");
-
-        // Serialize object type info
-        let obj_type = TYPEOF(object_arg);
-        data.push(obj_type as u8);
-
-        // Add length info
-        let len = XLENGTH(object_arg) as u32;
-        data.extend_from_slice(&len.to_le_bytes());
-
-        // Write data based on type
-        if obj_type == SEXPTYPE::REALSXP {
-            let n = XLENGTH(object_arg);
-            let src = REAL(object_arg);
-            for i in 0..n {
-                let v = *src.add(i as usize);
-                data.extend_from_slice(&v.to_le_bytes());
-            }
-        } else if obj_type == SEXPTYPE::INTSXP || obj_type == SEXPTYPE::LGLSXP {
-            let n = XLENGTH(object_arg);
-            let src = INTEGER(object_arg);
-            for i in 0..n {
-                let v = *src.add(i as usize);
-                data.extend_from_slice(&v.to_le_bytes());
-            }
-        } else if obj_type == SEXPTYPE::STRSXP {
-            let n = XLENGTH(object_arg);
-            for i in 0..n {
-                let s = elt_to_string(object_arg, i);
-                let bytes = s.as_bytes();
-                let slen = bytes.len() as u32;
-                data.extend_from_slice(&slen.to_le_bytes());
-                data.extend_from_slice(bytes);
-            }
+        let raw = crate::mainutils::serialize::R_serialize(
+            object_arg,
+            R_NilValue(),
+            ascii_arg,
+            R_NilValue(),
+            R_NilValue(),
+        );
+        if raw.is_null() || TYPEOF(raw) != SEXPTYPE::RAWSXP {
+            std::panic::panic_any(RError {
+                message: "saveRDS failed to serialize object".to_string(),
+            });
         }
+        let _raw_guard = protect(raw);
 
-        if let Err(e) = std::fs::write(&file_path, &data) {
-            eprintln!("Error writing '{}': {}", file_path, e);
+        let len = XLENGTH(raw) as usize;
+        let bytes = std::slice::from_raw_parts(RAW(raw), len);
+        let file_path = elt_to_string(file_arg, 0);
+        if let Err(err) = std::fs::write(&file_path, bytes) {
+            std::panic::panic_any(RError {
+                message: format!("cannot open compressed file '{}': {err}", file_path),
+            });
         }
 
         R_NilValue()

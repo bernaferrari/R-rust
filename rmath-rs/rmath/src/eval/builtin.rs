@@ -2005,6 +2005,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_loadRDS,
     },
     EvaluatedBuiltin {
+        name: "readRDS",
+        handler: crate::mainutils::essentials::do_loadRDS,
+    },
+    EvaluatedBuiltin {
         name: "saveRDS",
         handler: crate::mainutils::essentials::do_saveRDS,
     },
