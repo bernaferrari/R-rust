@@ -1435,25 +1435,67 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
     unsafe {
         let scon = CAR(args);
         args = CDR(args);
-        let n_val = as_integer(CAR(args));
-        args = CDR(args);
-        let _ok = check_logical_arg(CAR(args), "ok");
-        args = CDR(args);
-        let _warn = check_logical_arg(CAR(args), "warn");
-        args = CDR(args);
-        let _encoding = CAR(args);
-        args = CDR(args);
-        let _skipNul = check_logical_arg(CAR(args), "skipNul");
+        let n_val = if args.is_null() || args == R_NilValue() {
+            -1
+        } else {
+            let value = as_integer(CAR(args));
+            args = CDR(args);
+            value
+        };
+        let _ok = if args.is_null() || args == R_NilValue() {
+            1
+        } else {
+            let value = check_logical_arg(CAR(args), "ok");
+            args = CDR(args);
+            value
+        };
+        let _warn = if args.is_null() || args == R_NilValue() {
+            1
+        } else {
+            let value = check_logical_arg(CAR(args), "warn");
+            args = CDR(args);
+            value
+        };
+        let _encoding = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            let value = CAR(args);
+            args = CDR(args);
+            value
+        };
+        let _skipNul = if args.is_null() || args == R_NilValue() {
+            0
+        } else {
+            check_logical_arg(CAR(args), "skipNul")
+        };
 
-        if !inherits_class(scon, "connection") {
-            r_error("'con' is not a connection");
-        }
-        let i = as_integer(scon) as usize;
         let n = if n_val < 0 {
             i64::MAX as usize
         } else {
             n_val as usize
         };
+
+        if TYPEOF(scon) == SEXPTYPE::STRSXP {
+            let path = check_string_arg(scon, "con");
+            let contents = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| r_error(&format!("cannot open file '{}': {}", path, e)));
+            let lines: Vec<String> = contents.lines().take(n).map(str::to_string).collect();
+            let ans = Rf_allocVector(SEXPTYPE::STRSXP, lines.len() as c_int);
+            if !ans.is_null() {
+                for (idx, line) in lines.iter().enumerate() {
+                    let c_line = CString::new(line.as_str())
+                        .unwrap_or_else(|_| CString::new("").unwrap_or_default());
+                    let charsxp = Rf_mkChar(c_line.as_ptr());
+                    SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
+                }
+            }
+            return ans;
+        }
+
+        if !inherits_class(scon, "connection") {
+            r_error("'con' is not a connection");
+        }
+        let i = as_integer(scon) as usize;
 
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {

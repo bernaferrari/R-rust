@@ -106,23 +106,61 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
 // do_cat — print to stdout
 // ---------------------------------------------------------------------------
 
-/// R's `cat(..., sep=" ")` — prints args to stdout without trailing newline.
+/// R's `cat(..., file="", sep=" ", append=FALSE)` for stdout or file paths.
 pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let mut sep = " ".to_string();
+        let mut file: Option<String> = None;
+        let mut append = false;
         let mut parts: Vec<String> = Vec::new();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                let n = XLENGTH(arg).max(1);
-                for i in 0..n {
-                    parts.push(elt_to_string(arg, i));
+            match arg_tag_name(current).as_deref() {
+                Some("sep") => sep = elt_to_string(arg, 0),
+                Some("file") => {
+                    let path = elt_to_string(arg, 0);
+                    if path.is_empty() {
+                        file = None;
+                    } else {
+                        file = Some(path);
+                    }
+                }
+                Some("append") => {
+                    if !arg.is_null() && arg != R_NilValue() && XLENGTH(arg) > 0 {
+                        let value =
+                            if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
+                                *INTEGER(arg)
+                            } else {
+                                FALSE
+                            };
+                        append = value != FALSE && value != NA_INTEGER;
+                    }
+                }
+                _ => {
+                    if !arg.is_null() && arg != R_NilValue() {
+                        let n = XLENGTH(arg).max(1);
+                        for i in 0..n {
+                            parts.push(elt_to_string(arg, i));
+                        }
+                    }
                 }
             }
             current = CDR(current);
         }
-        let output = parts.join(" ");
-        if crate::sexp::output::is_capturing() {
+        let output = parts.join(&sep);
+        if let Some(path) = file {
+            if let Ok(mut handle) = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(append)
+                .truncate(!append)
+                .open(path)
+            {
+                use std::io::Write;
+                let _ = handle.write_all(output.as_bytes());
+            }
+        } else if crate::sexp::output::is_capturing() {
             crate::sexp::output::capture_stdout(&output);
         } else {
             print!("{}", output);

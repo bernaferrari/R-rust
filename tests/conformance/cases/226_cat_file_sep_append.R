@@ -1,0 +1,5 @@
+f <- tempfile()
+cat(c("x", "y"), "z", sep = "|", file = f)
+print(suppressWarnings(readLines(f)))
+cat("q", file = f, append = TRUE)
+print(suppressWarnings(readLines(f)))
