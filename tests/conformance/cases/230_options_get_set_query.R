@@ -1,0 +1,13 @@
+old <- getOption("width")
+print(is.numeric(old))
+prev <- options(width = 90, rport.custom = "ok")
+print(prev$width == old)
+print(getOption("width"))
+print(getOption("rport.custom"))
+queried <- options("width", "rport.custom")
+print(queried$width)
+print(queried$rport.custom)
+options(width = old, rport.custom = NULL)
+print(getOption("width") == old)
+print(is.null(getOption("rport.custom")))
+

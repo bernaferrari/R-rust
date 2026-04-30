@@ -1430,11 +1430,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "getOption",
-        handler: crate::mainutils::essentials::do_getOption,
+        handler: crate::mainutils::options::do_getOption,
     },
     EvaluatedBuiltin {
         name: "options",
-        handler: crate::mainutils::essentials::do_options,
+        handler: crate::mainutils::options::do_options,
     },
     EvaluatedBuiltin {
         name: "interactive",
