@@ -2,7 +2,7 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
@@ -4164,6 +4164,10 @@ unsafe fn namespace_env_symbol() -> SEXP {
     unsafe { Rf_install(c".namespaceEnv".as_ptr()) }
 }
 
+unsafe fn lazy_data_names_symbol() -> SEXP {
+    unsafe { Rf_install(c".lazyDataNames".as_ptr()) }
+}
+
 unsafe fn package_name_binding(env: SEXP) -> Option<String> {
     unsafe {
         let value = crate::sexp::envir::R_findVarInFrame(env, package_name_symbol());
@@ -4221,6 +4225,17 @@ fn package_needs_compilation(description: &Path) -> Result<bool, String> {
         .map_err(|err| format!("could not read {}: {err}", description.display()))?;
     Ok(description_fields(&content)
         .get("NeedsCompilation")
+        .is_some_and(|value| {
+            value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("true")
+        }))
+}
+
+fn package_declares_lazy_data(package_dir: &Path) -> Result<bool, String> {
+    let description = package_dir.join("DESCRIPTION");
+    let content = std::fs::read_to_string(&description)
+        .map_err(|err| format!("could not read {}: {err}", description.display()))?;
+    Ok(description_fields(&content)
+        .get("LazyData")
         .is_some_and(|value| {
             value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("true")
         }))
@@ -4484,6 +4499,77 @@ unsafe fn source_package_r_files(
     }
 }
 
+unsafe fn source_package_lazy_data(
+    package: &str,
+    package_dir: &Path,
+    package_env: SEXP,
+) -> Result<Vec<String>, String> {
+    unsafe {
+        if !package_declares_lazy_data(package_dir)? {
+            return Ok(Vec::new());
+        }
+
+        let data_dir = package_dir.join("data");
+        if !data_dir.is_dir() {
+            return Ok(Vec::new());
+        }
+
+        let before = frame_binding_names(package_env, true)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let mut files = std::fs::read_dir(&data_dir)
+            .map_err(|err| format!("could not read data directory for package '{package}': {err}"))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+
+        for file in files {
+            source_r_file_into_env(&file, package_env)?;
+        }
+
+        let mut names = frame_binding_names(package_env, true)
+            .into_iter()
+            .filter(|name| !before.contains(name.as_str()))
+            .collect::<Vec<_>>();
+        names.sort();
+        names.dedup();
+        Ok(names)
+    }
+}
+
+unsafe fn define_lazy_data_names(package_env: SEXP, names: &[String]) {
+    unsafe {
+        let values = string_vector(names);
+        if !values.is_null() {
+            crate::sexp::envir::defineVar(lazy_data_names_symbol(), values, package_env);
+        }
+    }
+}
+
+unsafe fn lazy_data_names_binding(package_env: SEXP) -> Vec<String> {
+    unsafe {
+        let value = crate::sexp::envir::R_findVarInFrame(package_env, lazy_data_names_symbol());
+        if value.is_null()
+            || value == R_NilValue()
+            || value == crate::sexp::globals::R_UnboundValue()
+            || TYPEOF(value) != SEXPTYPE::STRSXP
+        {
+            return Vec::new();
+        }
+
+        (0..XLENGTH(value))
+            .map(|i| elt_to_string(value, i))
+            .filter(|name| !name.is_empty() && name != "NA")
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct NamespaceDirectives {
     exports: Vec<String>,
@@ -4519,6 +4605,8 @@ unsafe fn populate_package_namespace(
             apply_namespace_imports(package, package_env, directives, loading)?;
         }
         source_package_r_files(package, package_dir, package_env)?;
+        let lazy_data_names = source_package_lazy_data(package, package_dir, package_env)?;
+        define_lazy_data_names(package_env, &lazy_data_names);
         if let Some(directives) = namespace.as_ref() {
             register_namespace_s3_methods(package, package_env, directives)?;
         }
@@ -4656,7 +4744,10 @@ unsafe fn make_package_attach_env(
             crate::sexp::envir::defineVar(s3_methods_table_symbol(), s3_table, attach_env);
         }
 
-        let exports = namespace_exports(Some(directives), package_env);
+        let mut exports = namespace_exports(Some(directives), package_env);
+        for name in lazy_data_names_binding(package_env) {
+            push_unique(&mut exports, name);
+        }
         let mut missing = Vec::new();
         for export in exports {
             let Ok(symbol_name) = CString::new(export.as_str()) else {

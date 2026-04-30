@@ -81,9 +81,10 @@ stock R installed; release gates should install stock R and require this command
 `scripts/pure_r_package_corpus.sh --check --report target/pure-r-package-corpus`
 runs the Android-style pure-R package corpus and writes JSON/Markdown proof.
 The corpus covers package metadata discovery, `library()` loading, namespace
-exports/imports/S3 directives, package data, lazy data, same-name package
-isolation across sessions, and explicit native-code package rejection. The
-release gate runs this script after the stock-R performance comparison.
+exports/imports/S3 directives, source-form package data, explicit `envir`
+loading, source-form `LazyData`, serialized data policy errors, same-name
+package isolation across sessions, and explicit native-code package rejection.
+The release gate runs this script after the stock-R performance comparison.
 
 ## Current Status
 
@@ -91,8 +92,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 216 |
-| Passing | 216 |
+| Total parity cases | 226 |
+| Passing | 226 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -101,12 +102,12 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 39 | Arithmetic, scalar values, comments, infix continuation, early object smoke cases |
+| Parser and scalar basics | 45 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote cases, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
-| Vectors, lists, attributes, and objects | 30 | Vectors, lists, names, subsetting, factors, class replacement, arithmetic attributes |
-| Base functions, conditions, and platform helpers | 72 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
-| Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, `sample`/`sample.int` invariants |
-| Packages, namespaces, and S3 | 3 | Package namespace and S3 fixtures plus the pure-R package corpus gate |
+| Vectors, lists, attributes, and objects | 31 | Vectors, lists, names, subsetting, factors, class replacement, data-frame helper transforms, arithmetic attributes |
+| Base functions, conditions, and platform helpers | 74 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers, wrapping helpers |
+| Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int` invariants |
+| Packages, namespaces, and S3 | 4 | Package namespace and S3 fixtures plus `system.file()` and the pure-R package corpus gate |
 | Graphics and Android embedding | 0 | Covered by renderer/unit tests today; parity fixtures are tracked by `rport-c6ap` and `rport-89pz` |
 | Error semantics | 6 | Missing argument, `stop`, `stopifnot`, sampling errors, and selected expected errors |
 

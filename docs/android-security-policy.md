@@ -25,6 +25,13 @@ runtime core.
   roots.
 - Namespace imports, export patterns, S3 registrations, and repeated
   `library()`/`require()` calls are session-local.
+- Source-form package data in `data/*.R` is supported by `data()` and by
+  `LazyData: true` packages. Explicit `data(..., envir=)` loads into the
+  requested environment; source-form lazy data is namespace-local and exposed
+  on the attached package environment after `library()`.
+- Serialized package data and lazy-load databases (`*.rda`, `*.RData`,
+  `Rdata.rdb`, `Rdata.rdx`) are rejected with policy errors until the Rust
+  serializer can prove GNU R file-format parity.
 - Native package loading is intentionally rejected. A `useDynLib()` directive
   returns a clear error because Android app package loading needs an explicit
   host-owned native-library policy, not implicit `dlopen` behavior.

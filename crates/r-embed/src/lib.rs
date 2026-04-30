@@ -1470,6 +1470,28 @@ mod tests {
         write_fixture_package(
             &bundled,
             FixturePackage {
+                name: "corpsourcelazy",
+                description: concat!(
+                    "Package: corpsourcelazy\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Source Lazy Data Package\n",
+                    "Description: Exercises LazyData with source-form package data.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                    "LazyData: true\n",
+                ),
+                namespace: "export(lazy_source_value)\n",
+                sources: &[(
+                    "lazy-source.R",
+                    "lazy_source_value <- function() lazy_source_data + 2L\n",
+                )],
+                data_sources: &[("lazy_source_data.R", "lazy_source_data <- 90L\n")],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
                 name: "corppaths",
                 description: concat!(
                     "Package: corppaths\n",
@@ -1564,6 +1586,7 @@ mod tests {
                 "corppaths",
                 "corppattern",
                 "corps4",
+                "corpsourcelazy",
             ]
         );
         assert_eq!(
@@ -1627,6 +1650,16 @@ mod tests {
                 .eval("e <- new.env(); data(\"env_data\", package = \"corpdataenv\", envir = e); c(exists(\"env_data\", envir = e), exists(\"env_data\"), get(\"env_data\", envir = e))")
                 .expect("data envir"),
             "[1]  1  0 88"
+        );
+
+        session
+            .load_package("corpsourcelazy")
+            .expect("load source lazy data package");
+        assert_eq!(
+            session
+                .eval("c(exists(\"lazy_source_data\"), lazy_source_data, lazy_source_value())")
+                .expect("source lazy data"),
+            "[1]  1 90 92"
         );
 
         session

@@ -11,9 +11,10 @@ Usage: scripts/pure_r_package_corpus.sh [OPTIONS]
 
 Runs the release-facing pure-R package compatibility corpus. The corpus covers
 Android-style library paths, package metadata discovery, namespace loading,
-imports/importFrom/exportPattern, package data, lazy data, same-name package
-isolation across sessions, S4 package code, package-visible library paths, and
-explicit rejection of native/compiled packages.
+imports/importFrom/exportPattern, source-form package data, explicit data
+environments, source-form LazyData, serialized data policy errors, same-name
+package isolation across sessions, S4 package code, package-visible library
+paths, and explicit rejection of native/compiled packages.
 
 Options:
   --check          Fail when any corpus test fails.
@@ -78,11 +79,12 @@ scenarios = [
     "installed package metadata and library path discovery",
     "library() loads pure-R namespaces",
     "export, S3 method, import, importFrom, and exportPattern directives",
-    "package data listing and loading",
-    "package data loading into an explicit environment",
+    "source-form package data listing and loading",
+    "source-form package data loading into an explicit environment",
+    "source-form LazyData exposure through library()",
     "S4 class creation and slot access from package code",
     "package-visible Android library paths",
-    "lazy-data namespace loading",
+    "serialized lazy-data policy rejection",
     "explicit native-code package rejection",
     "same-name package isolation across sessions",
 ]

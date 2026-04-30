@@ -780,6 +780,13 @@ mod tests {
         let data_dir = pkg.join("data");
         std::fs::create_dir_all(&data_dir).expect("data dir");
         std::fs::write(data_dir.join("tiny_data.R"), "tiny_data <- 314L\n").expect("data file");
+        std::fs::write(
+            pkg.join("DESCRIPTION"),
+            "Package: tiny\nVersion: 0.0.1\nLazyData: true\n",
+        )
+        .expect("description");
+        std::fs::write(data_dir.join("lazy_data.R"), "lazy_data <- 271L\n")
+            .expect("lazy data file");
 
         let mut session = RSession::new();
         session
@@ -794,9 +801,10 @@ mod tests {
         assert_eq!(require.output, "");
         assert_eq!(require.typed, RValue::Logical(Some(true)));
         assert_eq!(session.eval("tiny_value()").output, "[1] 42");
+        assert_eq!(session.eval("lazy_data").output, "[1] 271");
         assert_eq!(
             session.eval("data(package = \"tiny\")").typed,
-            string_vector(vec!["tiny_data".to_string()])
+            string_vector(vec!["lazy_data".to_string(), "tiny_data".to_string()])
         );
         assert_eq!(
             session
