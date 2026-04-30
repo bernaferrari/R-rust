@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
-    REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, CAR, CDR, CHAR, COMPLEX, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW,
+    REAL, REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -3446,6 +3447,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "data.frame",
             "Names",
             "attr",
+            "attributes",
+            "structure",
             "names<-",
             "dimnames<-",
             "rownames<-",
@@ -8884,6 +8887,96 @@ pub unsafe fn do_attr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             x,
             Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
         )
+    }
+}
+
+/// R's `attributes(x)` — return attributes as a named list.
+pub unsafe fn do_attributes(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let attrs = ATTRIB(x);
+        if attrs.is_null() || attrs == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let mut count = 0;
+        let mut current = attrs;
+        while !current.is_null() && current != R_NilValue() {
+            count += 1;
+            current = CDR(current);
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, count);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, count);
+        if names.is_null() {
+            return R_NilValue();
+        }
+        let _names_guard = protect(names);
+
+        current = attrs;
+        let mut i = 0;
+        while !current.is_null() && current != R_NilValue() {
+            SET_VECTOR_ELT(result, i, CAR(current));
+            let name = tag_name(current).unwrap_or_default();
+            SET_STRING_ELT(
+                names,
+                i,
+                Rf_mkChar(CString::new(name).unwrap_or_default().as_ptr()),
+            );
+            i += 1;
+            current = CDR(current);
+        }
+
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        result
+    }
+}
+
+fn structure_attr_name(name: &str) -> &str {
+    match name {
+        ".Dim" => "dim",
+        ".Dimnames" => "dimnames",
+        ".Names" => "names",
+        ".Tsp" => "tsp",
+        ".Label" => "levels",
+        other => other,
+    }
+}
+
+/// R's `structure(.Data, ...)` — attach attributes to an object.
+pub unsafe fn do_structure(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            if let Some(name) = tag_name(current) {
+                let attr_name = structure_attr_name(&name);
+                crate::sexp::attrib_core::setAttrib(
+                    x,
+                    Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
+                    CAR(current),
+                );
+            }
+            current = CDR(current);
+        }
+
+        x
     }
 }
 

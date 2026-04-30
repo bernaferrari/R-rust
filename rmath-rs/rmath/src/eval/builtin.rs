@@ -616,6 +616,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_attr,
     },
     EvaluatedBuiltin {
+        name: "attributes",
+        handler: crate::mainutils::essentials::do_attributes,
+    },
+    EvaluatedBuiltin {
+        name: "structure",
+        handler: crate::mainutils::essentials::do_structure,
+    },
+    EvaluatedBuiltin {
         name: "noquote",
         handler: crate::mainutils::essentials::do_noquote,
     },

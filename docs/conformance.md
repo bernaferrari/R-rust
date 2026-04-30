@@ -119,6 +119,9 @@ cases with zero expected failures, including the `any-all.R` helper path through
 `identical()`. The complex slice now covers parsed imaginary literals, complex
 vector construction through `c()`, complex powers, `sqrt`, `exp`, `log`,
 trigonometric functions, and the `Re`/`Im`/`Mod`/`Arg`/`Conj` primitive family.
+The structure slice covers `structure()` attribute attachment, dotted stock-R
+attribute remapping for `.Dim`, `.Dimnames`, and `.Label`, `attributes()` named
+list results, and factor/class preservation.
 
 ## Status Policy
 
