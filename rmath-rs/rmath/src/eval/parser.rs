@@ -82,6 +82,8 @@ enum Token {
     // Special
     Tilde,
     Colon,
+    DoubleColon,
+    TripleColon,
     Dollar,
     At,
     DotDotDot,
@@ -313,7 +315,19 @@ impl Lexer {
             ',' => Token::Comma,
             ';' => Token::Semicolon,
             '~' => Token::Tilde,
-            ':' => Token::Colon,
+            ':' => {
+                if self.peek_char() == Some(':') {
+                    self.advance();
+                    if self.peek_char() == Some(':') {
+                        self.advance();
+                        Token::TripleColon
+                    } else {
+                        Token::DoubleColon
+                    }
+                } else {
+                    Token::Colon
+                }
+            }
             '$' => Token::Dollar,
             '@' => Token::At,
             '.' => {
@@ -1011,6 +1025,18 @@ impl<'arena> Parser<'arena> {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
                         expr = call;
+                    }
+                }
+                // Namespace lookup: pkg::name or pkg:::name
+                Token::DoubleColon | Token::TripleColon => {
+                    let op_token = self.advance();
+                    let name = self.parse_member_name()?;
+                    unsafe {
+                        let op = match op_token {
+                            Token::TripleColon => Rf_install(c":::".as_ptr()),
+                            _ => Rf_install(c"::".as_ptr()),
+                        };
+                        expr = self.lang3(op, expr, name);
                     }
                 }
                 // At: x@name

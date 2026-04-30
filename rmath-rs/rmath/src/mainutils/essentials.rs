@@ -3449,6 +3449,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "attr",
             "attributes",
             "structure",
+            "::",
+            ":::",
             "names<-",
             "dimnames<-",
             "rownames<-",
@@ -8887,6 +8889,55 @@ pub unsafe fn do_attr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             x,
             Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
         )
+    }
+}
+
+/// R's namespace lookup operators for the base namespace.
+pub unsafe fn do_namespace_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let package = CAR(args);
+        let name = CAR(CDR(args));
+        if package.is_null() || name.is_null() || package == R_NilValue() || name == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let package_name = if TYPEOF(package) == SEXPTYPE::SYMSXP {
+            let pname = PRINTNAME(package);
+            if pname.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(CHAR(pname)).to_string_lossy().into_owned()
+            }
+        } else {
+            elt_to_string(package, 0)
+        };
+
+        if package_name != "base" {
+            std::panic::panic_any(RError {
+                message: format!("namespace '{package_name}' is not available"),
+            });
+        }
+
+        if TYPEOF(name) != SEXPTYPE::SYMSXP {
+            std::panic::panic_any(RError {
+                message: "namespace lookup requires a name".to_string(),
+            });
+        }
+
+        let value = crate::sexp::envir::R_findVar(name, crate::sexp::globals::R_BaseEnv());
+        if value == crate::sexp::globals::R_UnboundValue() {
+            let pname = PRINTNAME(name);
+            let symbol_name = if pname.is_null() {
+                "<unknown>".to_string()
+            } else {
+                CStr::from_ptr(CHAR(pname)).to_string_lossy().into_owned()
+            };
+            std::panic::panic_any(RError {
+                message: format!("object '{symbol_name}' not found in base namespace"),
+            });
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+        value
     }
 }
 

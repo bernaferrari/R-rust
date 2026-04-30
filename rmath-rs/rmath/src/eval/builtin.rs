@@ -158,6 +158,16 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_quote,
         restore_visibility_always: true,
     },
+    UnevaluatedBuiltin {
+        name: "::",
+        handler: crate::mainutils::essentials::do_namespace_get,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: ":::",
+        handler: crate::mainutils::essentials::do_namespace_get,
+        restore_visibility_always: false,
+    },
 ];
 
 #[derive(Clone, Copy)]

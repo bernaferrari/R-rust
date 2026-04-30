@@ -122,6 +122,8 @@ trigonometric functions, and the `Re`/`Im`/`Mod`/`Arg`/`Conj` primitive family.
 The structure slice covers `structure()` attribute attachment, dotted stock-R
 attribute remapping for `.Dim`, `.Dimnames`, and `.Label`, `attributes()` named
 list results, and factor/class preservation.
+The primitive slice includes base namespace-qualified primitive lookup through
+`base::`, including primitive classification and callable builtin resolution.
 
 ## Status Policy
 
