@@ -2637,6 +2637,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_listfiles,
     },
     EvaluatedBuiltin {
+        name: "list.dirs",
+        handler: crate::mainutils::platform::do_listdirs,
+    },
+    EvaluatedBuiltin {
         name: "normalizePath",
         handler: crate::mainutils::essentials::do_normalizePath,
     },

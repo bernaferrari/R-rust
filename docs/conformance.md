@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 248 |
-| Passing | 248 |
+| Total parity cases | 249 |
+| Passing | 249 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -106,7 +106,7 @@ Current domain coverage:
 | --- | ---: | --- |
 | Parser and scalar basics | 52 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname cases, named-argument IO smoke including readLines/writeLines, locale/capability/runtime-introspection shape smoke, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
-| Vectors, lists, attributes, and objects | 33 | Vectors, typed vector constructors, lists, names, subsetting, factors, class replacement, date/time class attributes, data-frame helper transforms, arithmetic attributes |
+| Vectors, lists, attributes, and objects | 34 | Vectors, typed vector constructors, lists, names, subsetting, factors, class replacement, date/time class attributes, data-frame helper transforms, directory vector shape cases, arithmetic attributes |
 | Base functions, conditions, and platform helpers | 87 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, `Sys.getpid`, options/getOption including defaults, `sprintf` width/precision basics, `proc.time`, file/temp helpers including `file.info`, `file.size`, `file.mtime`, `cat(file=...)`, path-string `readLines`, `file.access`/append/copy/link/symlink/rename/remove, `Sys.readlink`, and unique per-session `tempfile()`, wrapping helpers |
 | Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int` invariants |
 | Packages, namespaces, and S3 | 4 | Package namespace and S3 fixtures plus `system.file()` and the pure-R package corpus gate |

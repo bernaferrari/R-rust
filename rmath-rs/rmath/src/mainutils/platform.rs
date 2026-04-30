@@ -320,6 +320,25 @@ unsafe fn path_at(paths: SEXP, index: usize) -> Option<String> {
     }
 }
 
+unsafe fn platform_tag_name(cell: SEXP) -> Option<String> {
+    unsafe {
+        let tag = crate::sexp::accessors::TAG(cell);
+        if tag.is_null() || tag == crate::sexp::globals::R_NilValue() {
+            return None;
+        }
+        let pname = crate::sexp::accessors::PRINTNAME(tag);
+        if pname.is_null() {
+            return None;
+        }
+        let chars = crate::sexp::accessors::CHAR(pname);
+        if chars.is_null() {
+            None
+        } else {
+            CStr::from_ptr(chars).to_str().ok().map(str::to_owned)
+        }
+    }
+}
+
 fn append_file(destination: &str, source: &str) -> bool {
     let Ok(metadata) = std::fs::metadata(source) else {
         return false;
@@ -964,60 +983,116 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// R's `list.dirs()` — list directories.
 pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{
-            CADDR, CADR, CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT, STRING_ELT,
-        };
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
 
-        let paths = CAR(args);
-        let pattern = CADR(args);
-        let all_files = CADDR(args);
-        let full_names = CAR(CDR(CDR(CDR(args))));
-        let recursive = CAR(CDR(CDR(CDR(CDR(args)))));
-
-        let mut show_all = false;
-        if !all_files.is_null() && all_files != R_NilValue() {
-            let v = *LOGICAL(all_files);
-            show_all = v != 0 && v != crate::sexp::ffi::NA_INTEGER;
-        }
-
-        let mut do_full = false;
-        if !full_names.is_null() && full_names != R_NilValue() {
-            let v = *LOGICAL(full_names);
-            do_full = v != 0 && v != crate::sexp::ffi::NA_INTEGER;
-        }
-
-        let mut entries: Vec<String> = Vec::new();
-        let n = LENGTH(paths);
-        for i in 0..n as usize {
-            let elt = STRING_ELT(paths, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                continue;
+        fn logical_arg(value: SEXP, default: bool) -> bool {
+            unsafe {
+                if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+                    return default;
+                }
+                let v = *LOGICAL(value);
+                v != 0 && v != crate::sexp::ffi::NA_INTEGER
             }
-            let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-            let dir = c.to_str().unwrap_or(".");
-            if let Ok(rd) = std::fs::read_dir(dir) {
-                for entry in rd.flatten() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if !show_all && name.starts_with('.') {
-                        continue;
-                    }
-                    if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                        continue;
-                    }
-                    let final_name = if do_full {
-                        format!("{}/{}", dir.trim_end_matches('/'), name)
+        }
+
+        fn collect_dirs(
+            base: &std::path::Path,
+            relative: &std::path::Path,
+            full_names: bool,
+            recursive: bool,
+            include_self: bool,
+            out: &mut Vec<String>,
+        ) {
+            if include_self {
+                out.push(if full_names {
+                    base.join(relative).to_string_lossy().to_string()
+                } else {
+                    relative.to_string_lossy().to_string()
+                });
+            }
+
+            let current = base.join(relative);
+            let Ok(read_dir) = std::fs::read_dir(&current) else {
+                return;
+            };
+            let mut children = Vec::new();
+            for entry in read_dir.flatten() {
+                if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                    children.push(entry.file_name().to_string_lossy().to_string());
+                }
+            }
+            children.sort();
+
+            for child in children {
+                let child_rel = relative.join(&child);
+                if recursive {
+                    collect_dirs(base, &child_rel, full_names, true, true, out);
+                } else {
+                    out.push(if full_names {
+                        base.join(&child_rel).to_string_lossy().to_string()
                     } else {
-                        name
-                    };
-                    entries.push(final_name);
+                        child_rel.to_string_lossy().to_string()
+                    });
                 }
             }
         }
 
-        entries.sort();
+        let mut paths = R_NilValue();
+        let mut full_names = R_NilValue();
+        let mut recursive = R_NilValue();
+        let mut positional = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match platform_tag_name(current).as_deref() {
+                Some("path") => paths = value,
+                Some("full.names") => full_names = value,
+                Some("recursive") => recursive = value,
+                Some(_) => {}
+                None => {
+                    match positional {
+                        0 => paths = value,
+                        1 => full_names = value,
+                        2 => recursive = value,
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+
+        let do_full = logical_arg(full_names, true);
+        let do_recursive = logical_arg(recursive, true);
+        let mut entries: Vec<String> = Vec::new();
+
+        if paths.is_null() || paths == R_NilValue() || LENGTH(paths) == 0 {
+            collect_dirs(
+                std::path::Path::new("."),
+                std::path::Path::new(""),
+                do_full,
+                do_recursive,
+                do_recursive,
+                &mut entries,
+            );
+        } else {
+            for i in 0..LENGTH(paths) as usize {
+                if let Some(path) = path_at(paths, i) {
+                    collect_dirs(
+                        std::path::Path::new(&path),
+                        std::path::Path::new(""),
+                        do_full,
+                        do_recursive,
+                        do_recursive,
+                        &mut entries,
+                    );
+                }
+            }
+        }
+
         let ans = Rf_allocVector3(
             SEXPTYPE::STRSXP.as_c_int(),
             entries.len() as crate::sexp::ffi::R_xlen_t,
