@@ -3951,6 +3951,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // Matrix/linear algebra
             "matrix",
             "array",
+            "drop",
             "diag",
             "dim",
             "crossprod",
@@ -8173,6 +8174,108 @@ pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// R's `drop(x)` — remove extent-one dimensions from arrays and matrices.
+pub unsafe fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+            return x;
+        }
+
+        let dim_count = XLENGTH(dim);
+        let mut kept_axes = Vec::new();
+        for i in 0..dim_count {
+            if *INTEGER(dim).add(i as usize) != 1 {
+                kept_axes.push(i);
+            }
+        }
+        if kept_axes.len() == dim_count as usize {
+            return x;
+        }
+
+        let result = crate::mainutils::duplicate::shallow_duplicate(x);
+        if result.is_null() || result == R_NilValue() {
+            return result;
+        }
+        let _result_guard = protect(result);
+
+        let dimnames =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+
+        match kept_axes.len() {
+            0 => {
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                    R_NilValue(),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    R_NilValue(),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    R_NilValue(),
+                );
+            }
+            1 => {
+                let names = retained_dimname(dimnames, kept_axes[0]);
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                    R_NilValue(),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    R_NilValue(),
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            _ => {
+                let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, kept_axes.len() as R_xlen_t);
+                if new_dim.is_null() {
+                    return R_NilValue();
+                }
+                let _dim_guard = protect(new_dim);
+                for (out_i, axis) in kept_axes.iter().enumerate() {
+                    *INTEGER(new_dim).add(out_i) = *INTEGER(dim).add(*axis as usize);
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimSymbol(),
+                    new_dim,
+                );
+
+                let new_dimnames = retained_dimnames(dimnames, &kept_axes);
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    new_dimnames,
+                );
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    R_NilValue(),
+                );
+            }
+        }
+
+        result
+    }
+}
+
 /// R's `t(x)` — transpose a matrix.
 pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -8531,6 +8634,44 @@ unsafe fn valid_array_dimnames(dimnames: SEXP, dim: SEXP) -> bool {
             }
         }
         true
+    }
+}
+
+unsafe fn retained_dimname(dimnames: SEXP, axis: R_xlen_t) -> SEXP {
+    unsafe {
+        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        if axis >= XLENGTH(dimnames) {
+            return R_NilValue();
+        }
+        VECTOR_ELT(dimnames, axis)
+    }
+}
+
+unsafe fn retained_dimnames(dimnames: SEXP, axes: &[R_xlen_t]) -> SEXP {
+    unsafe {
+        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, axes.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let mut has_names = false;
+        for (out_i, axis) in axes.iter().enumerate() {
+            let names = if *axis < XLENGTH(dimnames) {
+                VECTOR_ELT(dimnames, *axis)
+            } else {
+                R_NilValue()
+            };
+            if !names.is_null() && names != R_NilValue() {
+                has_names = true;
+            }
+            SET_VECTOR_ELT(result, out_i as R_xlen_t, names);
+        }
+        if has_names { result } else { R_NilValue() }
     }
 }
 
