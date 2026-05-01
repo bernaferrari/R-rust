@@ -729,6 +729,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_lengths,
     },
     EvaluatedBuiltin {
+        name: "length<-",
+        handler: crate::mainutils::essentials::do_length_set,
+    },
+    EvaluatedBuiltin {
         name: "rownames",
         handler: crate::mainutils::essentials::do_rownames,
     },

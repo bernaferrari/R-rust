@@ -3799,6 +3799,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "nrow",
             "ncol",
             "lengths",
+            "length<-",
             "rownames",
             "row.names",
             "colnames",
@@ -9389,6 +9390,143 @@ pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             }
         }
         result
+    }
+}
+
+/// R's `length(x) <- value` — resize vectors with R's missing-value fill rules.
+pub unsafe fn do_length_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            std::panic::panic_any(RError {
+                message: "cannot set length of NULL".to_string(),
+            });
+        }
+        let new_len = match length_replacement_size(value) {
+            Some(len) => len,
+            None => {
+                std::panic::panic_any(RError {
+                    message: "invalid value".to_string(),
+                });
+            }
+        };
+
+        let result = resize_vector(x, new_len);
+        resize_names(x, result, new_len);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        result
+    }
+}
+
+unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
+    unsafe {
+        if XLENGTH(x) == new_len {
+            return x;
+        }
+        let kind = TYPEOF(x);
+        let result = Rf_allocVector3(SEXPTYPE(kind), new_len);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let copy_len = XLENGTH(x).min(new_len);
+
+        if kind == SEXPTYPE::LGLSXP.as_c_int() || kind == SEXPTYPE::INTSXP.as_c_int() {
+            for i in 0..copy_len {
+                *INTEGER(result).add(i as usize) = INTEGER_ELT(x, i as c_int);
+            }
+            for i in copy_len..new_len {
+                *INTEGER(result).add(i as usize) = NA_INTEGER;
+            }
+        } else if kind == SEXPTYPE::REALSXP.as_c_int() {
+            for i in 0..copy_len {
+                *REAL(result).add(i as usize) = REAL_ELT(x, i as c_int);
+            }
+            for i in copy_len..new_len {
+                *REAL(result).add(i as usize) = NA_REAL;
+            }
+        } else if kind == SEXPTYPE::CPLXSXP.as_c_int() {
+            for i in 0..copy_len {
+                *COMPLEX(result).add(i as usize) = *COMPLEX(x).add(i as usize);
+            }
+            for i in copy_len..new_len {
+                *COMPLEX(result).add(i as usize) = Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                };
+            }
+        } else if kind == SEXPTYPE::STRSXP.as_c_int() {
+            for i in 0..copy_len {
+                SET_STRING_ELT(result, i, STRING_ELT(x, i));
+            }
+            for i in copy_len..new_len {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            }
+        } else if kind == SEXPTYPE::RAWSXP.as_c_int() {
+            for i in 0..copy_len {
+                *RAW(result).add(i as usize) = *RAW(x).add(i as usize);
+            }
+        } else if kind == SEXPTYPE::VECSXP.as_c_int() || kind == SEXPTYPE::EXPRSXP.as_c_int() {
+            for i in 0..copy_len {
+                SET_VECTOR_ELT(result, i, VECTOR_ELT(x, i));
+            }
+        } else {
+            std::panic::panic_any(RError {
+                message: "unsupported type for length assignment".to_string(),
+            });
+        }
+        result
+    }
+}
+
+unsafe fn resize_names(x: SEXP, result: SEXP, new_len: R_xlen_t) {
+    unsafe {
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return;
+        }
+
+        let resized = Rf_allocVector3(SEXPTYPE::STRSXP, new_len);
+        if resized.is_null() {
+            return;
+        }
+        let _resized_guard = protect(resized);
+        let copy_len = XLENGTH(names).min(new_len);
+        for i in 0..copy_len {
+            SET_STRING_ELT(resized, i, STRING_ELT(names, i));
+        }
+        for i in copy_len..new_len {
+            SET_STRING_ELT(resized, i, Rf_mkChar(c"".as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            resized,
+        );
+    }
+}
+
+unsafe fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
+    unsafe {
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+            return None;
+        }
+        let raw = if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::LGLSXP {
+            INTEGER_ELT(value, 0) as f64
+        } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+            REAL_ELT(value, 0)
+        } else if TYPEOF(value) == SEXPTYPE::STRSXP {
+            elt_to_string(value, 0).trim().parse::<f64>().ok()?
+        } else {
+            return None;
+        };
+        if !raw.is_finite() || raw < 0.0 || raw > R_xlen_t::MAX as f64 {
+            None
+        } else {
+            Some(raw.trunc() as R_xlen_t)
+        }
     }
 }
 
