@@ -2569,6 +2569,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_dim,
     },
     EvaluatedBuiltin {
+        name: "tsp",
+        handler: crate::mainutils::essentials::do_tsp,
+    },
+    EvaluatedBuiltin {
+        name: "tsp<-",
+        handler: crate::mainutils::essentials::do_tsp_set,
+    },
+    EvaluatedBuiltin {
         name: "nrow",
         handler: crate::mainutils::essentials::do_nrow,
     },

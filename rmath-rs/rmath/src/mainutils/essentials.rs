@@ -3799,6 +3799,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "NCOL",
             "nrow",
             "ncol",
+            "tsp",
+            "tsp<-",
             "lengths",
             "length<-",
             "rownames",
@@ -8203,6 +8205,17 @@ pub unsafe fn do_dim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// R's `tsp(x)` — time-series parameter attribute.
+pub unsafe fn do_tsp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_TspSymbol())
+    }
+}
+
 /// R's `dim(x) <- value` — replace an object's dimension attribute.
 pub unsafe fn do_dim_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -8247,6 +8260,74 @@ pub unsafe fn do_dim_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
+    }
+}
+
+/// R's `tsp(x) <- value` — replace or remove time-series parameters.
+pub unsafe fn do_tsp_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        if value.is_null() || value == R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_TspSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+
+        let tsp = match tsp_attribute(value) {
+            Ok(tsp) => tsp,
+            Err(message) => {
+                std::panic::panic_any(RError { message });
+            }
+        };
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_TspSymbol(), tsp);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
+unsafe fn tsp_attribute(value: SEXP) -> Result<SEXP, String> {
+    unsafe {
+        if XLENGTH(value) != 3
+            || (TYPEOF(value) != SEXPTYPE::INTSXP && TYPEOF(value) != SEXPTYPE::REALSXP)
+        {
+            return Err("'tsp' attribute must be numeric of length three".to_string());
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
+        if result.is_null() {
+            return Ok(R_NilValue());
+        }
+        let _result_guard = protect(result);
+        for i in 0..3 {
+            *REAL(result).add(i) = if TYPEOF(value) == SEXPTYPE::INTSXP {
+                let n = INTEGER_ELT(value, i as c_int);
+                if n == NA_INTEGER { NA_REAL } else { n as f64 }
+            } else {
+                REAL_ELT(value, i as c_int)
+            };
+        }
+
+        let start = *REAL(result);
+        let end = *REAL(result).add(1);
+        let frequency = *REAL(result).add(2);
+        if frequency.is_infinite() || start.is_infinite() || end.is_infinite() {
+            return Err("invalid time series parameters specified (1)".to_string());
+        }
+        if !frequency.is_nan() && frequency <= 0.0 {
+            return Err("invalid time series parameters specified (0)".to_string());
+        }
+        if start.is_finite() && end.is_finite() && frequency.is_finite() && end < start {
+            return Err("invalid time series parameters specified (1)".to_string());
+        }
+        Ok(result)
     }
 }
 

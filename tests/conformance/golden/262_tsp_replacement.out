@@ -1,0 +1,10 @@
+[1] 1 2 3
+[1] "double"
+NULL
+NULL
+[1]  1  4 NA
+[1] NaN   4   1
+[1] "'tsp' attribute must be numeric of length three"
+[1] "invalid time series parameters specified (0)"
+[1] "invalid time series parameters specified (1)"
+[1] "'tsp' attribute must be numeric of length three"
