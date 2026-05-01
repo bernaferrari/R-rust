@@ -17909,19 +17909,79 @@ pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R normalizePath(path)
 pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
+        let mut path_arg = R_NilValue();
+        let mut must_work_arg = R_NilValue();
+        let mut positional = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match tag_name(current).as_deref() {
+                Some("path") => path_arg = value,
+                Some("mustWork") => must_work_arg = value,
+                Some("winslash") => {}
+                Some(_) => {}
+                None => {
+                    match positional {
+                        0 => path_arg = value,
+                        1 => {}
+                        2 => must_work_arg = value,
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+
+        if path_arg.is_null() || path_arg == R_NilValue() {
             return R_NilValue();
         }
-        let path = elt_to_string(x, 0);
-        match std::fs::canonicalize(&path) {
-            Ok(p) => Rf_mkString(
-                CString::new(p.to_string_lossy().as_ref())
-                    .unwrap_or_default()
-                    .as_ptr(),
-            ),
-            Err(_) => Rf_mkString(CString::new(path).unwrap_or_default().as_ptr()),
+
+        let must_work = if must_work_arg.is_null()
+            || must_work_arg == R_NilValue()
+            || XLENGTH(must_work_arg) == 0
+        {
+            NA_INTEGER
+        } else {
+            *LOGICAL(must_work_arg)
+        };
+
+        let n = XLENGTH(path_arg);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _result_guard = protect(result);
+        for i in 0..n {
+            let elt = STRING_ELT(path_arg, i);
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
+
+            let path = CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("").to_string();
+            match std::fs::canonicalize(&path) {
+                Ok(p) => SET_STRING_ELT(
+                    result,
+                    i,
+                    crate::sexp::constructors::Rf_mkChar(
+                        CString::new(p.to_string_lossy().as_ref())
+                            .unwrap_or_default()
+                            .as_ptr(),
+                    ),
+                ),
+                Err(err) => {
+                    if must_work == TRUE {
+                        base_error(format!("path[{}]=\"{}\": {}", i + 1, path, err));
+                    }
+                    SET_STRING_ELT(
+                        result,
+                        i,
+                        crate::sexp::constructors::Rf_mkChar(
+                            CString::new(path).unwrap_or_default().as_ptr(),
+                        ),
+                    );
+                }
+            }
         }
+        result
     }
 }
 
