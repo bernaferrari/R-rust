@@ -1,0 +1,7 @@
+[1] "A.md,a.txt,b.R,dir"
+[1] ".,..,.hidden,A.md,a.txt,b.R,dir"
+[1] ".hidden,A.md,a.txt,b.R,dir"
+[1] "a.txt"
+[1] "A.md,a.txt"
+[1] "A.md,a.txt,b.R,dir/c.txt"
+[1] "A.md,a.txt,b.R,dir,dir/c.txt,dir/sub"

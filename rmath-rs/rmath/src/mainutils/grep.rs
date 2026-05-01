@@ -950,6 +950,14 @@ fn match_str(
     }
 }
 
+/// Shared ERE predicate for base helpers that accept R-style regex patterns.
+pub(crate) fn ere_is_match(pattern: &str, text: &str, ignore_case: bool) -> bool {
+    compile_ere(pattern)
+        .ok()
+        .and_then(|nodes| ere_search(&nodes, text.as_bytes(), ignore_case))
+        .is_some()
+}
+
 // ---------------------------------------------------------------------------
 // do_gsub -- R's sub() / gsub() builtin (port of grep.c:do_gsub)
 // ---------------------------------------------------------------------------

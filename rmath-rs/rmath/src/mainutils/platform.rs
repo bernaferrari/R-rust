@@ -884,81 +884,178 @@ pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// R's `list.files()` — list files in directories.
 pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{
-            CADDR, CADR, CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT, STRING_ELT,
-        };
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL, SET_STRING_ELT, STRING_ELT};
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::globals::R_NilValue;
 
-        let paths = CAR(args);
-        let pattern = CADR(args);
-        let all_files = CADDR(args);
-        let full_names = CAR(CDR(CDR(CDR(args))));
-        let recursive = CAR(CDR(CDR(CDR(CDR(args)))));
-
-        let mut show_all = false;
-        if !all_files.is_null() && all_files != R_NilValue() {
-            let v = *LOGICAL(all_files);
-            show_all = v != 0 && v != crate::sexp::ffi::NA_INTEGER;
-        }
-
-        let mut do_full = false;
-        if !full_names.is_null() && full_names != R_NilValue() {
-            let v = *LOGICAL(full_names);
-            do_full = v != 0 && v != crate::sexp::ffi::NA_INTEGER;
-        }
-
-        let mut pattern_str = String::new();
-        if !pattern.is_null() && pattern != R_NilValue() {
-            let elt = STRING_ELT(pattern, 0);
-            if !elt.is_null() && elt != R_NilValue() {
-                let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-                pattern_str = c.to_str().unwrap_or("").to_string();
+        fn logical_arg(value: SEXP, default: bool) -> bool {
+            unsafe {
+                if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+                    return default;
+                }
+                let v = *LOGICAL(value);
+                v != 0 && v != crate::sexp::ffi::NA_INTEGER
             }
         }
+
+        fn push_dir_dots(base: &str, full_names: bool, entries: &mut Vec<String>) {
+            if full_names {
+                entries.push(format!("{}/.", base.trim_end_matches('/')));
+                entries.push(format!("{}/..", base.trim_end_matches('/')));
+            } else {
+                entries.push(".".to_string());
+                entries.push("..".to_string());
+            }
+        }
+
+        #[derive(Clone, Copy)]
+        struct ListFilesOptions<'a> {
+            pattern: Option<&'a str>,
+            all_files: bool,
+            full_names: bool,
+            recursive: bool,
+            ignore_case: bool,
+            include_dirs: bool,
+        }
+
+        fn pattern_matches(name: &str, options: ListFilesOptions<'_>) -> bool {
+            options.pattern.is_none_or(|pattern| {
+                crate::mainutils::grep::ere_is_match(pattern, name, options.ignore_case)
+            })
+        }
+
+        fn collect_list_files(
+            base: &std::path::Path,
+            relative: &std::path::Path,
+            options: ListFilesOptions<'_>,
+            entries: &mut Vec<String>,
+        ) {
+            let current = base.join(relative);
+            let Ok(read_dir) = std::fs::read_dir(&current) else {
+                return;
+            };
+            let mut children = Vec::new();
+            for entry in read_dir.flatten() {
+                children.push(entry);
+            }
+            children.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+
+            for entry in children {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !options.all_files && name.starts_with('.') {
+                    continue;
+                }
+
+                let child_rel = relative.join(&name);
+                let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
+                let display = child_rel.to_string_lossy().replace('\\', "/");
+                let returned = if options.full_names {
+                    base.join(&child_rel).to_string_lossy().to_string()
+                } else {
+                    display.clone()
+                };
+
+                if options.recursive {
+                    if is_dir {
+                        if options.include_dirs && pattern_matches(&display, options) {
+                            entries.push(returned);
+                        }
+                        collect_list_files(base, &child_rel, options, entries);
+                    } else if pattern_matches(&display, options) {
+                        entries.push(returned);
+                    }
+                } else if pattern_matches(&name, options) {
+                    entries.push(returned);
+                }
+            }
+        }
+
+        let mut paths = R_NilValue();
+        let mut pattern = R_NilValue();
+        let mut all_files = R_NilValue();
+        let mut full_names = R_NilValue();
+        let mut recursive = R_NilValue();
+        let mut ignore_case = R_NilValue();
+        let mut include_dirs = R_NilValue();
+        let mut no_dotdot = R_NilValue();
+        let mut positional = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match platform_tag_name(current).as_deref() {
+                Some("path") => paths = value,
+                Some("pattern") => pattern = value,
+                Some("all.files") => all_files = value,
+                Some("full.names") => full_names = value,
+                Some("recursive") => recursive = value,
+                Some("ignore.case") => ignore_case = value,
+                Some("include.dirs") => include_dirs = value,
+                Some("no..") => no_dotdot = value,
+                Some(_) => {}
+                None => {
+                    match positional {
+                        0 => paths = value,
+                        1 => pattern = value,
+                        2 => all_files = value,
+                        3 => full_names = value,
+                        4 => recursive = value,
+                        5 => ignore_case = value,
+                        6 => include_dirs = value,
+                        7 => no_dotdot = value,
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+
+        let pattern_string = if pattern.is_null() || pattern == R_NilValue() || LENGTH(pattern) == 0
+        {
+            None
+        } else {
+            let elt = STRING_ELT(pattern, 0);
+            if elt.is_null() || elt == R_NilValue() || elt == crate::sexp::globals::R_NaString() {
+                Some(String::new())
+            } else {
+                Some(
+                    CStr::from_ptr(crate::sexp::accessors::CHAR(elt))
+                        .to_str()
+                        .unwrap_or("")
+                        .to_string(),
+                )
+            }
+        };
+        let options = ListFilesOptions {
+            pattern: pattern_string.as_deref(),
+            all_files: logical_arg(all_files, false),
+            full_names: logical_arg(full_names, false),
+            recursive: logical_arg(recursive, false),
+            ignore_case: logical_arg(ignore_case, false),
+            include_dirs: logical_arg(include_dirs, false),
+        };
+        let omit_dotdot = logical_arg(no_dotdot, false);
 
         let mut entries: Vec<String> = Vec::new();
-        let n = LENGTH(paths);
-        for i in 0..n as usize {
-            let elt = STRING_ELT(paths, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                continue;
+        let mut visit_path = |path: String| {
+            if options.all_files && !omit_dotdot && !options.recursive && pattern_string.is_none() {
+                push_dir_dots(&path, options.full_names, &mut entries);
             }
-            let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-            let dir = c.to_str().unwrap_or(".");
-            if let Ok(rd) = std::fs::read_dir(dir) {
-                for entry in rd.flatten() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    // Skip hidden files unless all=TRUE
-                    if !show_all && name.starts_with('.') {
-                        continue;
-                    }
-                    // Apply simple glob pattern filter if given
-                    if !pattern_str.is_empty() {
-                        // Simple glob: support * wildcard only
-                        let pattern_parts: Vec<&str> = pattern_str.split('*').collect();
-                        let mut matches = true;
-                        if pattern_parts.len() == 1 {
-                            matches = name == pattern_parts[0];
-                        } else if pattern_parts.len() == 2 {
-                            matches = name.starts_with(pattern_parts[0])
-                                && name.ends_with(pattern_parts[1]);
-                        }
-                        if !matches {
-                            continue;
-                        }
-                    }
-                    // Skip directories
-                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                        continue;
-                    }
-                    let final_name = if do_full {
-                        format!("{}/{}", dir.trim_end_matches('/'), name)
-                    } else {
-                        name
-                    };
-                    entries.push(final_name);
+            collect_list_files(
+                std::path::Path::new(&path),
+                std::path::Path::new(""),
+                options,
+                &mut entries,
+            );
+        };
+
+        if paths.is_null() || paths == R_NilValue() || LENGTH(paths) == 0 {
+            visit_path(".".to_string());
+        } else {
+            for i in 0..LENGTH(paths) as usize {
+                if let Some(path) = path_at(paths, i) {
+                    visit_path(path);
                 }
             }
         }
