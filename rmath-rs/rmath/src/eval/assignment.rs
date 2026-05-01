@@ -305,6 +305,7 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
             "[[<-" => crate::mainutils::subassign::do_subassign2_dflt(call, assign_fn, args, rho),
             "names<-" => crate::mainutils::essentials::do_names_set(call, assign_fn, args, rho),
             "dim<-" => crate::mainutils::essentials::do_dim_set(call, assign_fn, args, rho),
+            "levels<-" => crate::mainutils::essentials::do_levels_set(call, assign_fn, args, rho),
             "dimnames<-" => {
                 crate::mainutils::essentials::do_dimnames_set(call, assign_fn, args, rho)
             }

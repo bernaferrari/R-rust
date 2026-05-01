@@ -4150,6 +4150,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "is.factor",
             "is.ordered",
             "levels",
+            "levels<-",
             "nlevels",
             // Complete string operations — str_locate, str_sub
             "str_locate",
@@ -17059,6 +17060,146 @@ pub unsafe fn do_levels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
         levels
+    }
+}
+
+/// R's `levels(x) <- value` — replace factor levels or the raw levels attribute.
+pub unsafe fn do_levels_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let result = if inherits_class(x, "factor") {
+            replace_factor_levels(x, value)
+        } else {
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_LevelsSymbol(),
+                value,
+            );
+            x
+        };
+
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        result
+    }
+}
+
+unsafe fn replace_factor_levels(x: SEXP, value: SEXP) -> SEXP {
+    unsafe {
+        let old_levels = string_vector_values(crate::sexp::attrib_core::getAttrib(
+            x,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        ));
+        let xlevs = if TYPEOF(value) == SEXPTYPE::VECSXP {
+            factor_levels_from_named_list(value, &old_levels)
+        } else {
+            if XLENGTH(value) < old_levels.len() as R_xlen_t {
+                std::panic::panic_any(RError {
+                    message: "number of levels differs".to_string(),
+                });
+            }
+            (0..XLENGTH(value))
+                .map(|i| {
+                    if is_string_na(value, i) {
+                        None
+                    } else {
+                        Some(elt_to_string(value, i))
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let new_levels = unique_present_strings(&xlevs);
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(x));
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        for i in 0..XLENGTH(x) {
+            let old_code = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                INTEGER_ELT(x, i as c_int)
+            } else {
+                NA_INTEGER
+            };
+            let new_code = if old_code == NA_INTEGER || old_code <= 0 {
+                NA_INTEGER
+            } else {
+                let old_idx = (old_code - 1) as usize;
+                xlevs
+                    .get(old_idx)
+                    .and_then(|level| level.as_ref())
+                    .and_then(|level| match_string(&new_levels, level))
+                    .map(|idx| idx as c_int + 1)
+                    .unwrap_or(NA_INTEGER)
+            };
+            *INTEGER(result).add(i as usize) = new_code;
+        }
+
+        crate::sexp::accessors::SET_ATTRIB(result, ATTRIB(x));
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+            string_vector(&new_levels),
+        );
+        result
+    }
+}
+
+unsafe fn factor_levels_from_named_list(value: SEXP, old_levels: &[String]) -> Vec<Option<String>> {
+    unsafe {
+        let names =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut xlevs = old_levels.iter().cloned().map(Some).collect::<Vec<_>>();
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return xlevs;
+        }
+
+        for group_idx in 0..XLENGTH(value) {
+            if is_string_na(names, group_idx) {
+                continue;
+            }
+            let group_name = elt_to_string(names, group_idx);
+            let members = VECTOR_ELT(value, group_idx);
+            for member_idx in 0..XLENGTH(members) {
+                let old_name = elt_to_string(members, member_idx);
+                if let Some(pos) = match_string(old_levels, &old_name)
+                    && let Some(slot) = xlevs.get_mut(pos)
+                {
+                    *slot = Some(group_name.clone());
+                }
+            }
+        }
+        xlevs
+    }
+}
+
+fn unique_present_strings(values: &[Option<String>]) -> Vec<String> {
+    let mut unique = Vec::new();
+    for value in values.iter().flatten() {
+        if !unique.iter().any(|existing| existing == value) {
+            unique.push(value.clone());
+        }
+    }
+    unique
+}
+
+fn match_string(values: &[String], needle: &str) -> Option<usize> {
+    values.iter().position(|value| value == needle)
+}
+
+unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
+    unsafe {
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        (0..XLENGTH(class)).any(|i| elt_to_string(class, i) == class_name)
     }
 }
 

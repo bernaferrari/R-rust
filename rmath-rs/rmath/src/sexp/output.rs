@@ -548,7 +548,7 @@ fn format_factor(x: Sexp<'_>) -> Option<String> {
         .take(10)
         .map(|code| {
             if code == NA_INTEGER {
-                "NA".to_string()
+                "<NA>".to_string()
             } else {
                 levels
                     .get((code - 1) as usize)

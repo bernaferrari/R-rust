@@ -1897,6 +1897,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_levels,
     },
     EvaluatedBuiltin {
+        name: "levels<-",
+        handler: crate::mainutils::essentials::do_levels_set,
+    },
+    EvaluatedBuiltin {
         name: "nlevels",
         handler: crate::mainutils::essentials::do_nlevels,
     },
