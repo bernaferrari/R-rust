@@ -640,6 +640,14 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let mode_col =
             Rf_allocVector3(SEXPTYPE::INTSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         guards.push(protect(mode_col));
+        let mode_class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
+        guards.push(protect(mode_class));
+        SET_STRING_ELT(mode_class, 0, Rf_mkChar(c"octmode".as_ptr()));
+        crate::eval::attrib_core::setAttrib(
+            mode_col,
+            crate::eval::attrib_core::R_ClassSymbol(),
+            mode_class,
+        );
         let mtime_col = Rf_allocVector3(
             SEXPTYPE::REALSXP.as_c_int(),
             n as crate::sexp::ffi::R_xlen_t,
@@ -681,7 +689,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                         {
                             use std::os::unix::fs::MetadataExt;
                             *crate::sexp::accessors::INTEGER(mode_col).add(i) =
-                                meta.mode() as c_int;
+                                (meta.mode() & 0o777) as c_int;
                         }
                         #[cfg(not(unix))]
                         {
@@ -1852,37 +1860,80 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
 /// R's `Sys.chmod()` — change file permissions.
 pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, INTEGER, LENGTH, LOGICAL, STRING_ELT};
+        use crate::sexp::accessors::{CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, TYPEOF};
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use std::fs;
 
-        let paths = CAR(args);
-        let mode = CADR(args);
+        fn parse_mode(mode: SEXP) -> u32 {
+            unsafe {
+                if mode.is_null() || mode == R_NilValue() || LENGTH(mode) == 0 {
+                    return 0o777;
+                }
+                match TYPEOF(mode) {
+                    t if t == SEXPTYPE::STRSXP => {
+                        let Some(text) = path_at(mode, 0) else {
+                            return 0o777;
+                        };
+                        u32::from_str_radix(text.trim_start_matches("0o"), 8).unwrap_or(0o777)
+                    }
+                    t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                        let value = *INTEGER(mode);
+                        if value < 0 { 0o777 } else { value as u32 }
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        let value = *REAL(mode);
+                        if value.is_nan() || value < 0.0 {
+                            0o777
+                        } else {
+                            value as u32
+                        }
+                    }
+                    _ => 0o777,
+                }
+            }
+        }
+
+        let mut paths = R_NilValue();
+        let mut mode = R_NilValue();
+        let mut positional = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match platform_tag_name(current).as_deref() {
+                Some("paths") => paths = value,
+                Some("mode") => mode = value,
+                Some("use_umask") => {}
+                Some(_) => {}
+                None => {
+                    match positional {
+                        0 => paths = value,
+                        1 => mode = value,
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+
         let n = LENGTH(paths);
-        let mode_val = if !mode.is_null() && mode != R_NilValue() {
-            *INTEGER(mode)
-        } else {
-            0o644
-        };
+        let mode_val = parse_mode(mode);
 
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
 
         for i in 0..n as usize {
-            let elt = STRING_ELT(paths, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                *pa.add(i) = crate::sexp::ffi::NA_INTEGER;
-            } else {
-                let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-                let path = c.to_str().unwrap_or("");
+            if let Some(path) = path_at(paths, i) {
                 let result = fs::set_permissions(
                     path,
                     std::os::unix::fs::PermissionsExt::from_mode(mode_val as u32),
                 );
                 *pa.add(i) = if result.is_ok() { TRUE } else { FALSE };
+            } else {
+                *pa.add(i) = FALSE;
             }
         }
         ans

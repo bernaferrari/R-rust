@@ -4036,6 +4036,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Sys.getlocale",
             "Sys.setlocale",
             "Sys.readlink",
+            "Sys.chmod",
             "l10n_info",
             "Cstack_info",
             "extSoftVersion",

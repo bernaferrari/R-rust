@@ -1941,6 +1941,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_readlink,
     },
     EvaluatedBuiltin {
+        name: "Sys.chmod",
+        handler: crate::mainutils::platform::do_syschmod,
+    },
+    EvaluatedBuiltin {
         name: "l10n_info",
         handler: crate::mainutils::platform::do_l10n_info,
     },

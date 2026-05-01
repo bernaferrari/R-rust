@@ -710,6 +710,28 @@ pub unsafe fn do_as_double(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
+        if class_contains(x, "octmode") {
+            let n = XLENGTH(x);
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = protect(result);
+            for i in 0..n {
+                let value = *INTEGER(x).add(i as usize);
+                let text = if value == NA_INTEGER {
+                    None
+                } else {
+                    Some(format!("{:o}", value))
+                };
+                let charsxp = text
+                    .and_then(|text| CString::new(text).ok())
+                    .map(|text| Rf_mkChar(text.as_ptr()))
+                    .unwrap_or_else(|| crate::sexp::globals::R_NaString());
+                SET_STRING_ELT(result, i, charsxp);
+            }
+            return result;
+        }
         if let Some(levels) = factor_levels(x) {
             let n = XLENGTH(x);
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
@@ -729,6 +751,30 @@ pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             return result;
         }
         coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int())
+    }
+}
+
+unsafe fn class_contains(x: SEXP, class_name: &str) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return false;
+        }
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        for i in 0..XLENGTH(class) {
+            let elt = STRING_ELT(class, i);
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                continue;
+            }
+            let text = CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("");
+            if text == class_name {
+                return true;
+            }
+        }
+        false
     }
 }
 
