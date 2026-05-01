@@ -16,7 +16,7 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
 use crate::sexp::object::{PairlistBuilder, PairlistIter, Sexp, SexpError};
-use crate::sexp::symbol::R_DotsSymbol;
+use crate::sexp::symbol::{R_DotsSymbol, symbol_name_bytes_equal};
 
 use super::eval::Rf_eval;
 
@@ -291,14 +291,7 @@ unsafe fn exact_tag_name_equal(left: SEXP, right: SEXP) -> bool {
         if left.is_null() || right.is_null() || left == R_NilValue() || right == R_NilValue() {
             return false;
         }
-
-        let left_name = crate::sexp::accessors::PRINTNAME(left);
-        let right_name = crate::sexp::accessors::PRINTNAME(right);
-        if left_name.is_null() || right_name.is_null() {
-            return false;
-        }
-
-        crate::sexp::accessors::CHAR(left_name) == crate::sexp::accessors::CHAR(right_name)
+        symbol_name_bytes_equal(left, right)
     }
 }
 

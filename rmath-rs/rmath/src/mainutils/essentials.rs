@@ -12711,17 +12711,8 @@ pub unsafe fn do_eval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `substitute(expr, env)` — substitute symbols in expression.
-/// Simplified: returns the expression as-is (substitution not fully implemented).
 pub unsafe fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let expr = CAR(args);
-        // Simplified: just return the expression unchanged
-        // A full implementation would walk the AST and substitute bound symbols
-        if expr.is_null() || expr == R_NilValue() {
-            return R_NilValue();
-        }
-        expr
-    }
+    unsafe { crate::mainutils::coerce::do_substitute(_call, _op, args, _rho) }
 }
 
 /// R's `quote(expr)` — return expression unevaluated.

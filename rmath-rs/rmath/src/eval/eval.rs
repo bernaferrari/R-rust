@@ -25,8 +25,7 @@ use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::object::{PairlistIter, Sexp, SexpError};
-use crate::sexp::symbol::R_DotsSymbol;
-use crate::sexp::symbol::symbol_name_from_ptr;
+use crate::sexp::symbol::{R_DotsSymbol, symbol_name_bytes_equal, symbol_name_from_ptr};
 
 use super::apply::{apply_builtin_safe, apply_closure_safe, apply_special_safe};
 pub use super::error::EvalError;
@@ -277,7 +276,7 @@ pub(crate) fn find_var_result<'a>(
             let tag = cell
                 .try_tag()
                 .map_err(|err| sexp_err("binding tag lookup", err))?;
-            if tag == symbol {
+            if symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()) {
                 let val = cell
                     .try_car()
                     .map_err(|err| sexp_err("binding value lookup", err))?;

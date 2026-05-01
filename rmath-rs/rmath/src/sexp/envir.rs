@@ -23,7 +23,7 @@ use super::globals::{R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::instance::with_required_current_instance;
 use super::memory_ext::NewEnvironment;
 use super::object::{PairlistIter, Sexp, SexpError};
-use super::symbol::Rf_install;
+use super::symbol::{Rf_install, symbol_name_bytes_equal};
 
 // ---------------------------------------------------------------------------
 // Safe wrapper types
@@ -140,7 +140,7 @@ pub fn find_var_in_frame_result<'a>(
         let tag = cell
             .try_tag()
             .map_err(|err| sexp_err("binding tag lookup", err))?;
-        if tag == symbol {
+        if symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()) {
             return cell
                 .try_car()
                 .map(Some)
@@ -266,7 +266,11 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
     };
 
     for cell in PairlistIter::new(frame) {
-        if cell.try_tag().ok() == Some(symbol) {
+        if cell
+            .try_tag()
+            .ok()
+            .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()))
+        {
             unsafe {
                 SETCAR(cell.as_raw(), value.as_raw());
             }
@@ -503,7 +507,11 @@ pub fn dd_find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a>
     }
 
     for cell in PairlistIter::new(dots_val) {
-        if cell.try_tag().ok() == Some(symbol) {
+        if cell
+            .try_tag()
+            .ok()
+            .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()))
+        {
             let val = cell.try_car().ok()?;
             if val.typeof_() == SEXPTYPE::PROMSXP {
                 return force_promise_safe(val);

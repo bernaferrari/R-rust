@@ -3504,7 +3504,7 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
 /// Ported from R's `do_substitute()` in coerce.c.
 pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
-    use crate::sexp::accessors::{CADR, CAR, TYPEOF};
+    use crate::sexp::accessors::{CADR, CAR, CDR, TYPEOF};
     use crate::sexp::constructors::Rf_cons;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
@@ -3514,7 +3514,8 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     unsafe {
         // Manual argument matching: first arg is expr, second is env
         let expr = CAR(args);
-        let env_arg = if LENGTH(args) > 1 {
+        let rest = CDR(args);
+        let env_arg = if !rest.is_null() && rest != R_NilValue() {
             CADR(args)
         } else {
             R_MissingArg()
