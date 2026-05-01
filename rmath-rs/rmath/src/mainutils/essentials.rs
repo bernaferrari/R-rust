@@ -3825,6 +3825,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "parent.frame",
             "sys.call",
             "sys.frame",
+            "unclass",
             "getwd",
             "setwd",
             "basename",

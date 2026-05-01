@@ -1,0 +1,12 @@
+x <- structure(1:2, class = "foo", names = c("a", "b"))
+y <- unclass(x)
+print(inherits(x, "foo"))
+print(inherits(y, "foo"))
+print(names(y))
+print(identical(x, y))
+
+f <- factor(c("b", "a", "b"))
+u <- unclass(f)
+print(is.integer(u))
+print(inherits(u, "factor"))
+print(attributes(u)$levels)

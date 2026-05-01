@@ -322,6 +322,26 @@ pub unsafe fn do_unname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// R's `unclass(obj)` — return a copy with the class attribute removed.
+pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let result = crate::mainutils::duplicate::duplicate(x);
+        if result.is_null() || result == R_NilValue() {
+            return result;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            R_NilValue(),
+        );
+        result
+    }
+}
+
 unsafe fn names_from_environment(env: SEXP) -> SEXP {
     unsafe {
         let mut names = Vec::new();
