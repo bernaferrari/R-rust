@@ -4146,6 +4146,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "str_sub_all",
             // Complete R runtime — Sys.* functions, R.home
             "R.home",
+            "date",
             "Sys.getenv",
             "Sys.setenv",
             "Sys.unsetenv",

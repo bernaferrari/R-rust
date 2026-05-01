@@ -1897,6 +1897,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_R_home,
     },
     EvaluatedBuiltin {
+        name: "date",
+        handler: crate::mainutils::platform::do_date,
+    },
+    EvaluatedBuiltin {
         name: "Sys.getenv",
         handler: crate::mainutils::essentials::do_Sys_getenv,
     },

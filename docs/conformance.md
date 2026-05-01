@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 253 |
-| Passing | 253 |
+| Total parity cases | 254 |
+| Passing | 254 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -104,7 +104,7 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 53 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname cases, named-argument IO smoke including readLines/writeLines, locale/capability/runtime-introspection/platform shape smoke, early object smoke cases |
+| Parser and scalar basics | 54 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname cases, named-argument IO smoke including readLines/writeLines, locale/capability/runtime-introspection/platform/date shape smoke, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
 | Vectors, lists, attributes, and objects | 35 | Vectors, typed vector constructors, lists, names, subsetting, factors, class replacement, date/time class attributes, data-frame helper transforms, directory and file listing shape cases, arithmetic attributes |
 | Base functions, conditions, and platform helpers | 89 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, `Sys.getpid`, options/getOption including defaults, broader `sprintf` integer/float formats, `proc.time`, file/temp helpers including `file.info`, `file.size`, `file.mtime`, `cat(file=...)`, path-string `readLines`, `file.access`/append/copy/link/symlink/rename/remove, `normalizePath`, `Sys.readlink`, and unique per-session `tempfile()`, wrapping helpers |
