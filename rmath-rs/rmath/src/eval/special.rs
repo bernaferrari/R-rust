@@ -5,12 +5,16 @@
 //! Special forms are functions where arguments are NOT pre-evaluated.
 //! This includes: if, while, for, repeat, break, next, return, function, begin, (.
 
-use crate::sexp::accessors::{CADDR, CADR, CAR, CDDR, CDR, CHAR, PRINTNAME, SETCDR, TAG, TYPEOF};
+use crate::sexp::accessors::{
+    CADDR, CADR, CAR, CDDR, CDR, CHAR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR, TAG,
+    TYPEOF,
+};
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_BraceSymbol;
 
 use super::eval::Rf_eval;
@@ -64,6 +68,7 @@ unsafe fn dispatch_special_by_name(
             "function" => do_function(CDR(call), rho),
             "return" => do_return(CDR(call), rho),
             "quote" => crate::mainutils::essentials::do_quote(call, op, args, rho),
+            "expression" => do_expression(CDR(call)),
             "substitute" => crate::mainutils::coerce::do_substitute(call, op, args, rho),
             "invisible" => do_invisible(CDR(call), rho),
             "on.exit" => do_on_exit_from_args(CDR(call), rho),
@@ -71,6 +76,49 @@ unsafe fn dispatch_special_by_name(
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
             _ => unimplemented_special_form(name),
         }
+    }
+}
+
+unsafe fn do_expression(args: SEXP) -> SEXP {
+    unsafe {
+        let mut len = 0;
+        let mut current = args;
+        while !is_null(current) {
+            len += 1;
+            current = CDR(current);
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::EXPRSXP.as_c_int(), len);
+        let _result_guard = protect(result);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), len);
+        let _names_guard = protect(names);
+
+        current = args;
+        let mut i = 0;
+        let mut has_names = false;
+        while !is_null(current) {
+            SET_VECTOR_ELT(result, i, CAR(current));
+            let name = tag_name(current).unwrap_or_default();
+            if !name.is_empty() {
+                has_names = true;
+            }
+            SET_STRING_ELT(
+                names,
+                i,
+                Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr()),
+            );
+            i += 1;
+            current = CDR(current);
+        }
+
+        if has_names {
+            crate::eval::attrib_core::setAttrib(
+                result,
+                crate::eval::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        result
     }
 }
 

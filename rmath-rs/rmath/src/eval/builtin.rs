@@ -473,6 +473,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_typeof,
     },
     EvaluatedBuiltin {
+        name: "mode",
+        handler: crate::mainutils::essentials::do_mode,
+    },
+    EvaluatedBuiltin {
+        name: "storage.mode",
+        handler: crate::mainutils::essentials::do_storage_mode_get,
+    },
+    EvaluatedBuiltin {
+        name: "identity",
+        handler: crate::mainutils::essentials::do_identity,
+    },
+    EvaluatedBuiltin {
         name: "is.na",
         handler: crate::mainutils::essentials::do_is_na,
     },

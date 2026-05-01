@@ -230,6 +230,85 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// R's `mode(x)` — user-facing object mode.
+pub unsafe fn do_mode(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let s = CString::new(mode_name(x)).unwrap_or_default();
+        Rf_mkString(s.as_ptr())
+    }
+}
+
+/// R's `storage.mode(x)` — underlying storage mode.
+pub unsafe fn do_storage_mode_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let s = CString::new(storage_mode_name(x)).unwrap_or_default();
+        Rf_mkString(s.as_ptr())
+    }
+}
+
+/// R's `identity(x)` — return the object unchanged.
+pub unsafe fn do_identity(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { CAR(args) }
+}
+
+fn mode_name(x: SEXP) -> &'static str {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return "NULL";
+        }
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP => "logical",
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => "numeric",
+            t if t == SEXPTYPE::CPLXSXP => "complex",
+            t if t == SEXPTYPE::STRSXP || t == SEXPTYPE::CHARSXP => "character",
+            t if t == SEXPTYPE::RAWSXP => "raw",
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP => "list",
+            t if t == SEXPTYPE::EXPRSXP => "expression",
+            t if t == SEXPTYPE::SYMSXP => "name",
+            t if t == SEXPTYPE::LANGSXP => "call",
+            t if t == SEXPTYPE::CLOSXP
+                || t == SEXPTYPE::BUILTINSXP
+                || t == SEXPTYPE::SPECIALSXP =>
+            {
+                "function"
+            }
+            t if t == SEXPTYPE::ENVSXP => "environment",
+            _ => "unknown",
+        }
+    }
+}
+
+fn storage_mode_name(x: SEXP) -> &'static str {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return "NULL";
+        }
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP => "logical",
+            t if t == SEXPTYPE::INTSXP => "integer",
+            t if t == SEXPTYPE::REALSXP => "double",
+            t if t == SEXPTYPE::CPLXSXP => "complex",
+            t if t == SEXPTYPE::STRSXP || t == SEXPTYPE::CHARSXP => "character",
+            t if t == SEXPTYPE::RAWSXP => "raw",
+            t if t == SEXPTYPE::VECSXP => "list",
+            t if t == SEXPTYPE::LISTSXP => "pairlist",
+            t if t == SEXPTYPE::EXPRSXP => "expression",
+            t if t == SEXPTYPE::SYMSXP => "symbol",
+            t if t == SEXPTYPE::LANGSXP => "language",
+            t if t == SEXPTYPE::CLOSXP
+                || t == SEXPTYPE::BUILTINSXP
+                || t == SEXPTYPE::SPECIALSXP =>
+            {
+                "function"
+            }
+            t if t == SEXPTYPE::ENVSXP => "environment",
+            _ => "unknown",
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // do_is_na — check for NA
 // ---------------------------------------------------------------------------
