@@ -1765,7 +1765,11 @@ pub unsafe fn do_is_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             x,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
         );
-        Rf_ScalarLogical(if !dim_attr.is_null() { TRUE } else { FALSE })
+        let is_array = !dim_attr.is_null()
+            && dim_attr != R_NilValue()
+            && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
+            && LENGTH(dim_attr) > 0;
+        Rf_ScalarLogical(if is_array { TRUE } else { FALSE })
     }
 }
 
@@ -9441,6 +9445,9 @@ pub unsafe fn do_NROW(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
+        if is_data_frame_like(x) {
+            return Rf_ScalarInteger(data_frame_row_count(x) as i32);
+        }
         let dim_attr = crate::sexp::attrib_core::getAttrib(
             x,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -9459,6 +9466,9 @@ pub unsafe fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
+        }
+        if is_data_frame_like(x) {
+            return Rf_ScalarInteger(XLENGTH(x) as i32);
         }
         let dim_attr = crate::sexp::attrib_core::getAttrib(
             x,
