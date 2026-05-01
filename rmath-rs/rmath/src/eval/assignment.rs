@@ -307,6 +307,9 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
             "dim<-" => crate::mainutils::essentials::do_dim_set(call, assign_fn, args, rho),
             "length<-" => crate::mainutils::essentials::do_length_set(call, assign_fn, args, rho),
             "levels<-" => crate::mainutils::essentials::do_levels_set(call, assign_fn, args, rho),
+            "storage.mode<-" => {
+                crate::mainutils::essentials::do_storage_mode_set(call, assign_fn, args, rho)
+            }
             "dimnames<-" => {
                 crate::mainutils::essentials::do_dimnames_set(call, assign_fn, args, rho)
             }

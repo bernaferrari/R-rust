@@ -3657,6 +3657,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "typeof",
             "mode",
             "storage.mode",
+            "storage.mode<-",
             "identity",
             "is.na",
             "names",
@@ -9526,6 +9527,64 @@ unsafe fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
             None
         } else {
             Some(raw.trunc() as R_xlen_t)
+        }
+    }
+}
+
+/// R's `storage.mode(x) <- value` — coerce storage while preserving attributes.
+pub unsafe fn do_storage_mode_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        let target_type = match storage_mode_target(value) {
+            Ok(target_type) => target_type,
+            Err(message) => {
+                std::panic::panic_any(RError { message });
+            }
+        };
+
+        if TYPEOF(x) == target_type {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+        if inherits_class(x, "factor") {
+            std::panic::panic_any(RError {
+                message: "invalid to change the storage mode of a factor".to_string(),
+            });
+        }
+
+        let result = crate::mainutils::coerce::coerceVector(x, target_type);
+        let _result_guard = protect(result);
+        crate::sexp::accessors::SET_ATTRIB(result, ATTRIB(x));
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        result
+    }
+}
+
+unsafe fn storage_mode_target(value: SEXP) -> Result<c_int, String> {
+    unsafe {
+        if value.is_null()
+            || value == R_NilValue()
+            || TYPEOF(value) != SEXPTYPE::STRSXP
+            || XLENGTH(value) < 1
+            || is_string_na(value, 0)
+        {
+            return Err("'value' must be non-null character string".to_string());
+        }
+
+        let mode = elt_to_string(value, 0);
+        match mode.as_str() {
+            "logical" => Ok(SEXPTYPE::LGLSXP.as_c_int()),
+            "integer" => Ok(SEXPTYPE::INTSXP.as_c_int()),
+            "double" => Ok(SEXPTYPE::REALSXP.as_c_int()),
+            "complex" => Ok(SEXPTYPE::CPLXSXP.as_c_int()),
+            "character" => Ok(SEXPTYPE::STRSXP.as_c_int()),
+            "raw" => Ok(SEXPTYPE::RAWSXP.as_c_int()),
+            "list" => Ok(SEXPTYPE::VECSXP.as_c_int()),
+            "expression" => Ok(SEXPTYPE::EXPRSXP.as_c_int()),
+            "real" => Err("use of 'real' is defunct: use 'double' instead".to_string()),
+            "single" => Err("use of 'single' is defunct: use mode<- instead".to_string()),
+            _ => Err("invalid value".to_string()),
         }
     }
 }

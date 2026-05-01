@@ -481,6 +481,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_storage_mode_get,
     },
     EvaluatedBuiltin {
+        name: "storage.mode<-",
+        handler: crate::mainutils::essentials::do_storage_mode_set,
+    },
+    EvaluatedBuiltin {
         name: "identity",
         handler: crate::mainutils::essentials::do_identity,
     },

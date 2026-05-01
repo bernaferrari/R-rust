@@ -213,6 +213,7 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             t if t == SEXPTYPE::REALSXP => "double",
             t if t == SEXPTYPE::CPLXSXP => "complex",
             t if t == SEXPTYPE::STRSXP => "character",
+            t if t == SEXPTYPE::RAWSXP => "raw",
             t if t == SEXPTYPE::VECSXP => "list",
             t if t == SEXPTYPE::LISTSXP => "pairlist",
             t if t == SEXPTYPE::LANGSXP => "language",
