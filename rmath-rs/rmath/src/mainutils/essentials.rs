@@ -3813,6 +3813,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             ":::",
             "comment",
             "unname",
+            "oldClass",
             "names<-",
             "dimnames<-",
             "rownames<-",
@@ -3820,6 +3821,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "colnames<-",
             "class<-",
             "comment<-",
+            "oldClass<-",
             "noquote",
             "deparse",
             "nargs",
@@ -3831,6 +3833,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "sys.call",
             "sys.frame",
             "unclass",
+            "oldClass",
             "getwd",
             "setwd",
             "basename",
@@ -9434,6 +9437,31 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// R's `oldClass(x)` — direct S3 class attribute without implicit defaults.
+pub unsafe fn do_oldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol())
+    }
+}
+
+/// R's `oldClass(x) <- value` — set or remove the direct S3 class attribute.
+pub unsafe fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), value);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
 /// R's `Names(x)` — get names (alias, commonly used internally).
 pub unsafe fn do_Names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_names(_call, _op, args, _rho) }
@@ -10148,7 +10176,11 @@ pub unsafe fn do_is_object(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             x,
             Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
         );
-        Rf_ScalarLogical(if !class.is_null() { TRUE } else { FALSE })
+        Rf_ScalarLogical(if !class.is_null() && class != R_NilValue() {
+            TRUE
+        } else {
+            FALSE
+        })
     }
 }
 
