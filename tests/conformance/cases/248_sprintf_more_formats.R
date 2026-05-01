@@ -1,0 +1,5 @@
+print(sprintf("%x %X %o", 255, 255, 8))
+print(sprintf("%.2e %.2E", 1234.5, 1234.5))
+print(sprintf("%.3g %.4g", 1234.5, 0.0012345))
+print(sprintf("%+05d|% d|%-5s", 12, 12, "x"))
+print(sprintf("%+08.2f|% 8.1e", 12.3, 12.3))

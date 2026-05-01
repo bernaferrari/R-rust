@@ -654,7 +654,7 @@ pub unsafe fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-/// R's `sprintf(fmt, ...)` for common scalar/vector `%s`, `%d`, `%i`, and `%f` formats.
+/// R's `sprintf(fmt, ...)` for common scalar/vector formats.
 pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fmt_arg = CAR(args);
@@ -694,12 +694,17 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 }
 
                 let mut j = i + 1;
-                let zero_pad = if j < fmt_chars.len() && fmt_chars[j] == '0' {
+                let mut flags = SprintfFlags::default();
+                while j < fmt_chars.len() {
+                    match fmt_chars[j] {
+                        '-' => flags.left_align = true,
+                        '+' => flags.sign_plus = true,
+                        ' ' => flags.sign_space = true,
+                        '0' => flags.zero_pad = true,
+                        _ => break,
+                    }
                     j += 1;
-                    true
-                } else {
-                    false
-                };
+                }
                 let mut width = String::new();
                 while j < fmt_chars.len() && fmt_chars[j].is_ascii_digit() {
                     width.push(fmt_chars[j]);
@@ -724,14 +729,18 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 }
 
                 let spec = fmt_chars[j];
-                if matches!(spec, 's' | 'd' | 'i' | 'f') && value_idx < values.len() {
+                if matches!(
+                    spec,
+                    's' | 'd' | 'i' | 'o' | 'x' | 'X' | 'f' | 'e' | 'E' | 'g' | 'G'
+                ) && value_idx < values.len()
+                {
                     out.push_str(&format_sprintf_value(
                         values[value_idx],
                         row,
                         spec,
                         width,
                         precision,
-                        zero_pad,
+                        flags,
                     ));
                     value_idx += 1;
                     i = j + 1;
@@ -750,13 +759,21 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+#[derive(Clone, Copy, Default)]
+struct SprintfFlags {
+    left_align: bool,
+    sign_plus: bool,
+    sign_space: bool,
+    zero_pad: bool,
+}
+
 unsafe fn format_sprintf_value(
     value: SEXP,
     index: R_xlen_t,
     spec: char,
     width: Option<usize>,
     precision: Option<usize>,
-    zero_pad: bool,
+    flags: SprintfFlags,
 ) -> String {
     unsafe {
         let len = XLENGTH(value);
@@ -769,18 +786,111 @@ unsafe fn format_sprintf_value(
                 }
                 s
             }
-            'd' | 'i' => sprintf_integer_value(value, idx).to_string(),
+            'd' | 'i' => format_signed_integer(sprintf_integer_value(value, idx), flags),
+            'o' => format!("{:o}", sprintf_integer_value(value, idx)),
+            'x' => format!("{:x}", sprintf_integer_value(value, idx)),
+            'X' => format!("{:X}", sprintf_integer_value(value, idx)),
             'f' => {
                 let value = sprintf_real_value(value, idx);
-                match precision {
+                let rendered = match precision {
                     Some(places) => format!("{value:.places$}"),
                     None => format!("{value:.6}"),
-                }
+                };
+                apply_float_sign(rendered, value, flags)
+            }
+            'e' | 'E' => {
+                let value = sprintf_real_value(value, idx);
+                let places = precision.unwrap_or(6);
+                let rendered = if spec == 'E' {
+                    normalize_exponent(format!("{value:.places$E}"), 'E')
+                } else {
+                    normalize_exponent(format!("{value:.places$e}"), 'e')
+                };
+                apply_float_sign(rendered, value, flags)
+            }
+            'g' | 'G' => {
+                let value = sprintf_real_value(value, idx);
+                let precision = precision.unwrap_or(6).max(1);
+                let rendered = format_general_float(value, precision, spec == 'G');
+                apply_float_sign(rendered, value, flags)
             }
             _ => elt_to_string(value, idx),
         };
-        pad_sprintf(rendered, width, zero_pad && spec != 's')
+        pad_sprintf(rendered, width, flags, spec != 's')
     }
+}
+
+fn format_signed_integer(value: i64, flags: SprintfFlags) -> String {
+    if value >= 0 && flags.sign_plus {
+        format!("+{value}")
+    } else if value >= 0 && flags.sign_space {
+        format!(" {value}")
+    } else {
+        value.to_string()
+    }
+}
+
+fn apply_float_sign(rendered: String, value: f64, flags: SprintfFlags) -> String {
+    if value.is_sign_negative() || rendered.starts_with('-') {
+        rendered
+    } else if flags.sign_plus {
+        format!("+{rendered}")
+    } else if flags.sign_space {
+        format!(" {rendered}")
+    } else {
+        rendered
+    }
+}
+
+fn normalize_exponent(rendered: String, marker: char) -> String {
+    let Some(pos) = rendered.find(marker) else {
+        return rendered;
+    };
+    let mantissa = &rendered[..pos];
+    let exponent = &rendered[pos + marker.len_utf8()..];
+    let exp = exponent.parse::<i32>().unwrap_or(0);
+    format!("{mantissa}{marker}{exp:+03}")
+}
+
+fn format_general_float(value: f64, precision: usize, uppercase: bool) -> String {
+    if value == 0.0 || !value.is_finite() {
+        return trim_general_float(format!("{value:.prec$}", prec = precision - 1));
+    }
+
+    let abs = value.abs();
+    let exponent = abs.log10().floor() as i32;
+    if exponent < -4 || exponent >= precision as i32 {
+        let rendered = if uppercase {
+            normalize_exponent(format!("{value:.prec$E}", prec = precision - 1), 'E')
+        } else {
+            normalize_exponent(format!("{value:.prec$e}", prec = precision - 1), 'e')
+        };
+        trim_exponent_mantissa(rendered, uppercase)
+    } else {
+        let decimals = (precision as i32 - exponent - 1).max(0) as usize;
+        trim_general_float(format!("{value:.decimals$}"))
+    }
+}
+
+fn trim_general_float(mut rendered: String) -> String {
+    if rendered.contains('.') {
+        while rendered.ends_with('0') {
+            rendered.pop();
+        }
+        if rendered.ends_with('.') {
+            rendered.pop();
+        }
+    }
+    rendered
+}
+
+fn trim_exponent_mantissa(rendered: String, uppercase: bool) -> String {
+    let marker = if uppercase { 'E' } else { 'e' };
+    let Some(pos) = rendered.find(marker) else {
+        return rendered;
+    };
+    let mantissa = trim_general_float(rendered[..pos].to_string());
+    format!("{mantissa}{}", &rendered[pos..])
 }
 
 unsafe fn sprintf_integer_value(value: SEXP, index: R_xlen_t) -> i64 {
@@ -809,7 +919,12 @@ unsafe fn sprintf_real_value(value: SEXP, index: R_xlen_t) -> f64 {
     }
 }
 
-fn pad_sprintf(rendered: String, width: Option<usize>, zero_pad: bool) -> String {
+fn pad_sprintf(
+    rendered: String,
+    width: Option<usize>,
+    flags: SprintfFlags,
+    allow_zero_pad: bool,
+) -> String {
     let Some(width) = width else {
         return rendered;
     };
@@ -818,9 +933,15 @@ fn pad_sprintf(rendered: String, width: Option<usize>, zero_pad: bool) -> String
         return rendered;
     }
     let pad = width - len;
+    if flags.left_align {
+        return format!("{}{}", rendered, " ".repeat(pad));
+    }
+    let zero_pad = flags.zero_pad && allow_zero_pad;
     let ch = if zero_pad { '0' } else { ' ' };
-    if zero_pad && rendered.starts_with('-') {
-        format!("-{}{}", ch.to_string().repeat(pad), &rendered[1..])
+    if zero_pad && matches!(rendered.chars().next(), Some('-' | '+' | ' ')) {
+        let sign = rendered.chars().next().unwrap_or_default();
+        let rest = &rendered[sign.len_utf8()..];
+        format!("{sign}{}{}", ch.to_string().repeat(pad), rest)
     } else {
         format!("{}{}", ch.to_string().repeat(pad), rendered)
     }
