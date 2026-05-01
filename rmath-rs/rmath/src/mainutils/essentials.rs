@@ -7963,6 +7963,19 @@ unsafe fn copy_matrix_element(dst: SEXP, dst_i: R_xlen_t, src: SEXP, src_i: R_xl
     }
 }
 
+unsafe fn set_two_dim_attr(x: SEXP, nrow: R_xlen_t, ncol: R_xlen_t) {
+    unsafe {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if dim.is_null() {
+            return;
+        }
+        let _dim_guard = protect(dim);
+        *INTEGER(dim) = nrow as c_int;
+        *INTEGER(dim).add(1) = ncol as c_int;
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
+    }
+}
+
 unsafe fn set_diagonal_identity_value(x: SEXP, i: R_xlen_t) {
     unsafe {
         match TYPEOF(x) {
@@ -20364,17 +20377,17 @@ pub unsafe fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             x,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
         );
-        let (nrow, ncol) =
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-            {
-                (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
-                )
-            } else {
-                let n = XLENGTH(x);
-                (n, 1)
-            };
+        if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
+            std::panic::panic_any(RError {
+                message: "a matrix-like object is required as argument to 'col'".to_string(),
+            });
+        }
+        let nrow = *INTEGER(dim_attr) as R_xlen_t;
+        let ncol = if LENGTH(dim_attr) >= 2 {
+            *INTEGER(dim_attr).add(1) as R_xlen_t
+        } else {
+            1
+        };
         let total = nrow * ncol;
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, total);
         if result.is_null() {
@@ -20388,6 +20401,7 @@ pub unsafe fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *dst.add(idx) = (j + 1) as c_int;
             }
         }
+        set_two_dim_attr(result, nrow, ncol);
         result
     }
 }
@@ -20403,17 +20417,17 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             x,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
         );
-        let (nrow, ncol) =
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-            {
-                (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
-                )
-            } else {
-                let n = XLENGTH(x);
-                (n, 1)
-            };
+        if dim_attr.is_null() || dim_attr == R_NilValue() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP {
+            std::panic::panic_any(RError {
+                message: "a matrix-like object is required as argument to 'row'".to_string(),
+            });
+        }
+        let nrow = *INTEGER(dim_attr) as R_xlen_t;
+        let ncol = if LENGTH(dim_attr) >= 2 {
+            *INTEGER(dim_attr).add(1) as R_xlen_t
+        } else {
+            1
+        };
         let total = nrow * ncol;
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, total);
         if result.is_null() {
@@ -20427,6 +20441,7 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *dst.add(idx) = (i + 1) as c_int;
             }
         }
+        set_two_dim_attr(result, nrow, ncol);
         result
     }
 }

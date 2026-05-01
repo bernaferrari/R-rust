@@ -1,0 +1,6 @@
+m <- matrix(1:6, nrow = 2)
+print(row(m))
+print(dim(row(m)))
+print(col(m))
+print(dim(col(m)))
+print(dimnames(row(m)))
