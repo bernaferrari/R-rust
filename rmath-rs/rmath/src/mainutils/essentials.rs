@@ -3823,6 +3823,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "comment<-",
             "oldClass<-",
             "attr<-",
+            "attributes<-",
             "noquote",
             "deparse",
             "nargs",
@@ -9631,6 +9632,52 @@ pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
             value,
         );
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
+/// R's `attributes(x) <- value` — replace all attributes from a named list.
+pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        crate::sexp::accessors::SET_ATTRIB(x, R_NilValue());
+        if value.is_null() || value == R_NilValue() {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+
+        if TYPEOF(value) != SEXPTYPE::VECSXP {
+            std::panic::panic_any(RError {
+                message: "attributes must be a list or NULL".to_string(),
+            });
+        }
+
+        let names =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            std::panic::panic_any(RError {
+                message: "attributes must be named".to_string(),
+            });
+        }
+
+        for i in (0..XLENGTH(value)).rev() {
+            let name_elt = STRING_ELT(names, i);
+            if name_elt.is_null() || name_elt == crate::sexp::globals::R_NaString() {
+                continue;
+            }
+            let name = CHAR(name_elt);
+            if name.is_null() || CStr::from_ptr(name).to_bytes().is_empty() {
+                continue;
+            }
+            crate::sexp::attrib_core::setAttrib(x, Rf_install(name), VECTOR_ELT(value, i));
+        }
+
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
