@@ -2573,6 +2573,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_names_set,
     },
     EvaluatedBuiltin {
+        name: "dim<-",
+        handler: crate::mainutils::essentials::do_dim_set,
+    },
+    EvaluatedBuiltin {
         name: "dimnames<-",
         handler: crate::mainutils::essentials::do_dimnames_set,
     },

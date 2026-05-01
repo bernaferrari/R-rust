@@ -3815,6 +3815,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "unname",
             "oldClass",
             "names<-",
+            "dim<-",
             "dimnames<-",
             "rownames<-",
             "row.names<-",
@@ -8197,6 +8198,132 @@ pub unsafe fn do_dim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             R_NilValue()
         }
     }
+}
+
+/// R's `dim(x) <- value` — replace an object's dimension attribute.
+pub unsafe fn do_dim_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        if value.is_null() || value == R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                R_NilValue(),
+            );
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
+
+        let dim = match dimension_attribute(value, XLENGTH(x)) {
+            Ok(dim) => dim,
+            Err(message) => {
+                std::panic::panic_any(RError { message });
+            }
+        };
+
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            R_NilValue(),
+        );
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
+unsafe fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP, String> {
+    unsafe {
+        if !is_atomic_vector_type(TYPEOF(value)) {
+            return Err("invalid second argument, must be vector or NULL".to_string());
+        }
+
+        let n = XLENGTH(value);
+        if n == 0 {
+            return Err("length-0 dimension vector is invalid".to_string());
+        }
+
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let mut product: i128 = 1;
+        for i in 0..n {
+            let part = dimension_component(value, i);
+            if part == NA_INTEGER {
+                return Err("the dims contain missing values".to_string());
+            }
+            if part < 0 {
+                return Err("the dims contain negative values".to_string());
+            }
+            *INTEGER(dim).add(i as usize) = part;
+            product = product.saturating_mul(part as i128);
+        }
+
+        if product != object_len as i128 {
+            return Err(format!(
+                "dims [product {product}] do not match the length of object [{object_len}]"
+            ));
+        }
+
+        Ok(dim)
+    }
+}
+
+unsafe fn dimension_component(value: SEXP, i: R_xlen_t) -> c_int {
+    unsafe {
+        let kind = TYPEOF(value);
+        if kind == SEXPTYPE::INTSXP.as_c_int() || kind == SEXPTYPE::LGLSXP.as_c_int() {
+            INTEGER_ELT(value, i as c_int)
+        } else if kind == SEXPTYPE::REALSXP.as_c_int() {
+            real_to_dimension(REAL_ELT(value, i as c_int))
+        } else if kind == SEXPTYPE::CPLXSXP.as_c_int() {
+            real_to_dimension((*COMPLEX(value).add(i as usize)).r)
+        } else if kind == SEXPTYPE::STRSXP.as_c_int() {
+            let elt = STRING_ELT(value, i);
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                NA_INTEGER
+            } else {
+                let text = CStr::from_ptr(CHAR(elt)).to_string_lossy();
+                text.trim()
+                    .parse::<f64>()
+                    .map(real_to_dimension)
+                    .unwrap_or(NA_INTEGER)
+            }
+        } else if kind == SEXPTYPE::RAWSXP.as_c_int() {
+            *RAW(value).add(i as usize) as c_int
+        } else {
+            NA_INTEGER
+        }
+    }
+}
+
+fn real_to_dimension(value: f64) -> c_int {
+    if !value.is_finite() || value < c_int::MIN as f64 || value > c_int::MAX as f64 {
+        return NA_INTEGER;
+    }
+    value.trunc() as c_int
+}
+
+fn is_atomic_vector_type(kind: c_int) -> bool {
+    kind == SEXPTYPE::LGLSXP.as_c_int()
+        || kind == SEXPTYPE::INTSXP.as_c_int()
+        || kind == SEXPTYPE::REALSXP.as_c_int()
+        || kind == SEXPTYPE::CPLXSXP.as_c_int()
+        || kind == SEXPTYPE::STRSXP.as_c_int()
+        || kind == SEXPTYPE::RAWSXP.as_c_int()
 }
 
 /// R's `diag(x)` — extract diagonal or create diagonal matrix.
