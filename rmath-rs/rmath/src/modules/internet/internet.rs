@@ -178,8 +178,8 @@ fn http_parse_url(url: &str) -> Option<(CString, u16, String)> {
         let end_bracket = hostport.find(']')?;
         let host_part = &hostport[1..end_bracket];
         let rest = &hostport[end_bracket + 1..];
-        let port_num = if rest.starts_with(':') {
-            rest[1..].parse::<u16>().ok()?
+        let port_num = if let Some(stripped) = rest.strip_prefix(':') {
+            stripped.parse::<u16>().ok()?
         } else {
             80
         };
@@ -411,12 +411,9 @@ fn find_header_end(buf: &[u8]) -> Option<usize> {
     if buf.len() < 4 {
         return None;
     }
-    for i in 0..buf.len() - 3 {
-        if buf[i] == b'\r' && buf[i + 1] == b'\n' && buf[i + 2] == b'\r' && buf[i + 3] == b'\n' {
-            return Some(i);
-        }
-    }
-    None
+    (0..buf.len() - 3).find(|&i| {
+        buf[i] == b'\r' && buf[i + 1] == b'\n' && buf[i + 2] == b'\r' && buf[i + 3] == b'\n'
+    })
 }
 
 /// parse_status_code - extract HTTP status code from response headers
@@ -474,11 +471,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
         let mode_str = cstr_to_str(mode);
 
         // Skip "file://" prefix
-        let path = if url_str.starts_with("file://") {
-            &url_str[7..]
-        } else {
-            url_str
-        };
+        let path = url_str.strip_prefix("file://").unwrap_or(url_str);
 
         // Determine if binary mode
         let binary = mode_str.len() >= 2 && mode_str.ends_with('b');
@@ -509,7 +502,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
         }
 
         // Copy data
-        let mut buf = [0u8; CPBUFSIZE];
+        let mut buf = vec![0u8; CPBUFSIZE];
         loop {
             let nread = libc::fread(buf.as_mut_ptr() as *mut c_void, 1, CPBUFSIZE, src_file);
             if nread == 0 {

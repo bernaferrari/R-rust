@@ -308,7 +308,7 @@ unsafe fn restore_sig_handler() {
         if with_fork_state(|state| state.parent_handler_set) != 0 {
             let old = with_fork_state(|state| {
                 state.parent_handler_set = 0;
-                std::mem::replace(&mut state.old_sig_handler, std::mem::zeroed())
+                state.old_sig_handler
             });
             sigaction(SIGCHLD, &old, ptr::null_mut());
         }

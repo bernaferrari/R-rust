@@ -1040,7 +1040,7 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             for entry in read_dir.flatten() {
                 children.push(entry);
             }
-            children.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+            children.sort_by_key(|a| a.file_name());
 
             for entry in children {
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -1405,51 +1405,28 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let path = c.to_str().unwrap_or("");
                 let p = Path::new(path);
                 let allowed = match mode {
-                    0 => {
-                        if p.exists() {
-                            true
-                        } else {
-                            false
-                        }
-                    }
+                    0 => p.exists(),
                     1 => {
                         #[cfg(unix)]
                         {
-                            if p.metadata()
+                            p.metadata()
                                 .map(|m| {
                                     std::os::unix::fs::PermissionsExt::mode(&m.permissions())
                                         & 0o111
                                         != 0
                                 })
                                 .unwrap_or(false)
-                            {
-                                true
-                            } else {
-                                false
-                            }
                         }
                         #[cfg(not(unix))]
                         {
                             false
                         }
                     }
-                    2 => {
-                        if p.metadata()
-                            .map(|m| !m.permissions().readonly())
-                            .unwrap_or(false)
-                        {
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    4 => {
-                        if std::fs::metadata(path).is_ok() {
-                            true
-                        } else {
-                            false
-                        }
-                    }
+                    2 => p
+                        .metadata()
+                        .map(|m| !m.permissions().readonly())
+                        .unwrap_or(false),
+                    4 => std::fs::metadata(path).is_ok(),
                     _ => false,
                 };
                 *pa.add(i) = if allowed { 0 } else { -1 };

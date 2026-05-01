@@ -815,7 +815,6 @@ unsafe fn download_add_url(
         let c_ref = &mut *c;
         let url = translateChar(STRING_ELT(scmd, i as R_xlen_t));
 
-        c_ref.hnd = c_ref.hnd; // already set
         let hnd_ptr = c_ref.hnd.add(i as usize);
         *hnd_ptr = curl_easy_init();
         if hnd_ptr.is_null() || (*hnd_ptr).is_null() {

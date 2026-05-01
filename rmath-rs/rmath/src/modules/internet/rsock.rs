@@ -188,7 +188,7 @@ pub(crate) unsafe fn in_Rsockopen(port: *mut c_int) {
             if !errstr.is_null() {
                 let cstr = core::ffi::CStr::from_ptr(errstr);
                 if let Ok(s) = cstr.to_str() {
-                    eprint!("socket error: {}\n", s);
+                    eprintln!("socket error: {}", s);
                 }
             }
         }
@@ -211,7 +211,7 @@ pub(crate) unsafe fn in_Rsocklisten(sockp: *mut c_int, buf: *mut *mut c_char, le
             if !errstr.is_null() {
                 let cstr = core::ffi::CStr::from_ptr(errstr);
                 if let Ok(s) = cstr.to_str() {
-                    eprint!("socket error: {}\n", s);
+                    eprintln!("socket error: {}", s);
                 }
             }
         }
@@ -234,7 +234,7 @@ pub(crate) unsafe fn in_Rsockconnect(port: *mut c_int, host: *mut *mut c_char) {
             if !errstr.is_null() {
                 let cstr = core::ffi::CStr::from_ptr(errstr);
                 if let Ok(s) = cstr.to_str() {
-                    eprint!("socket error: {}\n", s);
+                    eprintln!("socket error: {}", s);
                 }
             }
         }
@@ -280,7 +280,7 @@ pub(crate) unsafe fn in_Rsockread(sockp: *mut c_int, buf: *mut *mut c_char, maxl
             if !errstr.is_null() {
                 let cstr = core::ffi::CStr::from_ptr(errstr);
                 if let Ok(s) = cstr.to_str() {
-                    eprint!("socket error: {}\n", s);
+                    eprintln!("socket error: {}", s);
                 }
             }
         }
@@ -326,7 +326,7 @@ pub(crate) unsafe fn in_Rsockwrite(
             if !errstr.is_null() {
                 let cstr = core::ffi::CStr::from_ptr(errstr);
                 if let Ok(s) = cstr.to_str() {
-                    eprint!("socket error: {}\n", s);
+                    eprintln!("socket error: {}", s);
                 }
             }
         }

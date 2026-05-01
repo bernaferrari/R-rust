@@ -792,12 +792,14 @@ mod tests {
         Error(String),
     }
 
+    type CallbackEvents = Arc<(Mutex<Vec<CallbackEvent>>, Condvar)>;
+
     struct RecordingCallback {
-        events: Arc<(Mutex<Vec<CallbackEvent>>, Condvar)>,
+        events: CallbackEvents,
     }
 
     impl RecordingCallback {
-        fn new() -> (Self, Arc<(Mutex<Vec<CallbackEvent>>, Condvar)>) {
+        fn new() -> (Self, CallbackEvents) {
             let events = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
             (
                 Self {

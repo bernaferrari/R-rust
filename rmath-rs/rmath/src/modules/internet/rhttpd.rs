@@ -1,12 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 // Port of R's modules/internet/Rhttpd.c (1465 lines)
 // R's built-in HTTP server - serves requests by evaluating httpd() function
 
@@ -1258,7 +1249,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
             let mut s = (*c).line_buf.as_mut_ptr();
             let n = recv(
                 (*c).sock,
-                (*c).line_buf.as_mut_ptr().offset((*c).line_pos as isize) as *mut c_void,
+                (*c).line_buf.as_mut_ptr().add((*c).line_pos) as *mut c_void,
                 LINE_BUF_SIZE - (*c).line_pos - 1,
                 0,
             );
@@ -1461,7 +1452,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                             (*(*c).headers)
                                                 .data
                                                 .as_mut_ptr()
-                                                .offset((*(*c).headers).length as isize)
+                                                .add((*(*c).headers).length)
                                                 as *mut c_void,
                                             b"Request-Method: \0".as_ptr() as *const c_void,
                                             16,
@@ -1473,7 +1464,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                                 (*(*c).headers)
                                                     .data
                                                     .as_mut_ptr()
-                                                    .offset((*(*c).headers).length as isize)
+                                                    .add((*(*c).headers).length)
                                                     as *mut c_void,
                                                 bol as *const c_void,
                                                 mlen,
@@ -1483,8 +1474,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                         *(*(*c).headers)
                                             .data
                                             .as_mut_ptr()
-                                            .offset((*(*c).headers).length as isize) =
-                                            b'\n' as c_char;
+                                            .add((*(*c).headers).length) = b'\n' as c_char;
                                         (*(*c).headers).length += 1;
                                     }
                                 }
@@ -1515,7 +1505,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                                 (*(*c).headers)
                                                     .data
                                                     .as_mut_ptr()
-                                                    .offset((*(*c).headers).length as isize)
+                                                    .add((*(*c).headers).length)
                                                     as *mut c_void,
                                                 bol as *const c_void,
                                                 fits,
@@ -1529,7 +1519,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                                 libc::memcpy(
                                                     (*(*c).headers).data.as_mut_ptr()
                                                         as *mut c_void,
-                                                    bol.offset(fits as isize) as *const c_void,
+                                                    bol.add(fits) as *const c_void,
                                                     leftover,
                                                 );
                                             }
@@ -1537,8 +1527,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                             *(*(*c).headers)
                                                 .data
                                                 .as_mut_ptr()
-                                                .offset((*(*c).headers).length as isize) =
-                                                b'\n' as c_char;
+                                                .add((*(*c).headers).length) = b'\n' as c_char;
                                             (*(*c).headers).length += 1;
                                         }
                                     } else {
@@ -1546,7 +1535,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                             (*(*c).headers)
                                                 .data
                                                 .as_mut_ptr()
-                                                .offset((*(*c).headers).length as isize)
+                                                .add((*(*c).headers).length)
                                                 as *mut c_void,
                                             bol as *const c_void,
                                             l,
@@ -1555,8 +1544,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                         *(*(*c).headers)
                                             .data
                                             .as_mut_ptr()
-                                            .offset((*(*c).headers).length as isize) =
-                                            b'\n' as c_char;
+                                            .add((*(*c).headers).length) = b'\n' as c_char;
                                         (*(*c).headers).length += 1;
                                     }
                                 }
@@ -1639,7 +1627,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
             if ((*c).body_pos as c_long) < (*c).content_length {
                 let n = recv(
                     (*c).sock,
-                    (*c).body.offset((*c).body_pos as isize) as *mut c_void,
+                    (*c).body.add((*c).body_pos) as *mut c_void,
                     ((*c).content_length - (*c).body_pos as c_long) as size_t,
                     0,
                 );
@@ -1695,7 +1683,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                     } else {
                         libc::memmove(
                             (*c).line_buf.as_mut_ptr() as *mut c_void,
-                            (*c).line_buf.as_mut_ptr().offset(sh as isize) as *const c_void,
+                            (*c).line_buf.as_mut_ptr().add(sh) as *const c_void,
                             (*c).line_pos - sh,
                         );
                         (*c).line_pos -= sh;
@@ -1706,7 +1694,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
             }
             let n = recv(
                 (*c).sock,
-                (*c).line_buf.as_mut_ptr().offset((*c).line_pos as isize) as *mut c_void,
+                (*c).line_buf.as_mut_ptr().add((*c).line_pos) as *mut c_void,
                 LINE_BUF_SIZE - (*c).line_pos - 1,
                 0,
             );
@@ -1766,7 +1754,7 @@ unsafe fn srv_input_handler(_data: *mut c_void) {
             // InputHandler layout: activity(i32) -> fd(i32) -> handler(fn ptr) -> userData(*mut c_void)
             let ud_offset =
                 core::mem::size_of::<c_int>() * 2 + core::mem::size_of::<*const c_void>();
-            let ud_ptr = ih_ptr.offset(ud_offset as isize) as *mut *mut c_void;
+            let ud_ptr = ih_ptr.add(ud_offset) as *mut *mut c_void;
             *ud_ptr = c as *mut c_void;
         }
         add_worker(c);

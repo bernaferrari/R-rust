@@ -27,7 +27,7 @@ const RSC_SET_TCP_NODELAY: c_int = 1;
 const R_EOF: c_int = -1;
 
 /// NA_INTEGER sentinel
-const NA_INTEGER: c_int = std::i32::MIN; // R's NA_INTEGER = INT_MIN
+const NA_INTEGER: c_int = i32::MIN; // R's NA_INTEGER = INT_MIN
 
 /// CE_NATIVE encoding constant
 const CE_NATIVE: c_int = 0;
@@ -215,9 +215,9 @@ unsafe fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mod
         // Determine canread/canwrite/canseek from mode
         let mode_str = core::ffi::CStr::from_ptr(mode);
         let mode_bytes = mode_str.to_bytes();
-        let has_r = mode_bytes.iter().any(|&b| b == b'r');
+        let has_r = mode_bytes.contains(&b'r');
         let has_w = mode_bytes.iter().any(|&b| b == b'w' || b == b'a');
-        let has_plus = mode_bytes.iter().any(|&b| b == b'+');
+        let has_plus = mode_bytes.contains(&b'+');
         (*new).canread = if has_r || has_plus { R_TRUE } else { R_FALSE };
         (*new).canwrite = if has_w || has_plus { R_TRUE } else { R_FALSE };
         (*new).canseek = R_FALSE; // sockets are not seekable
