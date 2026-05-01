@@ -20,7 +20,7 @@ use crate::sexp::constructors::{
 };
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_REAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
+    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
@@ -594,10 +594,11 @@ pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let n = XLENGTH(x).max(1);
+        let n = if x.is_null() || x == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x)
+        };
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -605,6 +606,10 @@ unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
         let _result_guard = protect(result);
 
         for i in 0..n {
+            if as_character_element_is_na(x, i) {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
             let s = elt_to_string(x, i);
             let converted = if to_lower {
                 s.to_lowercase()
@@ -620,6 +625,23 @@ unsafe fn do_case_convert(args: SEXP, to_lower: bool) -> SEXP {
         }
 
         result
+    }
+}
+
+unsafe fn as_character_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return false;
+        }
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::STRSXP => STRING_ELT(x, i) == crate::sexp::globals::R_NaString(),
+            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(i as usize) == NA_LOGICAL,
+            t if t == SEXPTYPE::INTSXP => INTEGER_ELT(x, i as c_int) == NA_INTEGER,
+            t if t == SEXPTYPE::REALSXP => {
+                REAL_ELT(x, i as c_int).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            }
+            _ => false,
+        }
     }
 }
 
@@ -1772,20 +1794,28 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let old_arg = CAR(args);
         let new_arg = CAR(CDR(args));
         let x_arg = CAR(CDR(CDR(args)));
-        if old_arg.is_null() || new_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
+        if old_arg.is_null() || new_arg.is_null() {
             return R_NilValue();
         }
         let old_str = elt_to_string(old_arg, 0);
         let new_str = elt_to_string(new_arg, 0);
         let old_chars: Vec<char> = old_str.chars().collect();
         let new_chars: Vec<char> = new_str.chars().collect();
-        let n = XLENGTH(x_arg).max(1);
+        let n = if x_arg.is_null() || x_arg == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x_arg)
+        };
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
         for i in 0..n {
+            if as_character_element_is_na(x_arg, i) {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
             let s = elt_to_string(x_arg, i);
             let translated: String = s
                 .chars()
