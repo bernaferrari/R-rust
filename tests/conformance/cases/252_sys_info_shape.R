@@ -1,0 +1,8 @@
+info <- Sys.info()
+print(is.character(info))
+print(length(info))
+print(names(info)[1])
+print(names(info)[8])
+print(nzchar(info[["sysname"]]))
+print(nzchar(info[["machine"]]))
+print(nzchar(info[["user"]]))
