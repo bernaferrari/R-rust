@@ -10352,47 +10352,9 @@ pub unsafe fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-/// R's `deparse(x)` — convert SEXP to string representation (simplified).
+/// R's `deparse(x)` — convert an object or expression to source-like text.
 pub unsafe fn do_deparse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(CString::new("NULL").unwrap_or_default().as_ptr());
-        }
-        let t = TYPEOF(x);
-        let n = if t == SEXPTYPE::SYMSXP
-            || t == SEXPTYPE::LANGSXP
-            || t == SEXPTYPE::CHARSXP
-            || t == SEXPTYPE::SPECIALSXP
-            || t == SEXPTYPE::BUILTINSXP
-            || t == SEXPTYPE::PROMSXP
-            || t == SEXPTYPE::CLOSXP
-            || t == SEXPTYPE::ENVSXP
-        {
-            1
-        } else {
-            XLENGTH(x).max(1)
-        };
-        let mut parts: Vec<String> = Vec::new();
-
-        if n == 1 {
-            parts.push(elt_to_string(x, 0));
-        } else {
-            let mut inner: Vec<String> = Vec::new();
-            for i in 0..n {
-                let s = elt_to_string(x, i);
-                if t == SEXPTYPE::STRSXP {
-                    inner.push(format!("\"{}\"", s));
-                } else {
-                    inner.push(s);
-                }
-            }
-            parts.push(format!("c({})", inner.join(", ")));
-        }
-        let result_str = parts.join("\n");
-        let cstr = CString::new(result_str).unwrap_or_default();
-        Rf_mkString(cstr.as_ptr())
-    }
+    unsafe { crate::mainutils::deparse::do_deparse(_call, _op, args, _rho) }
 }
 
 // ---------------------------------------------------------------------------
