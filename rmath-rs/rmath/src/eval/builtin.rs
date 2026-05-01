@@ -2725,6 +2725,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_oldClass_set,
     },
     EvaluatedBuiltin {
+        name: "attr<-",
+        handler: crate::mainutils::essentials::do_attr_set,
+    },
+    EvaluatedBuiltin {
         name: "dnorm",
         handler: crate::mainutils::essentials::do_dnorm,
     },

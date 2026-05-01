@@ -3822,6 +3822,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "class<-",
             "comment<-",
             "oldClass<-",
+            "attr<-",
             "noquote",
             "deparse",
             "nargs",
@@ -9612,6 +9613,26 @@ pub unsafe fn do_attr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             x,
             Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
         )
+    }
+}
+
+/// R's `attr(x, which) <- value` — set or remove a single attribute.
+pub unsafe fn do_attr_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let which = CAR(CDR(args));
+        let value = CAR(CDR(CDR(args)));
+        if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
+            return R_NilValue();
+        }
+        let attr_name = elt_to_string(which, 0);
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
+            value,
+        );
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
     }
 }
 
