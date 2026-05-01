@@ -10,7 +10,7 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, TAG, TYPEOF};
+use crate::sexp::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, TAG, TYPEOF};
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -154,29 +154,32 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         let attrib = ATTRIB(x);
 
         // Search for existing attribute
+        let mut previous = R_NilValue();
         let mut current = attrib;
         while !current.is_null() && current != R_NilValue() {
             if TAG(current) == which {
+                if value.is_null() || value == R_NilValue() {
+                    let next = CDR(current);
+                    if previous.is_null() || previous == R_NilValue() {
+                        SET_ATTRIB(x, next);
+                    } else {
+                        SETCDR(previous, next);
+                    }
+                    update_class_object_flag(x, which, R_NilValue());
+                    return;
+                }
                 // Found — replace value
                 SETCAR(current, value);
                 // Update OBJECT flag for "class" attribute
-                let name = crate::sexp::accessors::PRINTNAME(which);
-                if !name.is_null() {
-                    let s = crate::sexp::accessors::CHAR(name);
-                    if !s.is_null() {
-                        let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                        if name_str == "class" {
-                            if value.is_null() || value == R_NilValue() {
-                                crate::sexp::accessors::SET_OBJECT(x, 0);
-                            } else {
-                                crate::sexp::accessors::SET_OBJECT(x, 1);
-                            }
-                        }
-                    }
-                }
+                update_class_object_flag(x, which, value);
                 return;
             }
+            previous = current;
             current = CDR(current);
+        }
+
+        if value.is_null() || value == R_NilValue() {
+            return;
         }
 
         // Not found — prepend new attribute
@@ -187,15 +190,26 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         }
 
         // Set OBJECT flag if setting "class" to non-nil
-        if !value.is_null() && value != R_NilValue() {
-            let name = crate::sexp::accessors::PRINTNAME(which);
-            if !name.is_null() {
-                let s = crate::sexp::accessors::CHAR(name);
-                if !s.is_null() {
-                    let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                    if name_str == "class" {
-                        crate::sexp::accessors::SET_OBJECT(x, 1);
-                    }
+        update_class_object_flag(x, which, value);
+    }
+}
+
+unsafe fn update_class_object_flag(x: SEXP, which: SEXP, value: SEXP) {
+    unsafe {
+        let name = crate::sexp::accessors::PRINTNAME(which);
+        if !name.is_null() {
+            let s = crate::sexp::accessors::CHAR(name);
+            if !s.is_null() {
+                let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
+                if name_str == "class" {
+                    crate::sexp::accessors::SET_OBJECT(
+                        x,
+                        if value.is_null() || value == R_NilValue() {
+                            0
+                        } else {
+                            1
+                        },
+                    );
                 }
             }
         }

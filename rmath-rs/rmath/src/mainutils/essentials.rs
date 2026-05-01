@@ -3811,6 +3811,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "structure",
             "::",
             ":::",
+            "comment",
             "unname",
             "names<-",
             "dimnames<-",
@@ -3818,6 +3819,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "row.names<-",
             "colnames<-",
             "class<-",
+            "comment<-",
             "noquote",
             "deparse",
             "nargs",
@@ -9583,6 +9585,35 @@ pub unsafe fn do_attr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
         )
     }
+}
+
+/// R's `comment(x)` — get the comment attribute.
+pub unsafe fn do_comment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        crate::sexp::attrib_core::getAttrib(x, comment_symbol())
+    }
+}
+
+/// R's `comment(x) <- value` — set the comment attribute.
+pub unsafe fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let value = CAR(CDR(args));
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        crate::sexp::attrib_core::setAttrib(x, comment_symbol(), value);
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        x
+    }
+}
+
+unsafe fn comment_symbol() -> SEXP {
+    unsafe { Rf_install(CString::new("comment").unwrap_or_default().as_ptr()) }
 }
 
 /// R's namespace lookup operators, `pkg::name` and `pkg:::name`.

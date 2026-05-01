@@ -10,7 +10,7 @@
 
 use std::os::raw::c_int;
 
-use super::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, TAG, TYPEOF};
+use super::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, SETCDR, TAG, TYPEOF};
 use super::constructors::*;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
@@ -118,9 +118,22 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         let attrib = ATTRIB(x);
 
         // Search for existing attribute
+        let mut previous = R_NilValue();
         let mut current = attrib;
         while !current.is_null() && current != R_NilValue() {
             if TAG(current) == which {
+                if value.is_null() || value == R_NilValue() {
+                    let next = CDR(current);
+                    if previous.is_null() || previous == R_NilValue() {
+                        SET_ATTRIB(x, next);
+                    } else {
+                        SETCDR(previous, next);
+                    }
+                    if which == R_ClassSymbol() {
+                        super::accessors::SET_OBJECT(x, 0);
+                    }
+                    return;
+                }
                 // Found — replace value
                 SETCAR(current, value);
                 // Update OBJECT flag for "class" attribute
@@ -133,7 +146,12 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
                 }
                 return;
             }
+            previous = current;
             current = CDR(current);
+        }
+
+        if value.is_null() || value == R_NilValue() {
+            return;
         }
 
         // Not found — prepend new attribute

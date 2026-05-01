@@ -761,6 +761,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_attributes,
     },
     EvaluatedBuiltin {
+        name: "comment",
+        handler: crate::mainutils::essentials::do_comment,
+    },
+    EvaluatedBuiltin {
         name: "structure",
         handler: crate::mainutils::essentials::do_structure,
     },
@@ -2707,6 +2711,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "class<-",
         handler: crate::mainutils::essentials::do_class_set,
+    },
+    EvaluatedBuiltin {
+        name: "comment<-",
+        handler: crate::mainutils::essentials::do_comment_set,
     },
     EvaluatedBuiltin {
         name: "dnorm",
