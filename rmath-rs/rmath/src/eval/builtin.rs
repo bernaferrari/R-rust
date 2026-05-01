@@ -2561,6 +2561,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_matrix,
     },
     EvaluatedBuiltin {
+        name: "array",
+        handler: crate::mainutils::essentials::do_array,
+    },
+    EvaluatedBuiltin {
         name: "diag",
         handler: crate::mainutils::essentials::do_diag,
     },

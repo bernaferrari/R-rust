@@ -3950,6 +3950,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "format.data.frame",
             // Matrix/linear algebra
             "matrix",
+            "array",
             "diag",
             "dim",
             "crossprod",
@@ -8106,6 +8107,72 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// R's `array(data, dim, dimnames)` — create an array with recycled data.
+pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let data = arg_by_name_or_position(args, &["data"], 0);
+        let dim_arg = arg_by_name_or_position(args, &["dim"], 1);
+        let dimnames = arg_by_name_or_position(args, &["dimnames"], 2);
+
+        let data_missing = data.is_null() || data == R_NilValue();
+        let data_type = if data_missing {
+            SEXPTYPE::LGLSXP.as_c_int()
+        } else {
+            TYPEOF(data)
+        };
+        if !supported_matrix_type(data_type) {
+            std::panic::panic_any(RError {
+                message: "'data' must be a vector type".to_string(),
+            });
+        }
+
+        let data_len = if data_missing { 1 } else { XLENGTH(data) };
+        let dim = match array_dimension_attribute(dim_arg, data_len) {
+            Ok(dim) => dim,
+            Err(message) => {
+                std::panic::panic_any(RError { message });
+            }
+        };
+        let _dim_guard = protect(dim);
+        let dim_len = XLENGTH(dim);
+        let mut total_len: R_xlen_t = 1;
+        for i in 0..dim_len {
+            total_len = total_len.saturating_mul(*INTEGER(dim).add(i as usize) as R_xlen_t);
+        }
+
+        if !valid_array_dimnames(dimnames, dim) {
+            std::panic::panic_any(RError {
+                message: "length of 'dimnames' not equal to array extent".to_string(),
+            });
+        }
+
+        let result = Rf_allocVector3(data_type, total_len);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        for i in 0..total_len {
+            if data_missing || data_len == 0 {
+                set_matrix_na_or_zero(result, i);
+            } else {
+                copy_matrix_element(result, i, data, i % data_len);
+            }
+        }
+
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
+        }
+
+        result
+    }
+}
+
 /// R's `t(x)` — transpose a matrix.
 pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -8397,6 +8464,73 @@ unsafe fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP,
         }
 
         Ok(dim)
+    }
+}
+
+unsafe fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Result<SEXP, String> {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            if dim.is_null() {
+                return Ok(R_NilValue());
+            }
+            *INTEGER(dim) = data_len as c_int;
+            return Ok(dim);
+        }
+
+        if !is_atomic_vector_type(TYPEOF(value)) {
+            return Err("'dim' must be a numeric vector".to_string());
+        }
+
+        let n = XLENGTH(value);
+        if n == 0 {
+            return Err("length-0 dimension vector is invalid".to_string());
+        }
+
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let mut product: i128 = 1;
+        for i in 0..n {
+            let part = dimension_component(value, i);
+            if part == NA_INTEGER {
+                return Err("the dims contain missing values".to_string());
+            }
+            if part < 0 {
+                return Err("the dims contain negative values".to_string());
+            }
+            *INTEGER(dim).add(i as usize) = part;
+            product = product.saturating_mul(part as i128);
+        }
+
+        if product > R_xlen_t::MAX as i128 {
+            return Err("array is too large".to_string());
+        }
+
+        Ok(dim)
+    }
+}
+
+unsafe fn valid_array_dimnames(dimnames: SEXP, dim: SEXP) -> bool {
+    unsafe {
+        if dimnames.is_null() || dimnames == R_NilValue() {
+            return true;
+        }
+        if TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+            return false;
+        }
+        let dim_count = XLENGTH(dim);
+        if XLENGTH(dimnames) > dim_count {
+            return false;
+        }
+        for i in 0..XLENGTH(dimnames) {
+            let names = VECTOR_ELT(dimnames, i);
+            if names.is_null() || names == R_NilValue() {
+                continue;
+            }
+            if XLENGTH(names) != *INTEGER(dim).add(i as usize) as R_xlen_t {
+                return false;
+            }
+        }
+        true
     }
 }
 
