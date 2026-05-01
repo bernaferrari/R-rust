@@ -4159,6 +4159,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Sys.setlocale",
             "Sys.readlink",
             "Sys.chmod",
+            "Sys.umask",
             "l10n_info",
             "Cstack_info",
             "extSoftVersion",
@@ -9118,10 +9119,11 @@ pub unsafe fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let dst = LOGICAL(result);
         for i in 0..n {
             let path = elt_to_string(x, i);
-            *dst.add(i as usize) = match std::fs::File::create(&path) {
-                Ok(_) => TRUE,
-                Err(_) => FALSE,
-            };
+            *dst.add(i as usize) =
+                match crate::mainutils::platform::create_file_with_session_umask(&path) {
+                    Ok(_) => TRUE,
+                    Err(_) => FALSE,
+                };
         }
         result
     }

@@ -1949,6 +1949,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_syschmod,
     },
     EvaluatedBuiltin {
+        name: "Sys.umask",
+        handler: crate::mainutils::platform::do_sysumask,
+    },
+    EvaluatedBuiltin {
         name: "l10n_info",
         handler: crate::mainutils::platform::do_l10n_info,
     },

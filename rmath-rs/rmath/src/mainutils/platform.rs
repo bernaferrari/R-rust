@@ -320,6 +320,105 @@ unsafe fn path_at(paths: SEXP, index: usize) -> Option<String> {
     }
 }
 
+unsafe fn octmode_scalar(mode: u32) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::SET_STRING_ELT;
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::ffi::SEXPTYPE;
+
+        let ans = Rf_ScalarInteger((mode & 0o777) as c_int);
+        let _ans_guard = protect(ans);
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP.as_c_int(), 1);
+        let _class_guard = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"octmode".as_ptr()));
+        crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_ClassSymbol(), class);
+        ans
+    }
+}
+
+unsafe fn parse_octal_mode_arg(value: SEXP) -> Option<u32> {
+    unsafe {
+        use crate::sexp::accessors::{INTEGER, LENGTH, REAL, TYPEOF};
+        use crate::sexp::ffi::{NA_INTEGER, SEXPTYPE};
+        use crate::sexp::globals::R_NilValue;
+
+        if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+            return None;
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::STRSXP => path_at(value, 0)
+                .and_then(|text| parse_octal_mode_text(&text))
+                .map(|mode| mode & 0o777),
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                let raw = *INTEGER(value);
+                if raw == NA_INTEGER || raw < 0 {
+                    None
+                } else {
+                    Some((raw as u32) & 0o777)
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let raw = *REAL(value);
+                if raw.is_nan() || raw < 0.0 {
+                    None
+                } else {
+                    Some((raw as u32) & 0o777)
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+fn parse_octal_mode_text(text: &str) -> Option<u32> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("NA") {
+        return None;
+    }
+    let digits = trimmed
+        .strip_prefix("0o")
+        .or_else(|| trimmed.strip_prefix("0O"))
+        .unwrap_or(trimmed);
+    u32::from_str_radix(digits, 8).ok()
+}
+
+pub(crate) fn current_file_creation_umask() -> u32 {
+    with_required_current_instance(|instance| instance.file_creation_umask & 0o777)
+}
+
+#[cfg(unix)]
+pub(crate) fn set_path_mode(path: &str, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o777))
+}
+
+#[cfg(not(unix))]
+pub(crate) fn set_path_mode(_path: &str, _mode: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+pub(crate) fn create_file_with_session_umask(path: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mode = 0o666 & !current_file_creation_umask();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(mode)
+        .open(path)
+        .and_then(|_| set_path_mode(path, mode))
+}
+
+#[cfg(not(unix))]
+pub(crate) fn create_file_with_session_umask(path: &str) -> std::io::Result<()> {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map(|_| ())
+}
+
 unsafe fn platform_tag_name(cell: SEXP) -> Option<String> {
     unsafe {
         let tag = crate::sexp::accessors::TAG(cell);
@@ -408,7 +507,6 @@ pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use std::fs::OpenOptions;
 
         let s = CAR(args);
         let ans = Rf_allocVector3(
@@ -425,12 +523,7 @@ pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else {
                 let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
                 let path = c.to_str().unwrap_or("");
-                *pa.add(i) = if OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(path)
-                    .is_ok()
-                {
+                *pa.add(i) = if create_file_with_session_umask(path).is_ok() {
                     TRUE
                 } else {
                     FALSE
@@ -1781,7 +1874,14 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 } else {
                     fs::create_dir(path)
                 };
-                *pa.add(i) = if result.is_ok() { TRUE } else { FALSE };
+                *pa.add(i) = if result
+                    .and_then(|_| set_path_mode(path, 0o777 & !current_file_creation_umask()))
+                    .is_ok()
+                {
+                    TRUE
+                } else {
+                    FALSE
+                };
             }
         }
         ans
@@ -1860,40 +1960,11 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
 /// R's `Sys.chmod()` — change file permissions.
 pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, TYPEOF};
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL};
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use std::fs;
-
-        fn parse_mode(mode: SEXP) -> u32 {
-            unsafe {
-                if mode.is_null() || mode == R_NilValue() || LENGTH(mode) == 0 {
-                    return 0o777;
-                }
-                match TYPEOF(mode) {
-                    t if t == SEXPTYPE::STRSXP => {
-                        let Some(text) = path_at(mode, 0) else {
-                            return 0o777;
-                        };
-                        u32::from_str_radix(text.trim_start_matches("0o"), 8).unwrap_or(0o777)
-                    }
-                    t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
-                        let value = *INTEGER(mode);
-                        if value < 0 { 0o777 } else { value as u32 }
-                    }
-                    t if t == SEXPTYPE::REALSXP => {
-                        let value = *REAL(mode);
-                        if value.is_nan() || value < 0.0 {
-                            0o777
-                        } else {
-                            value as u32
-                        }
-                    }
-                    _ => 0o777,
-                }
-            }
-        }
 
         let mut paths = R_NilValue();
         let mut mode = R_NilValue();
@@ -1919,7 +1990,7 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         }
 
         let n = LENGTH(paths);
-        let mode_val = parse_mode(mode);
+        let mode_val = parse_octal_mode_arg(mode).unwrap_or(0o777);
 
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         let _ans_guard = protect(ans);
@@ -1943,11 +2014,32 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 /// R's `Sys.umask()` — set file creation mask.
 pub unsafe fn do_sysumask(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::constructors::Rf_ScalarInteger;
-        // umask returns the previous mask
-        let old = libc::umask(0);
-        let _ = libc::umask(old);
-        Rf_ScalarInteger(old as c_int)
+        use crate::sexp::accessors::{CAR, CDR};
+        use crate::sexp::globals::R_NilValue;
+
+        let mut mode = R_NilValue();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match platform_tag_name(current).as_deref() {
+                Some("mode") | None => {
+                    if mode == R_NilValue() {
+                        mode = value;
+                    }
+                }
+                Some(_) => {}
+            }
+            current = CDR(current);
+        }
+
+        let old = with_required_current_instance(|instance| {
+            let old = instance.file_creation_umask & 0o777;
+            if let Some(new_mode) = parse_octal_mode_arg(mode) {
+                instance.file_creation_umask = new_mode & 0o777;
+            }
+            old
+        });
+        octmode_scalar(old)
     }
 }
 
