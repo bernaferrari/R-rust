@@ -135,6 +135,74 @@ const DIDA_PER_POINT_RATIO: c_double = 1157.0 / 1238.0;
 const CICERO_PER_PICA_RATIO: c_double = DIDA_PER_POINT_RATIO;
 const GE_INCHES: c_int = 2;
 
+fn grid_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
+}
+
+fn unit_type_name(unit_id: c_int) -> Option<&'static str> {
+    match unit_id {
+        L_NPC => Some("npc"),
+        L_CM => Some("cm"),
+        L_INCHES => Some("inches"),
+        L_LINES => Some("lines"),
+        L_NATIVE => Some("native"),
+        L_NULL => Some("null"),
+        L_SNPC => Some("snpc"),
+        L_MM => Some("mm"),
+        L_POINTS => Some("points"),
+        L_PICAS => Some("picas"),
+        L_BIGPOINTS => Some("bigpts"),
+        L_DIDA => Some("dida"),
+        L_CICERO => Some("cicero"),
+        L_SCALEDPOINTS => Some("scaledpts"),
+        L_STRINGWIDTH => Some("strwidth"),
+        L_STRINGHEIGHT => Some("strheight"),
+        L_STRINGASCENT => Some("strascent"),
+        L_STRINGDESCENT => Some("strdescent"),
+        L_CHAR => Some("char"),
+        L_GROBX => Some("grobx"),
+        L_GROBY => Some("groby"),
+        L_GROBWIDTH => Some("grobwidth"),
+        L_GROBHEIGHT => Some("grobheight"),
+        L_GROBASCENT => Some("grobascent"),
+        L_GROBDESCENT => Some("grobdescent"),
+        _ => None,
+    }
+}
+
+fn unit_type_code(name: &str) -> Option<c_int> {
+    match name {
+        "npc" => Some(L_NPC),
+        "cm" => Some(L_CM),
+        "in" | "inch" | "inches" => Some(L_INCHES),
+        "lines" => Some(L_LINES),
+        "native" => Some(L_NATIVE),
+        "null" => Some(L_NULL),
+        "snpc" => Some(L_SNPC),
+        "mm" => Some(L_MM),
+        "pt" | "points" => Some(L_POINTS),
+        "picas" => Some(L_PICAS),
+        "bigpts" | "bigpoints" => Some(L_BIGPOINTS),
+        "dida" => Some(L_DIDA),
+        "cicero" => Some(L_CICERO),
+        "scaledpts" | "scaledpoints" => Some(L_SCALEDPOINTS),
+        "strwidth" | "stringwidth" => Some(L_STRINGWIDTH),
+        "strheight" | "stringheight" => Some(L_STRINGHEIGHT),
+        "strascent" | "stringascent" => Some(L_STRINGASCENT),
+        "strdescent" | "stringdescent" => Some(L_STRINGDESCENT),
+        "char" => Some(L_CHAR),
+        "grobx" => Some(L_GROBX),
+        "groby" => Some(L_GROBY),
+        "grobwidth" => Some(L_GROBWIDTH),
+        "grobheight" => Some(L_GROBHEIGHT),
+        "grobascent" => Some(L_GROBASCENT),
+        "grobdescent" => Some(L_GROBDESCENT),
+        _ => None,
+    }
+}
+
 #[inline]
 fn transformDimensionToNPC(value: c_double, cm: c_double) -> c_double {
     if cm == 0.0 { 0.0 } else { value * 2.54 / cm }
@@ -399,8 +467,13 @@ unsafe fn isNewUnit(unit: SEXP) -> bool {
 }
 
 unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
-    // Fallback until the R eval bridge is available: keep legacy units unchanged.
-    unit
+    unsafe {
+        if isSimpleUnit(unit) || isNewUnit(unit) {
+            unit
+        } else {
+            grid_error("invalid unit object");
+        }
+    }
 }
 
 /* ==============================
@@ -411,8 +484,7 @@ pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
     unsafe {
         let l = LENGTH(unit);
         if l == 0 {
-            // C raises an error here; this port returns NilValue until the error bridge lands.
-            return R_NilValue();
+            grid_error("unit object has zero length");
         }
         let i = index % l;
         if isSimpleUnit(unit) {
@@ -439,8 +511,7 @@ pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
         // Fallback: try to upgrade
         let unit2 = upgradeUnit(unit);
         let _unit2_guard = protect(unit2);
-        let res = unitScalar(unit2, index);
-        res
+        unitScalar(unit2, index)
     }
 }
 
@@ -759,9 +830,14 @@ pub unsafe fn transformXtoINCHES(
             L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
             L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
             L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
-            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => 0.0,
+            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+                grid_error("grob-relative units require grid grob metric resolution")
+            }
             L_NULL => 0.0,
-            _ => 0.0,
+            _ => grid_error(format!(
+                "unsupported grid unit type {}",
+                unit_type_name(u).unwrap_or("<unknown>")
+            )),
         }
     }
 }
@@ -813,8 +889,14 @@ pub unsafe fn transformYtoINCHES(
             L_STRINGHEIGHT => value * string_metrics_inches(y, index, _gc, _dd).1,
             L_STRINGASCENT => value * string_metrics_inches(y, index, _gc, _dd).2,
             L_STRINGDESCENT => value * string_metrics_inches(y, index, _gc, _dd).3,
+            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+                grid_error("grob-relative units require grid grob metric resolution")
+            }
             L_NULL => 0.0,
-            _ => 0.0,
+            _ => grid_error(format!(
+                "unsupported grid unit type {}",
+                unit_type_name(u).unwrap_or("<unknown>")
+            )),
         }
     }
 }
@@ -866,8 +948,14 @@ pub unsafe fn transformWidthtoINCHES(
             L_STRINGHEIGHT => value * string_metrics_inches(w, index, _gc, _dd).1,
             L_STRINGASCENT => value * string_metrics_inches(w, index, _gc, _dd).2,
             L_STRINGDESCENT => value * string_metrics_inches(w, index, _gc, _dd).3,
+            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+                grid_error("grob-relative units require grid grob metric resolution")
+            }
             L_NULL => 0.0,
-            _ => 0.0,
+            _ => grid_error(format!(
+                "unsupported grid unit type {}",
+                unit_type_name(u).unwrap_or("<unknown>")
+            )),
         }
     }
 }
@@ -919,8 +1007,14 @@ pub unsafe fn transformHeighttoINCHES(
             L_STRINGHEIGHT => value * string_metrics_inches(h, index, _gc, _dd).1,
             L_STRINGASCENT => value * string_metrics_inches(h, index, _gc, _dd).2,
             L_STRINGDESCENT => value * string_metrics_inches(h, index, _gc, _dd).3,
+            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
+                grid_error("grob-relative units require grid grob metric resolution")
+            }
             L_NULL => 0.0,
-            _ => 0.0,
+            _ => grid_error(format!(
+                "unsupported grid unit type {}",
+                unit_type_name(u).unwrap_or("<unknown>")
+            )),
         }
     }
 }
@@ -1157,10 +1251,38 @@ pub unsafe fn conformingUnits(unit_list: SEXP) -> SEXP {
     }
 }
 
-/// Match a unit type description to its integer code.
-/// Requires R-level unit type lookup; returns R_NilValue until ported.
-pub unsafe fn matchUnit(_units: SEXP, _unit: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+/// Match unit type descriptions to their integer codes.
+pub unsafe fn matchUnit(units: SEXP, unit: SEXP) -> SEXP {
+    unsafe {
+        let source = if !units.is_null() && units != R_NilValue() {
+            units
+        } else {
+            unit
+        };
+        if source.is_null() || source == R_NilValue() || TYPEOF(source) != SEXPTYPE::STRSXP {
+            grid_error("'units' must be a character vector");
+        }
+
+        let n = LENGTH(source);
+        let answer = Rf_allocVector(SEXPTYPE::INTSXP, n);
+        let _answer_guard = protect(answer);
+        for i in 0..n {
+            let chars = STRING_ELT(source, i as R_xlen_t);
+            if chars.is_null() {
+                grid_error("invalid unit name");
+            }
+            let ptr = CHAR(chars);
+            if ptr.is_null() {
+                grid_error("invalid unit name");
+            }
+            let name = std::ffi::CStr::from_ptr(ptr).to_string_lossy();
+            let Some(code) = unit_type_code(&name) else {
+                grid_error(format!("invalid unit '{}'", name));
+            };
+            *INTEGER(answer).add(i as usize) = code;
+        }
+        answer
+    }
 }
 
 /// Add two unit objects element-wise, producing a SUM unit.
@@ -1248,10 +1370,73 @@ pub unsafe fn flipUnits(units: SEXP) -> SEXP {
     }
 }
 
-/// Convert units to absolute units.
-/// Requires device context to resolve relative units (NPC, native, etc.).
-pub unsafe fn absoluteUnits(_units: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+unsafe fn absolute_unit_scalar(unit_scalar: SEXP) -> SEXP {
+    unsafe {
+        let unit_id = uUnit(unit_scalar);
+        let value = uValue(unit_scalar);
+        if unit_id == L_INCHES {
+            return unit_scalar;
+        }
+        if isAbsolute(unit_id) {
+            let Some(inches) = absoluteUnitToInches(value, unit_id) else {
+                grid_error(format!(
+                    "cannot convert unit '{}' to absolute inches without device metrics",
+                    unit_type_name(unit_id).unwrap_or("<unknown>")
+                ));
+            };
+            let out = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+            let _out_guard = protect(out);
+            SET_VECTOR_ELT(out, 0, Rf_ScalarReal(inches));
+            SET_VECTOR_ELT(out, 1, R_NilValue());
+            SET_VECTOR_ELT(out, 2, Rf_ScalarInteger(L_INCHES));
+            return out;
+        }
+        if isArith(unit_id) {
+            let data = uData(unit_scalar);
+            let n = unitLength(data);
+            let converted = Rf_allocVector(SEXPTYPE::VECSXP, n);
+            let _converted_guard = protect(converted);
+            for i in 0..n {
+                SET_VECTOR_ELT(
+                    converted,
+                    i as R_xlen_t,
+                    absolute_unit_scalar(unitScalar(data, i)),
+                );
+            }
+            let out = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+            let _out_guard = protect(out);
+            SET_VECTOR_ELT(out, 0, Rf_ScalarReal(value));
+            SET_VECTOR_ELT(out, 1, converted);
+            SET_VECTOR_ELT(out, 2, Rf_ScalarInteger(unit_id));
+            return out;
+        }
+        grid_error(format!(
+            "cannot convert relative unit '{}' to absolute units without a viewport",
+            unit_type_name(unit_id).unwrap_or("<unknown>")
+        ));
+    }
+}
+
+/// Convert context-free absolute units to inches.
+pub unsafe fn absoluteUnits(units: SEXP) -> SEXP {
+    unsafe {
+        let n = unitLength(units);
+        let answer = Rf_allocVector(SEXPTYPE::VECSXP, n);
+        let _answer_guard = protect(answer);
+        for i in 0..n {
+            SET_VECTOR_ELT(
+                answer,
+                i as R_xlen_t,
+                absolute_unit_scalar(unitScalar(units, i)),
+            );
+        }
+        let cl = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        let _cl_guard = protect(cl);
+        SET_STRING_ELT(cl, 0, Rf_mkChar(c"unit".as_ptr()));
+        SET_STRING_ELT(cl, 1, Rf_mkChar(c"unit_v2".as_ptr()));
+        R_classgets(answer, cl);
+        answer
+    }
 }
 
 /// Summarize units with a reduction operation (sum/min/max).
@@ -1282,6 +1467,15 @@ mod tests {
 
     fn approx_eq(lhs: c_double, rhs: c_double) {
         assert!((lhs - rhs).abs() < 1e-12, "left={lhs:?}, right={rhs:?}");
+    }
+
+    fn assert_r_error(action: impl FnOnce()) -> crate::sexp::context::RError {
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
+            .expect_err("expected RError panic");
+        payload
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError payload")
+            .clone()
     }
 
     #[test]
@@ -1388,6 +1582,59 @@ mod tests {
                 absolute_value,
             );
         }
+    }
+
+    #[test]
+    fn match_unit_maps_names_without_r_fallbacks() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, 4);
+            let _names_guard = protect(names);
+            SET_STRING_ELT(names, 0, Rf_mkChar(c"npc".as_ptr()));
+            SET_STRING_ELT(names, 1, Rf_mkChar(c"inches".as_ptr()));
+            SET_STRING_ELT(names, 2, Rf_mkChar(c"strwidth".as_ptr()));
+            SET_STRING_ELT(names, 3, Rf_mkChar(c"grobheight".as_ptr()));
+
+            let result = matchUnit(names, R_NilValue());
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result).add(0), L_NPC);
+            assert_eq!(*INTEGER(result).add(1), L_INCHES);
+            assert_eq!(*INTEGER(result).add(2), L_STRINGWIDTH);
+            assert_eq!(*INTEGER(result).add(3), L_GROBHEIGHT);
+        }
+    }
+
+    #[test]
+    fn match_unit_rejects_unknown_names() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = assert_r_error(|| unsafe {
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _names_guard = protect(names);
+            SET_STRING_ELT(names, 0, Rf_mkChar(c"pixels".as_ptr()));
+            matchUnit(names, R_NilValue());
+        });
+        assert!(err.message.contains("invalid unit"));
+    }
+
+    #[test]
+    fn absolute_units_convert_context_free_units_to_inches() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let units = unit(2.54, L_CM);
+            let result = absoluteUnits(units);
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(unitUnit(result, 0), L_INCHES);
+            approx_eq(unitValue(result, 0), 1.0);
+        }
+    }
+
+    #[test]
+    fn absolute_units_reject_context_dependent_units() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = assert_r_error(|| unsafe {
+            absoluteUnits(unit(1.0, L_NPC));
+        });
+        assert!(err.message.contains("without a viewport"));
     }
 
     #[test]
