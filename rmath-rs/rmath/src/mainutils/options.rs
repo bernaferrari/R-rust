@@ -76,7 +76,7 @@ unsafe fn r_error(msg: &str) {
     });
 }
 
-/// Check arity of a call (stub -- does nothing in this port).
+/// Check arity of a call against the canonical primitive table.
 unsafe fn checkArity(op: SEXP, args: SEXP) {
     unsafe {
         crate::mainutils::relop::checkArity(op, args);
@@ -825,6 +825,7 @@ pub unsafe fn do_getOption(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
+        InitOptions();
 
         // Zero-argument case: return all options sorted alphabetically
         if args == R_NilValue() {

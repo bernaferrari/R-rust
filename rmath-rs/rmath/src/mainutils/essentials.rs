@@ -14607,23 +14607,14 @@ pub unsafe fn do_commandArgs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
     }
 }
 
-/// R's `getOption(x)` — get an option value. Simplified: returns NULL for unknown options.
-pub unsafe fn do_getOption(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let _x = CAR(args);
-        // Simplified: options system not fully implemented
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
-    }
+/// R's `getOption(x)` — delegate to the canonical options implementation.
+pub unsafe fn do_getOption(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::options::do_getOption(call, op, args, rho) }
 }
 
-/// R's `options(...)` — set/query options. Simplified: returns NULL.
-pub unsafe fn do_options(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Simplified: options system not fully implemented
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
-    }
+/// R's `options(...)` — delegate to the canonical options implementation.
+pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::options::do_options(call, op, args, rho) }
 }
 
 /// R's `interactive()` — returns FALSE (not in interactive session).
@@ -22310,6 +22301,46 @@ mod tests {
                 result.is_ok(),
                 "namespace parser panicked for seed {seed}: {input:?}"
             );
+        }
+    }
+
+    #[test]
+    fn essentials_get_option_delegates_to_options_runtime() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+
+            let option_name = Rf_mkString(CString::new("width").unwrap().as_ptr());
+            let args = Rf_cons(option_name, R_NilValue());
+            let result = do_getOption(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+
+            assert!(!result.is_null());
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 80);
+        }
+    }
+
+    #[test]
+    fn essentials_options_delegates_to_options_runtime() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            crate::sexp::init::initialize_r();
+
+            let result = do_options(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                R_NilValue(),
+                std::ptr::null_mut(),
+            );
+
+            assert!(!result.is_null());
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert!(XLENGTH(result) > 0);
         }
     }
 
