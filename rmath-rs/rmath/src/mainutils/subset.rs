@@ -1946,12 +1946,9 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if isObject(x) {
-            /* Would call do_subset2 with list2(x, ScalarReal(i+1)) */
-            /* Simplified: just extract directly */
             let args = list2(x, Rf_ScalarReal(i as c_double + 1.0));
             let _args_guard = protect(args);
-            let bracket_op = R_NilValue(); /* placeholder for R_Primitive("[[") */
-            let _ = rho;
+            let bracket_op = crate::mainutils::names::R_Primitive(c"[[".as_ptr());
             let x_elt = do_subset2(call, bracket_op, args, rho);
             x_elt
         } else {
