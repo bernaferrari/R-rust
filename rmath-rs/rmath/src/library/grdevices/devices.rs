@@ -12,7 +12,7 @@ use crate::main::coerce::{asInteger, asLogical};
 use crate::main::colors::col2name;
 use crate::main::errors::{Rf_error, Rf_warning};
 use crate::sexp::accessors::{
-    CAR, CDR, INTEGER, LENGTH, REAL, SET_STRING_ELT, SET_VECTOR_ELT, TYPEOF,
+    CAR, CDR, CHAR, INTEGER, LENGTH, REAL, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF,
 };
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector, Rf_isNull, Rf_mkChar, Rf_mkString,
@@ -222,16 +222,45 @@ pub unsafe fn devoff(args: SEXP) -> SEXP {
 /// dev.size(units) - return the size of the current device.
 pub unsafe fn devsize(args: SEXP) -> SEXP {
     unsafe {
+        let args = CDR(args);
+        let scale = devsize_unit_scale(CAR(args));
         let gdd = GEcurrentDevice();
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2);
         if gdd.is_null() {
-            *REAL(ans).add(0) = 0.0;
-            *REAL(ans).add(1) = 0.0;
+            *REAL(ans).add(0) = 7.0 * scale;
+            *REAL(ans).add(1) = 7.0 * scale;
         } else {
-            *REAL(ans).add(0) = (*gdd).width.abs();
-            *REAL(ans).add(1) = (*gdd).height.abs();
+            *REAL(ans).add(0) = (*gdd).width.abs() * scale;
+            *REAL(ans).add(1) = (*gdd).height.abs() * scale;
         }
         ans
+    }
+}
+
+unsafe fn devsize_unit_scale(units: SEXP) -> c_double {
+    unsafe {
+        if units.is_null() || Rf_isNull(units) != 0 || LENGTH(units) == 0 {
+            return 1.0;
+        }
+        if TYPEOF(units) != SEXPTYPE::STRSXP {
+            Rf_error(b"'units' must be a character string\0".as_ptr() as *const c_char);
+        }
+        let unit = STRING_ELT(units, 0);
+        if unit.is_null() {
+            Rf_error(b"'units' must be a character string\0".as_ptr() as *const c_char);
+        }
+        let unit = std::ffi::CStr::from_ptr(CHAR(unit)).to_str().unwrap_or("");
+        match unit {
+            "in" => 1.0,
+            "cm" => 2.54,
+            "px" => 72.0,
+            _ => {
+                Rf_error(
+                    b"'arg' should be one of \"in\", \"cm\", \"px\"\0".as_ptr() as *const c_char
+                );
+                unreachable!("Rf_error returned");
+            }
+        }
     }
 }
 
@@ -441,5 +470,37 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
         setAttrib(image, R_DimSymbol(), idim);
 
         image
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::accessors::REAL;
+    use crate::sexp::constructors::Rf_cons;
+    use crate::sexp::session::RSession;
+
+    unsafe fn one_arg_args(arg: SEXP) -> SEXP {
+        unsafe { Rf_cons(R_NilValue(), Rf_cons(arg, R_NilValue())) }
+    }
+
+    #[test]
+    fn devsize_reports_null_device_in_requested_units() {
+        let _session = RSession::new();
+        device_registry::reset_registry_for_tests();
+
+        unsafe {
+            let inches = devsize(one_arg_args(Rf_mkString(c"in".as_ptr())));
+            assert_eq!(*REAL(inches).add(0), 7.0);
+            assert_eq!(*REAL(inches).add(1), 7.0);
+
+            let cm = devsize(one_arg_args(Rf_mkString(c"cm".as_ptr())));
+            assert!((*REAL(cm).add(0) - 17.78).abs() < 1e-10);
+            assert!((*REAL(cm).add(1) - 17.78).abs() < 1e-10);
+
+            let px = devsize(one_arg_args(Rf_mkString(c"px".as_ptr())));
+            assert_eq!(*REAL(px).add(0), 504.0);
+            assert_eq!(*REAL(px).add(1), 504.0);
+        }
     }
 }

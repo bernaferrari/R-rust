@@ -49,8 +49,8 @@ impl GEDeviceDesc {
             canGenMouseUp: 0,
             canGenKeybd: 0,
             canGenIdle: 0,
-            width: 0.0,
-            height: 0.0,
+            width: 7.0,
+            height: 7.0,
             holdflush_level: 0,
         }
     }
