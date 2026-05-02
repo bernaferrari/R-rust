@@ -28,7 +28,10 @@ use crate::mainutils::graphics_ffi::{
     rmath_ge_text_with_encoding, rmath_ge_to_device_height, rmath_ge_to_device_width,
     rmath_ge_to_device_x, rmath_ge_to_device_y,
 };
-use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, TYPEOF};
+use crate::sexp::accessors::{
+    CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, TYPEOF, VECTOR_ELT,
+};
+use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib};
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -532,6 +535,76 @@ fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
             }
         }
         _ => None,
+    }
+}
+
+unsafe fn named_component(object: SEXP, name: &str) -> SEXP {
+    unsafe {
+        if object.is_null() || object == R_NilValue() {
+            return R_NilValue();
+        }
+        let names = getAttrib(object, R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP.as_c_int()
+        {
+            return R_NilValue();
+        }
+        let n = LENGTH(object).min(LENGTH(names));
+        for i in 0..n {
+            let charsxp = STRING_ELT(names, i as R_xlen_t);
+            if charsxp.is_null() {
+                continue;
+            }
+            let candidate = CStr::from_ptr(CHAR(charsxp)).to_string_lossy();
+            if candidate == name {
+                return VECTOR_ELT(object, i as R_xlen_t);
+            }
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn named_string_ptr(object: SEXP, name: &str) -> *const c_char {
+    unsafe {
+        let value = named_component(object, name);
+        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP.as_c_int()
+        {
+            return ptr::null();
+        }
+        let charsxp = STRING_ELT(value, 0);
+        if charsxp.is_null() {
+            ptr::null()
+        } else {
+            CHAR(charsxp)
+        }
+    }
+}
+
+unsafe fn named_real_scalar(object: SEXP, name: &str) -> c_double {
+    unsafe {
+        let value = named_component(object, name);
+        if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+            return 0.0;
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::REALSXP.as_c_int() => *REAL(value),
+            t if t == SEXPTYPE::INTSXP.as_c_int() => *INTEGER(value) as c_double,
+            _ => 0.0,
+        }
+    }
+}
+
+unsafe fn named_int_scalar(object: SEXP, name: &str) -> c_int {
+    unsafe {
+        let value = named_component(object, name);
+        if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+            return 0;
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP.as_c_int() => *INTEGER(value),
+            t if t == SEXPTYPE::LGLSXP.as_c_int() => *LOGICAL(value),
+            t if t == SEXPTYPE::REALSXP.as_c_int() => *REAL(value) as c_int,
+            _ => 0,
+        }
     }
 }
 
@@ -1472,52 +1545,59 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
 
 /// Get the glyphs component from a glyphInfo SEXP.
 pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphInfo, "glyphs") }
 }
 
 /// Get the fonts component from a glyphInfo SEXP.
 pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphInfo, "fonts") }
 }
 
 /// Get the glyph IDs from a glyphs SEXP.
 pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphs, "id") }
 }
 
 /// Get the glyph X positions from a glyphs SEXP.
 pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphs, "x") }
 }
 
 /// Get the glyph Y positions from a glyphs SEXP.
 pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphs, "y") }
 }
 
 /// Get the glyph font indices from a glyphs SEXP.
 pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphs, "font") }
 }
 
 /// Get the glyph sizes from a glyphs SEXP.
 pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphs, "size") }
 }
 
 /// Get the glyph colours from a glyphs SEXP.
 pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphs, "colour") }
 }
 
 /// Get the glyph rotations from a glyphs SEXP.
 pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
-    nil_value()
+    unsafe { named_component(glyphs, "rotation") }
 }
 
 /// Check whether a glyphs SEXP has rotation information.
 pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
-    0 // FALSE
+    unsafe {
+        let rotation = named_component(glyphs, "rotation");
+        if rotation.is_null() || rotation == R_NilValue() {
+            0
+        } else {
+            1
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1526,52 +1606,77 @@ pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
 
 /// Get the font file path from a glyphFont SEXP.
 pub unsafe fn R_GE_glyphFontFile(glyphFont: SEXP) -> *const c_char {
-    ptr::null()
+    unsafe { named_string_ptr(glyphFont, "file") }
 }
 
 /// Get the font index from a glyphFont SEXP.
 pub unsafe fn R_GE_glyphFontIndex(glyphFont: SEXP) -> c_int {
-    0
+    unsafe { named_int_scalar(glyphFont, "index") }
 }
 
 /// Get the font family name from a glyphFont SEXP.
 pub unsafe fn R_GE_glyphFontFamily(glyphFont: SEXP) -> *const c_char {
-    ptr::null()
+    unsafe { named_string_ptr(glyphFont, "family") }
 }
 
 /// Get the font weight from a glyphFont SEXP.
 pub unsafe fn R_GE_glyphFontWeight(glyphFont: SEXP) -> c_double {
-    0.0
+    unsafe { named_real_scalar(glyphFont, "weight") }
 }
 
 /// Get the font style from a glyphFont SEXP.
 pub unsafe fn R_GE_glyphFontStyle(glyphFont: SEXP) -> c_int {
-    0
+    unsafe { named_int_scalar(glyphFont, "style") }
 }
 
 /// Get the font PostScript name from a glyphFont SEXP.
 pub unsafe fn R_GE_glyphFontPSname(glyphFont: SEXP) -> *const c_char {
-    ptr::null()
+    unsafe { named_string_ptr(glyphFont, "psname") }
 }
 
 /// Get the number of font variation axes from a glyphFont SEXP.
 pub unsafe fn R_GE_glyphFontNumVar(glyphFont: SEXP) -> c_int {
-    0
+    unsafe {
+        let vars = named_component(glyphFont, "variations");
+        if vars.is_null() || vars == R_NilValue() {
+            0
+        } else {
+            LENGTH(vars)
+        }
+    }
 }
 
 /// Get the axis name for a font variation axis.
 pub unsafe fn R_GE_glyphFontVarAxis(glyphFont: SEXP, index: c_int) -> *const c_char {
-    ptr::null()
+    unsafe {
+        let vars = named_component(glyphFont, "variations");
+        if vars.is_null() || vars == R_NilValue() || index < 0 || index >= LENGTH(vars) {
+            return ptr::null();
+        }
+        named_string_ptr(VECTOR_ELT(vars, index as R_xlen_t), "axis")
+    }
 }
 
 /// Get the axis value for a font variation axis.
 pub unsafe fn R_GE_glyphFontVarValue(glyphFont: SEXP, index: c_int) -> c_double {
-    0.0
+    unsafe {
+        let vars = named_component(glyphFont, "variations");
+        if vars.is_null() || vars == R_NilValue() || index < 0 || index >= LENGTH(vars) {
+            return 0.0;
+        }
+        named_real_scalar(VECTOR_ELT(vars, index as R_xlen_t), "value")
+    }
 }
 
 /// Get the formatted value for a font variation axis.
 pub unsafe fn R_GE_glyphFontVarFormatted(glyphFont: SEXP, index: c_int) -> *const c_char {
-    ptr::null()
+    unsafe {
+        let vars = named_component(glyphFont, "variations");
+        if vars.is_null() || vars == R_NilValue() || index < 0 || index >= LENGTH(vars) {
+            return ptr::null();
+        }
+        named_string_ptr(VECTOR_ELT(vars, index as R_xlen_t), "formatted")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1642,6 +1747,23 @@ pub(crate) unsafe fn compute_closed_spline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
+    use crate::sexp::attrib_core::setAttrib;
+
+    unsafe fn named_list(items: &[(&str, SEXP)]) -> SEXP {
+        unsafe {
+            let len = items.len() as c_int;
+            let list = Rf_allocVector(SEXPTYPE::VECSXP, len);
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, len);
+            for (i, (name, value)) in items.iter().enumerate() {
+                SET_VECTOR_ELT(list, i as R_xlen_t, *value);
+                let c_name = CString::new(*name).expect("test name contains no NUL");
+                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(c_name.as_ptr()));
+            }
+            setAttrib(list, R_NamesSymbol(), names);
+            list
+        }
+    }
     use crate::sexp::accessors::STRING_ELT;
     use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector, Rf_mkChar, Rf_mkString};
     use crate::sexp::ffi::{R_xlen_t, SEXPTYPE};
@@ -1939,6 +2061,26 @@ mod tests {
     }
 
     #[test]
+    fn test_GEGlyphInfo_extracts_named_components() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let ids = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            *INTEGER(ids) = 17;
+            let rotation = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+            *REAL(rotation) = 15.0;
+            let glyphs = named_list(&[("id", ids), ("rotation", rotation)]);
+            let fonts = Rf_allocVector(SEXPTYPE::VECSXP, 0);
+            let glyph_info = named_list(&[("glyphs", glyphs), ("fonts", fonts)]);
+
+            assert_eq!(R_GE_glyphInfoGlyphs(glyph_info), glyphs);
+            assert_eq!(R_GE_glyphInfoFonts(glyph_info), fonts);
+            assert_eq!(R_GE_glyphID(glyphs), ids);
+            assert_eq!(R_GE_glyphRotation(glyphs), rotation);
+            assert_eq!(R_GE_hasGlyphRotation(glyphs), 1);
+        }
+    }
+
+    #[test]
     fn test_GEGlyphFontInfo_stubs() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
@@ -1953,6 +2095,55 @@ mod tests {
             assert_eq!(R_GE_glyphFontVarAxis(ptr::null_mut(), 0), ptr::null());
             assert_eq!(R_GE_glyphFontVarValue(ptr::null_mut(), 0), 0.0);
             assert_eq!(R_GE_glyphFontVarFormatted(ptr::null_mut(), 0), ptr::null());
+        }
+    }
+
+    #[test]
+    fn test_GEGlyphFontInfo_extracts_named_components() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let file = Rf_mkString(b"/fonts/Inter.ttf\0".as_ptr() as *const c_char);
+            let family = Rf_mkString(b"Inter\0".as_ptr() as *const c_char);
+            let weight = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+            *REAL(weight) = 700.0;
+            let style = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            *INTEGER(style) = 1;
+            let axis = Rf_mkString(b"wght\0".as_ptr() as *const c_char);
+            let value = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+            *REAL(value) = 700.0;
+            let formatted = Rf_mkString(b"Bold\0".as_ptr() as *const c_char);
+            let variation =
+                named_list(&[("axis", axis), ("value", value), ("formatted", formatted)]);
+            let variations = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            SET_VECTOR_ELT(variations, 0, variation);
+            let font = named_list(&[
+                ("file", file),
+                ("family", family),
+                ("weight", weight),
+                ("style", style),
+                ("variations", variations),
+            ]);
+
+            assert_eq!(
+                CStr::from_ptr(R_GE_glyphFontFile(font)).to_string_lossy(),
+                "/fonts/Inter.ttf"
+            );
+            assert_eq!(
+                CStr::from_ptr(R_GE_glyphFontFamily(font)).to_string_lossy(),
+                "Inter"
+            );
+            assert_eq!(R_GE_glyphFontWeight(font), 700.0);
+            assert_eq!(R_GE_glyphFontStyle(font), 1);
+            assert_eq!(R_GE_glyphFontNumVar(font), 1);
+            assert_eq!(
+                CStr::from_ptr(R_GE_glyphFontVarAxis(font, 0)).to_string_lossy(),
+                "wght"
+            );
+            assert_eq!(R_GE_glyphFontVarValue(font, 0), 700.0);
+            assert_eq!(
+                CStr::from_ptr(R_GE_glyphFontVarFormatted(font, 0)).to_string_lossy(),
+                "Bold"
+            );
         }
     }
 
