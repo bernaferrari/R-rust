@@ -17,9 +17,9 @@
 //!   - strtoc()          -- complex-number parser (a+bi, ai, a)
 //!   - strtoraw()        -- two-digit hex raw-byte parser
 //!
-//! Remaining functions (fillBuffer, scanchar, scanVector, scanFrame,
-//! extractItem, etc.) depend on R connections, SEXP vectors, and R's
-//! memory allocator and are provided as stubs only.
+//! Remaining low-level functions (fillBuffer, scanchar, scanVector, scanFrame,
+//! extractItem, etc.) depend on full R connection semantics and are intentionally
+//! kept private to the eventual complete scan port.
 
 use std::os::raw::{c_char, c_int};
 
@@ -331,13 +331,13 @@ pub unsafe fn strtoraw(nptr: *const c_char, endptr: *mut *mut c_char) -> std::os
 // do_scan (.Internal(scan ...))
 // ---------------------------------------------------------------------------
 
-/// Placeholder: `do_scan` -- the `.Internal(scan ...)` entry point.
+/// `scan()` compatibility entry point.
 ///
-/// In the full R implementation this reads data from a connection, parsing
-/// fields according to `what`, `sep`, `dec`, quote/comment rules, etc.
-/// It depends on R connections, SEXP allocation, and many internal helpers.
+/// The registered builtin lives in `essentials`; keep this legacy module entry
+/// delegated to the same implementation so future callers do not observe a
+/// null-pointer placeholder.
 pub unsafe fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    std::ptr::null_mut()
+    unsafe { crate::mainutils::essentials::do_scan(call, op, args, rho) }
 }
 
 // ---------------------------------------------------------------------------
