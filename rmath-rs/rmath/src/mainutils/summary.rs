@@ -468,10 +468,9 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
 
 /// PRIMVAL -- get the primitive's internal integer value.
 /// In R, this is stored in the offset/gp field of the SEXPREC.
-/// Currently returns 0 as the SxpInfo doesn't expose offset.
 #[inline]
-unsafe fn PRIMVAL(_op: SEXP) -> c_int {
-    0
+unsafe fn PRIMVAL(op: SEXP) -> c_int {
+    unsafe { crate::mainutils::relop::PRIMVAL(op) }
 }
 
 /// Get or intern the "na.rm" symbol.
@@ -1235,7 +1234,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 if ans_type == SEXPTYPE::INTSXP {
                                     ans_type = SEXPTYPE::REALSXP.into();
                                     if !empty {
-                                        zcum.r = Int2Real(icum as c_int);
+                                        zcum.r = iLcum as f64;
                                     }
                                 }
                                 let (tmp, upd) = rsum_sexp(a, narm);
@@ -1248,7 +1247,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 if ans_type == SEXPTYPE::INTSXP {
                                     ans_type = SEXPTYPE::CPLXSXP.into();
                                     if !empty {
-                                        zcum.r = Int2Real(icum as c_int);
+                                        zcum.r = iLcum as f64;
                                     }
                                 } else if ans_type == SEXPTYPE::REALSXP {
                                     ans_type = SEXPTYPE::CPLXSXP.into();

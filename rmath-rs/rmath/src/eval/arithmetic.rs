@@ -17,10 +17,11 @@ use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
+    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
 };
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
+    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE,
+    TRUE,
 };
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::numeric::NumericVector;
@@ -606,102 +607,479 @@ pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// These accept multiple arguments and aggregate across all elements.
 pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let op_name = get_op_name(call);
+        let op = SummaryOp::from_name(get_op_name(call));
+        let na_rm = parse_summary_na_rm(args);
+        let shape = scan_summary_shape(args, op);
 
+        match op {
+            SummaryOp::Sum => eval_sum(args, shape, na_rm),
+            SummaryOp::Prod => eval_prod(args, shape, na_rm),
+            SummaryOp::Min => eval_minmax(args, shape, na_rm, SummaryOp::Min),
+            SummaryOp::Max => eval_minmax(args, shape, na_rm, SummaryOp::Max),
+            SummaryOp::Range => eval_range(args, shape, na_rm),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SummaryOp {
+    Sum,
+    Min,
+    Max,
+    Prod,
+    Range,
+}
+
+impl SummaryOp {
+    fn from_name(name: &str) -> Self {
+        match name {
+            "sum" => Self::Sum,
+            "min" => Self::Min,
+            "max" => Self::Max,
+            "prod" => Self::Prod,
+            "range" => Self::Range,
+            _ => summary_error(format!("unsupported summary primitive '{name}'")),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct SummaryShape {
+    saw_real: bool,
+    saw_complex: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MissingKind {
+    NaN,
+    NA,
+}
+
+fn merge_missing(current: Option<MissingKind>, next: MissingKind) -> Option<MissingKind> {
+    match (current, next) {
+        (Some(MissingKind::NA), _) | (_, MissingKind::NA) => Some(MissingKind::NA),
+        _ => Some(MissingKind::NaN),
+    }
+}
+
+fn real_missing(value: f64) -> Option<MissingKind> {
+    if !value.is_nan() {
+        None
+    } else if value.to_bits() == R_NA_BIT_PATTERN {
+        Some(MissingKind::NA)
+    } else {
+        Some(MissingKind::NaN)
+    }
+}
+
+fn missing_real(kind: MissingKind) -> f64 {
+    match kind {
+        MissingKind::NA => NA_REAL,
+        MissingKind::NaN => f64::NAN,
+    }
+}
+
+fn complex_missing(value: Rcomplex) -> bool {
+    value.r.is_nan() || value.i.is_nan()
+}
+
+unsafe fn parse_summary_na_rm(args: SEXP) -> bool {
+    unsafe {
         let mut na_rm = false;
-
+        let mut seen = false;
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if tag_name_is(TAG(current), "na.rm") {
-                na_rm = logical_arg_is_true(CAR(current));
-                break;
+                if seen {
+                    summary_error("formal argument \"na.rm\" matched by multiple actual arguments");
+                }
+                seen = true;
+                na_rm = summary_logical_arg(CAR(current));
             }
             current = CDR(current);
         }
+        na_rm
+    }
+}
 
-        // Collect all values from all data arguments.
-        let mut vals: Vec<f64> = Vec::new();
-        let mut has_na = false;
-        current = args;
+unsafe fn summary_logical_arg(x: SEXP) -> bool {
+    unsafe {
+        let Some(arg) = NumericVector::from_raw(x) else {
+            summary_error("invalid 'na.rm' value");
+        };
+        if arg.len() == 0 {
+            summary_error("invalid 'na.rm' value");
+        }
+        match arg.typeof_() {
+            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => {
+                let value = arg.int_at(0);
+                if value == NA_INTEGER {
+                    summary_error("invalid 'na.rm' value");
+                }
+                value != 0
+            }
+            SEXPTYPE::REALSXP => {
+                let value = arg.real_at(0);
+                if value.is_nan() {
+                    summary_error("invalid 'na.rm' value");
+                }
+                value != 0.0
+            }
+            _ => summary_error("invalid 'na.rm' value"),
+        }
+    }
+}
+
+unsafe fn scan_summary_shape(args: SEXP, op: SummaryOp) -> SummaryShape {
+    unsafe {
+        let mut shape = SummaryShape::default();
+        let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if tag_name_is(TAG(current), "na.rm") {
                 current = CDR(current);
                 continue;
             }
+            let value = CAR(current);
+            if value.is_null() || value == R_NilValue() {
+                current = CDR(current);
+                continue;
+            }
+            let value_type = Sexp::from_raw(value)
+                .map(|value| value.typeof_())
+                .unwrap_or(SEXPTYPE::NILSXP);
+            match value_type {
+                t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {}
+                t if t == SEXPTYPE::REALSXP => shape.saw_real = true,
+                t if t == SEXPTYPE::CPLXSXP => {
+                    if matches!(op, SummaryOp::Min | SummaryOp::Max | SummaryOp::Range) {
+                        summary_error("invalid 'type' (complex) of argument");
+                    }
+                    shape.saw_complex = true;
+                }
+                _ => summary_error("invalid 'type' of argument"),
+            }
+            current = CDR(current);
+        }
+        shape
+    }
+}
 
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                if let Some(vector) = NumericVector::from_raw(arg) {
+unsafe fn eval_sum(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
+    unsafe {
+        let mut int_total: i64 = 0;
+        let mut real_total = 0.0;
+        let mut complex_total = Rcomplex { r: 0.0, i: 0.0 };
+        let mut missing = None;
+        let mut current = args;
+
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name_is(TAG(current), "na.rm") {
+                current = CDR(current);
+                continue;
+            }
+            let value = CAR(current);
+            match Sexp::from_raw(value).map(|s| s.typeof_()) {
+                Some(SEXPTYPE::LGLSXP) | Some(SEXPTYPE::INTSXP) => {
+                    let vector = NumericVector::from_raw(value).expect("integer-like vector");
                     for i in 0..vector.len() {
-                        let value = vector.real_at(i);
-                        if value.to_bits() == R_NA_BIT_PATTERN {
+                        poll_vector_cancellation(i);
+                        let item = vector.int_at(i);
+                        if item == NA_INTEGER {
                             if !na_rm {
-                                has_na = true;
-                                vals.push(value);
+                                missing = merge_missing(missing, MissingKind::NA);
                             }
                             continue;
                         }
-                        vals.push(value);
+                        int_total += item as i64;
+                        real_total += item as f64;
+                        complex_total.r += item as f64;
                     }
                 }
+                Some(SEXPTYPE::REALSXP) => {
+                    let vector = NumericVector::from_raw(value).expect("real vector");
+                    for i in 0..vector.len() {
+                        poll_vector_cancellation(i);
+                        let item = vector.real_at(i);
+                        if let Some(kind) = real_missing(item) {
+                            if !na_rm {
+                                missing = merge_missing(missing, kind);
+                            }
+                            continue;
+                        }
+                        real_total += item;
+                        complex_total.r += item;
+                    }
+                }
+                Some(SEXPTYPE::CPLXSXP) => {
+                    let vector = Sexp::from_raw_unchecked(value);
+                    for (i, item) in vector.iter_complex().enumerate() {
+                        poll_vector_cancellation(i as R_xlen_t);
+                        if complex_missing(item) {
+                            if !na_rm {
+                                missing = merge_missing(missing, MissingKind::NA);
+                            }
+                            continue;
+                        }
+                        complex_total.r += item.r;
+                        complex_total.i += item.i;
+                    }
+                }
+                _ => {}
             }
             current = CDR(current);
         }
 
-        if vals.is_empty() {
-            return R_NilValue();
+        if shape.saw_complex {
+            if missing.is_some() {
+                return Rf_ScalarComplex(Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                });
+            }
+            return Rf_ScalarComplex(complex_total);
+        }
+        if shape.saw_real {
+            if let Some(kind) = missing {
+                return Rf_ScalarReal(missing_real(kind));
+            }
+            return Rf_ScalarReal(real_total);
+        }
+        if missing.is_some() || int_total > i32::MAX as i64 || int_total < i32::MIN as i64 {
+            return Rf_ScalarInteger(NA_INTEGER);
+        }
+        Rf_ScalarInteger(int_total as i32)
+    }
+}
+
+unsafe fn eval_prod(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
+    unsafe {
+        let mut real_total = 1.0;
+        let mut complex_total = Rcomplex { r: 1.0, i: 0.0 };
+        let mut missing = None;
+        let mut current = args;
+
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name_is(TAG(current), "na.rm") {
+                current = CDR(current);
+                continue;
+            }
+            let value = CAR(current);
+            match Sexp::from_raw(value).map(|s| s.typeof_()) {
+                Some(SEXPTYPE::LGLSXP) | Some(SEXPTYPE::INTSXP) => {
+                    let vector = NumericVector::from_raw(value).expect("integer-like vector");
+                    for i in 0..vector.len() {
+                        poll_vector_cancellation(i);
+                        let item = vector.int_at(i);
+                        if item == NA_INTEGER {
+                            if !na_rm {
+                                missing = merge_missing(missing, MissingKind::NA);
+                            }
+                            continue;
+                        }
+                        let item = item as f64;
+                        real_total *= item;
+                        complex_total.r *= item;
+                        complex_total.i *= item;
+                    }
+                }
+                Some(SEXPTYPE::REALSXP) => {
+                    let vector = NumericVector::from_raw(value).expect("real vector");
+                    for i in 0..vector.len() {
+                        poll_vector_cancellation(i);
+                        let item = vector.real_at(i);
+                        if let Some(kind) = real_missing(item) {
+                            if !na_rm {
+                                missing = merge_missing(missing, kind);
+                            }
+                            continue;
+                        }
+                        real_total *= item;
+                        complex_total.r *= item;
+                        complex_total.i *= item;
+                    }
+                }
+                Some(SEXPTYPE::CPLXSXP) => {
+                    let vector = Sexp::from_raw_unchecked(value);
+                    for (i, item) in vector.iter_complex().enumerate() {
+                        poll_vector_cancellation(i as R_xlen_t);
+                        if complex_missing(item) {
+                            if !na_rm {
+                                missing = merge_missing(missing, MissingKind::NA);
+                            }
+                            continue;
+                        }
+                        let old = complex_total;
+                        complex_total.r = old.r * item.r - old.i * item.i;
+                        complex_total.i = old.r * item.i + old.i * item.r;
+                    }
+                }
+                _ => {}
+            }
+            current = CDR(current);
         }
 
-        match op_name {
-            "sum" => {
-                if has_na {
-                    return Rf_ScalarReal(NA_REAL);
-                }
-                let result = vals.iter().fold(0.0f64, |a, &b| a + b);
-                Rf_ScalarReal(result)
+        if shape.saw_complex {
+            if missing.is_some() {
+                return Rf_ScalarComplex(Rcomplex {
+                    r: NA_REAL,
+                    i: NA_REAL,
+                });
             }
-            "min" => {
-                if has_na {
-                    return Rf_ScalarReal(NA_REAL);
-                }
-                let result = vals.iter().copied().fold(f64::INFINITY, f64::min);
-                Rf_ScalarReal(result)
-            }
-            "max" => {
-                if has_na {
-                    return Rf_ScalarReal(NA_REAL);
-                }
-                let result = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-                Rf_ScalarReal(result)
-            }
-            "prod" => {
-                if has_na {
-                    return Rf_ScalarReal(NA_REAL);
-                }
-                let result = vals.iter().fold(1.0f64, |a, &b| a * b);
-                Rf_ScalarReal(result)
-            }
-            "range" => {
-                if has_na {
-                    let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-                    if let Some(result) = Sexp::from_raw(v) {
-                        result.set_real_elt(0, NA_REAL);
-                        result.set_real_elt(1, NA_REAL);
-                    }
-                    return v;
-                }
-                let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
-                let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-                let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-                if let Some(result) = Sexp::from_raw(v) {
-                    result.set_real_elt(0, lo);
-                    result.set_real_elt(1, hi);
-                }
-                v
-            }
-            _ => R_NilValue(),
+            Rf_ScalarComplex(complex_total)
+        } else if let Some(kind) = missing {
+            Rf_ScalarReal(missing_real(kind))
+        } else {
+            Rf_ScalarReal(real_total)
         }
     }
+}
+
+unsafe fn eval_minmax(args: SEXP, shape: SummaryShape, na_rm: bool, op: SummaryOp) -> SEXP {
+    unsafe {
+        let mut seen = false;
+        let mut int_best = if op == SummaryOp::Min {
+            i32::MAX
+        } else {
+            i32::MIN
+        };
+        let mut real_best = if op == SummaryOp::Min {
+            f64::INFINITY
+        } else {
+            f64::NEG_INFINITY
+        };
+        let mut missing = None;
+        let mut current = args;
+
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name_is(TAG(current), "na.rm") {
+                current = CDR(current);
+                continue;
+            }
+            let value = CAR(current);
+            match Sexp::from_raw(value).map(|s| s.typeof_()) {
+                Some(SEXPTYPE::LGLSXP) | Some(SEXPTYPE::INTSXP) => {
+                    let vector = NumericVector::from_raw(value).expect("integer-like vector");
+                    for i in 0..vector.len() {
+                        poll_vector_cancellation(i);
+                        let item = vector.int_at(i);
+                        if item == NA_INTEGER {
+                            if !na_rm {
+                                missing = merge_missing(missing, MissingKind::NA);
+                            }
+                            continue;
+                        }
+                        seen = true;
+                        if op == SummaryOp::Min {
+                            int_best = int_best.min(item);
+                            real_best = real_best.min(item as f64);
+                        } else {
+                            int_best = int_best.max(item);
+                            real_best = real_best.max(item as f64);
+                        }
+                    }
+                }
+                Some(SEXPTYPE::REALSXP) => {
+                    let vector = NumericVector::from_raw(value).expect("real vector");
+                    for i in 0..vector.len() {
+                        poll_vector_cancellation(i);
+                        let item = vector.real_at(i);
+                        if let Some(kind) = real_missing(item) {
+                            if !na_rm {
+                                missing = merge_missing(missing, kind);
+                            }
+                            continue;
+                        }
+                        seen = true;
+                        if op == SummaryOp::Min {
+                            real_best = real_best.min(item);
+                        } else {
+                            real_best = real_best.max(item);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            current = CDR(current);
+        }
+
+        if let Some(kind) = missing {
+            if shape.saw_real {
+                return Rf_ScalarReal(missing_real(kind));
+            }
+            return Rf_ScalarInteger(NA_INTEGER);
+        }
+        if !seen {
+            warn_empty_minmax(op);
+            return Rf_ScalarReal(if op == SummaryOp::Min {
+                f64::INFINITY
+            } else {
+                f64::NEG_INFINITY
+            });
+        }
+        if shape.saw_real {
+            Rf_ScalarReal(real_best)
+        } else {
+            Rf_ScalarInteger(int_best)
+        }
+    }
+}
+
+unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
+    unsafe {
+        let min = eval_minmax(args, shape, na_rm, SummaryOp::Min);
+        let max = eval_minmax(args, shape, na_rm, SummaryOp::Max);
+        let min_value = Sexp::from_raw_unchecked(min);
+        let max_value = Sexp::from_raw_unchecked(max);
+        let result_type = if TYPEOF(min) == SEXPTYPE::REALSXP || TYPEOF(max) == SEXPTYPE::REALSXP {
+            SEXPTYPE::REALSXP
+        } else {
+            SEXPTYPE::INTSXP
+        };
+        let result = Rf_allocVector3(result_type, 2);
+        let result_view = Sexp::from_raw_unchecked(result);
+        match result_type {
+            SEXPTYPE::REALSXP => {
+                result_view.set_real_elt(
+                    0,
+                    min_value
+                        .real_elt(0)
+                        .or_else(|| min_value.integer_elt(0).map(f64::from))
+                        .unwrap_or(NA_REAL),
+                );
+                result_view.set_real_elt(
+                    1,
+                    max_value
+                        .real_elt(0)
+                        .or_else(|| max_value.integer_elt(0).map(f64::from))
+                        .unwrap_or(NA_REAL),
+                );
+            }
+            SEXPTYPE::INTSXP => {
+                result_view.set_integer_elt(0, min_value.integer_elt(0).unwrap_or(NA_INTEGER));
+                result_view.set_integer_elt(1, max_value.integer_elt(0).unwrap_or(NA_INTEGER));
+            }
+            _ => {}
+        }
+        result
+    }
+}
+
+fn warn_empty_minmax(op: SummaryOp) {
+    match op {
+        SummaryOp::Min => {
+            warn_simple("no non-missing arguments to min; returning Inf");
+        }
+        SummaryOp::Max => {
+            warn_simple("no non-missing arguments to max; returning -Inf");
+        }
+        _ => {}
+    }
+}
+
+fn summary_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
 }
 
 fn tag_name_is(tag: SEXP, expected: &str) -> bool {

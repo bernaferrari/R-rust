@@ -2146,6 +2146,33 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_summary_type_and_missing_parity() {
+        let mut session = RSession::new();
+
+        assert_eq!(session.eval("sum(integer(0))").output, "[1] 0");
+        assert_eq!(session.eval("prod(integer(0))").output, "[1] 1");
+        assert_eq!(
+            session.eval("typeof(sum(1L, 2L))").output,
+            "[1] \"integer\""
+        );
+        assert_eq!(
+            session.eval("typeof(sum(1L, 2.5))").output,
+            "[1] \"double\""
+        );
+        assert_eq!(
+            session.eval("typeof(range(1L:3L))").output,
+            "[1] \"integer\""
+        );
+        assert_eq!(
+            session.eval("range(c(1L, NA_integer_))").output,
+            "[1] NA NA"
+        );
+        assert_eq!(session.eval("sum(NaN)").output, "[1] NaN");
+        assert_eq!(session.eval("sum(1+2i, 3+4i)").output, "[1] 4+6i");
+        assert_eq!(session.eval("prod(1+2i, 3+4i)").output, "[1] -5+10i");
+    }
+
+    #[test]
     fn test_eval_factor_labels() {
         let mut session = RSession::new();
         let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");
