@@ -2,13 +2,16 @@
 
 //! Port of R's src/main/edit.c — edit() function.
 //!
-//! Provides do_edit for interactive editing of R objects.
-//! Currently stubbed since it depends on the parser, file I/O, and system editor.
+//! Provides the editing entry points used by utils.
+//!
+//! Android and embedded runtimes do not have a process-wide interactive editor
+//! contract. Instead of silently returning `NULL`, unsupported editor calls fail
+//! with an R error so callers can recover explicitly.
 
 use std::os::raw::c_int;
 
+use crate::sexp::context::RError;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
 
 /// Initialize the edit subsystem.
 pub unsafe fn InitEd() {
@@ -20,46 +23,53 @@ pub unsafe fn CleanEd() {
     // no temp file to clean
 }
 
-/// Edit an R object (stub).
-///
-/// This is the equivalent of R's `do_edit()` from edit.c.
-/// In the full implementation, this:
-/// - Deparses the object to a temp file
-/// - Invokes the system editor
-/// - Re-parses the edited file
-/// - Returns the result
-pub unsafe fn do_edit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // return R_NilValue
-        R_NilValue()
-    }
+fn edit_unavailable() -> ! {
+    std::panic::panic_any(RError {
+        message: "edit() is not available in the Android/headless runtime".to_string(),
+    });
 }
 
-/// R_EditFiles stub (may conflict with system.rs, so keep private).
+/// Edit an R object.
+///
+/// This is the equivalent of R's `do_edit()` from edit.c.
+/// GNU R deparses the object, launches an external editor, and parses the
+/// resulting file. That interaction is intentionally outside this embedded
+/// runtime; Android callers should provide an editor UI above UniFFI and then
+/// submit source text through the parser/evaluator.
+pub unsafe fn do_edit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    edit_unavailable()
+}
+
+/// Private edit-files hook for the legacy utils boundary.
 pub(crate) unsafe fn R_EditFiles(
     _nfiles: c_int,
     _files: *mut *mut std::os::raw::c_char,
     _editor: *mut std::os::raw::c_char,
 ) -> c_int {
-    0
+    1
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ptr;
-
     #[test]
-    fn test_do_edit_null() {
-        unsafe {
-            let result = do_edit(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
+    fn test_do_edit_reports_headless_policy() {
+        let result = std::panic::catch_unwind(|| unsafe {
+            do_edit(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
-        }
+        });
+
+        let Err(payload) = result else {
+            panic!("expected RError");
+        };
+        let Some(err) = payload.downcast_ref::<RError>() else {
+            panic!("expected RError payload");
+        };
+        assert!(err.message.contains("Android/headless runtime"));
     }
 
     #[test]

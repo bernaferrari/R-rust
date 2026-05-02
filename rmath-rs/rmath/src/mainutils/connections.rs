@@ -2058,19 +2058,19 @@ pub unsafe fn do_sockConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP)
 }
 
 // ---------------------------------------------------------------------------
-// do_serverSocket — stub
+// do_serverSocket — server socket support
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_serverSocket(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    r_error("serverSocket is not supported in this pure-R Android runtime")
 }
 
 // ---------------------------------------------------------------------------
-// do_download — stub
+// do_download — legacy mainutils entry point
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    r_error("download.file is implemented through the utils internet boundary")
 }
 
 // ---------------------------------------------------------------------------
@@ -2836,6 +2836,36 @@ mod tests {
             assert!(table[1].is_some()); // stdout
             assert!(table[2].is_some()); // stderr
         }
+    }
+
+    #[test]
+    fn test_server_socket_reports_unsupported_runtime() {
+        let _lock = reset_connections();
+        let message = expect_r_error(|| unsafe {
+            do_serverSocket(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                R_NilValue(),
+                ptr::null_mut(),
+            );
+        });
+
+        assert!(message.contains("serverSocket is not supported"));
+    }
+
+    #[test]
+    fn test_legacy_download_entry_reports_real_boundary() {
+        let _lock = reset_connections();
+        let message = expect_r_error(|| unsafe {
+            do_download(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                R_NilValue(),
+                ptr::null_mut(),
+            );
+        });
+
+        assert!(message.contains("utils internet boundary"));
     }
 
     #[test]

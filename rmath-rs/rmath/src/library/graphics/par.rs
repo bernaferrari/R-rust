@@ -27,12 +27,6 @@ use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int, c_uchar, c_ushort};
 
-/// Local helper: get R_BlankString (empty string CHARSXP).
-#[inline]
-unsafe fn R_BlankString() -> SEXP {
-    unsafe { Rf_mkChar(b"\0".as_ptr() as *const c_char) }
-}
-
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -599,28 +593,60 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
     }
 }
 
-/* ---- Stub: Specify (par(what = value)) ---- */
+unsafe fn par_name_from_c(what: *const c_char) -> String {
+    unsafe {
+        if what.is_null() {
+            par_error("invalid graphical parameter");
+        }
+        std::ffi::CStr::from_ptr(what)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
 
 /// Specify -- set a graphical parameter via par().
-/// Stub implementation: does nothing since the graphics engine is not ported.
-unsafe fn Specify(_what: *const c_char, _value: SEXP, _dd: pGEDevDesc) {
-    /* Stub: full implementation requires GPar, dpptr, gpptr, GReset, etc. */
+unsafe fn Specify(what: *const c_char, value: SEXP, _dd: pGEDevDesc) {
+    unsafe {
+        let name = par_name_from_c(what);
+        if !is_known_par(&name) {
+            par_error(format!(
+                "invalid value specified for graphical parameter \"{name}\""
+            ));
+        }
+        if is_readonly_par(&name) {
+            par_error(format!("graphical parameter \"{name}\" is read-only"));
+        }
+        let value = sexp_to_par_value(value);
+        with_par_state(|state| {
+            state.overrides.insert(name, value);
+        });
+    }
 }
-
-/* ---- Stub: Specify2 (high-level plot args) ---- */
 
 /// Specify2 -- set a graphical parameter from a high-level graphics function.
-/// Stub implementation: does nothing.
-unsafe fn Specify2(_what: *const c_char, _value: SEXP, _dd: pGEDevDesc) {
-    /* Stub: full implementation requires GPar, dpptr, gpptr, etc. */
+unsafe fn Specify2(what: *const c_char, value: SEXP, dd: pGEDevDesc) {
+    unsafe {
+        let name = par_name_from_c(what);
+        if is_known_par(&name) && !is_readonly_par(&name) {
+            Specify(what, value, dd);
+        }
+    }
 }
 
-/* ---- Stub: Query (par(what) -- return current value) ---- */
-
 /// Query -- return the current value of a graphical parameter.
-/// Stub implementation: returns R_NilValue for all parameters.
-unsafe fn Query(_what: *const c_char, _dd: pGEDevDesc) -> SEXP {
-    unsafe { R_NilValue() }
+unsafe fn Query(what: *const c_char, _dd: pGEDevDesc) -> SEXP {
+    unsafe {
+        let name = par_name_from_c(what);
+        if !is_known_par(&name) {
+            par_error(format!(
+                "invalid value specified for graphical parameter \"{name}\""
+            ));
+        }
+        with_par_state(|state| {
+            let value = current_par_value(state, &name);
+            par_value_to_sexp(&value)
+        })
+    }
 }
 
 fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
@@ -888,60 +914,13 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/* ---- Compatibility C_par entry point ---- */
-
 /// C_par -- implementation of R's par() function.
 /// This is the .Internal(par(...)) entry point.
 ///
 /// Original C signature:
 ///   SEXP C_par(SEXP call, SEXP op, SEXP args, SEXP rho)
-///
-/// Stub: returns an empty named list.
 pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
-
-    unsafe {
-        /* Stub: the full implementation requires GEcurrentDevice(),
-         * Query(), Specify(), GRecording(), GErecordGraphicOperation().
-         * We parse args minimally and return an empty list. */
-        let _ = call;
-        let _ = op;
-        let _ = rho;
-
-        let args_cdr = CDR(args);
-        if args_cdr == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let arg1 = CAR(args_cdr);
-        let nargs = LENGTH(arg1);
-
-        if nargs <= 0 {
-            return R_NilValue();
-        }
-
-        /* Build a named list with all R_NilValue entries */
-        let value = Rf_allocVector(SEXPTYPE::VECSXP, nargs);
-        let _value_guard = protect(value);
-        let newnames = Rf_allocVector(SEXPTYPE::STRSXP, nargs);
-        let _newnames_guard = protect(newnames);
-
-        /* Try to get names from the argument */
-        let oldnames = getAttrib(arg1, R_NamesSymbol());
-
-        for i in 0..(nargs as usize) {
-            SET_VECTOR_ELT(value, i as R_xlen_t, R_NilValue());
-            if oldnames != R_NilValue() {
-                let tag = STRING_ELT(oldnames, i as R_xlen_t);
-                SET_STRING_ELT(newnames, i as R_xlen_t, tag);
-            } else {
-                SET_STRING_ELT(newnames, i as R_xlen_t, R_BlankString());
-            }
-        }
-
-        setAttrib(value, R_NamesSymbol(), newnames);
-        value
-    }
+    unsafe { do_par(call, op, args, rho) }
 }
 
 /* ---- Stub: C_layout (the layout() .Internal) ---- */
@@ -1049,6 +1028,21 @@ pub unsafe fn restoredpSaved(_dd: pGEDevDesc) {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
+
+    use super::*;
+    use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    struct CurrentInstanceRestore(Option<*mut RInstance>);
+
+    impl Drop for CurrentInstanceRestore {
+        fn drop(&mut self) {
+            unsafe {
+                replace_current_instance(self.0);
+            }
+        }
+    }
+
     #[test]
     fn par_updates_are_session_local() {
         let mut left = crate::android::RSession::new();
@@ -1067,5 +1061,60 @@ mod tests {
         let mut session = crate::android::RSession::new();
         let result = session.eval("cat(length(par()), length(par(no.readonly = TRUE)))");
         assert_eq!(result.output.trim(), "72 66");
+    }
+
+    #[test]
+    fn c_par_delegates_to_session_local_par_state() {
+        let mut instance = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut instance as *mut RInstance));
+            let _restore = CurrentInstanceRestore(previous);
+
+            let mar = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
+            let _mar_guard = protect(mar);
+            let mar_values = REAL(mar);
+            for (idx, value) in [1.0, 2.0, 3.0, 4.0].iter().enumerate() {
+                *mar_values.add(idx) = *value;
+            }
+
+            let args = Rf_cons(mar, R_NilValue());
+            let _args_guard = protect(args);
+            let mar_name = CString::new("mar").unwrap();
+            SETTAG(args, Rf_install(mar_name.as_ptr()));
+
+            let old = C_par(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(LENGTH(old), 1);
+
+            let query_text = Rf_mkString(mar_name.as_ptr());
+            let _query_text_guard = protect(query_text);
+            let query = Rf_cons(query_text, R_NilValue());
+            let _query_guard = protect(query);
+
+            let current = C_par(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                query,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(TYPEOF(current), SEXPTYPE::REALSXP);
+            assert_eq!(XLENGTH(current), 4);
+
+            let current_values = REAL(current);
+            assert_eq!(
+                [
+                    *current_values.add(0),
+                    *current_values.add(1),
+                    *current_values.add(2),
+                    *current_values.add(3),
+                ],
+                [1.0, 2.0, 3.0, 4.0]
+            );
+        }
     }
 }
