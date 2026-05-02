@@ -3,18 +3,34 @@
 //! Port of R's src/main/main.c — main REPL and global variable definitions.
 //!
 //! Provides Rf_mainloop(), R_ReplFile(), Rf_ReplIteration(), and other
-//! core REPL functions. Currently stubbed since it depends on the parser,
-//! readline, and the full evaluation system.
+//! core REPL functions. The interactive file/console loop is still headless,
+//! but top-level task callbacks are tracked per session.
 
 use std::os::raw::c_int;
 
-use crate::sexp::ffi::{FALSE, SEXP, TRUE};
+use crate::sexp::accessors::{CAR, INTEGER_ELT, LENGTH, STRING_ELT, TYPEOF};
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_Visible, set_R_Visible};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::symbol::Rf_install;
 
 /// Console buffer size.
 pub const CONSOLE_BUFFER_SIZE: usize = 1024;
+
+#[derive(Default)]
+pub(crate) struct MainRuntimeState {
+    pub task_callbacks: Vec<ToplevelTaskCallback>,
+    pub next_task_callback_id: c_int,
+    pub running_toplevel_handlers: bool,
+}
+
+pub(crate) struct ToplevelTaskCallback {
+    pub id: c_int,
+    pub name: String,
+    pub fun: SEXP,
+    pub data: SEXP,
+}
 
 // ---------------------------------------------------------------------------
 // Global symbols (initialized lazily)
@@ -239,24 +255,209 @@ pub unsafe fn setup_Rmainloop() {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level handlers (stubs)
+// Top-level handlers
 // ---------------------------------------------------------------------------
 
-pub unsafe fn Rf_callToplevelHandlers(
-    _expr: SEXP,
-    _value: SEXP,
-    _succeeded: c_int,
-    _visible: c_int,
-) {
-    // Unimplemented
+pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int, visible: c_int) {
+    if with_required_current_instance(|inst| {
+        if inst.main_state.running_toplevel_handlers {
+            true
+        } else {
+            inst.main_state.running_toplevel_handlers = true;
+            false
+        }
+    }) {
+        return;
+    }
+
+    let mut index = 0usize;
+    loop {
+        let current = with_required_current_instance(|inst| {
+            inst.main_state.task_callbacks.get(index).map(|callback| {
+                (
+                    callback.id,
+                    callback.fun,
+                    callback.data,
+                    callback.name.clone(),
+                )
+            })
+        });
+        let Some((id, fun, data, _name)) = current else {
+            break;
+        };
+
+        let keep = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            let call = make_task_callback_call(fun, expr, value, succeeded, visible, data);
+            let result = crate::eval::eval::Rf_eval(call, crate::sexp::globals::R_GlobalEnv());
+            crate::mainutils::coerce::asLogical(result) == TRUE
+        }))
+        .unwrap_or(false);
+
+        let position = with_required_current_instance(|inst| {
+            inst.main_state
+                .task_callbacks
+                .iter()
+                .position(|callback| callback.id == id)
+        });
+        match (keep, position) {
+            (true, Some(pos)) => index = pos + 1,
+            (false, Some(pos)) => {
+                with_required_current_instance(|inst| {
+                    inst.main_state.task_callbacks.remove(pos);
+                });
+                index = pos;
+            }
+            (_, None) => {}
+        }
+    }
+
+    with_required_current_instance(|inst| {
+        inst.main_state.running_toplevel_handlers = false;
+    });
 }
 
-pub unsafe fn Rf_addTaskCallback(_fun: SEXP, _data: SEXP) -> c_int {
-    0
+pub unsafe fn Rf_addTaskCallback(fun: SEXP, data: SEXP) -> c_int {
+    unsafe {
+        if fun.is_null()
+            || !matches!(
+                SEXPTYPE(TYPEOF(fun)),
+                SEXPTYPE::CLOSXP | SEXPTYPE::BUILTINSXP | SEXPTYPE::SPECIALSXP
+            )
+        {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "task callback must be a function".to_string(),
+            });
+        }
+    }
+
+    with_required_current_instance(|inst| {
+        inst.main_state.next_task_callback_id += 1;
+        let id = inst.main_state.next_task_callback_id;
+        inst.main_state.task_callbacks.push(ToplevelTaskCallback {
+            id,
+            name: id.to_string(),
+            fun,
+            data,
+        });
+        id
+    })
 }
 
-pub unsafe fn Rf_removeTaskCallback(_name: SEXP) -> c_int {
-    0
+pub unsafe fn Rf_removeTaskCallback(which: SEXP) -> c_int {
+    unsafe {
+        let target = task_callback_selector(which);
+        with_required_current_instance(|inst| {
+            let position = match target {
+                TaskCallbackSelector::Id(id) => inst
+                    .main_state
+                    .task_callbacks
+                    .iter()
+                    .position(|callback| callback.id == id),
+                TaskCallbackSelector::Name(name) => inst
+                    .main_state
+                    .task_callbacks
+                    .iter()
+                    .position(|callback| callback.name == name),
+                TaskCallbackSelector::Missing => None,
+            };
+            if let Some(position) = position {
+                inst.main_state.task_callbacks.remove(position);
+                TRUE
+            } else {
+                FALSE
+            }
+        })
+    }
+}
+
+unsafe fn make_task_callback_call(
+    fun: SEXP,
+    expr: SEXP,
+    value: SEXP,
+    succeeded: c_int,
+    visible: c_int,
+    data: SEXP,
+) -> SEXP {
+    unsafe {
+        let expr = if expr.is_null() { R_NilValue() } else { expr };
+        let value = if value.is_null() { R_NilValue() } else { value };
+        let data = if data.is_null() { R_NilValue() } else { data };
+        let mut args = R_NilValue();
+        for arg in [
+            data,
+            Rf_ScalarLogical(if visible != 0 { TRUE } else { FALSE }),
+            Rf_ScalarLogical(if succeeded != 0 { TRUE } else { FALSE }),
+            value,
+            expr,
+        ] {
+            args = Rf_cons(arg, args);
+        }
+        let call = Rf_cons(fun, args);
+        if !call.is_null() {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        call
+    }
+}
+
+enum TaskCallbackSelector {
+    Id(c_int),
+    Name(String),
+    Missing,
+}
+
+unsafe fn task_callback_selector(which: SEXP) -> TaskCallbackSelector {
+    unsafe {
+        if which.is_null() || which == R_NilValue() {
+            return TaskCallbackSelector::Missing;
+        }
+        match SEXPTYPE(TYPEOF(which)) {
+            SEXPTYPE::INTSXP => {
+                let id = INTEGER_ELT(which, 0);
+                if id == NA_INTEGER {
+                    TaskCallbackSelector::Missing
+                } else {
+                    TaskCallbackSelector::Id(id)
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let id = crate::mainutils::coerce::asInteger(which);
+                if id == NA_INTEGER {
+                    TaskCallbackSelector::Missing
+                } else {
+                    TaskCallbackSelector::Id(id)
+                }
+            }
+            SEXPTYPE::STRSXP if LENGTH(which) > 0 => {
+                let charsxp = STRING_ELT(which, 0 as R_xlen_t);
+                let name = crate::sexp::accessors::CHAR(charsxp);
+                if name.is_null() {
+                    TaskCallbackSelector::Missing
+                } else {
+                    TaskCallbackSelector::Name(
+                        std::ffi::CStr::from_ptr(name)
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
+                }
+            }
+            SEXPTYPE::SYMSXP => {
+                let charsxp = crate::sexp::accessors::PRINTNAME(which);
+                let name = crate::sexp::accessors::CHAR(charsxp);
+                if name.is_null() {
+                    TaskCallbackSelector::Missing
+                } else {
+                    TaskCallbackSelector::Name(
+                        std::ffi::CStr::from_ptr(name)
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
+                }
+            }
+            SEXPTYPE::LISTSXP => task_callback_selector(CAR(which)),
+            _ => TaskCallbackSelector::Missing,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +533,76 @@ mod tests {
             assert_eq!(R_GetEvalDepth(), 10);
             R_SetEvalDepth(0);
         }
+    }
+
+    unsafe fn task_callback_closure(keep: c_int) -> SEXP {
+        unsafe {
+            let mut formals = R_NilValue();
+            for name in ["data", "visible", "succeeded", "value", "expr"] {
+                let cell = Rf_cons(crate::sexp::globals::R_MissingArg(), formals);
+                crate::sexp::accessors::SETTAG(
+                    cell,
+                    Rf_install(std::ffi::CString::new(name).unwrap().as_ptr()),
+                );
+                formals = cell;
+            }
+            crate::mainutils::dstruct::mkCLOSXP(
+                formals,
+                Rf_ScalarLogical(keep),
+                crate::sexp::globals::R_GlobalEnv(),
+            )
+        }
+    }
+
+    #[test]
+    fn test_top_level_callbacks_keep_or_remove_by_result() {
+        let _session = RSession::new();
+        unsafe {
+            let keep = task_callback_closure(TRUE);
+            let drop = task_callback_closure(FALSE);
+            let keep_id = Rf_addTaskCallback(keep, R_NilValue());
+            let drop_id = Rf_addTaskCallback(drop, R_NilValue());
+
+            Rf_callToplevelHandlers(
+                R_NilValue(),
+                crate::sexp::constructors::Rf_ScalarInteger(1),
+                TRUE,
+                TRUE,
+            );
+
+            assert_eq!(
+                Rf_removeTaskCallback(crate::sexp::constructors::Rf_ScalarInteger(keep_id)),
+                TRUE
+            );
+            assert_eq!(
+                Rf_removeTaskCallback(crate::sexp::constructors::Rf_ScalarInteger(drop_id)),
+                FALSE
+            );
+        }
+    }
+
+    #[test]
+    fn test_top_level_callbacks_are_session_local() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_id = left.with_protected(|| unsafe {
+            Rf_addTaskCallback(task_callback_closure(TRUE), R_NilValue())
+        });
+
+        right.with_protected(|| unsafe {
+            assert_eq!(
+                Rf_removeTaskCallback(crate::sexp::constructors::Rf_ScalarInteger(left_id)),
+                FALSE
+            );
+        });
+
+        left.with_protected(|| unsafe {
+            assert_eq!(
+                Rf_removeTaskCallback(crate::sexp::constructors::Rf_ScalarInteger(left_id)),
+                TRUE
+            );
+        });
     }
 
     #[test]

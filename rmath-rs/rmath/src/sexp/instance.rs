@@ -279,6 +279,8 @@ pub struct RInstance {
     pub(crate) unix_system_state: crate::unix::system::UnixSystemRuntimeState,
     /// Per-instance startup/workspace metadata.
     pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
+    /// Per-instance main.c top-level loop and callback state.
+    pub(crate) main_state: crate::mainutils::main::MainRuntimeState,
     /// Per-instance gettext catalog and domain state.
     #[cfg(not(target_os = "android"))]
     pub(crate) intl_state: crate::intl::types::IntlRuntimeState,
@@ -435,6 +437,7 @@ impl RInstance {
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
+            main_state: crate::mainutils::main::MainRuntimeState::default(),
             #[cfg(not(target_os = "android"))]
             intl_state: crate::intl::types::IntlRuntimeState::default(),
             #[cfg(not(target_os = "android"))]
