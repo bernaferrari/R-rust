@@ -37,6 +37,12 @@ use std::os::raw::{c_char, c_double, c_int, c_uint};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
+fn graphics_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
+}
+
 /* ========================================================================
  * Type definitions
  * ======================================================================== */
@@ -118,25 +124,31 @@ pub unsafe fn GMapUnits(runits: c_int) -> GUnit {
  * ======================================================================== */
 
 /// GConvertXUnits -- convert a single x value between unit systems.
-/// Stub: returns 0.0.
 pub unsafe fn GConvertXUnits(
-    _x: c_double,
-    _fromUnits: GUnit,
-    _toUnits: GUnit,
+    x: c_double,
+    fromUnits: GUnit,
+    toUnits: GUnit,
     _dd: pGEDevDesc,
 ) -> c_double {
-    0.0
+    if fromUnits == toUnits {
+        x
+    } else {
+        graphics_error("graphics coordinate conversion requires a graphics device backend")
+    }
 }
 
 /// GConvertYUnits -- convert a single y value between unit systems.
-/// Stub: returns 0.0.
 pub unsafe fn GConvertYUnits(
-    _y: c_double,
-    _fromUnits: GUnit,
-    _toUnits: GUnit,
+    y: c_double,
+    fromUnits: GUnit,
+    toUnits: GUnit,
     _dd: pGEDevDesc,
 ) -> c_double {
-    0.0
+    if fromUnits == toUnits {
+        y
+    } else {
+        graphics_error("graphics coordinate conversion requires a graphics device backend")
+    }
 }
 
 /* ========================================================================
@@ -208,20 +220,13 @@ pub unsafe fn yDevtoUsr(_y: c_double, _dd: pGEDevDesc) -> c_double {
  * ======================================================================== */
 
 /// GConvert -- convert a location (x, y) from one coordinate system to another.
-/// Stub: sets both to 0.0.
-pub unsafe fn GConvert(
-    x: *mut c_double,
-    y: *mut c_double,
-    _from: GUnit,
-    _to: GUnit,
-    _dd: pGEDevDesc,
-) {
+pub unsafe fn GConvert(x: *mut c_double, y: *mut c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) {
     unsafe {
         if !x.is_null() {
-            *x = 0.0;
+            *x = GConvertX(*x, from, to, dd);
         }
         if !y.is_null() {
-            *y = 0.0;
+            *y = GConvertY(*y, from, to, dd);
         }
     }
 }
@@ -231,15 +236,13 @@ pub unsafe fn GConvert(
  * ======================================================================== */
 
 /// GConvertX -- convert an x location from one coordinate system to another.
-/// Stub: returns 0.0.
-pub unsafe fn GConvertX(_x: c_double, _from: GUnit, _to: GUnit, _dd: pGEDevDesc) -> c_double {
-    0.0
+pub unsafe fn GConvertX(x: c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) -> c_double {
+    unsafe { GConvertXUnits(x, from, to, dd) }
 }
 
 /// GConvertY -- convert a y location from one coordinate system to another.
-/// Stub: returns 0.0.
-pub unsafe fn GConvertY(_y: c_double, _from: GUnit, _to: GUnit, _dd: pGEDevDesc) -> c_double {
-    0.0
+pub unsafe fn GConvertY(y: c_double, from: GUnit, to: GUnit, dd: pGEDevDesc) -> c_double {
+    unsafe { GConvertYUnits(y, from, to, dd) }
 }
 
 /* ========================================================================
@@ -701,4 +704,40 @@ pub unsafe fn GMMathText(
     _dd: pGEDevDesc,
 ) {
     /* Stub: full implementation calculates coords and calls GMathText */
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ptr;
+
+    use super::*;
+
+    #[test]
+    fn test_identity_coordinate_conversion_preserves_values() {
+        unsafe {
+            assert_eq!(GConvertX(2.5, USER, USER, ptr::null_mut()), 2.5);
+            assert_eq!(GConvertY(-1.25, NFC, NFC, ptr::null_mut()), -1.25);
+            let mut x = 3.0;
+            let mut y = 4.0;
+            GConvert(&mut x, &mut y, INCHES, INCHES, ptr::null_mut());
+            assert_eq!((x, y), (3.0, 4.0));
+        }
+    }
+
+    #[test]
+    fn test_unsupported_coordinate_conversion_errors() {
+        let err = std::panic::catch_unwind(|| unsafe {
+            GConvertX(2.5, USER, DEVICE, ptr::null_mut());
+        });
+        assert!(err.is_err());
+        let payload = err.unwrap_err();
+        let r_error = payload
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("coordinate conversion should raise RError");
+        assert!(
+            r_error
+                .message
+                .contains("requires a graphics device backend")
+        );
+    }
 }
