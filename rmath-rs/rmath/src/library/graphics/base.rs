@@ -32,7 +32,9 @@ use std::ffi::c_void;
 use std::os::raw::{c_double, c_int};
 
 use crate::main::errors::Rf_error_unimplemented;
-use crate::sexp::ffi::SEXP;
+use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::globals::R_NilValue;
 
 /// pGEDevDesc is an opaque pointer to the graphics device descriptor.
 type pGEDevDesc = *mut c_void;
@@ -42,6 +44,19 @@ fn unsupported(name: &str) -> ! {
     unreachable!("Rf_error_unimplemented returned");
 }
 
+unsafe fn first_string_ptr(value: SEXP) -> *const std::os::raw::c_char {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return std::ptr::null();
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::CHARSXP => CHAR(value),
+            t if t == SEXPTYPE::STRSXP && LENGTH(value) > 0 => CHAR(STRING_ELT(value, 0)),
+            _ => std::ptr::null(),
+        }
+    }
+}
+
 /* ========================================================================
  * String dimension functions
  * ======================================================================== */
@@ -49,13 +64,17 @@ fn unsupported(name: &str) -> ! {
 /// C_strWidth -- compute the width of a string in the current device.
 /// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strWidth(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    unsupported("graphics::C_strWidth")
+    unsafe {
+        crate::mainutils::engine::GEStrWidth(first_string_ptr(_str), 0, std::ptr::null(), _dd)
+    }
 }
 
 /// C_strHeight -- compute the height of a string in the current device.
 /// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strHeight(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    unsupported("graphics::C_strHeight")
+    unsafe {
+        crate::mainutils::engine::GEStrHeight(first_string_ptr(_str), 0, std::ptr::null(), _dd)
+    }
 }
 
 /* ========================================================================
@@ -432,4 +451,21 @@ pub unsafe fn C_HersheyList() -> SEXP {
 /// Stub: returns R_NilValue.
 pub unsafe fn C_HersheyGlyph(_which: SEXP, _index: SEXP) -> SEXP {
     unsupported("graphics::C_HersheyGlyph")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::constructors::Rf_mkString;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn base_string_metrics_delegate_to_engine_and_tolerate_no_device() {
+        let _session = RSession::new();
+        unsafe {
+            let text = Rf_mkString(c"abc".as_ptr());
+            assert_eq!(C_strWidth(text, R_NilValue(), std::ptr::null_mut()), 0.0);
+            assert_eq!(C_strHeight(text, R_NilValue(), std::ptr::null_mut()), 0.0);
+        }
+    }
 }

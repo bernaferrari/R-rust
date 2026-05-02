@@ -34,6 +34,7 @@
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 
+use crate::mainutils::engine;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
@@ -564,23 +565,39 @@ pub unsafe fn GRaster(
 /// GStrWidth -- compute the width of a string.
 /// Stub: returns 0.0.
 pub unsafe fn GStrWidth(
-    _str: *const c_char,
-    _enc: cetype_t,
-    _units: GUnit,
-    _dd: pGEDevDesc,
+    str: *const c_char,
+    enc: cetype_t,
+    units: GUnit,
+    dd: pGEDevDesc,
 ) -> c_double {
-    0.0
+    unsafe {
+        let width = engine::GEStrWidth(str, enc, std::ptr::null(), dd);
+        match units {
+            DEVICE => width,
+            NDC => engine::fromDeviceWidth(width, 1, dd),
+            INCHES => engine::fromDeviceWidth(width, 2, dd),
+            _ => width,
+        }
+    }
 }
 
 /// GStrHeight -- compute the height of a string.
 /// Stub: returns 0.0.
 pub unsafe fn GStrHeight(
-    _str: *const c_char,
-    _enc: cetype_t,
-    _units: GUnit,
-    _dd: pGEDevDesc,
+    str: *const c_char,
+    enc: cetype_t,
+    units: GUnit,
+    dd: pGEDevDesc,
 ) -> c_double {
-    0.0
+    unsafe {
+        let height = engine::GEStrHeight(str, enc, std::ptr::null(), dd);
+        match units {
+            DEVICE => height,
+            NDC => engine::fromDeviceHeight(height, 1, dd),
+            INCHES => engine::fromDeviceHeight(height, 2, dd),
+            _ => height,
+        }
+    }
 }
 
 /// GText -- draw text at a location.
@@ -739,5 +756,13 @@ mod tests {
                 .message
                 .contains("requires a graphics device backend")
         );
+    }
+
+    #[test]
+    fn string_metrics_delegate_to_engine_and_tolerate_no_device() {
+        unsafe {
+            assert_eq!(GStrWidth(c"abc".as_ptr(), 0, DEVICE, ptr::null_mut()), 0.0);
+            assert_eq!(GStrHeight(c"abc".as_ptr(), 0, DEVICE, ptr::null_mut()), 0.0);
+        }
     }
 }
