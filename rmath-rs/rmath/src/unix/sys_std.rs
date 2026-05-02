@@ -10,8 +10,9 @@
 //! - Event loop (select-based activity checking)
 //! - Input handler management
 //!
-//! The readline integration (~400 lines) is stubbed since it requires
-//! FFI to libreadline/libedit which may not be available.
+//! Readline/libedit-specific terminal editing is intentionally not linked in,
+//! but history and filename-expansion hooks are implemented in session-local
+//! Rust state so frontend behavior is deterministic on Android and desktop.
 
 use std::io::{self, BufRead, Write};
 use std::os::raw::{c_char, c_int};
@@ -202,31 +203,71 @@ pub unsafe fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_
     0
 }
 
-// ---------------------------------------------------------------------------
-// History functions (stubs)
-// ---------------------------------------------------------------------------
-
-/// Load command history from file.
-pub unsafe fn Rstd_loadhistory(_file: *const c_char) {}
-
-/// Save command history to file.
-pub unsafe fn Rstd_savehistory(_file: *const c_char) {}
-
-/// Add a line to the history.
-pub unsafe fn Rstd_addhistory(_line: *const c_char) {}
-
-/// Read history from file (readline interface).
-pub unsafe fn Rstd_read_history(_file: *const c_char) {}
-
-// ---------------------------------------------------------------------------
-// Event loop stubs
-// ---------------------------------------------------------------------------
-
 #[derive(Default)]
 pub(crate) struct SysStdRuntimeState {
     pub(crate) r_polled_events: Option<unsafe extern "C" fn()>,
     pub(crate) rg_polled_events: Option<unsafe extern "C" fn()>,
+    history: Vec<String>,
+    readline_word_breaks: Option<String>,
 }
+
+fn cstr_to_string(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    unsafe { Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()) }
+}
+
+// ---------------------------------------------------------------------------
+// History functions
+// ---------------------------------------------------------------------------
+
+/// Load command history from file.
+pub unsafe fn Rstd_loadhistory(file: *const c_char) {
+    let Some(path) = cstr_to_string(file) else {
+        return;
+    };
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return;
+    };
+    with_required_current_instance(|instance| {
+        instance.sys_std_state.history = contents.lines().map(str::to_owned).collect();
+    });
+}
+
+/// Save command history to file.
+pub unsafe fn Rstd_savehistory(file: *const c_char) {
+    let Some(path) = cstr_to_string(file) else {
+        return;
+    };
+    let contents = with_required_current_instance(|instance| {
+        if instance.sys_std_state.history.is_empty() {
+            String::new()
+        } else {
+            format!("{}\n", instance.sys_std_state.history.join("\n"))
+        }
+    });
+    let _ = std::fs::write(path, contents);
+}
+
+/// Add a line to the history.
+pub unsafe fn Rstd_addhistory(line: *const c_char) {
+    let Some(line) = cstr_to_string(line) else {
+        return;
+    };
+    with_required_current_instance(|instance| {
+        instance.sys_std_state.history.push(line);
+    });
+}
+
+/// Read history from file (readline interface).
+pub unsafe fn Rstd_read_history(file: *const c_char) {
+    unsafe { Rstd_loadhistory(file) }
+}
+
+// ---------------------------------------------------------------------------
+// Event loop callbacks
+// ---------------------------------------------------------------------------
 
 pub(crate) fn set_r_polled_events(callback: Option<unsafe extern "C" fn()>) {
     with_required_current_instance(|instance| {
@@ -259,18 +300,36 @@ pub fn Rg_wait_usec(_usec: c_int) {
     R_wait_usec(_usec);
 }
 
-// ---------------------------------------------------------------------------
-// set_rl_word_breaks (stub)
-// ---------------------------------------------------------------------------
-
 /// Set readline word break characters.
-pub unsafe fn set_rl_word_breaks(_str: *const c_char) {
-    // Stub: readline integration not ported
+pub unsafe fn set_rl_word_breaks(value: *const c_char) {
+    let word_breaks = cstr_to_string(value);
+    with_required_current_instance(|instance| {
+        instance.sys_std_state.readline_word_breaks = word_breaks;
+    });
 }
 
-/// Expand filename using readline (stub).
-pub unsafe fn R_ExpandFileName_readline(_s: *const c_char, _buff: *mut c_char) -> *mut c_char {
-    ptr::null_mut()
+/// Expand filename using the frontend-compatible readline hook.
+pub unsafe fn R_ExpandFileName_readline(s: *const c_char, buff: *mut c_char) -> *mut c_char {
+    unsafe {
+        if s.is_null() || buff.is_null() {
+            return ptr::null_mut();
+        }
+        let input = std::ffi::CStr::from_ptr(s).to_string_lossy();
+        let expanded = if input == "~" {
+            std::env::var("HOME").unwrap_or_else(|_| input.into_owned())
+        } else if let Some(rest) = input.strip_prefix("~/") {
+            std::env::var("HOME")
+                .map(|home| format!("{home}/{rest}"))
+                .unwrap_or_else(|_| input.into_owned())
+        } else {
+            input.into_owned()
+        };
+        let Ok(cstr) = std::ffi::CString::new(expanded) else {
+            return ptr::null_mut();
+        };
+        ptr::copy_nonoverlapping(cstr.as_ptr(), buff, cstr.as_bytes_with_nul().len());
+        buff
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -397,19 +456,64 @@ mod tests {
     }
 
     #[test]
-    fn test_std_history_stubs() {
+    fn test_std_history_is_session_local_and_file_backed() {
+        let _session = crate::sexp::session::RSession::new();
+        let path = std::env::temp_dir().join(format!(
+            "rport-history-{}-{}.txt",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
         unsafe {
-            Rstd_loadhistory(ptr::null());
-            Rstd_savehistory(ptr::null());
-            Rstd_addhistory(ptr::null());
-            Rstd_read_history(ptr::null());
+            Rstd_addhistory(b"1 + 1\0".as_ptr() as *const c_char);
+            Rstd_addhistory(b"plot(1:3)\0".as_ptr() as *const c_char);
+            Rstd_savehistory(c_path.as_ptr());
         }
+
+        let saved = std::fs::read_to_string(&path).expect("history should be saved");
+        assert_eq!(saved, "1 + 1\nplot(1:3)\n");
+
+        let mut other = RInstance::new();
+        unsafe {
+            set_current_instance(&mut other);
+            Rstd_loadhistory(c_path.as_ptr());
+        }
+        assert_eq!(
+            other.sys_std_state.history,
+            vec!["1 + 1".to_string(), "plot(1:3)".to_string()]
+        );
+        clear_current_instance();
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
     fn test_set_rl_word_breaks() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
-            set_rl_word_breaks(ptr::null());
+            set_rl_word_breaks(b" \t\n\0".as_ptr() as *const c_char);
+        }
+        crate::sexp::instance::with_required_current_instance(|instance| {
+            assert_eq!(
+                instance.sys_std_state.readline_word_breaks.as_deref(),
+                Some(" \t\n")
+            );
+        });
+    }
+
+    #[test]
+    fn test_expand_file_name_readline_copies_and_expands_home() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut buf = [0 as c_char; 4096];
+        unsafe {
+            let result = R_ExpandFileName_readline(
+                b"~/rport-test\0".as_ptr() as *const c_char,
+                buf.as_mut_ptr(),
+            );
+            assert_eq!(result, buf.as_mut_ptr());
+            let expanded = std::ffi::CStr::from_ptr(buf.as_ptr())
+                .to_string_lossy()
+                .into_owned();
+            assert!(expanded.ends_with("/rport-test") || expanded == "~/rport-test");
         }
     }
 
