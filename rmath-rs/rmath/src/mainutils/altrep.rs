@@ -160,7 +160,7 @@ pub unsafe fn R_compact_intseq(from: R_xlen_t, to: R_xlen_t) -> SEXP {
         } else {
             -1 as R_xlen_t
         };
-        let class_sym = R_NilValue();
+        let class_sym = crate::mainutils::altclasses::R_init_compact_intseq();
 
         let info = with_arena(|arena| {
             let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
@@ -207,7 +207,7 @@ pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP {
             });
         }
 
-        let class_sym = R_NilValue();
+        let class_sym = crate::mainutils::altclasses::R_init_compact_realseq();
 
         let info = with_arena(|arena| {
             let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
