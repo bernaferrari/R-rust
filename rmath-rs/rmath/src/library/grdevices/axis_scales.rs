@@ -28,8 +28,7 @@ pub unsafe fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -
         }
         let axp = [*REAL(axp), *REAL(axp).add(1), *REAL(axp).add(2)];
         let usr = [*REAL(usr), *REAL(usr).add(1)];
-        let ticks = create_at_vector(axp, usr, nint, logflag);
-        real_vector(&ticks)
+        create_at_vector_raw(axp, usr, nint, logflag)
     }
 }
 
@@ -78,6 +77,18 @@ unsafe fn real_vector(values: &[f64]) -> SEXP {
             *REAL(result).add(index) = value;
         }
         result
+    }
+}
+
+pub(crate) unsafe fn create_at_vector_raw(
+    axp: [f64; 3],
+    usr: [f64; 2],
+    nint: c_int,
+    logflag: bool,
+) -> SEXP {
+    unsafe {
+        let ticks = create_at_vector(axp, usr, nint, logflag);
+        real_vector(&ticks)
     }
 }
 

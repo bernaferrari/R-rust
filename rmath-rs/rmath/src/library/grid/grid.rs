@@ -77,13 +77,24 @@ unsafe fn SET_TAG(x: SEXP, y: SEXP) {
 
 unsafe fn NewFrameConfirm(_dev: *const c_void) {}
 
-unsafe fn Rf_CreateAtVector(
-    _axp: *mut c_double,
-    _usr: *mut c_double,
-    _n: c_int,
-    _log: c_int,
-) -> SEXP {
-    unsafe { R_NilValue() }
+unsafe fn Rf_CreateAtVector(axp: *mut c_double, usr: *mut c_double, n: c_int, log: c_int) -> SEXP {
+    unsafe {
+        if axp.is_null() {
+            return R_NilValue();
+        }
+        let axp_values = [*axp, *axp.add(1), *axp.add(2)];
+        let usr_values = if usr.is_null() {
+            [axp_values[0], axp_values[1]]
+        } else {
+            [*usr, *usr.add(1)]
+        };
+        crate::library::grdevices::axis_scales::create_at_vector_raw(
+            axp_values,
+            usr_values,
+            n,
+            log != 0,
+        )
+    }
 }
 
 unsafe fn GEExpressionMetric(
@@ -3704,4 +3715,23 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
 
 pub unsafe fn L_convertToNative(_x: SEXP, _what: SEXP) -> SEXP {
     unsafe { R_NilValue() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_l_pretty_returns_axis_ticks() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let scale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+            *REAL(scale) = 0.0;
+            *REAL(scale).add(1) = 10.0;
+            let ticks = L_pretty(scale);
+            assert_eq!(TYPEOF(ticks), SEXPTYPE::REALSXP);
+            assert!(LENGTH(ticks) >= 2);
+            assert!(*REAL(ticks) <= *REAL(ticks).add((LENGTH(ticks) - 1) as usize));
+        }
+    }
 }

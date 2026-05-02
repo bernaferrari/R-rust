@@ -8,7 +8,7 @@
     unused_assignments,
     non_camel_case_types
 )]
-mod axis_scales;
+pub(crate) mod axis_scales;
 #[allow(
     dead_code,
     unused_imports,
