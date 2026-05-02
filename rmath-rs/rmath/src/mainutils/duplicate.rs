@@ -8,6 +8,7 @@
 
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -202,9 +203,19 @@ unsafe fn ALTREP_CHECK(_x: SEXP) -> c_int {
     0
 }
 
-/// UNIMPLEMENTED_TYPE stub: prints a message (no-op for now).
-unsafe fn UNIMPLEMENTED_TYPE(_routine: *const c_char, _s: SEXP) {
-    // In real R, this would call error().
+/// Raise a typed error for SEXPTYPEs this port cannot duplicate/copy yet.
+unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
+    unsafe {
+        let routine = if routine.is_null() {
+            "duplicate"
+        } else {
+            CStr::from_ptr(routine).to_str().unwrap_or("duplicate")
+        };
+        let sexptype = if s.is_null() { -1 } else { TYPEOF(s) };
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
+        });
+    }
 }
 
 /// Set the DDVAL flag on a symbol.
@@ -550,12 +561,11 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
                 if !t.is_null() {
                     DUPLICATE_ATTRIB(t, s, deep);
                 } else {
-                    // Fallback: return s as-is
-                    return s;
+                    UNIMPLEMENTED_TYPE(b"duplicate\0".as_ptr() as *const c_char, s);
                 }
             }
             _ => {
-                return s;
+                UNIMPLEMENTED_TYPE(b"duplicate\0".as_ptr() as *const c_char, s);
             }
         }
 
@@ -805,18 +815,17 @@ pub unsafe fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
                 sp = CDR(sp);
             }
         } else {
-            for _i in 0..ns {
-                SETCAR(s, duplicate(CAR(pt)));
-                let next_s = CDR(s);
+            let mut sp = s;
+            for _ in 0..ns {
+                SETCAR(sp, duplicate(CAR(pt)));
+                sp = CDR(sp);
                 pt = CDR(pt);
                 if pt.is_null() || pt == R_NilValue() {
                     pt = t;
                 }
-                // s is not advanced here because SETCAR doesn't need it,
-                // but we need to track the original s pointer
-                // Actually, the C code uses mutable s. Let's fix this.
-                // The C code modifies s by doing s = CDR(s), so:
-                break; // This function is legacy and not well-used; stub the rest
+                if sp.is_null() || sp == R_NilValue() {
+                    break;
+                }
             }
         }
     }
@@ -1677,6 +1686,23 @@ mod tests {
             assert!(!d.is_null());
             assert_eq!(TYPEOF(d), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(d), 2);
+        }
+    }
+
+    #[test]
+    fn test_duplicate_unsupported_type_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let extptr = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
+            let err = std::panic::catch_unwind(|| {
+                let _ = duplicate(extptr);
+            })
+            .expect_err("unsupported duplicate type should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert!(message.contains("duplicate: unsupported SEXPTYPE"));
         }
     }
 }
