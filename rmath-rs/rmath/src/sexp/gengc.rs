@@ -346,6 +346,12 @@ fn mark_instance_roots(
         mark_reachable(callback.fun, traceable, visited);
         mark_reachable(callback.data, traceable, visited);
     }
+    for &generic in &instance.objects_state.prim_generics {
+        mark_reachable(generic, traceable, visited);
+    }
+    for &methods in &instance.objects_state.prim_mlist {
+        mark_reachable(methods, traceable, visited);
+    }
     for (&env, table) in &instance.env_hash_tables {
         mark_reachable(env as SEXP, traceable, visited);
         for (&symbol, &value) in table {
@@ -881,6 +887,12 @@ fn update_instance_roots(old_to_new: &HashMap<usize, SEXP>) {
         for callback in &mut instance.main_state.task_callbacks {
             update_field(&mut callback.fun, old_to_new);
             update_field(&mut callback.data, old_to_new);
+        }
+        for generic in &mut instance.objects_state.prim_generics {
+            update_field(generic, old_to_new);
+        }
+        for methods in &mut instance.objects_state.prim_mlist {
+            update_field(methods, old_to_new);
         }
         let old_hash_tables = std::mem::take(&mut instance.env_hash_tables);
         instance.env_hash_tables = old_hash_tables

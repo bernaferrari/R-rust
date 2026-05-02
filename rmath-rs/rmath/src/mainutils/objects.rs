@@ -107,8 +107,8 @@ pub(crate) struct ObjectsRuntimeState {
     cur_max_offset: c_int,
     allow_primitive_methods: c_int,
     prim_methods: Vec<prim_methods_t>,
-    prim_generics: Vec<SEXP>,
-    prim_mlist: Vec<SEXP>,
+    pub(crate) prim_generics: Vec<SEXP>,
+    pub(crate) prim_mlist: Vec<SEXP>,
     standard_generic_ptr: R_stdGen_ptr_t,
     quick_method_check_ptr: R_stdGen_ptr_t,
     deferred_default_object: SEXP,
@@ -149,6 +149,18 @@ impl ObjectsRuntimeState {
             self.max_methods_offset = DEFAULT_N_PRIM_METHODS;
         }
     }
+
+    fn ensure_primitive_slot(&mut self, offset: usize) {
+        self.ensure_primitive_tables();
+        if offset >= self.prim_methods.len() {
+            let new_len = (offset + 1).max(self.prim_methods.len() * 2);
+            self.prim_methods
+                .resize(new_len, prim_methods_t::NO_METHODS);
+            self.prim_generics.resize(new_len, ptr::null_mut());
+            self.prim_mlist.resize(new_len, ptr::null_mut());
+            self.max_methods_offset = new_len as c_int;
+        }
+    }
 }
 
 pub(crate) fn with_objects_state<F, R>(f: F) -> R
@@ -183,6 +195,22 @@ pub(crate) fn set_s4_validity(name: &str) -> bool {
 
 pub(crate) fn s4_class(name: &str) -> Option<S4ClassDef> {
     with_objects_state(|state| state.s4_classes.get(name).cloned())
+}
+
+unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
+    unsafe {
+        if op.is_null()
+            || (TYPEOF(op) != SEXPTYPE::BUILTINSXP && TYPEOF(op) != SEXPTYPE::SPECIALSXP)
+        {
+            return None;
+        }
+        let offset = PRIMOFFSET(op);
+        if offset < 0 {
+            None
+        } else {
+            Some(offset as usize)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2764,21 +2792,12 @@ pub unsafe fn do_set_prim_method(
             ),
         };
 
-        let offset = if !op.is_null()
-            && (TYPEOF(op) == SEXPTYPE::BUILTINSXP || TYPEOF(op) == SEXPTYPE::SPECIALSXP)
-        {
-            // PRIMOFFSET: for now we use the function index if available
-            0 // simplified
-        } else {
+        let Some(offset) = primitive_offset(op) else {
             error("invalid object: must be a primitive function");
         };
 
         with_objects_state(|state| {
-            state.ensure_primitive_tables();
-            let offset = offset as usize;
-            if offset >= state.max_methods_offset as usize {
-                return R_NilValue();
-            }
+            state.ensure_primitive_slot(offset);
 
             state.prim_methods[offset] = code;
             if offset as c_int > state.cur_max_offset {
@@ -2827,13 +2846,37 @@ pub unsafe fn R_set_prim_method(
 }
 
 /// R_primitive_methods -- get the methods list for a primitive.
-pub unsafe fn R_primitive_methods(_op: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn R_primitive_methods(op: SEXP) -> SEXP {
+    unsafe {
+        let Some(offset) = primitive_offset(op) else {
+            return R_NilValue();
+        };
+        with_objects_state(|state| {
+            state
+                .prim_mlist
+                .get(offset)
+                .copied()
+                .filter(|value| !value.is_null())
+                .unwrap_or_else(|| unsafe { R_NilValue() })
+        })
+    }
 }
 
 /// R_primitive_generic -- get the generic function for a primitive.
-pub unsafe fn R_primitive_generic(_op: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn R_primitive_generic(op: SEXP) -> SEXP {
+    unsafe {
+        let Some(offset) = primitive_offset(op) else {
+            return R_NilValue();
+        };
+        with_objects_state(|state| {
+            state
+                .prim_generics
+                .get(offset)
+                .copied()
+                .filter(|value| !value.is_null())
+                .unwrap_or_else(|| unsafe { R_NilValue() })
+        })
+    }
 }
 
 /// R_has_methods -- check whether methods might exist for this op.
@@ -2849,7 +2892,19 @@ pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
         if with_objects_state(|state| state.allow_primitive_methods) == FALSE {
             return FALSE;
         }
-        FALSE
+        let Some(offset) = primitive_offset(_op) else {
+            return FALSE;
+        };
+        with_objects_state(|state| {
+            !matches!(
+                state
+                    .prim_methods
+                    .get(offset)
+                    .copied()
+                    .unwrap_or(prim_methods_t::NO_METHODS),
+                prim_methods_t::NO_METHODS | prim_methods_t::SUPPRESSED
+            ) as c_int
+        })
     }
 }
 
@@ -2913,7 +2968,7 @@ pub unsafe fn R_possible_dispatch(
                 R_NilValue(),
                 R_NilValue(),
             );
-            let mlist = get_primitive_methods_stub(op, rho);
+            let mlist = get_primitive_methods(op, rho);
             let _mlist_guard = protect(mlist);
             do_set_prim_method(
                 op,
@@ -3054,9 +3109,8 @@ pub unsafe fn R_possible_dispatch(
     }
 }
 
-/// Stub for get_primitive_methods — requires the methods package to be loaded.
-unsafe fn get_primitive_methods_stub(_op: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+unsafe fn get_primitive_methods(op: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { R_primitive_methods(op) }
 }
 
 // ---------------------------------------------------------------------------
@@ -4414,6 +4468,37 @@ mod tests {
         unsafe {
             let result = R_primitive_generic(ptr::null_mut());
             assert!(result.is_null() || result == R_NilValue());
+        }
+    }
+
+    #[test]
+    fn test_primitive_methods_roundtrip_by_primitive_offset() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"+".as_ptr());
+            assert!(!op.is_null());
+            let generic = Rf_ScalarInteger(101);
+            let methods = Rf_mkString(c"plus-methods".as_ptr());
+
+            let name = Rf_mkString(c"+".as_ptr());
+            R_set_prim_method(name, op, Rf_mkString(c"set".as_ptr()), generic, methods);
+
+            assert_eq!(R_primitive_generic(op), generic);
+            assert_eq!(R_primitive_methods(op), methods);
+
+            R_set_standardGeneric_ptr(Some(standard_generic_a), ptr::null_mut());
+            assert_eq!(R_has_methods(op), TRUE);
+
+            R_set_prim_method(
+                name,
+                op,
+                Rf_mkString(c"clear".as_ptr()),
+                R_NilValue(),
+                R_NilValue(),
+            );
+            assert_eq!(R_primitive_generic(op), R_NilValue());
+            assert_eq!(R_primitive_methods(op), R_NilValue());
+            assert_eq!(R_has_methods(op), FALSE);
         }
     }
 
