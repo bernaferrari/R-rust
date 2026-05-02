@@ -1413,7 +1413,12 @@ pub unsafe fn R_agrep_fixed(
             return 0;
         }
 
-        let pat_bytes = match CStr::from_ptr(pat).to_bytes().to_ascii_lowercase() {
+        let pat_bytes = if ignore_case != 0 {
+            CStr::from_ptr(pat).to_bytes().to_ascii_lowercase()
+        } else {
+            CStr::from_ptr(pat).to_bytes().to_vec()
+        };
+        let pat_bytes = match pat_bytes {
             b if b.is_empty() => return 1, // empty pattern matches anything
             b => b,
         };
