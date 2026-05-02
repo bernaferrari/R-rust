@@ -13,6 +13,7 @@
 
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
+use std::ffi::CStr;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{CAR, INTEGER, LENGTH, TYPEOF, VECTOR_ELT, XLENGTH};
@@ -21,6 +22,18 @@ use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+
+unsafe fn primitive_name(op: SEXP) -> Option<String> {
+    unsafe {
+        let name = crate::mainutils::relop::PRIMNAME(op);
+        if name.is_null() {
+            None
+        } else {
+            let name = CStr::from_ptr(name).to_string_lossy().into_owned();
+            if name.is_empty() { None } else { Some(name) }
+        }
+    }
+}
 
 fn array_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
@@ -290,8 +303,14 @@ pub unsafe fn do_lengths(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_rowscols` in array.c (line 597).
 /// PRIMVAL(op) == 1 for row(), == 2 for col().
-pub unsafe fn do_rowscols(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    array_error("row()/col() are not implemented in the Rust array port yet")
+pub unsafe fn do_rowscols(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        match primitive_name(op).as_deref() {
+            Some("col") => crate::mainutils::essentials::do_col(call, op, args, env),
+            Some("row") | None => crate::mainutils::essentials::do_row(call, op, args, env),
+            Some(name) => array_error(format!("unsupported row/col primitive '{name}'")),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -336,8 +355,16 @@ pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP 
 ///
 /// Ported from R's `do_colsum` in array.c (line 1894).
 /// PRIMVAL(op): 0 = colSums, 1 = colMeans, 2 = rowSums, 3 = rowMeans.
-pub unsafe fn do_colsum(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    array_error("row/column summaries are not implemented in the Rust array port yet")
+pub unsafe fn do_colsum(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        match primitive_name(op).as_deref() {
+            Some("rowSums") => crate::mainutils::essentials::do_rowSums(call, op, args, env),
+            Some("colMeans") => crate::mainutils::essentials::do_colMeans(call, op, args, env),
+            Some("rowMeans") => crate::mainutils::essentials::do_rowMeans(call, op, args, env),
+            Some("colSums") | None => crate::mainutils::essentials::do_colSums(call, op, args, env),
+            Some(name) => array_error(format!("unsupported row/column summary primitive '{name}'")),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -617,17 +644,34 @@ mod tests {
     }
 
     #[test]
-    fn test_do_rowscols_errors_until_implemented() {
+    fn test_do_rowscols_delegates_to_row_by_default() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_rowscols(
+        unsafe {
+            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 6);
+            let matrix_args = Rf_cons(
+                data,
+                Rf_cons(
+                    Rf_ScalarInteger(2),
+                    Rf_cons(Rf_ScalarInteger(3), Rf_cons(R_NilValue(), R_NilValue())),
+                ),
+            );
+            let matrix = do_matrix(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
+                matrix_args,
                 ptr::null_mut(),
             );
-        });
-        assert!(err.message.contains("row()/col()"));
+            let result = do_rowscols(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                Rf_cons(matrix, R_NilValue()),
+                ptr::null_mut(),
+            );
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 1);
+            assert_eq!(*INTEGER(result).add(1), 2);
+            assert_eq!(*INTEGER(result).add(2), 1);
+        }
     }
 
     #[test]
@@ -708,17 +752,36 @@ mod tests {
     }
 
     #[test]
-    fn test_do_colsum_errors_until_implemented() {
+    fn test_do_colsum_delegates_to_col_sums_by_default() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_colsum(
+        unsafe {
+            let data = Rf_allocVector3(SEXPTYPE::INTSXP, 4);
+            for i in 0..4 {
+                *INTEGER(data).add(i) = (i + 1) as c_int;
+            }
+            let matrix_args = Rf_cons(
+                data,
+                Rf_cons(
+                    Rf_ScalarInteger(2),
+                    Rf_cons(Rf_ScalarInteger(2), Rf_cons(R_NilValue(), R_NilValue())),
+                ),
+            );
+            let matrix = do_matrix(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
+                matrix_args,
                 ptr::null_mut(),
             );
-        });
-        assert!(err.message.contains("row/column summaries"));
+            let result = do_colsum(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                Rf_cons(matrix, Rf_cons(R_NilValue(), R_NilValue())),
+                ptr::null_mut(),
+            );
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            assert_eq!(*crate::sexp::accessors::REAL(result), 3.0);
+            assert_eq!(*crate::sexp::accessors::REAL(result).add(1), 7.0);
+        }
     }
 
     #[test]
