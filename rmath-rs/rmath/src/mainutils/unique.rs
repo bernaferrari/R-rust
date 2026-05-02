@@ -23,8 +23,8 @@ use crate::sexp::accessors::{
     SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
@@ -41,6 +41,12 @@ fn R_IsNA(x: f64) -> bool {
 #[inline]
 fn ISNAN(x: f64) -> bool {
     x.is_nan()
+}
+
+fn unique_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -720,42 +726,25 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
 /// `.Internal(unique(x, incomparables, fromLast, nmax))`
 /// PRIMVAL(op) == 1 in the C source; here called directly as do_unique.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
-            Ok(s) => s,
-            Err(_) => return R_NilValue(),
-        };
-        let x = match args_s.try_pairlist_arg(0) {
-            Ok(s) => s,
-            Err(_) => return R_NilValue(),
-        };
-        match unique_safe(x, false, NA_INTEGER) {
-            Ok(result) => result,
-            Err(_) => R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| unsafe { R_NilValue() })
+    let args_s = Sexp::try_from_raw(args)
+        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    let x = args_s
+        .try_pairlist_arg(0)
+        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    unique_safe(x, false, NA_INTEGER).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
 /// Implementation of R's `duplicated()` builtin.
 ///
 /// `.Internal(duplicated(x, incomparables, fromLast, nmax))`
 pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
-            Ok(s) => s,
-            Err(_) => return R_NilValue(),
-        };
-        let x = match args_s.try_pairlist_arg(0) {
-            Ok(s) => s,
-            Err(_) => return R_NilValue(),
-        };
-        match duplicated_safe(x, false, NA_INTEGER) {
-            Ok(result) => result,
-            Err(_) => R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| unsafe { R_NilValue() })
+    let args_s = Sexp::try_from_raw(args)
+        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    let x = args_s
+        .try_pairlist_arg(0)
+        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    duplicated_safe(x, false, NA_INTEGER)
+        .unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
 /// Implementation of R's `any()` builtin.
@@ -763,17 +752,9 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 /// `.Internal(any(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 2 in the C source.
 pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
-            Ok(s) => s,
-            Err(_) => return R_NilValue(),
-        };
-        match any_safe(args_s) {
-            Ok(result) => result,
-            Err(_) => R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| unsafe { R_NilValue() })
+    let args_s = Sexp::try_from_raw(args)
+        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    any_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
 /// Implementation of R's `all()` builtin.
@@ -781,17 +762,9 @@ pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// `.Internal(all(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 1 in the C source.
 pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::try_from_raw(args) {
-            Ok(s) => s,
-            Err(_) => return R_NilValue(),
-        };
-        match all_safe(args_s) {
-            Ok(result) => result,
-            Err(_) => R_NilValue(),
-        }
-    }))
-    .unwrap_or_else(|_| unsafe { R_NilValue() })
+    let args_s = Sexp::try_from_raw(args)
+        .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
+    all_safe(args_s).unwrap_or_else(|message| -> SEXP { unique_error(message) })
 }
 
 // ---------------------------------------------------------------------------
