@@ -1087,7 +1087,9 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 zcum.i = 0.0;
             }
             _ => {
-                return R_NilValue();
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: format!("unsupported summary primitive code {iop}"),
+                });
             }
         }
 
