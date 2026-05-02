@@ -88,7 +88,7 @@ unsafe fn sym(name: &str) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Function pointer type for standardGeneric dispatch.
-pub type R_stdGen_ptr_t = Option<unsafe extern "C" fn(arg: SEXP, env: SEXP, fdef: SEXP) -> SEXP>;
+pub type R_stdGen_ptr_t = Option<unsafe fn(arg: SEXP, env: SEXP, fdef: SEXP) -> SEXP>;
 
 const DEFAULT_N_PRIM_METHODS: c_int = 100;
 
@@ -2446,11 +2446,13 @@ pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// R_S4_method_dispatch -- S4 method dispatch stub
+// R_S4_method_dispatch -- S4 method dispatch entry point
 // ---------------------------------------------------------------------------
 
 /// S4 method dispatch. Requires the methods package to be loaded.
-/// Returns R_NilValue if methods dispatch is not available.
+/// This low-level entry point should never silently succeed without a
+/// registered dispatcher: callers depend on dispatch either producing a method
+/// result or reporting that methods support is incomplete.
 pub unsafe fn R_S4_method_dispatch(
     _call: SEXP,
     _op: SEXP,
@@ -2458,35 +2460,34 @@ pub unsafe fn R_S4_method_dispatch(
     _rho: SEXP,
     _method: SEXP,
 ) -> SEXP {
-    // Unimplemented: requires R methods package infrastructure
+    unsafe { error("S4 method dispatch is not available through this low-level entry point") }
+}
+
+// ---------------------------------------------------------------------------
+// do_setClass -- setClass()
+// ---------------------------------------------------------------------------
+
+/// Legacy objects.c-facing entry point for `setClass`.
+///
+/// The evaluator registers the Rust-shaped implementation in
+/// `mainutils::essentials`; keep this symbol as a thin compatibility route so
+/// all class definitions land in the same session-local S4 registry.
+pub unsafe fn do_setClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        // Full implementation would call the standardGeneric function pointer
-        R_NilValue()
+        if args.is_null() || args == R_NilValue() {
+            error("'Class' must name an S4 class");
+        }
+        crate::mainutils::essentials::do_setClass(call, op, args, env)
     }
 }
 
 // ---------------------------------------------------------------------------
-// do_setClass -- setClass() stub
-// ---------------------------------------------------------------------------
-
-/// setClass() is an R-level function from the methods package.
-/// This C entry point is not normally used directly.
-pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    // Unimplemented: requires R methods package infrastructure
-    unsafe {
-        // setClass is defined in R, not C
-        R_NilValue()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// do_setRefClass -- setRefClass() stub
+// do_setRefClass -- setRefClass()
 // ---------------------------------------------------------------------------
 
 /// setRefClass() is an R-level function from the methods package.
 pub unsafe fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    // Unimplemented: requires R methods package infrastructure
-    unsafe { R_NilValue() }
+    unsafe { error("setRefClass is not implemented in this Rust runtime yet") }
 }
 
 // ---------------------------------------------------------------------------
@@ -2690,8 +2691,8 @@ unsafe fn get_this_generic(args: SEXP) -> SEXP {
 /// Ported from objects.c:1324-1370.
 pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        if args.is_null() {
-            return R_NilValue();
+        if args.is_null() || args == R_NilValue() {
+            error("'standardGeneric' requires a generic function name");
         }
         let arg = CAR(args);
         if isValidString(arg) == FALSE {
@@ -2699,10 +2700,29 @@ pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -
         }
 
         let fdef = get_this_generic(args);
+        if fdef.is_null() || fdef == R_NilValue() {
+            let generic = CHAR(STRING_ELT(arg, 0));
+            let generic = if generic.is_null() {
+                "<unknown>"
+            } else {
+                std::ffi::CStr::from_ptr(generic)
+                    .to_str()
+                    .unwrap_or("<unknown>")
+            };
+            error(&format!(
+                "call to standardGeneric(\"{}\") apparently not from the body of that generic function",
+                generic
+            ));
+        }
+
+        if R_get_standardGeneric_ptr().is_none() {
+            R_set_standardGeneric_ptr(Some(dispatchNonGeneric), ptr::null_mut());
+        }
+
         let ptr = R_get_standardGeneric_ptr();
         match ptr {
             Some(func) => func(arg, env, fdef),
-            None => R_NilValue(),
+            None => error("methods dispatch could not be enabled"),
         }
     }
 }
@@ -3424,6 +3444,15 @@ unsafe fn INTEGER_ELT_mut(x: SEXP, i: c_int) -> *mut c_int {
 mod tests {
     use super::*;
 
+    fn assert_r_error(action: impl FnOnce()) -> crate::sexp::context::RError {
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
+            .expect_err("expected RError panic");
+        payload
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError payload")
+            .clone()
+    }
+
     #[test]
     fn test_equalS3Signature_exact_match() {
         let _session = crate::sexp::session::RSession::new();
@@ -3816,11 +3845,11 @@ mod tests {
         }
     }
 
-    unsafe extern "C" fn standard_generic_a(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
+    unsafe fn standard_generic_a(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
         unsafe { R_NilValue() }
     }
 
-    unsafe extern "C" fn standard_generic_b(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
+    unsafe fn standard_generic_b(_arg: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
         unsafe { R_NilValue() }
     }
 
@@ -4201,43 +4230,41 @@ mod tests {
     fn test_do_setClass() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let result = do_setClass(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            assert!(result.is_null() || result == R_NilValue());
+            let class_name = Rf_mkString(b"LegacyClass\0".as_ptr() as *const c_char);
+            let args = Rf_cons(class_name, R_NilValue());
+            let result = do_setClass(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            assert!(!result.is_null());
+            assert!(s4_class("LegacyClass").is_some());
         }
     }
 
     #[test]
     fn test_do_setRefClass() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_setRefClass(
+        let err = assert_r_error(|| unsafe {
+            do_setRefClass(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert!(result.is_null() || result == R_NilValue());
-        }
+        });
+        assert!(err.message.contains("setRefClass is not implemented"));
     }
 
     #[test]
     fn test_R_S4_method_dispatch() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = R_S4_method_dispatch(
+        let err = assert_r_error(|| unsafe {
+            R_S4_method_dispatch(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert!(result.is_null() || result == R_NilValue());
-        }
+        });
+        assert!(err.message.contains("S4 method dispatch is not available"));
     }
 
     #[test]
@@ -4295,15 +4322,15 @@ mod tests {
     #[test]
     fn test_do_standardGeneric_null() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_standardGeneric(
+        let err = assert_r_error(|| unsafe {
+            do_standardGeneric(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert!(result.is_null() || result == R_NilValue());
-        }
+        });
+        assert!(err.message.contains("requires a generic function name"));
     }
 
     #[test]

@@ -19,11 +19,18 @@ use std::ptr;
 
 use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, REAL, Rf_isNull, TYPEOF, VECTOR_ELT};
 use crate::sexp::constructors::*;
+use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 
 use super::bc_stack::R_bcstack_t;
+
+fn bc_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Bytecode opcodes
@@ -163,7 +170,7 @@ pub unsafe fn BCODE_STACK(x: SEXP) -> c_int {
 pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if body.is_null() || TYPEOF(body) != SEXPTYPE::BCODESXP {
-            return R_NilValue();
+            bc_error("bcEval requires a bytecode object");
         }
 
         let code_ptr = BCODE_CODE(body);
@@ -171,7 +178,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
         let stack_depth = BCODE_STACK(body);
 
         if code_ptr.is_null() {
-            return R_NilValue();
+            bc_error("bytecode object has no instruction stream");
         }
 
         // Get code length
@@ -223,10 +230,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     };
                     let val = R_findVar(sym, rho);
                     if val == R_UnboundValue() {
-                        eprintln!("Error: object not found");
-                        std::panic::panic_any(crate::sexp::context::RError {
-                            message: "object not found".to_string(),
-                        });
+                        bc_error("object not found");
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
                         stack.push(forcePromise(val));
                     } else {
@@ -744,8 +748,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 _ => {
-                    eprintln!("Error: unknown bytecode opcode {} at pc {}", op, pc - 1);
-                    return R_NilValue();
+                    bc_error(format!("unknown bytecode opcode {} at pc {}", op, pc - 1));
                 }
             }
         }
@@ -771,6 +774,15 @@ pub unsafe fn R_initialize_bcode() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_r_error(action: impl FnOnce()) -> RError {
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
+            .expect_err("expected RError panic");
+        payload
+            .downcast_ref::<RError>()
+            .expect("expected RError payload")
+            .clone()
+    }
 
     #[test]
     fn test_bc_stack_basic() {
@@ -866,7 +878,7 @@ mod tests {
             *stack_data = 8;
         }
 
-        let bcode = arena.alloc_vector(SEXPTYPE::VECSXP, 3);
+        let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
         let bcode_data = unsafe { (*bcode).gengc_next_node as *mut SEXP };
         unsafe {
             *bcode_data.add(0) = code;
@@ -883,5 +895,45 @@ mod tests {
 
         let result = unsafe { bcEval(bcode, env) };
         assert!(!result.is_null());
+    }
+
+    #[test]
+    fn test_bc_eval_rejects_unknown_opcode() {
+        let _session = crate::sexp::session::RSession::new();
+        use crate::sexp::memory::RArena;
+        let mut arena = RArena::new();
+
+        let code = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
+        unsafe {
+            code_data.write(9999);
+        }
+
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        let stack_data = unsafe { (*stack_hint).gengc_next_node as *mut c_int };
+        unsafe {
+            *stack_data = 8;
+        }
+
+        let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
+        let bcode_data = unsafe { (*bcode).gengc_next_node as *mut SEXP };
+        unsafe {
+            *bcode_data.add(0) = code;
+            *bcode_data.add(1) = consts;
+            *bcode_data.add(2) = stack_hint;
+        }
+
+        let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+        unsafe {
+            (*env).data.envsxp.frame = R_NilValue();
+            (*env).data.envsxp.enclos = R_NilValue();
+            (*env).data.envsxp.hashtab = ptr::null_mut();
+        }
+
+        let err = assert_r_error(|| unsafe {
+            bcEval(bcode, env);
+        });
+        assert!(err.message.contains("unknown bytecode opcode"));
     }
 }

@@ -24,7 +24,9 @@ pub fn sexp_elem_size(t: SEXPTYPE) -> usize {
         SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<i32>(),
         SEXPTYPE::REALSXP => std::mem::size_of::<f64>(),
         SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
-        SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => std::mem::size_of::<SEXP>(),
+        SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::BCODESXP => {
+            std::mem::size_of::<SEXP>()
+        }
         SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
         _ => 0,
     }

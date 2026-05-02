@@ -137,7 +137,7 @@ impl SEXPTYPE {
     /// Check if this type is a vector type (has length/trueLength fields).
     #[inline]
     pub fn is_vector_type(self) -> bool {
-        matches!(self.0, 10 | 13 | 14 | 15 | 16 | 19 | 20 | 24)
+        matches!(self.0, 10 | 13 | 14 | 15 | 16 | 19 | 20 | 21 | 24)
     }
 
     /// Check if this type is a list-like type (has CAR/CDR/TAG fields).
@@ -510,6 +510,7 @@ mod tests {
         assert!(SEXPTYPE::CPLXSXP.is_vector_type());
         assert!(SEXPTYPE::STRSXP.is_vector_type());
         assert!(SEXPTYPE::VECSXP.is_vector_type());
+        assert!(SEXPTYPE::BCODESXP.is_vector_type());
         assert!(SEXPTYPE::RAWSXP.is_vector_type());
         assert!(!SEXPTYPE::NILSXP.is_vector_type());
         assert!(!SEXPTYPE::SYMSXP.is_vector_type());
