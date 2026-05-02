@@ -46,6 +46,7 @@ pub(crate) enum ParValue {
 #[derive(Default)]
 pub(crate) struct GraphicsParState {
     overrides: BTreeMap<String, ParValue>,
+    base_register_index: Option<c_int>,
 }
 
 const PAR_ORDER: &[&str] = &[
@@ -655,6 +656,12 @@ fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
     })
 }
 
+fn graphics_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
+}
+
 fn current_par_value(state: &GraphicsParState, name: &str) -> ParValue {
     state
         .overrides
@@ -923,7 +930,7 @@ pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { do_par(call, op, args, rho) }
 }
 
-/* ---- Stub: C_layout (the layout() .Internal) ---- */
+/* ---- C_layout (the layout() .Internal) ---- */
 
 /// C_layout -- implementation of R's layout() function.
 /// This is the .Internal(layout(...)) entry point.
@@ -931,12 +938,8 @@ pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Original C signature:
 ///   SEXP C_layout(SEXP args)
 ///
-/// Stub: returns R_NilValue.
-pub unsafe fn C_layout(args: SEXP) -> SEXP {
-    let _ = args;
-    /* Stub: the full implementation requires GEcurrentDevice(),
-     * dpptr, gpptr, GReset, and all the layout parameter processing. */
-    unsafe { R_NilValue() }
+pub unsafe fn C_layout(_args: SEXP) -> SEXP {
+    graphics_error("graphics::layout is not implemented without a graphics device layout backend")
 }
 
 /* ---- Stub: ProcessInlinePars ---- */
@@ -947,27 +950,40 @@ pub unsafe fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
     /* Stub: full implementation walks a list and calls Specify2 for each tagged pair */
 }
 
-/* ---- Stub: baseCallback (GE event handler) ---- */
+/* ---- baseCallback (GE event handler) ---- */
 
 /// baseCallback -- event handler for the base graphics system, registered
 /// with the Graphics Engine via GEregisterSystem.
-/// Stub: returns R_NilValue for all events.
-pub unsafe fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
+pub unsafe extern "C" fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-/* ---- Stub: registerBase / unregisterBase / RunregisterBase ---- */
+/* ---- registerBase / unregisterBase / RunregisterBase ---- */
 
 /// registerBase -- register the base graphics system with the Graphics Engine.
-/// Stub: does nothing.
 pub fn registerBase() {
-    /* Stub: calls GEregisterSystem(baseCallback, &baseRegisterIndex) */
+    with_par_state(|state| {
+        if state.base_register_index.is_some() {
+            return;
+        }
+        let mut index = -1;
+        unsafe {
+            crate::mainutils::engine::GEregisterSystem(Some(baseCallback), &mut index);
+        }
+        if index >= 0 {
+            state.base_register_index = Some(index);
+        }
+    });
 }
 
 /// unregisterBase -- unregister the base graphics system.
-/// Stub: does nothing.
 pub fn unregisterBase() {
-    /* Stub: calls GEunregisterSystem(baseRegisterIndex) */
+    let index = with_par_state(|state| state.base_register_index.take());
+    if let Some(index) = index {
+        unsafe {
+            crate::mainutils::engine::GEunregisterSystem(index);
+        }
+    }
 }
 
 /// RunregisterBase -- R-callable wrapper for unregisterBase.
@@ -1115,6 +1131,60 @@ mod tests {
                 ],
                 [1.0, 2.0, 3.0, 4.0]
             );
+        }
+    }
+
+    #[test]
+    fn layout_reports_explicit_backend_gap() {
+        let mut instance = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut instance as *mut RInstance));
+            let _restore = CurrentInstanceRestore(previous);
+
+            let payload = std::panic::catch_unwind(|| {
+                C_layout(R_NilValue());
+            })
+            .expect_err("layout without a device backend should error");
+            let err = payload
+                .downcast_ref::<RError>()
+                .expect("expected RError payload");
+            assert!(err.message.contains("graphics::layout"));
+        }
+    }
+
+    #[test]
+    fn base_registration_is_session_local_and_idempotent() {
+        let mut left = RInstance::new();
+        let mut right = RInstance::new();
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut left as *mut RInstance));
+            let _restore = CurrentInstanceRestore(previous);
+
+            registerBase();
+            registerBase();
+            with_par_state(|state| {
+                assert_eq!(state.base_register_index, Some(0));
+            });
+        }
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut right as *mut RInstance));
+            let _restore = CurrentInstanceRestore(previous);
+            with_par_state(|state| {
+                assert_eq!(state.base_register_index, None);
+            });
+        }
+
+        unsafe {
+            let previous = replace_current_instance(Some(&mut left as *mut RInstance));
+            let _restore = CurrentInstanceRestore(previous);
+            unregisterBase();
+            unregisterBase();
+            with_par_state(|state| {
+                assert_eq!(state.base_register_index, None);
+            });
         }
     }
 }
