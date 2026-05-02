@@ -47,15 +47,32 @@ pub(crate) enum PendingFinalizer {
     R { obj: SEXP, fun: SEXP },
 }
 
-#[derive(Default)]
 pub(crate) struct MemoryRuntimeState {
     pub in_gc: c_int,
     pub gc_reporting: c_int,
     pub gc_count: c_int,
     pub gc_force_gap: c_int,
     pub gc_force_wait: c_int,
+    pub max_v_size: u64,
+    pub max_n_size: u64,
     pub running_finalizers: bool,
     pub pending_finalizers: Vec<PendingFinalizer>,
+}
+
+impl Default for MemoryRuntimeState {
+    fn default() -> Self {
+        Self {
+            in_gc: 0,
+            gc_reporting: 0,
+            gc_count: 0,
+            gc_force_gap: 0,
+            gc_force_wait: 0,
+            max_v_size: u64::MAX,
+            max_n_size: u64::MAX,
+            running_finalizers: false,
+            pending_finalizers: Vec::new(),
+        }
+    }
 }
 
 fn with_memory_state<F, R>(f: F) -> R
@@ -741,28 +758,54 @@ pub unsafe fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
 /// Get the maximum vector heap size.
 /// Duplicate — no #[unsafe(no_mangle)] (already in mainutils/main.rs).
 pub(crate) unsafe fn R_GetMaxVSize_memory() -> u64 {
-    u64::MAX
+    crate::sexp::instance::with_current_instance(|inst| inst.memory_state.max_v_size)
+        .unwrap_or(u64::MAX)
 }
 
 /// Get the maximum node heap size.
 /// Duplicate — no #[unsafe(no_mangle)] (already in mainutils/main.rs).
 pub(crate) unsafe fn R_GetMaxNSize_memory() -> u64 {
-    u64::MAX
+    crate::sexp::instance::with_current_instance(|inst| inst.memory_state.max_n_size)
+        .unwrap_or(u64::MAX)
 }
 
 /// Set the maximum vector heap size.
-pub unsafe fn R_SetMaxVSize(_size: u64) -> c_int {
-    1 // TRUE - always succeed
+pub unsafe fn R_SetMaxVSize(size: u64) -> c_int {
+    let current = current_vector_heap_size();
+    with_memory_state(|state| {
+        if size == u64::MAX || size >= current {
+            state.max_v_size = size;
+            crate::sexp::ffi::TRUE
+        } else {
+            crate::sexp::ffi::FALSE
+        }
+    })
 }
 
 /// Set the maximum node heap size.
-pub unsafe fn R_SetMaxNSize(_size: u64) -> c_int {
-    1 // TRUE - always succeed
+pub unsafe fn R_SetMaxNSize(size: u64) -> c_int {
+    let current = current_node_heap_size();
+    with_memory_state(|state| {
+        if size == u64::MAX || size >= current {
+            state.max_n_size = size;
+            crate::sexp::ffi::TRUE
+        } else {
+            crate::sexp::ffi::FALSE
+        }
+    })
 }
 
 /// Set the protection stack size.
 pub unsafe fn R_SetPPSize(_size: u64) {
     // Arena-based allocation doesn't need PP stack sizing
+}
+
+fn current_vector_heap_size() -> u64 {
+    crate::sexp::memory::with_arena(|arena| arena.total_bytes_allocated() as u64)
+}
+
+fn current_node_heap_size() -> u64 {
+    crate::sexp::memory::with_arena(|arena| arena.node_count() as u64)
 }
 
 // ---------------------------------------------------------------------------
@@ -1227,18 +1270,56 @@ pub unsafe fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// maxVSize() implementation (stub).
+/// maxVSize() implementation.
 ///
 /// This is the equivalent of R's `do_maxVSize()`.
-pub unsafe fn do_maxVSize(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarReal(f64::INFINITY) }
+pub unsafe fn do_maxVSize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        const MB: f64 = 1_048_576.0;
+        let new_limit_mb = crate::mainutils::coerce::asReal(CAR(args));
+        if new_limit_mb > 0.0 {
+            if new_limit_mb.is_infinite() {
+                let _ = R_SetMaxVSize(u64::MAX);
+            } else {
+                let new_limit = (new_limit_mb * MB).ceil();
+                if new_limit >= u64::MAX as f64 {
+                    let _ = R_SetMaxVSize(u64::MAX);
+                } else {
+                    let _ = R_SetMaxVSize(new_limit as u64);
+                }
+            }
+        }
+
+        let limit = R_GetMaxVSize_memory();
+        if limit == u64::MAX {
+            Rf_ScalarReal(f64::INFINITY)
+        } else {
+            Rf_ScalarReal(limit as f64 / MB)
+        }
+    }
 }
 
-/// maxNSize() implementation (stub).
+/// maxNSize() implementation.
 ///
 /// This is the equivalent of R's `do_maxNSize()`.
-pub unsafe fn do_maxNSize(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarReal(f64::INFINITY) }
+pub unsafe fn do_maxNSize(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let new_limit = crate::mainutils::coerce::asReal(CAR(args));
+        if new_limit > 0.0 {
+            if new_limit.is_infinite() || new_limit >= u64::MAX as f64 {
+                let _ = R_SetMaxNSize(u64::MAX);
+            } else {
+                let _ = R_SetMaxNSize(new_limit.ceil() as u64);
+            }
+        }
+
+        let limit = R_GetMaxNSize_memory();
+        if limit == u64::MAX {
+            Rf_ScalarReal(f64::INFINITY)
+        } else {
+            Rf_ScalarReal(limit as f64)
+        }
+    }
 }
 
 /// Register finalizer .Internal call.
@@ -1509,6 +1590,60 @@ mod tests {
             assert_eq!(R_isResizable(ptr::null_mut()), 0);
             assert_eq!(R_maxLength(ptr::null_mut()), 0);
         }
+    }
+
+    #[test]
+    fn test_memory_limits_are_session_local_and_enforced() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| unsafe {
+            let left_v_limit = current_vector_heap_size().saturating_add(1_048_576);
+            let left_n_limit = current_node_heap_size().saturating_add(100);
+            assert_eq!(R_SetMaxVSize(left_v_limit), crate::sexp::ffi::TRUE);
+            assert_eq!(R_SetMaxNSize(left_n_limit), crate::sexp::ffi::TRUE);
+            assert_eq!(R_GetMaxVSize_memory(), left_v_limit);
+            assert_eq!(R_GetMaxNSize_memory(), left_n_limit);
+            assert_eq!(
+                R_SetMaxVSize(current_vector_heap_size().saturating_sub(1)),
+                crate::sexp::ffi::FALSE
+            );
+            assert_eq!(
+                R_SetMaxNSize(current_node_heap_size().saturating_sub(1)),
+                crate::sexp::ffi::FALSE
+            );
+        });
+
+        right.with_protected(|| unsafe {
+            assert_eq!(R_GetMaxVSize_memory(), u64::MAX);
+            assert_eq!(R_GetMaxNSize_memory(), u64::MAX);
+        });
+    }
+
+    #[test]
+    fn test_do_max_size_roundtrips_limits() {
+        let _session = crate::sexp::session::RSession::new();
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            let target_bytes = current_vector_heap_size().saturating_add(2 * 1_048_576);
+            let target_mb = target_bytes as f64 / 1_048_576.0;
+            let v_args = Rf_cons(Rf_ScalarReal(target_mb), R_NilValue());
+            let v_result = do_maxVSize(ptr::null_mut(), ptr::null_mut(), v_args, ptr::null_mut());
+            assert_eq!(TYPEOF(v_result), SEXPTYPE::REALSXP);
+            assert!((*REAL(v_result) - target_mb).abs() < 1e-9);
+
+            let target_nodes = current_node_heap_size().saturating_add(250);
+            let n_args = Rf_cons(Rf_ScalarReal(target_nodes as f64), R_NilValue());
+            let n_result = do_maxNSize(ptr::null_mut(), ptr::null_mut(), n_args, ptr::null_mut());
+            assert_eq!(TYPEOF(n_result), SEXPTYPE::REALSXP);
+            assert_eq!(*REAL(n_result), target_nodes as f64);
+
+            let inf_args = Rf_cons(Rf_ScalarReal(f64::INFINITY), R_NilValue());
+            let inf_result =
+                do_maxVSize(ptr::null_mut(), ptr::null_mut(), inf_args, ptr::null_mut());
+            assert!((*REAL(inf_result)).is_infinite());
+            assert_eq!(R_GetMaxVSize_memory(), u64::MAX);
+        });
     }
 
     #[test]

@@ -260,15 +260,15 @@ pub unsafe fn Rf_removeTaskCallback(_name: SEXP) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
-// Memory profiling (stubs)
+// Memory profiling
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_GetMaxVSize() -> u64 {
-    u64::MAX
+    unsafe { crate::mainutils::memory_main::R_GetMaxVSize_memory() }
 }
 
 pub unsafe fn R_GetMaxNSize() -> u64 {
-    u64::MAX
+    unsafe { crate::mainutils::memory_main::R_GetMaxNSize_memory() }
 }
 
 pub unsafe fn R_GetVSize() -> u64 {
