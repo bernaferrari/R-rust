@@ -350,8 +350,16 @@ fn mark_instance_roots(
         }
     }
 
-    for &(obj, _) in &instance.memory_state.pending_finalizers {
-        mark_reachable(obj, traceable, visited);
+    for finalizer in &instance.memory_state.pending_finalizers {
+        match finalizer {
+            crate::mainutils::memory_main::PendingFinalizer::C { obj, .. } => {
+                mark_reachable(*obj, traceable, visited);
+            }
+            crate::mainutils::memory_main::PendingFinalizer::R { obj, fun } => {
+                mark_reachable(*obj, traceable, visited);
+                mark_reachable(*fun, traceable, visited);
+            }
+        }
     }
     mark_reachable(instance.dynload_state.dll_info_eptrs, traceable, visited);
     mark_reachable(instance.dynload_state.symbol_eptrs, traceable, visited);
@@ -881,8 +889,16 @@ fn update_instance_roots(old_to_new: &HashMap<usize, SEXP>) {
             })
             .collect();
 
-        for (obj, _) in &mut instance.memory_state.pending_finalizers {
-            update_field(obj, old_to_new);
+        for finalizer in &mut instance.memory_state.pending_finalizers {
+            match finalizer {
+                crate::mainutils::memory_main::PendingFinalizer::C { obj, .. } => {
+                    update_field(obj, old_to_new);
+                }
+                crate::mainutils::memory_main::PendingFinalizer::R { obj, fun } => {
+                    update_field(obj, old_to_new);
+                    update_field(fun, old_to_new);
+                }
+            }
         }
         update_field(&mut instance.dynload_state.dll_info_eptrs, old_to_new);
         update_field(&mut instance.dynload_state.symbol_eptrs, old_to_new);
