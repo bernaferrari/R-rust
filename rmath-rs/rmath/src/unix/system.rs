@@ -132,6 +132,15 @@ fn with_system_state<R>(f: impl FnOnce(&mut UnixSystemRuntimeState) -> R) -> R {
     with_required_current_instance(|instance| f(&mut instance.unix_system_state))
 }
 
+#[cfg(test)]
+pub(crate) unsafe fn set_read_console_callback_for_tests(
+    callback: Option<unsafe extern "C" fn(*const c_char, *mut u8, c_int, c_int) -> c_int>,
+) {
+    with_system_state(|state| {
+        state.callbacks.read_console = callback;
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Default implementations (Rstd_* equivalents)
 // ---------------------------------------------------------------------------

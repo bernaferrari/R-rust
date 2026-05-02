@@ -23,9 +23,10 @@
 
 use std::os::raw::{c_char, c_int};
 
-use crate::sexp::accessors::CAR;
-use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
+use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT, translateChar};
+use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
@@ -351,23 +352,107 @@ const MAXELTSIZE: usize = 8192;
 ///
 /// Port of `do_readln` from scan.c (lines 1032-1077).
 ///
-/// In interactive mode, reads from stdin, stripping leading/trailing whitespace.
-/// In non-interactive mode (default for library/embedded use), returns an empty string.
+/// In interactive mode, reads from the active console callback and strips
+/// leading/trailing spaces and tabs. In non-interactive mode, echoes the prompt
+/// and returns an empty string, matching GNU R.
 pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::relop::checkArity(op, args);
 
-        let prompt = CAR(args);
-
+        let prompt = if CAR(args) == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::mainutils::coerce::coerceVector(CAR(args), SEXPTYPE::STRSXP.into())
+        };
         let _prompt_guard = protect(prompt);
+        let prompt_ptr = readline_prompt(prompt);
 
-        // In library/embedded mode (UniFFI, Android), there is no interactive console.
-        // Return an empty string, matching R's non-interactive behaviour.
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-        let _ans_guard = protect(ans);
-        let empty_char = Rf_mkChar(b"\0".as_ptr() as *const c_char);
-        crate::sexp::accessors::SET_STRING_ELT(ans, 0, empty_char);
+        if crate::mainutils::main::R_Interactive() == 0 {
+            if !prompt_ptr.is_null() {
+                crate::unix::system::R_WriteConsole(prompt_ptr, libc::strlen(prompt_ptr) as c_int);
+            }
+            crate::unix::system::R_WriteConsole(b"\n\0".as_ptr() as *const c_char, 1);
+            return Rf_mkString(b"\0".as_ptr() as *const c_char);
+        }
 
-        ans
+        let mut buffer = [0u8; MAXELTSIZE];
+        let ok = crate::unix::system::R_ReadConsole(
+            prompt_ptr,
+            buffer.as_mut_ptr(),
+            MAXELTSIZE as c_int,
+            1,
+        );
+        if ok == 0 {
+            return Rf_mkString(b"\0".as_ptr() as *const c_char);
+        }
+
+        let nul = buffer
+            .iter()
+            .position(|&byte| byte == 0)
+            .unwrap_or(MAXELTSIZE);
+        let line = String::from_utf8_lossy(&buffer[..nul]);
+        let trimmed = line
+            .trim_end_matches(['\n', '\r'])
+            .trim_matches([' ', '\t'])
+            .to_string();
+        let c_line = std::ffi::CString::new(trimmed).unwrap_or_default();
+        Rf_mkString(c_line.as_ptr())
+    }
+}
+
+unsafe fn readline_prompt(prompt: SEXP) -> *const c_char {
+    unsafe {
+        if prompt.is_null()
+            || prompt == R_NilValue()
+            || crate::sexp::accessors::TYPEOF(prompt) != SEXPTYPE::STRSXP
+            || LENGTH(prompt) == 0
+        {
+            b"\0".as_ptr() as *const c_char
+        } else {
+            translateChar(STRING_ELT(prompt, 0))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::accessors::{CHAR, STRING_ELT, TYPEOF};
+    use crate::sexp::constructors::{Rf_cons, Rf_mkString};
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::session::RSession;
+    use std::ptr;
+
+    unsafe extern "C" fn fixture_read_console(
+        _prompt: *const c_char,
+        buf: *mut u8,
+        len: c_int,
+        _addtohistory: c_int,
+    ) -> c_int {
+        unsafe {
+            let line = b"  hello from console \t\n\0";
+            let n = line.len().min(len as usize);
+            ptr::copy_nonoverlapping(line.as_ptr(), buf, n);
+            1
+        }
+    }
+
+    #[test]
+    fn readline_reads_from_console_callback_and_trims_like_r() {
+        let _session = RSession::new();
+        unsafe {
+            crate::unix::system::set_read_console_callback_for_tests(Some(fixture_read_console));
+            crate::mainutils::main::R_SetInteractive(1);
+
+            let prompt = Rf_mkString(c"prompt> ".as_ptr());
+            let args = Rf_cons(prompt, R_NilValue());
+            let result = do_readln(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
+            let value = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(result, 0)))
+                .to_str()
+                .unwrap();
+            assert_eq!(value, "hello from console");
+        }
     }
 }

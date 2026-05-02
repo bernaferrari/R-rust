@@ -814,31 +814,43 @@ fn current_node_heap_size() -> u64 {
 // R_ReadConsole and R_WriteConsole are in unix/system.rs.
 // ---------------------------------------------------------------------------
 
-/// Read from the console (stub).
+/// Read from the active console callback.
 /// Duplicate — no #[unsafe(no_mangle)] (already in unix/system.rs).
 pub(crate) unsafe fn R_ReadConsole_memory(
-    _prompt: *const c_char,
-    _buf: *mut c_char,
-    _len: c_int,
-    _addtohistory: c_int,
+    prompt: *const c_char,
+    buf: *mut c_char,
+    len: c_int,
+    addtohistory: c_int,
 ) -> c_int {
-    0
+    unsafe { crate::unix::system::R_ReadConsole(prompt, buf as *mut u8, len, addtohistory) }
 }
 
-/// Write to the console (stub).
+/// Write to the active console callback.
 /// Duplicate — no #[unsafe(no_mangle)] (already in unix/system.rs).
-pub(crate) unsafe fn R_WriteConsole_memory(_buf: *const c_char, _len: c_int) {
-    // Headless: console output suppressed
+pub(crate) unsafe fn R_WriteConsole_memory(buf: *const c_char, len: c_int) {
+    unsafe { crate::unix::system::R_WriteConsole(buf, len) }
 }
 
 // ---------------------------------------------------------------------------
-// readline stub
+// readline wrapper
 
-/// GNU readline wrapper (stub).
+/// GNU readline-compatible wrapper.
 ///
 /// This is the equivalent of R's `readline()` function.
-pub unsafe fn readline(_prompt: *const c_char) -> *mut c_char {
-    ptr::null_mut()
+pub unsafe fn readline(prompt: *const c_char) -> *mut c_char {
+    unsafe {
+        let mut buffer = vec![0u8; 8192];
+        let ok = crate::unix::system::R_ReadConsole(prompt, buffer.as_mut_ptr(), 8192, 1);
+        if ok == 0 {
+            return ptr::null_mut();
+        }
+        let nul = buffer
+            .iter()
+            .position(|&byte| byte == 0)
+            .unwrap_or(buffer.len());
+        let line = std::ffi::CString::new(&buffer[..nul]).unwrap_or_default();
+        libc::strdup(line.as_ptr())
+    }
 }
 
 // ---------------------------------------------------------------------------
