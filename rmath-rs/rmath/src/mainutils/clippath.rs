@@ -6,8 +6,9 @@
 
 use std::os::raw::{c_char, c_int};
 
-use crate::sexp::accessors::INTEGER;
-use crate::sexp::ffi::SEXP;
+use crate::sexp::accessors::{INTEGER, LENGTH, TYPEOF};
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Local wrappers for cross-module functions
@@ -33,7 +34,11 @@ pub unsafe fn R_GE_clipPathFillRule(path: SEXP) -> c_int {
             return 0;
         }
         let rule = getAttrib(path, install(b"rule\0".as_ptr() as *const c_char));
-        if rule.is_null() {
+        if rule.is_null()
+            || rule == R_NilValue()
+            || TYPEOF(rule) != SEXPTYPE::INTSXP
+            || LENGTH(rule) == 0
+        {
             return 0;
         }
         *INTEGER(rule)
@@ -49,12 +54,29 @@ mod tests {
     use std::ptr;
 
     use super::*;
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_clippath_null() {
+        let _session = RSession::new();
         unsafe {
             let result = R_GE_clipPathFillRule(ptr::null_mut());
             assert_eq!(result, 0);
+        }
+    }
+
+    #[test]
+    fn clippath_fill_rule_reads_rule_attribute() {
+        let _session = RSession::new();
+        unsafe {
+            let path = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+            crate::sexp::attrib_core::setAttrib(
+                path,
+                install(c"rule".as_ptr()),
+                Rf_ScalarInteger(1),
+            );
+            assert_eq!(R_GE_clipPathFillRule(path), 1);
         }
     }
 }
