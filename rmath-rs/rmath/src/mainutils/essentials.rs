@@ -18729,17 +18729,19 @@ pub unsafe fn do_as_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 // ---------------------------------------------------------------------------
-// Complete R runtime — par, getGraphicsEvent (simplified: return NULL)
+// Complete R runtime — par, getGraphicsEvent
 // ---------------------------------------------------------------------------
 
-/// R's `par(...)` — graphical parameters (simplified: returns NULL).
+/// R's `par(...)` — session-owned graphical parameters.
 pub unsafe fn do_par(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { crate::library::graphics::par::do_par(_call, _op, _args, _rho) }
 }
 
-/// R's `getGraphicsEvent(prompt, onMouseDown, ...)` — graphics events (simplified: returns NULL).
+/// R's `getGraphicsEvent(prompt, onMouseDown, ...)` — no Android event loop is attached here.
 pub unsafe fn do_getGraphicsEvent(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    std::panic::panic_any(RError {
+        message: "graphics events are not available for the headless Android device".to_string(),
+    });
 }
 
 // ---------------------------------------------------------------------------

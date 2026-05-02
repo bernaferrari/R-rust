@@ -1,0 +1,7 @@
+cat(paste(par("mar"), collapse = ","), "\n")
+old <- par(mar = c(1, 2, 3, 4), las = 2L)
+cat(paste(old$mar, collapse = ","), old$las, "\n")
+now <- par(c("mar", "las"))
+cat(paste(now$mar, collapse = ","), now$las, "\n")
+print(length(par()))
+print(length(par(no.readonly = TRUE)))

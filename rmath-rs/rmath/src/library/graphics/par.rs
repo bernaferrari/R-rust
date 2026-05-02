@@ -23,6 +23,7 @@
  *  Provides the functionality of the "par" function in S.
  */
 
+use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int, c_uchar, c_ushort};
 
@@ -34,9 +35,171 @@ unsafe fn R_BlankString() -> SEXP {
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
+use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
+use crate::sexp::symbol::Rf_install;
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ParValue {
+    Logical(Vec<c_int>),
+    Integer(Vec<c_int>),
+    Real(Vec<c_double>),
+    String(String),
+}
+
+#[derive(Default)]
+pub(crate) struct GraphicsParState {
+    overrides: BTreeMap<String, ParValue>,
+}
+
+const PAR_ORDER: &[&str] = &[
+    "xlog",
+    "ylog",
+    "adj",
+    "ann",
+    "ask",
+    "bg",
+    "bty",
+    "cex",
+    "cex.axis",
+    "cex.lab",
+    "cex.main",
+    "cex.sub",
+    "cin",
+    "col",
+    "col.axis",
+    "col.lab",
+    "col.main",
+    "col.sub",
+    "cra",
+    "crt",
+    "csi",
+    "cxy",
+    "din",
+    "err",
+    "family",
+    "fg",
+    "fig",
+    "fin",
+    "font",
+    "font.axis",
+    "font.lab",
+    "font.main",
+    "font.sub",
+    "lab",
+    "las",
+    "lend",
+    "lheight",
+    "ljoin",
+    "lmitre",
+    "lty",
+    "lwd",
+    "mai",
+    "mar",
+    "mex",
+    "mfcol",
+    "mfg",
+    "mfrow",
+    "mgp",
+    "mkh",
+    "new",
+    "oma",
+    "omd",
+    "omi",
+    "page",
+    "pch",
+    "pin",
+    "plt",
+    "ps",
+    "pty",
+    "smo",
+    "srt",
+    "tck",
+    "tcl",
+    "usr",
+    "xaxp",
+    "xaxs",
+    "xaxt",
+    "xpd",
+    "yaxp",
+    "yaxs",
+    "yaxt",
+    "ylbias",
+];
+
+const READONLY_PARS: &[&str] = &["cin", "cra", "csi", "cxy", "din", "page"];
+
+fn default_par_value(name: &str) -> Option<ParValue> {
+    let value = match name {
+        "xlog" | "ylog" | "ask" | "new" | "xpd" => ParValue::Logical(vec![FALSE]),
+        "ann" | "page" => ParValue::Logical(vec![TRUE]),
+        "adj" => ParValue::Real(vec![0.5]),
+        "bg" => ParValue::String("transparent".into()),
+        "bty" => ParValue::String("o".into()),
+        "cex" | "cex.axis" | "cex.lab" | "cex.sub" | "lheight" | "lwd" | "mex" | "smo" => {
+            ParValue::Real(vec![1.0])
+        }
+        "cex.main" => ParValue::Real(vec![1.2]),
+        "cin" => ParValue::Real(vec![0.15, 0.2]),
+        "col" | "col.axis" | "col.lab" | "col.main" | "col.sub" | "fg" => {
+            ParValue::String("black".into())
+        }
+        "cra" => ParValue::Real(vec![10.8, 14.4]),
+        "crt" | "srt" => ParValue::Real(vec![0.0]),
+        "csi" => ParValue::Real(vec![0.2]),
+        "cxy" => ParValue::Real(vec![0.0260416666666667, 0.0387596899224806]),
+        "din" | "fin" => ParValue::Real(vec![7.0, 7.0]),
+        "err" | "las" => ParValue::Integer(vec![0]),
+        "family" => ParValue::String(String::new()),
+        "fig" | "omd" | "usr" => ParValue::Real(vec![0.0, 1.0, 0.0, 1.0]),
+        "font" | "font.axis" | "font.lab" | "font.sub" | "pch" => ParValue::Integer(vec![1]),
+        "font.main" => ParValue::Integer(vec![2]),
+        "lab" => ParValue::Integer(vec![5, 5, 7]),
+        "lend" | "ljoin" => ParValue::String("round".into()),
+        "lmitre" => ParValue::Real(vec![10.0]),
+        "lty" => ParValue::String("solid".into()),
+        "mai" => ParValue::Real(vec![1.02, 0.82, 0.82, 0.42]),
+        "mar" => ParValue::Real(vec![5.1, 4.1, 4.1, 2.1]),
+        "mfcol" | "mfrow" => ParValue::Integer(vec![1, 1]),
+        "mfg" => ParValue::Integer(vec![1, 1, 1, 1]),
+        "mgp" => ParValue::Real(vec![3.0, 1.0, 0.0]),
+        "mkh" => ParValue::Real(vec![0.001]),
+        "oma" | "omi" => ParValue::Real(vec![0.0, 0.0, 0.0, 0.0]),
+        "pin" => ParValue::Real(vec![5.76, 5.16]),
+        "plt" => ParValue::Real(vec![
+            0.117142857142857,
+            0.94,
+            0.145714285714286,
+            0.882857142857143,
+        ]),
+        "ps" => ParValue::Integer(vec![12]),
+        "pty" => ParValue::String("m".into()),
+        "tck" => ParValue::Real(vec![NA_REAL]),
+        "tcl" => ParValue::Real(vec![-0.5]),
+        "xaxp" | "yaxp" => ParValue::Real(vec![0.0, 1.0, 5.0]),
+        "xaxs" | "yaxs" => ParValue::String("r".into()),
+        "xaxt" | "yaxt" => ParValue::String("s".into()),
+        "ylbias" => ParValue::Real(vec![0.2]),
+        _ => return None,
+    };
+    Some(value)
+}
+
+fn is_readonly_par(name: &str) -> bool {
+    READONLY_PARS.contains(&name)
+}
+
+fn is_known_par(name: &str) -> bool {
+    PAR_ORDER.contains(&name)
+}
+
+fn par_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
+}
 
 /* ---- ParTable: pure data, no graphics engine dependency ---- */
 
@@ -460,7 +623,272 @@ unsafe fn Query(_what: *const c_char, _dd: pGEDevDesc) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-/* ---- Stub: C_par (the main par() .Internal) ---- */
+fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
+    crate::sexp::instance::with_required_current_instance(|instance| {
+        f(&mut instance.graphics_par_state)
+    })
+}
+
+fn current_par_value(state: &GraphicsParState, name: &str) -> ParValue {
+    state
+        .overrides
+        .get(name)
+        .cloned()
+        .or_else(|| default_par_value(name))
+        .unwrap_or_else(|| {
+            par_error(format!(
+                "invalid value specified for graphical parameter \"{name}\""
+            ))
+        })
+}
+
+unsafe fn par_value_to_sexp(value: &ParValue) -> SEXP {
+    unsafe {
+        match value {
+            ParValue::Logical(values) => {
+                let result = Rf_allocVector3(SEXPTYPE::LGLSXP, values.len() as R_xlen_t);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let dst = LOGICAL(result);
+                for (i, value) in values.iter().enumerate() {
+                    *dst.add(i) = *value;
+                }
+                result
+            }
+            ParValue::Integer(values) => {
+                let result = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let dst = INTEGER(result);
+                for (i, value) in values.iter().enumerate() {
+                    *dst.add(i) = *value;
+                }
+                result
+            }
+            ParValue::Real(values) => {
+                let result = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let dst = REAL(result);
+                for (i, value) in values.iter().enumerate() {
+                    *dst.add(i) = *value;
+                }
+                result
+            }
+            ParValue::String(value) => {
+                let cstr = std::ffi::CString::new(value.as_str()).unwrap_or_default();
+                Rf_mkString(cstr.as_ptr())
+            }
+        }
+    }
+}
+
+unsafe fn named_par_list(names: &[String], state: &GraphicsParState) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let name_vec = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+        if name_vec.is_null() {
+            return R_NilValue();
+        }
+        let _name_guard = protect(name_vec);
+
+        for (i, name) in names.iter().enumerate() {
+            let value = current_par_value(state, name);
+            SET_VECTOR_ELT(result, i as R_xlen_t, par_value_to_sexp(&value));
+            let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(name_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            name_vec,
+        );
+        result
+    }
+}
+
+unsafe fn sexp_to_par_value(value: SEXP) -> ParValue {
+    unsafe {
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::LGLSXP => {
+                let n = XLENGTH(value);
+                let src = LOGICAL(value);
+                let mut out = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    out.push(*src.add(i as usize));
+                }
+                ParValue::Logical(out)
+            }
+            t if t == SEXPTYPE::INTSXP => {
+                let n = XLENGTH(value);
+                let src = INTEGER(value);
+                let mut out = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    out.push(*src.add(i as usize));
+                }
+                ParValue::Integer(out)
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let n = XLENGTH(value);
+                let src = REAL(value);
+                let mut out = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    out.push(*src.add(i as usize));
+                }
+                ParValue::Real(out)
+            }
+            t if t == SEXPTYPE::STRSXP && XLENGTH(value) == 1 => {
+                let elt = STRING_ELT(value, 0);
+                if elt == R_NaString() {
+                    ParValue::String(String::new())
+                } else {
+                    let text = std::ffi::CStr::from_ptr(CHAR(elt))
+                        .to_string_lossy()
+                        .into_owned();
+                    ParValue::String(text)
+                }
+            }
+            _ => par_error("invalid value specified for graphical parameter"),
+        }
+    }
+}
+
+unsafe fn string_vector_values(value: SEXP) -> Vec<String> {
+    unsafe {
+        if TYPEOF(value) != SEXPTYPE::STRSXP {
+            par_error("invalid argument passed to par()");
+        }
+        let n = XLENGTH(value);
+        let mut out = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let elt = STRING_ELT(value, i);
+            if elt == R_NaString() {
+                par_error("invalid argument passed to par()");
+            }
+            out.push(
+                std::ffi::CStr::from_ptr(CHAR(elt))
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        out
+    }
+}
+
+unsafe fn tag_name(tag: SEXP) -> Option<String> {
+    unsafe {
+        if tag.is_null() || tag == R_NilValue() {
+            None
+        } else {
+            Some(
+                std::ffi::CStr::from_ptr(CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        }
+    }
+}
+
+unsafe fn logical_scalar(value: SEXP) -> Option<bool> {
+    unsafe {
+        if TYPEOF(value) != SEXPTYPE::LGLSXP || XLENGTH(value) < 1 {
+            return None;
+        }
+        match *LOGICAL(value) {
+            TRUE => Some(true),
+            FALSE => Some(false),
+            _ => None,
+        }
+    }
+}
+
+unsafe fn all_query_names(no_readonly: bool) -> Vec<String> {
+    PAR_ORDER
+        .iter()
+        .filter(|name| !no_readonly || !is_readonly_par(name))
+        .map(|name| (*name).to_string())
+        .collect()
+}
+
+/// Rust-shaped `par()` implementation backed by per-session defaults and
+/// overrides. It intentionally covers the query/update surface used by base
+/// plotting and Android embedding without relying on process-global GE state.
+pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut current = args;
+        let mut query_names = Vec::new();
+        let mut set_names = Vec::new();
+        let mut set_values = Vec::new();
+        let mut no_readonly = false;
+
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match tag_name(TAG(current)).as_deref() {
+                Some("no.readonly") => {
+                    no_readonly = logical_scalar(value).unwrap_or(false);
+                }
+                Some(name) => {
+                    if !is_known_par(name) {
+                        par_error(format!(
+                            "invalid value specified for graphical parameter \"{name}\""
+                        ));
+                    }
+                    if is_readonly_par(name) {
+                        par_error(format!("graphical parameter \"{name}\" is read-only"));
+                    }
+                    set_names.push(name.to_string());
+                    set_values.push(sexp_to_par_value(value));
+                }
+                None => {
+                    for name in string_vector_values(value) {
+                        if !is_known_par(&name) {
+                            par_error(format!(
+                                "invalid value specified for graphical parameter \"{name}\""
+                            ));
+                        }
+                        query_names.push(name);
+                    }
+                }
+            }
+            current = CDR(current);
+        }
+
+        if set_names.is_empty() && query_names.is_empty() {
+            let names = all_query_names(no_readonly);
+            return with_par_state(|state| named_par_list(&names, state));
+        }
+
+        let result = with_par_state(|state| {
+            if !set_names.is_empty() {
+                let old = named_par_list(&set_names, state);
+                for (name, value) in set_names.iter().zip(set_values.into_iter()) {
+                    state.overrides.insert(name.clone(), value);
+                }
+                old
+            } else if query_names.len() == 1 {
+                let value = current_par_value(state, &query_names[0]);
+                par_value_to_sexp(&value)
+            } else {
+                named_par_list(&query_names, state)
+            }
+        });
+
+        if !set_names.is_empty() {
+            crate::sexp::globals::set_R_Visible(FALSE);
+        }
+        result
+    }
+}
+
+/* ---- Compatibility C_par entry point ---- */
 
 /// C_par -- implementation of R's par() function.
 /// This is the .Internal(par(...)) entry point.
@@ -617,4 +1045,27 @@ pub unsafe fn currentFigureLocation(row: *mut c_int, col: *mut c_int, _dd: pGEDe
 /// Stub: does nothing.
 pub unsafe fn restoredpSaved(_dd: pGEDevDesc) {
     /* Stub: full implementation copies all fields from dpSaved to dp */
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn par_updates_are_session_local() {
+        let mut left = crate::android::RSession::new();
+        let mut right = crate::android::RSession::new();
+
+        let left_result =
+            left.eval("par(mar = c(1, 2, 3, 4)); cat(paste(par('mar'), collapse=','))");
+        let right_result = right.eval("cat(paste(par('mar'), collapse=','))");
+
+        assert_eq!(left_result.output.trim(), "1,2,3,4");
+        assert_eq!(right_result.output.trim(), "5.1,4.1,4.1,2.1");
+    }
+
+    #[test]
+    fn par_reports_full_and_writable_parameter_sets() {
+        let mut session = crate::android::RSession::new();
+        let result = session.eval("cat(length(par()), length(par(no.readonly = TRUE)))");
+        assert_eq!(result.output.trim(), "72 66");
+    }
 }

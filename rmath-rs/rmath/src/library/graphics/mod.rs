@@ -35,7 +35,7 @@ mod init;
     unused_assignments,
     non_camel_case_types
 )]
-mod par;
+pub(crate) mod par;
 #[allow(
     dead_code,
     unused_imports,
