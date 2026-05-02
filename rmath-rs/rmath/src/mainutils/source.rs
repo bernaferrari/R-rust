@@ -101,7 +101,7 @@ fn parse_failure(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError { message });
 }
 
-fn reset_parse_state() {
+pub(crate) fn reset_parse_state() {
     crate::sexp::instance::with_current_instance(|inst| {
         inst.eval_state.parse_error_msg.fill(0);
         inst.eval_state.parse_error = 0;
@@ -112,7 +112,7 @@ fn reset_parse_state() {
     });
 }
 
-fn remember_parse_context(source: &str) {
+pub(crate) fn remember_parse_context(source: &str) {
     crate::sexp::instance::with_current_instance(|inst| {
         inst.eval_state.parse_context.clear();
         inst.eval_state
@@ -125,7 +125,7 @@ fn remember_parse_context(source: &str) {
     });
 }
 
-unsafe fn store_parse_error(message: &str, status: c_int, col: c_int, file: SEXP) {
+pub(crate) unsafe fn store_parse_error(message: &str, status: c_int, col: c_int, file: SEXP) {
     crate::sexp::instance::with_current_instance(|inst| {
         let msg = &mut inst.eval_state.parse_error_msg;
         msg.fill(0);

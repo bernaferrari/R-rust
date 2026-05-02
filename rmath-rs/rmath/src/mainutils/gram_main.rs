@@ -86,7 +86,7 @@ pub unsafe fn R_ParseEvalBuffer(buf: *const c_char, len: c_int, envir: SEXP) -> 
 
 /// Get the current parse line number.
 pub unsafe fn R_CurrentParseLine() -> c_int {
-    0
+    unsafe { crate::mainutils::source::R_GetParseContextLine() }
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +95,22 @@ pub unsafe fn R_CurrentParseLine() -> c_int {
 
 /// Get the current parse filename.
 pub unsafe fn R_ParseFilename() -> *const c_char {
+    unsafe {
+        let file = crate::mainutils::source::R_GetParseErrorFile();
+        if !file.is_null()
+            && file != R_NilValue()
+            && TYPEOF(file) == SEXPTYPE::STRSXP
+            && XLENGTH(file) > 0
+        {
+            let charsxp = STRING_ELT(file, 0);
+            if !charsxp.is_null() && charsxp != R_NaString() {
+                let value = CHAR(charsxp);
+                if !value.is_null() {
+                    return value;
+                }
+            }
+        }
+    }
     static EMPTY: [c_char; 1] = [0];
     EMPTY.as_ptr()
 }
@@ -104,7 +120,19 @@ pub unsafe fn R_ParseFilename() -> *const c_char {
 // ---------------------------------------------------------------------------
 
 /// Enter a new parse context.
-pub unsafe fn R_ParseContext(_buf: *const c_char, _len: c_int) -> c_int {
+pub unsafe fn R_ParseContext(buf: *const c_char, len: c_int) -> c_int {
+    unsafe {
+        let Some(source) = buffer_source(buf, len) else {
+            crate::mainutils::source::store_parse_error(
+                "invalid parse context buffer",
+                PARSE_ERROR,
+                0,
+                R_NilValue(),
+            );
+            return PARSE_ERROR;
+        };
+        crate::mainutils::source::remember_parse_context(&source);
+    }
     0
 }
 
@@ -197,6 +225,7 @@ where
 }
 
 fn parse_one_source(source: &str) -> Result<SEXP, String> {
+    crate::mainutils::source::remember_parse_context(source);
     with_required_current_instance(|instance| {
         crate::eval::parser::parse(source, &mut instance.arena).map_err(|err| err.to_string())
     })
@@ -246,9 +275,11 @@ unsafe fn buffer_source(buf: *const c_char, len: c_int) -> Option<String> {
 }
 
 fn parse_failure(message: impl Into<String>) -> ! {
-    std::panic::panic_any(RError {
-        message: message.into(),
-    });
+    let message = message.into();
+    unsafe {
+        crate::mainutils::source::store_parse_error(&message, 1, 1, R_NilValue());
+    }
+    std::panic::panic_any(RError { message });
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +288,7 @@ fn parse_failure(message: impl Into<String>) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
+    use std::ffi::{CStr, CString};
     use std::ptr;
 
     use crate::sexp::accessors::{REAL, TYPEOF, VECTOR_ELT, XLENGTH};
@@ -304,6 +335,8 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_CurrentParseLine(), 0);
+            assert_eq!(R_ParseContext(c"x <- 1\ny".as_ptr(), 8), 0);
+            assert_eq!(R_CurrentParseLine(), 2);
         }
     }
 
@@ -313,6 +346,17 @@ mod tests {
         unsafe {
             let s = R_ParseFilename();
             assert!(!s.is_null());
+        }
+    }
+
+    #[test]
+    fn test_parse_filename_uses_parse_error_file() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let file = Rf_mkString(c"script.R".as_ptr());
+            crate::mainutils::source::store_parse_error("parse error", 1, 1, file);
+            let s = R_ParseFilename();
+            assert_eq!(CStr::from_ptr(s).to_str(), Ok("script.R"));
         }
     }
 }
