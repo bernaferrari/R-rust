@@ -13961,17 +13961,76 @@ pub unsafe fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 // Complete I/O: scan, write.table, sink
 // ---------------------------------------------------------------------------
 
-/// R's `scan(file, what, nmax, sep, ...)` — read data from file.
-/// Simplified: reads numeric or character data line by line.
+fn scan_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
+}
+
+fn split_scan_fields(contents: &str, sep: &str, nmax: i64) -> Vec<String> {
+    let limit = if nmax > 0 { nmax as usize } else { usize::MAX };
+    let fields: Box<dyn Iterator<Item = &str> + '_> = if sep.is_empty() {
+        Box::new(contents.split_whitespace())
+    } else {
+        Box::new(
+            contents
+                .split(sep)
+                .map(str::trim)
+                .filter(|field| !field.is_empty()),
+        )
+    };
+    fields.take(limit).map(ToOwned::to_owned).collect()
+}
+
+fn parse_scan_logical(value: &str) -> Option<c_int> {
+    match value {
+        "TRUE" | "True" | "true" | "T" | "1" => Some(TRUE),
+        "FALSE" | "False" | "false" | "F" | "0" => Some(FALSE),
+        "NA" => Some(NA_LOGICAL),
+        _ => None,
+    }
+}
+
+unsafe fn named_arg(args: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let tag = TAG(current);
+            if !tag.is_null() && tag != R_NilValue() {
+                let printname = PRINTNAME(tag);
+                if !printname.is_null() {
+                    let tag_name = CStr::from_ptr(CHAR(printname)).to_string_lossy();
+                    if tag_name == name {
+                        return Some(CAR(current));
+                    }
+                }
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
+/// R's `scan(file, what, nmax, sep, ...)` — read data from a file path.
+/// This covers the file-backed scalar-vector surface used by scripts and tests;
+/// interactive console and connection scans report explicit R errors.
 pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let file_arg = CAR(args);
         let what_arg = CAR(CDR(args));
         let nmax_arg = CAR(CDR(CDR(args)));
+        let fourth_arg = CAR(CDR(CDR(CDR(args))));
+        let fifth_arg = CAR(CDR(CDR(CDR(CDR(args)))));
         if file_arg.is_null() || file_arg == R_NilValue() {
-            return R_NilValue();
+            scan_error("scan() requires a file path in the Android/headless runtime");
+        }
+        if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
+            scan_error("scan() currently supports character file paths only");
         }
         let filename = elt_to_string(file_arg, 0);
+        if filename.is_empty() {
+            scan_error("scan() cannot read from an interactive console in this runtime");
+        }
         let what_type = if what_arg.is_null() || what_arg == R_NilValue() {
             SEXPTYPE::REALSXP.as_c_int()
         } else {
@@ -13982,52 +14041,90 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(nmax_arg, -1.0) as i64
         };
+        let sep_arg = if let Some(sep) = named_arg(args, "sep") {
+            sep
+        } else if !fourth_arg.is_null() && TYPEOF(fourth_arg) == SEXPTYPE::STRSXP {
+            fourth_arg
+        } else {
+            fifth_arg
+        };
+        let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
+            String::new()
+        } else {
+            elt_to_string(sep_arg, 0)
+        };
 
         let contents = match std::fs::read_to_string(&filename) {
             Ok(s) => s,
-            Err(_) => return R_NilValue(),
+            Err(err) => scan_error(format!("cannot open file '{filename}': {err}")),
         };
 
-        let mut values: Vec<String> = Vec::new();
-        for line in contents.lines() {
-            for token in line.split_whitespace() {
-                if nmax > 0 && values.len() as i64 >= nmax {
-                    break;
-                }
-                values.push(token.to_string());
-            }
-            if nmax > 0 && values.len() as i64 >= nmax {
-                break;
-            }
-        }
-
+        let values = split_scan_fields(&contents, &sep, nmax);
         let n = values.len() as R_xlen_t;
-        if what_type == SEXPTYPE::REALSXP || what_type == SEXPTYPE::INTSXP {
+        if what_type == SEXPTYPE::INTSXP {
+            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = protect(result);
+            let dst = INTEGER(result);
+            for (i, value) in values.iter().enumerate() {
+                let parsed = if value == "NA" {
+                    NA_INTEGER
+                } else {
+                    value.parse::<c_int>().unwrap_or_else(|_| {
+                        scan_error(format!("scan() expected an integer, got '{value}'"))
+                    })
+                };
+                *dst.add(i) = parsed;
+            }
+            result
+        } else if what_type == SEXPTYPE::REALSXP {
             let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             if result.is_null() {
                 return R_NilValue();
             }
             let _p = protect(result);
             let dst = REAL(result);
-            for (i, v) in values.iter().enumerate() {
-                *dst.add(i) = v.parse::<f64>().unwrap_or(NA_REAL);
+            for (i, value) in values.iter().enumerate() {
+                let parsed = if value == "NA" {
+                    NA_REAL
+                } else {
+                    value.parse::<f64>().unwrap_or_else(|_| {
+                        scan_error(format!("scan() expected a real, got '{value}'"))
+                    })
+                };
+                *dst.add(i) = parsed;
             }
             result
-        } else {
+        } else if what_type == SEXPTYPE::LGLSXP {
+            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = protect(result);
+            let dst = LOGICAL(result);
+            for (i, value) in values.iter().enumerate() {
+                let parsed = parse_scan_logical(value).unwrap_or_else(|| {
+                    scan_error(format!("scan() expected a logical, got '{value}'"))
+                });
+                *dst.add(i) = parsed;
+            }
+            result
+        } else if what_type == SEXPTYPE::STRSXP {
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             if result.is_null() {
                 return R_NilValue();
             }
             let _p = protect(result);
-            for (i, v) in values.iter().enumerate() {
-                let cstr = CString::new(v.as_str()).unwrap_or_default();
+            for (i, value) in values.iter().enumerate() {
+                let cstr = CString::new(value.as_str()).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                if !charsxp.is_null() {
-                    let data = (*result).gengc_next_node as *mut SEXP;
-                    *data.add(i) = charsxp;
-                }
+                SET_STRING_ELT(result, i as R_xlen_t, charsxp);
             }
             result
+        } else {
+            scan_error("scan() only supports integer, numeric, logical, and character 'what'")
         }
     }
 }
