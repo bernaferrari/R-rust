@@ -163,18 +163,41 @@ pub unsafe fn checkArity(op: SEXP, args: SEXP) {
         if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
             return;
         }
-        let offset = (*op).data.primsxp.offset;
-        if offset < 0 || offset as usize >= crate::mainutils::names::R_FunTab.len() {
+        let Some(entry) = crate::eval::primitive::PrimitiveDescriptor::from_raw(op) else {
             return;
-        }
-        let expected = crate::mainutils::names::R_FunTab[offset as usize].arity;
+        };
+        let expected = entry
+            .op
+            .try_primoffset()
+            .ok()
+            .and_then(crate::eval::primitive::fun_tab_descriptor)
+            .map(|entry| entry.arity)
+            .unwrap_or(-1);
         if expected < 0 {
             return;
         }
         let actual = Rf_length(args);
         if expected != actual {
-            // In full R, this calls error()/errorcall(). We silently accept
-            // incorrect arity for headless compatibility.
+            let internal = entry
+                .op
+                .try_primoffset()
+                .ok()
+                .and_then(crate::eval::primitive::fun_tab_descriptor)
+                .map(|entry| (entry.eval % 100) / 10 != 0)
+                .unwrap_or(false);
+            let noun = if actual == 1 { "argument" } else { "arguments" };
+            let message = if internal {
+                format!(
+                    "{actual} {noun} passed to .Internal({}) which requires {expected}",
+                    entry.name
+                )
+            } else {
+                format!(
+                    "{actual} {noun} passed to '{}' which requires {expected}",
+                    entry.name
+                )
+            };
+            std::panic::panic_any(crate::sexp::context::RError { message });
         }
     }
 }
@@ -1713,6 +1736,32 @@ mod tests {
             assert_eq!(*LOGICAL(ans_lt).add(0), 0);
             assert_eq!(*LOGICAL(ans_lt).add(1), 1);
             assert_eq!(*LOGICAL(ans_lt).add(2), 0);
+        }
+    }
+
+    #[test]
+    fn test_check_arity_rejects_mismatched_primitive_argument_count() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"length".as_ptr());
+            assert_eq!(TYPEOF(op), SEXPTYPE::BUILTINSXP);
+
+            let one_arg = Rf_cons(R_NilValue(), R_NilValue());
+            checkArity(op, one_arg);
+
+            let two_args = Rf_cons(R_NilValue(), Rf_cons(R_NilValue(), R_NilValue()));
+            let err = std::panic::catch_unwind(|| {
+                checkArity(op, two_args);
+            });
+            assert!(err.is_err());
+            let payload = err.unwrap_err();
+            let r_error = payload
+                .downcast_ref::<crate::sexp::context::RError>()
+                .expect("arity mismatch should raise RError");
+            assert_eq!(
+                r_error.message,
+                "2 arguments passed to 'length' which requires 1"
+            );
         }
     }
 

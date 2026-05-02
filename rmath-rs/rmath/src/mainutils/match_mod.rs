@@ -154,7 +154,7 @@ unsafe fn getCharCE(s: SEXP) -> c_int {
     unsafe { crate::sexp::accessors::getCharCE(s) }
 }
 
-/// checkArity — stub, no-op.
+/// checkArity — shared primitive arity validation.
 #[inline(always)]
 unsafe fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
