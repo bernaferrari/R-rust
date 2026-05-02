@@ -157,63 +157,61 @@ pub unsafe fn GConvertYUnits(
  * ======================================================================== */
 
 /// xDevtoNDC -- convert x from device coordinates to NDC.
-/// Stub: returns 0.0.
-pub unsafe fn xDevtoNDC(_x: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+pub unsafe fn xDevtoNDC(x: c_double, dd: pGEDevDesc) -> c_double {
+    unsafe { engine::fromDeviceX(x, 1, dd) }
 }
 
 /// yDevtoNDC -- convert y from device coordinates to NDC.
-/// Stub: returns 0.0.
-pub unsafe fn yDevtoNDC(_y: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+pub unsafe fn yDevtoNDC(y: c_double, dd: pGEDevDesc) -> c_double {
+    unsafe { engine::fromDeviceY(y, 1, dd) }
 }
 
 /// xDevtoNFC -- convert x from device coordinates to NFC.
-/// Stub: returns 0.0.
+/// Requires base-graphics figure region state.
 pub unsafe fn xDevtoNFC(_x: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("device-to-figure coordinate conversion requires base graphics state")
 }
 
 /// yDevtoNFC -- convert y from device coordinates to NFC.
-/// Stub: returns 0.0.
+/// Requires base-graphics figure region state.
 pub unsafe fn yDevtoNFC(_y: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("device-to-figure coordinate conversion requires base graphics state")
 }
 
 /// xDevtoNPC -- convert x from device coordinates to NPC.
-/// Stub: returns 0.0.
+/// Requires plot region state.
 pub unsafe fn xDevtoNPC(_x: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("device-to-plot coordinate conversion requires base graphics state")
 }
 
 /// yDevtoNPC -- convert y from device coordinates to NPC.
-/// Stub: returns 0.0.
+/// Requires plot region state.
 pub unsafe fn yDevtoNPC(_y: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("device-to-plot coordinate conversion requires base graphics state")
 }
 
 /// xNPCtoUsr -- convert x from NPC to user coordinates.
-/// Stub: returns 0.0.
+/// Requires plot/user coordinate state.
 pub unsafe fn xNPCtoUsr(_x: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("plot-to-user coordinate conversion requires base graphics state")
 }
 
 /// yNPCtoUsr -- convert y from NPC to user coordinates.
-/// Stub: returns 0.0.
+/// Requires plot/user coordinate state.
 pub unsafe fn yNPCtoUsr(_y: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("plot-to-user coordinate conversion requires base graphics state")
 }
 
 /// xDevtoUsr -- convert x from device coordinates to user coordinates.
-/// Stub: returns 0.0.
+/// Requires user coordinate state.
 pub unsafe fn xDevtoUsr(_x: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("device-to-user coordinate conversion requires base graphics state")
 }
 
 /// yDevtoUsr -- convert y from device coordinates to user coordinates.
-/// Stub: returns 0.0.
+/// Requires user coordinate state.
 pub unsafe fn yDevtoUsr(_y: c_double, _dd: pGEDevDesc) -> c_double {
-    0.0
+    graphics_error("device-to-user coordinate conversion requires base graphics state")
 }
 
 /* ========================================================================
@@ -764,5 +762,25 @@ mod tests {
             assert_eq!(GStrWidth(c"abc".as_ptr(), 0, DEVICE, ptr::null_mut()), 0.0);
             assert_eq!(GStrHeight(c"abc".as_ptr(), 0, DEVICE, ptr::null_mut()), 0.0);
         }
+    }
+
+    #[test]
+    fn device_to_ndc_delegates_to_engine_bridge() {
+        unsafe {
+            assert_eq!(xDevtoNDC(12.0, ptr::null_mut()), 12.0);
+            assert_eq!(yDevtoNDC(7.5, ptr::null_mut()), 7.5);
+        }
+    }
+
+    #[test]
+    fn unsupported_device_coordinate_conversions_error() {
+        let err = std::panic::catch_unwind(|| unsafe {
+            xDevtoUsr(12.0, ptr::null_mut());
+        })
+        .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(r_error.message.contains("base graphics state"));
     }
 }
