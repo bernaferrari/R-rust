@@ -431,6 +431,8 @@ fn ge_glyph(
 
 /// Maximum number of registered graphics systems.
 pub const MAX_GRAPHICS_SYSTEMS: c_int = 10;
+const MAX_GRAPHICS_SYSTEMS_USIZE: usize = MAX_GRAPHICS_SYSTEMS as usize;
+type GraphicsSystemCallback = unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP;
 
 /// R Graphics Engine version number.
 pub const R_GE_version: c_int = 16;
@@ -482,9 +484,20 @@ pub const R_TRANWHITE: c_uint = 0x00FFFFFF;
 // Per-session graphics engine state
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
 pub(crate) struct GraphicsEngineState {
     pub num_graphics_systems: c_int,
+    graphics_system_registered: [bool; MAX_GRAPHICS_SYSTEMS_USIZE],
+    graphics_system_callbacks: [Option<GraphicsSystemCallback>; MAX_GRAPHICS_SYSTEMS_USIZE],
+}
+
+impl Default for GraphicsEngineState {
+    fn default() -> Self {
+        Self {
+            num_graphics_systems: 0,
+            graphics_system_registered: [false; MAX_GRAPHICS_SYSTEMS_USIZE],
+            graphics_system_callbacks: [None; MAX_GRAPHICS_SYSTEMS_USIZE],
+        }
+    }
 }
 
 #[inline]
@@ -679,8 +692,11 @@ pub unsafe fn R_GE_getVersion() -> c_int {
 /// Check that the given version matches the current engine version; panic on mismatch.
 pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
     if version != R_GE_version {
-        // In full implementation, this would call error().
-        //  ignore silently.
+        let message = CString::new(format!(
+            "graphics engine version mismatch: runtime has {R_GE_version}, device requested {version}"
+        ))
+        .expect("static graphics version error contains no NUL");
+        unsafe { Rf_error(message.as_ptr()) };
     }
 }
 
@@ -718,22 +734,25 @@ pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
 
 /// Register a new graphics system with the engine.
 pub unsafe fn GEregisterSystem(
-    cb: Option<unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP>,
+    cb: Option<GraphicsSystemCallback>,
     systemRegisterIndex: *mut c_int,
 ) {
-    let _ = cb;
     with_graphics_engine_state(|state| {
-        let current = state.num_graphics_systems;
-        if current >= MAX_GRAPHICS_SYSTEMS {
+        let Some(index) = state
+            .graphics_system_registered
+            .iter()
+            .position(|registered| !registered)
+        else {
             return;
-        }
+        };
         if !systemRegisterIndex.is_null() {
             unsafe {
-                *systemRegisterIndex = current;
+                *systemRegisterIndex = index as c_int;
             }
         }
-        // Increment the count of registered graphics systems
-        state.num_graphics_systems = current + 1;
+        state.graphics_system_registered[index] = true;
+        state.graphics_system_callbacks[index] = cb;
+        state.num_graphics_systems += 1;
         // Wire-up with any active devices. In headless mode there are no devices,
         // but call the hook to keep behavior consistent with the original C API.
         unsafe {
@@ -748,11 +767,15 @@ pub unsafe fn GEregisterSystem(
 
 /// Unregister a graphics system from the engine.
 pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
-    let _ = registerIndex;
     with_graphics_engine_state(|state| {
-        let current = state.num_graphics_systems;
-        if current > 0 {
-            state.num_graphics_systems = current - 1;
+        if !(0..MAX_GRAPHICS_SYSTEMS).contains(&registerIndex) {
+            return;
+        }
+        let index = registerIndex as usize;
+        if state.graphics_system_registered[index] {
+            state.graphics_system_registered[index] = false;
+            state.graphics_system_callbacks[index] = None;
+            state.num_graphics_systems -= 1;
         }
     });
 }
@@ -763,7 +786,26 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
 
 /// Handle a graphics event, forwarding to all registered systems.
 pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
-    nil_value()
+    unsafe {
+        let systems = with_graphics_engine_state(|state| {
+            (
+                state.graphics_system_registered,
+                state.graphics_system_callbacks,
+            )
+        });
+        let mut result = nil_value();
+        for (registered, callback) in systems.0.into_iter().zip(systems.1.into_iter()) {
+            if registered {
+                if let Some(callback) = callback {
+                    let callback_result = callback(event, dev, data);
+                    if !callback_result.is_null() && callback_result != R_NilValue() {
+                        result = callback_result;
+                    }
+                }
+            }
+        }
+        result
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1797,6 +1839,19 @@ mod tests {
     }
 
     #[test]
+    fn test_R_GE_checkVersionOrDie_mismatch_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        let payload = std::panic::catch_unwind(|| unsafe {
+            R_GE_checkVersionOrDie(R_GE_version + 1);
+        })
+        .expect_err("mismatched graphics engine version should error");
+        let err = payload
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError payload");
+        assert!(err.message.contains("graphics engine version mismatch"));
+    }
+
+    #[test]
     fn test_coordinate_transforms_passthrough() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
@@ -1818,6 +1873,35 @@ mod tests {
         unsafe {
             let result = GEhandleEvent(0, ptr::null_mut(), ptr::null_mut());
             assert_eq!(result, R_NilValue());
+        }
+    }
+
+    unsafe extern "C" fn echo_graphics_event(event: c_int, _dev: *mut c_void, data: SEXP) -> SEXP {
+        if event == GE_CheckPlot {
+            data
+        } else {
+            unsafe { R_NilValue() }
+        }
+    }
+
+    #[test]
+    fn test_GEhandleEvent_dispatches_session_callback() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let payload = Rf_ScalarInteger(123);
+            let mut idx = -1;
+            GEregisterSystem(Some(echo_graphics_event), &mut idx);
+            assert_eq!(idx, 0);
+            assert_eq!(
+                GEhandleEvent(GE_CheckPlot, ptr::null_mut(), payload),
+                payload
+            );
+
+            GEunregisterSystem(idx);
+            assert_eq!(
+                GEhandleEvent(GE_CheckPlot, ptr::null_mut(), payload),
+                R_NilValue()
+            );
         }
     }
 
