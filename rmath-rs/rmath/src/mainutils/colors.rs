@@ -1,6 +1,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-//! Port of R's color dispatch stubs from src/main/colors.c.
+//! Port of R's color dispatch bridge from src/main/colors.c.
 //!
 //! Original source: src/main/colors.c (85 lines)
 //!
@@ -10,8 +10,8 @@
 //! through those pointers.
 //!
 //! Only `Rg_set_col_ptrs` is fully standalone.  `col2name`, `R_GE_str2col`,
-//! and `savePalette` depend on function pointers being set at runtime.
-//! `RGBpar3` and `RGBpar` additionally take `SEXP` parameters and are stubbed.
+//! `savePalette`, `RGBpar3`, and `RGBpar` depend on function pointers being
+//! set at runtime by grDevices initialization.
 
 use std::os::raw::{c_char, c_int, c_void};
 
@@ -51,6 +51,12 @@ pub(crate) struct ColorDispatchState {
 
 fn with_color_dispatch_state<R>(f: impl FnOnce(&mut ColorDispatchState) -> R) -> R {
     with_required_current_instance(|instance| f(&mut instance.color_dispatch_state))
+}
+
+fn grdevices_not_loaded() -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: "package grDevices must be loaded".to_string(),
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +99,7 @@ pub unsafe fn col2name(col: std::os::raw::c_uint) -> *const c_char {
     unsafe {
         match with_color_dispatch_state(|state| state.col2name) {
             Some(f) => f(col),
-            None => std::ptr::null(),
+            None => grdevices_not_loaded(),
         }
     }
 }
@@ -109,7 +115,7 @@ pub unsafe fn R_GE_str2col(s: *const c_char) -> std::os::raw::c_uint {
     unsafe {
         match with_color_dispatch_state(|state| state.str2col) {
             Some(f) => f(s),
-            None => 0,
+            None => grdevices_not_loaded(),
         }
     }
 }
@@ -125,12 +131,14 @@ pub unsafe fn savePalette(save: c_int) {
     unsafe {
         if let Some(f) = with_color_dispatch_state(|state| state.save_palette) {
             f(save)
+        } else {
+            grdevices_not_loaded()
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// SEXP-dependent stubs
+// SEXP-dependent dispatch
 // ---------------------------------------------------------------------------
 
 /// Convert a color specification to an RGB unsigned int, using the given
@@ -142,7 +150,7 @@ pub unsafe fn RGBpar3(x: *mut c_void, i: c_int, bg: std::os::raw::c_uint) -> std
     unsafe {
         match with_color_dispatch_state(|state| state.rgbpar3) {
             Some(f) => f(x, i, bg),
-            None => 0,
+            None => grdevices_not_loaded(),
         }
     }
 }
@@ -232,6 +240,26 @@ mod tests {
             assert_eq!(RGBpar3(ptr::null_mut(), 0, 0), 0x00AA_0001);
             assert_eq!(col_name(), "first");
             assert_eq!(R_GE_str2col(ptr::null()), 11);
+
+            clear_current_instance();
+        }
+    }
+
+    #[test]
+    fn color_dispatch_errors_when_grdevices_is_not_loaded() {
+        unsafe {
+            let mut instance = RInstance::new();
+            set_current_instance(&mut instance);
+
+            let rgb = std::panic::catch_unwind(|| RGBpar3(ptr::null_mut(), 0, 0));
+            let name = std::panic::catch_unwind(|| col2name(0));
+            let parsed = std::panic::catch_unwind(|| R_GE_str2col(ptr::null()));
+            let saved = std::panic::catch_unwind(|| savePalette(1));
+
+            assert!(rgb.is_err());
+            assert!(name.is_err());
+            assert!(parsed.is_err());
+            assert!(saved.is_err());
 
             clear_current_instance();
         }
