@@ -118,6 +118,7 @@ pub(crate) struct ObjectsRuntimeState {
 #[derive(Clone, Default)]
 pub(crate) struct S4ClassDef {
     pub slots: Vec<String>,
+    pub contains: Vec<String>,
     pub virtual_class: bool,
     pub has_validity: bool,
 }
@@ -171,11 +172,21 @@ where
 }
 
 pub(crate) fn register_s4_class(name: String, slots: Vec<String>, virtual_class: bool) {
+    register_s4_class_with_extends(name, slots, Vec::new(), virtual_class);
+}
+
+pub(crate) fn register_s4_class_with_extends(
+    name: String,
+    slots: Vec<String>,
+    contains: Vec<String>,
+    virtual_class: bool,
+) {
     with_objects_state(|state| {
         state.s4_classes.insert(
             name,
             S4ClassDef {
                 slots,
+                contains,
                 virtual_class,
                 has_validity: false,
             },
@@ -195,6 +206,23 @@ pub(crate) fn set_s4_validity(name: &str) -> bool {
 
 pub(crate) fn s4_class(name: &str) -> Option<S4ClassDef> {
     with_objects_state(|state| state.s4_classes.get(name).cloned())
+}
+
+fn s4_extends_registered(
+    classes: &HashMap<String, S4ClassDef>,
+    class1: &str,
+    class2: &str,
+) -> bool {
+    if class1 == class2 {
+        return true;
+    }
+    let Some(class_def) = classes.get(class1) else {
+        return false;
+    };
+    class_def
+        .contains
+        .iter()
+        .any(|parent| parent == class2 || s4_extends_registered(classes, parent, class2))
 }
 
 unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
@@ -3117,42 +3145,237 @@ unsafe fn get_primitive_methods(op: SEXP, _rho: SEXP) -> SEXP {
 // S4 class infrastructure
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_do_MAKE_CLASS(_what: *const c_char) -> SEXP {
+unsafe fn sexp_to_string(x: SEXP) -> Option<String> {
     unsafe {
-        if _what.is_null() {
-            error("C level MAKE_CLASS macro called with NULL string pointer");
+        if x.is_null() || x == R_NilValue() {
+            return None;
         }
-        R_NilValue()
+        let chars = match TYPEOF(x) {
+            t if t == SEXPTYPE::STRSXP => {
+                if LENGTH(x) < 1 {
+                    return None;
+                }
+                STRING_ELT(x, 0)
+            }
+            t if t == SEXPTYPE::CHARSXP => x,
+            t if t == SEXPTYPE::SYMSXP => asChar(x),
+            _ => return None,
+        };
+        if chars.is_null() {
+            return None;
+        }
+        let ptr = CHAR(chars);
+        if ptr.is_null() {
+            return None;
+        }
+        Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
     }
 }
 
-pub unsafe fn R_getClassDef(_what: *const c_char) -> SEXP {
+unsafe fn c_string_to_string(ptr: *const c_char) -> Option<String> {
     unsafe {
-        if _what.is_null() {
-            error("R_getClassDef(.) called with NULL string pointer");
+        if ptr.is_null() {
+            None
+        } else {
+            Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
         }
-        R_NilValue()
     }
 }
 
-pub unsafe fn R_getClassDef_R(_what: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
-}
-
-pub unsafe fn R_isVirtualClass(_class_def: SEXP, _env: SEXP) -> c_int {
-    FALSE
-}
-
-pub unsafe fn R_extends(_class1: SEXP, _class2: SEXP, _env: SEXP) -> c_int {
-    FALSE
-}
-
-pub unsafe fn R_do_new_object(_class_def: SEXP) -> SEXP {
+unsafe fn make_string_vector(values: &[String]) -> SEXP {
     unsafe {
-        if _class_def.is_null() {
+        let out = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
+        let _out_guard = protect(out);
+        for (i, value) in values.iter().enumerate() {
+            let cstr = CString::new(value.as_str()).unwrap_or_default();
+            SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+        out
+    }
+}
+
+unsafe fn named_vec_elt(x: SEXP, name: &str) -> SEXP {
+    unsafe {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::VECSXP {
             return R_NilValue();
         }
+        let names = getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return R_NilValue();
+        }
+        let wanted = CString::new(name).unwrap_or_default();
+        for i in 0..LENGTH(names) {
+            let current = STRING_ELT(names, i as R_xlen_t);
+            if current.is_null() {
+                continue;
+            }
+            let current = CHAR(current);
+            if !current.is_null() && libc::strcmp(current, wanted.as_ptr()) == 0 {
+                return VECTOR_ELT(x, i as R_xlen_t);
+            }
+        }
         R_NilValue()
+    }
+}
+
+unsafe fn class_name_from_def(class_def: SEXP) -> Option<String> {
+    unsafe {
+        if TYPEOF(class_def) == SEXPTYPE::VECSXP {
+            let class_name = named_vec_elt(class_def, "className");
+            sexp_to_string(class_name)
+        } else {
+            sexp_to_string(class_def)
+        }
+    }
+}
+
+unsafe fn class_def_to_sexp(class_name: &str, class_def: &S4ClassDef) -> SEXP {
+    unsafe {
+        let out = Rf_allocVector(SEXPTYPE::VECSXP, 5);
+        if out.is_null() {
+            return R_NilValue();
+        }
+        let _out_guard = protect(out);
+
+        let names = make_string_vector(&[
+            "className".to_string(),
+            "slots".to_string(),
+            "contains".to_string(),
+            "virtual".to_string(),
+            "validity".to_string(),
+        ]);
+        let _names_guard = protect(names);
+
+        let class_name_c = CString::new(class_name).unwrap_or_default();
+        SET_VECTOR_ELT(out, 0, Rf_mkString(class_name_c.as_ptr()));
+        SET_VECTOR_ELT(out, 1, make_string_vector(&class_def.slots));
+        SET_VECTOR_ELT(out, 2, make_string_vector(&class_def.contains));
+        SET_VECTOR_ELT(
+            out,
+            3,
+            Rf_ScalarLogical(if class_def.virtual_class { TRUE } else { FALSE }),
+        );
+        SET_VECTOR_ELT(
+            out,
+            4,
+            Rf_ScalarLogical(if class_def.has_validity { TRUE } else { FALSE }),
+        );
+
+        setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        setAttrib(
+            out,
+            R_ClassSymbol(),
+            make_string_vector(&["classRepresentation".to_string()]),
+        );
+        out
+    }
+}
+
+pub unsafe fn R_do_MAKE_CLASS(what: *const c_char) -> SEXP {
+    unsafe {
+        let Some(name) = c_string_to_string(what) else {
+            error("C level MAKE_CLASS macro called with NULL string pointer");
+        };
+        if s4_class(&name).is_none() {
+            register_s4_class(name.clone(), Vec::new(), false);
+        }
+        R_getClassDef(what)
+    }
+}
+
+pub unsafe fn R_getClassDef(what: *const c_char) -> SEXP {
+    unsafe {
+        let Some(name) = c_string_to_string(what) else {
+            error("R_getClassDef(.) called with NULL string pointer");
+        };
+        match s4_class(&name) {
+            Some(class_def) => class_def_to_sexp(&name, &class_def),
+            None => R_NilValue(),
+        }
+    }
+}
+
+pub unsafe fn R_getClassDef_R(what: SEXP) -> SEXP {
+    unsafe {
+        if what.is_null() || what == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(what) == SEXPTYPE::VECSXP {
+            let class_name = class_name_from_def(what);
+            if class_name.is_some() {
+                return what;
+            }
+        }
+        let Some(name) = sexp_to_string(what) else {
+            return R_NilValue();
+        };
+        let cstr = CString::new(name).unwrap_or_default();
+        R_getClassDef(cstr.as_ptr())
+    }
+}
+
+pub unsafe fn R_isVirtualClass(class_def: SEXP, _env: SEXP) -> c_int {
+    unsafe {
+        if class_def.is_null() || class_def == R_NilValue() {
+            return FALSE;
+        }
+        if TYPEOF(class_def) == SEXPTYPE::VECSXP {
+            let virtual_value = named_vec_elt(class_def, "virtual");
+            if !virtual_value.is_null() && virtual_value != R_NilValue() {
+                return if asLogical(virtual_value) == TRUE {
+                    TRUE
+                } else {
+                    FALSE
+                };
+            }
+        }
+        class_name_from_def(class_def)
+            .and_then(|name| s4_class(&name))
+            .map(|class_def| if class_def.virtual_class { TRUE } else { FALSE })
+            .unwrap_or(FALSE)
+    }
+}
+
+pub unsafe fn R_extends(class1: SEXP, class2: SEXP, _env: SEXP) -> c_int {
+    unsafe {
+        let Some(class1) = class_name_from_def(class1) else {
+            return FALSE;
+        };
+        let Some(class2) = class_name_from_def(class2) else {
+            return FALSE;
+        };
+        with_objects_state(|state| {
+            if s4_extends_registered(&state.s4_classes, &class1, &class2) {
+                TRUE
+            } else {
+                FALSE
+            }
+        })
+    }
+}
+
+pub unsafe fn R_do_new_object(class_def: SEXP) -> SEXP {
+    unsafe {
+        let Some(class_name) = class_name_from_def(class_def) else {
+            return R_NilValue();
+        };
+        let Some(class_def) = s4_class(&class_name) else {
+            return R_NilValue();
+        };
+        if class_def.virtual_class {
+            error(&format!("class '{}' is virtual", class_name));
+        }
+
+        let out = Rf_allocVector(SEXPTYPE::VECSXP, class_def.slots.len() as c_int);
+        let _out_guard = protect(out);
+        let names = make_string_vector(&class_def.slots);
+        let _names_guard = protect(names);
+        for i in 0..class_def.slots.len() {
+            SET_VECTOR_ELT(out, i as R_xlen_t, R_NilValue());
+        }
+        setAttrib(out, crate::sexp::attrib_core::R_NamesSymbol(), names);
+        setAttrib(out, R_ClassSymbol(), make_string_vector(&[class_name]));
+        asS4(out, TRUE, 0)
     }
 }
 
@@ -4020,7 +4243,11 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_do_MAKE_CLASS(b"foo\0".as_ptr() as *const c_char);
-            assert!(result.is_null() || result == R_NilValue());
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(
+                sexp_to_string(named_vec_elt(result, "className")).as_deref(),
+                Some("foo")
+            );
         }
     }
 
@@ -4030,6 +4257,21 @@ mod tests {
         unsafe {
             let result = R_getClassDef(b"foo\0".as_ptr() as *const c_char);
             assert!(result.is_null() || result == R_NilValue());
+
+            register_s4_class_with_extends(
+                "Child".to_string(),
+                vec!["x".to_string()],
+                vec!["Parent".to_string()],
+                false,
+            );
+            let result = R_getClassDef(b"Child\0".as_ptr() as *const c_char);
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(
+                sexp_to_string(named_vec_elt(result, "className")).as_deref(),
+                Some("Child")
+            );
+            assert_eq!(LENGTH(named_vec_elt(result, "slots")), 1);
+            assert_eq!(LENGTH(named_vec_elt(result, "contains")), 1);
         }
     }
 
@@ -4416,6 +4658,17 @@ mod tests {
         unsafe {
             let result = R_do_new_object(ptr::null_mut());
             assert!(result.is_null() || result == R_NilValue());
+
+            register_s4_class(
+                "Point".to_string(),
+                vec!["x".to_string(), "y".to_string()],
+                false,
+            );
+            let class_def = R_getClassDef(b"Point\0".as_ptr() as *const c_char);
+            let result = R_do_new_object(class_def);
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(IS_S4_OBJECT(result), TRUE);
+            assert_eq!(LENGTH(result), 2);
         }
     }
 
@@ -4424,6 +4677,9 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_isVirtualClass(ptr::null_mut(), ptr::null_mut()), FALSE);
+            register_s4_class("VirtualClass".to_string(), Vec::new(), true);
+            let class_def = R_getClassDef(b"VirtualClass\0".as_ptr() as *const c_char);
+            assert_eq!(R_isVirtualClass(class_def, ptr::null_mut()), TRUE);
         }
     }
 
@@ -4435,6 +4691,16 @@ mod tests {
                 R_extends(ptr::null_mut(), ptr::null_mut(), ptr::null_mut()),
                 FALSE
             );
+            register_s4_class("Ancestor".to_string(), Vec::new(), false);
+            register_s4_class_with_extends(
+                "Descendant".to_string(),
+                Vec::new(),
+                vec!["Ancestor".to_string()],
+                false,
+            );
+            let descendant = R_getClassDef(b"Descendant\0".as_ptr() as *const c_char);
+            let ancestor = R_getClassDef(b"Ancestor\0".as_ptr() as *const c_char);
+            assert_eq!(R_extends(descendant, ancestor, ptr::null_mut()), TRUE);
         }
     }
 

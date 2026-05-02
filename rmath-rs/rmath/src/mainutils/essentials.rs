@@ -13387,6 +13387,23 @@ unsafe fn s4_slots_from_args(args: SEXP) -> Vec<String> {
     }
 }
 
+unsafe fn s4_contains_from_args(args: SEXP) -> Vec<String> {
+    unsafe {
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            if matches!(list_tag_name(current).as_deref(), Some("contains")) {
+                let mut contains = string_vector_values(CAR(current));
+                contains.retain(|name| !name.is_empty() && name != "VIRTUAL");
+                contains.sort();
+                contains.dedup();
+                return contains;
+            }
+            current = CDR(current);
+        }
+        Vec::new()
+    }
+}
+
 unsafe fn string_vector_from_values(values: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
@@ -13410,10 +13427,16 @@ pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         let class_name = elt_to_string(class_arg, 0);
         let slots = s4_slots_from_args(args);
+        let contains = s4_contains_from_args(args);
         let virtual_class = string_vector_values(CAR(CDR(args)))
             .iter()
             .any(|value| value == "VIRTUAL");
-        crate::mainutils::objects::register_s4_class(class_name.clone(), slots, virtual_class);
+        crate::mainutils::objects::register_s4_class_with_extends(
+            class_name.clone(),
+            slots,
+            contains,
+            virtual_class,
+        );
         let cstr = CString::new(class_name).unwrap_or_default();
         Rf_mkString(cstr.as_ptr())
     }

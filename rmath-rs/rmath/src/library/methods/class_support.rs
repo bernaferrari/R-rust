@@ -7,15 +7,10 @@
 
 use std::ffi::CString;
 
-use crate::mainutils::errors::{Rf_error, Rf_error_unimplemented};
+use crate::mainutils::errors::Rf_error;
 use crate::sexp::accessors::TYPEOF;
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::*;
-
-fn unsupported(name: &str) -> ! {
-    Rf_error_unimplemented(name);
-    unreachable!("Rf_error_unimplemented returned");
-}
 
 /// R_get_primname - get the name of a primitive function.
 /// Delegates to getPRIMNAME in main/names.rs.
@@ -39,6 +34,6 @@ pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
 /// new_object - create a new object from a class definition.
 /// Registered as .Call in the methods package.
 /// Note: not #[no_mangle] to avoid conflict with graphapp::new_object.
-pub(crate) fn new_object(_class_def: SEXP) -> SEXP {
-    unsupported("methods::new_object")
+pub(crate) unsafe fn new_object(class_def: SEXP) -> SEXP {
+    unsafe { crate::mainutils::objects::R_do_new_object(class_def) }
 }
