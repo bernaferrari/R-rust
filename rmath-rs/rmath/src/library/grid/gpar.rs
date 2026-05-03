@@ -378,7 +378,7 @@ pub unsafe fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
 pub unsafe fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: pGEcontext, _dd: pGEDevDesc) {
     unsafe {
         let gp = resolveGPar(_gp, 0);
-        if gp.is_null() || Rf_isNull(gp) != 0 {
+        if gp.is_null() || Rf_isNull(gp) != 0 || _gc.is_null() {
             return;
         }
 
