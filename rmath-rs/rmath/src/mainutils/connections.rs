@@ -26,7 +26,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::*;
 
@@ -645,6 +645,27 @@ unsafe fn check_logical_arg(arg: SEXP, name: &str) -> c_int {
     }
 }
 
+unsafe fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
+    unsafe {
+        let mut cell = args;
+        for _ in 0..index {
+            if cell.is_null() || cell == R_NilValue() {
+                return default;
+            }
+            cell = CDR(cell);
+        }
+        if cell.is_null() || cell == R_NilValue() {
+            return default;
+        }
+        let value = CAR(cell);
+        if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
+            default
+        } else {
+            value
+        }
+    }
+}
+
 /// Raise an R error via panic.
 fn r_error(msg: &str) -> ! {
     std::panic::panic_any(RError {
@@ -749,19 +770,20 @@ pub unsafe fn R_InitConnections() {
 // do_file — file(description, open = "", mode = "r", raw = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_file(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let scmd = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _enc = CAR(args);
-        args = CDR(args);
-        let _block = CAR(args);
-        args = CDR(args);
-        let _method = CAR(args);
-        args = CDR(args);
-        let raw = check_logical_arg(CAR(args), "raw");
+        let empty = Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+        let native = Rf_mkString(CString::new("native.enc").unwrap_or_default().as_ptr());
+        let default_method = Rf_mkString(CString::new("default").unwrap_or_default().as_ptr());
+        let scmd = positional_or(args, 0, empty);
+        let sopen = positional_or(args, 1, empty);
+        let _enc = positional_or(args, 2, native);
+        let _block = positional_or(args, 3, Rf_ScalarLogical(crate::sexp::ffi::TRUE));
+        let _method = positional_or(args, 5, default_method);
+        let raw = check_logical_arg(
+            positional_or(args, 4, Rf_ScalarLogical(crate::sexp::ffi::FALSE)),
+            "raw",
+        );
 
         let description = check_string_arg(scmd, "description");
         let open = check_string_arg(sopen, "open");
@@ -1368,10 +1390,10 @@ pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         init_connections_table();
         let table = connection_table();
         if i >= table.len() || table[i].is_none() {
-            return Rf_ScalarLogical(0);
+            r_error("invalid connection");
         }
         let Some(conn) = table[i].as_ref() else {
-            return Rf_ScalarLogical(0);
+            r_error("invalid connection");
         };
         let mut res = if conn.isopen { 1 } else { 0 };
         match rw {

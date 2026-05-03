@@ -9237,6 +9237,16 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         let path = if con.is_null() || con == R_NilValue() {
             "/dev/stdout".to_string()
+        } else if TYPEOF(con) == SEXPTYPE::INTSXP {
+            let sep_sxp = Rf_mkString(CString::new(sep).unwrap_or_default().as_ptr());
+            let normalized = Rf_cons(
+                text,
+                Rf_cons(
+                    con,
+                    Rf_cons(sep_sxp, Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue())),
+                ),
+            );
+            return crate::mainutils::connections::do_writeLines(_call, _op, normalized, _rho);
         } else {
             elt_to_string(con, 0)
         };
@@ -9700,8 +9710,9 @@ pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 count += 1;
             }
         }
+        let result = Rf_ScalarInteger(count);
         crate::sexp::globals::set_R_Visible(FALSE);
-        Rf_ScalarInteger(count)
+        result
     }
 }
 
@@ -10958,21 +10969,9 @@ pub unsafe fn do_is_object(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 /// R's `file(description)` — create a file connection.
-/// Simplified: validate the path exists and return the path as a STRSXP.
+/// Delegates to the session-owned connection table.
 pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let path_arg = CAR(args);
-        if path_arg.is_null() || path_arg == R_NilValue() {
-            return R_NilValue();
-        }
-        let path_str = elt_to_string(path_arg, 0);
-        // Simplified: just check if path is non-empty and return it
-        if path_str.is_empty() {
-            return R_NilValue();
-        }
-        let cstr = CString::new(path_str).unwrap_or_default();
-        Rf_mkString(cstr.as_ptr())
-    }
+    unsafe { crate::mainutils::connections::do_file(_call, _op, args, _rho) }
 }
 
 /// R's `url(description)` — create a URL connection.
@@ -10988,22 +10987,15 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `close(con)` — close a connection.
-/// Simplified: no-op that returns the connection.
+/// Delegates to the session-owned connection table.
 pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let con = CAR(args);
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        con
-    }
+    unsafe { crate::mainutils::connections::do_close(_call, _op, args, _rho) }
 }
 
 /// R's `flush(con)` — flush a connection.
-/// Simplified: no-op that returns NULL.
-pub unsafe fn do_flush(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
-    }
+/// Delegates to the session-owned connection table.
+pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::connections::do_flush(_call, _op, args, _rho) }
 }
 
 // ---------------------------------------------------------------------------
