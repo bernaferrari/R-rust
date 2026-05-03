@@ -176,6 +176,23 @@ unsafe fn read_operand(
     }
 }
 
+unsafe fn read_jump_target(
+    code_ptr: *const c_int,
+    pc: &mut c_int,
+    code_len: c_int,
+    opname: &str,
+) -> c_int {
+    unsafe {
+        let target = read_operand(code_ptr, pc, code_len, opname);
+        if target < 0 || target > code_len {
+            bc_error(format!(
+                "{opname} bytecode jump target {target} is outside instruction stream length {code_len}"
+            ));
+        }
+        target
+    }
+}
+
 unsafe fn constant_at(consts: SEXP, idx: c_int, context: &str) -> SEXP {
     unsafe {
         if idx < 0 {
@@ -341,7 +358,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_POPAND => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "POPAND");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "POPAND");
                     let val = stack_top_checked(&stack, "POPAND");
                     let is_false = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
@@ -355,7 +372,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_POPOR => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "POPOR");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "POPOR");
                     let val = stack_top_checked(&stack, "POPOR");
                     let is_true = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
@@ -369,12 +386,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BRANCH => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "BRANCH");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "BRANCH");
                     pc = target;
                 }
 
                 opcodes::OP_BRIFNOT => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "BRIFNOT");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "BRIFNOT");
                     let val = stack_top_checked(&stack, "BRIFNOT");
                     let cond = eval_bc_condition(val);
                     if !cond {
@@ -383,7 +400,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BRIFTRUE => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "BRIFTRUE");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "BRIFTRUE");
                     let val = stack_top_checked(&stack, "BRIFTRUE");
                     let cond = eval_bc_condition(val);
                     if cond {
@@ -403,7 +420,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_GOTO => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "GOTO");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "GOTO");
                     pc = target;
                 }
 
@@ -489,7 +506,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_STEPFOR => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "STEPFOR");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "STEPFOR");
                     let depth = stack.depth();
                     if depth < 3 {
                         pc = target;
@@ -530,12 +547,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BREAK => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "BREAK");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "BREAK");
                     pc = target;
                 }
 
                 opcodes::OP_NEXTITER => {
-                    let target = read_operand(code_ptr, &mut pc, code_len, "NEXTITER");
+                    let target = read_jump_target(code_ptr, &mut pc, code_len, "NEXTITER");
                     pc = target;
                 }
 
@@ -1004,6 +1021,23 @@ mod tests {
             bcEval(bcode, env);
         });
         assert!(err.message.contains("RETURN bytecode stack underflow"));
+    }
+
+    #[test]
+    fn test_bc_eval_rejects_invalid_jump_target() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = crate::sexp::memory::RArena::new();
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let bcode = bcode_with(&mut arena, &[opcodes::OP_BRANCH, -1], consts);
+        let env = empty_env(&mut arena);
+
+        let err = assert_r_error(|| unsafe {
+            bcEval(bcode, env);
+        });
+        assert!(
+            err.message
+                .contains("BRANCH bytecode jump target -1 is outside")
+        );
     }
 
     #[test]
