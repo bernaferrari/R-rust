@@ -18367,13 +18367,10 @@ pub unsafe fn do_sys_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
-/// R's `on.exit(expr, add)` — register an exit handler.
-/// Simplified: no-op, returns NULL invisibly.
-pub unsafe fn do_on_exit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        crate::sexp::globals::set_R_Visible(FALSE);
-        R_NilValue()
-    }
+/// R's `on.exit(expr, add, after)` — register an exit handler for the
+/// current function context.
+pub unsafe fn do_on_exit(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::eval::special::do_on_exit_from_args(args, rho) }
 }
 
 // ---------------------------------------------------------------------------
