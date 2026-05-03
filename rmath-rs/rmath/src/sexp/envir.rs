@@ -15,7 +15,8 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use super::accessors::{
-    CHAR, ENCLOS, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR, SETTAG, TYPEOF,
+    CDR, CHAR, ENCLOS, FRAME, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR, SETTAG,
+    TAG, TYPEOF,
 };
 use super::constructors::{Rf_cons, Rf_lang2};
 use super::ffi::{SEXP, SEXPTYPE};
@@ -135,6 +136,40 @@ pub(crate) fn binding_exists_raw(mut env: SEXP, symbol: SEXP, inherits: bool) ->
         }
     }
     false
+}
+
+pub(crate) fn remove_binding_raw(env: SEXP, symbol: SEXP) {
+    unsafe {
+        if env.is_null() || symbol.is_null() {
+            return;
+        }
+        if environment_is_locked_raw(env) {
+            binding_error("cannot remove bindings from a locked environment");
+        }
+
+        let mut previous = R_NilValue();
+        let mut current = FRAME(env);
+        while !current.is_null() && current != R_NilValue() {
+            let tag = TAG(current);
+            if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
+                let next = CDR(current);
+                if previous == R_NilValue() {
+                    SET_FRAME(env, next);
+                } else {
+                    SETCDR(previous, next);
+                }
+                super::env_hash::hash_remove(env, symbol);
+                with_required_current_instance(|instance| {
+                    let key = binding_key(env, symbol);
+                    instance.active_bindings.remove(&key);
+                    instance.locked_bindings.remove(&key);
+                });
+                return;
+            }
+            previous = current;
+            current = CDR(current);
+        }
+    }
 }
 
 pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {

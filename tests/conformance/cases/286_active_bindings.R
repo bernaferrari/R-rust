@@ -23,3 +23,7 @@ print(tryCatch({
   e$x <- 3
   "ok"
 }, error = function(err) "locked"))
+unlockBinding("x", e)
+rm(list = "x", envir = e)
+print(exists("x", e, inherits = FALSE))
+print(tryCatch(bindingIsActive("x", e), error = function(err) "no binding"))

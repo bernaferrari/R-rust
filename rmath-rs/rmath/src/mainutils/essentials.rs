@@ -7281,17 +7281,18 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `rm(list, envir)` — remove objects.
 pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let list = CAR(args);
+        let list = arg_by_name_or_position(args, &["list"], 0);
         if list.is_null() || TYPEOF(list) != SEXPTYPE::STRSXP {
             return R_NilValue();
         }
+        let env = environment_arg_or_default(args, &["envir"], 1, rho);
         for i in 0..XLENGTH(list) {
             let sym = Rf_install(
                 CString::new(elt_to_string(list, i))
                     .unwrap_or_default()
                     .as_ptr(),
             );
-            crate::sexp::envir::defineVar(sym, crate::sexp::globals::R_UnboundValue(), rho);
+            crate::sexp::envir::remove_binding_raw(env, sym);
         }
         crate::sexp::globals::set_R_Visible(FALSE);
         R_NilValue()
