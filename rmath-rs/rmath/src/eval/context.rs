@@ -42,7 +42,7 @@ pub unsafe fn framedepth(cptr: *mut RCNTXT) -> c_int {
         if c.is_null() {
             return 0;
         }
-        while !(*c).nextcontext.is_null() {
+        while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 nframe += 1;
             }
@@ -81,7 +81,7 @@ pub unsafe fn R_sysframe_in(instance: &mut RInstance, n: c_int, cptr: *mut RCNTX
         }
 
         let mut c = cptr;
-        while !(*c).nextcontext.is_null() {
+        while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 if n == 0 {
                     return (*c).cloenv;
@@ -89,9 +89,6 @@ pub unsafe fn R_sysframe_in(instance: &mut RInstance, n: c_int, cptr: *mut RCNTX
                 n -= 1;
             }
             c = (*c).nextcontext;
-        }
-        if n == 0 && (*c).nextcontext.is_null() {
-            return R_GlobalEnv_in(instance);
         }
         error("not that many frames on the stack");
         R_NilValue()
@@ -114,7 +111,7 @@ pub unsafe fn R_syscall(n: c_int, cptr: *mut RCNTXT) -> SEXP {
             error("not that many frames on the stack");
         }
         let mut c = cptr;
-        while !(*c).nextcontext.is_null() {
+        while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 if n == 0 {
                     return shallow_duplicate((*c).call);
@@ -122,9 +119,6 @@ pub unsafe fn R_syscall(n: c_int, cptr: *mut RCNTXT) -> SEXP {
                 n -= 1;
             }
             c = (*c).nextcontext;
-        }
-        if n == 0 && (*c).nextcontext.is_null() {
-            return shallow_duplicate((*c).call);
         }
         error("not that many frames on the stack");
         R_NilValue()
@@ -147,7 +141,7 @@ pub unsafe fn R_sysfunction(n: c_int, cptr: *mut RCNTXT) -> SEXP {
             error("not that many frames on the stack");
         }
         let mut c = cptr;
-        while !(*c).nextcontext.is_null() {
+        while !c.is_null() {
             if (*c).callflag & ctxt_flags::CTXT_FUNCTION != 0 {
                 if n == 0 {
                     return duplicate((*c).callfun);
@@ -155,9 +149,6 @@ pub unsafe fn R_sysfunction(n: c_int, cptr: *mut RCNTXT) -> SEXP {
                 n -= 1;
             }
             c = (*c).nextcontext;
-        }
-        if n == 0 && (*c).nextcontext.is_null() {
-            return duplicate((*c).callfun);
         }
         error("not that many frames on the stack");
         R_NilValue()

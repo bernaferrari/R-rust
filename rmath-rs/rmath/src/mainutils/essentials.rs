@@ -9498,7 +9498,10 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// R's `nargs()` — number of arguments in the current call.
 pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        Rf_ScalarInteger(0) // Simplified
+        let Some(context) = current_function_context() else {
+            base_error("'nargs' used outside a function");
+        };
+        Rf_ScalarInteger(pairlist_len((*context).promiseargs))
     }
 }
 
@@ -9520,20 +9523,86 @@ pub unsafe fn do_missing(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 }
 
 /// R's `parent.frame(n)` — get enclosing environment.
-pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
-    rho // Simplified: return current env
+pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = context_index_arg(args, 1);
+        if n == NA_INTEGER || n < 1 {
+            base_error("invalid 'n' value");
+        }
+
+        let mut remaining = n;
+        let mut context = crate::sexp::context::R_GlobalContext();
+        while !context.is_null() {
+            if (*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
+                remaining -= 1;
+                if remaining == 0 {
+                    return (*context).sysparent;
+                }
+            }
+            context = (*context).nextcontext;
+        }
+        crate::sexp::globals::R_GlobalEnv()
+    }
 }
 
 /// R's `sys.call(which)` — get the call that's currently being evaluated.
-pub unsafe fn do_sys_call(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        R_NilValue() // Simplified
+        let which = context_index_arg(args, 0);
+        let top = crate::sexp::context::R_GlobalContext();
+        if top.is_null() {
+            R_NilValue()
+        } else {
+            crate::eval::context::R_syscall(which, top)
+        }
     }
 }
 
 /// R's `sys.frame(which)` — get frame at specified level.
-pub unsafe fn do_sys_frame(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
-    rho // Simplified: return current env
+pub unsafe fn do_sys_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let which = context_index_arg(args, 0);
+        let top = crate::sexp::context::R_GlobalContext();
+        if top.is_null() {
+            crate::sexp::globals::R_GlobalEnv()
+        } else {
+            crate::eval::context::R_sysframe(which, top)
+        }
+    }
+}
+
+unsafe fn current_function_context() -> Option<*mut crate::sexp::context::RCNTXT> {
+    unsafe {
+        let mut context = crate::sexp::context::R_GlobalContext();
+        while !context.is_null() {
+            if (*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
+                return Some(context);
+            }
+            context = (*context).nextcontext;
+        }
+        None
+    }
+}
+
+unsafe fn pairlist_len(mut list: SEXP) -> c_int {
+    unsafe {
+        let mut len = 0;
+        while !list.is_null() && list != R_NilValue() {
+            len += 1;
+            list = CDR(list);
+        }
+        len
+    }
+}
+
+unsafe fn context_index_arg(args: SEXP, default: c_int) -> c_int {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            default
+        } else {
+            real_or_default(CAR(args), default as f64) as c_int
+        }
+    }
 }
 
 /// R's `getwd()` — get working directory.
@@ -18222,21 +18291,23 @@ pub unsafe fn do_match_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `sys.nframe()` — returns the number of frames on the call stack.
-/// Simplified: returns 0.
 pub unsafe fn do_sys_nframe(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarInteger(0) }
+    unsafe {
+        let top = crate::sexp::context::R_GlobalContext();
+        Rf_ScalarInteger(crate::eval::context::framedepth(top))
+    }
 }
 
 /// R's `sys.function(which)` — returns the function at the given frame level.
-/// Simplified: returns NULL.
 pub unsafe fn do_sys_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let _which = if !args.is_null() && args != R_NilValue() {
-            real_or_default(CAR(args), 0.0) as i32
+        let which = context_index_arg(args, 0);
+        let top = crate::sexp::context::R_GlobalContext();
+        if top.is_null() {
+            R_NilValue()
         } else {
-            0
-        };
-        R_NilValue()
+            crate::eval::context::R_sysfunction(which, top)
+        }
     }
 }
 
