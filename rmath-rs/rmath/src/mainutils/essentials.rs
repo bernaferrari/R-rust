@@ -12856,7 +12856,16 @@ pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let text_arg = arg_by_name_or_position(args, &["text"], 0);
+        let file_arg = arg_by_name_or_position(args, &["file"], 0);
         if text_arg.is_null() || text_arg == R_NilValue() {
+            if !file_arg.is_null() && file_arg != R_NilValue() {
+                let file_path = elt_to_string(file_arg, 0);
+                let content = std::fs::read_to_string(&file_path).unwrap_or_else(|err| {
+                    base_error(format!("cannot open file '{}': {}", file_path, err))
+                });
+                let source = content.lines().map(str::to_owned).collect::<Vec<_>>();
+                return parse_source_strings(&source);
+            }
             return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
         }
 
@@ -12865,7 +12874,7 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
         }
 
-        let mut parsed = Vec::new();
+        let mut source = Vec::with_capacity(n as usize);
         for i in 0..n {
             if TYPEOF(text_arg) == SEXPTYPE::STRSXP && is_string_na(text_arg, i) {
                 std::panic::panic_any(RError {
@@ -12873,11 +12882,21 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 });
             }
             let text = elt_to_string(text_arg, i);
+            source.push(text);
+        }
+        parse_source_strings(&source)
+    }
+}
+
+unsafe fn parse_source_strings(source: &[String]) -> SEXP {
+    unsafe {
+        let mut parsed = Vec::new();
+        for text in source {
             if text.trim().is_empty() {
                 continue;
             }
             let expr = crate::sexp::memory::with_arena(|arena| {
-                crate::eval::parser::parse(&text, arena).map_err(|err| err.to_string())
+                crate::eval::parser::parse(text, arena).map_err(|err| err.to_string())
             });
             match expr {
                 Ok(value) if !value.is_null() && value != R_NilValue() => parsed.push(value),

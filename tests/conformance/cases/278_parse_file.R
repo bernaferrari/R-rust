@@ -1,0 +1,8 @@
+p <- tempfile()
+writeLines(c("parse_x <- 10", "parse_x + 5"), p)
+expr <- parse(file = p)
+print(length(expr))
+eval(expr[[1]])
+print(eval(expr[[2]]))
+print(parse_x)
+invisible(unlink(p))
