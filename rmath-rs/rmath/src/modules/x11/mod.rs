@@ -26,7 +26,7 @@ pub(crate) mod dev_x11;
     unused_assignments,
     non_camel_case_types
 )]
-mod rbitmap;
+pub(crate) mod rbitmap;
 #[allow(
     dead_code,
     unused_imports,

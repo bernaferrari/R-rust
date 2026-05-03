@@ -89,7 +89,7 @@ pub(crate) unsafe fn save_as_bmp(
     fp: *mut c_void,
     res: c_int,
 ) -> c_int {
-    if fp.is_null() {
+    if fp.is_null() || width <= 0 || height <= 0 {
         return 0;
     }
 
@@ -105,6 +105,11 @@ pub(crate) unsafe fn save_as_bmp(
     let w = width as u32;
     let h = height as u32;
     let (rshift, _gshift, bshift) = compute_shifts(bgr != 0);
+    let row_stride_8 = w.checked_add(3).map(|value| value & !3);
+    let row_stride_24 = w
+        .checked_mul(3)
+        .and_then(|value| value.checked_add(3))
+        .map(|value| value & !3);
 
     // Build palette: try to fit into 256 colors
     let mut palette: [u32; 256] = [0; 256];
@@ -156,12 +161,24 @@ pub(crate) unsafe fn save_as_bmp(
     let (bf_off_bits, bf_size, bi_bit_count, bi_clr_used): (u32, u32, u16, u32);
     if withpalette {
         bf_off_bits = BMP_HEADERSIZE + 4 * 256;
-        bf_size = bf_off_bits + w * h;
+        let Some(image_size) = row_stride_8.and_then(|stride| stride.checked_mul(h)) else {
+            return 0;
+        };
+        let Some(size) = bf_off_bits.checked_add(image_size) else {
+            return 0;
+        };
+        bf_size = size;
         bi_bit_count = 8;
         bi_clr_used = 256;
     } else {
         bf_off_bits = BMP_HEADERSIZE + 4;
-        bf_size = bf_off_bits + 3 * w * h;
+        let Some(image_size) = row_stride_24.and_then(|stride| stride.checked_mul(h)) else {
+            return 0;
+        };
+        let Some(size) = bf_off_bits.checked_add(image_size) else {
+            return 0;
+        };
+        bf_size = size;
         bi_bit_count = 24;
         bi_clr_used = 0;
     }
