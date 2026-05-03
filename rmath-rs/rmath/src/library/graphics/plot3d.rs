@@ -22,8 +22,8 @@
  *
  *  These depend heavily on R's Graphics Engine (GPar, GEdevice, etc.).
  *  Pure algorithm functions (transformation math, contour finding, cut points)
- *  have real implementations. Functions requiring the GE are stubs returning
- *  R_NilValue().
+ *  have real implementations. Functions requiring GE drawing fail explicitly
+ *  until the rendering backend is present.
  */
 
 use std::ffi::c_void;
@@ -34,6 +34,7 @@ use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
 use crate::mainutils::sort::rsort_with_index;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
+use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::instance::with_required_current_instance;
@@ -132,6 +133,12 @@ where
     F: FnOnce(&mut Plot3dState) -> R,
 {
     with_required_current_instance(|instance| f(&mut instance.plot3d_state))
+}
+
+fn plot3d_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
 }
 
 fn set_vt_identity() {
@@ -762,7 +769,7 @@ unsafe fn contour(
     _dd: pGEDevDesc,
     _label_list: SEXP,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    plot3d_error("contour level drawing requires a graphics engine backend")
 }
 
 /* ========================================================================
@@ -830,8 +837,7 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
     unsafe {
         let mut _args = CDR(args);
         if LENGTH(_args) < 5 {
-            /* too few arguments - stub: no error reporting available */
-            return R_NilValue();
+            plot3d_error("filled.contour requires x, y, z, levels, and colors");
         }
 
         let sx = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
@@ -845,14 +851,12 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
         _args = CDR(_args);
 
         if _nx < 2 || _ny < 2 {
-            /* insufficient x or y values */
-            return R_NilValue();
+            plot3d_error("filled.contour requires at least two x and y values");
         }
 
         let sz = CAR(_args);
         if nrows(sz) != _nx || ncols(sz) != _ny {
-            /* dimension mismatch */
-            return R_NilValue();
+            plot3d_error("filled.contour z dimensions must match x and y lengths");
         }
         let _sz = coerceVector(sz, SEXPTYPE::REALSXP.into());
         let _sz_guard = protect(_sz);
@@ -864,8 +868,7 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
         _args = CDR(_args);
 
         if _nc < 1 {
-            /* no contour values */
-            return R_NilValue();
+            plot3d_error("filled.contour requires at least one contour level");
         }
 
         let _scol = FixupCol(CAR(_args), R_TRANWHITE);
@@ -910,7 +913,7 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
             }
         }
 
-        R_NilValue()
+        plot3d_error("filled.contour drawing requires a graphics engine backend")
     }
 }
 
@@ -926,6 +929,9 @@ pub unsafe fn C_image(args: SEXP) -> SEXP {
         use crate::sexp::accessors::*;
 
         let mut _args = CDR(args);
+        if LENGTH(_args) < 4 {
+            plot3d_error("image requires x, y, z, and colors");
+        }
 
         let sx = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _sx_guard = protect(sx);
@@ -950,6 +956,13 @@ pub unsafe fn C_image(args: SEXP) -> SEXP {
         let _z = INTEGER(_sz);
         let _c = INTEGER(_sc) as *const u32;
 
+        if _nx < 2 || _ny < 2 {
+            plot3d_error("image requires at least two x and y values");
+        }
+        if LENGTH(_sz) < (_nx - 1) * (_ny - 1) {
+            plot3d_error("image z data are shorter than the x/y grid");
+        }
+
         for i in 0..(_nx - 1) {
             for j in 0..(_ny - 1) {
                 let tmp = *_z.add((i + j * (_nx - 1)) as usize);
@@ -959,7 +972,7 @@ pub unsafe fn C_image(args: SEXP) -> SEXP {
             }
         }
 
-        R_NilValue()
+        plot3d_error("image drawing requires a graphics engine backend")
     }
 }
 
@@ -976,49 +989,48 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
 
         let mut _args = CDR(args);
         if LENGTH(_args) < 24 {
-            /* too few parameters -- stub */
-            return R_NilValue();
+            plot3d_error("persp requires 24 parameters");
         }
 
         let x = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _x_guard = protect(x);
         if LENGTH(x) < 2 {
-            return R_NilValue();
+            plot3d_error("persp requires at least two x values");
         }
         _args = CDR(_args);
 
         let y = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _y_guard = protect(y);
         if LENGTH(y) < 2 {
-            return R_NilValue();
+            plot3d_error("persp requires at least two y values");
         }
         _args = CDR(_args);
 
         let z = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _z_guard = protect(z);
         if !isMatrix(z) || nrows(z) != LENGTH(x) || ncols(z) != LENGTH(y) {
-            return R_NilValue();
+            plot3d_error("persp z must be a matrix with dimensions matching x and y");
         }
         _args = CDR(_args);
 
         let xlim = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _xlim_guard = protect(xlim);
         if LENGTH(xlim) != 2 {
-            return R_NilValue();
+            plot3d_error("persp xlim must have length 2");
         }
         _args = CDR(_args);
 
         let ylim = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _ylim_guard = protect(ylim);
         if LENGTH(ylim) != 2 {
-            return R_NilValue();
+            plot3d_error("persp ylim must have length 2");
         }
         _args = CDR(_args);
 
         let zlim = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
         let _zlim_guard = protect(zlim);
         if LENGTH(zlim) != 2 {
-            return R_NilValue();
+            plot3d_error("persp zlim must have length 2");
         }
         _args = CDR(_args);
 
@@ -1031,13 +1043,13 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
         let mut _zs = 0.0;
 
         if !LimitCheck(REAL(xlim), &mut _xc, &mut _xs) {
-            return R_NilValue();
+            plot3d_error("persp xlim values must be finite and distinct");
         }
         if !LimitCheck(REAL(ylim), &mut _yc, &mut _ys) {
-            return R_NilValue();
+            plot3d_error("persp ylim values must be finite and distinct");
         }
         if !LimitCheck(REAL(zlim), &mut _zc, &mut _zs) {
-            return R_NilValue();
+            plot3d_error("persp zlim values must be finite and distinct");
         }
 
         let _theta = asReal(CAR(_args));
@@ -1114,10 +1126,10 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
             || _d < 0.0
             || _r < 0.0
         {
-            return R_NilValue();
+            plot3d_error("persp viewing parameters must be finite and non-negative");
         }
         if !_expand.is_finite() || _expand < 0.0 {
-            return R_NilValue();
+            plot3d_error("persp expand must be finite and non-negative");
         }
 
         /* Set up the viewing transformation (real math) */
@@ -1200,8 +1212,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
 
         let mut _args = CDR(args);
         if LENGTH(_args) < 12 {
-            /* too few arguments */
-            return R_NilValue();
+            plot3d_error("contour requires 12 parameters");
         }
 
         let x = coerceVector(CAR(_args), SEXPTYPE::REALSXP.into());
@@ -1237,7 +1248,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
         _args = CDR(_args);
 
         if _method < 1 || _method > 3 {
-            return R_NilValue();
+            plot3d_error("contour method must be 1, 2, or 3");
         }
 
         let _vfont = FixupVFont(CAR(_args));
@@ -1262,15 +1273,15 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
 
         /* Validation */
         if nx < 2 || ny < 2 {
-            return R_NilValue();
+            plot3d_error("contour requires at least two x and y values");
         }
 
         if nrows(z) != nx || ncols(z) != ny {
-            return R_NilValue();
+            plot3d_error("contour z dimensions must match x and y lengths");
         }
 
         if nc < 1 {
-            return R_NilValue();
+            plot3d_error("contour requires at least one level");
         }
 
         /* Check x values are finite and increasing */
@@ -1291,7 +1302,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
             }
         }
         if !valid {
-            return R_NilValue();
+            plot3d_error("contour x values must be finite and increasing");
         }
 
         for i in 0..ny {
@@ -1305,7 +1316,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
             }
         }
         if !valid {
-            return R_NilValue();
+            plot3d_error("contour y values must be finite and increasing");
         }
 
         for i in 0..nc {
@@ -1315,7 +1326,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
             }
         }
         if !valid {
-            return R_NilValue();
+            plot3d_error("contour levels must be finite");
         }
 
         /* Find z range */
@@ -1334,7 +1345,7 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
         }
 
         if zmin >= zmax {
-            return R_NilValue();
+            plot3d_error("contour z values must span a finite range");
         }
 
         let _atom = 1e-3 * (zmax - zmin);
@@ -1343,14 +1354,47 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
         /* The real implementation calls contourLines(), then traces segments,
          * draws polylines, and optionally draws labels */
 
-        R_NilValue()
+        plot3d_error("contour drawing requires a graphics engine backend")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::constructors::Rf_cons;
     use crate::sexp::session::RSession;
+
+    fn assert_r_error(action: impl FnOnce()) -> RError {
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
+            .expect_err("expected RError panic");
+        payload
+            .downcast_ref::<RError>()
+            .expect("expected RError payload")
+            .clone()
+    }
+
+    #[test]
+    fn plot3d_entrypoints_error_on_missing_arguments() {
+        let _session = RSession::new();
+        unsafe {
+            let args = Rf_cons(R_NilValue(), R_NilValue());
+
+            let image = assert_r_error(|| {
+                C_image(args);
+            });
+            assert!(image.message.contains("image requires"));
+
+            let contour = assert_r_error(|| {
+                C_contour(args);
+            });
+            assert!(contour.message.contains("contour requires"));
+
+            let filled = assert_r_error(|| {
+                C_filledcontour(args);
+            });
+            assert!(filled.message.contains("filled.contour requires"));
+        }
+    }
 
     #[test]
     fn plot3d_state_is_session_local_on_same_thread() {
