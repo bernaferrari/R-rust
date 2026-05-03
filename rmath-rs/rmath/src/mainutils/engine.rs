@@ -14,6 +14,7 @@ use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 use std::ptr;
 
 use crate::appl::pretty::R_pretty;
+use crate::library::grdevices::device_registry;
 use crate::mainutils::errors::Rf_error;
 use crate::mainutils::graphics_ffi::{
     pGEDevDesc, pGEcontext, rmath_ge_circle, rmath_ge_device_dirty, rmath_ge_fill,
@@ -45,6 +46,11 @@ fn ge_dev(dd: *mut c_void) -> pGEDevDesc {
 #[inline]
 fn ge_context(gc: *const c_void) -> pGEcontext {
     gc as pGEcontext
+}
+
+#[inline]
+fn headless_device(dd: *mut c_void) -> device_registry::pGEDevDesc {
+    dd as device_registry::pGEDevDesc
 }
 
 #[inline]
@@ -814,41 +820,65 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
 
 /// Convert X coordinate from device units to the specified unit.
 pub unsafe fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::from_device_x(value, to, headless_device(dd)) {
+        return value;
+    }
     ge_from_device_x(value, to, dd)
 }
 
 /// Convert X coordinate from the specified unit to device units.
 pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::to_device_x(value, from, headless_device(dd)) {
+        return value;
+    }
     ge_to_device_x(value, from, dd)
 }
 
 /// Convert Y coordinate from device units to the specified unit.
 pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::from_device_y(value, to, headless_device(dd)) {
+        return value;
+    }
     ge_from_device_y(value, to, dd)
 }
 
 /// Convert Y coordinate from the specified unit to device units.
 pub unsafe fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::to_device_y(value, from, headless_device(dd)) {
+        return value;
+    }
     ge_to_device_y(value, from, dd)
 }
 
 /// Convert width from device units to the specified unit.
 pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::from_device_width(value, to, headless_device(dd)) {
+        return value;
+    }
     ge_from_device_width(value, to, dd)
 }
 
 /// Convert width from the specified unit to device units.
 pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::to_device_width(value, from, headless_device(dd)) {
+        return value;
+    }
     ge_to_device_width(value, from, dd)
 }
 
 /// Convert height from device units to the specified unit.
 pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::from_device_height(value, to, headless_device(dd)) {
+        return value;
+    }
     ge_from_device_height(value, to, dd)
 }
 
 /// Convert height from the specified unit to device units.
 pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    if let Some(value) = device_registry::to_device_height(value, from, headless_device(dd)) {
+        return value;
+    }
     ge_to_device_height(value, from, dd)
 }
 
@@ -913,6 +943,9 @@ pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, 
     if dd.is_null() {
         return;
     }
+    if device_registry::set_clip(headless_device(dd), x1, y1, x2, y2) {
+        return;
+    }
     ge_set_clip(x1, y1, x2, y2, dd);
 }
 
@@ -930,6 +963,9 @@ pub unsafe fn GELine(
     dd: *mut c_void,
 ) {
     if dd.is_null() {
+        return;
+    }
+    if device_registry::draw_line(headless_device(dd), x1, y1, x2, y2) {
         return;
     }
     ge_line(x1, y1, x2, y2, gc, dd);
@@ -950,6 +986,20 @@ pub unsafe fn GEPolyline(
     if dd.is_null() {
         return;
     }
+    if n > 0 && !x.is_null() && !y.is_null() {
+        let points: Vec<_> = unsafe {
+            std::slice::from_raw_parts(x, n as usize)
+                .iter()
+                .copied()
+                .zip(std::slice::from_raw_parts(y, n as usize).iter().copied())
+                .collect()
+        };
+        if device_registry::draw_polyline(headless_device(dd), &points) {
+            return;
+        }
+    } else if device_registry::is_registered_device(headless_device(dd)) {
+        return;
+    }
     ge_polyline(n, x, y, gc, dd);
 }
 
@@ -968,6 +1018,20 @@ pub unsafe fn GEPolygon(
     if dd.is_null() {
         return;
     }
+    if n > 0 && !x.is_null() && !y.is_null() {
+        let points: Vec<_> = unsafe {
+            std::slice::from_raw_parts(x, n as usize)
+                .iter()
+                .copied()
+                .zip(std::slice::from_raw_parts(y, n as usize).iter().copied())
+                .collect()
+        };
+        if device_registry::draw_polygon(headless_device(dd), &points) {
+            return;
+        }
+    } else if device_registry::is_registered_device(headless_device(dd)) {
+        return;
+    }
     ge_polygon(n, x, y, gc, dd);
 }
 
@@ -984,6 +1048,9 @@ pub unsafe fn GECircle(
     dd: *mut c_void,
 ) {
     if dd.is_null() {
+        return;
+    }
+    if device_registry::draw_circle(headless_device(dd), x, y, radius) {
         return;
     }
     ge_circle(x, y, radius, gc, dd);
@@ -1005,6 +1072,9 @@ pub unsafe fn GERect(
     if dd.is_null() {
         return;
     }
+    if device_registry::draw_rect(headless_device(dd), x0, y0, x1, y1) {
+        return;
+    }
     ge_rect(x0, y0, x1, y1, gc, dd);
 }
 
@@ -1023,6 +1093,30 @@ pub unsafe fn GEPath(
     dd: *mut c_void,
 ) {
     if dd.is_null() {
+        return;
+    }
+    if device_registry::is_registered_device(headless_device(dd)) {
+        if npoly > 0 && !nper.is_null() && !x.is_null() && !y.is_null() {
+            let mut offset = 0usize;
+            for poly in 0..npoly as usize {
+                let count = unsafe { *nper.add(poly) };
+                if count > 0 {
+                    let points: Vec<_> = unsafe {
+                        std::slice::from_raw_parts(x.add(offset), count as usize)
+                            .iter()
+                            .copied()
+                            .zip(
+                                std::slice::from_raw_parts(y.add(offset), count as usize)
+                                    .iter()
+                                    .copied(),
+                            )
+                            .collect()
+                    };
+                    device_registry::draw_polygon(headless_device(dd), &points);
+                    offset += count as usize;
+                }
+            }
+        }
         return;
     }
     ge_path(x, y, npoly, nper, winding, gc, dd);
@@ -1049,6 +1143,9 @@ pub unsafe fn GERaster(
     if dd.is_null() {
         return;
     }
+    if device_registry::draw_raster(headless_device(dd), raster, w, h, x, y, width, height) {
+        return;
+    }
     ge_raster(
         raster,
         w,
@@ -1070,7 +1167,7 @@ pub unsafe fn GERaster(
 
 /// Capture the current device contents as a raster image.
 pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
-    unsafe { crate::library::grdevices::device_registry::GECap(dd.cast()) }
+    unsafe { device_registry::GECap(dd.cast()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1122,6 +1219,9 @@ pub unsafe fn GEXspline(
 /// Set the graphics mode on a device.
 pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
     if dd.is_null() {
+        return;
+    }
+    if device_registry::mode(headless_device(dd), mode) {
         return;
     }
     ge_mode(mode, dd);
@@ -1260,6 +1360,9 @@ pub unsafe fn GEStrMetric(
 /// Start a new page on the device.
 pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
+        return;
+    }
+    if device_registry::new_page(headless_device(dd)) {
         return;
     }
     ge_new_page(gc, dd);
@@ -2085,6 +2188,24 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 504 * 504);
             assert_eq!(*INTEGER(result), 0x00ff_ffff);
+        }
+    }
+
+    #[test]
+    fn test_headless_device_drawing_mutates_capture_surface() {
+        let _session = crate::sexp::session::RSession::new();
+        crate::library::grdevices::device_registry::reset_registry_for_tests();
+        unsafe {
+            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            assert_eq!(toDeviceX(1.0, GE_INCHES, dd.cast()), 72.0);
+            assert_eq!(toDeviceY(1.0, GE_INCHES, dd.cast()), 432.0);
+
+            GENewPage(ptr::null(), dd.cast());
+            GELine(0.0, 0.0, 10.0, 0.0, ptr::null(), dd.cast());
+            let result = GECap(dd.cast());
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 0x0000_0000);
+            assert_eq!(*INTEGER(result).add(11), 0x00ff_ffff);
         }
     }
 

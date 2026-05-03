@@ -42,7 +42,7 @@ pub const GE_RestoreSnapshotState: c_int = 7;
 pub const GE_ScalePS: c_int = 8;
 
 /// GE_INCHES constant for unit conversion
-pub const GE_INCHES: c_int = 1;
+pub const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
 
 /* ==================== Helper: Rf_error ==================== */
 

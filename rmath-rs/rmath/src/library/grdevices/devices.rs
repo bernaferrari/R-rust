@@ -520,7 +520,7 @@ mod tests {
             let capabilities = Rf_allocVector(SEXPTYPE::VECSXP, 15);
             devcap(one_arg_args(capabilities));
 
-            assert_eq!(int_capability(capabilities, R_GE_capability_rasterImage), 0);
+            assert_eq!(int_capability(capabilities, R_GE_capability_rasterImage), 1);
             assert_eq!(int_capability(capabilities, R_GE_capability_capture), 1);
             assert_eq!(int_capability(capabilities, R_GE_capability_locator), 0);
         }

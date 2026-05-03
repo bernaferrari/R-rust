@@ -40,7 +40,7 @@ use super::unit::transformLocn;
 use super::viewport::fillViewportContextFromViewport;
 
 /// GE_INCHES constant for unit conversion
-const GE_INCHES: c_int = 8;
+const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
 
 struct GridModeGuard {
     dd: pGEDevDesc,

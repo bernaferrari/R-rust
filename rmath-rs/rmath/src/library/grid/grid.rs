@@ -137,7 +137,7 @@ unsafe fn initVP(dd: pGEDevDesc) {
  * Constants
  * ============================== */
 
-const GE_INCHES: c_int = 1;
+const GE_INCHES: c_int = crate::mainutils::engine::GE_INCHES;
 const R_TRANWHITE: c_int = 0x7FFFFFFF;
 const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
 const NA_REAL: f64 = crate::sexp::ffi::NA_REAL;
