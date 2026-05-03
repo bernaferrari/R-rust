@@ -214,8 +214,9 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     } else if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
         unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
     } else {
-        eprintln!("Warning: builtin function '{}' not implemented", op_name);
-        unsafe { R_NilValue() }
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("builtin function '{op_name}' is not implemented"),
+        });
     }
 }
 
@@ -430,5 +431,35 @@ fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
             eval_safe(sexp_expr, env).map_err(|e| format!("error in '{}': {}", file_path, e))?;
 
         Ok(result.as_raw())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval::parser;
+    use crate::sexp::envir::defineVar;
+    use crate::sexp::session::RSession;
+    use crate::sexp::symbol::Rf_install;
+
+    #[test]
+    fn unknown_builtin_reports_error_instead_of_null() {
+        let _session = RSession::new();
+        unsafe {
+            let sym = Rf_install(c"not_ported_builtin".as_ptr());
+            let prim = crate::eval::primitive::make_primitive_binding(
+                "not_ported_builtin",
+                SEXPTYPE::BUILTINSXP,
+            );
+            defineVar(sym, prim, crate::eval::runtime::global_env());
+
+            let mut arena = RArena::new();
+            let expr = parser::parse("not_ported_builtin()", &mut arena).expect("parse call");
+            let env = Sexp::from_raw_unchecked(crate::eval::runtime::global_env());
+            let err = eval_safe(Sexp::from_raw_unchecked(expr), env)
+                .expect_err("unknown builtin should not evaluate to NULL");
+
+            assert!(err.contains("builtin function 'not_ported_builtin' is not implemented"));
+        }
     }
 }
