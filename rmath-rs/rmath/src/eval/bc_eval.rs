@@ -200,6 +200,35 @@ unsafe fn constant_at(consts: SEXP, idx: c_int, context: &str) -> SEXP {
     }
 }
 
+unsafe fn stack_pop_checked(stack: &mut R_bcstack_t, context: &str) -> SEXP {
+    unsafe {
+        let value = stack.pop();
+        if value.is_null() {
+            bc_error(format!("{context} bytecode stack underflow"));
+        }
+        value
+    }
+}
+
+unsafe fn stack_top_checked(stack: &R_bcstack_t, context: &str) -> SEXP {
+    unsafe {
+        let value = stack.top();
+        if value.is_null() {
+            bc_error(format!("{context} bytecode stack underflow"));
+        }
+        value
+    }
+}
+
+unsafe fn stack_at_checked(stack: &R_bcstack_t, index: usize, context: &str) -> SEXP {
+    unsafe {
+        if index >= stack.depth() {
+            bc_error(format!("{context} bytecode stack slot {index} is missing"));
+        }
+        stack.at(index)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // bcEval — the main bytecode evaluation loop
 // ---------------------------------------------------------------------------
@@ -265,18 +294,18 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_SETVAR => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "SETVAR");
                     let sym = constant_at(consts, idx, "SETVAR");
-                    let val = stack.pop();
+                    let val = stack_pop_checked(&mut stack, "SETVAR");
                     defineVar(sym, val, rho);
                     super::runtime::set_visible(FALSE);
                 }
 
                 opcodes::OP_DUP => {
-                    let val = stack.top();
+                    let val = stack_top_checked(&stack, "DUP");
                     stack.push(val);
                 }
 
                 opcodes::OP_POP => {
-                    stack.pop();
+                    stack_pop_checked(&mut stack, "POP");
                 }
 
                 opcodes::OP_PUSHTRUE => {
@@ -296,8 +325,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_RETURN => {
-                    let val = stack.pop();
-                    return if val.is_null() { R_NilValue() } else { val };
+                    return stack_pop_checked(&mut stack, "RETURN");
                 }
 
                 opcodes::OP_visible => {
@@ -314,7 +342,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_POPAND => {
                     let target = read_operand(code_ptr, &mut pc, code_len, "POPAND");
-                    let val = stack.top();
+                    let val = stack_top_checked(&stack, "POPAND");
                     let is_false = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
                         !data.is_null() && *data == 0
@@ -328,7 +356,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_POPOR => {
                     let target = read_operand(code_ptr, &mut pc, code_len, "POPOR");
-                    let val = stack.top();
+                    let val = stack_top_checked(&stack, "POPOR");
                     let is_true = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
                         !data.is_null() && *data != 0
@@ -347,7 +375,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_BRIFNOT => {
                     let target = read_operand(code_ptr, &mut pc, code_len, "BRIFNOT");
-                    let val = stack.top();
+                    let val = stack_top_checked(&stack, "BRIFNOT");
                     let cond = eval_bc_condition(val);
                     if !cond {
                         pc = target;
@@ -356,7 +384,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_BRIFTRUE => {
                     let target = read_operand(code_ptr, &mut pc, code_len, "BRIFTRUE");
-                    let val = stack.top();
+                    let val = stack_top_checked(&stack, "BRIFTRUE");
                     let cond = eval_bc_condition(val);
                     if cond {
                         pc = target;
@@ -364,13 +392,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_DUP2 => {
-                    let top = stack.top();
                     let s1 = stack.depth();
-                    let next = if s1 >= 2 {
-                        stack.at(s1 - 2)
-                    } else {
-                        R_NilValue()
-                    };
+                    if s1 < 2 {
+                        bc_error("DUP2 bytecode stack underflow");
+                    }
+                    let next = stack_at_checked(&stack, s1 - 2, "DUP2");
+                    let top = stack_top_checked(&stack, "DUP2");
                     stack.push(next);
                     stack.push(top);
                 }
@@ -393,10 +420,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_CALL => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALL");
-                    let fun = stack.pop();
+                    let fun = stack_pop_checked(&mut stack, "CALL function");
                     let mut args = R_NilValue();
                     for _ in 0..nargs {
-                        let arg = stack.pop();
+                        let arg = stack_pop_checked(&mut stack, "CALL argument");
                         args = Rf_cons(arg, args);
                     }
                     if fun.is_null() {
@@ -410,10 +437,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_CALLBUILTIN => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLBUILTIN");
-                    let fun = stack.pop();
+                    let fun = stack_pop_checked(&mut stack, "CALLBUILTIN function");
                     let mut args = R_NilValue();
                     for _ in 0..nargs {
-                        let arg = stack.pop();
+                        let arg = stack_pop_checked(&mut stack, "CALLBUILTIN argument");
                         args = Rf_cons(arg, args);
                     }
                     if fun.is_null() {
@@ -428,10 +455,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_CALLSPECIAL => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLSPECIAL");
-                    let fun = stack.pop();
+                    let fun = stack_pop_checked(&mut stack, "CALLSPECIAL function");
                     let mut args = R_NilValue();
                     for _ in 0..nargs {
-                        let arg = stack.pop();
+                        let arg = stack_pop_checked(&mut stack, "CALLSPECIAL argument");
                         args = Rf_cons(arg, args);
                     }
                     if fun.is_null() {
@@ -454,8 +481,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_ENDASSIGN => {
                     let _nargs = read_operand(code_ptr, &mut pc, code_len, "ENDASSIGN");
-                    let val = stack.pop();
-                    let sym = stack.pop();
+                    let val = stack_pop_checked(&mut stack, "ENDASSIGN value");
+                    let sym = stack_pop_checked(&mut stack, "ENDASSIGN symbol");
                     defineVar(sym, val, rho);
                     stack.push(val);
                     super::runtime::set_visible(FALSE);
@@ -467,9 +494,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     if depth < 3 {
                         pc = target;
                     } else {
-                        let seq_val = stack.at(depth - 1);
-                        let loop_var = stack.at(depth - 2);
-                        let ctr_ptr = stack.at(depth - 3);
+                        let seq_val = stack_at_checked(&stack, depth - 1, "STEPFOR sequence");
+                        let loop_var = stack_at_checked(&stack, depth - 2, "STEPFOR loop symbol");
+                        let ctr_ptr = stack_at_checked(&stack, depth - 3, "STEPFOR counter");
 
                         if seq_val.is_null() || ctr_ptr.is_null() {
                             pc = target;
@@ -513,18 +540,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_SETLOOPCTR => {
-                    let ctr = stack.pop();
-                    if !ctr.is_null() {
-                        if TYPEOF(ctr) == SEXPTYPE::INTSXP {
-                            let d = INTEGER(ctr);
-                            if !d.is_null() {
-                                *d = -1;
-                            }
+                    let ctr = stack_pop_checked(&mut stack, "SETLOOPCTR");
+                    if TYPEOF(ctr) == SEXPTYPE::INTSXP {
+                        let d = INTEGER(ctr);
+                        if !d.is_null() {
+                            *d = -1;
                         }
-                        stack.push(ctr);
-                    } else {
-                        stack.push(R_NilValue());
                     }
+                    stack.push(ctr);
                 }
 
                 opcodes::OP_BEGINLOOP => {
@@ -532,13 +555,13 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_ENDLOOP => {
-                    stack.pop();
+                    stack_pop_checked(&mut stack, "ENDLOOP");
                 }
 
                 opcodes::OP_HIDDENCALL => {
                     let _nargs = read_operand(code_ptr, &mut pc, code_len, "HIDDENCALL");
-                    let fun = stack.pop();
-                    let args = stack.pop();
+                    let fun = stack_pop_checked(&mut stack, "HIDDENCALL function");
+                    let args = stack_pop_checked(&mut stack, "HIDDENCALL arguments");
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
@@ -583,9 +606,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     // x[i, j, ...] — pop nargs index values, then the object
                     let mut indices: Vec<SEXP> = Vec::new();
                     for _ in 0..nargs {
-                        indices.push(stack.pop());
+                        indices.push(stack_pop_checked(&mut stack, "SUBSET index"));
                     }
-                    let obj = stack.pop();
+                    let obj = stack_pop_checked(&mut stack, "SUBSET object");
                     if obj.is_null() || indices.is_empty() {
                         stack.push(R_NilValue());
                     } else {
@@ -616,8 +639,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "SUBSET2");
                     let _idx = read_operand(code_ptr, &mut pc, code_len, "SUBSET2");
                     // x[[i]] — pop index value, then the object
-                    let idx = if nargs > 0 { stack.pop() } else { R_NilValue() };
-                    let obj = stack.pop();
+                    let idx = if nargs > 0 {
+                        stack_pop_checked(&mut stack, "SUBSET2 index")
+                    } else {
+                        R_NilValue()
+                    };
+                    let obj = stack_pop_checked(&mut stack, "SUBSET2 object");
                     if obj.is_null() {
                         stack.push(R_NilValue());
                     } else {
@@ -657,13 +684,13 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_SWASTORE => {
                     let _idx = read_operand(code_ptr, &mut pc, code_len, "SWASTORE");
-                    let val = stack.pop();
+                    let val = stack_pop_checked(&mut stack, "SWASTORE");
                     stack.push(val); // simplified: just pass through
                 }
 
                 opcodes::OP_SWLOAD => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "SWLOAD");
-                    let _switch_val = stack.pop();
+                    let _switch_val = stack_pop_checked(&mut stack, "SWLOAD");
                     bc_error(format!(
                         "SWLOAD bytecode switch table load at index {idx} is not implemented"
                     ));
@@ -671,8 +698,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_PUTBASE => {
                     let _nargs = read_operand(code_ptr, &mut pc, code_len, "PUTBASE");
-                    let val = stack.pop();
-                    let sym = stack.pop();
+                    let val = stack_pop_checked(&mut stack, "PUTBASE value");
+                    let sym = stack_pop_checked(&mut stack, "PUTBASE symbol");
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
                             defineVar(sym, val, super::runtime::base_env());
@@ -684,8 +711,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_PUTBASE_SEP => {
                     let _nargs = read_operand(code_ptr, &mut pc, code_len, "PUTBASE_SEP");
-                    let val = stack.pop();
-                    let sym = stack.pop();
+                    let val = stack_pop_checked(&mut stack, "PUTBASE_SEP value");
+                    let sym = stack_pop_checked(&mut stack, "PUTBASE_SEP symbol");
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
                             defineVar(sym, val, super::runtime::base_env());
@@ -704,7 +731,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
-        stack.pop()
+        stack_pop_checked(&mut stack, "end of bytecode")
     }
 }
 
@@ -963,6 +990,20 @@ mod tests {
             err.message
                 .contains("PUSHCONST constant index 0 out of range")
         );
+    }
+
+    #[test]
+    fn test_bc_eval_rejects_stack_underflow() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = crate::sexp::memory::RArena::new();
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let bcode = bcode_with(&mut arena, &[opcodes::OP_RETURN], consts);
+        let env = empty_env(&mut arena);
+
+        let err = assert_r_error(|| unsafe {
+            bcEval(bcode, env);
+        });
+        assert!(err.message.contains("RETURN bytecode stack underflow"));
     }
 
     #[test]
