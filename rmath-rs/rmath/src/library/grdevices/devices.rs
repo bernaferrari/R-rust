@@ -320,9 +320,9 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
         } else {
             (*gdd).haveTransparentBg
         };
-        let haveRaster = if gdd.is_null() { 1 } else { (*gdd).haveRaster };
-        let haveCapture = if gdd.is_null() { 1 } else { (*gdd).haveCapture };
-        let haveLocator = if gdd.is_null() { 1 } else { (*gdd).haveLocator };
+        let haveRaster = if gdd.is_null() { 0 } else { (*gdd).haveRaster };
+        let haveCapture = if gdd.is_null() { 0 } else { (*gdd).haveCapture };
+        let haveLocator = if gdd.is_null() { 0 } else { (*gdd).haveLocator };
         let canGenMouseDown = if gdd.is_null() {
             0
         } else {
@@ -476,8 +476,8 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::REAL;
-    use crate::sexp::constructors::Rf_cons;
+    use crate::sexp::accessors::{INTEGER, REAL, VECTOR_ELT};
+    use crate::sexp::constructors::{Rf_allocVector, Rf_cons};
     use crate::sexp::session::RSession;
 
     unsafe fn one_arg_args(arg: SEXP) -> SEXP {
@@ -501,6 +501,28 @@ mod tests {
             let px = devsize(one_arg_args(Rf_mkString(c"px".as_ptr())));
             assert_eq!(*REAL(px).add(0), 504.0);
             assert_eq!(*REAL(px).add(1), 504.0);
+        }
+    }
+
+    unsafe fn int_capability(capabilities: SEXP, capability: c_int) -> c_int {
+        unsafe {
+            let value = VECTOR_ELT(capabilities, capability as R_xlen_t);
+            *INTEGER(value)
+        }
+    }
+
+    #[test]
+    fn devcap_does_not_claim_unsupported_headless_features() {
+        let _session = RSession::new();
+        device_registry::reset_registry_for_tests();
+
+        unsafe {
+            let capabilities = Rf_allocVector(SEXPTYPE::VECSXP, 15);
+            devcap(one_arg_args(capabilities));
+
+            assert_eq!(int_capability(capabilities, R_GE_capability_rasterImage), 0);
+            assert_eq!(int_capability(capabilities, R_GE_capability_capture), 0);
+            assert_eq!(int_capability(capabilities, R_GE_capability_locator), 0);
         }
     }
 }
