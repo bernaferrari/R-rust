@@ -20,7 +20,7 @@ use super::accessors::{
 use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
-use super::instance::with_required_current_instance;
+use super::instance::{with_current_instance, with_required_current_instance};
 use super::memory_ext::NewEnvironment;
 use super::object::{PairlistIter, Sexp, SexpError};
 use super::symbol::{Rf_install, symbol_name_bytes_equal};
@@ -42,6 +42,48 @@ fn sexp_err(context: &str, err: SexpError) -> String {
 fn global_env_handle<'a>() -> Sexp<'a> {
     let raw = with_required_current_instance(R_GlobalEnv_in);
     unsafe { Sexp::from_raw_unchecked(raw) }
+}
+
+fn env_key(env: SEXP) -> usize {
+    env as usize
+}
+
+fn binding_key(env: SEXP, symbol: SEXP) -> (usize, usize) {
+    (env as usize, symbol as usize)
+}
+
+fn binding_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(super::context::RError {
+        message: message.into(),
+    });
+}
+
+pub(crate) fn lock_environment_raw(env: SEXP) {
+    with_required_current_instance(|instance| {
+        instance.locked_environments.insert(env_key(env));
+    });
+}
+
+pub(crate) fn environment_is_locked_raw(env: SEXP) -> bool {
+    with_current_instance(|instance| instance.locked_environments.contains(&env_key(env)))
+        .unwrap_or(false)
+}
+
+pub(crate) fn lock_binding_raw(env: SEXP, symbol: SEXP) {
+    with_required_current_instance(|instance| {
+        instance.locked_bindings.insert(binding_key(env, symbol));
+    });
+}
+
+pub(crate) fn unlock_binding_raw(env: SEXP, symbol: SEXP) {
+    with_required_current_instance(|instance| {
+        instance.locked_bindings.remove(&binding_key(env, symbol));
+    });
+}
+
+pub(crate) fn binding_is_locked_raw(env: SEXP, symbol: SEXP) -> bool {
+    with_current_instance(|instance| instance.locked_bindings.contains(&binding_key(env, symbol)))
+        .unwrap_or(false)
 }
 
 /// Typed, owner-scoped environment facade.
@@ -271,6 +313,9 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             .ok()
             .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()))
         {
+            if binding_is_locked_raw(rho.as_raw(), symbol.as_raw()) {
+                binding_error("cannot change value of locked binding");
+            }
             unsafe {
                 SETCAR(cell.as_raw(), value.as_raw());
             }
@@ -279,6 +324,10 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             }
             return true;
         }
+    }
+
+    if environment_is_locked_raw(rho.as_raw()) {
+        binding_error("cannot add bindings to a locked environment");
     }
 
     let new_cell = unsafe { Rf_cons(value.as_raw(), frame.as_raw()) };
@@ -343,6 +392,9 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
 
         for cell in PairlistIter::new(frame) {
             if cell.try_tag().ok() == Some(symbol) {
+                if binding_is_locked_raw(current.as_raw(), symbol.as_raw()) {
+                    binding_error("cannot change value of locked binding");
+                }
                 unsafe {
                     SETCAR(cell.as_raw(), value.as_raw());
                 }

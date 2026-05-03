@@ -22,7 +22,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{
     FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
 };
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -12308,27 +12308,35 @@ pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 /// R's `lockBinding(sym, env)` — lock a binding in an environment.
-/// Simplified: we track this via a ".locked" attribute on the frame.
 pub unsafe fn do_lockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let _sym = CAR(args);
-        let _env = CAR(CDR(args));
-        // In a full implementation, we'd set the LOCKED_BIT on the binding.
-        // For now, just return NULL (no-op).
+        let sym = binding_symbol_arg(CAR(args));
+        let env = environment_arg(CAR(CDR(args)));
+        if crate::sexp::envir::R_findVarInFrame(env, sym) == R_UnboundValue() {
+            base_error("no binding for symbol");
+        }
+        crate::sexp::envir::lock_binding_raw(env, sym);
         R_NilValue()
     }
 }
 
 /// R's `unlockBinding(sym, env)` — unlock a binding in an environment.
-/// Simplified: no-op in this implementation.
 pub unsafe fn do_unlockBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe {
+        let sym = binding_symbol_arg(CAR(args));
+        let env = environment_arg(CAR(CDR(args)));
+        crate::sexp::envir::unlock_binding_raw(env, sym);
+        R_NilValue()
+    }
 }
 
 /// R's `bindingIsLocked(sym, env)` — check if a binding is locked.
-/// Simplified: always returns FALSE.
 pub unsafe fn do_bindingIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(FALSE) }
+    unsafe {
+        let sym = binding_symbol_arg(CAR(args));
+        let env = environment_arg(CAR(CDR(args)));
+        Rf_ScalarLogical(crate::sexp::envir::binding_is_locked_raw(env, sym) as c_int)
+    }
 }
 
 /// R's `makeActiveBinding(sym, fun, env)` — create an active binding.
@@ -12345,15 +12353,63 @@ pub unsafe fn do_makeActiveBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 }
 
 /// R's `lockEnvironment(env, bindings)` — lock an environment.
-/// Simplified: no-op that returns NULL.
-pub unsafe fn do_lockEnvironment(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn do_lockEnvironment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let env = environment_arg(CAR(args));
+        crate::sexp::envir::lock_environment_raw(env);
+
+        let lock_bindings = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+            false
+        } else {
+            real_or_default(CAR(CDR(args)), 0.0) != 0.0
+        };
+        if lock_bindings {
+            let mut frame = FRAME(env);
+            while !frame.is_null() && frame != R_NilValue() {
+                let tag = TAG(frame);
+                if !tag.is_null() && tag != R_NilValue() {
+                    crate::sexp::envir::lock_binding_raw(env, tag);
+                }
+                frame = CDR(frame);
+            }
+        }
+
+        R_NilValue()
+    }
 }
 
 /// R's `environmentIsLocked(env)` — check if an environment is locked.
-/// Simplified: always returns FALSE.
-pub unsafe fn do_environmentIsLocked(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(FALSE) }
+pub unsafe fn do_environmentIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let env = environment_arg(CAR(args));
+        Rf_ScalarLogical(crate::sexp::envir::environment_is_locked_raw(env) as c_int)
+    }
+}
+
+unsafe fn environment_arg(value: SEXP) -> SEXP {
+    unsafe {
+        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::ENVSXP {
+            base_error("not an environment");
+        }
+        value
+    }
+}
+
+unsafe fn binding_symbol_arg(value: SEXP) -> SEXP {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            base_error("invalid symbol");
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::SYMSXP.as_c_int() => value,
+            t if t == SEXPTYPE::STRSXP.as_c_int() && XLENGTH(value) > 0 => {
+                let name = elt_to_string(value, 0);
+                let c_name = CString::new(name).unwrap_or_default();
+                Rf_install(c_name.as_ptr())
+            }
+            _ => base_error("invalid symbol"),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
