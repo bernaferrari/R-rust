@@ -15,7 +15,7 @@ print(bindingIsActive("x", e))
 print(exists("x", e, inherits = FALSE))
 print(seen)
 print(e$x)
-assign("x", 42, envir = e)
+e$x <- 42
 print(e$x)
 print(seen)
 print(tryCatch({

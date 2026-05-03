@@ -6,8 +6,8 @@
 
 use crate::sexp::accessors::ENCLOS;
 use crate::sexp::accessors::{
-    CADR, CAR, CDDR, CDR, INTEGER_ELT, LOGICAL_ELT, REAL_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT,
-    SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    CADR, CAR, CDDR, CDR, CHAR, INTEGER_ELT, LOGICAL_ELT, PRINTNAME, REAL_ELT, SET_INTEGER_ELT,
+    SET_LOGICAL_ELT, SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::envir::Environment;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
@@ -235,6 +235,15 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let target_expr = Rf_eval(CADR(lhs), rho);
             let _target_guard = protect(target_expr);
 
+            if symbol_name(func_sym).as_deref() == Some("$")
+                && TYPEOF(target_expr) == SEXPTYPE::ENVSXP
+                && let Some(field_sym) = dollar_field_symbol(CAR(CDDR(lhs)))
+            {
+                crate::sexp::envir::defineVar(field_sym, rhs, target_expr);
+                super::runtime::set_visible(FALSE);
+                return rhs;
+            }
+
             let call_args = CDDR(lhs);
             let evaluated_subs = super::dispatch::evalList(call_args, rho, lhs, -1);
             let _subs_guard = protect(evaluated_subs);
@@ -264,6 +273,43 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             super::runtime::set_visible(FALSE);
             rhs
         }
+    }
+}
+
+unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
+    unsafe {
+        if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let printname = PRINTNAME(symbol);
+        if printname.is_null() {
+            return None;
+        }
+        let chars = CHAR(printname);
+        if chars.is_null() {
+            return None;
+        }
+        std::ffi::CStr::from_ptr(chars)
+            .to_str()
+            .ok()
+            .map(str::to_owned)
+    }
+}
+
+unsafe fn dollar_field_symbol(field: SEXP) -> Option<SEXP> {
+    unsafe {
+        if field.is_null() || field == R_NilValue() {
+            return None;
+        }
+        if TYPEOF(field) == SEXPTYPE::SYMSXP {
+            return Some(field);
+        }
+        if TYPEOF(field) == SEXPTYPE::STRSXP && XLENGTH(field) > 0 {
+            return Some(crate::mainutils::subset::installTrChar(STRING_ELT(
+                field, 0,
+            )));
+        }
+        None
     }
 }
 
