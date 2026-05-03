@@ -17,7 +17,8 @@ use std::ffi::CStr;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
+    STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{R_DimSymbol, getAttrib, setAttrib};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
@@ -185,6 +186,145 @@ unsafe fn set_matrix_dim(result: SEXP, nrow: usize, ncol: usize) {
             *INTEGER(dim) = nrow as c_int;
             *INTEGER(dim).add(1) = ncol as c_int;
             setAttrib(result, R_DimSymbol(), dim);
+        }
+    }
+}
+
+unsafe fn copy_vector_element(dst: SEXP, dst_index: usize, src: SEXP, src_index: usize) {
+    unsafe {
+        match TYPEOF(src) {
+            tag if tag == SEXPTYPE::LGLSXP.as_c_int() => {
+                *LOGICAL(dst).add(dst_index) = *LOGICAL(src).add(src_index);
+            }
+            tag if tag == SEXPTYPE::INTSXP.as_c_int() => {
+                *INTEGER(dst).add(dst_index) = *INTEGER(src).add(src_index);
+            }
+            tag if tag == SEXPTYPE::REALSXP.as_c_int() => {
+                *REAL(dst).add(dst_index) = *REAL(src).add(src_index);
+            }
+            tag if tag == SEXPTYPE::CPLXSXP.as_c_int() => {
+                *COMPLEX(dst).add(dst_index) = *COMPLEX(src).add(src_index);
+            }
+            tag if tag == SEXPTYPE::RAWSXP.as_c_int() => {
+                *RAW(dst).add(dst_index) = *RAW(src).add(src_index);
+            }
+            tag if tag == SEXPTYPE::STRSXP.as_c_int() => {
+                SET_STRING_ELT(
+                    dst,
+                    dst_index as R_xlen_t,
+                    STRING_ELT(src, src_index as R_xlen_t),
+                );
+            }
+            tag if tag == SEXPTYPE::VECSXP.as_c_int() || tag == SEXPTYPE::EXPRSXP.as_c_int() => {
+                SET_VECTOR_ELT(
+                    dst,
+                    dst_index as R_xlen_t,
+                    VECTOR_ELT(src, src_index as R_xlen_t),
+                );
+            }
+            _ => array_error("unsupported array storage mode"),
+        }
+    }
+}
+
+fn column_major_strides(dims: &[usize]) -> Vec<usize> {
+    let mut strides = Vec::with_capacity(dims.len());
+    let mut stride = 1usize;
+    for dim in dims {
+        strides.push(stride);
+        stride = stride.saturating_mul(*dim);
+    }
+    strides
+}
+
+fn unravel_column_major(mut index: usize, dims: &[usize]) -> Vec<usize> {
+    dims.iter()
+        .map(|dim| {
+            let coord = if *dim == 0 { 0 } else { index % *dim };
+            if *dim != 0 {
+                index /= *dim;
+            }
+            coord
+        })
+        .collect()
+}
+
+fn ravel_column_major(coords: &[usize], strides: &[usize]) -> usize {
+    coords
+        .iter()
+        .zip(strides.iter())
+        .map(|(coord, stride)| coord.saturating_mul(*stride))
+        .sum()
+}
+
+unsafe fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
+    unsafe {
+        let dim = getAttrib(x, R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || LENGTH(dim) == 0
+        {
+            array_error(format!("{name} requires an array"));
+        }
+        (0..LENGTH(dim) as usize)
+            .map(|index| {
+                let value = *INTEGER(dim).add(index);
+                if value < 0 {
+                    array_error("negative extents are not allowed");
+                }
+                value as usize
+            })
+            .collect()
+    }
+}
+
+unsafe fn parse_aperm_perm(perm: SEXP, ndim: usize) -> Vec<usize> {
+    unsafe {
+        let parsed = if perm.is_null() || perm == R_NilValue() {
+            (0..ndim).rev().collect::<Vec<_>>()
+        } else if !is_numeric_type(perm) || XLENGTH(perm) as usize != ndim {
+            array_error("'perm' is of wrong length");
+        } else {
+            let mut values = Vec::with_capacity(ndim);
+            for index in 0..ndim {
+                let value = numeric_at(perm, index);
+                if !value.is_finite() || value.fract() != 0.0 {
+                    array_error("'perm' must contain a permutation of 1:d");
+                }
+                let value = value as isize;
+                if value < 1 || value as usize > ndim {
+                    array_error("'perm' must contain a permutation of 1:d");
+                }
+                values.push(value as usize - 1);
+            }
+            values
+        };
+
+        let mut seen = vec![false; ndim];
+        for axis in &parsed {
+            if seen[*axis] {
+                array_error("'perm' must contain a permutation of 1:d");
+            }
+            seen[*axis] = true;
+        }
+        parsed
+    }
+}
+
+unsafe fn parse_resize_arg(value: SEXP) -> bool {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return true;
+        }
+        match TYPEOF(value) {
+            tag if tag == SEXPTYPE::LGLSXP.as_c_int() => {
+                *LOGICAL(value) != 0 && *LOGICAL(value) != NA_LOGICAL
+            }
+            tag if tag == SEXPTYPE::INTSXP.as_c_int() => {
+                *INTEGER(value) != 0 && *INTEGER(value) != NA_INTEGER
+            }
+            _ => true,
         }
     }
 }
@@ -582,8 +722,64 @@ pub unsafe fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 /// `aperm(a, perm, resize = TRUE)` -- array transposition by permutation.
 ///
 /// Ported from R's `do_aperm` in array.c (line 1704).
-pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    array_error("aperm() is not implemented in the Rust array port yet")
+pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let x = first_arg(args, "aperm()");
+        let dims = array_dimensions(x, "aperm()");
+        let ndim = dims.len();
+        let total = XLENGTH(x) as usize;
+
+        let rest = CDR(args);
+        let perm_arg = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(rest)
+        };
+        let resize_arg = if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            let tail = CDR(rest);
+            if tail.is_null() || tail == R_NilValue() {
+                R_NilValue()
+            } else {
+                CAR(tail)
+            }
+        };
+
+        let perm = parse_aperm_perm(perm_arg, ndim);
+        let resize = parse_resize_arg(resize_arg);
+        let permuted_dims: Vec<_> = perm.iter().map(|axis| dims[*axis]).collect();
+        let result_dims = if resize {
+            permuted_dims.clone()
+        } else {
+            dims.clone()
+        };
+
+        let result = Rf_allocVector3(TYPEOF(x), total as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+
+        let input_strides = column_major_strides(&dims);
+        for output_index in 0..total {
+            let output_coords = unravel_column_major(output_index, &permuted_dims);
+            let mut input_coords = vec![0usize; ndim];
+            for (output_axis, input_axis) in perm.iter().enumerate() {
+                input_coords[*input_axis] = output_coords[output_axis];
+            }
+            let input_index = ravel_column_major(&input_coords, &input_strides);
+            copy_vector_element(result, output_index, x, input_index);
+        }
+
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, ndim as R_xlen_t);
+        if !dim.is_null() {
+            for (index, value) in result_dims.iter().enumerate() {
+                *INTEGER(dim).add(index) = *value as c_int;
+            }
+            setAttrib(result, R_DimSymbol(), dim);
+        }
+        result
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -712,7 +908,7 @@ mod tests {
 
     use super::*;
     use crate::sexp::accessors::SET_VECTOR_ELT;
-    use crate::sexp::constructors::{Rf_allocVector3, Rf_mkString};
+    use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkString};
     use crate::sexp::session::RSession;
 
     fn assert_r_error(action: impl FnOnce()) -> RError {
@@ -735,6 +931,21 @@ mod tests {
             *INTEGER(dim).add(1) = ncol;
             setAttrib(matrix, R_DimSymbol(), dim);
             matrix
+        }
+    }
+
+    unsafe fn int_array(values: &[c_int], dims: &[c_int]) -> SEXP {
+        unsafe {
+            let array = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
+            for (index, value) in values.iter().enumerate() {
+                *INTEGER(array).add(index) = *value;
+            }
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as R_xlen_t);
+            for (index, value) in dims.iter().enumerate() {
+                *INTEGER(dim).add(index) = *value;
+            }
+            setAttrib(array, R_DimSymbol(), dim);
+            array
         }
     }
 
@@ -1054,17 +1265,50 @@ mod tests {
     }
 
     #[test]
-    fn test_do_aperm_errors_until_implemented() {
+    fn test_do_aperm_permutates_column_major_array() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_aperm(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
+        unsafe {
+            let values: Vec<c_int> = (1..=24).collect();
+            let array = int_array(&values, &[2, 3, 4]);
+            let perm = int_array(&[2, 1, 3], &[3]);
+            let args = Rf_cons(
+                array,
+                Rf_cons(perm, Rf_cons(Rf_ScalarLogical(1), R_NilValue())),
             );
-        });
-        assert!(err.message.contains("aperm()"));
+            let result = do_aperm(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 1);
+            assert_eq!(*INTEGER(result).add(1), 3);
+            assert_eq!(*INTEGER(result).add(2), 5);
+            assert_eq!(*INTEGER(result).add(3), 2);
+            let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(dim), 3);
+            assert_eq!(*INTEGER(dim).add(1), 2);
+            assert_eq!(*INTEGER(dim).add(2), 4);
+        }
+    }
+
+    #[test]
+    fn test_do_aperm_resize_false_keeps_original_dims() {
+        let _session = RSession::new();
+        unsafe {
+            let values: Vec<c_int> = (1..=24).collect();
+            let array = int_array(&values, &[2, 3, 4]);
+            let perm = int_array(&[3, 1, 2], &[3]);
+            let args = Rf_cons(
+                array,
+                Rf_cons(perm, Rf_cons(Rf_ScalarLogical(0), R_NilValue())),
+            );
+            let result = do_aperm(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            assert_eq!(*INTEGER(result), 1);
+            assert_eq!(*INTEGER(result).add(1), 7);
+            assert_eq!(*INTEGER(result).add(2), 13);
+            assert_eq!(*INTEGER(result).add(3), 19);
+            let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(dim), 2);
+            assert_eq!(*INTEGER(dim).add(1), 3);
+            assert_eq!(*INTEGER(dim).add(2), 4);
+        }
     }
 
     #[test]

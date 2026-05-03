@@ -237,6 +237,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::array::do_matprod,
     },
     EvaluatedBuiltin {
+        name: "aperm",
+        handler: crate::mainutils::array::do_aperm,
+    },
+    EvaluatedBuiltin {
         name: ":",
         handler: crate::mainutils::seq::do_colon,
     },

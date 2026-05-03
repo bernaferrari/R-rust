@@ -3951,6 +3951,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // Matrix/linear algebra
             "matrix",
             "array",
+            "aperm",
             "drop",
             "diag",
             "dim",
