@@ -643,7 +643,7 @@ impl<'arena> Parser<'arena> {
     // Top-level
     // -----------------------------------------------------------------------
 
-    pub fn parse_program(&mut self) -> Result<SEXP, ParseError> {
+    pub fn parse_top_level_expressions(&mut self) -> Result<Vec<SEXP>, ParseError> {
         let mut exprs = Vec::new();
         loop {
             self.skip_terminators();
@@ -654,6 +654,11 @@ impl<'arena> Parser<'arena> {
             self.skip_terminators();
         }
 
+        Ok(exprs)
+    }
+
+    pub fn parse_program(&mut self) -> Result<SEXP, ParseError> {
+        let mut exprs = self.parse_top_level_expressions()?;
         if exprs.is_empty() {
             return unsafe { Ok(R_NilValue()) };
         }
@@ -1499,6 +1504,16 @@ impl<'arena> Parser<'arena> {
 pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
     let mut parser = Parser::new(input, arena);
     parser.parse_program()
+}
+
+/// Parse R source into the sequence of top-level expressions it contains.
+///
+/// This mirrors GNU R's `parse()` result shape: a source stream with multiple
+/// complete expressions becomes an `EXPRSXP` with one element per expression,
+/// instead of a synthetic `{ ... }` block used by direct evaluation.
+pub fn parse_expressions(input: &str, arena: &mut RArena) -> Result<Vec<SEXP>, ParseError> {
+    let mut parser = Parser::new(input, arena);
+    parser.parse_top_level_expressions()
 }
 
 // ---------------------------------------------------------------------------

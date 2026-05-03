@@ -1,0 +1,11 @@
+expr <- parse(text = c("multi_fun <- function(x) {", "  x + 1", "}", "multi_fun(4)"))
+print(length(expr))
+print(eval(expr))
+print(multi_fun(9))
+
+p <- tempfile()
+writeLines(c("file_fun <- function(x) {", "  x * 2", "}", "file_fun(6)"), p)
+file_expr <- parse(file = p)
+print(length(file_expr))
+print(eval(file_expr))
+invisible(unlink(p))

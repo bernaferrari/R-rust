@@ -3586,10 +3586,7 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 
 unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
     unsafe {
-        let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse(content, arena).map_err(|err| err.to_string())
-        })
-        .unwrap_or_else(|message| base_error(message));
+        let parsed = parse_source_expression_vector(content);
         let result = if parsed.is_null() || parsed == R_NilValue() {
             R_NilValue()
         } else {
@@ -12863,8 +12860,7 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let content = std::fs::read_to_string(&file_path).unwrap_or_else(|err| {
                     base_error(format!("cannot open file '{}': {}", file_path, err))
                 });
-                let source = content.lines().map(str::to_owned).collect::<Vec<_>>();
-                return parse_source_strings(&source);
+                return parse_source_expression_vector(&content);
             }
             return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
         }
@@ -12889,21 +12885,16 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 unsafe fn parse_source_strings(source: &[String]) -> SEXP {
+    let combined = source.join("\n");
+    unsafe { parse_source_expression_vector(&combined) }
+}
+
+unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
     unsafe {
-        let mut parsed = Vec::new();
-        for text in source {
-            if text.trim().is_empty() {
-                continue;
-            }
-            let expr = crate::sexp::memory::with_arena(|arena| {
-                crate::eval::parser::parse(text, arena).map_err(|err| err.to_string())
-            });
-            match expr {
-                Ok(value) if !value.is_null() && value != R_NilValue() => parsed.push(value),
-                Ok(_) => {}
-                Err(message) => std::panic::panic_any(RError { message }),
-            }
-        }
+        let parsed = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse_expressions(source, arena).map_err(|err| err.to_string())
+        })
+        .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
 
         let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, parsed.len() as R_xlen_t);
         if result.is_null() {

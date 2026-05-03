@@ -205,21 +205,28 @@ where
     I: Iterator<Item = Result<String, String>>,
 {
     let limit = if n > 0 { Some(n as usize) } else { None };
-    let mut exprs = Vec::new();
+    let mut combined = String::new();
     for source in sources {
-        if limit.is_some_and(|limit| exprs.len() >= limit) {
-            break;
-        }
-        let source = source?;
-        if source.trim().is_empty() {
+        let line = source?;
+        if line.trim().is_empty() {
             continue;
         }
-        let expr = parse_one_source(&source)?;
-        unsafe {
-            if !expr.is_null() && expr != R_NilValue() {
-                exprs.push(expr);
-            }
+        if !combined.is_empty() {
+            combined.push('\n');
         }
+        combined.push_str(&line);
+    }
+    if combined.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    crate::mainutils::source::remember_parse_context(&combined);
+    let mut exprs = with_required_current_instance(|instance| {
+        crate::eval::parser::parse_expressions(&combined, &mut instance.arena)
+            .map_err(|err| err.to_string())
+    })?;
+    if let Some(limit) = limit {
+        exprs.truncate(limit);
     }
     Ok(exprs)
 }
