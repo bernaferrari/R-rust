@@ -1070,7 +1070,7 @@ pub unsafe fn GERaster(
 
 /// Capture the current device contents as a raster image.
 pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
-    nil_value()
+    unsafe { crate::library::grdevices::device_registry::GECap(dd.cast()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -2072,6 +2072,19 @@ mod tests {
         unsafe {
             let result = GECap(ptr::null_mut());
             assert_eq!(result, R_NilValue());
+        }
+    }
+
+    #[test]
+    fn test_GECap_captures_current_headless_device() {
+        let _session = crate::sexp::session::RSession::new();
+        crate::library::grdevices::device_registry::reset_registry_for_tests();
+        unsafe {
+            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            let result = GECap(dd.cast());
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(LENGTH(result), 504 * 504);
+            assert_eq!(*INTEGER(result), 0x00ff_ffff);
         }
     }
 
