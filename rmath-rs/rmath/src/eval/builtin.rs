@@ -233,6 +233,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: super::arithmetic::do_arith,
     },
     EvaluatedBuiltin {
+        name: "%*%",
+        handler: crate::mainutils::array::do_matprod,
+    },
+    EvaluatedBuiltin {
         name: ":",
         handler: crate::mainutils::seq::do_colon,
     },
@@ -1071,6 +1075,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "tcrossprod",
         handler: crate::mainutils::essentials::do_tcrossprod,
+    },
+    EvaluatedBuiltin {
+        name: "max.col",
+        handler: crate::mainutils::array::do_maxcol,
     },
     EvaluatedBuiltin {
         name: "det",

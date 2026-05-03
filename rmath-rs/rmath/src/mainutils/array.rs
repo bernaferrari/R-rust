@@ -16,11 +16,13 @@
 use std::ffi::CStr;
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{CAR, INTEGER, LENGTH, TYPEOF, VECTOR_ELT, XLENGTH};
-use crate::sexp::attrib_core::{R_DimSymbol, setAttrib};
+use crate::sexp::accessors::{
+    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+};
+use crate::sexp::attrib_core::{R_DimSymbol, getAttrib, setAttrib};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
 unsafe fn primitive_name(op: SEXP) -> Option<String> {
@@ -43,6 +45,236 @@ fn array_error(message: impl Into<String>) -> ! {
 
 fn valid_array_storage_type(mode: c_int) -> bool {
     matches!(mode, 10 | 13 | 14 | 15 | 16 | 19 | 20 | 24)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MatProductKind {
+    Matrix,
+    Cross,
+    TransposedCross,
+}
+
+fn is_numeric_type(x: SEXP) -> bool {
+    unsafe {
+        matches!(
+            TYPEOF(x),
+            tag if tag == SEXPTYPE::INTSXP.as_c_int()
+                || tag == SEXPTYPE::REALSXP.as_c_int()
+                || tag == SEXPTYPE::LGLSXP.as_c_int()
+        )
+    }
+}
+
+unsafe fn numeric_at(x: SEXP, index: usize) -> f64 {
+    unsafe {
+        match TYPEOF(x) {
+            tag if tag == SEXPTYPE::REALSXP.as_c_int() => *REAL(x).add(index),
+            tag if tag == SEXPTYPE::INTSXP.as_c_int() => {
+                let value = *INTEGER(x).add(index);
+                if value == NA_INTEGER {
+                    f64::NAN
+                } else {
+                    value as f64
+                }
+            }
+            tag if tag == SEXPTYPE::LGLSXP.as_c_int() => {
+                let value = *LOGICAL(x).add(index);
+                if value == NA_LOGICAL {
+                    f64::NAN
+                } else {
+                    value as f64
+                }
+            }
+            _ => f64::NAN,
+        }
+    }
+}
+
+unsafe fn matrix_dims(x: SEXP) -> Option<(usize, usize)> {
+    unsafe {
+        let dim = getAttrib(x, R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || LENGTH(dim) != 2
+        {
+            return None;
+        }
+        let nrow = *INTEGER(dim);
+        let ncol = *INTEGER(dim).add(1);
+        if nrow < 0 || ncol < 0 {
+            None
+        } else {
+            Some((nrow as usize, ncol as usize))
+        }
+    }
+}
+
+unsafe fn matrix_value(x: SEXP, row: usize, col: usize, nrow: usize) -> f64 {
+    unsafe { numeric_at(x, row + col * nrow) }
+}
+
+unsafe fn first_arg(args: SEXP, name: &str) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            array_error(format!("{name} requires an argument"));
+        }
+        CAR(args)
+    }
+}
+
+unsafe fn second_arg_or_first(args: SEXP, first: SEXP) -> SEXP {
+    unsafe {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            first
+        } else {
+            let second = CAR(rest);
+            if second.is_null() || second == R_NilValue() {
+                first
+            } else {
+                second
+            }
+        }
+    }
+}
+
+unsafe fn matrix_dims_for_product(
+    kind: MatProductKind,
+    x: SEXP,
+    y: SEXP,
+) -> ((usize, usize), (usize, usize)) {
+    unsafe {
+        let x_dim = matrix_dims(x);
+        let y_dim = matrix_dims(y);
+        let x_len = XLENGTH(x) as usize;
+        let y_len = XLENGTH(y) as usize;
+        match kind {
+            MatProductKind::Matrix => {
+                let x_shape = x_dim.unwrap_or({
+                    if let Some((y_rows, _)) = y_dim {
+                        if x_len == y_rows {
+                            (1, x_len)
+                        } else {
+                            (x_len, 1)
+                        }
+                    } else {
+                        (1, x_len)
+                    }
+                });
+                let y_shape = y_dim.unwrap_or({
+                    if x_shape.1 == y_len {
+                        (y_len, 1)
+                    } else {
+                        (1, y_len)
+                    }
+                });
+                (x_shape, y_shape)
+            }
+            MatProductKind::Cross | MatProductKind::TransposedCross => {
+                (x_dim.unwrap_or((x_len, 1)), y_dim.unwrap_or((y_len, 1)))
+            }
+        }
+    }
+}
+
+unsafe fn set_matrix_dim(result: SEXP, nrow: usize, ncol: usize) {
+    unsafe {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if !dim.is_null() {
+            *INTEGER(dim) = nrow as c_int;
+            *INTEGER(dim).add(1) = ncol as c_int;
+            setAttrib(result, R_DimSymbol(), dim);
+        }
+    }
+}
+
+pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &str) -> SEXP {
+    unsafe {
+        let x = first_arg(args, name);
+        let y = second_arg_or_first(args, x);
+        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+            array_error(format!("{name} requires numeric arguments"));
+        }
+        if !is_numeric_type(x) || !is_numeric_type(y) {
+            array_error(format!(
+                "{name} requires numeric/complex matrix/vector arguments"
+            ));
+        }
+
+        let ((x_rows, x_cols), (y_rows, y_cols)) = matrix_dims_for_product(kind, x, y);
+        let (out_rows, out_cols, inner) = match kind {
+            MatProductKind::Matrix => {
+                if x_cols != y_rows {
+                    array_error("non-conformable arguments");
+                }
+                (x_rows, y_cols, x_cols)
+            }
+            MatProductKind::Cross => {
+                if x_rows != y_rows {
+                    array_error("non-conformable arguments");
+                }
+                (x_cols, y_cols, x_rows)
+            }
+            MatProductKind::TransposedCross => {
+                if x_cols != y_cols {
+                    array_error("non-conformable arguments");
+                }
+                (x_rows, y_rows, x_cols)
+            }
+        };
+
+        let result_len = (out_rows as R_xlen_t)
+            .checked_mul(out_cols as R_xlen_t)
+            .unwrap_or_else(|| array_error("matrix product is too large"));
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let out = REAL(result);
+
+        for col in 0..out_cols {
+            for row in 0..out_rows {
+                let mut sum = 0.0;
+                for k in 0..inner {
+                    let x_value = match kind {
+                        MatProductKind::Matrix => matrix_value(x, row, k, x_rows),
+                        MatProductKind::Cross => matrix_value(x, k, row, x_rows),
+                        MatProductKind::TransposedCross => matrix_value(x, row, k, x_rows),
+                    };
+                    let y_value = match kind {
+                        MatProductKind::Matrix => matrix_value(y, k, col, y_rows),
+                        MatProductKind::Cross => matrix_value(y, k, col, y_rows),
+                        MatProductKind::TransposedCross => matrix_value(y, col, k, y_rows),
+                    };
+                    sum += x_value * y_value;
+                }
+                *out.add(row + col * out_rows) = sum;
+            }
+        }
+
+        set_matrix_dim(result, out_rows, out_cols);
+        result
+    }
+}
+
+unsafe fn parse_ties_method(value: SEXP) -> c_int {
+    unsafe {
+        if value.is_null()
+            || value == R_NilValue()
+            || TYPEOF(value) != SEXPTYPE::STRSXP
+            || LENGTH(value) == 0
+        {
+            return 1;
+        }
+        let method = CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_string_lossy();
+        match method.as_ref() {
+            "random" => 1,
+            "first" => 2,
+            "last" => 3,
+            _ => array_error("'ties.method' must be \"random\", \"first\", or \"last\""),
+        }
+    }
 }
 
 unsafe fn dim_product(dims: SEXP) -> Result<R_xlen_t, &'static str> {
@@ -321,8 +553,15 @@ pub unsafe fn do_rowscols(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_matprod` in array.c (line 1250).
 /// PRIMVAL(op) == 0 for `%*%`, == 1 for `crossprod`, == 2 for `tcrossprod`.
-pub unsafe fn do_matprod(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    array_error("matrix products are not implemented in the Rust array port yet")
+pub unsafe fn do_matprod(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let (kind, name) = match primitive_name(op).as_deref() {
+            Some("crossprod") => (MatProductKind::Cross, "crossprod"),
+            Some("tcrossprod") => (MatProductKind::TransposedCross, "tcrossprod"),
+            _ => (MatProductKind::Matrix, "%*%"),
+        };
+        do_matprod_kind(kind, args, name)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -412,8 +651,44 @@ pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
 /// `max.col(m, ties.method)` -- find maximum position per row.
 ///
 /// Ported from R's `do_maxcol` in array.c (line 2403).
-pub unsafe fn do_maxcol(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    array_error("max.col() is not implemented in the Rust array port yet")
+pub unsafe fn do_maxcol(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let x = first_arg(args, "max.col()");
+        if !is_numeric_type(x) {
+            array_error("'m' must be a numeric matrix");
+        }
+        let Some((nrow, ncol)) = matrix_dims(x) else {
+            array_error("'m' must be a matrix");
+        };
+
+        let ties_arg = {
+            let rest = CDR(args);
+            if rest.is_null() || rest == R_NilValue() {
+                R_NilValue()
+            } else {
+                CAR(rest)
+            }
+        };
+        let ties_method = parse_ties_method(ties_arg);
+
+        let mut values = Vec::with_capacity(nrow * ncol);
+        for index in 0..(nrow * ncol) {
+            values.push(numeric_at(x, index));
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, nrow as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        crate::appl::maxcol::R_max_col(
+            values.as_ptr(),
+            nrow as c_int,
+            ncol as c_int,
+            INTEGER(result),
+            ties_method,
+        );
+        result
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -437,7 +712,7 @@ mod tests {
 
     use super::*;
     use crate::sexp::accessors::SET_VECTOR_ELT;
-    use crate::sexp::constructors::Rf_allocVector3;
+    use crate::sexp::constructors::{Rf_allocVector3, Rf_mkString};
     use crate::sexp::session::RSession;
 
     fn assert_r_error(action: impl FnOnce()) -> RError {
@@ -447,6 +722,20 @@ mod tests {
             .downcast_ref::<RError>()
             .expect("expected RError payload")
             .clone()
+    }
+
+    unsafe fn real_matrix(values: &[f64], nrow: c_int, ncol: c_int) -> SEXP {
+        unsafe {
+            let matrix = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+            for (index, value) in values.iter().enumerate() {
+                *REAL(matrix).add(index) = *value;
+            }
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            *INTEGER(dim) = nrow;
+            *INTEGER(dim).add(1) = ncol;
+            setAttrib(matrix, R_DimSymbol(), dim);
+            matrix
+        }
     }
 
     #[test]
@@ -675,17 +964,44 @@ mod tests {
     }
 
     #[test]
-    fn test_do_matprod_errors_until_implemented() {
+    fn test_do_matprod_multiplies_column_major_matrices() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_matprod(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-        });
-        assert!(err.message.contains("matrix products"));
+        unsafe {
+            let x = real_matrix(&[1.0, 2.0, 3.0, 4.0], 2, 2);
+            let y = real_matrix(&[5.0, 6.0, 7.0, 8.0], 2, 2);
+            let args = Rf_cons(x, Rf_cons(y, R_NilValue()));
+
+            let result = do_matprod(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            assert_eq!(*REAL(result), 23.0);
+            assert_eq!(*REAL(result).add(1), 34.0);
+            assert_eq!(*REAL(result).add(2), 31.0);
+            assert_eq!(*REAL(result).add(3), 46.0);
+            let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(dim), 2);
+            assert_eq!(*INTEGER(dim).add(1), 2);
+        }
+    }
+
+    #[test]
+    fn test_crossprod_and_tcrossprod_use_column_major_layout() {
+        let _session = RSession::new();
+        unsafe {
+            let x = real_matrix(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3);
+            let args = Rf_cons(x, R_NilValue());
+
+            let cross = do_matprod_kind(MatProductKind::Cross, args, "crossprod");
+            assert_eq!(*REAL(cross), 5.0);
+            assert_eq!(*REAL(cross).add(1), 11.0);
+            assert_eq!(*REAL(cross).add(4), 25.0);
+            assert_eq!(*REAL(cross).add(8), 61.0);
+
+            let tcross = do_matprod_kind(MatProductKind::TransposedCross, args, "tcrossprod");
+            assert_eq!(*REAL(tcross), 35.0);
+            assert_eq!(*REAL(tcross).add(1), 44.0);
+            assert_eq!(*REAL(tcross).add(2), 44.0);
+            assert_eq!(*REAL(tcross).add(3), 56.0);
+        }
     }
 
     #[test]
@@ -853,17 +1169,28 @@ mod tests {
     }
 
     #[test]
-    fn test_do_maxcol_errors_until_implemented() {
+    fn test_do_maxcol_returns_first_or_last_ties() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_maxcol(
+        unsafe {
+            let matrix = real_matrix(&[1.0, 3.0, 2.0, 3.0, 2.0, 1.0], 2, 3);
+            let first_args = Rf_cons(
+                matrix,
+                Rf_cons(Rf_mkString(c"first".as_ptr()), R_NilValue()),
+            );
+            let first = do_maxcol(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
+                first_args,
                 ptr::null_mut(),
             );
-        });
-        assert!(err.message.contains("max.col()"));
+            assert_eq!(*INTEGER(first), 2);
+            assert_eq!(*INTEGER(first).add(1), 1);
+
+            let last_args = Rf_cons(matrix, Rf_cons(Rf_mkString(c"last".as_ptr()), R_NilValue()));
+            let last = do_maxcol(ptr::null_mut(), ptr::null_mut(), last_args, ptr::null_mut());
+            assert_eq!(*INTEGER(last), 3);
+            assert_eq!(*INTEGER(last).add(1), 2);
+        }
     }
 
     #[test]

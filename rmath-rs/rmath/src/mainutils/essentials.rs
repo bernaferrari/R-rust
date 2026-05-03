@@ -3954,8 +3954,10 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "drop",
             "diag",
             "dim",
+            "%*%",
             "crossprod",
             "tcrossprod",
+            "max.col",
             "det",
             "solve",
             // Environment functions
@@ -11940,91 +11942,11 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 /// If y is NULL, computes t(x) %*% x.
 pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let y_cdr = CDR(args);
-        let y = if y_cdr.is_null() || y_cdr == R_NilValue() {
-            x
-        } else {
-            CAR(y_cdr)
-        };
-
-        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let x_n = XLENGTH(x);
-        let y_n = XLENGTH(y);
-
-        // Get dimensions (if matrices)
-        let xdim = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-        let ydim = crate::sexp::attrib_core::getAttrib(
-            y,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-
-        let (x_nrow, x_ncol) =
-            if !xdim.is_null() && TYPEOF(xdim) == SEXPTYPE::INTSXP && LENGTH(xdim) == 2 {
-                (*INTEGER(xdim) as usize, *INTEGER(xdim).add(1) as usize)
-            } else {
-                (x_n as usize, 1)
-            };
-        let (y_nrow, y_ncol) =
-            if !ydim.is_null() && TYPEOF(ydim) == SEXPTYPE::INTSXP && LENGTH(ydim) == 2 {
-                (*INTEGER(ydim) as usize, *INTEGER(ydim).add(1) as usize)
-            } else {
-                (y_n as usize, 1)
-            };
-
-        if x_nrow != y_nrow {
-            return R_NilValue(); // dimension mismatch
-        }
-
-        // Compute t(x) %*% y => result is x_ncol x y_ncol
-        let result_len = (x_ncol * y_ncol) as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = REAL(result);
-
-        for i in 0..x_ncol {
-            for j in 0..y_ncol {
-                let mut sum = 0.0_f64;
-                for k in 0..x_nrow {
-                    let xv = if !xdim.is_null() {
-                        *REAL(x).add(k * x_ncol + i)
-                    } else {
-                        *REAL(x).add(k)
-                    };
-                    let yv = if !ydim.is_null() {
-                        *REAL(y).add(k * y_ncol + j)
-                    } else {
-                        *REAL(y).add(k)
-                    };
-                    sum += xv * yv;
-                }
-                *dst.add((i * y_ncol + j) as usize) = sum;
-            }
-        }
-
-        // Set dim attribute
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            let _dim_guard = protect(dim);
-            *INTEGER(dim) = x_ncol as i32;
-            *INTEGER(dim).add(1) = y_ncol as i32;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
-        }
-
-        result
+        crate::mainutils::array::do_matprod_kind(
+            crate::mainutils::array::MatProductKind::Cross,
+            args,
+            "crossprod",
+        )
     }
 }
 
@@ -12032,89 +11954,11 @@ pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// If y is NULL, computes x %*% t(x).
 pub unsafe fn do_tcrossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let y_cdr = CDR(args);
-        let y = if y_cdr.is_null() || y_cdr == R_NilValue() {
-            x
-        } else {
-            CAR(y_cdr)
-        };
-
-        if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let x_n = XLENGTH(x);
-        let y_n = XLENGTH(y);
-
-        let xdim = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-        let ydim = crate::sexp::attrib_core::getAttrib(
-            y,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-
-        let (x_nrow, x_ncol) =
-            if !xdim.is_null() && TYPEOF(xdim) == SEXPTYPE::INTSXP && LENGTH(xdim) == 2 {
-                (*INTEGER(xdim) as usize, *INTEGER(xdim).add(1) as usize)
-            } else {
-                (x_n as usize, 1)
-            };
-        let (y_nrow, y_ncol) =
-            if !ydim.is_null() && TYPEOF(ydim) == SEXPTYPE::INTSXP && LENGTH(ydim) == 2 {
-                (*INTEGER(ydim) as usize, *INTEGER(ydim).add(1) as usize)
-            } else {
-                (y_n as usize, 1)
-            };
-
-        if x_ncol != y_ncol {
-            return R_NilValue(); // dimension mismatch
-        }
-
-        // Compute x %*% t(y) => result is x_nrow x y_nrow
-        let result_len = (x_nrow * y_nrow) as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = REAL(result);
-
-        for i in 0..x_nrow {
-            for j in 0..y_nrow {
-                let mut sum = 0.0_f64;
-                for k in 0..x_ncol {
-                    let xv = if !xdim.is_null() {
-                        *REAL(x).add(i * x_ncol + k)
-                    } else {
-                        *REAL(x).add(i)
-                    };
-                    let yv = if !ydim.is_null() {
-                        *REAL(y).add(j * y_ncol + k)
-                    } else {
-                        *REAL(y).add(j)
-                    };
-                    sum += xv * yv;
-                }
-                *dst.add((i * y_nrow + j) as usize) = sum;
-            }
-        }
-
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            let _dim_guard = protect(dim);
-            *INTEGER(dim) = x_nrow as i32;
-            *INTEGER(dim).add(1) = y_nrow as i32;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
-        }
-
-        result
+        crate::mainutils::array::do_matprod_kind(
+            crate::mainutils::array::MatProductKind::TransposedCross,
+            args,
+            "tcrossprod",
+        )
     }
 }
 
