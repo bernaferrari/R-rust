@@ -20,7 +20,9 @@ use crate::sexp::accessors::{
     CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
     SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::attrib_core::{R_DimSymbol, getAttrib, setAttrib};
+use crate::sexp::attrib_core::{
+    R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
@@ -326,6 +328,12 @@ fn ravel_column_major(coords: &[usize], strides: &[usize]) -> usize {
         .sum()
 }
 
+fn product(dims: &[usize]) -> usize {
+    dims.iter()
+        .copied()
+        .fold(1usize, |acc, dim| acc.saturating_mul(dim))
+}
+
 unsafe fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
     unsafe {
         let dim = getAttrib(x, R_DimSymbol());
@@ -345,6 +353,65 @@ unsafe fn array_dimensions(x: SEXP, name: &str) -> Vec<usize> {
                 value as usize
             })
             .collect()
+    }
+}
+
+unsafe fn set_dim_vector(target: SEXP, dims: &[usize]) {
+    unsafe {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, dims.len() as R_xlen_t);
+        if !dim.is_null() {
+            for (index, value) in dims.iter().enumerate() {
+                *INTEGER(dim).add(index) = *value as c_int;
+            }
+            setAttrib(target, R_DimSymbol(), dim);
+        }
+    }
+}
+
+unsafe fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
+    unsafe {
+        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, axes.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        for (out_axis, axis) in axes.iter().enumerate() {
+            let value = if *axis < XLENGTH(dimnames) as usize {
+                VECTOR_ELT(dimnames, *axis as R_xlen_t)
+            } else {
+                R_NilValue()
+            };
+            SET_VECTOR_ELT(result, out_axis as R_xlen_t, value);
+        }
+
+        let names = getAttrib(dimnames, R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
+            if !result_names.is_null() {
+                for (out_axis, axis) in axes.iter().enumerate() {
+                    if *axis < XLENGTH(names) as usize {
+                        SET_STRING_ELT(
+                            result_names,
+                            out_axis as R_xlen_t,
+                            STRING_ELT(names, *axis as R_xlen_t),
+                        );
+                    }
+                }
+                setAttrib(result, R_NamesSymbol(), result_names);
+            }
+        }
+        result
+    }
+}
+
+unsafe fn set_dimnames_from_axes(target: SEXP, source: SEXP, axes: &[usize]) {
+    unsafe {
+        let dimnames = subset_dimnames(getAttrib(source, R_DimNamesSymbol()), axes);
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            setAttrib(target, R_DimNamesSymbol(), dimnames);
+        }
     }
 }
 
@@ -378,6 +445,65 @@ unsafe fn parse_aperm_perm(perm: SEXP, ndim: usize) -> Vec<usize> {
             seen[*axis] = true;
         }
         parsed
+    }
+}
+
+unsafe fn parse_margin(value: SEXP, ndim: usize) -> Vec<usize> {
+    unsafe {
+        if !is_numeric_type(value) || XLENGTH(value) == 0 {
+            array_error("length-0 dimension vector is invalid");
+        }
+        let mut raw = Vec::with_capacity(XLENGTH(value) as usize);
+        for index in 0..XLENGTH(value) as usize {
+            let margin = numeric_at(value, index);
+            if !margin.is_finite() {
+                array_error("'MARGIN' does not match dim(X)");
+            }
+            raw.push(margin as isize);
+        }
+
+        let has_negative = raw.iter().any(|value| *value < 0);
+        let has_positive = raw.iter().any(|value| *value > 0);
+        if has_negative && has_positive {
+            array_error("only 0's may be mixed with negative subscripts");
+        }
+
+        let selected = if has_negative {
+            let mut excluded = vec![false; ndim];
+            for margin in raw.iter().copied().filter(|value| *value < 0) {
+                let axis = margin.unsigned_abs();
+                if axis == 0 || axis > ndim {
+                    array_error("'MARGIN' does not match dim(X)");
+                }
+                excluded[axis - 1] = true;
+            }
+            (0..ndim)
+                .filter(|axis| !excluded[*axis])
+                .collect::<Vec<_>>()
+        } else {
+            let mut selected = Vec::new();
+            let mut seen = vec![false; ndim];
+            for margin in raw.into_iter().filter(|value| *value > 0) {
+                let axis = margin as usize;
+                if axis == 0 || axis > ndim {
+                    array_error("'MARGIN' does not match dim(X)");
+                }
+                if seen[axis - 1] {
+                    array_error("'perm' is of wrong length");
+                }
+                seen[axis - 1] = true;
+                selected.push(axis - 1);
+            }
+            selected
+        };
+
+        if selected.is_empty() {
+            array_error("length-0 dimension vector is invalid");
+        }
+        if selected.len() == ndim {
+            array_error("length-0 dimension vector is invalid");
+        }
+        selected
     }
 }
 
@@ -1098,7 +1224,61 @@ pub unsafe fn do_maxcol(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 ///
 /// Ported from R's `do_asplit` in array.c (line 2433).
 pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    array_error("asplit() is not implemented in the Rust array port yet")
+    unsafe {
+        let matched = match_primitive_args(_args, &["x", "MARGIN"], "asplit");
+        let x = matched[0];
+        if x.is_null() || x == R_NilValue() {
+            array_error("asplit() requires an array");
+        }
+        let dims = array_dimensions(x, "asplit()");
+        let split_axes = parse_margin(matched[1], dims.len());
+        let inner_axes = (0..dims.len())
+            .filter(|axis| !split_axes.contains(axis))
+            .collect::<Vec<_>>();
+        let split_dims = split_axes
+            .iter()
+            .map(|axis| dims[*axis])
+            .collect::<Vec<_>>();
+        let inner_dims = inner_axes
+            .iter()
+            .map(|axis| dims[*axis])
+            .collect::<Vec<_>>();
+        let outer_len = product(&split_dims);
+        let inner_len = product(&inner_dims);
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, outer_len as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        set_dim_vector(result, &split_dims);
+        set_dimnames_from_axes(result, x, &split_axes);
+
+        let input_strides = column_major_strides(&dims);
+        for outer_index in 0..outer_len {
+            let outer_coords = unravel_column_major(outer_index, &split_dims);
+            let element = Rf_allocVector3(TYPEOF(x), inner_len as R_xlen_t);
+            if element.is_null() {
+                return R_NilValue();
+            }
+            set_dim_vector(element, &inner_dims);
+            set_dimnames_from_axes(element, x, &inner_axes);
+
+            for inner_index in 0..inner_len {
+                let inner_coords = unravel_column_major(inner_index, &inner_dims);
+                let mut input_coords = vec![0usize; dims.len()];
+                for (coord_index, axis) in split_axes.iter().enumerate() {
+                    input_coords[*axis] = outer_coords[coord_index];
+                }
+                for (coord_index, axis) in inner_axes.iter().enumerate() {
+                    input_coords[*axis] = inner_coords[coord_index];
+                }
+                let src_index = ravel_column_major(&input_coords, &input_strides);
+                copy_vector_element(element, inner_index, x, src_index);
+            }
+            SET_VECTOR_ELT(result, outer_index as R_xlen_t, element);
+        }
+        result
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1708,16 +1888,55 @@ mod tests {
     }
 
     #[test]
-    fn test_do_asplit_errors_until_implemented() {
+    fn test_do_asplit_splits_matrix_rows_into_dimmed_vectors() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_asplit(
+        unsafe {
+            let matrix = int_array(&[1, 2, 3, 4, 5, 6], &[2, 3]);
+            let result = do_asplit(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
+                Rf_cons(matrix, Rf_cons(Rf_ScalarInteger(1), R_NilValue())),
                 ptr::null_mut(),
             );
-        });
-        assert!(err.message.contains("asplit()"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(XLENGTH(result), 2);
+            let result_dim = getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(result_dim), 2);
+
+            let first = VECTOR_ELT(result, 0);
+            assert_eq!(TYPEOF(first), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(first), 1);
+            assert_eq!(*INTEGER(first).add(1), 3);
+            assert_eq!(*INTEGER(first).add(2), 5);
+            let first_dim = getAttrib(first, R_DimSymbol());
+            assert_eq!(*INTEGER(first_dim), 3);
+
+            let second = VECTOR_ELT(result, 1);
+            assert_eq!(*INTEGER(second), 2);
+            assert_eq!(*INTEGER(second).add(1), 4);
+            assert_eq!(*INTEGER(second).add(2), 6);
+        }
+    }
+
+    #[test]
+    fn test_do_asplit_supports_negative_margin_on_arrays() {
+        let _session = RSession::new();
+        unsafe {
+            let array = int_array(&[1, 2, 3, 4, 5, 6, 7, 8], &[2, 2, 2]);
+            let result = do_asplit(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                Rf_cons(array, Rf_cons(Rf_ScalarInteger(-3), R_NilValue())),
+                ptr::null_mut(),
+            );
+            let result_dim = getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(result_dim), 2);
+            assert_eq!(*INTEGER(result_dim).add(1), 2);
+            let first = VECTOR_ELT(result, 0);
+            assert_eq!(*INTEGER(first), 1);
+            assert_eq!(*INTEGER(first).add(1), 5);
+            let first_dim = getAttrib(first, R_DimSymbol());
+            assert_eq!(*INTEGER(first_dim), 2);
+        }
     }
 }

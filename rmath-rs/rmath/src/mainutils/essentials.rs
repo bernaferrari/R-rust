@@ -3953,6 +3953,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "array",
             "aperm",
             "backsolve",
+            "asplit",
             "drop",
             "diag",
             "dim",
@@ -19148,22 +19149,28 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 }
             }
         }
-        let (default_tmp, counter) =
-            crate::sexp::instance::with_required_current_instance(|inst| {
-                inst.tempfile_counter = inst.tempfile_counter.saturating_add(1);
-                (
-                    inst.path_policy.temp_dir().to_path_buf(),
-                    inst.tempfile_counter,
-                )
-            });
+        let default_tmp = crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.path_policy.temp_dir().to_path_buf()
+        });
         let tmp = tmpdir.unwrap_or(default_tmp);
-        let path = tmp.join(format!(
-            "{}{:x}{:x}{}",
-            pattern,
-            std::process::id(),
-            counter,
-            fileext
-        ));
+        let mut path = tmp.join(format!("{}{:x}{}", pattern, std::process::id(), fileext));
+        for _ in 0..1024 {
+            let counter = crate::sexp::instance::with_required_current_instance(|inst| {
+                inst.tempfile_counter = inst.tempfile_counter.saturating_add(1);
+                inst.tempfile_counter
+            });
+            let candidate = tmp.join(format!(
+                "{}{:x}{:x}{}",
+                pattern,
+                std::process::id(),
+                counter,
+                fileext
+            ));
+            if !candidate.exists() {
+                path = candidate;
+                break;
+            }
+        }
         Rf_mkString(
             CString::new(path.to_string_lossy().as_ref())
                 .unwrap_or_default()

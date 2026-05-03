@@ -245,6 +245,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::array::do_backsolve,
     },
     EvaluatedBuiltin {
+        name: "asplit",
+        handler: crate::mainutils::array::do_asplit,
+    },
+    EvaluatedBuiltin {
         name: ":",
         handler: crate::mainutils::seq::do_colon,
     },
