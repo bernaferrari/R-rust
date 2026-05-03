@@ -1261,13 +1261,13 @@ pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let old = Rf_ScalarLogical(if with_memory_state(|state| state.gc_force_wait) > 0 {
+        let old = Rf_ScalarLogical(if with_memory_state(|state| state.gc_force_gap) > 0 {
             crate::sexp::ffi::TRUE
         } else {
             crate::sexp::ffi::FALSE
         });
         let gap = crate::mainutils::coerce::asLogical(CAR(args));
-        R_gc_torture(gap, 0, 0);
+        R_gc_torture(if gap != 0 { 1 } else { 0 }, 0, 0);
         old
     }
 }
@@ -1276,8 +1276,8 @@ pub unsafe fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     unsafe {
         let old = Rf_ScalarInteger(with_memory_state(|state| state.gc_force_gap));
         let gap = crate::mainutils::coerce::asInteger(CAR(args));
-        let _wait = crate::mainutils::coerce::asInteger(CADR(args));
-        R_gc_torture(gap, 0, 0);
+        let wait = crate::mainutils::coerce::asInteger(CADR(args));
+        R_gc_torture(gap, wait, 0);
         old
     }
 }
@@ -1655,6 +1655,33 @@ mod tests {
                 do_maxVSize(ptr::null_mut(), ptr::null_mut(), inf_args, ptr::null_mut());
             assert!((*REAL(inf_result)).is_infinite());
             assert_eq!(R_GetMaxVSize_memory(), u64::MAX);
+        });
+    }
+
+    #[test]
+    fn test_gc_torture_primitives_roundtrip_session_state() {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            with_memory_state(|state| {
+                state.gc_force_gap = 0;
+                state.gc_force_wait = 0;
+            });
+
+            let on_args = Rf_cons(Rf_ScalarLogical(crate::sexp::ffi::TRUE), R_NilValue());
+            let old = do_gctorture(ptr::null_mut(), ptr::null_mut(), on_args, ptr::null_mut());
+            assert_eq!(TYPEOF(old), SEXPTYPE::LGLSXP);
+            assert_eq!(*LOGICAL(old), crate::sexp::ffi::FALSE);
+            assert_eq!(with_memory_state(|state| state.gc_force_gap), 1);
+
+            let args = Rf_cons(
+                Rf_ScalarInteger(5),
+                Rf_cons(Rf_ScalarInteger(7), R_NilValue()),
+            );
+            let old_gap = do_gctorture2(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            assert_eq!(TYPEOF(old_gap), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(old_gap), 1);
+            assert_eq!(with_memory_state(|state| state.gc_force_gap), 5);
+            assert_eq!(with_memory_state(|state| state.gc_force_wait), 7);
         });
     }
 
