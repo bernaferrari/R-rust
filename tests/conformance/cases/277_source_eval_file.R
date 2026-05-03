@@ -1,0 +1,11 @@
+p <- tempfile()
+writeLines(c("source_x <- 41", "source_y <- source_x + 1"), p)
+source(p)
+print(source_y)
+
+env <- new.env()
+writeLines(c("z <- 7", "w <- z * 6"), p)
+sys.source(p, env)
+print(env$w)
+print(exists("w", inherits = FALSE))
+invisible(unlink(p))

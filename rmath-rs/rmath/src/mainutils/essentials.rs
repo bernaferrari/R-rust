@@ -3546,23 +3546,9 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let file_path = elt_to_string(file_arg, 0);
 
         match std::fs::read_to_string(&file_path) {
-            Ok(content) => {
-                // Parse and evaluate the file contents.
-                // In a full implementation this would use the R parser.
-                // For now, we split by newlines and evaluate each line as a simple expression.
-                let _lines: Vec<&str> = content.lines().collect();
-                // Return the file path invisibly as confirmation
-                let result = Rf_mkString(
-                    CString::new(file_path.as_str())
-                        .unwrap_or_default()
-                        .as_ptr(),
-                );
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                result
-            }
+            Ok(content) => eval_source_text(&content, rho),
             Err(e) => {
-                eprintln!("Error sourcing '{}': {}", file_path, e);
-                R_NilValue()
+                base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
     }
@@ -3583,28 +3569,34 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             return R_NilValue();
         }
         let file_path = elt_to_string(file_arg, 0);
-        let _target_env = if !envir_arg.is_null() && envir_arg != R_NilValue() {
+        let target_env = if !envir_arg.is_null() && envir_arg != R_NilValue() {
             envir_arg
         } else {
             rho
         };
 
         match std::fs::read_to_string(&file_path) {
-            Ok(_content) => {
-                // Simplified: in a full impl, parse and eval in the target env
-                let result = Rf_mkString(
-                    CString::new(file_path.as_str())
-                        .unwrap_or_default()
-                        .as_ptr(),
-                );
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                result
-            }
+            Ok(content) => eval_source_text(&content, target_env),
             Err(e) => {
-                eprintln!("Error in sys.source('{}'): {}", file_path, e);
-                R_NilValue()
+                base_error(format!("cannot open file '{}': {}", file_path, e));
             }
         }
+    }
+}
+
+unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
+    unsafe {
+        let parsed = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse(content, arena).map_err(|err| err.to_string())
+        })
+        .unwrap_or_else(|message| base_error(message));
+        let result = if parsed.is_null() || parsed == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::eval::eval::Rf_eval(parsed, env)
+        };
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        result
     }
 }
 
