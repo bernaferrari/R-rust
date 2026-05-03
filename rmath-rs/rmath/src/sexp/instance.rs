@@ -316,6 +316,8 @@ pub struct RInstance {
     pub(crate) locked_environments: HashSet<usize>,
     /// Per-instance locked bindings keyed by (environment address, symbol address).
     pub(crate) locked_bindings: HashSet<(usize, usize)>,
+    /// Per-instance active bindings keyed by (environment address, symbol address).
+    pub(crate) active_bindings: HashMap<(usize, usize), SEXP>,
     /// Per-instance signed-rank distribution memo table.
     pub(crate) signrank_cache: HashMap<i32, Vec<f64>>,
     /// Per-instance Wilcoxon rank-sum distribution memo table.
@@ -460,6 +462,7 @@ impl RInstance {
             env_hash_tables: hashbrown::HashMap::new(),
             locked_environments: HashSet::new(),
             locked_bindings: HashSet::new(),
+            active_bindings: HashMap::new(),
             signrank_cache: HashMap::new(),
             wilcox_cache: HashMap::new(),
             stats_starma_tag: std::ptr::null_mut(),

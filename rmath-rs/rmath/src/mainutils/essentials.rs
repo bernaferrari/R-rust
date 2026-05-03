@@ -3982,6 +3982,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "lockBinding",
             "unlockBinding",
             "bindingIsLocked",
+            "bindingIsActive",
             "makeActiveBinding",
             "lockEnvironment",
             "environmentIsLocked",
@@ -7150,12 +7151,7 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
         let env = environment_arg_or_default(args, &["envir", "where", "frame"], 1, rho);
         let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
-        let val = if inherits {
-            crate::sexp::envir::R_findVar(sym, env)
-        } else {
-            crate::sexp::envir::R_findVarInFrame(env, sym)
-        };
-        let found = (!val.is_null() && val != crate::sexp::globals::R_UnboundValue())
+        let found = crate::sexp::envir::binding_exists_raw(env, sym, inherits)
             || crate::eval::builtin::has_builtin_handler(&name);
         Rf_ScalarLogical(if found { TRUE } else { FALSE })
     }
@@ -12359,15 +12355,28 @@ pub unsafe fn do_bindingIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+/// R's `bindingIsActive(sym, env)` — check if a binding is active.
+pub unsafe fn do_bindingIsActive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let sym = binding_symbol_arg(CAR(args));
+        let env = environment_arg(CAR(CDR(args)));
+        if !crate::sexp::envir::binding_exists_in_frame_raw(env, sym) {
+            base_error("no binding for symbol");
+        }
+        Rf_ScalarLogical(crate::sexp::envir::binding_is_active_raw(env, sym) as c_int)
+    }
+}
+
 /// R's `makeActiveBinding(sym, fun, env)` — create an active binding.
-/// Simplified: just does a regular assignment.
 pub unsafe fn do_makeActiveBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let _sym = CAR(args);
-        let _fun = CAR(CDR(args));
-        let _env = CAR(CDR(CDR(args)));
-        // In a full implementation, we'd set the ACTIVE_BINDING_BIT.
-        // For now, return NULL (no-op).
+        let sym = binding_symbol_arg(CAR(args));
+        let fun = CAR(CDR(args));
+        let env = environment_arg(CAR(CDR(CDR(args))));
+        if !is_function_value(fun) {
+            base_error("not a function");
+        }
+        crate::sexp::envir::make_active_binding_raw(env, sym, fun);
         R_NilValue()
     }
 }

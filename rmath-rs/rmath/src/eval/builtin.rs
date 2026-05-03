@@ -1141,6 +1141,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_bindingIsLocked,
     },
     EvaluatedBuiltin {
+        name: "bindingIsActive",
+        handler: crate::mainutils::essentials::do_bindingIsActive,
+    },
+    EvaluatedBuiltin {
         name: "makeActiveBinding",
         handler: crate::mainutils::essentials::do_makeActiveBinding,
     },

@@ -15,9 +15,9 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use super::accessors::{
-    CHAR, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR, SETTAG,
+    CHAR, ENCLOS, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR, SETTAG, TYPEOF,
 };
-use super::constructors::Rf_cons;
+use super::constructors::{Rf_cons, Rf_lang2};
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_GlobalEnv_in, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::instance::{with_current_instance, with_required_current_instance};
@@ -84,6 +84,138 @@ pub(crate) fn unlock_binding_raw(env: SEXP, symbol: SEXP) {
 pub(crate) fn binding_is_locked_raw(env: SEXP, symbol: SEXP) -> bool {
     with_current_instance(|instance| instance.locked_bindings.contains(&binding_key(env, symbol)))
         .unwrap_or(false)
+}
+
+pub(crate) fn binding_is_active_raw(env: SEXP, symbol: SEXP) -> bool {
+    with_current_instance(|instance| {
+        instance
+            .active_bindings
+            .contains_key(&binding_key(env, symbol))
+    })
+    .unwrap_or(false)
+}
+
+fn active_binding_fun_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
+    with_current_instance(|instance| {
+        instance
+            .active_bindings
+            .get(&binding_key(env, symbol))
+            .copied()
+    })
+    .flatten()
+}
+
+pub(crate) fn binding_exists_in_frame_raw(env: SEXP, symbol: SEXP) -> bool {
+    if env.is_null() || symbol.is_null() {
+        return false;
+    }
+    unsafe {
+        let mut frame = super::accessors::FRAME(env);
+        while !frame.is_null() && frame != R_NilValue() {
+            let tag = super::accessors::TAG(frame);
+            if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
+                return super::accessors::CAR(frame) != R_UnboundValue();
+            }
+            frame = super::accessors::CDR(frame);
+        }
+    }
+    false
+}
+
+pub(crate) fn binding_exists_raw(mut env: SEXP, symbol: SEXP, inherits: bool) -> bool {
+    unsafe {
+        while !env.is_null() && env != R_NilValue() {
+            if binding_exists_in_frame_raw(env, symbol) {
+                return true;
+            }
+            if !inherits {
+                return false;
+            }
+            env = ENCLOS(env);
+        }
+    }
+    false
+}
+
+pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
+    unsafe {
+        if env.is_null() || symbol.is_null() || fun.is_null() {
+            return;
+        }
+
+        let mut frame = super::accessors::FRAME(env);
+        while !frame.is_null() && frame != R_NilValue() {
+            let tag = super::accessors::TAG(frame);
+            if !tag.is_null() && symbol_name_bytes_equal(tag, symbol) {
+                if !binding_is_active_raw(env, symbol)
+                    && super::accessors::CAR(frame) != R_UnboundValue()
+                {
+                    binding_error("symbol already has a regular binding");
+                }
+                if binding_is_locked_raw(env, symbol) {
+                    binding_error("cannot change value of locked binding");
+                }
+                SETCAR(frame, fun);
+                if super::env_hash::env_has_hash_table(env) {
+                    super::env_hash::hash_insert(env, symbol, fun);
+                }
+                with_required_current_instance(|instance| {
+                    instance
+                        .active_bindings
+                        .insert(binding_key(env, symbol), fun);
+                });
+                return;
+            }
+            frame = super::accessors::CDR(frame);
+        }
+
+        if environment_is_locked_raw(env) {
+            binding_error("cannot add bindings to a locked environment");
+        }
+
+        let frame = super::accessors::FRAME(env);
+        let new_cell = Rf_cons(fun, frame);
+        if new_cell.is_null() {
+            return;
+        }
+        SETTAG(new_cell, symbol);
+        SET_FRAME(env, new_cell);
+        if super::env_hash::env_has_hash_table(env) {
+            super::env_hash::hash_insert(env, symbol, fun);
+        }
+        with_required_current_instance(|instance| {
+            instance
+                .active_bindings
+                .insert(binding_key(env, symbol), fun);
+        });
+    }
+}
+
+fn call_active_binding(env: SEXP, fun: SEXP, value: Option<SEXP>) -> SEXP {
+    unsafe {
+        if TYPEOF(fun) == SEXPTYPE::CLOSXP {
+            let args = value
+                .map(|value| Rf_cons(value, R_NilValue()))
+                .unwrap_or_else(|| R_NilValue());
+            let call = Rf_cons(fun, args);
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            return crate::eval::closure::applyClosure(call, fun, args, env, R_NilValue(), 1);
+        }
+
+        let call = match value {
+            Some(value) => Rf_lang2(fun, value),
+            None => {
+                let call = Rf_cons(fun, R_NilValue());
+                if !call.is_null() {
+                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+                call
+            }
+        };
+        crate::eval::eval::Rf_eval(call, env)
+    }
 }
 
 /// Typed, owner-scoped environment facade.
@@ -169,6 +301,13 @@ pub fn find_var_in_frame_result<'a>(
     if super::env_hash::env_has_hash_table(rho.as_raw())
         && let Some(val) = super::env_hash::hash_get(rho.as_raw(), symbol.as_raw())
     {
+        if val != unsafe { R_UnboundValue() }
+            && let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw())
+        {
+            return Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None))
+                .map(Some)
+                .map_err(|err| sexp_err("active binding value", err));
+        }
         return Sexp::try_from_raw(val)
             .map(Some)
             .map_err(|err| sexp_err("hash binding value", err));
@@ -183,6 +322,11 @@ pub fn find_var_in_frame_result<'a>(
             .try_tag()
             .map_err(|err| sexp_err("binding tag lookup", err))?;
         if symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()) {
+            if let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw()) {
+                return Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None))
+                    .map(Some)
+                    .map_err(|err| sexp_err("active binding value", err));
+            }
             return cell
                 .try_car()
                 .map(Some)
@@ -316,6 +460,10 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             if binding_is_locked_raw(rho.as_raw(), symbol.as_raw()) {
                 binding_error("cannot change value of locked binding");
             }
+            if let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw()) {
+                call_active_binding(rho.as_raw(), fun, Some(value.as_raw()));
+                return true;
+            }
             unsafe {
                 SETCAR(cell.as_raw(), value.as_raw());
             }
@@ -394,6 +542,10 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
             if cell.try_tag().ok() == Some(symbol) {
                 if binding_is_locked_raw(current.as_raw(), symbol.as_raw()) {
                     binding_error("cannot change value of locked binding");
+                }
+                if let Some(fun) = active_binding_fun_raw(current.as_raw(), symbol.as_raw()) {
+                    call_active_binding(current.as_raw(), fun, Some(value.as_raw()));
+                    return;
                 }
                 unsafe {
                     SETCAR(cell.as_raw(), value.as_raw());
@@ -630,7 +782,7 @@ pub fn add_missing_vars_to_new_env_safe(formals: Sexp<'_>, args: Sexp<'_>, newrh
 /// Check if a variable exists in a given frame.
 #[must_use]
 pub fn exists_var_in_frame_safe(rho: Sexp<'_>, symbol: Sexp<'_>) -> bool {
-    find_var_in_frame_safe(rho, symbol).is_some()
+    binding_exists_in_frame_raw(rho.as_raw(), symbol.as_raw())
 }
 
 // ---------------------------------------------------------------------------
