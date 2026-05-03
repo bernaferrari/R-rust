@@ -17,8 +17,8 @@ use std::ffi::CStr;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
-    STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
+    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{R_DimSymbol, getAttrib, setAttrib};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
@@ -137,6 +137,75 @@ unsafe fn second_arg_or_first(args: SEXP, first: SEXP) -> SEXP {
                 second
             }
         }
+    }
+}
+
+unsafe fn arg_tag_name(cell: SEXP) -> Option<String> {
+    unsafe {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            return None;
+        }
+        let printname = PRINTNAME(tag);
+        if printname.is_null() {
+            return None;
+        }
+        Some(
+            CStr::from_ptr(CHAR(printname))
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+
+fn formal_match(name: &str, formals: &[&str]) -> Option<usize> {
+    if let Some(index) = formals.iter().position(|formal| *formal == name) {
+        return Some(index);
+    }
+    let mut matches = formals
+        .iter()
+        .enumerate()
+        .filter(|(_, formal)| formal.starts_with(name))
+        .map(|(index, _)| index);
+    let first = matches.next()?;
+    matches.next().is_none().then_some(first)
+}
+
+unsafe fn match_primitive_args(args: SEXP, formals: &[&str], name: &str) -> Vec<SEXP> {
+    unsafe {
+        let mut matched = vec![R_NilValue(); formals.len()];
+        let mut positional = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if let Some(tag_name) = arg_tag_name(cell) {
+                let Some(index) = formal_match(&tag_name, formals) else {
+                    array_error(format!("unused argument ({tag_name} = ...)"));
+                };
+                if matched[index] != R_NilValue() {
+                    array_error(format!(
+                        "formal argument \"{}\" matched by multiple actual arguments",
+                        formals[index]
+                    ));
+                }
+                matched[index] = CAR(cell);
+            } else {
+                positional.push(CAR(cell));
+            }
+            cell = CDR(cell);
+        }
+
+        let mut next = 0;
+        for value in positional {
+            while next < matched.len() && matched[next] != R_NilValue() {
+                next += 1;
+            }
+            if next == matched.len() {
+                array_error(format!("{name}() called with too many arguments"));
+            }
+            matched[next] = value;
+            next += 1;
+        }
+        matched
     }
 }
 
@@ -312,20 +381,54 @@ unsafe fn parse_aperm_perm(perm: SEXP, ndim: usize) -> Vec<usize> {
     }
 }
 
-unsafe fn parse_resize_arg(value: SEXP) -> bool {
+unsafe fn parse_bool_arg(value: SEXP, default: bool) -> bool {
     unsafe {
         if value.is_null() || value == R_NilValue() {
-            return true;
+            return default;
         }
         match TYPEOF(value) {
             tag if tag == SEXPTYPE::LGLSXP.as_c_int() => {
-                *LOGICAL(value) != 0 && *LOGICAL(value) != NA_LOGICAL
+                let value = *LOGICAL(value);
+                if value == NA_LOGICAL {
+                    default
+                } else {
+                    value != 0
+                }
             }
             tag if tag == SEXPTYPE::INTSXP.as_c_int() => {
-                *INTEGER(value) != 0 && *INTEGER(value) != NA_INTEGER
+                let value = *INTEGER(value);
+                if value == NA_INTEGER {
+                    default
+                } else {
+                    value != 0
+                }
             }
-            _ => true,
+            _ => default,
         }
+    }
+}
+
+unsafe fn parse_resize_arg(value: SEXP) -> bool {
+    unsafe { parse_bool_arg(value, true) }
+}
+
+unsafe fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return default;
+        }
+        if !is_numeric_type(value) || XLENGTH(value) == 0 {
+            array_error("invalid 'k' argument");
+        }
+        let k = numeric_at(value, 0);
+        if !k.is_finite() || k < 1.0 {
+            array_error("invalid 'k' argument");
+        }
+        let k = k as usize;
+        if k > limit {
+            array_error("invalid 'k' argument");
+        }
+        k
     }
 }
 
@@ -836,8 +939,108 @@ pub unsafe fn do_diag(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `backsolve(r, b, k, upper.tri, transpose)` -- solve triangular systems.
 ///
 /// Ported from R's `do_backsolve` in array.c (line 2357).
-pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    array_error("backsolve() is not implemented in the Rust array port yet")
+pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let matched = match_primitive_args(
+            args,
+            &["r", "x", "k", "upper.tri", "transpose"],
+            "backsolve",
+        );
+        let r = matched[0];
+        if r.is_null() || r == R_NilValue() {
+            array_error("backsolve() requires a triangular matrix");
+        }
+        let b = matched[1];
+        if b.is_null() || b == R_NilValue() {
+            array_error("backsolve() requires a right-hand side");
+        }
+        if !is_numeric_type(r) || !is_numeric_type(b) {
+            array_error("backsolve() requires numeric arguments");
+        }
+
+        let Some((r_rows, r_cols)) = matrix_dims(r) else {
+            array_error("'r' must be a matrix");
+        };
+        let k = parse_positive_k(matched[2], r_cols, r_rows.min(r_cols));
+        let upper_tri = parse_bool_arg(matched[3], true);
+        let transpose = parse_bool_arg(matched[4], false);
+
+        let (b_rows, rhs_count, vector_rhs) = if let Some((rows, cols)) = matrix_dims(b) {
+            (rows, cols, false)
+        } else {
+            (XLENGTH(b) as usize, 1, true)
+        };
+        if b_rows < k {
+            array_error("right-hand side has too few rows");
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, (k * rhs_count) as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let out = REAL(result);
+
+        for rhs in 0..rhs_count {
+            for row in 0..k {
+                *out.add(row + rhs * k) = numeric_at(b, row + rhs * b_rows);
+            }
+
+            if upper_tri && !transpose {
+                for row in (0..k).rev() {
+                    let mut value = *out.add(row + rhs * k);
+                    for col in (row + 1)..k {
+                        value -= matrix_value(r, row, col, r_rows) * *out.add(col + rhs * k);
+                    }
+                    let diag = matrix_value(r, row, row, r_rows);
+                    if diag == 0.0 {
+                        array_error("singular matrix in 'backsolve'");
+                    }
+                    *out.add(row + rhs * k) = value / diag;
+                }
+            } else if upper_tri && transpose {
+                for row in 0..k {
+                    let mut value = *out.add(row + rhs * k);
+                    for col in 0..row {
+                        value -= matrix_value(r, col, row, r_rows) * *out.add(col + rhs * k);
+                    }
+                    let diag = matrix_value(r, row, row, r_rows);
+                    if diag == 0.0 {
+                        array_error("singular matrix in 'backsolve'");
+                    }
+                    *out.add(row + rhs * k) = value / diag;
+                }
+            } else if !upper_tri && !transpose {
+                for row in 0..k {
+                    let mut value = *out.add(row + rhs * k);
+                    for col in 0..row {
+                        value -= matrix_value(r, row, col, r_rows) * *out.add(col + rhs * k);
+                    }
+                    let diag = matrix_value(r, row, row, r_rows);
+                    if diag == 0.0 {
+                        array_error("singular matrix in 'backsolve'");
+                    }
+                    *out.add(row + rhs * k) = value / diag;
+                }
+            } else {
+                for row in (0..k).rev() {
+                    let mut value = *out.add(row + rhs * k);
+                    for col in (row + 1)..k {
+                        value -= matrix_value(r, col, row, r_rows) * *out.add(col + rhs * k);
+                    }
+                    let diag = matrix_value(r, row, row, r_rows);
+                    if diag == 0.0 {
+                        array_error("singular matrix in 'backsolve'");
+                    }
+                    *out.add(row + rhs * k) = value / diag;
+                }
+            }
+        }
+
+        if !vector_rhs {
+            set_matrix_dim(result, k, rhs_count);
+        }
+        result
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1399,17 +1602,84 @@ mod tests {
     }
 
     #[test]
-    fn test_do_backsolve_errors_until_implemented() {
+    fn test_do_backsolve_solves_upper_triangular_system() {
         let _session = RSession::new();
-        let err = assert_r_error(|| unsafe {
-            do_backsolve(
+        unsafe {
+            let r = real_matrix(&[2.0, 0.0, 1.0, 3.0], 2, 2);
+            let b = real_matrix(&[5.0, 9.0, 1.0, 2.0], 2, 2);
+            let args = Rf_cons(
+                r,
+                Rf_cons(
+                    b,
+                    Rf_cons(
+                        Rf_ScalarInteger(2),
+                        Rf_cons(
+                            Rf_ScalarLogical(1),
+                            Rf_cons(Rf_ScalarLogical(0), R_NilValue()),
+                        ),
+                    ),
+                ),
+            );
+            let result = do_backsolve(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            assert_eq!(*REAL(result), 1.0);
+            assert_eq!(*REAL(result).add(1), 3.0);
+            assert!((*REAL(result).add(2) - (1.0 / 6.0)).abs() < 1e-12);
+            assert!((*REAL(result).add(3) - (2.0 / 3.0)).abs() < 1e-12);
+            let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(dim), 2);
+            assert_eq!(*INTEGER(dim).add(1), 2);
+        }
+    }
+
+    #[test]
+    fn test_do_backsolve_handles_transpose_and_lower_triangular() {
+        let _session = RSession::new();
+        unsafe {
+            let r = real_matrix(&[2.0, 0.0, 1.0, 3.0], 2, 2);
+            let b = real_matrix(&[5.0, 9.0], 2, 1);
+            let transposed = do_backsolve(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
+                Rf_cons(
+                    r,
+                    Rf_cons(
+                        b,
+                        Rf_cons(
+                            Rf_ScalarInteger(2),
+                            Rf_cons(
+                                Rf_ScalarLogical(1),
+                                Rf_cons(Rf_ScalarLogical(1), R_NilValue()),
+                            ),
+                        ),
+                    ),
+                ),
                 ptr::null_mut(),
             );
-        });
-        assert!(err.message.contains("backsolve()"));
+            assert_eq!(*REAL(transposed), 2.5);
+            assert!((*REAL(transposed).add(1) - (13.0 / 6.0)).abs() < 1e-12);
+
+            let lower = do_backsolve(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                Rf_cons(
+                    r,
+                    Rf_cons(
+                        b,
+                        Rf_cons(
+                            Rf_ScalarInteger(2),
+                            Rf_cons(
+                                Rf_ScalarLogical(0),
+                                Rf_cons(Rf_ScalarLogical(0), R_NilValue()),
+                            ),
+                        ),
+                    ),
+                ),
+                ptr::null_mut(),
+            );
+            assert_eq!(*REAL(lower), 2.5);
+            assert_eq!(*REAL(lower).add(1), 3.0);
+        }
     }
 
     #[test]

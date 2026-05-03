@@ -1,0 +1,8 @@
+r <- matrix(c(2, 0, 1, 3), 2, 2)
+b <- c(5, 9)
+print(backsolve(r, b))
+print(backsolve(r, matrix(c(5, 9, 1, 2), 2, 2)))
+bt <- backsolve(r, b, transpose = TRUE)
+cat(sprintf("%.6f %.6f\n", bt[1], bt[2]))
+print(backsolve(r, b, upper.tri = FALSE))
+print(backsolve(r, b, k = 1))

@@ -3952,6 +3952,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "matrix",
             "array",
             "aperm",
+            "backsolve",
             "drop",
             "diag",
             "dim",
