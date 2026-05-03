@@ -1,9 +1,18 @@
 use std::os::raw::{c_double, c_int};
 use std::ptr;
 
+use crate::attrib_core::{R_DimSymbol, setAttrib};
+use crate::sexp::accessors::INTEGER;
+use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::SEXP;
+use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
+
+const DEFAULT_WIDTH_INCHES: c_double = 7.0;
+const DEFAULT_HEIGHT_INCHES: c_double = 7.0;
+const DEFAULT_DPI: c_int = 72;
+const OPAQUE_WHITE_NATIVE: c_int = 0x00ff_ffff;
 
 /// Minimal graphics device descriptor used by the headless Rust registry.
 ///
@@ -28,6 +37,9 @@ pub(crate) struct GEDeviceDesc {
     pub canGenIdle: c_int,
     pub width: c_double,
     pub height: c_double,
+    pub pixel_width: c_int,
+    pub pixel_height: c_int,
+    pub canvas: Vec<c_int>,
     pub holdflush_level: c_int,
 }
 
@@ -42,15 +54,24 @@ impl GEDeviceDesc {
             haveTransparency: 0,
             haveTransparentBg: 0,
             haveRaster: 0,
-            haveCapture: 0,
+            haveCapture: 1,
             haveLocator: 0,
             canGenMouseDown: 0,
             canGenMouseMove: 0,
             canGenMouseUp: 0,
             canGenKeybd: 0,
             canGenIdle: 0,
-            width: 7.0,
-            height: 7.0,
+            width: DEFAULT_WIDTH_INCHES,
+            height: DEFAULT_HEIGHT_INCHES,
+            pixel_width: (DEFAULT_WIDTH_INCHES as c_int) * DEFAULT_DPI,
+            pixel_height: (DEFAULT_HEIGHT_INCHES as c_int) * DEFAULT_DPI,
+            canvas: vec![
+                OPAQUE_WHITE_NATIVE;
+                ((DEFAULT_WIDTH_INCHES as c_int)
+                    * DEFAULT_DPI
+                    * (DEFAULT_HEIGHT_INCHES as c_int)
+                    * DEFAULT_DPI) as usize
+            ],
             holdflush_level: 0,
         }
     }
@@ -282,7 +303,28 @@ pub unsafe extern "C" fn GEinitDisplayList(_gdd: pGEDevDesc) {}
 pub unsafe extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
 pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe {
+        if _gdd.is_null() {
+            return R_NilValue();
+        }
+        let width = (*_gdd).pixel_width;
+        let height = (*_gdd).pixel_height;
+        if width <= 0 || height <= 0 {
+            return R_NilValue();
+        }
+        let len = width.saturating_mul(height);
+        let raster = Rf_allocVector(SEXPTYPE::INTSXP, len);
+        let out = INTEGER(raster);
+        for (index, pixel) in (*_gdd).canvas.iter().take(len as usize).enumerate() {
+            *out.add(index) = *pixel;
+        }
+
+        let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim).add(0) = height;
+        *INTEGER(dim).add(1) = width;
+        setAttrib(raster, R_DimSymbol(), dim);
+        raster
+    }
 }
 
 #[cfg(test)]

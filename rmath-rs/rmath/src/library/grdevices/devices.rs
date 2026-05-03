@@ -476,8 +476,8 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{INTEGER, REAL, VECTOR_ELT};
-    use crate::sexp::constructors::{Rf_allocVector, Rf_cons};
+    use crate::sexp::accessors::{INTEGER, LENGTH, REAL, TYPEOF, VECTOR_ELT};
+    use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_cons};
     use crate::sexp::session::RSession;
 
     unsafe fn one_arg_args(arg: SEXP) -> SEXP {
@@ -512,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn devcap_does_not_claim_unsupported_headless_features() {
+    fn devcap_reports_implemented_headless_features_only() {
         let _session = RSession::new();
         device_registry::reset_registry_for_tests();
 
@@ -521,8 +521,29 @@ mod tests {
             devcap(one_arg_args(capabilities));
 
             assert_eq!(int_capability(capabilities, R_GE_capability_rasterImage), 0);
-            assert_eq!(int_capability(capabilities, R_GE_capability_capture), 0);
+            assert_eq!(int_capability(capabilities, R_GE_capability_capture), 1);
             assert_eq!(int_capability(capabilities, R_GE_capability_locator), 0);
+        }
+    }
+
+    #[test]
+    fn devcapture_returns_headless_native_raster() {
+        let _session = RSession::new();
+        device_registry::reset_registry_for_tests();
+
+        unsafe {
+            let raster = devcapture(one_arg_args(Rf_ScalarLogical(1)));
+            assert_eq!(TYPEOF(raster), SEXPTYPE::INTSXP);
+            assert_eq!(LENGTH(raster), 504 * 504);
+            assert_eq!(*INTEGER(raster), 0x00ff_ffff);
+
+            let dim = getAttrib(raster, R_DimSymbol());
+            assert_eq!(*INTEGER(dim).add(0), 504);
+            assert_eq!(*INTEGER(dim).add(1), 504);
+
+            let class = getAttrib(raster, R_ClassSymbol());
+            assert_eq!(TYPEOF(class), SEXPTYPE::STRSXP);
+            assert_eq!(LENGTH(class), 1);
         }
     }
 }
