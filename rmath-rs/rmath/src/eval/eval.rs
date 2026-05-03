@@ -21,6 +21,7 @@
 use std::ffi::CString;
 use std::os::raw::c_int;
 
+use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
@@ -180,9 +181,26 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
         EvalKind::Closure => Ok(expr),
         EvalKind::Promise => eval_promise_safe(expr, env),
         EvalKind::Dots => eval_dots_safe(expr, env),
+        EvalKind::ExpressionVector => eval_expression_vector_safe(expr, env),
         EvalKind::Bytecode => eval_bytecode_safe(expr, env),
         EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
     }
+}
+
+fn eval_expression_vector_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    let mut result = unsafe { Sexp::from_raw_unchecked(R_NilValue()) };
+    let len = unsafe { XLENGTH(expr.as_raw()) };
+
+    for index in 0..len {
+        let raw_element = unsafe { VECTOR_ELT(expr.as_raw(), index) };
+        if raw_element.is_null() || raw_element == unsafe { R_NilValue() } {
+            continue;
+        }
+        let element = unsafe { Sexp::from_raw_unchecked(raw_element) };
+        result = eval_safe(element, env)?;
+    }
+
+    Ok(result)
 }
 
 fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
@@ -200,6 +218,7 @@ enum EvalKind {
     Closure,
     Promise,
     Dots,
+    ExpressionVector,
     Bytecode,
     Unsupported(SEXPTYPE),
 }
@@ -215,8 +234,8 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
         | SEXPTYPE::STRSXP
         | SEXPTYPE::RAWSXP
         | SEXPTYPE::VECSXP
-        | SEXPTYPE::EXPRSXP
         | SEXPTYPE::EXTPTRSXP => EvalKind::SelfEvaluating,
+        SEXPTYPE::EXPRSXP => EvalKind::ExpressionVector,
         SEXPTYPE::SYMSXP => EvalKind::Symbol,
         SEXPTYPE::LANGSXP => EvalKind::Language,
         SEXPTYPE::CLOSXP => EvalKind::Closure,
@@ -679,6 +698,13 @@ mod tests {
             let call = Sexp::from_raw(Rf_lang2(Rf_install(c"quote".as_ptr()), Rf_ScalarInteger(1)))
                 .expect("language call");
             assert_eq!(classify_expr(call), EvalKind::Language);
+
+            let expr_vec = Sexp::from_raw(crate::sexp::constructors::Rf_allocVector(
+                SEXPTYPE::EXPRSXP,
+                0,
+            ))
+            .expect("expression vector");
+            assert_eq!(classify_expr(expr_vec), EvalKind::ExpressionVector);
         }
     }
 

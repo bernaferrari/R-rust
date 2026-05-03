@@ -1,0 +1,6 @@
+p <- tempfile()
+writeLines(c("eval_vec_x <- 10", "eval_vec_x + 5"), p)
+expr <- parse(file = p)
+print(eval(expr))
+print(eval_vec_x)
+invisible(unlink(p))
