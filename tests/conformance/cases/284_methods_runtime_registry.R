@@ -1,0 +1,5 @@
+m <- methods("print")
+print("print.default" %in% m)
+print("print.data.frame" %in% m)
+print("summary.data.frame" %in% methods("summary"))
+print("as.data.frame" %in% suppressWarnings(methods("as")))

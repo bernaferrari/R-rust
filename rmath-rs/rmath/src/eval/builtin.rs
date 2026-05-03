@@ -91,6 +91,14 @@ pub(crate) fn has_builtin_handler(name: &str) -> bool {
             .any(|builtin| builtin.name == name)
 }
 
+/// Names of builtins implemented directly by the Rust evaluator.
+pub(crate) fn builtin_handler_names() -> impl Iterator<Item = &'static str> {
+    EVALUATED_BUILTINS
+        .iter()
+        .map(|builtin| builtin.name)
+        .chain(UNEVALUATED_BUILTINS.iter().map(|builtin| builtin.name))
+}
+
 pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
         name: "missing",

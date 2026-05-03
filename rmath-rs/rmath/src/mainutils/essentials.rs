@@ -3105,15 +3105,35 @@ pub unsafe fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// R's `methods(generic)` — list methods for a generic. Simplified: returns empty STRSXP.
+/// R's `methods(generic)` — list methods known to the Rust runtime.
 pub unsafe fn do_methods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let generic_arg = CAR(args);
         if generic_arg.is_null() || generic_arg == R_NilValue() {
+            return string_vector(&all_runtime_method_names());
+        }
+        let generic = elt_to_string(generic_arg, 0);
+        if generic.is_empty() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
-        Rf_allocVector3(SEXPTYPE::STRSXP, 0)
+
+        let prefix = format!("{generic}.");
+        let methods = all_runtime_method_names()
+            .into_iter()
+            .filter(|name| name.starts_with(&prefix))
+            .collect::<Vec<_>>();
+        string_vector(&methods)
     }
+}
+
+fn all_runtime_method_names() -> Vec<String> {
+    let mut methods = crate::eval::builtin::builtin_handler_names()
+        .filter(|name| name.contains('.'))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    methods.sort();
+    methods.dedup();
+    methods
 }
 
 // ---------------------------------------------------------------------------
