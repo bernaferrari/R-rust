@@ -160,6 +160,46 @@ pub unsafe fn BCODE_STACK(x: SEXP) -> c_int {
     }
 }
 
+unsafe fn read_operand(
+    code_ptr: *const c_int,
+    pc: &mut c_int,
+    code_len: c_int,
+    opname: &str,
+) -> c_int {
+    unsafe {
+        if *pc >= code_len {
+            bc_error(format!("{opname} bytecode operand is truncated"));
+        }
+        let value = *code_ptr.add(*pc as usize);
+        *pc += 1;
+        value
+    }
+}
+
+unsafe fn constant_at(consts: SEXP, idx: c_int, context: &str) -> SEXP {
+    unsafe {
+        if idx < 0 {
+            bc_error(format!("{context} uses negative constant index {idx}"));
+        }
+        if consts.is_null() || consts == R_NilValue() {
+            bc_error(format!("{context} requires a bytecode constant pool"));
+        }
+        if TYPEOF(consts) != SEXPTYPE::VECSXP && TYPEOF(consts) != SEXPTYPE::EXPRSXP {
+            bc_error(format!(
+                "{context} requires a vector constant pool, got {:?}",
+                TYPEOF(consts)
+            ));
+        }
+        let len = LENGTH(consts);
+        if idx >= len {
+            bc_error(format!(
+                "{context} constant index {idx} out of range for pool length {len}"
+            ));
+        }
+        VECTOR_ELT(consts, idx as i64)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // bcEval — the main bytecode evaluation loop
 // ---------------------------------------------------------------------------
@@ -198,36 +238,20 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
             match op {
                 opcodes::OP_PUSHCONST => {
-                    // Push constant from pool
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        crate::sexp::accessors::VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "PUSHCONST");
+                    let val = constant_at(consts, idx, "PUSHCONST");
                     stack.push(val);
                 }
 
                 opcodes::OP_PUSHCONSTARG => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        crate::sexp::accessors::VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "PUSHCONSTARG");
+                    let val = constant_at(consts, idx, "PUSHCONSTARG");
                     stack.push(val);
                 }
 
                 opcodes::OP_GETVAR => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let sym = if !consts.is_null() && idx >= 0 {
-                        crate::sexp::accessors::VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "GETVAR");
+                    let sym = constant_at(consts, idx, "GETVAR");
                     let val = R_findVar(sym, rho);
                     if val == R_UnboundValue() {
                         bc_error("object not found");
@@ -239,13 +263,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_SETVAR => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let sym = if !consts.is_null() && idx >= 0 {
-                        crate::sexp::accessors::VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "SETVAR");
+                    let sym = constant_at(consts, idx, "SETVAR");
                     let val = stack.pop();
                     defineVar(sym, val, rho);
                     super::runtime::set_visible(FALSE);
@@ -294,8 +313,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_POPAND => {
-                    let target = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let target = read_operand(code_ptr, &mut pc, code_len, "POPAND");
                     let val = stack.top();
                     let is_false = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
@@ -309,8 +327,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_POPOR => {
-                    let target = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let target = read_operand(code_ptr, &mut pc, code_len, "POPOR");
                     let val = stack.top();
                     let is_true = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
@@ -324,13 +341,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BRANCH => {
-                    let target = *code_ptr.add(pc as usize);
+                    let target = read_operand(code_ptr, &mut pc, code_len, "BRANCH");
                     pc = target;
                 }
 
                 opcodes::OP_BRIFNOT => {
-                    let target = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let target = read_operand(code_ptr, &mut pc, code_len, "BRIFNOT");
                     let val = stack.top();
                     let cond = eval_bc_condition(val);
                     if !cond {
@@ -339,8 +355,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BRIFTRUE => {
-                    let target = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let target = read_operand(code_ptr, &mut pc, code_len, "BRIFTRUE");
                     let val = stack.top();
                     let cond = eval_bc_condition(val);
                     if cond {
@@ -361,18 +376,13 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_GOTO => {
-                    let target = *code_ptr.add(pc as usize);
+                    let target = read_operand(code_ptr, &mut pc, code_len, "GOTO");
                     pc = target;
                 }
 
                 opcodes::OP_MAKEPROMISE => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let expr = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "MAKEPROMISE");
+                    let expr = constant_at(consts, idx, "MAKEPROMISE");
                     let prom = crate::sexp::memory_ext::mkPROMSXP(expr, rho);
                     stack.push(prom);
                 }
@@ -382,8 +392,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_CALL => {
-                    let nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let nargs = read_operand(code_ptr, &mut pc, code_len, "CALL");
                     let fun = stack.pop();
                     let mut args = R_NilValue();
                     for _ in 0..nargs {
@@ -400,8 +409,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_CALLBUILTIN => {
-                    let nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLBUILTIN");
                     let fun = stack.pop();
                     let mut args = R_NilValue();
                     for _ in 0..nargs {
@@ -419,8 +427,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_CALLSPECIAL => {
-                    let nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLSPECIAL");
                     let fun = stack.pop();
                     let mut args = R_NilValue();
                     for _ in 0..nargs {
@@ -438,21 +445,15 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_STARTASSIGN => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let sym = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "STARTASSIGN");
+                    let sym = constant_at(consts, idx, "STARTASSIGN");
                     let val = R_findVar(sym, rho);
                     stack.push(sym);
                     stack.push(val);
                 }
 
                 opcodes::OP_ENDASSIGN => {
-                    let _nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let _nargs = read_operand(code_ptr, &mut pc, code_len, "ENDASSIGN");
                     let val = stack.pop();
                     let sym = stack.pop();
                     defineVar(sym, val, rho);
@@ -461,8 +462,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_STEPFOR => {
-                    let target = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let target = read_operand(code_ptr, &mut pc, code_len, "STEPFOR");
                     let depth = stack.depth();
                     if depth < 3 {
                         pc = target;
@@ -503,12 +503,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BREAK => {
-                    let target = *code_ptr.add(pc as usize);
+                    let target = read_operand(code_ptr, &mut pc, code_len, "BREAK");
                     pc = target;
                 }
 
                 opcodes::OP_NEXTITER => {
-                    let target = *code_ptr.add(pc as usize);
+                    let target = read_operand(code_ptr, &mut pc, code_len, "NEXTITER");
                     pc = target;
                 }
 
@@ -536,8 +536,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_HIDDENCALL => {
-                    let _nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let _nargs = read_operand(code_ptr, &mut pc, code_len, "HIDDENCALL");
                     let fun = stack.pop();
                     let args = stack.pop();
                     if fun.is_null() {
@@ -551,24 +550,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_PUSHARG => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "PUSHARG");
+                    let val = constant_at(consts, idx, "PUSHARG");
                     stack.push(val);
                 }
 
                 opcodes::OP_PUSHFUN => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "PUSHFUN");
+                    let val = constant_at(consts, idx, "PUSHFUN");
                     stack.push(val);
                 }
 
@@ -577,32 +566,20 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_DFLTFUN => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "DFLTFUN");
+                    let val = constant_at(consts, idx, "DFLTFUN");
                     stack.push(val);
                 }
 
                 opcodes::OP_DFLTFORM => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "DFLTFORM");
+                    let val = constant_at(consts, idx, "DFLTFORM");
                     stack.push(val);
                 }
 
                 opcodes::OP_STARTSUBSET | opcodes::OP_ENDSUBSET => {
-                    let nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let _idx = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let nargs = read_operand(code_ptr, &mut pc, code_len, "SUBSET");
+                    let _idx = read_operand(code_ptr, &mut pc, code_len, "SUBSET");
                     // x[i, j, ...] — pop nargs index values, then the object
                     let mut indices: Vec<SEXP> = Vec::new();
                     for _ in 0..nargs {
@@ -636,10 +613,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_STARTSUBSET2 | opcodes::OP_ENDSUBSET2 => {
-                    let nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let _idx = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let nargs = read_operand(code_ptr, &mut pc, code_len, "SUBSET2");
+                    let _idx = read_operand(code_ptr, &mut pc, code_len, "SUBSET2");
                     // x[[i]] — pop index value, then the object
                     let idx = if nargs > 0 { stack.pop() } else { R_NilValue() };
                     let obj = stack.pop();
@@ -663,60 +638,39 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_LDCLOSURE => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "LDCLOSURE");
+                    let val = constant_at(consts, idx, "LDCLOSURE");
                     stack.push(val);
                 }
 
                 opcodes::OP_CLOSEDEXPR => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "CLOSEDEXPR");
+                    let val = constant_at(consts, idx, "CLOSEDEXPR");
                     stack.push(val);
                 }
 
                 opcodes::OP_MAKEACTIVE => {
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
-                    let val = if !consts.is_null() && idx >= 0 {
-                        VECTOR_ELT(consts, idx as i64)
-                    } else {
-                        R_NilValue()
-                    };
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "MAKEACTIVE");
+                    let val = constant_at(consts, idx, "MAKEACTIVE");
                     stack.push(val);
                 }
 
                 opcodes::OP_SWASTORE => {
-                    // Store a value into the switch table
-                    let _idx = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let _idx = read_operand(code_ptr, &mut pc, code_len, "SWASTORE");
                     let val = stack.pop();
                     stack.push(val); // simplified: just pass through
                 }
 
                 opcodes::OP_SWLOAD => {
-                    // Load from switch table by index
-                    let idx = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "SWLOAD");
                     let _switch_val = stack.pop();
-                    // In full implementation, this loads from the switch dispatch table
-                    // For now, push the index as a fallback
-                    stack.push(R_NilValue());
+                    bc_error(format!(
+                        "SWLOAD bytecode switch table load at index {idx} is not implemented"
+                    ));
                 }
 
                 opcodes::OP_PUTBASE => {
-                    // Assign value to base environment
-                    let _nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let _nargs = read_operand(code_ptr, &mut pc, code_len, "PUTBASE");
                     let val = stack.pop();
                     let sym = stack.pop();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
@@ -729,9 +683,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_PUTBASE_SEP => {
-                    // Separated base assignment
-                    let _nargs = *code_ptr.add(pc as usize);
-                    pc += 1;
+                    let _nargs = read_operand(code_ptr, &mut pc, code_len, "PUTBASE_SEP");
                     let val = stack.pop();
                     let sym = stack.pop();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
@@ -743,8 +695,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_SEQBEGIN | opcodes::OP_SEQEND => {
-                    // Sequence begin/end — skip operand, no-op
-                    pc += 1;
+                    let _idx = read_operand(code_ptr, &mut pc, code_len, "SEQ");
                 }
 
                 _ => {
@@ -782,6 +733,45 @@ mod tests {
             .downcast_ref::<RError>()
             .expect("expected RError payload")
             .clone()
+    }
+
+    fn bcode_with(
+        arena: &mut crate::sexp::memory::RArena,
+        instructions: &[c_int],
+        consts: SEXP,
+    ) -> SEXP {
+        let code = arena.alloc_vector(SEXPTYPE::INTSXP, instructions.len() as i64);
+        let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
+        for (i, instruction) in instructions.iter().enumerate() {
+            unsafe {
+                code_data.add(i).write(*instruction);
+            }
+        }
+
+        let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        let stack_data = unsafe { (*stack_hint).gengc_next_node as *mut c_int };
+        unsafe {
+            *stack_data = 8;
+        }
+
+        let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
+        let bcode_data = unsafe { (*bcode).gengc_next_node as *mut SEXP };
+        unsafe {
+            *bcode_data.add(0) = code;
+            *bcode_data.add(1) = consts;
+            *bcode_data.add(2) = stack_hint;
+        }
+        bcode
+    }
+
+    fn empty_env(arena: &mut crate::sexp::memory::RArena) -> SEXP {
+        let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+        unsafe {
+            (*env).data.envsxp.frame = R_NilValue();
+            (*env).data.envsxp.enclos = R_NilValue();
+            (*env).data.envsxp.hashtab = ptr::null_mut();
+        }
+        env
     }
 
     #[test]
@@ -935,5 +925,66 @@ mod tests {
             bcEval(bcode, env);
         });
         assert!(err.message.contains("unknown bytecode opcode"));
+    }
+
+    #[test]
+    fn test_bc_eval_rejects_truncated_operand() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = crate::sexp::memory::RArena::new();
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let bcode = bcode_with(&mut arena, &[opcodes::OP_PUSHCONST], consts);
+        let env = empty_env(&mut arena);
+
+        let err = assert_r_error(|| unsafe {
+            bcEval(bcode, env);
+        });
+        assert!(
+            err.message
+                .contains("PUSHCONST bytecode operand is truncated")
+        );
+    }
+
+    #[test]
+    fn test_bc_eval_rejects_invalid_constant_index() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = crate::sexp::memory::RArena::new();
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let bcode = bcode_with(
+            &mut arena,
+            &[opcodes::OP_PUSHCONST, 0, opcodes::OP_RETURN],
+            consts,
+        );
+        let env = empty_env(&mut arena);
+
+        let err = assert_r_error(|| unsafe {
+            bcEval(bcode, env);
+        });
+        assert!(
+            err.message
+                .contains("PUSHCONST constant index 0 out of range")
+        );
+    }
+
+    #[test]
+    fn test_bc_eval_rejects_unimplemented_swload() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = crate::sexp::memory::RArena::new();
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let bcode = bcode_with(
+            &mut arena,
+            &[
+                opcodes::OP_PUSHNULL,
+                opcodes::OP_SWLOAD,
+                0,
+                opcodes::OP_RETURN,
+            ],
+            consts,
+        );
+        let env = empty_env(&mut arena);
+
+        let err = assert_r_error(|| unsafe {
+            bcEval(bcode, env);
+        });
+        assert!(err.message.contains("SWLOAD bytecode switch table load"));
     }
 }
