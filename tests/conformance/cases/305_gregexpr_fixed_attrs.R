@@ -1,0 +1,5 @@
+g <- gregexpr("a", c("banana", "dog"))
+print(g[[1]])
+print(attr(g[[1]], "match.length"))
+print(g[[2]])
+print(attr(g[[2]], "match.length"))

@@ -1,0 +1,16 @@
+[1] 2 4 6
+attr(,"match.length")
+[1] 1 1 1
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+[1] 1 1 1
+[1] -1
+attr(,"match.length")
+[1] -1
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+[1] -1

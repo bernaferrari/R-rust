@@ -4744,6 +4744,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "strtoi",
             "strtrim",
             "regexpr",
+            "gregexpr",
             // Data manipulation
             "order",
             "rank",
@@ -20605,6 +20606,87 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             Rf_ScalarLogical(TRUE),
         );
         result
+    }
+}
+
+/// R gregexpr(pattern, text) for repeated non-overlapping fixed matches.
+pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pat = elt_to_string(CAR(args), 0);
+        let text = CAR(CDR(args));
+        let n = XLENGTH(text).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        for i in 0..n {
+            let txt = elt_to_string(text, i);
+            let mut starts = Vec::new();
+            if !pat.is_empty() {
+                let mut offset = 0usize;
+                while offset <= txt.len() {
+                    let Some(pos) = txt[offset..].find(&pat) else {
+                        break;
+                    };
+                    let start = offset + pos;
+                    starts.push(start + 1);
+                    offset = start + pat.len().max(1);
+                }
+            }
+
+            let (elt, match_lengths) = if starts.is_empty() {
+                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+                if elt.is_null() || match_lengths.is_null() {
+                    return R_NilValue();
+                }
+                let _elt_guard = protect(elt);
+                let _ml_guard = protect(match_lengths);
+                *INTEGER(elt) = -1;
+                *INTEGER(match_lengths) = -1;
+                (elt, match_lengths)
+            } else {
+                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
+                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, starts.len() as R_xlen_t);
+                if elt.is_null() || match_lengths.is_null() {
+                    return R_NilValue();
+                }
+                let _elt_guard = protect(elt);
+                let _ml_guard = protect(match_lengths);
+                for (idx, start) in starts.iter().enumerate() {
+                    *INTEGER(elt).add(idx) = *start as c_int;
+                    *INTEGER(match_lengths).add(idx) = pat.len() as c_int;
+                }
+                (elt, match_lengths)
+            };
+
+            set_regexpr_attrs(elt, match_lengths);
+            SET_VECTOR_ELT(result, i, elt);
+        }
+
+        result
+    }
+}
+
+unsafe fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
+    unsafe {
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new("match.length").unwrap_or_default().as_ptr()),
+            match_lengths,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new("index.type").unwrap_or_default().as_ptr()),
+            Rf_mkString(CString::new("chars").unwrap_or_default().as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new("useBytes").unwrap_or_default().as_ptr()),
+            Rf_ScalarLogical(TRUE),
+        );
     }
 }
 
