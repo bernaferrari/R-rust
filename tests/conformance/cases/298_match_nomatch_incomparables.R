@@ -1,0 +1,5 @@
+print(match(c(2, 4), c(1, 2, 3)))
+print(match(c(1, 2, NA, 3), c(NA, 1, 2, 3), incomparables = c(NA, 2)))
+print(match(c("NA", NA), c(NA, "NA"), nomatch = 0L))
+print(match(c(1, NA_real_, NaN), c(NaN, NA_real_, 1), nomatch = -1L))
+print(match(c("a", "b"), c("b"), nomatch = 99L))

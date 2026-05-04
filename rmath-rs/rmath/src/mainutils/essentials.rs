@@ -2655,11 +2655,15 @@ pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 // do_match — match values in table
 // ---------------------------------------------------------------------------
 
-/// R's `match(x, table)` — returns integer indices of x in table (NA if not found).
+/// R's `match(x, table, nomatch, incomparables)` — first table index for each x.
 pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let table = CAR(CDR(args));
+        let x = match_arg(args, 0, "x", R_NilValue());
+        let table = match_arg(args, 1, "table", R_NilValue());
+        let nomatch_arg = match_arg(args, 2, "nomatch", Rf_ScalarInteger(NA_INTEGER));
+        let incomparables = match_arg(args, 3, "incomparables", R_NilValue());
+        let nomatch = integer_scalar_or(nomatch_arg, NA_INTEGER);
+
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
@@ -2670,20 +2674,181 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _result_guard = protect(result);
         let dst = INTEGER(result);
-        let mut lookup: std::collections::BTreeMap<String, c_int> =
-            std::collections::BTreeMap::new();
+
+        let common_type = match_common_type(x, table);
+        let mut incomparable_set = BTreeSet::new();
+        if !incomparables.is_null() && incomparables != R_NilValue() {
+            for i in 0..XLENGTH(incomparables) {
+                incomparable_set.insert(match_key(incomparables, i, common_type));
+            }
+        }
+
+        let mut lookup: BTreeMap<MatchKey, c_int> = BTreeMap::new();
         if !table.is_null() && table != R_NilValue() {
             let tn = XLENGTH(table);
             for i in 0..tn {
-                let s = elt_to_string(table, i);
-                lookup.entry(s).or_insert((i + 1) as c_int);
+                lookup
+                    .entry(match_key(table, i, common_type))
+                    .or_insert((i + 1) as c_int);
             }
         }
         for i in 0..n {
-            let s = elt_to_string(x, i);
-            *dst.add(i as usize) = *lookup.get(&s).unwrap_or(&NA_INTEGER);
+            let key = match_key(x, i, common_type);
+            *dst.add(i as usize) = if incomparable_set.contains(&key) {
+                nomatch
+            } else {
+                *lookup.get(&key).unwrap_or(&nomatch)
+            };
         }
         result
+    }
+}
+
+unsafe fn integer_scalar_or(arg: SEXP, default: c_int) -> c_int {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+            return default;
+        }
+        match SEXPTYPE(TYPEOF(arg)) {
+            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+                if XLENGTH(arg) < 1 {
+                    default
+                } else {
+                    INTEGER_ELT(arg, 0)
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                if XLENGTH(arg) < 1 {
+                    default
+                } else {
+                    let value = REAL_ELT(arg, 0);
+                    if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        default
+                    } else {
+                        value as c_int
+                    }
+                }
+            }
+            _ => default,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+enum MatchKey {
+    Missing,
+    String(String),
+    Integer(c_int),
+    Real(u64),
+}
+
+fn match_common_type(x: SEXP, table: SEXP) -> SEXPTYPE {
+    unsafe {
+        let xtype = if x.is_null() {
+            SEXPTYPE::NILSXP
+        } else {
+            SEXPTYPE(TYPEOF(x))
+        };
+        let ttype = if table.is_null() || table == R_NilValue() {
+            xtype
+        } else {
+            SEXPTYPE(TYPEOF(table))
+        };
+        if xtype == SEXPTYPE::STRSXP || ttype == SEXPTYPE::STRSXP {
+            SEXPTYPE::STRSXP
+        } else if xtype == SEXPTYPE::REALSXP || ttype == SEXPTYPE::REALSXP {
+            SEXPTYPE::REALSXP
+        } else {
+            SEXPTYPE::INTSXP
+        }
+    }
+}
+
+unsafe fn match_key(x: SEXP, index: R_xlen_t, common_type: SEXPTYPE) -> MatchKey {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return MatchKey::Missing;
+        }
+        match common_type {
+            SEXPTYPE::STRSXP => {
+                if TYPEOF(x) == SEXPTYPE::STRSXP
+                    && STRING_ELT(x, index) == crate::sexp::globals::R_NaString()
+                {
+                    MatchKey::Missing
+                } else {
+                    MatchKey::String(elt_to_string(x, index))
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let value = match TYPEOF(x) {
+                    t if t == SEXPTYPE::REALSXP => REAL_ELT(x, index as c_int),
+                    t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                        let value = INTEGER_ELT(x, index as c_int);
+                        if value == NA_INTEGER {
+                            NA_REAL
+                        } else {
+                            value as f64
+                        }
+                    }
+                    _ => elt_to_string(x, index).parse::<f64>().unwrap_or(NA_REAL),
+                };
+                if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    MatchKey::Missing
+                } else if value.is_nan() {
+                    MatchKey::Real(f64::NAN.to_bits())
+                } else {
+                    MatchKey::Real(value.to_bits())
+                }
+            }
+            _ => {
+                let value = match TYPEOF(x) {
+                    t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                        INTEGER_ELT(x, index as c_int)
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        let value = REAL_ELT(x, index as c_int);
+                        if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                            NA_INTEGER
+                        } else {
+                            value as c_int
+                        }
+                    }
+                    _ => elt_to_string(x, index)
+                        .parse::<c_int>()
+                        .unwrap_or(NA_INTEGER),
+                };
+                if value == NA_INTEGER {
+                    MatchKey::Missing
+                } else {
+                    MatchKey::Integer(value)
+                }
+            }
+        }
+    }
+}
+
+unsafe fn match_arg(args: SEXP, position: usize, name: &str, default: SEXP) -> SEXP {
+    unsafe {
+        if let Some(value) = named_arg(args, name) {
+            return value;
+        }
+        let mut positional = 0usize;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).is_none() {
+                if positional == position {
+                    let value = CAR(current);
+                    return if value.is_null() || value == R_MissingArg() {
+                        default
+                    } else {
+                        value
+                    };
+                }
+                positional += 1;
+            }
+            current = CDR(current);
+        }
+        default
     }
 }
 
