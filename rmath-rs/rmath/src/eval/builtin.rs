@@ -755,6 +755,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_format,
     },
     EvaluatedBuiltin {
+        name: "format.info",
+        handler: crate::mainutils::essentials::do_format_info,
+    },
+    EvaluatedBuiltin {
         name: "NROW",
         handler: crate::mainutils::essentials::do_NROW,
     },

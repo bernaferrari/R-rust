@@ -1896,6 +1896,36 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// R's `format.info(x, digits, nsmall)` width metadata.
+pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let digits = arg_by_name_or_position(args, &["digits"], 1);
+        let digits = if digits.is_null() {
+            R_NilValue()
+        } else {
+            digits
+        };
+        let nsmall = arg_by_name_or_position(args, &["nsmall"], 2);
+        let nsmall = if nsmall.is_null() || nsmall == R_NilValue() {
+            Rf_ScalarInteger(0)
+        } else {
+            nsmall
+        };
+
+        let tail = Rf_cons(nsmall, R_NilValue());
+        let _tail_guard = protect(tail);
+        let middle = Rf_cons(digits, tail);
+        let _middle_guard = protect(middle);
+        let normalized_args = Rf_cons(x, middle);
+        let _args_guard = protect(normalized_args);
+        crate::mainutils::paste_impl::do_formatinfo(call, op, normalized_args, rho)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // do_order — order indices for sorting
 // ---------------------------------------------------------------------------
@@ -4290,6 +4320,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "is.list",
             "chartr",
             "format",
+            "format.info",
             "apply",
             "tapply",
             "mapply",

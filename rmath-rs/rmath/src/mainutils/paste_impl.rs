@@ -19,8 +19,8 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CADDDR, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    CADDDR, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL,
+    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{
     Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_isString, Rf_isSymbol, Rf_length,
@@ -268,6 +268,38 @@ unsafe fn formatComplex(
 unsafe fn formatRaw(x: *const crate::sexp::ffi::Rbyte, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         crate::mainutils::format::formatRaw(x as *const std::ffi::c_void, n, fieldwidth);
+    }
+}
+
+unsafe fn reconcile_fixed_real_width(
+    x: *const c_double,
+    n: R_xlen_t,
+    width: &mut c_int,
+    digits_right: c_int,
+    exponent: c_int,
+) {
+    unsafe {
+        if x.is_null() || n <= 0 || exponent != 0 || digits_right < 0 {
+            return;
+        }
+        let digits = digits_right as usize;
+        for i in 0..n {
+            let value = *x.add(i as usize);
+            let rendered = if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                "NA".to_string()
+            } else if value.is_nan() {
+                "NaN".to_string()
+            } else if value.is_infinite() {
+                if value.is_sign_negative() {
+                    "-Inf".to_string()
+                } else {
+                    "Inf".to_string()
+                }
+            } else {
+                format!("{value:.digits$}")
+            };
+            *width = (*width).max(rendered.chars().count() as c_int);
+        }
     }
 }
 
@@ -1306,7 +1338,7 @@ pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
         let n = XLENGTH(x);
         PrintDefaults();
 
-        if !Rf_isNull(CADR(args)) != 0 {
+        if Rf_isNull(CADR(args)) == 0 {
             let digits = asInteger(CADR(args));
             if digits == NA_INTEGER || digits < R_MIN_DIGITS_OPT || digits > R_MAX_DIGITS_OPT {
                 return ptr::null_mut();
@@ -1322,46 +1354,43 @@ pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
         let mut w: c_int = 0;
         let mut d: c_int = 0;
         let mut e: c_int = 0;
+        let mut wi: c_int = 0;
+        let mut di: c_int = 0;
+        let mut ei: c_int = 0;
         let mut no: c_int = 1;
 
         match TYPEOF(x) {
             RAWSXP => {
-                // formatRaw(RAW(x), n, &mut w);
-                w = 2; // default from stub
+                formatRaw(RAW(x), n, &mut w);
             }
 
             LGLSXP => {
-                // formatLogical(LOGICAL(x), n, &mut w);
-                w = 2; // default from stub (NA width)
+                formatLogical(LOGICAL(x), n, &mut w);
             }
 
             INTSXP => {
-                // formatInteger(INTEGER(x), n, &mut w);
-                w = 1; // default from stub
+                formatInteger(INTEGER(x), n, &mut w);
             }
 
             REALSXP => {
                 no = 3;
-                // formatReal(REAL(x), n, &mut w, &mut d, &mut e, nsmall);
+                formatReal(REAL(x), n, &mut w, &mut d, &mut e, nsmall);
+                reconcile_fixed_real_width(REAL(x), n, &mut w, d, e);
             }
 
             CPLXSXP => {
                 no = 6;
-                let mut wi: c_int = 0;
-                let mut di: c_int = 0;
-                let mut ei: c_int = 0;
-                // formatComplex(COMPLEX(x), n, &mut w, &mut d, &mut e,
-                //              &mut wi, &mut di, &mut ei, nsmall);
-                // Store imaginary part values
-                if no > 3 {
-                    // Will be set below
-                }
-                w = 0;
-                d = 0;
-                e = 0;
-                wi = 0;
-                di = 0;
-                ei = 0;
+                formatComplex(
+                    COMPLEX(x),
+                    n,
+                    &mut w,
+                    &mut d,
+                    &mut e,
+                    &mut wi,
+                    &mut di,
+                    &mut ei,
+                    nsmall,
+                );
             }
 
             STRSXP => {
@@ -1390,10 +1419,9 @@ pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             *INTEGER(result).add(1) = d;
             *INTEGER(result).add(2) = e;
             if no > 3 {
-                // For complex: wi, di, ei are currently all 0 from stubs
-                *INTEGER(result).add(3) = 0; // wi
-                *INTEGER(result).add(4) = 0; // di
-                *INTEGER(result).add(5) = 0; // ei
+                *INTEGER(result).add(3) = wi;
+                *INTEGER(result).add(4) = di;
+                *INTEGER(result).add(5) = ei;
             }
         }
 

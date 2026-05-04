@@ -1,0 +1,6 @@
+print(format.info(c(TRUE, FALSE, NA)))
+print(format.info(c(1L, -20L, NA_integer_)))
+print(format.info(c(1.23, 1000, NA_real_), nsmall = 2))
+print(format.info(c(1+2i, 3+0i)))
+print(format.info(c("a", "abcd", NA)))
+print(format.info(as.raw(c(0, 15, 255))))
