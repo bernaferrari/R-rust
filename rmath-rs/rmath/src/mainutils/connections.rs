@@ -961,9 +961,9 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             || description.starts_with("ftp://")
             || description.starts_with("ftps://")
         {
-            // For actual URLs, we create a placeholder connection
-            // Real HTTP support would need libcurl
-            (description.clone(), "url".to_string())
+            r_error(
+                "remote URL connections are disabled in this pure-R Android runtime; fetch bytes through the host network policy and pass a file, rawConnection, or textConnection",
+            );
         } else {
             // Treat as a regular file path (like R does for non-URL descriptions in url())
             (description.clone(), "file".to_string())
