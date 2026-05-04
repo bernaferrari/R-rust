@@ -991,6 +991,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_gzfile,
     },
     EvaluatedBuiltin {
+        name: "bzfile",
+        handler: crate::mainutils::connections::do_bzfile,
+    },
+    EvaluatedBuiltin {
         name: "pipe",
         handler: crate::mainutils::essentials::do_pipe,
     },

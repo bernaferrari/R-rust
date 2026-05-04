@@ -4605,6 +4605,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "read.table",
             // Complete connections — gzfile, pipe, fifo, socket, seek, pushBack, readBin, writeBin
             "gzfile",
+            "bzfile",
             "pipe",
             "fifo",
             "socketConnection",
