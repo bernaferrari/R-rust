@@ -1152,19 +1152,21 @@ pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 // do_url — url(description, open = "", mode = "r", blocking = TRUE, encoding = "", method = "default", headers = NULL)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let scmd = CAR(args);
-        args = CDR(args);
-        let sopen = CAR(args);
-        args = CDR(args);
-        let _block = check_logical_arg(CAR(args), "blocking");
-        args = CDR(args);
-        let _enc = CAR(args);
-        args = CDR(args);
-        let _method = CAR(args);
-        args = CDR(args);
-        let _headers = CAR(args);
+        let empty = Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+        let native = Rf_mkString(CString::new("native.enc").unwrap_or_default().as_ptr());
+        let default_method = Rf_mkString(CString::new("default").unwrap_or_default().as_ptr());
+        let scmd = arg_by_name_or_position(args, 0, &["description"], R_NilValue());
+        let sopen = arg_by_name_or_position(args, 1, &["open"], empty);
+        let _block = logical_arg_or(
+            arg_by_name_or_position(args, 2, &["blocking"], Rf_ScalarLogical(1)),
+            "blocking",
+            1,
+        );
+        let _enc = arg_by_name_or_position(args, 3, &["encoding"], native);
+        let _method = arg_by_name_or_position(args, 4, &["method"], default_method);
+        let _headers = arg_by_name_or_position(args, 5, &["headers"], R_NilValue());
 
         let description = check_string_arg(scmd, "description");
         let open = check_string_arg(sopen, "open");

@@ -11421,15 +11421,9 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `url(description)` — create a URL connection.
-/// Simplified: just return the description string.
+/// Delegates to the session-owned connection table.
 pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let desc = CAR(args);
-        if desc.is_null() || desc == R_NilValue() {
-            return R_NilValue();
-        }
-        desc
-    }
+    unsafe { crate::mainutils::connections::do_url(_call, _op, args, _rho) }
 }
 
 /// R's `close(con)` — close a connection.
