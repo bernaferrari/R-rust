@@ -1,0 +1,5 @@
+cfg <- pcre_config()
+print(length(cfg))
+cat(paste(names(cfg), collapse = "\n"), "\n", sep = "")
+print(is.logical(cfg))
+print(all(!is.na(cfg)))

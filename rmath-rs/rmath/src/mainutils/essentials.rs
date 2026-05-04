@@ -1133,6 +1133,47 @@ pub unsafe fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// R's `pcre_config()` — report regex engine feature switches.
+pub unsafe fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    const FEATURES: [(&str, c_int); 4] = [
+        ("UTF-8", TRUE),
+        ("Unicode properties", TRUE),
+        ("JIT", FALSE),
+        ("stack", FALSE),
+    ];
+
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, FEATURES.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let data = LOGICAL(result);
+        for (i, (_, value)) in FEATURES.iter().enumerate() {
+            *data.add(i) = *value;
+        }
+
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, FEATURES.len() as R_xlen_t);
+        if !names.is_null() {
+            let _names_guard = protect(names);
+            for (i, (name, _)) in FEATURES.iter().enumerate() {
+                SET_STRING_ELT(
+                    names,
+                    i as R_xlen_t,
+                    Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+                names,
+            );
+        }
+
+        result
+    }
+}
+
 fn agrep_max_distance(args: SEXP, pattern_arg: SEXP) -> usize {
     unsafe {
         let raw = arg_by_name_or_position(args, &["max.distance"], 2);
@@ -4442,6 +4483,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "grepl",
             "agrep",
             "agrepl",
+            "pcre_config",
             "strsplit",
             "pmin",
             "pmax",
