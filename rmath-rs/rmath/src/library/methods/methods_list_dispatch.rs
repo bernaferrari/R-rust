@@ -80,9 +80,16 @@ unsafe fn named_element(object: SEXP, name: &str) -> SEXP {
 }
 
 unsafe fn all_methods_slot(mlist: SEXP) -> SEXP {
+    unsafe { named_slot(mlist, "allMethods") }
+}
+
+unsafe fn named_slot(object: SEXP, name: &str) -> SEXP {
     unsafe {
-        let name = Rf_mkChar(c"allMethods".as_ptr());
-        crate::library::methods::slot::R_get_slot(mlist, name)
+        let Ok(name) = CString::new(name) else {
+            return R_NilValue();
+        };
+        let charsxp = Rf_mkChar(name.as_ptr());
+        crate::library::methods::slot::R_get_slot(object, charsxp)
     }
 }
 
@@ -329,11 +336,79 @@ pub unsafe fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEX
             return mlist;
         }
     }
-    let name = unsafe { sexp_to_string(fname) }.unwrap_or_else(|| "<unknown>".to_string());
-    r_error(format!(
-        "S4 method selection for '{}' requires a methods list and is not implemented yet",
-        name
-    ));
+    unsafe {
+        let eval_args = crate::mainutils::coerce::asLogical(_evalArgs) != 0;
+        select_method_from_list(fname, _ev, mlist, eval_args, true)
+    }
+}
+
+unsafe fn select_method_from_list(
+    fname: SEXP,
+    ev: SEXP,
+    mlist: SEXP,
+    eval_args: bool,
+    first_try: bool,
+) -> SEXP {
+    unsafe {
+        if mlist.is_null() || mlist == R_NilValue() {
+            return R_NilValue();
+        }
+        if Rf_isFunction(mlist) != 0 {
+            return mlist;
+        }
+        let arg_slot = named_slot(mlist, "argument");
+        let Some(arg_name) = sexp_to_string(arg_slot) else {
+            let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+            r_error(format!(
+                "object used as methods list for function '{}' has no 'argument' slot",
+                name
+            ));
+        };
+        if ev.is_null() || ev == R_NilValue() || TYPEOF(ev) != SEXPTYPE::ENVSXP {
+            let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+            r_error(format!(
+                "the 'environment' argument for dispatch for function '{}' must be an R environment",
+                name
+            ));
+        }
+        let arg_symbol = crate::sexp::symbol::Rf_install(
+            CString::new(arg_name.as_str()).unwrap_or_default().as_ptr(),
+        );
+        let arg_value = crate::sexp::envir::R_findVarInFrame(ev, arg_symbol);
+        let class = if arg_value == R_UnboundValue() || arg_value == R_MissingArg() {
+            "missing".to_string()
+        } else if eval_args {
+            let Some(class) = first_data_class_name(arg_value) else {
+                return R_NilValue();
+            };
+            class
+        } else {
+            let Some(class) = sexp_to_string(arg_value) else {
+                return R_NilValue();
+            };
+            class
+        };
+        let methods = all_methods_slot(mlist);
+        if methods.is_null() || methods == R_NilValue() {
+            return R_NilValue();
+        }
+        let method = named_element(methods, &class);
+        if method.is_null() || method == R_NilValue() {
+            if first_try {
+                return R_NilValue();
+            }
+            let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+            r_error(format!(
+                "no matching method for function '{}' with class \"{}\"",
+                name, class
+            ));
+        }
+        if Rf_isFunction(method) != 0 {
+            method
+        } else {
+            select_method_from_list(fname, ev, method, eval_args, first_try)
+        }
+    }
 }
 
 /// R_M_setPrimitiveMethods - set methods for a primitive function.
@@ -485,6 +560,15 @@ mod tests {
         unsafe { named_list(&[("allMethods", all_methods)]) }
     }
 
+    unsafe fn methods_list_for_argument(argument: &str, all_methods: SEXP) -> SEXP {
+        unsafe {
+            let arg = crate::sexp::symbol::Rf_install(
+                CString::new(argument).unwrap_or_default().as_ptr(),
+            );
+            named_list(&[("argument", arg), ("allMethods", all_methods)])
+        }
+    }
+
     unsafe fn env_with(bindings: &[(&str, SEXP)]) -> SEXP {
         unsafe {
             let env =
@@ -614,6 +698,39 @@ mod tests {
 
             let result = R_quick_dispatch(args, generic_env, R_NilValue());
             assert_eq!(result, R_NilValue());
+        }
+    }
+
+    #[test]
+    fn select_method_returns_direct_match_from_environment_argument() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let method =
+                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_NilValue());
+            let methods = named_list(&[("integer", method)]);
+            let mlist = methods_list_for_argument("x", methods);
+            let env = env_with(&[("x", Rf_ScalarInteger(1))]);
+            let fname = Rf_mkString(c"show".as_ptr());
+
+            let result = R_selectMethod(fname, env, mlist, Rf_ScalarLogical(TRUE));
+            assert_eq!(result, method);
+        }
+    }
+
+    #[test]
+    fn select_method_can_use_precomputed_class_string() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let method =
+                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_NilValue());
+            let methods = named_list(&[("integer", method)]);
+            let mlist = methods_list_for_argument("x", methods);
+            let class = Rf_mkString(c"integer".as_ptr());
+            let env = env_with(&[("x", class)]);
+            let fname = Rf_mkString(c"show".as_ptr());
+
+            let result = R_selectMethod(fname, env, mlist, Rf_ScalarLogical(FALSE));
+            assert_eq!(result, method);
         }
     }
 
