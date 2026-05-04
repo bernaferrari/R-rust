@@ -1,0 +1,5 @@
+run <- function(f, input, na.rm = FALSE) f(input, na.rm = na.rm)
+wrap <- function(zed) run(zed, c(TRUE, FALSE))
+print(run(any, c(TRUE, FALSE)))
+print(run(all, c(TRUE, FALSE)))
+print(wrap(any))

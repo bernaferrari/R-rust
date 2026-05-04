@@ -623,6 +623,12 @@ pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
         }
 
         if let Some(val) = find_var_in_frame_result(current, symbol)? {
+            let val = if val.typeof_() == SEXPTYPE::PROMSXP {
+                let forced = unsafe { forcePromise(val.as_raw()) };
+                Sexp::from_raw(forced).unwrap_or(val)
+            } else {
+                val
+            };
             let t = val.typeof_();
             if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
                 return Ok(Some(val));
