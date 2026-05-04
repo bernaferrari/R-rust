@@ -173,12 +173,56 @@ pub unsafe fn R_initMethodDispatch(envir: SEXP) -> SEXP {
 
 /// R_standardGeneric - C version of the standardGeneric R function.
 /// Dispatches to the appropriate method for a generic function call.
-pub unsafe fn R_standardGeneric(fname: SEXP, _ev: SEXP, _fdef: SEXP) -> SEXP {
-    let name = unsafe { sexp_to_string(fname) }.unwrap_or_else(|| "<unknown>".to_string());
-    r_error(format!(
-        "S4 method selection for generic '{}' is not implemented yet",
-        name
-    ));
+pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
+    unsafe {
+        let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+        let mlist = match TYPEOF(fdef) {
+            kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
+                let dot_methods = crate::sexp::symbol::Rf_install(c".Methods".as_ptr());
+                let value = crate::sexp::envir::R_findVarInFrame(CLOENV(fdef), dot_methods);
+                if value == R_UnboundValue() {
+                    R_NilValue()
+                } else {
+                    value
+                }
+            }
+            kind if kind == SEXPTYPE::SPECIALSXP.as_c_int()
+                || kind == SEXPTYPE::BUILTINSXP.as_c_int() =>
+            {
+                crate::mainutils::objects::R_primitive_methods(fdef)
+            }
+            _ => r_error(format!(
+                "invalid generic function object for method selection for function '{}'",
+                name
+            )),
+        };
+
+        let method = if mlist.is_null() || mlist == R_NilValue() {
+            R_NilValue()
+        } else if Rf_isFunction(mlist) != 0 {
+            mlist
+        } else {
+            R_selectMethod(fname, ev, mlist, Rf_ScalarLogical(TRUE))
+        };
+
+        if method.is_null() || method == R_NilValue() {
+            r_error(format!(
+                "no direct or inherited method for function '{}' for this call",
+                name
+            ));
+        }
+        match TYPEOF(method) {
+            kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
+                crate::eval::missing::R_execMethod(method, ev)
+            }
+            kind if kind == SEXPTYPE::SPECIALSXP.as_c_int()
+                || kind == SEXPTYPE::BUILTINSXP.as_c_int() =>
+            {
+                crate::mainutils::objects::R_deferred_default_method()
+            }
+            _ => r_error("invalid object (non-function) used as method"),
+        }
+    }
 }
 
 /// R_dispatchGeneric - table-based method dispatch.
@@ -639,7 +683,29 @@ mod tests {
             let name = Rf_mkString(b"show\0".as_ptr() as *const std::os::raw::c_char);
             R_standardGeneric(name, R_NilValue(), R_NilValue());
         });
-        assert!(err.message.contains("S4 method selection"));
+        assert!(err.message.contains("invalid generic function object"));
+    }
+
+    #[test]
+    fn standard_generic_executes_direct_closure_method() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let method = crate::mainutils::dstruct::mkCLOSXP(
+                R_NilValue(),
+                Rf_ScalarInteger(42),
+                R_NilValue(),
+            );
+            let methods = named_list(&[("integer", method)]);
+            let mlist = methods_list_for_argument("x", methods);
+            let f_env = env_with(&[(".Methods", mlist)]);
+            let fdef = crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), f_env);
+            let ev = env_with(&[("x", Rf_ScalarInteger(1))]);
+            let name = Rf_mkString(c"show".as_ptr());
+
+            let result = R_standardGeneric(name, ev, fdef);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 42);
+        }
     }
 
     #[test]
