@@ -979,7 +979,7 @@ pub unsafe fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_string_replace(args, false) }
 }
 
-/// R's `grep(pattern, x, ..., value = FALSE)` for common literal/substring use.
+/// R's `grep(pattern, x, ..., value = FALSE)` for fixed and ERE matching.
 pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
@@ -990,8 +990,9 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let value = named_logical_arg(args, "value").unwrap_or(false);
         let invert = named_logical_arg(args, "invert").unwrap_or(false);
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
-        let matches = grep_match_indices(x_arg, &pattern, ignore_case, invert);
+        let matches = grep_match_indices(x_arg, &pattern, ignore_case, fixed, invert);
 
         if value {
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
@@ -1030,7 +1031,7 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `grepl(pattern, x, ...)` for common literal/substring use.
+/// R's `grepl(pattern, x, ...)` for fixed and ERE matching.
 pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
@@ -1039,6 +1040,7 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
@@ -1052,7 +1054,8 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *dst.add(i as usize) = FALSE;
                 continue;
             }
-            let matched = string_contains(&elt_to_string(x_arg, i), &pattern, ignore_case);
+            let matched =
+                grep_value_matches(&elt_to_string(x_arg, i), &pattern, ignore_case, fixed);
             *dst.add(i as usize) = if matched { TRUE } else { FALSE };
         }
         result
@@ -6465,7 +6468,21 @@ fn string_contains(text: &str, pattern: &str, ignore_case: bool) -> bool {
     }
 }
 
-fn grep_match_indices(x: SEXP, pattern: &str, ignore_case: bool, invert: bool) -> Vec<R_xlen_t> {
+fn grep_value_matches(text: &str, pattern: &str, ignore_case: bool, fixed: bool) -> bool {
+    if fixed {
+        string_contains(text, pattern, ignore_case)
+    } else {
+        crate::mainutils::grep::ere_is_match(pattern, text, ignore_case)
+    }
+}
+
+fn grep_match_indices(
+    x: SEXP,
+    pattern: &str,
+    ignore_case: bool,
+    fixed: bool,
+    invert: bool,
+) -> Vec<R_xlen_t> {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return Vec::new();
@@ -6479,7 +6496,7 @@ fn grep_match_indices(x: SEXP, pattern: &str, ignore_case: bool, invert: bool) -
                 }
                 continue;
             }
-            let matched = string_contains(&elt_to_string(x, i), pattern, ignore_case);
+            let matched = grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, fixed);
             if if invert { !matched } else { matched } {
                 matches.push(i);
             }

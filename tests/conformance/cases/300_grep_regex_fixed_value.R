@@ -1,0 +1,5 @@
+print(grep(".", c(".", "a")))
+print(grep(".", c(".", "a"), fixed = TRUE))
+print(grep("^a", c("ba", "ab"), value = TRUE))
+print(grepl("^a", c("ba", "ab")))
+print(grepl("A", c("cat", "dog"), ignore.case = TRUE))
