@@ -131,6 +131,16 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "withCallingHandlers",
+        handler: crate::mainutils::essentials::do_withCallingHandlers,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "withRestarts",
+        handler: crate::mainutils::essentials::do_withRestarts,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "with",
         handler: crate::mainutils::essentials::do_with,
         restore_visibility_always: false,

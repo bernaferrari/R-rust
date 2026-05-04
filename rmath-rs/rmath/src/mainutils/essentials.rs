@@ -3236,14 +3236,127 @@ pub unsafe fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// Handlers are evaluated before unwinding (unlike tryCatch).
 pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // Simplified: evaluate the expression; handlers are collected but not fully dispatched.
         let expr = CAR(args);
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
-        // In a full implementation we'd install handler functions on the condition stack.
-        // For now, just evaluate the expression.
-        crate::eval::eval::Rf_eval(expr, rho)
+
+        let old_stack = condition_handler_stack();
+        let new_stack = calling_handler_stack_from_args(CDR(args), rho, old_stack);
+        set_condition_handler_stack(new_stack);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }));
+        set_condition_handler_stack(old_stack);
+
+        match result {
+            Ok(value) => value,
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+}
+
+fn condition_handler_stack() -> SEXP {
+    crate::sexp::instance::with_required_current_instance(|inst| inst.error_state.handler_stack)
+}
+
+fn set_condition_handler_stack(stack: SEXP) {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.error_state.handler_stack = stack;
+    });
+}
+
+unsafe fn calling_handler_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
+    unsafe {
+        let mut entries = Vec::new();
+        while !args.is_null() && args != R_NilValue() {
+            let Some(class_name) = tag_name(args) else {
+                args = CDR(args);
+                continue;
+            };
+            let handler = crate::eval::eval::Rf_eval(CAR(args), rho);
+            if is_function_value(handler) {
+                entries.push(calling_handler_entry(&class_name, handler, rho));
+            }
+            args = CDR(args);
+        }
+
+        let mut stack = old_stack;
+        for entry in entries.into_iter().rev() {
+            stack = Rf_cons(entry, stack);
+        }
+        stack
+    }
+}
+
+unsafe fn calling_handler_entry(class_name: &str, handler: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 3);
+        if entry.is_null() {
+            return R_NilValue();
+        }
+        let _entry_guard = protect(entry);
+        SET_VECTOR_ELT(
+            entry,
+            0,
+            Rf_mkString(CString::new(class_name).unwrap_or_default().as_ptr()),
+        );
+        SET_VECTOR_ELT(entry, 1, handler);
+        SET_VECTOR_ELT(entry, 2, rho);
+        entry
+    }
+}
+
+unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
+    unsafe {
+        let classes = crate::sexp::attrib_core::getAttrib(condition, Rf_install(c"class".as_ptr()));
+        if classes.is_null() || classes == R_NilValue() || TYPEOF(classes) != SEXPTYPE::STRSXP {
+            return;
+        }
+
+        let stack = condition_handler_stack();
+        for class_idx in 0..XLENGTH(classes) {
+            let class_name = elt_to_string(classes, class_idx);
+            let mut current = stack;
+            while !current.is_null() && current != R_NilValue() {
+                let entry = CAR(current);
+                if calling_handler_entry_class(entry).as_deref() == Some(class_name.as_str()) {
+                    let handler = VECTOR_ELT(entry, 1);
+                    call_condition_handler(handler, condition, rho);
+                }
+                current = CDR(current);
+            }
+        }
+    }
+}
+
+unsafe fn calling_handler_entry_class(entry: SEXP) -> Option<String> {
+    unsafe {
+        if entry.is_null() || entry == R_NilValue() || TYPEOF(entry) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        let class = VECTOR_ELT(entry, 0);
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        Some(elt_to_string(class, 0))
+    }
+}
+
+unsafe fn call_condition_handler(handler: SEXP, condition: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(handler) == SEXPTYPE::CLOSXP {
+            let args = Rf_cons(condition, R_NilValue());
+            let call = Rf_cons(handler, args);
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            crate::eval::closure::applyClosure(call, handler, args, rho, R_NilValue(), TRUE)
+        } else {
+            let call = crate::sexp::constructors::Rf_lang2(handler, condition);
+            crate::eval::eval::Rf_eval(call, rho)
+        }
     }
 }
 
@@ -6967,9 +7080,13 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `warning(...)` — issue warning.
-pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let message = format!("Warning message:\n{} \n", elt_to_string(CAR(args), 0));
+        let warning_text = elt_to_string(CAR(args), 0);
+        let condition = simple_condition(&warning_text, &["simpleWarning", "warning", "condition"]);
+        signal_calling_handlers(condition, rho);
+
+        let message = format!("Warning message:\n{} \n", warning_text);
         if crate::sexp::output::is_capturing() {
             crate::sexp::output::capture_stderr(&message);
         } else {
@@ -6981,9 +7098,12 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `message(...)` — print message.
-pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let message = format!("{}\n", elt_to_string(CAR(args), 0));
+        let condition = simple_condition(&message, &["simpleMessage", "message", "condition"]);
+        signal_calling_handlers(condition, rho);
+
         if crate::sexp::output::is_capturing() {
             crate::sexp::output::capture_stderr(&message);
         } else {
@@ -7040,6 +7160,10 @@ fn tag_name(cell: SEXP) -> Option<String> {
 }
 
 unsafe fn simple_error_condition(message: &str) -> SEXP {
+    unsafe { simple_condition(message, &["simpleError", "error", "condition"]) }
+}
+
+unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         if result.is_null() {
@@ -7073,7 +7197,7 @@ unsafe fn simple_error_condition(message: &str) -> SEXP {
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         if !class.is_null() {
             let _cp = protect(class);
-            for (i, name) in ["simpleError", "error", "condition"].iter().enumerate() {
+            for (i, name) in classes.iter().enumerate() {
                 SET_STRING_ELT(
                     class,
                     i as R_xlen_t,
