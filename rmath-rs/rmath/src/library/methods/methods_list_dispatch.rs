@@ -309,21 +309,24 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
 pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
     unsafe {
+        if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+            r_error("invalid symbol in checking for missing argument in method dispatch");
+        }
+        if ev.is_null() || ev == R_NilValue() {
+            r_error("use of NULL environment is defunct");
+        }
+        if TYPEOF(ev) != SEXPTYPE::ENVSXP {
+            r_error("invalid environment in checking for missing argument in method dispatch");
+        }
         let res = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
         let _res_guard = protect(res);
         let ip = LOGICAL(res);
 
-        if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
-            // Invalid: not a symbol
-            *ip.add(0) = 0; // FALSE
+        let val = crate::sexp::envir::R_findVarInFrame(ev, symbol);
+        if val == crate::sexp::globals::R_MissingArg() {
+            *ip.add(0) = 1; // TRUE
         } else {
-            // Check if the symbol is bound to R_MissingArg in the environment
-            let val = crate::sexp::envir::R_findVarInFrame(ev, symbol);
-            if val == crate::sexp::globals::R_MissingArg() {
-                *ip.add(0) = 1; // TRUE
-            } else {
-                *ip.add(0) = 0; // FALSE
-            }
+            *ip.add(0) = 0; // FALSE
         }
         res
     }
@@ -732,6 +735,27 @@ mod tests {
             let result = R_selectMethod(fname, env, mlist, Rf_ScalarLogical(FALSE));
             assert_eq!(result, method);
         }
+    }
+
+    #[test]
+    fn missing_arg_reports_bound_missing_argument() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let env = env_with(&[("x", crate::sexp::globals::R_MissingArg())]);
+            let sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+
+            let result = R_missingArg(sym, env);
+            assert_eq!(*LOGICAL(result), TRUE);
+        }
+    }
+
+    #[test]
+    fn missing_arg_rejects_non_symbol() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = assert_r_error(|| unsafe {
+            R_missingArg(Rf_mkString(c"x".as_ptr()), R_NilValue());
+        });
+        assert!(err.message.contains("invalid symbol"));
     }
 
     #[test]
