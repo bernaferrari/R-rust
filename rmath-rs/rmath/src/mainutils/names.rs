@@ -4888,7 +4888,14 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         let ans = if let Some(f) = cfun {
             f(s, internal_val, evaluated_args, env)
         } else {
-            R_NilValue()
+            let mut end = entry.name.len();
+            if end > 0 && entry.name[end - 1] == 0 {
+                end -= 1;
+            }
+            let name = std::str::from_utf8(&entry.name[..end]).unwrap_or("<invalid>");
+            panic_any(RError {
+                message: format!("internal function '{name}' is not implemented"),
+            });
         };
 
         // Reset visibility if flag < 2
