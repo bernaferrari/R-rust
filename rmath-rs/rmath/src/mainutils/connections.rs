@@ -366,12 +366,12 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
 
     let mut byte = [0u8; 1];
     let result = match &mut conn.kind {
-        ConnKind::File | ConnKind::XzFile => conn
+        ConnKind::File => conn
             .reader
             .as_mut()
             .map(|reader| reader.read(&mut byte))
             .unwrap_or(Ok(0)),
-        ConnKind::GzFile | ConnKind::BzFile => {
+        ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
             if conn.raw_pos >= conn.raw_data.len() {
                 Ok(0)
             } else {
@@ -490,14 +490,14 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     }
 
     match &mut conn.kind {
-        ConnKind::File | ConnKind::XzFile => {
+        ConnKind::File => {
             if let Some(writer) = conn.writer.as_mut()
                 && let Err(e) = writer.write_all(bytes).and_then(|_| writer.flush())
             {
                 r_error(&format!("error writing to connection: {}", e));
             }
         }
-        ConnKind::GzFile | ConnKind::BzFile => {
+        ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
             conn.raw_data.extend_from_slice(bytes);
             conn.raw_pos = conn.raw_data.len();
         }
@@ -996,6 +996,52 @@ fn flush_bz_conn(conn: &mut RConn) -> io::Result<()> {
     Ok(())
 }
 
+fn open_xz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
+    conn.mode = mode.to_string();
+    conn.text = !mode.contains('b');
+    conn.raw_data.clear();
+    conn.raw_pos = 0;
+    conn.file = None;
+    conn.reader = None;
+    conn.writer = None;
+
+    let can_read = mode.starts_with('r') || mode.contains('+');
+    let can_write = mode.starts_with('w') || mode.starts_with('a') || mode.contains('+');
+
+    if mode.starts_with('r') || mode.starts_with('a') || mode.contains('+') {
+        let path = Path::new(&conn.description);
+        if path.exists() {
+            let file = File::open(path)?;
+            let mut reader = BufReader::new(file);
+            lzma_rs::xz_decompress(&mut reader, &mut conn.raw_data)
+                .map_err(|err| io::Error::other(err.to_string()))?;
+        } else if mode.starts_with('r') {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "file not found"));
+        }
+    }
+
+    if mode.starts_with('w') && !mode.starts_with("w+") {
+        conn.raw_data.clear();
+    }
+
+    conn.raw_pos = if mode.starts_with('a') {
+        conn.raw_data.len()
+    } else {
+        0
+    };
+    conn.isopen = true;
+    conn.canread = can_read;
+    conn.canwrite = can_write;
+    Ok(())
+}
+
+fn flush_xz_conn(conn: &mut RConn) -> io::Result<()> {
+    let input = io::Cursor::new(&conn.raw_data);
+    let mut reader = BufReader::new(input);
+    let mut output = File::create(&conn.description)?;
+    lzma_rs::xz_compress(&mut reader, &mut output)
+}
+
 // ---------------------------------------------------------------------------
 // do_pipe — pipe(description, open = "", encoding = "")
 // ---------------------------------------------------------------------------
@@ -1281,27 +1327,17 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             open
         };
 
-        let ncon = next_connection();
         let mut conn = RConn::new("xzfile", &description, &open_mode, ConnKind::XzFile);
         conn.canseek = false;
+        conn.text = !open_mode.contains('b');
 
         if !open_mode.is_empty() {
-            let file_result = open_file_conn(&description, &open_mode);
-            match file_result {
-                Ok((file, reader, writer)) => {
-                    conn.file = Some(file);
-                    conn.reader = reader;
-                    conn.writer = writer;
-                    conn.isopen = true;
-                    conn.canread = open_mode.starts_with('r');
-                    conn.canwrite = open_mode.starts_with('w') || open_mode.starts_with('a');
-                }
-                Err(e) => {
-                    r_error(&format!("cannot open file '{}': {}", description, e));
-                }
+            if let Err(e) = open_xz_conn(&mut conn, &open_mode) {
+                r_error(&format!("cannot open file '{}': {}", description, e));
             }
         }
 
+        let ncon = next_connection();
         let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
@@ -1353,7 +1389,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         conn.text = !open_mode.contains('b');
 
         match &conn.kind {
-            ConnKind::File | ConnKind::XzFile => {
+            ConnKind::File => {
                 let file_result = open_file_conn(&conn.description, &open_mode);
                 match file_result {
                     Ok((file, reader, writer)) => {
@@ -1380,6 +1416,11 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             }
             ConnKind::BzFile => {
                 if let Err(e) = open_bz_conn(conn, &open_mode) {
+                    r_error(&format!("cannot open the connection: {}", e));
+                }
+            }
+            ConnKind::XzFile => {
+                if let Err(e) = open_xz_conn(conn, &open_mode) {
                     r_error(&format!("cannot open the connection: {}", e));
                 }
             }
@@ -1473,6 +1514,9 @@ fn close_connection_inner(conn: &mut RConn) {
             }
             ConnKind::BzFile => {
                 let _ = flush_bz_conn(conn);
+            }
+            ConnKind::XzFile => {
+                let _ = flush_xz_conn(conn);
             }
             _ => {}
         }
@@ -1687,7 +1731,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         let backend_limit = n.saturating_sub(lines.len());
 
         match &conn.kind {
-            ConnKind::File | ConnKind::XzFile => {
+            ConnKind::File => {
                 if let Some(ref mut reader) = conn.reader {
                     for _ in 0..backend_limit {
                         let mut line = String::new();
@@ -1710,7 +1754,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                     }
                 }
             }
-            ConnKind::GzFile | ConnKind::BzFile => {
+            ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 for _ in 0..backend_limit {
                     let Some(line) = read_raw_line(conn) else {
                         break;
@@ -1858,7 +1902,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         }
 
         match &conn.kind {
-            ConnKind::File | ConnKind::XzFile => {
+            ConnKind::File => {
                 if let Some(ref mut writer) = conn.writer {
                     for j in 0..text_len {
                         let line = string_elt(text, j);
@@ -1869,7 +1913,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                     let _ = writer.flush();
                 }
             }
-            ConnKind::GzFile | ConnKind::BzFile => {
+            ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 for j in 0..text_len {
                     let line = string_elt(text, j);
                     conn.raw_data.extend_from_slice(line.as_bytes());
@@ -2038,6 +2082,7 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let result = match conn.kind {
                 ConnKind::GzFile => flush_gz_conn(conn),
                 ConnKind::BzFile => flush_bz_conn(conn),
+                ConnKind::XzFile => flush_xz_conn(conn),
                 _ => Ok(()),
             };
             if let Err(e) = result {
@@ -2638,7 +2683,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
 
         // Read binary data from connection
         match &conn.kind {
-            ConnKind::File | ConnKind::XzFile => {
+            ConnKind::File => {
                 if let Some(ref mut file) = conn.file {
                     if what == "raw" {
                         let mut buf = vec![0u8; n];
@@ -2761,7 +2806,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                     }
                 }
             }
-            ConnKind::RawConnection | ConnKind::GzFile | ConnKind::BzFile => {
+            ConnKind::RawConnection | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 let remaining = &conn.raw_data[conn.raw_pos..];
                 if what == "raw" {
                     let count = n.min(remaining.len());
@@ -2864,14 +2909,14 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
                 }
                 // Write directly and return
                 match &conn.kind {
-                    ConnKind::File | ConnKind::XzFile => {
+                    ConnKind::File => {
                         if let Some(ref mut file) = conn.file
                             && let Err(e) = file.write_all(&buf)
                         {
                             r_error(&format!("error writing to connection: {}", e));
                         }
                     }
-                    ConnKind::GzFile | ConnKind::BzFile => {
+                    ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                         conn.raw_data.extend_from_slice(&buf);
                         conn.raw_pos = conn.raw_data.len();
                     }
@@ -2892,14 +2937,14 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         };
 
         match &conn.kind {
-            ConnKind::File | ConnKind::XzFile => {
+            ConnKind::File => {
                 if let Some(ref mut file) = conn.file
                     && let Err(e) = file.write_all(bytes_to_write)
                 {
                     r_error(&format!("error writing to connection: {}", e));
                 }
             }
-            ConnKind::GzFile | ConnKind::BzFile => {
+            ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 conn.raw_data.extend_from_slice(bytes_to_write);
                 conn.raw_pos = conn.raw_data.len();
             }
