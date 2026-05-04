@@ -1601,11 +1601,10 @@ fn close_connection_inner(conn: &mut RConn) {
 // do_isopen — isOpen(con, rw = "")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let scon = CAR(args);
-        args = CDR(args);
-        let rw = as_integer(CAR(args));
+        let scon = arg_by_name_or_position(args, 0, &["con"], R_NilValue());
+        let rw = connection_rw_mode(arg_by_name_or_position(args, 1, &["rw"], R_NilValue()));
 
         let i = as_integer(scon) as usize;
         init_connections_table();
@@ -2693,6 +2692,25 @@ unsafe fn logical_arg_or(arg: SEXP, name: &str, default: c_int) -> c_int {
         } else {
             check_logical_arg(arg, name)
         }
+    }
+}
+
+unsafe fn connection_rw_mode(arg: SEXP) -> c_int {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+            return 0;
+        }
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            if LENGTH(arg) < 1 {
+                return 0;
+            }
+            return match string_elt(arg, 0).as_str() {
+                "read" | "r" => 1,
+                "write" | "w" => 2,
+                _ => 0,
+            };
+        }
+        as_integer(arg)
     }
 }
 
