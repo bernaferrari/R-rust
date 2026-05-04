@@ -706,6 +706,49 @@ unsafe fn positional_or(args: SEXP, index: usize, default: SEXP) -> SEXP {
     }
 }
 
+unsafe fn arg_by_name_or_position(
+    args: SEXP,
+    position: usize,
+    names: &[&str],
+    default: SEXP,
+) -> SEXP {
+    unsafe {
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if let Some(tag) = connection_arg_tag_name(cell)
+                && names.iter().any(|name| tag == *name)
+            {
+                let value = CAR(cell);
+                return if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
+                    default
+                } else {
+                    value
+                };
+            }
+            cell = CDR(cell);
+        }
+
+        let mut untagged = 0usize;
+        cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if connection_arg_tag_name(cell).is_none() {
+                if untagged == position {
+                    let value = CAR(cell);
+                    return if value.is_null() || value == R_NilValue() || value == R_MissingArg() {
+                        default
+                    } else {
+                        value
+                    };
+                }
+                untagged += 1;
+            }
+            cell = CDR(cell);
+        }
+
+        default
+    }
+}
+
 /// Raise an R error via panic.
 fn r_error(msg: &str) -> ! {
     std::panic::panic_any(RError {
@@ -2543,442 +2586,543 @@ pub unsafe fn do_pushBackLength(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
     }
 }
 
-// ---------------------------------------------------------------------------
-// do_readBin — readBin(con, what, n, size = NA, signed = TRUE, swap = 0)
-// ---------------------------------------------------------------------------
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BinaryKind {
+    Raw,
+    Integer,
+    Logical,
+    Numeric,
+    Complex,
+    Character,
+}
 
-pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let scon = CAR(args);
-        args = CDR(args);
-        let swhat = CAR(args);
-        args = CDR(args);
-        let n_val = as_integer(CAR(args));
-        args = CDR(args);
-        let _size = CAR(args);
-        args = CDR(args);
-        let _signed = check_logical_arg(CAR(args), "signed");
-        args = CDR(args);
-        let _swap = check_logical_arg(CAR(args), "swap");
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ByteOrder {
+    Little,
+    Big,
+}
 
-        // Check if reading from raw vector
-        let is_raw = !scon.is_null() && TYPEOF(scon) == SEXPTYPE::RAWSXP;
-
-        let what = check_string_arg(swhat, "what");
-        let n = if n_val < 0 { 1024 } else { n_val as usize };
-
-        if is_raw {
-            // Reading from raw vector
-            let raw_data = RAW(scon);
-            let raw_len = LENGTH(scon) as usize;
-            if raw_data.is_null() || raw_len == 0 {
-                return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
-            }
-            let bytes = std::slice::from_raw_parts(raw_data, raw_len);
-
-            if what == "raw" {
-                let count = n.min(raw_len);
-                let ans = Rf_allocVector(SEXPTYPE::RAWSXP, count as c_int);
-                if !ans.is_null() && count > 0 {
-                    let dest = RAW(ans);
-                    ptr::copy_nonoverlapping(bytes.as_ptr(), dest, count);
-                }
-                return ans;
-            } else if what == "integer" || what == "int" || what == "numeric" || what == "double" {
-                let item_size = if what == "integer" || what == "int" {
-                    4
-                } else {
-                    8
-                };
-                let count = (n * item_size).min(raw_len) / item_size;
-                let sexp_type = if what == "integer" || what == "int" {
-                    SEXPTYPE::INTSXP
-                } else {
-                    SEXPTYPE::REALSXP
-                };
-                let ans = Rf_allocVector(sexp_type.0, count as c_int);
-                if !ans.is_null() && count > 0 {
-                    let dest = if sexp_type == SEXPTYPE::INTSXP {
-                        INTEGER(ans) as *mut u8
-                    } else {
-                        REAL(ans) as *mut u8
-                    };
-                    ptr::copy_nonoverlapping(bytes.as_ptr(), dest, count * item_size);
-                }
-                return ans;
-            } else if what == "character" {
-                // Read null-terminated strings
-                let mut strings: Vec<String> = Vec::new();
-                let mut pos = 0usize;
-                for _ in 0..n {
-                    if pos >= raw_len {
-                        break;
-                    }
-                    let end = bytes[pos..].iter().position(|&b| b == 0);
-                    match end {
-                        Some(len) => {
-                            let s = String::from_utf8_lossy(&bytes[pos..pos + len]).to_string();
-                            strings.push(s);
-                            pos += len + 1;
-                        }
-                        None => {
-                            let s = String::from_utf8_lossy(&bytes[pos..]).to_string();
-                            strings.push(s);
-                            pos = raw_len;
-                            break;
-                        }
-                    }
-                    if strings.len() >= n {
-                        break;
-                    }
-                }
-                let nstr = strings.len() as c_int;
-                let ans = Rf_allocVector(SEXPTYPE::STRSXP, nstr);
-                if !ans.is_null() {
-                    for (idx, s) in strings.iter().enumerate() {
-                        let c_s = CString::new(s.as_str())
-                            .unwrap_or_else(|_| CString::new("").unwrap_or_default());
-                        let charsxp = Rf_mkChar(c_s.as_ptr());
-                        SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
-                    }
-                }
-                return ans;
-            } else if what == "logical" {
-                let count = (n * 4).min(raw_len) / 4;
-                let ans = Rf_allocVector(SEXPTYPE::LGLSXP, count as c_int);
-                if !ans.is_null() && count > 0 {
-                    let dest = LOGICAL(ans) as *mut u8;
-                    ptr::copy_nonoverlapping(bytes.as_ptr(), dest, count * 4);
-                }
-                return ans;
-            } else if what == "complex" {
-                let count = (n * 16).min(raw_len) / 16;
-                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP, count as c_int);
-                if !ans.is_null() && count > 0 {
-                    let dest = COMPLEX(ans) as *mut u8;
-                    ptr::copy_nonoverlapping(bytes.as_ptr(), dest, count * 16);
-                }
-                return ans;
-            }
-            return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
+impl ByteOrder {
+    fn native() -> Self {
+        if cfg!(target_endian = "little") {
+            Self::Little
+        } else {
+            Self::Big
         }
+    }
 
-        // Reading from a connection
-        if !inherits_class(scon, "connection") {
+    fn swapped(self) -> Self {
+        match self {
+            Self::Little => Self::Big,
+            Self::Big => Self::Little,
+        }
+    }
+}
+
+unsafe fn binary_kind_from_what(what: SEXP) -> BinaryKind {
+    unsafe {
+        if what.is_null() || what == R_NilValue() {
+            r_error("invalid 'what' argument");
+        }
+        match TYPEOF(what) {
+            t if t == SEXPTYPE::STRSXP => {
+                if LENGTH(what) == 0 {
+                    return BinaryKind::Character;
+                }
+                match string_elt(what, 0).as_str() {
+                    "raw" => BinaryKind::Raw,
+                    "integer" | "int" => BinaryKind::Integer,
+                    "logical" => BinaryKind::Logical,
+                    "numeric" | "double" => BinaryKind::Numeric,
+                    "complex" => BinaryKind::Complex,
+                    "character" => BinaryKind::Character,
+                    _ => r_error("invalid 'what' argument"),
+                }
+            }
+            t if t == SEXPTYPE::RAWSXP => BinaryKind::Raw,
+            t if t == SEXPTYPE::INTSXP => BinaryKind::Integer,
+            t if t == SEXPTYPE::LGLSXP => BinaryKind::Logical,
+            t if t == SEXPTYPE::REALSXP => BinaryKind::Numeric,
+            t if t == SEXPTYPE::CPLXSXP => BinaryKind::Complex,
+            _ => r_error("invalid 'what' argument"),
+        }
+    }
+}
+
+unsafe fn byte_order_from_arg(arg: SEXP, name: &str) -> ByteOrder {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+            return ByteOrder::native();
+        }
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            if LENGTH(arg) < 1 {
+                r_error(&format!("invalid '{name}' argument"));
+            }
+            return match string_elt(arg, 0).as_str() {
+                "little" => ByteOrder::Little,
+                "big" => ByteOrder::Big,
+                "swap" => ByteOrder::native().swapped(),
+                _ => r_error(&format!("invalid '{name}' argument")),
+            };
+        }
+        let swap = check_logical_arg(arg, name);
+        if swap == 0 {
+            ByteOrder::native()
+        } else {
+            ByteOrder::native().swapped()
+        }
+    }
+}
+
+unsafe fn binary_count(arg: SEXP) -> usize {
+    unsafe {
+        let n = as_integer(arg);
+        if n < 0 || n == NA_INTEGER {
+            r_error("invalid 'n' argument");
+        }
+        n as usize
+    }
+}
+
+unsafe fn logical_arg_or(arg: SEXP, name: &str, default: c_int) -> c_int {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+            default
+        } else {
+            check_logical_arg(arg, name)
+        }
+    }
+}
+
+unsafe fn binary_size(arg: SEXP, kind: BinaryKind) -> usize {
+    unsafe {
+        let default = match kind {
+            BinaryKind::Raw | BinaryKind::Character => 1,
+            BinaryKind::Integer | BinaryKind::Logical => 4,
+            BinaryKind::Numeric => 8,
+            BinaryKind::Complex => 16,
+        };
+        let size = as_integer(arg);
+        if size == NA_INTEGER {
+            return default;
+        }
+        let size = size as usize;
+        let valid = match kind {
+            BinaryKind::Raw | BinaryKind::Character => size == 1,
+            BinaryKind::Integer | BinaryKind::Logical => matches!(size, 1 | 2 | 4),
+            BinaryKind::Numeric => matches!(size, 4 | 8),
+            BinaryKind::Complex => matches!(size, 8 | 16),
+        };
+        if !valid {
+            r_error("invalid 'size' argument");
+        }
+        size
+    }
+}
+
+unsafe fn raw_bytes_from_vector(raw: SEXP) -> Vec<u8> {
+    unsafe {
+        let len = LENGTH(raw) as usize;
+        if len == 0 {
+            return Vec::new();
+        }
+        let data = RAW(raw);
+        if data.is_null() {
+            return Vec::new();
+        }
+        std::slice::from_raw_parts(data, len).to_vec()
+    }
+}
+
+unsafe fn read_binary_source(con: SEXP, limit: Option<usize>) -> Vec<u8> {
+    unsafe {
+        if TYPEOF(con) == SEXPTYPE::RAWSXP {
+            let mut bytes = raw_bytes_from_vector(con);
+            if let Some(limit) = limit {
+                bytes.truncate(limit);
+            }
+            return bytes;
+        }
+        if TYPEOF(con) == SEXPTYPE::STRSXP {
+            let path = check_string_arg(con, "con");
+            let mut bytes = std::fs::read(&path).unwrap_or_else(|e| {
+                r_error(&format!("cannot open file '{}': {}", path, e));
+            });
+            if let Some(limit) = limit {
+                bytes.truncate(limit);
+            }
+            return bytes;
+        }
+        if !inherits_class(con, "connection") {
             r_error("'con' is not a connection");
         }
-        let i = as_integer(scon) as usize;
-
-        let mut table = connection_table();
-        let Some(conn) = table[i].as_mut() else {
-            r_error("invalid connection");
-        };
-
-        if !conn.isopen {
-            r_error("connection is not open");
+        let index = as_integer(con);
+        let mut bytes = Vec::new();
+        match limit {
+            Some(limit) => {
+                for _ in 0..limit {
+                    let byte = connection_fgetc(index);
+                    if byte < 0 {
+                        break;
+                    }
+                    bytes.push(byte as u8);
+                }
+            }
+            None => loop {
+                let byte = connection_fgetc(index);
+                if byte < 0 {
+                    break;
+                }
+                bytes.push(byte as u8);
+            },
         }
-        if !conn.canread {
-            r_error("cannot read from this connection");
-        }
+        bytes
+    }
+}
 
-        // Read binary data from connection
-        match &conn.kind {
-            ConnKind::File => {
-                if let Some(ref mut file) = conn.file {
-                    if what == "raw" {
-                        let mut buf = vec![0u8; n];
-                        match file.read(&mut buf) {
-                            Ok(bytes_read) => {
-                                buf.truncate(bytes_read);
-                                let ans = Rf_allocVector(SEXPTYPE::RAWSXP, bytes_read as c_int);
-                                if !ans.is_null() && bytes_read > 0 {
-                                    let dest = RAW(ans);
-                                    ptr::copy_nonoverlapping(buf.as_ptr(), dest, bytes_read);
-                                }
-                                return ans;
+fn read_integer_chunk(chunk: &[u8], order: ByteOrder, signed: bool) -> i32 {
+    match chunk.len() {
+        1 if signed => i8::from_ne_bytes([chunk[0]]) as i32,
+        1 => chunk[0] as i32,
+        2 => {
+            let bytes = [chunk[0], chunk[1]];
+            if signed {
+                match order {
+                    ByteOrder::Little => i16::from_le_bytes(bytes) as i32,
+                    ByteOrder::Big => i16::from_be_bytes(bytes) as i32,
+                }
+            } else {
+                match order {
+                    ByteOrder::Little => u16::from_le_bytes(bytes) as i32,
+                    ByteOrder::Big => u16::from_be_bytes(bytes) as i32,
+                }
+            }
+        }
+        4 => {
+            let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
+            match order {
+                ByteOrder::Little => i32::from_le_bytes(bytes),
+                ByteOrder::Big => i32::from_be_bytes(bytes),
+            }
+        }
+        _ => 0,
+    }
+}
+
+fn write_integer_chunk(out: &mut Vec<u8>, value: i32, size: usize, order: ByteOrder) {
+    match size {
+        1 => out.push(value as u8),
+        2 => match order {
+            ByteOrder::Little => out.extend_from_slice(&(value as i16).to_le_bytes()),
+            ByteOrder::Big => out.extend_from_slice(&(value as i16).to_be_bytes()),
+        },
+        4 => match order {
+            ByteOrder::Little => out.extend_from_slice(&value.to_le_bytes()),
+            ByteOrder::Big => out.extend_from_slice(&value.to_be_bytes()),
+        },
+        _ => {}
+    }
+}
+
+unsafe fn alloc_raw_result(bytes: &[u8]) -> SEXP {
+    unsafe {
+        let ans = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as c_int);
+        if !ans.is_null() && !bytes.is_empty() {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(ans), bytes.len());
+        }
+        ans
+    }
+}
+
+unsafe fn alloc_integer_result(values: &[i32], sexptype: SEXPTYPE) -> SEXP {
+    unsafe {
+        let ans = Rf_allocVector(sexptype.0, values.len() as c_int);
+        if !ans.is_null() {
+            let dest = if sexptype == SEXPTYPE::LGLSXP {
+                LOGICAL(ans)
+            } else {
+                INTEGER(ans)
+            };
+            for (index, value) in values.iter().enumerate() {
+                *dest.add(index) = *value;
+            }
+        }
+        ans
+    }
+}
+
+unsafe fn alloc_real_result(values: &[f64]) -> SEXP {
+    unsafe {
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, values.len() as c_int);
+        if !ans.is_null() {
+            for (index, value) in values.iter().enumerate() {
+                *REAL(ans).add(index) = *value;
+            }
+        }
+        ans
+    }
+}
+
+unsafe fn alloc_character_result(values: &[String]) -> SEXP {
+    unsafe {
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
+        if !ans.is_null() {
+            for (index, value) in values.iter().enumerate() {
+                let c_value = CString::new(value.as_str()).unwrap_or_default();
+                SET_STRING_ELT(ans, index as R_xlen_t, Rf_mkChar(c_value.as_ptr()));
+            }
+        }
+        ans
+    }
+}
+
+unsafe fn decode_binary_result(
+    kind: BinaryKind,
+    bytes: &[u8],
+    n: usize,
+    size: usize,
+    signed: bool,
+    order: ByteOrder,
+) -> SEXP {
+    unsafe {
+        match kind {
+            BinaryKind::Raw => alloc_raw_result(&bytes[..bytes.len().min(n)]),
+            BinaryKind::Integer | BinaryKind::Logical => {
+                let values: Vec<i32> = bytes
+                    .chunks_exact(size)
+                    .take(n)
+                    .map(|chunk| read_integer_chunk(chunk, order, signed))
+                    .collect();
+                let sexptype = if kind == BinaryKind::Logical {
+                    SEXPTYPE::LGLSXP
+                } else {
+                    SEXPTYPE::INTSXP
+                };
+                alloc_integer_result(&values, sexptype)
+            }
+            BinaryKind::Numeric => {
+                let values: Vec<f64> = bytes
+                    .chunks_exact(size)
+                    .take(n)
+                    .map(|chunk| {
+                        if size == 4 {
+                            let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
+                            match order {
+                                ByteOrder::Little => f32::from_le_bytes(bytes) as f64,
+                                ByteOrder::Big => f32::from_be_bytes(bytes) as f64,
                             }
-                            Err(e) => {
-                                r_error(&format!("error reading from connection: {}", e));
+                        } else {
+                            let bytes = [
+                                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
+                                chunk[6], chunk[7],
+                            ];
+                            match order {
+                                ByteOrder::Little => f64::from_le_bytes(bytes),
+                                ByteOrder::Big => f64::from_be_bytes(bytes),
                             }
                         }
-                    } else if what == "integer" || what == "int" {
-                        let mut buf = vec![0u8; n * 4];
-                        match file.read(&mut buf) {
-                            Ok(bytes_read) => {
-                                let count = bytes_read / 4;
-                                let ans = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
-                                if !ans.is_null() && count > 0 {
-                                    let dest = INTEGER(ans) as *mut u8;
-                                    ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 4);
-                                }
-                                return ans;
+                    })
+                    .collect();
+                alloc_real_result(&values)
+            }
+            BinaryKind::Complex => {
+                let values: Vec<f64> = bytes
+                    .chunks_exact(size / 2)
+                    .take(n * 2)
+                    .map(|chunk| {
+                        if size == 8 {
+                            let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
+                            match order {
+                                ByteOrder::Little => f32::from_le_bytes(bytes) as f64,
+                                ByteOrder::Big => f32::from_be_bytes(bytes) as f64,
                             }
-                            Err(e) => {
-                                r_error(&format!("error reading from connection: {}", e));
-                            }
-                        }
-                    } else if what == "numeric" || what == "double" {
-                        let mut buf = vec![0u8; n * 8];
-                        match file.read(&mut buf) {
-                            Ok(bytes_read) => {
-                                let count = bytes_read / 8;
-                                let ans = Rf_allocVector(SEXPTYPE::REALSXP, count as c_int);
-                                if !ans.is_null() && count > 0 {
-                                    let dest = REAL(ans) as *mut u8;
-                                    ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 8);
-                                }
-                                return ans;
-                            }
-                            Err(e) => {
-                                r_error(&format!("error reading from connection: {}", e));
+                        } else {
+                            let bytes = [
+                                chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5],
+                                chunk[6], chunk[7],
+                            ];
+                            match order {
+                                ByteOrder::Little => f64::from_le_bytes(bytes),
+                                ByteOrder::Big => f64::from_be_bytes(bytes),
                             }
                         }
-                    } else if what == "character" {
-                        let mut buf = vec![0u8; n * 10001];
-                        match file.read(&mut buf) {
-                            Ok(bytes_read) => {
-                                buf.truncate(bytes_read);
-                                let mut strings: Vec<String> = Vec::new();
-                                let mut pos = 0usize;
-                                while pos < buf.len() && strings.len() < n {
-                                    let end = buf[pos..].iter().position(|&b| b == 0);
-                                    match end {
-                                        Some(len) => {
-                                            let s = String::from_utf8_lossy(&buf[pos..pos + len])
-                                                .to_string();
-                                            strings.push(s);
-                                            pos += len + 1;
-                                        }
-                                        None => {
-                                            break;
-                                        }
-                                    }
-                                }
-                                let nstr = strings.len() as c_int;
-                                let ans = Rf_allocVector(SEXPTYPE::STRSXP, nstr);
-                                if !ans.is_null() {
-                                    for (idx, s) in strings.iter().enumerate() {
-                                        let c_s = CString::new(s.as_str()).unwrap_or_else(|_| {
-                                            CString::new("").unwrap_or_default()
-                                        });
-                                        let charsxp = Rf_mkChar(c_s.as_ptr());
-                                        SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
-                                    }
-                                }
-                                return ans;
-                            }
-                            Err(e) => {
-                                r_error(&format!("error reading from connection: {}", e));
+                    })
+                    .collect();
+                let count = values.len() / 2;
+                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP, count as c_int);
+                if !ans.is_null() {
+                    let dest = COMPLEX(ans);
+                    for index in 0..count {
+                        (*dest.add(index)).r = values[index * 2];
+                        (*dest.add(index)).i = values[index * 2 + 1];
+                    }
+                }
+                ans
+            }
+            BinaryKind::Character => {
+                let mut values = Vec::new();
+                let mut start = 0usize;
+                while start < bytes.len() && values.len() < n {
+                    let rel_end = bytes[start..].iter().position(|byte| *byte == 0);
+                    match rel_end {
+                        Some(len) => {
+                            values.push(
+                                String::from_utf8_lossy(&bytes[start..start + len]).into_owned(),
+                            );
+                            start += len + 1;
+                        }
+                        None => break,
+                    }
+                }
+                alloc_character_result(&values)
+            }
+        }
+    }
+}
+
+unsafe fn encode_binary_object(object: SEXP, size_arg: SEXP, order: ByteOrder) -> Vec<u8> {
+    unsafe {
+        if object.is_null() || object == R_NilValue() {
+            r_error("invalid 'object' argument");
+        }
+        let obj_type = TYPEOF(object);
+        let obj_len = LENGTH(object) as usize;
+        let mut bytes = Vec::new();
+        match obj_type {
+            t if t == SEXPTYPE::RAWSXP => {
+                bytes.extend_from_slice(&raw_bytes_from_vector(object));
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                let kind = if obj_type == SEXPTYPE::LGLSXP {
+                    BinaryKind::Logical
+                } else {
+                    BinaryKind::Integer
+                };
+                let size = binary_size(size_arg, kind);
+                let src = if obj_type == SEXPTYPE::LGLSXP {
+                    LOGICAL(object)
+                } else {
+                    INTEGER(object)
+                };
+                for index in 0..obj_len {
+                    write_integer_chunk(&mut bytes, *src.add(index), size, order);
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let size = binary_size(size_arg, BinaryKind::Numeric);
+                for index in 0..obj_len {
+                    let value = *REAL(object).add(index);
+                    if size == 4 {
+                        let value = value as f32;
+                        match order {
+                            ByteOrder::Little => bytes.extend_from_slice(&value.to_le_bytes()),
+                            ByteOrder::Big => bytes.extend_from_slice(&value.to_be_bytes()),
+                        }
+                    } else {
+                        match order {
+                            ByteOrder::Little => bytes.extend_from_slice(&value.to_le_bytes()),
+                            ByteOrder::Big => bytes.extend_from_slice(&value.to_be_bytes()),
+                        }
+                    }
+                }
+            }
+            t if t == SEXPTYPE::CPLXSXP => {
+                let size = binary_size(size_arg, BinaryKind::Complex);
+                for index in 0..obj_len {
+                    let value = *COMPLEX(object).add(index);
+                    if size == 8 {
+                        for part in [value.r as f32, value.i as f32] {
+                            match order {
+                                ByteOrder::Little => bytes.extend_from_slice(&part.to_le_bytes()),
+                                ByteOrder::Big => bytes.extend_from_slice(&part.to_be_bytes()),
                             }
                         }
-                    } else if what == "logical" {
-                        let mut buf = vec![0u8; n * 4];
-                        match file.read(&mut buf) {
-                            Ok(bytes_read) => {
-                                let count = bytes_read / 4;
-                                let ans = Rf_allocVector(SEXPTYPE::LGLSXP, count as c_int);
-                                if !ans.is_null() && count > 0 {
-                                    let dest = LOGICAL(ans) as *mut u8;
-                                    ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 4);
-                                }
-                                return ans;
-                            }
-                            Err(e) => {
-                                r_error(&format!("error reading from connection: {}", e));
-                            }
-                        }
-                    } else if what == "complex" {
-                        let mut buf = vec![0u8; n * 16];
-                        match file.read(&mut buf) {
-                            Ok(bytes_read) => {
-                                let count = bytes_read / 16;
-                                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP, count as c_int);
-                                if !ans.is_null() && count > 0 {
-                                    let dest = COMPLEX(ans) as *mut u8;
-                                    ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 16);
-                                }
-                                return ans;
-                            }
-                            Err(e) => {
-                                r_error(&format!("error reading from connection: {}", e));
+                    } else {
+                        for part in [value.r, value.i] {
+                            match order {
+                                ByteOrder::Little => bytes.extend_from_slice(&part.to_le_bytes()),
+                                ByteOrder::Big => bytes.extend_from_slice(&part.to_be_bytes()),
                             }
                         }
                     }
                 }
             }
-            ConnKind::RawConnection | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
-                let remaining = &conn.raw_data[conn.raw_pos..];
-                if what == "raw" {
-                    let count = n.min(remaining.len());
-                    let ans = Rf_allocVector(SEXPTYPE::RAWSXP, count as c_int);
-                    if !ans.is_null() && count > 0 {
-                        let dest = RAW(ans);
-                        ptr::copy_nonoverlapping(remaining.as_ptr(), dest, count);
-                        conn.raw_pos += count;
-                    }
-                    return ans;
-                } else if what == "integer" || what == "int" {
-                    let count = (n * 4).min(remaining.len()) / 4;
-                    let ans = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
-                    if !ans.is_null() && count > 0 {
-                        let dest = INTEGER(ans) as *mut u8;
-                        ptr::copy_nonoverlapping(remaining.as_ptr(), dest, count * 4);
-                        conn.raw_pos += count * 4;
-                    }
-                    return ans;
-                } else if what == "numeric" || what == "double" {
-                    let count = (n * 8).min(remaining.len()) / 8;
-                    let ans = Rf_allocVector(SEXPTYPE::REALSXP, count as c_int);
-                    if !ans.is_null() && count > 0 {
-                        let dest = REAL(ans) as *mut u8;
-                        ptr::copy_nonoverlapping(remaining.as_ptr(), dest, count * 8);
-                        conn.raw_pos += count * 8;
-                    }
-                    return ans;
+            t if t == SEXPTYPE::STRSXP => {
+                for index in 0..obj_len as R_xlen_t {
+                    bytes.extend_from_slice(string_elt(object, index).as_bytes());
+                    bytes.push(0);
                 }
             }
-            _ => {
-                r_error("cannot read from this connection type");
-            }
+            _ => r_error("can only write vector objects"),
         }
+        bytes
+    }
+}
 
-        Rf_allocVector(SEXPTYPE::RAWSXP, 0)
+unsafe fn write_binary_sink(con: SEXP, bytes: &[u8]) -> SEXP {
+    unsafe {
+        if TYPEOF(con) == SEXPTYPE::RAWSXP {
+            return alloc_raw_result(bytes);
+        }
+        if TYPEOF(con) == SEXPTYPE::STRSXP {
+            let path = check_string_arg(con, "con");
+            std::fs::write(&path, bytes).unwrap_or_else(|e| {
+                r_error(&format!("cannot open file '{}': {}", path, e));
+            });
+            return R_NilValue();
+        }
+        if !inherits_class(con, "connection") {
+            r_error("'con' is not a connection");
+        }
+        connection_write_bytes(as_integer(con), bytes);
+        R_NilValue()
     }
 }
 
 // ---------------------------------------------------------------------------
-// do_writeBin — writeBin(object, con, size = NA, swap = 0, useBytes = FALSE)
+// do_readBin — readBin(con, what, n, size = NA, signed = TRUE, endian/swap)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let object = CAR(args);
-        args = CDR(args);
-        let scon = CAR(args);
-        args = CDR(args);
-        let _size = CAR(args);
-        args = CDR(args);
-        let _swap = check_logical_arg(CAR(args), "swap");
-        args = CDR(args);
-        let _useBytes = check_logical_arg(CAR(args), "useBytes");
+        let con = arg_by_name_or_position(args, 0, &["con"], R_NilValue());
+        let what_arg = arg_by_name_or_position(args, 1, &["what"], R_NilValue());
+        let n_arg = arg_by_name_or_position(args, 2, &["n"], Rf_ScalarInteger(1));
+        let what = binary_kind_from_what(what_arg);
+        let size_arg = arg_by_name_or_position(args, 3, &["size"], Rf_ScalarInteger(NA_INTEGER));
+        let signed_arg = arg_by_name_or_position(args, 4, &["signed"], Rf_ScalarLogical(1));
+        let endian_arg = arg_by_name_or_position(args, 5, &["endian", "swap"], R_MissingArg());
+        let n = binary_count(n_arg);
+        let size = binary_size(size_arg, what);
+        let signed = logical_arg_or(signed_arg, "signed", 1) != 0;
+        let order = byte_order_from_arg(endian_arg, "endian");
 
-        if object.is_null() {
-            r_error("invalid 'object' argument");
-        }
-
-        let obj_type = TYPEOF(object);
-        let obj_len = LENGTH(object) as usize;
-        if obj_len == 0 {
-            return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
-        }
-
-        let i = as_integer(scon) as usize;
-        let mut table = connection_table();
-        let Some(conn) = table[i].as_mut() else {
-            r_error("invalid connection");
+        let limit = match what {
+            BinaryKind::Raw => Some(n),
+            BinaryKind::Character => None,
+            _ => Some(n.saturating_mul(size)),
         };
+        let bytes = read_binary_source(con, limit);
+        decode_binary_result(what, &bytes, n, size, signed, order)
+    }
+}
 
-        if !conn.isopen {
-            r_error("connection is not open");
-        }
-        if !conn.canwrite {
-            r_error("cannot write to this connection");
-        }
+// ---------------------------------------------------------------------------
+// do_writeBin — writeBin(object, con, size = NA, endian/swap, useBytes = FALSE)
+// ---------------------------------------------------------------------------
 
-        let bytes_to_write: &[u8] = match obj_type {
-            t if t == SEXPTYPE::INTSXP => {
-                std::slice::from_raw_parts(INTEGER(object) as *const u8, obj_len * 4)
-            }
-            t if t == SEXPTYPE::REALSXP => {
-                std::slice::from_raw_parts(REAL(object) as *const u8, obj_len * 8)
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                std::slice::from_raw_parts(LOGICAL(object) as *const u8, obj_len * 4)
-            }
-            t if t == SEXPTYPE::CPLXSXP => {
-                std::slice::from_raw_parts(COMPLEX(object) as *const u8, obj_len * 16)
-            }
-            t if t == SEXPTYPE::RAWSXP => std::slice::from_raw_parts(RAW(object), obj_len),
-            t if t == SEXPTYPE::STRSXP => {
-                // For strings, concatenate null-terminated
-                let mut buf = Vec::new();
-                for j in 0..obj_len as R_xlen_t {
-                    let s = string_elt(object, j);
-                    buf.extend_from_slice(s.as_bytes());
-                    buf.push(0);
-                }
-                // Write directly and return
-                match &conn.kind {
-                    ConnKind::File => {
-                        if let Some(ref mut file) = conn.file
-                            && let Err(e) = file.write_all(&buf)
-                        {
-                            r_error(&format!("error writing to connection: {}", e));
-                        }
-                    }
-                    ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
-                        conn.raw_data.extend_from_slice(&buf);
-                        conn.raw_pos = conn.raw_data.len();
-                    }
-                    ConnKind::RawConnection => {
-                        conn.raw_data.extend_from_slice(&buf);
-                    }
-                    ConnKind::TextConnection => {
-                        let s = String::from_utf8_lossy(&buf).to_string();
-                        conn.text_lines.borrow_mut().push(s);
-                    }
-                    _ => {} // intentionally unhandled: unknown connection kind for write
-                }
-                return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
-            }
-            _ => {
-                r_error("'object' is not an atomic vector type");
-            }
-        };
+pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        let object = arg_by_name_or_position(args, 0, &["object"], R_NilValue());
+        let con = arg_by_name_or_position(args, 1, &["con"], R_NilValue());
+        let size_arg = arg_by_name_or_position(args, 2, &["size"], Rf_ScalarInteger(NA_INTEGER));
+        let endian_arg = arg_by_name_or_position(args, 3, &["endian", "swap"], R_MissingArg());
+        let use_bytes_arg = arg_by_name_or_position(args, 4, &["useBytes"], Rf_ScalarLogical(0));
+        let order = byte_order_from_arg(endian_arg, "endian");
+        let _use_bytes = logical_arg_or(use_bytes_arg, "useBytes", 0);
 
-        match &conn.kind {
-            ConnKind::File => {
-                if let Some(ref mut file) = conn.file
-                    && let Err(e) = file.write_all(bytes_to_write)
-                {
-                    r_error(&format!("error writing to connection: {}", e));
-                }
-            }
-            ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
-                conn.raw_data.extend_from_slice(bytes_to_write);
-                conn.raw_pos = conn.raw_data.len();
-            }
-            ConnKind::RawConnection => {
-                conn.raw_data.extend_from_slice(bytes_to_write);
-            }
-            ConnKind::Pipe => {
-                if let Some(ref mut child) = conn.child
-                    && let Some(ref mut stdin) = child.stdin
-                    && let Err(e) = stdin.write_all(bytes_to_write)
-                {
-                    r_error(&format!("error writing to pipe: {}", e));
-                }
-            }
-            ConnKind::Terminal(name) if name == "stdout" => {
-                let stdout = io::stdout();
-                let mut writer = stdout.lock();
-                if let Err(e) = writer.write_all(bytes_to_write) {
-                    r_error(&format!("error writing to stdout: {}", e));
-                }
-            }
-            ConnKind::Terminal(name) if name == "stderr" => {
-                let stderr = io::stderr();
-                let mut writer = stderr.lock();
-                if let Err(e) = writer.write_all(bytes_to_write) {
-                    r_error(&format!("error writing to stderr: {}", e));
-                }
-            }
-            _ => {
-                r_error("cannot write to this connection type");
-            }
-        }
-
-        R_NilValue()
+        let bytes = encode_binary_object(object, size_arg, order);
+        write_binary_sink(con, &bytes)
     }
 }
 
