@@ -21567,48 +21567,32 @@ pub unsafe fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// R's `cbind(...)` — combine vectors/matrices by columns.
 pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        // Simplified: collect all args into a matrix by columns
-        let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
+        let mut result_type = SEXPTYPE::LGLSXP;
         let mut ncols: R_xlen_t = 0;
         let mut nrows: R_xlen_t = 0;
+        let mut col_names = Vec::new();
+        let mut has_col_names = false;
 
-        // First pass: determine dimensions and type
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
-                let t = TYPEOF(arg);
-                if t == SEXPTYPE::STRSXP {
-                    result_type = SEXPTYPE::STRSXP.as_c_int();
-                } else if t == SEXPTYPE::REALSXP && result_type != SEXPTYPE::STRSXP {
-                    result_type = SEXPTYPE::REALSXP.as_c_int();
-                } else if t == SEXPTYPE::INTSXP
-                    && result_type != SEXPTYPE::STRSXP
-                    && result_type != SEXPTYPE::REALSXP
-                {
-                    result_type = SEXPTYPE::INTSXP.as_c_int();
+                result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
+                let (arg_nrow, arg_ncol) = bind_dims(arg, true);
+                nrows = nrows.max(arg_nrow);
+                ncols += arg_ncol;
+                let name = tag_name(current).unwrap_or_default();
+                if !name.is_empty() {
+                    has_col_names = true;
                 }
-
-                let dim_attr = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                );
-                if !dim_attr.is_null()
-                    && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
-                    && LENGTH(dim_attr) >= 2
-                {
-                    let r = *INTEGER(dim_attr) as R_xlen_t;
-                    let c = *INTEGER(dim_attr).add(1) as R_xlen_t;
-                    if nrows == 0 {
-                        nrows = r;
+                for j in 0..arg_ncol {
+                    if arg_ncol == 1 {
+                        col_names.push(name.clone());
+                    } else if name.is_empty() {
+                        col_names.push(String::new());
+                    } else {
+                        col_names.push(format!("{name}.{j_plus}", j_plus = j + 1));
                     }
-                    ncols += c;
-                } else {
-                    let n = XLENGTH(arg);
-                    if nrows == 0 {
-                        nrows = n;
-                    }
-                    ncols += 1;
                 }
             }
             current = CDR(current);
@@ -21625,52 +21609,19 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _p = protect(result);
 
-        // Second pass: copy data column by column
         let mut col_offset: R_xlen_t = 0;
         current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
-                let t = TYPEOF(arg);
-                let dim_attr = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                );
-                let (arg_nrow, arg_ncol) = if !dim_attr.is_null()
-                    && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
-                    && LENGTH(dim_attr) >= 2
-                {
-                    (
-                        *INTEGER(dim_attr) as R_xlen_t,
-                        *INTEGER(dim_attr).add(1) as R_xlen_t,
-                    )
-                } else {
-                    (XLENGTH(arg), 1)
-                };
+                let (arg_nrow, arg_ncol) = bind_dims(arg, true);
+                let arg_len = XLENGTH(arg).max(1);
 
                 for j in 0..arg_ncol {
-                    for i in 0..arg_nrow.min(nrows) {
-                        let src_idx = (j * arg_nrow + i) as usize;
-                        let dst_idx = ((col_offset + j) * nrows + i) as usize;
-
-                        if result_type == SEXPTYPE::REALSXP {
-                            let val = if t == SEXPTYPE::REALSXP {
-                                *REAL(arg).add(src_idx)
-                            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                                let v = *INTEGER(arg).add(src_idx);
-                                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-                            } else {
-                                NA_REAL
-                            };
-                            *REAL(result).add(dst_idx) = val;
-                        } else if result_type == SEXPTYPE::INTSXP {
-                            let val = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                                *INTEGER(arg).add(src_idx)
-                            } else {
-                                NA_INTEGER
-                            };
-                            *INTEGER(result).add(dst_idx) = val;
-                        }
+                    for i in 0..nrows {
+                        let src_idx = ((j * arg_nrow + (i % arg_nrow)) % arg_len) as R_xlen_t;
+                        let dst_idx = ((col_offset + j) * nrows + i) as R_xlen_t;
+                        copy_bind_value(result, dst_idx, result_type, arg, src_idx);
                     }
                 }
                 col_offset += arg_ncol;
@@ -21678,17 +21629,9 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             current = CDR(current);
         }
 
-        // Set dim attribute
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            let _dp = protect(dim);
-            *INTEGER(dim) = nrows as c_int;
-            *INTEGER(dim).add(1) = ncols as c_int;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
+        set_two_dim_attr(result, nrows, ncols);
+        if has_col_names {
+            set_bind_dimnames(result, R_NilValue(), string_vector(&col_names));
         }
         result
     }
@@ -21697,47 +21640,32 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
+        let mut result_type = SEXPTYPE::LGLSXP;
         let mut ncols: R_xlen_t = 0;
         let mut nrows: R_xlen_t = 0;
+        let mut row_names = Vec::new();
+        let mut has_row_names = false;
 
-        // First pass: determine dimensions and type
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
-                let t = TYPEOF(arg);
-                if t == SEXPTYPE::STRSXP {
-                    result_type = SEXPTYPE::STRSXP.as_c_int();
-                } else if t == SEXPTYPE::REALSXP && result_type != SEXPTYPE::STRSXP {
-                    result_type = SEXPTYPE::REALSXP.as_c_int();
-                } else if t == SEXPTYPE::INTSXP
-                    && result_type != SEXPTYPE::STRSXP
-                    && result_type != SEXPTYPE::REALSXP
-                {
-                    result_type = SEXPTYPE::INTSXP.as_c_int();
+                result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
+                let (arg_nrow, arg_ncol) = bind_dims(arg, false);
+                ncols = ncols.max(arg_ncol);
+                nrows += arg_nrow;
+                let name = tag_name(current).unwrap_or_default();
+                if !name.is_empty() {
+                    has_row_names = true;
                 }
-
-                let dim_attr = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                );
-                if !dim_attr.is_null()
-                    && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
-                    && LENGTH(dim_attr) >= 2
-                {
-                    let r = *INTEGER(dim_attr) as R_xlen_t;
-                    let c = *INTEGER(dim_attr).add(1) as R_xlen_t;
-                    if ncols == 0 {
-                        ncols = c;
+                for i in 0..arg_nrow {
+                    if arg_nrow == 1 {
+                        row_names.push(name.clone());
+                    } else if name.is_empty() {
+                        row_names.push(String::new());
+                    } else {
+                        row_names.push(format!("{name}.{i_plus}", i_plus = i + 1));
                     }
-                    nrows += r;
-                } else {
-                    let n = XLENGTH(arg);
-                    if ncols == 0 {
-                        ncols = n;
-                    }
-                    nrows += 1;
                 }
             }
             current = CDR(current);
@@ -21754,52 +21682,19 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _p = protect(result);
 
-        // Second pass: copy data row by row
         let mut row_offset: R_xlen_t = 0;
         current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
-                let t = TYPEOF(arg);
-                let dim_attr = crate::sexp::attrib_core::getAttrib(
-                    arg,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                );
-                let (arg_nrow, arg_ncol) = if !dim_attr.is_null()
-                    && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
-                    && LENGTH(dim_attr) >= 2
-                {
-                    (
-                        *INTEGER(dim_attr) as R_xlen_t,
-                        *INTEGER(dim_attr).add(1) as R_xlen_t,
-                    )
-                } else {
-                    (1, XLENGTH(arg))
-                };
+                let (arg_nrow, arg_ncol) = bind_dims(arg, false);
+                let arg_len = XLENGTH(arg).max(1);
 
-                for j in 0..arg_ncol.min(ncols) {
+                for j in 0..ncols {
                     for i in 0..arg_nrow {
-                        let src_idx = (j * arg_nrow + i) as usize;
-                        let dst_idx = (j * nrows + row_offset + i) as usize;
-
-                        if result_type == SEXPTYPE::REALSXP {
-                            let val = if t == SEXPTYPE::REALSXP {
-                                *REAL(arg).add(src_idx)
-                            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                                let v = *INTEGER(arg).add(src_idx);
-                                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-                            } else {
-                                NA_REAL
-                            };
-                            *REAL(result).add(dst_idx) = val;
-                        } else if result_type == SEXPTYPE::INTSXP {
-                            let val = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                                *INTEGER(arg).add(src_idx)
-                            } else {
-                                NA_INTEGER
-                            };
-                            *INTEGER(result).add(dst_idx) = val;
-                        }
+                        let src_idx = ((j * arg_nrow + i) % arg_len) as R_xlen_t;
+                        let dst_idx = (j * nrows + row_offset + i) as R_xlen_t;
+                        copy_bind_value(result, dst_idx, result_type, arg, src_idx);
                     }
                 }
                 row_offset += arg_nrow;
@@ -21807,19 +21702,104 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             current = CDR(current);
         }
 
-        // Set dim attribute
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !dim.is_null() {
-            let _dp = protect(dim);
-            *INTEGER(dim) = nrows as c_int;
-            *INTEGER(dim).add(1) = ncols as c_int;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
+        set_two_dim_attr(result, nrows, ncols);
+        if has_row_names {
+            set_bind_dimnames(result, string_vector(&row_names), R_NilValue());
         }
         result
+    }
+}
+
+fn bind_common_type(left: SEXPTYPE, right: SEXPTYPE) -> SEXPTYPE {
+    if left == SEXPTYPE::STRSXP || right == SEXPTYPE::STRSXP {
+        SEXPTYPE::STRSXP
+    } else if left == SEXPTYPE::REALSXP || right == SEXPTYPE::REALSXP {
+        SEXPTYPE::REALSXP
+    } else if left == SEXPTYPE::INTSXP || right == SEXPTYPE::INTSXP {
+        SEXPTYPE::INTSXP
+    } else {
+        left
+    }
+}
+
+unsafe fn bind_dims(arg: SEXP, cbind: bool) -> (R_xlen_t, R_xlen_t) {
+    unsafe {
+        let dim_attr =
+            crate::sexp::attrib_core::getAttrib(arg, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
+            (
+                *INTEGER(dim_attr) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
+            )
+        } else if cbind {
+            (XLENGTH(arg), 1)
+        } else {
+            (1, XLENGTH(arg))
+        }
+    }
+}
+
+unsafe fn copy_bind_value(
+    dst: SEXP,
+    dst_i: R_xlen_t,
+    dst_type: SEXPTYPE,
+    src: SEXP,
+    src_i: R_xlen_t,
+) {
+    unsafe {
+        match dst_type {
+            SEXPTYPE::STRSXP => {
+                if TYPEOF(src) == SEXPTYPE::STRSXP
+                    && STRING_ELT(src, src_i) == crate::sexp::globals::R_NaString()
+                {
+                    SET_STRING_ELT(dst, dst_i, crate::sexp::globals::R_NaString());
+                } else {
+                    let value = elt_to_string(src, src_i);
+                    let c_value = CString::new(value).unwrap_or_default();
+                    SET_STRING_ELT(dst, dst_i, Rf_mkChar(c_value.as_ptr()));
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let value = match SEXPTYPE(TYPEOF(src)) {
+                    SEXPTYPE::REALSXP => REAL_ELT(src, src_i as c_int),
+                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+                        let value = INTEGER_ELT(src, src_i as c_int);
+                        if value == NA_INTEGER {
+                            NA_REAL
+                        } else {
+                            value as f64
+                        }
+                    }
+                    _ => NA_REAL,
+                };
+                *REAL(dst).add(dst_i as usize) = value;
+            }
+            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => {
+                let value = match SEXPTYPE(TYPEOF(src)) {
+                    SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => INTEGER_ELT(src, src_i as c_int),
+                    _ => NA_INTEGER,
+                };
+                *INTEGER(dst).add(dst_i as usize) = value;
+            }
+            _ => {}
+        }
+    }
+}
+
+unsafe fn set_bind_dimnames(result: SEXP, row_names: SEXP, col_names: SEXP) {
+    unsafe {
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if dimnames.is_null() {
+            return;
+        }
+        let _dimnames_guard = protect(dimnames);
+        SET_VECTOR_ELT(dimnames, 0, row_names);
+        SET_VECTOR_ELT(dimnames, 1, col_names);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dimnames,
+        );
     }
 }
 /// R's `var(x, y = NULL, na.rm = FALSE)` — variance or covariance.

@@ -437,6 +437,63 @@ where
     lines.join("\n")
 }
 
+fn format_character_matrix_with<F>(x: Sexp<'_>, nrow: usize, ncol: usize, value_at: F) -> String
+where
+    F: Fn(usize, usize) -> String,
+{
+    let (row_names, col_names) = matrix_dimnames(x, nrow, ncol);
+    let row_labels: Vec<String> = (0..nrow)
+        .map(|r| {
+            row_names
+                .as_ref()
+                .and_then(|names| names.get(r))
+                .cloned()
+                .unwrap_or_else(|| format!("[{},]", r + 1))
+        })
+        .collect();
+    let col_labels: Vec<String> = (0..ncol)
+        .map(|c| {
+            col_names
+                .as_ref()
+                .and_then(|names| names.get(c))
+                .cloned()
+                .unwrap_or_else(|| format!("[,{}]", c + 1))
+        })
+        .collect();
+    let row_width = row_labels.iter().map(String::len).max().unwrap_or(0);
+    let mut values = vec![vec![String::new(); ncol]; nrow];
+    let mut widths = Vec::with_capacity(ncol);
+    for c in 0..ncol {
+        let mut width = col_labels[c].len().max(1);
+        for r in 0..nrow {
+            let value = value_at(r, c);
+            width = width.max(value.len());
+            values[r][c] = value;
+        }
+        widths.push(width);
+    }
+
+    let mut lines = Vec::with_capacity(nrow + 1);
+    let mut header = " ".repeat(row_width + 1);
+    for (c, width) in widths.iter().enumerate() {
+        header.push_str(&format!("{:>width$}", col_labels[c]));
+        if c + 1 < ncol {
+            header.push(' ');
+        }
+    }
+    lines.push(header);
+
+    for r in 0..nrow {
+        let mut line = format!("{:<row_width$}", row_labels[r]);
+        for (c, width) in widths.iter().enumerate() {
+            line.push(' ');
+            line.push_str(&format!("{:<width$}", values[r][c]));
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
+}
+
 fn format_matrix(x: Sexp<'_>) -> Option<String> {
     let (nrow, ncol) = matrix_dims(x)?;
     match x.typeof_() {
@@ -451,6 +508,9 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
         })),
         SEXPTYPE::CPLXSXP => Some(format_matrix_with(x, nrow, ncol, |r, c| {
             format_complex_element(x, (r + c * nrow) as i64)
+        })),
+        SEXPTYPE::STRSXP => Some(format_character_matrix_with(x, nrow, ncol, |r, c| {
+            format_string_element(x, (r + c * nrow) as i64)
         })),
         _ => None,
     }
@@ -867,6 +927,10 @@ pub fn print_value(x: Sexp<'_>) {
             }
         }
         SEXPTYPE::STRSXP => {
+            if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             let vals: Vec<String> = (0..x.len().min(10))
                 .map(|i| format_string_element(x, i))
                 .collect();
