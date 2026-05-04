@@ -1,0 +1,5 @@
+mp <- memory.profile()
+print(length(mp))
+cat(paste(names(mp)[1:6], collapse = "\n"), "\n", sep = "")
+print(all(mp >= 0))
+print(is.integer(mp))

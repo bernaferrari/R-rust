@@ -4833,6 +4833,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "gc",
             "gcinfo",
             "memory.size",
+            "memory.profile",
             "object.size",
             // Complete I/O — European CSV, delimited, fixed-width
             "read.csv2",
@@ -19953,6 +19954,82 @@ pub unsafe fn do_memory_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             snapshot.current_bytes
         };
         Rf_ScalarReal(bytes_to_mb(bytes))
+    }
+}
+
+/// R's `memory.profile()` — session-local object counts by SEXPTYPE class.
+pub unsafe fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    const PROFILE_TYPES: [(&str, SEXPTYPE); 24] = [
+        ("NULL", SEXPTYPE::NILSXP),
+        ("symbol", SEXPTYPE::SYMSXP),
+        ("pairlist", SEXPTYPE::LISTSXP),
+        ("closure", SEXPTYPE::CLOSXP),
+        ("environment", SEXPTYPE::ENVSXP),
+        ("promise", SEXPTYPE::PROMSXP),
+        ("language", SEXPTYPE::LANGSXP),
+        ("special", SEXPTYPE::SPECIALSXP),
+        ("builtin", SEXPTYPE::BUILTINSXP),
+        ("char", SEXPTYPE::CHARSXP),
+        ("logical", SEXPTYPE::LGLSXP),
+        ("integer", SEXPTYPE::INTSXP),
+        ("double", SEXPTYPE::REALSXP),
+        ("complex", SEXPTYPE::CPLXSXP),
+        ("character", SEXPTYPE::STRSXP),
+        ("...", SEXPTYPE::DOTSXP),
+        ("any", SEXPTYPE::ANYSXP),
+        ("list", SEXPTYPE::VECSXP),
+        ("expression", SEXPTYPE::EXPRSXP),
+        ("bytecode", SEXPTYPE::BCODESXP),
+        ("externalptr", SEXPTYPE::EXTPTRSXP),
+        ("weakref", SEXPTYPE::WEAKREFSXP),
+        ("raw", SEXPTYPE::RAWSXP),
+        ("S4", SEXPTYPE::S4SXP),
+    ];
+
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, PROFILE_TYPES.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let data = INTEGER(result);
+        for i in 0..PROFILE_TYPES.len() {
+            *data.add(i) = 0;
+        }
+        *data = 1;
+
+        crate::sexp::instance::with_required_current_instance(|instance| {
+            for node in instance.arena.active_nodes() {
+                let ty = TYPEOF(node);
+                if let Some((idx, _)) = PROFILE_TYPES
+                    .iter()
+                    .enumerate()
+                    .find(|(_, (_, profile_ty))| ty == *profile_ty)
+                {
+                    // `S4SXP` shares the OBJSXP tag; match GNU R's public bucket name.
+                    *data.add(idx) = (*data.add(idx)).saturating_add(1);
+                }
+            }
+        });
+
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, PROFILE_TYPES.len() as R_xlen_t);
+        if !names.is_null() {
+            let _names_guard = protect(names);
+            for (i, (name, _)) in PROFILE_TYPES.iter().enumerate() {
+                SET_STRING_ELT(
+                    names,
+                    i as R_xlen_t,
+                    Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+                names,
+            );
+        }
+
+        result
     }
 }
 

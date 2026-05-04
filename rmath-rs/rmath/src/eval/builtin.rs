@@ -2143,6 +2143,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_memory_size,
     },
     EvaluatedBuiltin {
+        name: "memory.profile",
+        handler: crate::mainutils::essentials::do_memory_profile,
+    },
+    EvaluatedBuiltin {
         name: "object.size",
         handler: crate::mainutils::essentials::do_object_size,
     },
