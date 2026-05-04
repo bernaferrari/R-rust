@@ -910,9 +910,9 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let sopen = positional_or(args, 1, empty);
         let _enc = positional_or(args, 2, native);
         let _block = positional_or(args, 3, Rf_ScalarLogical(crate::sexp::ffi::TRUE));
-        let _method = positional_or(args, 5, default_method);
+        let _method = positional_or(args, 4, default_method);
         let raw = check_logical_arg(
-            positional_or(args, 4, Rf_ScalarLogical(crate::sexp::ffi::FALSE)),
+            positional_or(args, 5, Rf_ScalarLogical(crate::sexp::ffi::FALSE)),
             "raw",
         );
 
@@ -3533,20 +3533,14 @@ mod tests {
     }
 
     #[test]
-    fn test_do_gzfile_stub() {
+    fn test_do_gzfile_create() {
         let _lock = reset_connections();
         unsafe {
             let tmp = std::env::temp_dir().join("rport_test_gz.txt");
-            {
-                let mut f = test_ok(File::create(&tmp));
-                if let Err(err) = write!(f, "test data\n") {
-                    panic!("test setup failed: {err}");
-                }
-            }
             let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
             let desc_sxp = Rf_mkString(desc.as_ptr());
             let _desc_guard = protect(desc_sxp);
-            let open_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
+            let open_sxp = Rf_mkString(test_ok(CString::new("wb")).as_ptr());
             let _open_guard = protect(open_sxp);
             let comp_sxp = Rf_ScalarInteger(6);
             let _comp_guard = protect(comp_sxp);

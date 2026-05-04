@@ -283,6 +283,9 @@ fn with_registry<R>(f: impl FnOnce(&mut DeviceRegistry) -> R) -> R {
 }
 
 fn with_device_mut<R>(gdd: pGEDevDesc, f: impl FnOnce(&mut GEDeviceDesc) -> R) -> Option<R> {
+    if gdd.is_null() {
+        return None;
+    }
     with_registry(|registry| registry.find_device_mut(gdd).map(f))
 }
 
@@ -291,6 +294,9 @@ pub(crate) fn reset_registry_for_tests() {
 }
 
 pub(crate) fn is_registered_device(gdd: pGEDevDesc) -> bool {
+    if gdd.is_null() {
+        return false;
+    }
     with_registry(|registry| registry.contains_ptr(gdd))
 }
 
