@@ -105,6 +105,19 @@ unsafe fn first_data_class_name(object: SEXP) -> Option<String> {
     }
 }
 
+unsafe fn scalar_signature_length(value: SEXP) -> Option<c_int> {
+    unsafe {
+        if value.is_null() || value == R_NilValue() || LENGTH(value) == 0 {
+            return None;
+        }
+        match TYPEOF(value) {
+            kind if kind == SEXPTYPE::INTSXP.as_c_int() => Some(*INTEGER(value)),
+            kind if kind == SEXPTYPE::REALSXP.as_c_int() => Some(*REAL(value) as c_int),
+            _ => None,
+        }
+    }
+}
+
 unsafe fn sexp_to_string(value: SEXP) -> Option<String> {
     unsafe {
         if value.is_null() || value == R_NilValue() {
@@ -199,13 +212,58 @@ pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP
 }
 
 /// R_quick_dispatch - quick table-based dispatch for primitives.
-pub unsafe fn R_quick_dispatch(_args: SEXP, _genericEnv: SEXP, fdef: SEXP) -> SEXP {
+pub unsafe fn R_quick_dispatch(args: SEXP, generic_env: SEXP, _fdef: SEXP) -> SEXP {
     unsafe {
-        if fdef.is_null() || fdef == R_NilValue() {
+        if generic_env.is_null()
+            || generic_env == R_NilValue()
+            || TYPEOF(generic_env) != SEXPTYPE::ENVSXP
+        {
             return R_NilValue();
         }
+        let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
+        let sig_length = crate::sexp::symbol::Rf_install(c".SigLength".as_ptr());
+        let mtable = crate::sexp::envir::R_findVarInFrame(generic_env, all_mtable);
+        if mtable == R_UnboundValue() || TYPEOF(mtable) != SEXPTYPE::ENVSXP {
+            return R_NilValue();
+        }
+        let nsig_value = crate::sexp::envir::R_findVarInFrame(generic_env, sig_length);
+        let Some(nsig) = scalar_signature_length(nsig_value) else {
+            return R_NilValue();
+        };
+        if nsig < 0 {
+            return R_NilValue();
+        }
+
+        let mut classes = Vec::with_capacity(nsig as usize);
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() && classes.len() < nsig as usize {
+            let object = CAR(current);
+            let class = if object == R_MissingArg() {
+                "missing".to_string()
+            } else {
+                let Some(class) = first_data_class_name(object) else {
+                    return R_NilValue();
+                };
+                class
+            };
+            classes.push(class);
+            current = CDR(current);
+        }
+        while classes.len() < nsig as usize {
+            classes.push("missing".to_string());
+        }
+        let label = classes.join("#");
+        let Ok(label) = CString::new(label) else {
+            return R_NilValue();
+        };
+        let symbol = crate::sexp::symbol::Rf_install(label.as_ptr());
+        let value = crate::sexp::envir::R_findVarInFrame(mtable, symbol);
+        if value == R_UnboundValue() {
+            R_NilValue()
+        } else {
+            value
+        }
     }
-    r_error("quick table-based S4 dispatch is not implemented yet");
 }
 
 /// R_getGeneric - get the generic function definition for a given name.
@@ -427,6 +485,20 @@ mod tests {
         unsafe { named_list(&[("allMethods", all_methods)]) }
     }
 
+    unsafe fn env_with(bindings: &[(&str, SEXP)]) -> SEXP {
+        unsafe {
+            let env =
+                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_NilValue(), R_NilValue());
+            let _env_guard = protect(env);
+            for (name, value) in bindings {
+                let cname = CString::new(*name).unwrap_or_default();
+                let sym = crate::sexp::symbol::Rf_install(cname.as_ptr());
+                crate::sexp::envir::defineVar(sym, *value, env);
+            }
+            env
+        }
+    }
+
     #[test]
     fn methods_dispatch_state_is_session_local() {
         let mut first = RInstance::new();
@@ -511,6 +583,36 @@ mod tests {
             let args = Rf_cons(object, R_NilValue());
 
             let result = R_quick_method_check(args, mlist, R_NilValue());
+            assert_eq!(result, R_NilValue());
+        }
+    }
+
+    #[test]
+    fn quick_dispatch_returns_table_method_with_missing_fill() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let method =
+                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_NilValue());
+            let mtable = env_with(&[("integer#missing", method)]);
+            let generic_env =
+                env_with(&[(".AllMTable", mtable), (".SigLength", Rf_ScalarInteger(2))]);
+            let args = Rf_cons(Rf_ScalarInteger(1), R_NilValue());
+
+            let result = R_quick_dispatch(args, generic_env, R_NilValue());
+            assert_eq!(result, method);
+        }
+    }
+
+    #[test]
+    fn quick_dispatch_returns_nil_for_missing_table_entry() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let mtable = env_with(&[]);
+            let generic_env =
+                env_with(&[(".AllMTable", mtable), (".SigLength", Rf_ScalarInteger(1))]);
+            let args = Rf_cons(Rf_ScalarInteger(1), R_NilValue());
+
+            let result = R_quick_dispatch(args, generic_env, R_NilValue());
             assert_eq!(result, R_NilValue());
         }
     }
