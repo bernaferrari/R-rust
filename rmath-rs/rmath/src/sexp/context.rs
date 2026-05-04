@@ -367,6 +367,8 @@ pub enum RSignal {
     Break,
     Next,
     Return(SEXP),
+    /// Non-local return from `invokeRestart()` to the matching `withRestarts()`.
+    Restart(SEXP),
     /// Targeted context jump for exiting handlers (tryCatch/withCallingHandlers).
     /// Carries the target environment to match against context stack entries,
     /// and the result vector containing [cond, call, handler].

@@ -3382,6 +3382,60 @@ pub unsafe fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe { restart_stack_as_list() }
 }
 
+/// R's `invokeRestart(restart, ...)` — call a restart and return to its dynamic extent.
+pub unsafe fn do_invokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let restart_arg = CAR(args);
+        let restart = resolve_restart_arg(restart_arg).unwrap_or_else(|| {
+            let name = if !restart_arg.is_null()
+                && restart_arg != R_NilValue()
+                && TYPEOF(restart_arg) == SEXPTYPE::STRSXP
+            {
+                elt_to_string(restart_arg, 0)
+            } else {
+                String::new()
+            };
+            base_error(format!("no 'restart' '{name}' found"));
+        });
+        let handler = VECTOR_ELT(restart, 1);
+        let value = if is_function_value(handler) {
+            call_function_with_args(handler, CDR(args), rho)
+        } else {
+            R_NilValue()
+        };
+        std::panic::panic_any(crate::sexp::context::RSignal::Restart(value));
+    }
+}
+
+unsafe fn resolve_restart_arg(restart_arg: SEXP) -> Option<SEXP> {
+    unsafe {
+        if restart_arg.is_null() || restart_arg == R_NilValue() {
+            return None;
+        }
+        if TYPEOF(restart_arg) == SEXPTYPE::VECSXP {
+            return Some(restart_arg);
+        }
+        if TYPEOF(restart_arg) == SEXPTYPE::STRSXP {
+            return find_restart_by_name(&elt_to_string(restart_arg, 0));
+        }
+        None
+    }
+}
+
+unsafe fn call_function_with_args(handler: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let call = Rf_cons(handler, args);
+        if !call.is_null() {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        if TYPEOF(handler) == SEXPTYPE::CLOSXP {
+            crate::eval::closure::applyClosure(call, handler, args, rho, R_NilValue(), TRUE)
+        } else {
+            crate::eval::eval::Rf_eval(call, rho)
+        }
+    }
+}
+
 fn restart_stack() -> SEXP {
     crate::sexp::instance::with_required_current_instance(|inst| inst.error_state.restart_stack)
 }
@@ -4484,6 +4538,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "withCallingHandlers",
             "computeRestarts",
             "findRestart",
+            "invokeRestart",
             "restarts",
             // Complete package system
             ".libPaths",
@@ -13437,7 +13492,13 @@ pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
 
         match result {
             Ok(value) => value,
-            Err(payload) => std::panic::resume_unwind(payload),
+            Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
+                Ok(signal) => match *signal {
+                    crate::sexp::context::RSignal::Restart(value) => value,
+                    other => std::panic::panic_any(other),
+                },
+                Err(payload) => std::panic::resume_unwind(payload),
+            },
         }
     }
 }

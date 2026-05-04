@@ -2219,6 +2219,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_findRestart,
     },
     EvaluatedBuiltin {
+        name: "invokeRestart",
+        handler: crate::mainutils::essentials::do_invokeRestart,
+    },
+    EvaluatedBuiltin {
         name: "restarts",
         handler: crate::mainutils::essentials::do_restarts,
     },
