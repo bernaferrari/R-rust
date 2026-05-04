@@ -226,12 +226,90 @@ pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
 }
 
 /// R_dispatchGeneric - table-based method dispatch.
-pub unsafe fn R_dispatchGeneric(fname: SEXP, _ev: SEXP, _fdef: SEXP) -> SEXP {
-    let name = unsafe { sexp_to_string(fname) }.unwrap_or_else(|| "<unknown>".to_string());
-    r_error(format!(
-        "table-based S4 method dispatch for generic '{}' is not implemented yet",
-        name
-    ));
+pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
+    unsafe {
+        let name = sexp_to_string(fname).unwrap_or_else(|| "<unknown>".to_string());
+        let f_env = match TYPEOF(fdef) {
+            kind if kind == SEXPTYPE::CLOSXP.as_c_int() => CLOENV(fdef),
+            kind if kind == SEXPTYPE::SPECIALSXP.as_c_int()
+                || kind == SEXPTYPE::BUILTINSXP.as_c_int() =>
+            {
+                let generic = crate::mainutils::objects::R_primitive_generic(fdef);
+                if generic.is_null() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
+                    r_error(format!(
+                        "failed to get the generic for primitive '{}'",
+                        name
+                    ));
+                }
+                CLOENV(generic)
+            }
+            _ => r_error(format!(
+                "expected a generic function or a primitive for dispatch for '{}'",
+                name
+            )),
+        };
+        if f_env.is_null() || f_env == R_NilValue() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
+            r_error(format!(
+                "generic '{}' has no valid dispatch environment",
+                name
+            ));
+        }
+        let all_mtable = crate::sexp::symbol::Rf_install(c".AllMTable".as_ptr());
+        let sig_args = crate::sexp::symbol::Rf_install(c".SigArgs".as_ptr());
+        let sig_length = crate::sexp::symbol::Rf_install(c".SigLength".as_ptr());
+        let mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable);
+        let sigargs = crate::sexp::envir::R_findVarInFrame(f_env, sig_args);
+        let nsig_value = crate::sexp::envir::R_findVarInFrame(f_env, sig_length);
+        if mtable == R_UnboundValue()
+            || TYPEOF(mtable) != SEXPTYPE::ENVSXP
+            || sigargs == R_UnboundValue()
+            || TYPEOF(sigargs) != SEXPTYPE::VECSXP
+        {
+            r_error("generic has not been initialized for table dispatch");
+        }
+        let Some(nsig) = scalar_signature_length(nsig_value) else {
+            r_error("generic has invalid '.SigLength' for table dispatch");
+        };
+        if nsig < 0 || nsig as usize > LENGTH(sigargs) as usize {
+            r_error("'.SigArgs' is shorter than '.SigLength' says it should be");
+        }
+        let mut classes = Vec::with_capacity(nsig as usize);
+        for i in 0..nsig {
+            let arg_sym = VECTOR_ELT(sigargs, i as R_xlen_t);
+            if arg_sym.is_null() || TYPEOF(arg_sym) != SEXPTYPE::SYMSXP {
+                return R_NilValue();
+            }
+            let arg = crate::sexp::envir::R_findVarInFrame(ev, arg_sym);
+            if arg == R_UnboundValue() || arg == R_MissingArg() {
+                classes.push("missing".to_string());
+            } else {
+                let Some(class) = first_data_class_name(arg) else {
+                    return R_NilValue();
+                };
+                classes.push(class);
+            }
+        }
+        let label = CString::new(classes.join("#")).unwrap_or_default();
+        let method_sym = crate::sexp::symbol::Rf_install(label.as_ptr());
+        let method = crate::sexp::envir::R_findVarInFrame(mtable, method_sym);
+        if method == R_UnboundValue() || method == R_NilValue() {
+            r_error(format!(
+                "no direct or inherited method for function '{}' for this call",
+                name
+            ));
+        }
+        match TYPEOF(method) {
+            kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
+                crate::eval::missing::R_execMethod(method, ev)
+            }
+            kind if kind == SEXPTYPE::SPECIALSXP.as_c_int()
+                || kind == SEXPTYPE::BUILTINSXP.as_c_int() =>
+            {
+                crate::mainutils::objects::R_deferred_default_method()
+            }
+            _ => r_error("invalid object (non-function) used as method"),
+        }
+    }
 }
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
@@ -630,6 +708,20 @@ mod tests {
         }
     }
 
+    unsafe fn symbol_vector(names: &[&str]) -> SEXP {
+        unsafe {
+            let out = Rf_allocVector(SEXPTYPE::VECSXP, names.len() as c_int);
+            let _out_guard = protect(out);
+            for (i, name) in names.iter().enumerate() {
+                let sym = crate::sexp::symbol::Rf_install(
+                    CString::new(*name).unwrap_or_default().as_ptr(),
+                );
+                SET_VECTOR_ELT(out, i as R_xlen_t, sym);
+            }
+            out
+        }
+    }
+
     #[test]
     fn methods_dispatch_state_is_session_local() {
         let mut first = RInstance::new();
@@ -705,6 +797,31 @@ mod tests {
             let result = R_standardGeneric(name, ev, fdef);
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 42);
+        }
+    }
+
+    #[test]
+    fn dispatch_generic_executes_table_method() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let method = crate::mainutils::dstruct::mkCLOSXP(
+                R_NilValue(),
+                Rf_ScalarInteger(7),
+                R_NilValue(),
+            );
+            let mtable = env_with(&[("integer", method)]);
+            let f_env = env_with(&[
+                (".AllMTable", mtable),
+                (".SigArgs", symbol_vector(&["x"])),
+                (".SigLength", Rf_ScalarInteger(1)),
+            ]);
+            let fdef = crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), f_env);
+            let ev = env_with(&[("x", Rf_ScalarInteger(1))]);
+            let name = Rf_mkString(c"show".as_ptr());
+
+            let result = R_dispatchGeneric(name, ev, fdef);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 7);
         }
     }
 
