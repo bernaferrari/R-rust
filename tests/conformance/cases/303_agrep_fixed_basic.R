@@ -1,0 +1,5 @@
+print(agrep("lasy", c("lazy", "lasso", "busy")))
+cat(paste(agrep("lasy", c("lazy", "lasso", "busy"), value = TRUE), collapse = "\n"), "\n", sep = "")
+print(agrepl("lasy", c("lazy", "lasso", "busy")))
+print(agrepl("CAT", c("cat", "dog"), ignore.case = TRUE))
+print(agrep("abc", c("abc", "axc", "abxy"), max.distance = 0))

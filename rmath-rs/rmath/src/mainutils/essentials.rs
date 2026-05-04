@@ -1062,6 +1062,153 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// R's `agrep(pattern, x, ...)` — approximate fixed-string matching.
+pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
+        let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
+        if pattern_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        let value = named_logical_arg(args, "value").unwrap_or(false);
+        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let max_distance = agrep_max_distance(args, pattern_arg);
+        let pattern = elt_to_string(pattern_arg, 0);
+        let matches = agrep_match_indices(x_arg, &pattern, max_distance, ignore_case);
+
+        if value {
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _result_guard = protect(result);
+            for (out_idx, src_idx) in matches.into_iter().enumerate() {
+                SET_STRING_ELT(result, out_idx as R_xlen_t, STRING_ELT(x_arg, src_idx));
+            }
+            result
+        } else {
+            let result = Rf_allocVector3(SEXPTYPE::INTSXP, matches.len() as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _result_guard = protect(result);
+            let dst = INTEGER(result);
+            for (out_idx, src_idx) in matches.into_iter().enumerate() {
+                *dst.add(out_idx) = (src_idx + 1) as c_int;
+            }
+            result
+        }
+    }
+}
+
+/// R's `agrepl(pattern, x, ...)` — logical approximate matching.
+pub unsafe fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
+        let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
+        if pattern_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+        }
+        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let max_distance = agrep_max_distance(args, pattern_arg);
+        let pattern = elt_to_string(pattern_arg, 0);
+        let n = XLENGTH(x_arg);
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let dst = LOGICAL(result);
+        for i in 0..n {
+            let matched = !is_string_na(x_arg, i)
+                && approximate_contains(
+                    &pattern,
+                    &elt_to_string(x_arg, i),
+                    max_distance,
+                    ignore_case,
+                );
+            *dst.add(i as usize) = if matched { TRUE } else { FALSE };
+        }
+        result
+    }
+}
+
+fn agrep_max_distance(args: SEXP, pattern_arg: SEXP) -> usize {
+    unsafe {
+        let raw = arg_by_name_or_position(args, &["max.distance"], 2);
+        let value = if raw.is_null() || raw == R_NilValue() {
+            0.1
+        } else {
+            real_or_default(raw, 0.1)
+        };
+        if value <= 0.0 {
+            return 0;
+        }
+        if value <= 1.0 {
+            let pattern_len = elt_to_string(pattern_arg, 0).chars().count().max(1);
+            (value * pattern_len as f64).ceil() as usize
+        } else {
+            value.ceil() as usize
+        }
+    }
+}
+
+unsafe fn agrep_match_indices(
+    x: SEXP,
+    pattern: &str,
+    max_distance: usize,
+    ignore_case: bool,
+) -> Vec<R_xlen_t> {
+    unsafe {
+        let n = XLENGTH(x);
+        let mut matches = Vec::new();
+        for i in 0..n {
+            if is_string_na(x, i) {
+                continue;
+            }
+            if approximate_contains(pattern, &elt_to_string(x, i), max_distance, ignore_case) {
+                matches.push(i);
+            }
+        }
+        matches
+    }
+}
+
+fn approximate_contains(pattern: &str, text: &str, max_distance: usize, ignore_case: bool) -> bool {
+    let pattern = if ignore_case {
+        pattern.to_ascii_lowercase()
+    } else {
+        pattern.to_string()
+    };
+    let text = if ignore_case {
+        text.to_ascii_lowercase()
+    } else {
+        text.to_string()
+    };
+    let pat = pattern.as_bytes();
+    let hay = text.as_bytes();
+    if pat.is_empty() {
+        return true;
+    }
+    if crate::mainutils::grep::levenshtein_distance(pat, hay) <= max_distance {
+        return true;
+    }
+    let min_len = pat.len().saturating_sub(max_distance).max(1);
+    let max_len = (pat.len() + max_distance).min(hay.len());
+    for start in 0..hay.len() {
+        for len in min_len..=max_len {
+            let end = start + len;
+            if end > hay.len() {
+                break;
+            }
+            if crate::mainutils::grep::levenshtein_distance(pat, &hay[start..end]) <= max_distance {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
     unsafe {
         let pattern_arg = CAR(args);
@@ -4293,6 +4440,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "sub",
             "grep",
             "grepl",
+            "agrep",
+            "agrepl",
             "strsplit",
             "pmin",
             "pmax",

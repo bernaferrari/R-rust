@@ -1369,7 +1369,7 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// Uses the Wagner-Fischer algorithm with O(min(m,n)) space.
 /// Returns the edit distance (insertions, deletions, substitutions).
-fn levenshtein_distance(a: &[u8], b: &[u8]) -> usize {
+pub(crate) fn levenshtein_distance(a: &[u8], b: &[u8]) -> usize {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
     let m = long.len();
     let n = short.len();

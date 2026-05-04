@@ -667,6 +667,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_grepl,
     },
     EvaluatedBuiltin {
+        name: "agrep",
+        handler: crate::mainutils::essentials::do_agrep,
+    },
+    EvaluatedBuiltin {
+        name: "agrepl",
+        handler: crate::mainutils::essentials::do_agrepl,
+    },
+    EvaluatedBuiltin {
         name: "strsplit",
         handler: crate::mainutils::essentials::do_strsplit,
     },
