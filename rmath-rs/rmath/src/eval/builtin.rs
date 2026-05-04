@@ -1243,10 +1243,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_simpleWarning,
     },
     EvaluatedBuiltin {
-        name: "withRestarts",
-        handler: crate::mainutils::essentials::do_withRestarts,
-    },
-    EvaluatedBuiltin {
         name: "isS4",
         handler: crate::mainutils::essentials::do_isS4,
     },
@@ -2207,10 +2203,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_foreach,
     },
     EvaluatedBuiltin {
-        name: "withCallingHandlers",
-        handler: crate::mainutils::essentials::do_withCallingHandlers,
-    },
-    EvaluatedBuiltin {
         name: "computeRestarts",
         handler: crate::mainutils::essentials::do_computeRestarts,
     },
@@ -2221,6 +2213,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "invokeRestart",
         handler: crate::mainutils::essentials::do_invokeRestart,
+    },
+    EvaluatedBuiltin {
+        name: "tryInvokeRestart",
+        handler: crate::mainutils::essentials::do_tryInvokeRestart,
+    },
+    EvaluatedBuiltin {
+        name: "isRestart",
+        handler: crate::mainutils::essentials::do_isRestart,
+    },
+    EvaluatedBuiltin {
+        name: "restartDescription",
+        handler: crate::mainutils::essentials::do_restartDescription,
     },
     EvaluatedBuiltin {
         name: "restarts",

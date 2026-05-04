@@ -3386,39 +3386,99 @@ pub unsafe fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 pub unsafe fn do_invokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let restart_arg = CAR(args);
-        let restart = resolve_restart_arg(restart_arg).unwrap_or_else(|| {
-            let name = if !restart_arg.is_null()
-                && restart_arg != R_NilValue()
-                && TYPEOF(restart_arg) == SEXPTYPE::STRSXP
-            {
-                elt_to_string(restart_arg, 0)
-            } else {
-                String::new()
-            };
-            base_error(format!("no 'restart' '{name}' found"));
+        let restart = resolve_restart_arg(restart_arg, true).unwrap_or_else(|| {
+            base_error(format!(
+                "no 'restart' '{}' found",
+                restart_arg_name(restart_arg)
+            ));
         });
-        let handler = VECTOR_ELT(restart, 1);
-        let value = if is_function_value(handler) {
-            call_function_with_args(handler, CDR(args), rho)
-        } else {
-            R_NilValue()
-        };
-        std::panic::panic_any(crate::sexp::context::RSignal::Restart(value));
+        invoke_restart(restart, CDR(args), rho)
     }
 }
 
-unsafe fn resolve_restart_arg(restart_arg: SEXP) -> Option<SEXP> {
+/// R's `tryInvokeRestart(restart, ...)` — invoke a restart if one is active.
+pub unsafe fn do_tryInvokeRestart(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let restart_arg = CAR(args);
+        match resolve_restart_arg(restart_arg, true) {
+            Some(restart) => invoke_restart(restart, CDR(args), rho),
+            None => R_NilValue(),
+        }
+    }
+}
+
+/// R's `isRestart(x)` — check for a restart object.
+pub unsafe fn do_isRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        Rf_ScalarLogical(if is_restart_object(CAR(args)) {
+            TRUE
+        } else {
+            FALSE
+        })
+    }
+}
+
+/// R's `restartDescription(r)` — return the restart description, if any.
+pub unsafe fn do_restartDescription(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let restart = CAR(args);
+        if !is_restart_object(restart) {
+            return R_NilValue();
+        }
+        let description = restart_field(restart, "description", 3);
+        if description.is_null() || description == R_NilValue() {
+            Rf_mkString(c"".as_ptr())
+        } else {
+            description
+        }
+    }
+}
+
+unsafe fn resolve_restart_arg(restart_arg: SEXP, require_active_object: bool) -> Option<SEXP> {
     unsafe {
         if restart_arg.is_null() || restart_arg == R_NilValue() {
             return None;
         }
         if TYPEOF(restart_arg) == SEXPTYPE::VECSXP {
-            return Some(restart_arg);
+            if require_active_object {
+                return find_restart_by_object(restart_arg)
+                    .or_else(|| base_error("restart not on stack"));
+            }
+            return if is_restart_object(restart_arg) {
+                Some(restart_arg)
+            } else {
+                None
+            };
         }
         if TYPEOF(restart_arg) == SEXPTYPE::STRSXP {
             return find_restart_by_name(&elt_to_string(restart_arg, 0));
         }
         None
+    }
+}
+
+unsafe fn restart_arg_name(restart_arg: SEXP) -> String {
+    unsafe {
+        if !restart_arg.is_null()
+            && restart_arg != R_NilValue()
+            && TYPEOF(restart_arg) == SEXPTYPE::STRSXP
+        {
+            elt_to_string(restart_arg, 0)
+        } else {
+            String::new()
+        }
+    }
+}
+
+unsafe fn invoke_restart(restart: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let handler = restart_handler(restart);
+        let value = if is_function_value(handler) {
+            call_function_with_args(handler, args, rho)
+        } else {
+            R_NilValue()
+        };
+        std::panic::panic_any(crate::sexp::context::RSignal::Restart(value));
     }
 }
 
@@ -3481,12 +3541,26 @@ unsafe fn find_restart_by_name(name: &str) -> Option<SEXP> {
     }
 }
 
+unsafe fn find_restart_by_object(needle: SEXP) -> Option<SEXP> {
+    unsafe {
+        let mut current = restart_stack();
+        while !current.is_null() && current != R_NilValue() {
+            let restart = CAR(current);
+            if restart == needle {
+                return Some(restart);
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
 unsafe fn restart_name(restart: SEXP) -> Option<String> {
     unsafe {
         if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
             return None;
         }
-        let name = VECTOR_ELT(restart, 0);
+        let name = restart_field(restart, "name", 0);
         if name.is_null() || name == R_NilValue() || TYPEOF(name) != SEXPTYPE::STRSXP {
             return None;
         }
@@ -3494,9 +3568,35 @@ unsafe fn restart_name(restart: SEXP) -> Option<String> {
     }
 }
 
+unsafe fn restart_handler(restart: SEXP) -> SEXP {
+    unsafe { restart_field(restart, "handler", 2) }
+}
+
+unsafe fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_t) -> SEXP {
+    unsafe {
+        if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
+            return R_NilValue();
+        }
+        let names = crate::sexp::attrib_core::getAttrib(restart, Rf_install(c"names".as_ptr()));
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            let limit = XLENGTH(names).min(XLENGTH(restart));
+            for index in 0..limit {
+                if elt_to_string(names, index) == field_name {
+                    return VECTOR_ELT(restart, index);
+                }
+            }
+        }
+        if fallback_index < XLENGTH(restart) {
+            VECTOR_ELT(restart, fallback_index)
+        } else {
+            R_NilValue()
+        }
+    }
+}
+
 unsafe fn restart_entry(name: &str, handler: SEXP) -> SEXP {
     unsafe {
-        let restart = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let restart = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
         if restart.is_null() {
             return R_NilValue();
         }
@@ -3506,9 +3606,20 @@ unsafe fn restart_entry(name: &str, handler: SEXP) -> SEXP {
             0,
             Rf_mkString(CString::new(name).unwrap_or_default().as_ptr()),
         );
-        SET_VECTOR_ELT(restart, 1, handler);
+        SET_VECTOR_ELT(restart, 1, R_NilValue());
+        SET_VECTOR_ELT(restart, 2, handler);
+        SET_VECTOR_ELT(restart, 3, Rf_mkString(c"".as_ptr()));
+        SET_VECTOR_ELT(restart, 4, R_NilValue());
+        SET_VECTOR_ELT(restart, 5, R_NilValue());
 
-        let names = string_vector(&["name".to_string(), "handler".to_string()]);
+        let names = string_vector(&[
+            "name".to_string(),
+            "exit".to_string(),
+            "handler".to_string(),
+            "description".to_string(),
+            "test".to_string(),
+            "interactive".to_string(),
+        ]);
         crate::sexp::attrib_core::setAttrib(restart, Rf_install(c"names".as_ptr()), names);
         crate::sexp::attrib_core::setAttrib(
             restart,
@@ -3516,6 +3627,15 @@ unsafe fn restart_entry(name: &str, handler: SEXP) -> SEXP {
             Rf_mkString(c"restart".as_ptr()),
         );
         restart
+    }
+}
+
+unsafe fn is_restart_object(value: SEXP) -> bool {
+    unsafe {
+        !value.is_null()
+            && value != R_NilValue()
+            && TYPEOF(value) == SEXPTYPE::VECSXP
+            && inherits_class(value, "restart")
     }
 }
 
@@ -4539,6 +4659,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "computeRestarts",
             "findRestart",
             "invokeRestart",
+            "tryInvokeRestart",
+            "isRestart",
+            "restartDescription",
             "restarts",
             // Complete package system
             ".libPaths",

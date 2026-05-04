@@ -22,7 +22,7 @@ use std::ffi::CString;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
-use crate::sexp::envir::forcePromise;
+use crate::sexp::envir::{find_fun_result, forcePromise};
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::object::{PairlistIter, Sexp, SexpError};
@@ -167,13 +167,8 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
             if let Some(value) = find_var_result(expr, env)? {
                 return Ok(value);
             }
-            let name = unsafe { get_symbol_name(expr.as_raw()) };
-            let primitive = CString::new(name.as_str())
-                .ok()
-                .map(|name| unsafe { crate::mainutils::names::R_Primitive(name.as_ptr()) })
-                .filter(|primitive| !primitive.is_null() && *primitive != unsafe { R_NilValue() });
-            match primitive {
-                Some(primitive) => Ok(unsafe { Sexp::from_raw_unchecked(primitive) }),
+            match primitive_for_symbol(expr) {
+                Some(primitive) => Ok(primitive),
                 None => Err(format!("object '{}' not found", expr)),
             }
         }
@@ -251,8 +246,19 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
     let fun = e.try_car().map_err(|err| sexp_err("empty call", err))?;
     let args = e.try_cdr().map_err(|err| sexp_err("missing args", err))?;
 
-    // Evaluate the function
-    let fun_val = eval_safe(fun, rho)?;
+    // R uses function-position lookup for symbolic call heads: non-function
+    // bindings are skipped while walking enclosing environments.
+    let fun_val = if fun.typeof_() == SEXPTYPE::SYMSXP {
+        find_fun_result(fun, rho)?
+            .or_else(|| primitive_for_symbol(fun))
+            .ok_or_else(|| {
+                format!("could not find function '{}'", unsafe {
+                    get_symbol_name(fun.as_raw())
+                })
+            })?
+    } else {
+        eval_safe(fun, rho)?
+    };
 
     // Dispatch based on function type
     match fun_val.typeof_() {
@@ -261,6 +267,15 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
         SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
         _ => Err(format!("cannot call type {:?}", fun_val.typeof_())),
     }
+}
+
+fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
+    let name = unsafe { get_symbol_name(symbol.as_raw()) };
+    CString::new(name.as_str())
+        .ok()
+        .map(|name| unsafe { crate::mainutils::names::R_Primitive(name.as_ptr()) })
+        .filter(|primitive| !primitive.is_null() && *primitive != unsafe { R_NilValue() })
+        .map(|primitive| unsafe { Sexp::from_raw_unchecked(primitive) })
 }
 
 /// Safe variable lookup using Sexp types.
