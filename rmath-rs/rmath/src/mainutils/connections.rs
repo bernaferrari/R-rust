@@ -19,8 +19,13 @@ use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_double, c_int};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::ptr;
+
+use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -358,11 +363,20 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
 
     let mut byte = [0u8; 1];
     let result = match &mut conn.kind {
-        ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => conn
+        ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => conn
             .reader
             .as_mut()
             .map(|reader| reader.read(&mut byte))
             .unwrap_or(Ok(0)),
+        ConnKind::GzFile => {
+            if conn.raw_pos >= conn.raw_data.len() {
+                Ok(0)
+            } else {
+                byte[0] = conn.raw_data[conn.raw_pos];
+                conn.raw_pos += 1;
+                Ok(1)
+            }
+        }
         ConnKind::Pipe => conn
             .child
             .as_mut()
@@ -438,6 +452,25 @@ fn read_pushback_line(conn: &mut RConn) -> Option<String> {
     (!line.is_empty()).then(|| String::from_utf8_lossy(&line).to_string())
 }
 
+fn read_raw_line(conn: &mut RConn) -> Option<String> {
+    if conn.raw_pos >= conn.raw_data.len() {
+        return None;
+    }
+    let start = conn.raw_pos;
+    while conn.raw_pos < conn.raw_data.len() && conn.raw_data[conn.raw_pos] != b'\n' {
+        conn.raw_pos += 1;
+    }
+    let end = conn.raw_pos;
+    if conn.raw_pos < conn.raw_data.len() && conn.raw_data[conn.raw_pos] == b'\n' {
+        conn.raw_pos += 1;
+    }
+    let mut line = &conn.raw_data[start..end];
+    if line.ends_with(b"\r") {
+        line = &line[..line.len() - 1];
+    }
+    Some(String::from_utf8_lossy(line).to_string())
+}
+
 /// Write bytes to a connection using the Rust connection table.
 pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     let index = checked_connection_index(n);
@@ -454,12 +487,16 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
     }
 
     match &mut conn.kind {
-        ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+        ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => {
             if let Some(writer) = conn.writer.as_mut()
                 && let Err(e) = writer.write_all(bytes).and_then(|_| writer.flush())
             {
                 r_error(&format!("error writing to connection: {}", e));
             }
+        }
+        ConnKind::GzFile => {
+            conn.raw_data.extend_from_slice(bytes);
+            conn.raw_pos = conn.raw_data.len();
         }
         ConnKind::Pipe => {
             if let Some(child) = conn.child.as_mut()
@@ -864,6 +901,52 @@ fn open_file_conn(
     Ok((file, reader, writer))
 }
 
+fn open_gz_conn(conn: &mut RConn, mode: &str) -> io::Result<()> {
+    conn.mode = mode.to_string();
+    conn.text = !mode.contains('b');
+    conn.raw_data.clear();
+    conn.raw_pos = 0;
+    conn.file = None;
+    conn.reader = None;
+    conn.writer = None;
+
+    let can_read = mode.starts_with('r') || mode.contains('+');
+    let can_write = mode.starts_with('w') || mode.starts_with('a') || mode.contains('+');
+
+    if mode.starts_with('r') || mode.starts_with('a') || mode.contains('+') {
+        let path = Path::new(&conn.description);
+        if path.exists() {
+            let file = File::open(path)?;
+            let mut decoder = GzDecoder::new(file);
+            decoder.read_to_end(&mut conn.raw_data)?;
+        } else if mode.starts_with('r') {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "file not found"));
+        }
+    }
+
+    if mode.starts_with('w') && !mode.starts_with("w+") {
+        conn.raw_data.clear();
+    }
+
+    conn.raw_pos = if mode.starts_with('a') {
+        conn.raw_data.len()
+    } else {
+        0
+    };
+    conn.isopen = true;
+    conn.canread = can_read;
+    conn.canwrite = can_write;
+    Ok(())
+}
+
+fn flush_gz_conn(conn: &mut RConn) -> io::Result<()> {
+    let file = File::create(&conn.description)?;
+    let mut encoder = GzEncoder::new(file, Compression::default());
+    encoder.write_all(&conn.raw_data)?;
+    encoder.finish()?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // do_pipe — pipe(description, open = "", encoding = "")
 // ---------------------------------------------------------------------------
@@ -1065,29 +1148,17 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             open
         };
 
-        let ncon = next_connection();
         let mut conn = RConn::new("gzfile", &description, &open_mode, ConnKind::GzFile);
         conn.canseek = false;
         conn.text = !open_mode.contains('b');
 
-        // Try to open as a regular file (gz compression not supported without libz)
         if !open_mode.is_empty() {
-            let file_result = open_file_conn(&description, &open_mode);
-            match file_result {
-                Ok((file, reader, writer)) => {
-                    conn.file = Some(file);
-                    conn.reader = reader;
-                    conn.writer = writer;
-                    conn.isopen = true;
-                    conn.canread = open_mode.starts_with('r');
-                    conn.canwrite = open_mode.starts_with('w') || open_mode.starts_with('a');
-                }
-                Err(e) => {
-                    r_error(&format!("cannot open file '{}': {}", description, e));
-                }
+            if let Err(e) = open_gz_conn(&mut conn, &open_mode) {
+                r_error(&format!("cannot open file '{}': {}", description, e));
             }
         }
 
+        let ncon = next_connection();
         let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
@@ -1243,7 +1314,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         conn.text = !open_mode.contains('b');
 
         match &conn.kind {
-            ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+            ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => {
                 let file_result = open_file_conn(&conn.description, &open_mode);
                 match file_result {
                     Ok((file, reader, writer)) => {
@@ -1261,6 +1332,11 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                     Err(e) => {
                         r_error(&format!("cannot open the connection: {}", e));
                     }
+                }
+            }
+            ConnKind::GzFile => {
+                if let Err(e) = open_gz_conn(conn, &open_mode) {
+                    r_error(&format!("cannot open the connection: {}", e));
                 }
             }
             ConnKind::Pipe => {
@@ -1344,6 +1420,10 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 fn close_connection_inner(conn: &mut RConn) {
     if !conn.isopen {
         return;
+    }
+
+    if matches!(conn.kind, ConnKind::GzFile) && conn.canwrite {
+        let _ = flush_gz_conn(conn);
     }
 
     conn.status = 0; // success
@@ -1555,7 +1635,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         let backend_limit = n.saturating_sub(lines.len());
 
         match &conn.kind {
-            ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+            ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => {
                 if let Some(ref mut reader) = conn.reader {
                     for _ in 0..backend_limit {
                         let mut line = String::new();
@@ -1576,6 +1656,14 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                             }
                         }
                     }
+                }
+            }
+            ConnKind::GzFile => {
+                for _ in 0..backend_limit {
+                    let Some(line) = read_raw_line(conn) else {
+                        break;
+                    };
+                    lines.push(line);
                 }
             }
             ConnKind::Pipe => {
@@ -1718,7 +1806,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         }
 
         match &conn.kind {
-            ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+            ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => {
                 if let Some(ref mut writer) = conn.writer {
                     for j in 0..text_len {
                         let line = string_elt(text, j);
@@ -1728,6 +1816,14 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                     }
                     let _ = writer.flush();
                 }
+            }
+            ConnKind::GzFile => {
+                for j in 0..text_len {
+                    let line = string_elt(text, j);
+                    conn.raw_data.extend_from_slice(line.as_bytes());
+                    conn.raw_data.extend_from_slice(sep_str.as_bytes());
+                }
+                conn.raw_pos = conn.raw_data.len();
             }
             ConnKind::Terminal(name) if name == "stdout" => {
                 let stdout = io::stdout();
@@ -1885,6 +1981,12 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             && let Some(ref mut writer) = conn.writer
         {
             let _ = writer.flush();
+        }
+        if matches!(conn.kind, ConnKind::GzFile)
+            && conn.canwrite
+            && let Err(e) = flush_gz_conn(conn)
+        {
+            r_error(&format!("error flushing connection: {}", e));
         }
 
         R_NilValue()
@@ -2480,7 +2582,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
 
         // Read binary data from connection
         match &conn.kind {
-            ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+            ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => {
                 if let Some(ref mut file) = conn.file {
                     if what == "raw" {
                         let mut buf = vec![0u8; n];
@@ -2603,7 +2705,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                     }
                 }
             }
-            ConnKind::RawConnection => {
+            ConnKind::RawConnection | ConnKind::GzFile => {
                 let remaining = &conn.raw_data[conn.raw_pos..];
                 if what == "raw" {
                     let count = n.min(remaining.len());
@@ -2706,12 +2808,16 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
                 }
                 // Write directly and return
                 match &conn.kind {
-                    ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+                    ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => {
                         if let Some(ref mut file) = conn.file
                             && let Err(e) = file.write_all(&buf)
                         {
                             r_error(&format!("error writing to connection: {}", e));
                         }
+                    }
+                    ConnKind::GzFile => {
+                        conn.raw_data.extend_from_slice(&buf);
+                        conn.raw_pos = conn.raw_data.len();
                     }
                     ConnKind::RawConnection => {
                         conn.raw_data.extend_from_slice(&buf);
@@ -2730,12 +2836,16 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         };
 
         match &conn.kind {
-            ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+            ConnKind::File | ConnKind::BzFile | ConnKind::XzFile => {
                 if let Some(ref mut file) = conn.file
                     && let Err(e) = file.write_all(bytes_to_write)
                 {
                     r_error(&format!("error writing to connection: {}", e));
                 }
+            }
+            ConnKind::GzFile => {
+                conn.raw_data.extend_from_slice(bytes_to_write);
+                conn.raw_pos = conn.raw_data.len();
             }
             ConnKind::RawConnection => {
                 conn.raw_data.extend_from_slice(bytes_to_write);
