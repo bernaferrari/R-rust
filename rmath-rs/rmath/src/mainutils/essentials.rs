@@ -14173,18 +14173,42 @@ unsafe fn string_vector_values(x: SEXP) -> Vec<String> {
     }
 }
 
+unsafe fn string_vector_names_or_values(x: SEXP) -> Vec<String> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            return Vec::new();
+        }
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut out = Vec::new();
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            for i in 0..LENGTH(names) {
+                let name = elt_to_string(names, i as R_xlen_t);
+                if !name.is_empty() {
+                    out.push(name);
+                }
+            }
+        }
+        if out.is_empty() {
+            out = string_vector_values(x);
+        }
+        out
+    }
+}
+
 unsafe fn s4_slots_from_args(args: SEXP) -> Vec<String> {
     unsafe {
         let mut slots = Vec::new();
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
-            if let Some(name) = list_tag_name(current)
-                && !matches!(
-                    name.as_str(),
-                    "contains" | "where" | "prototype" | "validity" | "sealed" | "package"
-                )
-            {
-                slots.push(name);
+            if let Some(name) = list_tag_name(current) {
+                match name.as_str() {
+                    "slots" | "representation" => {
+                        slots.extend(string_vector_names_or_values(CAR(current)));
+                    }
+                    "contains" | "where" | "prototype" | "validity" | "sealed" | "package" => {}
+                    _ => slots.push(name),
+                }
             }
             current = CDR(current);
         }
