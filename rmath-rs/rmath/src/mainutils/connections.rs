@@ -485,21 +485,50 @@ fn pop_pushback_byte(conn: &mut RConn) -> Option<u8> {
     None
 }
 
-fn read_pushback_line(conn: &mut RConn) -> Option<String> {
+fn nul_normalized_line(mut line: Vec<u8>, skip_nul: bool) -> String {
+    if line.ends_with(b"\r") {
+        line.pop();
+    }
+    if skip_nul {
+        line.retain(|byte| *byte != 0);
+    } else if let Some(pos) = line.iter().position(|byte| *byte == 0) {
+        line.truncate(pos);
+    }
+    String::from_utf8_lossy(&line).to_string()
+}
+
+fn nul_normalized_lines(bytes: &[u8], limit: usize, skip_nul: bool) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut start = 0;
+    while start < bytes.len() && lines.len() < limit {
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(bytes.len(), |offset| start + offset);
+        lines.push(nul_normalized_line(bytes[start..end].to_vec(), skip_nul));
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
+    }
+    lines
+}
+
+fn read_pushback_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
     let mut line = Vec::new();
     while let Some(byte) = pop_pushback_byte(conn) {
         if byte == b'\n' {
-            return Some(String::from_utf8_lossy(&line).to_string());
+            return Some(nul_normalized_line(line, skip_nul));
         }
         if byte != b'\r' {
             line.push(byte);
         }
     }
 
-    (!line.is_empty()).then(|| String::from_utf8_lossy(&line).to_string())
+    (!line.is_empty()).then(|| nul_normalized_line(line, skip_nul))
 }
 
-fn read_raw_line(conn: &mut RConn) -> Option<String> {
+fn read_raw_line(conn: &mut RConn, skip_nul: bool) -> Option<String> {
     if conn.raw_pos >= conn.raw_data.len() {
         return None;
     }
@@ -511,11 +540,10 @@ fn read_raw_line(conn: &mut RConn) -> Option<String> {
     if conn.raw_pos < conn.raw_data.len() && conn.raw_data[conn.raw_pos] == b'\n' {
         conn.raw_pos += 1;
     }
-    let mut line = &conn.raw_data[start..end];
-    if line.ends_with(b"\r") {
-        line = &line[..line.len() - 1];
-    }
-    Some(String::from_utf8_lossy(line).to_string())
+    Some(nul_normalized_line(
+        conn.raw_data[start..end].to_vec(),
+        skip_nul,
+    ))
 }
 
 /// Write bytes to a connection using the Rust connection table.
@@ -1236,8 +1264,7 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 "remote URL connections are disabled in this pure-R Android runtime; fetch bytes through the host network policy and pass a file, rawConnection, or textConnection",
             );
         } else {
-            // Treat as a regular file path (like R does for non-URL descriptions in url())
-            (description.clone(), "file".to_string())
+            r_error("URL scheme unsupported by this method");
         };
 
         let ncon = next_connection();
@@ -1777,12 +1804,13 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         } else {
             n_val as usize
         };
+        let skip_nul = _skipNul != 0;
 
         if TYPEOF(scon) == SEXPTYPE::STRSXP {
             let path = check_string_arg(scon, "con");
-            let contents = std::fs::read_to_string(&path)
+            let contents = std::fs::read(&path)
                 .unwrap_or_else(|e| r_error(&format!("cannot open file '{}': {}", path, e)));
-            let lines: Vec<String> = contents.lines().take(n).map(str::to_string).collect();
+            let lines = nul_normalized_lines(&contents, n, skip_nul);
             let ans = Rf_allocVector(SEXPTYPE::STRSXP, lines.len() as c_int);
             if !ans.is_null() {
                 for (idx, line) in lines.iter().enumerate() {
@@ -1815,7 +1843,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         conn.incomplete = false;
         let mut lines: Vec<String> = Vec::new();
         while lines.len() < n {
-            let Some(line) = read_pushback_line(conn) else {
+            let Some(line) = read_pushback_line(conn, skip_nul) else {
                 break;
             };
             lines.push(line);
@@ -1830,14 +1858,10 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                         match reader.read_line(&mut line) {
                             Ok(0) => break, // EOF
                             Ok(_) => {
-                                // Strip trailing newline
                                 if line.ends_with('\n') {
                                     line.pop();
-                                    if line.ends_with('\r') {
-                                        line.pop();
-                                    }
                                 }
-                                lines.push(line);
+                                lines.push(nul_normalized_line(line.into_bytes(), skip_nul));
                             }
                             Err(e) => {
                                 r_error(&format!("error reading from connection: {}", e));
@@ -1848,7 +1872,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
             ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 for _ in 0..backend_limit {
-                    let Some(line) = read_raw_line(conn) else {
+                    let Some(line) = read_raw_line(conn, skip_nul) else {
                         break;
                     };
                     lines.push(line);
@@ -1874,7 +1898,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                     if lines.len() >= n {
                         break;
                     }
-                    lines.push(line_str.to_string());
+                    lines.push(nul_normalized_line(line_str.as_bytes().to_vec(), skip_nul));
                 }
                 if backend_limit == 0 {
                     // Pushback satisfied this read without touching the underlying data.
@@ -1894,13 +1918,13 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 }
             }
             ConnKind::RawConnection => {
-                // Read raw bytes as lines
                 let remaining = &conn.raw_data[conn.raw_pos..];
                 let mut line = Vec::new();
+                let mut consumed = 0usize;
                 for &byte in remaining {
+                    consumed += 1;
                     if byte == b'\n' {
-                        lines.push(String::from_utf8_lossy(&line).to_string());
-                        line.clear();
+                        lines.push(nul_normalized_line(std::mem::take(&mut line), skip_nul));
                     } else {
                         line.push(byte);
                     }
@@ -1908,9 +1932,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                         break;
                     }
                 }
-                conn.raw_pos += remaining.len();
-                if !line.is_empty() {
-                    lines.push(String::from_utf8_lossy(&line).to_string());
+                conn.raw_pos += consumed;
+                if !line.is_empty() && lines.len() < n {
+                    lines.push(nul_normalized_line(line, skip_nul));
                 }
             }
             ConnKind::Terminal(name) if name == "stdin" => {
@@ -1923,11 +1947,8 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                         Ok(_) => {
                             if line.ends_with('\n') {
                                 line.pop();
-                                if line.ends_with('\r') {
-                                    line.pop();
-                                }
                             }
-                            lines.push(line);
+                            lines.push(nul_normalized_line(line.into_bytes(), skip_nul));
                         }
                         Err(e) => {
                             r_error(&format!("error reading from stdin: {}", e));

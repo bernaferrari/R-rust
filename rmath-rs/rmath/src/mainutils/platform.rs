@@ -1776,8 +1776,8 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
                 "jpeg" | "png" | "tiff" => FALSE,
                 "X11" => FALSE,
                 "aqua" => FALSE,
-                "http/ftp" => TRUE, // we have basic HTTP support via Rust
-                "sockets" => TRUE,
+                "http/ftp" => FALSE,
+                "sockets" => FALSE,
                 "libxml" => FALSE,
                 "fifo" => TRUE,
                 "cledit" => FALSE,
