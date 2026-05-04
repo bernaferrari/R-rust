@@ -33,6 +33,78 @@ fn r_error(message: impl Into<String>) -> ! {
     });
 }
 
+unsafe fn named_element(object: SEXP, name: &str) -> SEXP {
+    unsafe {
+        if object.is_null() || object == R_NilValue() {
+            return R_NilValue();
+        }
+        match TYPEOF(object) {
+            kind if kind == SEXPTYPE::VECSXP.as_c_int() || kind == SEXPTYPE::EXPRSXP.as_c_int() => {
+                let names =
+                    crate::attrib_core::getAttrib(object, crate::attrib_core::R_NamesSymbol());
+                if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+                    return R_NilValue();
+                }
+                for i in 0..LENGTH(names) {
+                    let elt = STRING_ELT(names, i as R_xlen_t);
+                    let ptr = if elt.is_null() {
+                        ptr::null()
+                    } else {
+                        CHAR(elt)
+                    };
+                    if !ptr.is_null() && CStr::from_ptr(ptr).to_bytes() == name.as_bytes() {
+                        return VECTOR_ELT(object, i as R_xlen_t);
+                    }
+                }
+                R_NilValue()
+            }
+            kind if kind == SEXPTYPE::LISTSXP.as_c_int() => {
+                let mut cell = object;
+                while !cell.is_null() && cell != R_NilValue() {
+                    let tag = TAG(cell);
+                    if !tag.is_null() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                        let printname = PRINTNAME(tag);
+                        if !printname.is_null()
+                            && CStr::from_ptr(CHAR(printname)).to_bytes() == name.as_bytes()
+                        {
+                            return CAR(cell);
+                        }
+                    }
+                    cell = CDR(cell);
+                }
+                R_NilValue()
+            }
+            _ => R_NilValue(),
+        }
+    }
+}
+
+unsafe fn all_methods_slot(mlist: SEXP) -> SEXP {
+    unsafe {
+        let name = Rf_mkChar(c"allMethods".as_ptr());
+        crate::library::methods::slot::R_get_slot(mlist, name)
+    }
+}
+
+unsafe fn first_data_class_name(object: SEXP) -> Option<String> {
+    unsafe {
+        let class = crate::eval::attrib_core::R_data_class(object);
+        if class.is_null()
+            || class == R_NilValue()
+            || TYPEOF(class) != SEXPTYPE::STRSXP
+            || LENGTH(class) == 0
+        {
+            return None;
+        }
+        let elt = STRING_ELT(class, 0);
+        if elt.is_null() {
+            return None;
+        }
+        let ptr = CHAR(elt);
+        (!ptr.is_null()).then(|| CStr::from_ptr(ptr).to_string_lossy().into_owned())
+    }
+}
+
 unsafe fn sexp_to_string(value: SEXP) -> Option<String> {
     unsafe {
         if value.is_null() || value == R_NilValue() {
@@ -99,13 +171,31 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, _ev: SEXP, _fdef: SEXP) -> SEXP {
 }
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
-pub unsafe fn R_quick_method_check(_object: SEXP, _fsym: SEXP, fdef: SEXP) -> SEXP {
+pub unsafe fn R_quick_method_check(args: SEXP, mlist: SEXP, _fdef: SEXP) -> SEXP {
     unsafe {
-        if fdef.is_null() || fdef == R_NilValue() {
+        if mlist.is_null() || mlist == R_NilValue() {
             return R_NilValue();
         }
+        let mut methods = all_methods_slot(mlist);
+        if methods.is_null() || methods == R_NilValue() {
+            return R_NilValue();
+        }
+        let mut arg = args;
+        while !arg.is_null() && arg != R_NilValue() && !methods.is_null() && methods != R_NilValue()
+        {
+            let object = CAR(arg);
+            let Some(class) = first_data_class_name(object) else {
+                return R_NilValue();
+            };
+            let value = named_element(methods, &class);
+            if value.is_null() || value == R_NilValue() || Rf_isFunction(value) != 0 {
+                return value;
+            }
+            methods = all_methods_slot(value);
+            arg = CDR(arg);
+        }
+        R_NilValue()
     }
-    r_error("quick S4 method lookup is not implemented yet");
 }
 
 /// R_quick_dispatch - quick table-based dispatch for primitives.
@@ -313,6 +403,30 @@ mod tests {
             .clone()
     }
 
+    unsafe fn named_list(entries: &[(&str, SEXP)]) -> SEXP {
+        unsafe {
+            let out = Rf_allocVector(SEXPTYPE::VECSXP, entries.len() as c_int);
+            let _out_guard = protect(out);
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, entries.len() as c_int);
+            let _names_guard = protect(names);
+            for (i, (name, value)) in entries.iter().enumerate() {
+                SET_VECTOR_ELT(out, i as R_xlen_t, *value);
+                let cname = CString::new(*name).unwrap_or_default();
+                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cname.as_ptr()));
+            }
+            crate::eval::attrib_core::setAttrib(
+                out,
+                crate::eval::attrib_core::R_NamesSymbol(),
+                names,
+            );
+            out
+        }
+    }
+
+    unsafe fn methods_list(all_methods: SEXP) -> SEXP {
+        unsafe { named_list(&[("allMethods", all_methods)]) }
+    }
+
     #[test]
     fn methods_dispatch_state_is_session_local() {
         let mut first = RInstance::new();
@@ -367,6 +481,38 @@ mod tests {
             R_standardGeneric(name, R_NilValue(), R_NilValue());
         });
         assert!(err.message.contains("S4 method selection"));
+    }
+
+    #[test]
+    fn quick_method_check_returns_direct_class_method() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let method =
+                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_NilValue());
+            let methods = named_list(&[("integer", method)]);
+            let mlist = methods_list(methods);
+            let object = Rf_ScalarInteger(1);
+            let args = Rf_cons(object, R_NilValue());
+
+            let result = R_quick_method_check(args, mlist, R_NilValue());
+            assert_eq!(result, method);
+        }
+    }
+
+    #[test]
+    fn quick_method_check_returns_nil_for_missing_class() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let method =
+                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), R_NilValue());
+            let methods = named_list(&[("character", method)]);
+            let mlist = methods_list(methods);
+            let object = Rf_ScalarInteger(1);
+            let args = Rf_cons(object, R_NilValue());
+
+            let result = R_quick_method_check(args, mlist, R_NilValue());
+            assert_eq!(result, R_NilValue());
+        }
     }
 
     #[test]
