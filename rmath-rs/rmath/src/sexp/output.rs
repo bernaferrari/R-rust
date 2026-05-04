@@ -86,6 +86,7 @@ pub fn is_capturing() -> bool {
 
 pub(crate) fn is_capturing_in(inst: &mut RInstance) -> bool {
     inst.output_capture.borrow().is_capturing()
+        || crate::mainutils::connections::output_sink_active_in(inst)
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
@@ -94,7 +95,16 @@ pub fn capture_stdout(msg: &str) {
 }
 
 pub(crate) fn capture_stdout_in(inst: &mut RInstance, msg: &str) {
-    inst.output_capture.borrow_mut().capture_stdout(msg);
+    if crate::mainutils::connections::write_output_sink_in(inst, msg.as_bytes()) {
+        return;
+    }
+    let mut capture = inst.output_capture.borrow_mut();
+    if capture.stdout.is_some() {
+        capture.capture_stdout(msg);
+        return;
+    }
+    drop(capture);
+    print!("{msg}");
 }
 
 /// Append to captured stderr. Called by the REprintf hook.

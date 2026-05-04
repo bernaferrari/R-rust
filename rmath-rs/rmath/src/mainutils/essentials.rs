@@ -22,7 +22,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{
     FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
 };
-use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -4443,6 +4443,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "readLines",
             "writeLines",
             "sink",
+            "sink.number",
             // Math/Statistics
             "cov",
             "cor",
@@ -14637,21 +14638,128 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
-/// R's `sink(file)` — redirect output to file.
-/// Simplified: stores the sink target for cat/print redirection.
+/// R's `sink(file, append, type, split)` — redirect output to a connection.
 pub unsafe fn do_sink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let file_arg = CAR(args);
-        if file_arg.is_null() || file_arg == R_NilValue() {
-            // Reset sink (not fully implemented)
-            return R_NilValue();
+        let mut file_arg = R_NilValue();
+        let mut append_arg = Rf_ScalarLogical(FALSE);
+        let mut type_arg = Rf_mkString(CString::new("output").unwrap_or_default().as_ptr());
+        let mut split_arg = Rf_ScalarLogical(FALSE);
+        let mut positional = 0usize;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let arg = CAR(current);
+            match tag_name(current).as_deref() {
+                Some("file") => file_arg = arg,
+                Some("append") => append_arg = arg,
+                Some("type") => type_arg = arg,
+                Some("split") => split_arg = arg,
+                _ => {
+                    match positional {
+                        0 => file_arg = arg,
+                        1 => append_arg = arg,
+                        2 => type_arg = arg,
+                        3 => split_arg = arg,
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
         }
-        let _filename = elt_to_string(file_arg, 0);
-        // Simplified: sink is not fully implemented in this R port
-        // A real implementation would redirect stdout to the file
-        eprintln!("Note: sink() is not fully implemented in this R port");
+
+        let split = logical_scalar_or(split_arg, FALSE);
+        let is_message_sink = !type_arg.is_null()
+            && type_arg != R_NilValue()
+            && TYPEOF(type_arg) == SEXPTYPE::STRSXP
+            && elt_to_string(type_arg, 0) == "message";
+
+        let (target, close_on_exit) = if file_arg.is_null() || file_arg == R_NilValue() {
+            if is_message_sink {
+                (Rf_ScalarInteger(2), FALSE)
+            } else {
+                (Rf_ScalarInteger(-1), FALSE)
+            }
+        } else if inherits_class(file_arg, "connection") {
+            (file_arg, FALSE)
+        } else if TYPEOF(file_arg) == SEXPTYPE::STRSXP {
+            if is_message_sink {
+                base_error("'file' must be NULL or an already open connection");
+            }
+            let append = logical_scalar_or(append_arg, FALSE) != FALSE;
+            let open = if append { "a" } else { "w" };
+            let open_sxp = Rf_mkString(CString::new(open).unwrap_or_default().as_ptr());
+            let encoding_sxp = Rf_mkString(CString::new("native.enc").unwrap_or_default().as_ptr());
+            let file_args = Rf_cons(
+                file_arg,
+                Rf_cons(
+                    open_sxp,
+                    Rf_cons(
+                        encoding_sxp,
+                        Rf_cons(
+                            Rf_ScalarLogical(TRUE),
+                            Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue()),
+                        ),
+                    ),
+                ),
+            );
+            (
+                crate::mainutils::connections::do_file(_call, _op, file_args, _rho),
+                TRUE,
+            )
+        } else {
+            base_error("'file' must be NULL, a connection or a character string");
+        };
+        if is_message_sink && split != FALSE {
+            base_error("cannot split the message connection");
+        }
+
+        let normalized = Rf_cons(
+            target,
+            Rf_cons(
+                Rf_ScalarLogical(close_on_exit),
+                Rf_cons(
+                    Rf_ScalarLogical(if is_message_sink { TRUE } else { FALSE }),
+                    Rf_cons(Rf_ScalarLogical(split), R_NilValue()),
+                ),
+            ),
+        );
+        crate::mainutils::connections::do_sink(_call, _op, normalized, _rho);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()
+    }
+}
+
+/// R's `sink.number(type)` — report output or message sink depth.
+pub unsafe fn do_sink_number(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let type_arg = if args.is_null() || args == R_NilValue() {
+            Rf_mkString(CString::new("output").unwrap_or_default().as_ptr())
+        } else {
+            CAR(args)
+        };
+        let is_message_sink = !type_arg.is_null()
+            && type_arg != R_NilValue()
+            && TYPEOF(type_arg) == SEXPTYPE::STRSXP
+            && elt_to_string(type_arg, 0) == "message";
+        let normalized = Rf_cons(
+            Rf_ScalarLogical(if is_message_sink { TRUE } else { FALSE }),
+            R_NilValue(),
+        );
+        crate::mainutils::connections::do_sinkNumber(_call, _op, normalized, _rho)
+    }
+}
+
+unsafe fn logical_scalar_or(arg: SEXP, default: c_int) -> c_int {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() || arg == R_MissingArg() {
+            return default;
+        }
+        if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
+            *INTEGER(arg)
+        } else {
+            default
+        }
     }
 }
 

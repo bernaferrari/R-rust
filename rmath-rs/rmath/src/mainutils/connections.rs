@@ -35,7 +35,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::instance::{RInstance, with_current_instance, with_required_current_instance};
 use crate::sexp::protect::*;
 
 // ---------------------------------------------------------------------------
@@ -251,6 +251,50 @@ fn sink_state() -> SinkStateGuard {
     with_connections_state(|state| SinkStateGuard {
         sink: &mut state.sink,
     })
+}
+
+pub(crate) fn output_sink_active() -> bool {
+    with_current_instance(output_sink_active_in).unwrap_or(false)
+}
+
+pub(crate) fn output_sink_active_in(instance: &mut RInstance) -> bool {
+    let sink = &instance.connections_state.sink;
+    sink.sink_number > 0 && sink.output_con != 1
+}
+
+pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
+    with_current_instance(|instance| write_output_sink_in(instance, bytes)).unwrap_or(false)
+}
+
+pub(crate) fn write_output_sink_in(instance: &mut RInstance, bytes: &[u8]) -> bool {
+    let sink = &instance.connections_state.sink;
+    let target = (sink.sink_number > 0 && sink.output_con != 1).then_some(sink.output_con);
+    let Some(connection) = target else {
+        return false;
+    };
+
+    if connection < 0 {
+        r_error("invalid connection");
+    }
+    let index = connection as usize;
+    let table = &mut instance.connections_state.table;
+    if table.is_empty() {
+        init_connections_table();
+    }
+    if index >= table.len() {
+        r_error("invalid connection");
+    }
+    let Some(conn) = table[index].as_mut() else {
+        r_error("invalid connection");
+    };
+    if !conn.isopen {
+        r_error("connection is not open");
+    }
+    if !conn.canwrite {
+        r_error("cannot write to this connection");
+    }
+    write_bytes_to_conn(conn, bytes);
+    true
 }
 
 /// Initialize the connection system with stdin/stdout/stderr.
@@ -489,6 +533,10 @@ pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
         r_error("cannot write to this connection");
     }
 
+    write_bytes_to_conn(conn, bytes);
+}
+
+fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
     match &mut conn.kind {
         ConnKind::File => {
             if let Some(writer) = conn.writer.as_mut()

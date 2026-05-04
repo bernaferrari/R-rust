@@ -1395,6 +1395,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_sink,
     },
     EvaluatedBuiltin {
+        name: "sink.number",
+        handler: crate::mainutils::essentials::do_sink_number,
+    },
+    EvaluatedBuiltin {
         name: "order",
         handler: crate::mainutils::essentials::do_order,
     },
