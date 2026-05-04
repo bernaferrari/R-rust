@@ -4745,6 +4745,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "strtrim",
             "regexpr",
             "gregexpr",
+            "regexec",
             // Data manipulation
             "order",
             "rank",
@@ -20659,6 +20660,57 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     *INTEGER(elt).add(idx) = *start as c_int;
                     *INTEGER(match_lengths).add(idx) = pat.len() as c_int;
                 }
+                (elt, match_lengths)
+            };
+
+            set_regexpr_attrs(elt, match_lengths);
+            SET_VECTOR_ELT(result, i, elt);
+        }
+
+        result
+    }
+}
+
+/// R regexec(pattern, text) for the overall fixed match.
+pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pat = elt_to_string(CAR(args), 0);
+        let text = CAR(CDR(args));
+        let n = XLENGTH(text).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        for i in 0..n {
+            let txt = elt_to_string(text, i);
+            let found = if pat.is_empty() {
+                Some(0)
+            } else {
+                txt.find(&pat)
+            };
+            let (elt, match_lengths) = if let Some(pos) = found {
+                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+                if elt.is_null() || match_lengths.is_null() {
+                    return R_NilValue();
+                }
+                let _elt_guard = protect(elt);
+                let _ml_guard = protect(match_lengths);
+                *INTEGER(elt) = (pos + 1) as c_int;
+                *INTEGER(match_lengths) = pat.len() as c_int;
+                (elt, match_lengths)
+            } else {
+                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+                if elt.is_null() || match_lengths.is_null() {
+                    return R_NilValue();
+                }
+                let _elt_guard = protect(elt);
+                let _ml_guard = protect(match_lengths);
+                *INTEGER(elt) = -1;
+                *INTEGER(match_lengths) = -1;
                 (elt, match_lengths)
             };
 

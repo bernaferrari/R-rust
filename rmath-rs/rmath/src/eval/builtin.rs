@@ -2819,6 +2819,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_gregexpr,
     },
     EvaluatedBuiltin {
+        name: "regexec",
+        handler: crate::mainutils::essentials::do_regexec,
+    },
+    EvaluatedBuiltin {
         name: "sample.int",
         handler: crate::mainutils::essentials::do_sample_int,
     },

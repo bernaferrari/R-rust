@@ -1,0 +1,5 @@
+r <- regexec("an", c("banana", "dog"))
+print(r[[1]])
+print(attr(r[[1]], "match.length"))
+print(r[[2]])
+print(attr(r[[2]], "match.length"))
