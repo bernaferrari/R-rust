@@ -3362,15 +3362,7 @@ unsafe fn call_condition_handler(handler: SEXP, condition: SEXP, rho: SEXP) -> S
 
 /// R's `computeRestarts()` — compute available restarts for current condition.
 pub unsafe fn do_computeRestarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // Simplified: return empty list of restarts.
-        // In a full implementation this would walk the restart stack.
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        result
-    }
+    unsafe { restart_stack_as_list() }
 }
 
 /// R's `findRestart(name)` — find a restart by name.
@@ -3380,21 +3372,96 @@ pub unsafe fn do_findRestart(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if name_arg.is_null() || name_arg == R_NilValue() {
             return R_NilValue();
         }
-        let _name = elt_to_string(name_arg, 0);
-        // Simplified: return NULL (no restart found)
-        R_NilValue()
+        let name = elt_to_string(name_arg, 0);
+        find_restart_by_name(&name).unwrap_or_else(|| R_NilValue())
     }
 }
 
 /// R's `restarts()` — list available restarts.
 pub unsafe fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { restart_stack_as_list() }
+}
+
+fn restart_stack() -> SEXP {
+    crate::sexp::instance::with_required_current_instance(|inst| inst.error_state.restart_stack)
+}
+
+fn set_restart_stack(stack: SEXP) {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.error_state.restart_stack = stack;
+    });
+}
+
+unsafe fn restart_stack_as_list() -> SEXP {
     unsafe {
-        // Simplified: return empty named list
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        let mut restarts = Vec::new();
+        let mut current = restart_stack();
+        while !current.is_null() && current != R_NilValue() {
+            restarts.push(CAR(current));
+            current = CDR(current);
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, restarts.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
+        let _result_guard = protect(result);
+        for (i, restart) in restarts.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, *restart);
+        }
         result
+    }
+}
+
+unsafe fn find_restart_by_name(name: &str) -> Option<SEXP> {
+    unsafe {
+        let mut current = restart_stack();
+        while !current.is_null() && current != R_NilValue() {
+            let restart = CAR(current);
+            if restart_name(restart).as_deref() == Some(name) {
+                return Some(restart);
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
+unsafe fn restart_name(restart: SEXP) -> Option<String> {
+    unsafe {
+        if restart.is_null() || restart == R_NilValue() || TYPEOF(restart) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        let name = VECTOR_ELT(restart, 0);
+        if name.is_null() || name == R_NilValue() || TYPEOF(name) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        Some(elt_to_string(name, 0))
+    }
+}
+
+unsafe fn restart_entry(name: &str, handler: SEXP) -> SEXP {
+    unsafe {
+        let restart = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if restart.is_null() {
+            return R_NilValue();
+        }
+        let _restart_guard = protect(restart);
+        SET_VECTOR_ELT(
+            restart,
+            0,
+            Rf_mkString(CString::new(name).unwrap_or_default().as_ptr()),
+        );
+        SET_VECTOR_ELT(restart, 1, handler);
+
+        let names = string_vector(&["name".to_string(), "handler".to_string()]);
+        crate::sexp::attrib_core::setAttrib(restart, Rf_install(c"names".as_ptr()), names);
+        crate::sexp::attrib_core::setAttrib(
+            restart,
+            Rf_install(c"class".as_ptr()),
+            Rf_mkString(c"restart".as_ptr()),
+        );
+        restart
     }
 }
 
@@ -13351,16 +13418,48 @@ pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     }
 }
 
-/// R's `withRestarts(expr, ...)` — simplified restart handling.
-/// Just evaluates expr; restarts are not fully implemented.
-pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// R's `withRestarts(expr, ...)` — evaluate an expression with dynamic restarts.
+pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
-        // Simplified: just evaluate the expression
-        crate::eval::eval::Rf_eval(expr, _rho)
+
+        let old_stack = restart_stack();
+        let new_stack = restart_stack_from_args(CDR(args), rho, old_stack);
+        set_restart_stack(new_stack);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }));
+        set_restart_stack(old_stack);
+
+        match result {
+            Ok(value) => value,
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+}
+
+unsafe fn restart_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
+    unsafe {
+        let mut entries = Vec::new();
+        while !args.is_null() && args != R_NilValue() {
+            let Some(name) = tag_name(args) else {
+                args = CDR(args);
+                continue;
+            };
+            let handler = crate::eval::eval::Rf_eval(CAR(args), rho);
+            entries.push(restart_entry(&name, handler));
+            args = CDR(args);
+        }
+
+        let mut stack = old_stack;
+        for entry in entries.into_iter().rev() {
+            stack = Rf_cons(entry, stack);
+        }
+        stack
     }
 }
 
