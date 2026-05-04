@@ -957,6 +957,22 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             }
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, elem);
         }
+        let names =
+            crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n
+        {
+            let names = crate::mainutils::duplicate::duplicate(names);
+            if !names.is_null() {
+                crate::eval::attrib_core::setAttrib(
+                    result,
+                    crate::eval::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
         result
     }
 }

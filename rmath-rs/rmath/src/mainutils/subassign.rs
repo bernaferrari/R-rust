@@ -447,11 +447,26 @@ unsafe fn PairToVectorList(x: SEXP) -> SEXP {
 pub unsafe fn VectorToPairList(x: SEXP) -> SEXP {
     unsafe {
         let len = Rf_length(x);
+        let names = getAttrib(x, sym_Names());
         let mut result = R_NilValue();
         let mut i: R_xlen_t = len as R_xlen_t;
         while i > 0 {
             i -= 1;
-            result = Rf_cons(VECTOR_ELT(x, i), result);
+            let cell = Rf_cons(VECTOR_ELT(x, i), result);
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == STRSXP
+                && XLENGTH(names) > i
+            {
+                let name = STRING_ELT(names, i);
+                if !name.is_null() {
+                    let chars = CHAR(name);
+                    if !chars.is_null() && *chars != 0 {
+                        SETTAG(cell, Rf_install(chars));
+                    }
+                }
+            }
+            result = cell;
         }
         result
     }

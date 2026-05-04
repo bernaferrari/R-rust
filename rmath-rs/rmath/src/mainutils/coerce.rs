@@ -3348,7 +3348,7 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Substitute symbols in an expression using bindings from an environment.
 ///
 /// Ported from R's `substitute()` in coerce.c.
-unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{PRCODE, TYPEOF};
     use crate::sexp::envir::R_findVarInFrame;
@@ -3470,6 +3470,9 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
             remaining = CDR(remaining);
         }
 
+        if res != R_NilValue() && TYPEOF(el) == SEXPTYPE::LANGSXP {
+            (*res).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
         res
     }
 }
@@ -3513,10 +3516,10 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             // Convert VECSXP to environment
             let plist = crate::mainutils::subassign::VectorToPairList(env);
             let _plist_guard = protect(plist);
-            env = NewEnvironment(R_NilValue(), plist, R_BaseEnv());
+            env = NewEnvironment(plist, R_BaseEnv(), R_NilValue());
         } else if TYPEOF(env) == SEXPTYPE::LISTSXP {
             // Convert pairlist to environment
-            env = NewEnvironment(R_NilValue(), env, R_BaseEnv());
+            env = NewEnvironment(env, R_BaseEnv(), R_NilValue());
         }
 
         if env != R_NilValue() && TYPEOF(env) != SEXPTYPE::ENVSXP {
