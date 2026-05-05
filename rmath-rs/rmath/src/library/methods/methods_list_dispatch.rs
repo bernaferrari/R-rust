@@ -150,6 +150,39 @@ unsafe fn sexp_to_string(value: SEXP) -> Option<String> {
     }
 }
 
+unsafe fn is_primitive_function(value: SEXP) -> bool {
+    unsafe {
+        !value.is_null()
+            && (TYPEOF(value) == SEXPTYPE::BUILTINSXP || TYPEOF(value) == SEXPTYPE::SPECIALSXP)
+    }
+}
+
+unsafe fn inherits_internal_dispatch_method(value: SEXP) -> bool {
+    unsafe {
+        crate::mainutils::objects::inherits2(value, c"internalDispatchMethod".as_ptr()) != FALSE
+    }
+}
+
+unsafe fn primitive_from_generic_frame(ev: SEXP) -> Option<SEXP> {
+    unsafe {
+        let generic_sym = crate::sexp::symbol::Rf_install(c".Generic".as_ptr());
+        let generic = crate::sexp::envir::R_findVarInFrame(ev, generic_sym);
+        if generic == R_UnboundValue() {
+            r_error(
+                "internal error in 'callNextMethod': '.Generic' was not assigned in the frame of the method call",
+            );
+        }
+        let generic_name = sexp_to_string(generic)?;
+        let generic_sym = crate::sexp::symbol::Rf_install(
+            CString::new(generic_name.as_str())
+                .unwrap_or_default()
+                .as_ptr(),
+        );
+        let primitive = INTERNAL(generic_sym);
+        (!primitive.is_null() && primitive != R_NilValue()).then_some(primitive)
+    }
+}
+
 /// R_initMethodDispatch - initialize method dispatch.
 /// Called from the methods package on load.
 pub unsafe fn R_initMethodDispatch(envir: SEXP) -> SEXP {
@@ -548,8 +581,66 @@ pub unsafe fn R_M_setPrimitiveMethods(
 }
 
 /// R_nextMethodCall - implement .nextMethod() (callNextMethod).
-pub unsafe fn R_nextMethodCall(_matched_call: SEXP, _ev: SEXP) -> SEXP {
-    r_error("callNextMethod/.nextMethod dispatch is not implemented yet");
+pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
+    unsafe {
+        let dot_next_method = crate::sexp::symbol::Rf_install(c".nextMethod".as_ptr());
+        let mut op = crate::sexp::envir::R_findVarInFrame(ev, dot_next_method);
+        if op == R_UnboundValue() {
+            r_error(
+                "internal error in 'callNextMethod': '.nextMethod' was not assigned in the frame of the method call",
+            );
+        }
+        let _op_guard = protect(op);
+
+        let call = crate::mainutils::duplicate::shallow_duplicate(matched_call);
+        let _call_guard = protect(call);
+
+        let mut prim_case = is_primitive_function(op);
+        if !prim_case && inherits_internal_dispatch_method(op) {
+            if let Some(primitive) = primitive_from_generic_frame(ev) {
+                op = primitive;
+                prim_case = true;
+            }
+        }
+
+        if prim_case {
+            crate::mainutils::objects::do_set_prim_method(
+                op,
+                c"suppress".as_ptr(),
+                R_NilValue(),
+                R_NilValue(),
+            );
+        } else {
+            SETCAR(call, dot_next_method);
+        }
+
+        let mut args = CDR(call);
+        while !args.is_null() && args != R_NilValue() {
+            let this_sym = TAG(args);
+            if this_sym != R_NilValue() && CAR(args) != R_MissingArg() {
+                SETCAR(args, this_sym);
+            }
+            args = CDR(args);
+        }
+
+        if prim_case {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::eval::eval::Rf_eval(call, ev)
+            }));
+            crate::mainutils::objects::do_set_prim_method(
+                op,
+                c"set".as_ptr(),
+                R_NilValue(),
+                R_NilValue(),
+            );
+            match result {
+                Ok(value) => value,
+                Err(payload) => std::panic::resume_unwind(payload),
+            }
+        } else {
+            crate::eval::eval::Rf_eval(call, ev)
+        }
+    }
 }
 
 pub(crate) struct MethodsDispatchState {
@@ -722,6 +813,46 @@ mod tests {
         }
     }
 
+    unsafe fn missing_formals(names: &[&str]) -> SEXP {
+        unsafe {
+            let formals = crate::sexp::memory_ext::allocList(names.len() as c_int);
+            let _formals_guard = protect(formals);
+            let mut cell = formals;
+            for name in names {
+                let sym = crate::sexp::symbol::Rf_install(
+                    CString::new(*name).unwrap_or_default().as_ptr(),
+                );
+                SETTAG(cell, sym);
+                SETCAR(cell, R_MissingArg());
+                cell = CDR(cell);
+            }
+            formals
+        }
+    }
+
+    unsafe fn tagged_call(head: &str, args: &[(&str, SEXP)]) -> SEXP {
+        unsafe {
+            let call = crate::sexp::memory_ext::allocLang((args.len() + 1) as c_int);
+            let _call_guard = protect(call);
+            SETCAR(
+                call,
+                crate::sexp::symbol::Rf_install(CString::new(head).unwrap_or_default().as_ptr()),
+            );
+            let mut cell = CDR(call);
+            for (name, value) in args {
+                SETTAG(
+                    cell,
+                    crate::sexp::symbol::Rf_install(
+                        CString::new(*name).unwrap_or_default().as_ptr(),
+                    ),
+                );
+                SETCAR(cell, *value);
+                cell = CDR(cell);
+            }
+            call
+        }
+    }
+
     #[test]
     fn methods_dispatch_state_is_session_local() {
         let mut first = RInstance::new();
@@ -823,6 +954,43 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 7);
         }
+    }
+
+    #[test]
+    fn next_method_call_rewrites_named_actuals_to_frame_symbols() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let next_method = crate::mainutils::dstruct::mkCLOSXP(
+                missing_formals(&["x", "y"]),
+                x_sym,
+                R_NilValue(),
+            );
+            let ev = env_with(&[
+                (".nextMethod", next_method),
+                ("x", Rf_ScalarInteger(41)),
+                ("y", Rf_ScalarInteger(59)),
+            ]);
+            let matched_call = tagged_call(
+                "currentMethod",
+                &[("x", Rf_ScalarInteger(1)), ("y", Rf_ScalarInteger(2))],
+            );
+
+            let result = R_nextMethodCall(matched_call, ev);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 41);
+        }
+    }
+
+    #[test]
+    fn next_method_call_errors_when_next_method_is_missing() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = assert_r_error(|| unsafe {
+            let ev = env_with(&[]);
+            let matched_call = tagged_call("currentMethod", &[]);
+            R_nextMethodCall(matched_call, ev);
+        });
+        assert!(err.message.contains("'.nextMethod' was not assigned"));
     }
 
     #[test]
