@@ -2131,6 +2131,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_par,
     },
     EvaluatedBuiltin {
+        name: "layout",
+        handler: crate::mainutils::essentials::do_layout,
+    },
+    EvaluatedBuiltin {
         name: "getGraphicsEvent",
         handler: crate::mainutils::essentials::do_getGraphicsEvent,
     },

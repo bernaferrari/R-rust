@@ -662,6 +662,156 @@ fn graphics_error(message: impl Into<String>) -> ! {
     });
 }
 
+unsafe fn layout_pop_arg(args: &mut SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || *args == R_NilValue() {
+            graphics_error("invalid graphics layout");
+        }
+        let value = CAR(*args);
+        *args = CDR(*args);
+        value
+    }
+}
+
+unsafe fn layout_int_scalar(args: &mut SEXP, name: &str) -> c_int {
+    unsafe {
+        let value = layout_pop_arg(args);
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) < 1 {
+            graphics_error(format!("invalid '{name}' in graphics layout"));
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP => *INTEGER(value),
+            t if t == SEXPTYPE::REALSXP => *REAL(value) as c_int,
+            _ => graphics_error(format!("invalid '{name}' in graphics layout")),
+        }
+    }
+}
+
+unsafe fn layout_int_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_int> {
+    unsafe {
+        let value = layout_pop_arg(args);
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) < min_len as R_xlen_t {
+            graphics_error(format!("invalid '{name}' in graphics layout"));
+        }
+        let n = XLENGTH(value) as usize;
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP => {
+                let src = INTEGER(value);
+                (0..n).map(|i| *src.add(i)).collect()
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let src = REAL(value);
+                (0..n).map(|i| *src.add(i) as c_int).collect()
+            }
+            _ => graphics_error(format!("invalid '{name}' in graphics layout")),
+        }
+    }
+}
+
+unsafe fn layout_real_values(args: &mut SEXP, name: &str, min_len: usize) -> Vec<c_double> {
+    unsafe {
+        let value = layout_pop_arg(args);
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) < min_len as R_xlen_t {
+            graphics_error(format!("invalid '{name}' in graphics layout"));
+        }
+        let n = XLENGTH(value) as usize;
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::REALSXP => {
+                let src = REAL(value);
+                (0..n).map(|i| *src.add(i)).collect()
+            }
+            t if t == SEXPTYPE::INTSXP => {
+                let src = INTEGER(value);
+                (0..n).map(|i| *src.add(i) as c_double).collect()
+            }
+            _ => graphics_error(format!("invalid '{name}' in graphics layout")),
+        }
+    }
+}
+
+fn apply_layout_state(nrow: c_int, ncol: c_int, order: &[c_int], num_figures: c_int) {
+    let (mut current_row, mut current_col) = (1, 1);
+    if num_figures > 0
+        && let Some(index) = order.iter().position(|value| *value == num_figures)
+    {
+        current_row = (index as c_int % nrow) + 1;
+        current_col = (index as c_int / nrow) + 1;
+    }
+    let cex = if nrow > 2 || ncol > 2 {
+        0.66
+    } else if nrow == 2 && ncol == 2 {
+        0.83
+    } else {
+        1.0
+    };
+
+    with_par_state(|state| {
+        state
+            .overrides
+            .insert("mfrow".into(), ParValue::Integer(vec![nrow, ncol]));
+        state
+            .overrides
+            .insert("mfcol".into(), ParValue::Integer(vec![nrow, ncol]));
+        state.overrides.insert(
+            "mfg".into(),
+            ParValue::Integer(vec![current_row, current_col, nrow, ncol]),
+        );
+        state
+            .overrides
+            .insert("cex".into(), ParValue::Real(vec![cex]));
+        state
+            .overrides
+            .insert("mex".into(), ParValue::Real(vec![1.0]));
+        state
+            .overrides
+            .insert("new".into(), ParValue::Logical(vec![FALSE]));
+    });
+}
+
+unsafe fn matrix_shape(value: SEXP) -> Option<(c_int, c_int)> {
+    unsafe {
+        let dim =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || XLENGTH(dim) < 2
+        {
+            return None;
+        }
+        Some((*INTEGER(dim), *INTEGER(dim).add(1)))
+    }
+}
+
+unsafe fn layout_matrix_order(value: SEXP, len: usize) -> Vec<c_int> {
+    unsafe {
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) < len as R_xlen_t {
+            graphics_error("invalid layout matrix");
+        }
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP => {
+                let src = INTEGER(value);
+                (0..len).map(|i| *src.add(i)).collect()
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let src = REAL(value);
+                (0..len).map(|i| *src.add(i) as c_int).collect()
+            }
+            _ => graphics_error("invalid layout matrix"),
+        }
+    }
+}
+
+fn validate_layout_order(order: &[c_int], num_figures: c_int) {
+    for figure in 1..=num_figures {
+        if !order.contains(&figure) {
+            graphics_error(format!(
+                "layout matrix must contain at least one reference\nto each of the values {{1 ... {num_figures}}}\n"
+            ));
+        }
+    }
+}
+
 fn current_par_value(state: &GraphicsParState, name: &str) -> ParValue {
     state
         .overrides
@@ -939,7 +1089,66 @@ pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///   SEXP C_layout(SEXP args)
 ///
 pub unsafe fn C_layout(_args: SEXP) -> SEXP {
-    graphics_error("graphics::layout is not implemented without a graphics device layout backend")
+    unsafe {
+        const MAX_LAYOUT_ROWS: c_int = 200;
+        const MAX_LAYOUT_COLS: c_int = 200;
+        const MAX_LAYOUT_CELLS: c_int = 10007;
+
+        let mut args = CDR(_args);
+        let nrow = layout_int_scalar(&mut args, "num.rows");
+        if nrow > MAX_LAYOUT_ROWS {
+            graphics_error(format!("too many rows in layout, limit {MAX_LAYOUT_ROWS}"));
+        }
+        let ncol = layout_int_scalar(&mut args, "num.cols");
+        if ncol > MAX_LAYOUT_COLS {
+            graphics_error(format!(
+                "too many columns in layout, limit {MAX_LAYOUT_COLS}"
+            ));
+        }
+        if nrow.saturating_mul(ncol) > MAX_LAYOUT_CELLS {
+            graphics_error(format!(
+                "too many cells in layout, limit {MAX_LAYOUT_CELLS}"
+            ));
+        }
+        let cell_count = nrow.saturating_mul(ncol).max(0) as usize;
+        let order = layout_int_values(&mut args, "mat", cell_count);
+        let num_figures = layout_int_scalar(&mut args, "num.figures");
+        let _widths = layout_real_values(&mut args, "col.widths", ncol.max(0) as usize);
+        let _heights = layout_real_values(&mut args, "row.heights", nrow.max(0) as usize);
+        let _cm_widths = layout_int_values(&mut args, "cm.widths", 0);
+        let _cm_heights = layout_int_values(&mut args, "cm.heights", 0);
+        let _respect = layout_int_scalar(&mut args, "respect");
+        let _respect_mat = layout_int_values(&mut args, "respect.mat", cell_count);
+
+        validate_layout_order(&order, num_figures);
+        apply_layout_state(nrow, ncol, &order, num_figures);
+
+        R_NilValue()
+    }
+}
+
+/// Rust-level `layout()` entry point used by the headless Android runtime.
+/// It mirrors the observable state changes from graphics' R wrapper and
+/// `C_layout`; drawing backends consume the same `par()` state later.
+pub unsafe fn do_layout(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            graphics_error("argument 'mat' is missing, with no default");
+        }
+        let mat = CAR(args);
+        let Some((nrow, ncol)) = matrix_shape(mat) else {
+            graphics_error("'mat' must be a matrix");
+        };
+        let cell_count = nrow.saturating_mul(ncol).max(0) as usize;
+        let order = layout_matrix_order(mat, cell_count);
+        let num_figures = order.iter().copied().max().unwrap_or(0);
+        validate_layout_order(&order, num_figures);
+        apply_layout_state(nrow, ncol, &order, num_figures);
+
+        let result = Rf_ScalarInteger(num_figures);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        result
+    }
 }
 
 /* ---- Stub: ProcessInlinePars ---- */
@@ -1135,22 +1344,12 @@ mod tests {
     }
 
     #[test]
-    fn layout_reports_explicit_backend_gap() {
-        let mut instance = RInstance::new();
-
-        unsafe {
-            let previous = replace_current_instance(Some(&mut instance as *mut RInstance));
-            let _restore = CurrentInstanceRestore(previous);
-
-            let payload = std::panic::catch_unwind(|| {
-                C_layout(R_NilValue());
-            })
-            .expect_err("layout without a device backend should error");
-            let err = payload
-                .downcast_ref::<RError>()
-                .expect("expected RError payload");
-            assert!(err.message.contains("graphics::layout"));
-        }
+    fn layout_updates_session_local_par_state() {
+        let mut session = crate::android::RSession::new();
+        let result = session.eval(
+            "layout(matrix(1:4, 2, 2)); cat(layout(matrix(1:9, 3, 3)), paste(par('mfg'), collapse=','), par('cex'), par('mex'))",
+        );
+        assert_eq!(result.output.trim(), "9 3,3,3,3 0.66 1");
     }
 
     #[test]
