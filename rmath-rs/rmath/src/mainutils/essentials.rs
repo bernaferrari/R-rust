@@ -14209,16 +14209,34 @@ unsafe fn s4_slots_from_args(args: SEXP) -> Vec<String> {
             if let Some(name) = list_tag_name(current) {
                 match name.as_str() {
                     "slots" | "representation" => {
-                        slots.extend(string_vector_names_or_values(CAR(current)));
+                        for slot in string_vector_names_or_values(CAR(current)) {
+                            if slots.iter().any(|existing| existing == &slot) {
+                                std::panic::panic_any(RError {
+                                    message: format!(
+                                        "All slot names must be distinct in: ('{}')",
+                                        slot
+                                    ),
+                                });
+                            }
+                            slots.push(slot);
+                        }
                     }
                     "contains" | "where" | "prototype" | "validity" | "sealed" | "package" => {}
-                    _ => slots.push(name),
+                    _ => {
+                        if slots.iter().any(|existing| existing == &name) {
+                            std::panic::panic_any(RError {
+                                message: format!(
+                                    "All slot names must be distinct in: ('{}')",
+                                    name
+                                ),
+                            });
+                        }
+                        slots.push(name);
+                    }
                 }
             }
             current = CDR(current);
         }
-        slots.sort();
-        slots.dedup();
         slots
     }
 }
@@ -14230,8 +14248,13 @@ unsafe fn s4_contains_from_args(args: SEXP) -> Vec<String> {
             if matches!(list_tag_name(current).as_deref(), Some("contains")) {
                 let mut contains = string_vector_values(CAR(current));
                 contains.retain(|name| !name.is_empty() && name != "VIRTUAL");
-                contains.sort();
-                contains.dedup();
+                let mut ordered = Vec::new();
+                for parent in contains {
+                    if !ordered.iter().any(|existing| existing == &parent) {
+                        ordered.push(parent);
+                    }
+                }
+                contains = ordered;
                 return contains;
             }
             current = CDR(current);

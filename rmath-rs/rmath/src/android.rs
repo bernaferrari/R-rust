@@ -2257,7 +2257,7 @@ mod tests {
         let mut session = RSession::new();
 
         let result = session.eval(
-            "setClass(\"Person\", name = \"character\", age = \"numeric\"); x <- new(\"Person\", name = \"Ada\", age = 37); all(c(isS4(x), is(x, \"Person\"), slot(x, \"name\") == \"Ada\", slot(x, \"age\") == 37, all(slotNames(\"Person\") == c(\"age\", \"name\"))))",
+            "setClass(\"Person\", name = \"character\", age = \"numeric\"); x <- new(\"Person\", name = \"Ada\", age = 37); all(c(isS4(x), is(x, \"Person\"), slot(x, \"name\") == \"Ada\", slot(x, \"age\") == 37, all(slotNames(\"Person\") == c(\"name\", \"age\"))))",
         );
         assert_eq!(result.typed, RValue::Logical(Some(true)));
     }
