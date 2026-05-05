@@ -8,7 +8,7 @@
 //! Original file: r-source/src/main/objects.c (1,879 lines)
 
 use libc;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -208,13 +208,55 @@ pub(crate) fn s4_class(name: &str) -> Option<S4ClassDef> {
     with_objects_state(|state| state.s4_classes.get(name).cloned())
 }
 
+fn collect_s4_slots(
+    classes: &HashMap<String, S4ClassDef>,
+    name: &str,
+    visited: &mut HashSet<String>,
+    out: &mut Vec<String>,
+) {
+    if !visited.insert(name.to_string()) {
+        return;
+    }
+    let Some(class_def) = classes.get(name) else {
+        return;
+    };
+    for slot in &class_def.slots {
+        if !out.iter().any(|existing| existing == slot) {
+            out.push(slot.clone());
+        }
+    }
+    for parent in &class_def.contains {
+        collect_s4_slots(classes, parent, visited, out);
+    }
+}
+
+pub(crate) fn s4_all_slots(name: &str) -> Option<Vec<String>> {
+    with_objects_state(|state| {
+        state.s4_classes.contains_key(name).then(|| {
+            let mut slots = Vec::new();
+            collect_s4_slots(&state.s4_classes, name, &mut HashSet::new(), &mut slots);
+            slots
+        })
+    })
+}
+
+pub(crate) fn s4_class_extends(class1: &str, class2: &str) -> bool {
+    with_objects_state(|state| {
+        s4_extends_registered(&state.s4_classes, class1, class2, &mut HashSet::new())
+    })
+}
+
 fn s4_extends_registered(
     classes: &HashMap<String, S4ClassDef>,
     class1: &str,
     class2: &str,
+    visited: &mut HashSet<String>,
 ) -> bool {
     if class1 == class2 {
         return true;
+    }
+    if !visited.insert(class1.to_string()) {
+        return false;
     }
     let Some(class_def) = classes.get(class1) else {
         return false;
@@ -222,7 +264,7 @@ fn s4_extends_registered(
     class_def
         .contains
         .iter()
-        .any(|parent| parent == class2 || s4_extends_registered(classes, parent, class2))
+        .any(|parent| parent == class2 || s4_extends_registered(classes, parent, class2, visited))
 }
 
 unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
@@ -3344,13 +3386,11 @@ pub unsafe fn R_extends(class1: SEXP, class2: SEXP, _env: SEXP) -> c_int {
         let Some(class2) = class_name_from_def(class2) else {
             return FALSE;
         };
-        with_objects_state(|state| {
-            if s4_extends_registered(&state.s4_classes, &class1, &class2) {
-                TRUE
-            } else {
-                FALSE
-            }
-        })
+        if s4_class_extends(&class1, &class2) {
+            TRUE
+        } else {
+            FALSE
+        }
     }
 }
 

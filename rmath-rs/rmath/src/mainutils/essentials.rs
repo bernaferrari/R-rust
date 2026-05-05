@@ -14115,6 +14115,11 @@ pub unsafe fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         if c == class2 {
                             return Rf_ScalarLogical(TRUE);
                         }
+                        if crate::mainutils::objects::isS4(x) == TRUE
+                            && crate::mainutils::objects::s4_class_extends(c, &class2)
+                        {
+                            return Rf_ScalarLogical(TRUE);
+                        }
                     }
                 }
             }
@@ -14311,6 +14316,7 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 message: format!("class '{}' is not defined", class_name),
             });
         };
+        let class_slots = crate::mainutils::objects::s4_all_slots(&class_name).unwrap_or_default();
         if class_def.virtual_class {
             std::panic::panic_any(RError {
                 message: format!("class '{}' is virtual", class_name),
@@ -14323,8 +14329,7 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let arg = CAR(current);
             let slot_name =
                 list_tag_name(current).unwrap_or_else(|| format!("slot{}", slots.len() + 1));
-            if !class_def.slots.is_empty() && !class_def.slots.iter().any(|slot| slot == &slot_name)
-            {
+            if !class_slots.is_empty() && !class_slots.iter().any(|slot| slot == &slot_name) {
                 std::panic::panic_any(RError {
                     message: format!(
                         "slot '{}' is not defined for class '{}'",
@@ -14335,7 +14340,7 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             slots.push((slot_name, arg));
             current = CDR(current);
         }
-        for slot in &class_def.slots {
+        for slot in &class_slots {
             if !slots.iter().any(|(name, _)| name == slot) {
                 slots.push((slot.clone(), R_NilValue()));
             }
@@ -14448,10 +14453,25 @@ pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
         if TYPEOF(class_arg) == SEXPTYPE::STRSXP {
-            if let Some(class_def) =
-                crate::mainutils::objects::s4_class(&elt_to_string(class_arg, 0))
+            if let Some(slots) =
+                crate::mainutils::objects::s4_all_slots(&elt_to_string(class_arg, 0))
             {
-                return string_vector_from_values(&class_def.slots);
+                return string_vector_from_values(&slots);
+            }
+        }
+        if crate::mainutils::objects::isS4(class_arg) == TRUE {
+            let class_sym = Rf_install(CString::new("class").unwrap_or_default().as_ptr());
+            let class_val = crate::sexp::attrib_core::getAttrib(class_arg, class_sym);
+            if !class_val.is_null()
+                && class_val != R_NilValue()
+                && TYPEOF(class_val) == SEXPTYPE::STRSXP
+                && LENGTH(class_val) > 0
+            {
+                if let Some(slots) =
+                    crate::mainutils::objects::s4_all_slots(&elt_to_string(class_val, 0))
+                {
+                    return string_vector_from_values(&slots);
+                }
             }
         }
         // If it's an object with names, return names

@@ -1,0 +1,11 @@
+setClass("Parent", slots = c(p = "numeric"))
+setClass("Child", contains = "Parent", slots = c(q = "character"))
+x <- new("Child", p = 1, q = "z")
+
+print(is(x, "Child"))
+print(is(x, "Parent"))
+print(slot(x, "p"))
+print(slot(x, "q"))
+print(slotNames("Child"))
+print(slotNames(x))
+print(as.character(class(x)))
