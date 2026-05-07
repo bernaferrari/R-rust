@@ -19424,10 +19424,41 @@ pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R's `Sys.timezone()` — current timezone (simplified).
 pub unsafe fn do_Sys_timezone(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let tz = std::env::var("TZ").unwrap_or_else(|_| "UTC".to_string());
+        let tz = system_timezone_name();
         let s = CString::new(tz).unwrap_or_default();
         Rf_mkString(s.as_ptr())
     }
+}
+
+fn system_timezone_name() -> String {
+    std::env::var("TZ")
+        .ok()
+        .and_then(|tz| {
+            let tz = tz.trim_start_matches(':').to_string();
+            (!tz.is_empty()).then_some(tz)
+        })
+        .or_else(|| {
+            std::fs::read_link("/etc/localtime")
+                .ok()
+                .and_then(|path| timezone_name_from_zoneinfo_path(&path))
+        })
+        .unwrap_or_else(|| "UTC".to_string())
+}
+
+fn timezone_name_from_zoneinfo_path(path: &Path) -> Option<String> {
+    let path = path.to_string_lossy();
+    for prefix in [
+        "/var/db/timezone/zoneinfo/",
+        "/usr/share/zoneinfo/",
+        "/usr/share/lib/zoneinfo/",
+    ] {
+        if let Some(zone) = path.strip_prefix(prefix) {
+            if !zone.is_empty() {
+                return Some(zone.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// R's `Sys.localeconv()` — locale formatting conventions.
@@ -23800,6 +23831,24 @@ mod tests {
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(default)
+    }
+
+    #[test]
+    fn timezone_name_from_zoneinfo_paths() {
+        assert_eq!(
+            timezone_name_from_zoneinfo_path(Path::new(
+                "/var/db/timezone/zoneinfo/America/Sao_Paulo"
+            )),
+            Some("America/Sao_Paulo".to_string())
+        );
+        assert_eq!(
+            timezone_name_from_zoneinfo_path(Path::new("/usr/share/zoneinfo/Europe/London")),
+            Some("Europe/London".to_string())
+        );
+        assert_eq!(
+            timezone_name_from_zoneinfo_path(Path::new("/tmp/localtime")),
+            None
+        );
     }
 
     #[test]
