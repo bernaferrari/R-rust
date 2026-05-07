@@ -105,6 +105,9 @@ unsafe fn resolve_promise(x: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return x;
         }
+        if TYPEOF(x) != PROMSXP_I {
+            return x;
+        }
         let val = PRVALUE(x);
         if val.is_null() || val == R_NilValue() {
             x
@@ -640,6 +643,12 @@ unsafe fn AnswerType(x: SEXP, recurse: bool, usenames: bool, data: *mut BindData
             return;
         }
 
+        if crate::mainutils::objects::isS4(x) != 0 {
+            (*data).ans_flags |= 256;
+            (*data).ans_length += 1;
+            return;
+        }
+
         let t = TYPEOF(x);
 
         match t {
@@ -730,6 +739,11 @@ unsafe fn AnswerType(x: SEXP, recurse: bool, usenames: bool, data: *mut BindData
 unsafe fn ListAnswer(x: SEXP, recurse: c_int, data: *mut BindData, call: SEXP) {
     unsafe {
         if x.is_null() || x == R_NilValue() {
+            return;
+        }
+
+        if crate::mainutils::objects::isS4(x) != 0 {
+            list_assign(data, lazy_duplicate(x));
             return;
         }
 
@@ -1350,6 +1364,11 @@ unsafe fn namesCount(v: SEXP, recurse: c_int, nameData: *mut NameData) {
             return;
         }
 
+        if crate::mainutils::objects::isS4(v) != 0 {
+            (*nameData).count += 1;
+            return;
+        }
+
         let n = xlength(v);
         let names_sym = crate::eval::attrib_core::R_NamesSymbol();
         let names = getAttrib(v, names_sym);
@@ -1453,6 +1472,18 @@ unsafe fn NewExtractNames(
             (*nameData).seqno = 0;
         } else {
             saveseqno = 0;
+        }
+
+        if crate::mainutils::objects::isS4(v) != 0 {
+            let new_name = NewName(base, R_NilValue(), (*nameData).seqno + 1, (*nameData).count);
+            (*nameData).seqno += 1;
+            SET_STRING_ELT((*data).ans_names, (*data).ans_nnames, new_name);
+            (*data).ans_nnames += 1;
+            if !tag.is_null() && tag != R_NilValue() {
+                (*nameData).count = savecount;
+            }
+            (*nameData).seqno += saveseqno;
+            return;
         }
 
         let n = xlength(v);
@@ -1714,14 +1745,15 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let mut t = args;
         while !t.is_null() && t != R_NilValue() {
+            let value = resolve_promise(CAR(t));
             if usenames && data.ans_nnames == 0 {
                 if !Rf_isNull(TAG(t)) != 0 {
                     data.ans_nnames = 1;
                 } else {
-                    data.ans_nnames = HasNames(CAR(t)) as R_xlen_t;
+                    data.ans_nnames = HasNames(value) as R_xlen_t;
                 }
             }
-            AnswerType(CAR(t), recurse, usenames, &mut data, call);
+            AnswerType(value, recurse, usenames, &mut data, call);
             t = CDR(t);
         }
 
@@ -1747,11 +1779,15 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if !recurse {
                 let mut a = args;
                 while !a.is_null() && a != R_NilValue() {
-                    ListAnswer(CAR(a), 0, &mut data, call);
+                    ListAnswer(resolve_promise(CAR(a)), 0, &mut data, call);
                     a = CDR(a);
                 }
             } else {
-                ListAnswer(args, 1, &mut data, call);
+                let mut a = args;
+                while !a.is_null() && a != R_NilValue() {
+                    ListAnswer(resolve_promise(CAR(a)), 1, &mut data, call);
+                    a = CDR(a);
+                }
             }
             data.ans_length = xlength(ans);
         } else if mode == SEXPTYPE::STRSXP {
@@ -1781,7 +1817,7 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             while !a.is_null() && a != R_NilValue() {
                 let mut nameData = NameData { count: 0, seqno: 0 };
                 NewExtractNames(
-                    CAR(a),
+                    resolve_promise(CAR(a)),
                     R_NilValue(),
                     TAG(a),
                     recurse as c_int,

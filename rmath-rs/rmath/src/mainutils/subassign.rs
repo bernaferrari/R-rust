@@ -234,7 +234,7 @@ unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        let S4_OBJECT_MASK: u16 = 1 << 11;
+        let S4_OBJECT_MASK: u16 = 1 << 4;
         (((*x).sxpinfo.gp() & S4_OBJECT_MASK) != 0) as c_int
     }
 }
@@ -244,7 +244,7 @@ unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
 unsafe fn SET_S4_OBJECT(x: SEXP) {
     unsafe {
         if !x.is_null() {
-            let S4_OBJECT_MASK: u16 = 1 << 11;
+            let S4_OBJECT_MASK: u16 = 1 << 4;
             let gp = (*x).sxpinfo.gp() | S4_OBJECT_MASK;
             (*x).sxpinfo.set_gp(gp);
         }
@@ -256,7 +256,7 @@ unsafe fn SET_S4_OBJECT(x: SEXP) {
 unsafe fn UNSET_S4_OBJECT(x: SEXP) {
     unsafe {
         if !x.is_null() {
-            let S4_OBJECT_MASK: u16 = 1 << 11;
+            let S4_OBJECT_MASK: u16 = 1 << 4;
             let gp = (*x).sxpinfo.gp() & !S4_OBJECT_MASK;
             (*x).sxpinfo.set_gp(gp);
         }

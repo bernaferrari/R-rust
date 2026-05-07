@@ -1,0 +1,7 @@
+setClass("A", slots = c(stuff = "numeric"))
+obj <- new("A", stuff = 1)
+wrapped <- c(obj)
+print(deparse(obj))
+print(isS4(wrapped))
+print(isS4(wrapped[[1]]))
+print(deparse(wrapped[[1]]))

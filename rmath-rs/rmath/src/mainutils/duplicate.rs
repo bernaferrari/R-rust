@@ -26,7 +26,7 @@ use crate::sexp::memory::with_arena;
 const DDVAL_MASK: u16 = 1 << 10;
 
 /// S4 object bit (gp bit 11).
-const S4_OBJECT_MASK: u16 = 1 << 11;
+const S4_OBJECT_MASK: u16 = 1 << 4;
 
 /// JIT-related gp bits (bit 0 = NOJIT, bit 1 = MAYBEJIT).
 const NOJIT_MASK: u16 = 1 << 0;

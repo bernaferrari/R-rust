@@ -49,6 +49,12 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if !tag.is_null() && tag != R_NilValue() {
                     has_names = true;
                 }
+                if crate::mainutils::objects::isS4(arg) != 0 {
+                    result_type = SEXPTYPE::VECSXP.as_c_int();
+                    total_len += 1;
+                    current = CDR(current);
+                    continue;
+                }
                 let t = TYPEOF(arg);
                 let arg_names = crate::sexp::attrib_core::getAttrib(arg, names_symbol);
                 if !arg_names.is_null()
@@ -121,6 +127,22 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             while !current.is_null() && current != R_NilValue() {
                 let arg = CAR(current);
                 if !arg.is_null() && arg != R_NilValue() {
+                    if crate::mainutils::objects::isS4(arg) != 0 {
+                        SET_VECTOR_ELT(
+                            result,
+                            offset,
+                            crate::mainutils::duplicate::lazy_duplicate(arg),
+                        );
+                        if has_names {
+                            let tag = TAG(current);
+                            if !tag.is_null() && tag != R_NilValue() {
+                                SET_STRING_ELT(names, offset, PRINTNAME(tag));
+                            }
+                        }
+                        offset += 1;
+                        current = CDR(current);
+                        continue;
+                    }
                     let t = TYPEOF(arg);
                     let n = XLENGTH(arg);
                     let arg_names = crate::sexp::attrib_core::getAttrib(arg, names_symbol);

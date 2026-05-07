@@ -24,7 +24,7 @@
 //! - deparse1WithCutoff, deparse1, deparse1w, deparse1line, deparse1s, deparse1m.
 //! - do_deparse with argument extraction.
 //! - Helper functions: curlyahead, needsparens, quotify, etc.
-//! - S4 deparsing, source reference deparsing kept as stubs (need eval/methods).
+//! - Source reference deparsing kept as a stub (needs eval/methods).
 //! - do_dput, do_dump kept as stubs (need connections infrastructure).
 
 use std::os::raw::{c_char, c_int, c_uint};
@@ -450,7 +450,7 @@ unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
     }
 }
 
-const S4_OBJECT_MASK: u16 = 1 << 11;
+const S4_OBJECT_MASK: u16 = 1 << 4;
 
 /// Check if an SEXP has the S4 object bit set.
 unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
@@ -1666,6 +1666,136 @@ unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: *mut LocalP
 // deparse2buff — recursive deparsing workhorse
 // ---------------------------------------------------------------------------
 
+unsafe fn deparse_s4_object(s: SEXP, d: *mut LocalParseData) -> bool {
+    unsafe {
+        let Some(class_name) = s4_class_name(s) else {
+            return false;
+        };
+
+        print2buff(b"new(\0".as_ptr() as *const c_char, d);
+        print_r_string_literal(&class_name, d);
+
+        let mut slots = crate::mainutils::objects::s4_all_slots(&class_name).unwrap_or_default();
+        if slots.is_empty() {
+            slots = string_attribute_values(s, b"names\0");
+        }
+
+        for (position, slot_name) in slots.iter().enumerate() {
+            let Some(value) = s4_slot_value(s, slot_name, position) else {
+                continue;
+            };
+            print2buff(b", \0".as_ptr() as *const c_char, d);
+            print_argument_name(slot_name, d);
+            print2buff(b" = \0".as_ptr() as *const c_char, d);
+            let old_fnarg = (*d).fnarg;
+            (*d).fnarg = true;
+            deparse2buff(value, d);
+            (*d).fnarg = old_fnarg;
+        }
+
+        print2buff(b")\0".as_ptr() as *const c_char, d);
+        true
+    }
+}
+
+unsafe fn s4_class_name(s: SEXP) -> Option<String> {
+    unsafe {
+        string_attribute_values(s, b"class\0")
+            .into_iter()
+            .next()
+            .filter(|name| !name.is_empty())
+    }
+}
+
+unsafe fn string_attribute_values(s: SEXP, attribute: &'static [u8]) -> Vec<String> {
+    unsafe {
+        let sym = Rf_install(attribute.as_ptr() as *const c_char);
+        let value = getAttrib(s, sym);
+        if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::STRSXP {
+            return Vec::new();
+        }
+
+        let mut out = Vec::with_capacity(LENGTH(value).max(0) as usize);
+        for i in 0..LENGTH(value) {
+            let elt = STRING_ELT(value, i as R_xlen_t);
+            if elt.is_null() || elt == R_NilValue() {
+                out.push(String::new());
+                continue;
+            }
+            let chars = CHAR(elt);
+            if chars.is_null() {
+                out.push(String::new());
+            } else {
+                out.push(
+                    std::ffi::CStr::from_ptr(chars)
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+        out
+    }
+}
+
+unsafe fn s4_slot_value(s: SEXP, slot_name: &str, position: usize) -> Option<SEXP> {
+    unsafe {
+        if TYPEOF(s) != SEXPTYPE::VECSXP {
+            return None;
+        }
+
+        let names = string_attribute_values(s, b"names\0");
+        for (i, name) in names.iter().enumerate() {
+            if name == slot_name && (i as R_xlen_t) < XLENGTH(s) {
+                return Some(VECTOR_ELT(s, i as R_xlen_t));
+            }
+        }
+
+        if (position as R_xlen_t) < XLENGTH(s) {
+            Some(VECTOR_ELT(s, position as R_xlen_t))
+        } else {
+            None
+        }
+    }
+}
+
+unsafe fn print_argument_name(name: &str, d: *mut LocalParseData) {
+    unsafe {
+        if let Ok(c_name) = std::ffi::CString::new(name) {
+            if isValidName(c_name.as_ptr()) {
+                print2buff(c_name.as_ptr(), d);
+                return;
+            }
+        }
+        print2buff(b"`\0".as_ptr() as *const c_char, d);
+        print_owned_string(name.replace('`', "\\`"), d);
+        print2buff(b"`\0".as_ptr() as *const c_char, d);
+    }
+}
+
+unsafe fn print_r_string_literal(value: &str, d: *mut LocalParseData) {
+    unsafe {
+        print2buff(b"\"\0".as_ptr() as *const c_char, d);
+        print_owned_string(
+            value
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t"),
+            d,
+        );
+        print2buff(b"\"\0".as_ptr() as *const c_char, d);
+    }
+}
+
+unsafe fn print_owned_string(value: String, d: *mut LocalParseData) {
+    unsafe {
+        if let Ok(c_value) = std::ffi::CString::new(value) {
+            print2buff(c_value.as_ptr(), d);
+        }
+    }
+}
+
 /// The recursive part of deparsing. Handles all SEXP types.
 ///
 /// This is the main recursive function that dispatches based on the SEXPTYPE
@@ -1687,13 +1817,13 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             return;
         }
 
-        // S4 object handling — stubbed (needs methods infrastructure)
-        // Skipping S4 handling and fall through to type-based dispatch
         let s4_check = IS_S4_OBJECT(s);
         if s4_check != 0 {
             d.isS4 = 1;
-            d.sourceable = 0;
-            print2buff(b"<S4 object>\0".as_ptr() as *const c_char, d);
+            if !deparse_s4_object(s, d) {
+                d.sourceable = 0;
+                print2buff(b"<S4 object>\0".as_ptr() as *const c_char, d);
+            }
             d.left = prev_left;
             return;
         }
