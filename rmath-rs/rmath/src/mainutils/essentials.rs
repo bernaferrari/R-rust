@@ -13766,6 +13766,17 @@ pub unsafe fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, NAMED, SET_NAMED};
+        let mut nargs = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            nargs += 1;
+            current = CDR(current);
+        }
+        if nargs != 1 {
+            base_error(format!(
+                "{nargs} arguments passed to 'quote' which requires 1"
+            ));
+        }
         let val = CAR(args);
         if val.is_null() || val == R_NilValue() {
             return R_NilValue();
