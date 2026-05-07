@@ -841,6 +841,9 @@ fn format_expression_vector(x: Sexp<'_>) -> String {
 /// after to collect printed output as a string.
 pub fn print_value(x: Sexp<'_>) {
     match x.typeof_() {
+        SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP => {
+            emit(&format!("{}\n", deparse_expression_one(x.as_raw())));
+        }
         SEXPTYPE::NILSXP => {
             emit("NULL\n");
         }
@@ -1074,14 +1077,14 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         }
         SEXPTYPE::VECSXP => format_list(x),
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
+        SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP => deparse_expression_one(x.as_raw()),
         tp => {
             let type_name = match tp {
                 SEXPTYPE::RAWSXP => "raw",
                 SEXPTYPE::CPLXSXP => "complex",
-                SEXPTYPE::SYMSXP => "symbol",
                 SEXPTYPE::CLOSXP => "closure",
                 SEXPTYPE::ENVSXP => "environment",
-                SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => "pairlist",
+                SEXPTYPE::LISTSXP => "pairlist",
                 SEXPTYPE::CHARSXP => "charsxp",
                 _ => "unknown",
             };

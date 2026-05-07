@@ -1,0 +1,5 @@
+print(quote(x))
+print(quote(sum(1, 2)))
+print(quote(1 + 2))
+print(quote(f(, x)))
+print(quote(f(1, )))
