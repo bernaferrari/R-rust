@@ -2110,6 +2110,115 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+#[derive(Clone, Copy)]
+enum CalendarLabel {
+    Weekday,
+    Month,
+    Quarter,
+}
+
+unsafe fn calendar_days_from_element(x: SEXP, i: R_xlen_t) -> Option<f64> {
+    unsafe {
+        if TYPEOF(x) != SEXPTYPE::REALSXP {
+            return None;
+        }
+        let value = *REAL(x).add(i as usize);
+        if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !value.is_finite() {
+            return None;
+        }
+        if sexp_has_class(x, "POSIXct") {
+            Some((value / 86_400.0).floor())
+        } else if sexp_has_class(x, "Date") {
+            Some(value.floor())
+        } else {
+            None
+        }
+    }
+}
+
+fn calendar_label(days: f64, kind: CalendarLabel) -> Option<String> {
+    const WEEKDAYS: [&str; 7] = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+    ];
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+
+    let (_, month, _) = date_days_to_civil(days)?;
+    match kind {
+        CalendarLabel::Weekday => {
+            let day_index = ((days.floor() as i64) + 4).rem_euclid(7) as usize;
+            Some(WEEKDAYS[day_index].to_string())
+        }
+        CalendarLabel::Month => Some(MONTHS[(month - 1) as usize].to_string()),
+        CalendarLabel::Quarter => Some(format!("Q{}", (month - 1) / 3 + 1)),
+    }
+}
+
+unsafe fn calendar_label_builtin(args: SEXP, kind: CalendarLabel) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        if TYPEOF(x) != SEXPTYPE::REALSXP
+            || (!sexp_has_class(x, "Date") && !sexp_has_class(x, "POSIXct"))
+        {
+            base_error("no applicable method");
+        }
+
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _guard = protect(result);
+        for i in 0..n {
+            let label = calendar_days_from_element(x, i)
+                .and_then(|days| calendar_label(days, kind))
+                .or_else(|| matches!(kind, CalendarLabel::Quarter).then(|| "QNA".to_string()));
+            let charsxp = label
+                .and_then(|label| CString::new(label).ok())
+                .map(|label| Rf_mkChar(label.as_ptr()))
+                .unwrap_or_else(|| crate::sexp::globals::R_NaString());
+            SET_STRING_ELT(result, i, charsxp);
+        }
+        result
+    }
+}
+
+/// R's `weekdays(x)` for Date/POSIXct values.
+pub unsafe fn do_weekdays(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { calendar_label_builtin(args, CalendarLabel::Weekday) }
+}
+
+/// R's `months(x)` for Date/POSIXct values.
+pub unsafe fn do_months(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { calendar_label_builtin(args, CalendarLabel::Month) }
+}
+
+/// R's `quarters(x)` for Date/POSIXct values.
+pub unsafe fn do_quarters(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { calendar_label_builtin(args, CalendarLabel::Quarter) }
+}
+
 /// R's `format.info(x, digits, nsmall)` width metadata.
 pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -4539,6 +4648,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "is.list",
             "chartr",
             "format",
+            "weekdays",
+            "months",
+            "quarters",
             "format.info",
             "apply",
             "tapply",
@@ -6978,11 +7090,15 @@ pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
 }
 
 pub(crate) fn date_days_to_iso(days: f64) -> Option<String> {
+    let (year, month, day) = date_days_to_civil(days)?;
+    Some(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+pub(crate) fn date_days_to_civil(days: f64) -> Option<(i64, i64, i64)> {
     if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !days.is_finite() {
         return None;
     }
-    let (year, month, day) = civil_from_days(days.floor() as i64);
-    Some(format!("{year:04}-{month:02}-{day:02}"))
+    Some(civil_from_days(days.floor() as i64))
 }
 
 pub(crate) fn parse_iso_datetime_seconds(text: &str) -> Option<f64> {

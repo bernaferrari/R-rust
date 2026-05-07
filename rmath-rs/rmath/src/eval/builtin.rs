@@ -775,6 +775,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_format,
     },
     EvaluatedBuiltin {
+        name: "weekdays",
+        handler: crate::mainutils::essentials::do_weekdays,
+    },
+    EvaluatedBuiltin {
+        name: "months",
+        handler: crate::mainutils::essentials::do_months,
+    },
+    EvaluatedBuiltin {
+        name: "quarters",
+        handler: crate::mainutils::essentials::do_quarters,
+    },
+    EvaluatedBuiltin {
         name: "format.info",
         handler: crate::mainutils::essentials::do_format_info,
     },

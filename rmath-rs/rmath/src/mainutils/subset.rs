@@ -103,6 +103,12 @@ unsafe fn sym_Tsp() -> SEXP {
     unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap_or_default().as_ptr()) }
 }
 
+/// Get the "tzone" symbol.
+#[inline]
+unsafe fn sym_Tzone() -> SEXP {
+    unsafe { Rf_install(std::ffi::CString::new("tzone").unwrap_or_default().as_ptr()) }
+}
+
 /// Get the "drop" symbol.
 #[inline]
 unsafe fn sym_Drop() -> SEXP {
@@ -1630,11 +1636,24 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             setAttrib(ans, sym_RowNames(), getAttrib(x, sym_RowNames()));
         }
 
+        let preserve_date_class = crate::mainutils::essentials::sexp_has_class(x, "Date");
+        let preserve_posixct_class = crate::mainutils::essentials::sexp_has_class(x, "POSIXct");
+
         /* Remove erroneous attributes */
         if !isNull(ATTRIB(ans)) {
             setAttrib(ans, sym_Tsp(), R_NilValue());
-            if !data_frame_subset {
+            if !data_frame_subset && !preserve_date_class && !preserve_posixct_class {
                 setAttrib(ans, sym_Class(), R_NilValue());
+            }
+        }
+
+        if preserve_date_class || preserve_posixct_class {
+            setAttrib(ans, sym_Class(), getAttrib(x, sym_Class()));
+            if preserve_posixct_class {
+                let tzone = getAttrib(x, sym_Tzone());
+                if !isNull(tzone) {
+                    setAttrib(ans, sym_Tzone(), tzone);
+                }
             }
         }
 
