@@ -451,173 +451,119 @@ struct EreMatch {
 /// Try to match the compiled ERE pattern at a specific position in the text.
 /// Returns the end position of the match, or None if no match.
 fn ere_match_at(nodes: &[EreNode], text: &[u8], pos: usize, ignore_case: bool) -> Option<usize> {
+    ere_match_sequence(nodes, 0, text, pos, ignore_case)
+}
+
+fn is_ere_quantifier(node: &EreNode) -> bool {
+    matches!(
+        node,
+        EreNode::ZeroOrMore | EreNode::OneOrMore | EreNode::ZeroOrOne
+    )
+}
+
+fn ere_match_sequence(
+    nodes: &[EreNode],
+    node_pos: usize,
+    text: &[u8],
+    text_pos: usize,
+    ignore_case: bool,
+) -> Option<usize> {
     let text_len = text.len();
-    if pos > text_len {
+    if text_pos > text_len {
         return None;
     }
-    let mut text_pos = pos;
-    let mut node_pos = 0;
-
-    while node_pos < nodes.len() {
-        match &nodes[node_pos] {
-            EreNode::Literal(b) => {
-                if text_pos >= text_len {
-                    return None;
-                }
-                let tc = text[text_pos];
-                if ignore_case {
-                    if !tc.eq_ignore_ascii_case(b) {
-                        return None;
-                    }
-                } else {
-                    if tc != *b {
-                        return None;
-                    }
-                }
-                text_pos += 1;
-                node_pos += 1;
-            }
-            EreNode::AnyChar => {
-                if text_pos >= text_len {
-                    return None;
-                }
-                text_pos += 1;
-                node_pos += 1;
-            }
-            EreNode::StartAnchor => {
-                if text_pos != 0 {
-                    return None;
-                }
-                node_pos += 1;
-            }
-            EreNode::EndAnchor => {
-                if text_pos != text_len {
-                    return None;
-                }
-                node_pos += 1;
-            }
-            EreNode::CharClass(chars, negated) => {
-                if text_pos >= text_len {
-                    return None;
-                }
-                let tc = text[text_pos];
-                let tc_cmp = if ignore_case {
-                    tc.to_ascii_lowercase()
-                } else {
-                    tc
-                };
-                let found = chars.iter().any(|&c| {
-                    let cc = if ignore_case {
-                        c.to_ascii_lowercase()
-                    } else {
-                        c
-                    };
-                    cc == tc_cmp
-                });
-                if *negated {
-                    if found {
-                        return None;
-                    }
-                } else {
-                    if !found {
-                        return None;
-                    }
-                }
-                text_pos += 1;
-                node_pos += 1;
-            }
-            EreNode::ZeroOrMore => {
-                // Repeat the previous node greedily
-                if node_pos == 0 {
-                    node_pos += 1;
-                    continue;
-                }
-                let prev_node = &nodes[node_pos - 1];
-                let mut count = 0usize;
-                loop {
-                    let prev_start = text_pos;
-                    if let Some(new_pos) = match_single_node(prev_node, text, text_pos, ignore_case)
-                    {
-                        text_pos = new_pos;
-                        count += 1;
-                        // Safety: don't loop infinitely on zero-width matches
-                        if new_pos == prev_start {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                node_pos += 1;
-            }
-            EreNode::OneOrMore => {
-                // At least one match of previous node, then zero or more
-                if node_pos == 0 {
-                    return None;
-                }
-                let prev_node = &nodes[node_pos - 1];
-                if let Some(new_pos) = match_single_node(prev_node, text, text_pos, ignore_case) {
-                    text_pos = new_pos;
-                } else {
-                    return None;
-                }
-                // Greedy: consume as many more as possible
-                loop {
-                    let prev_start = text_pos;
-                    if let Some(new_pos) = match_single_node(prev_node, text, text_pos, ignore_case)
-                    {
-                        text_pos = new_pos;
-                        if new_pos == prev_start {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                node_pos += 1;
-            }
-            EreNode::ZeroOrOne => {
-                if node_pos == 0 {
-                    node_pos += 1;
-                    continue;
-                }
-                let prev_node = &nodes[node_pos - 1];
-                if let Some(new_pos) = match_single_node(prev_node, text, text_pos, ignore_case) {
-                    text_pos = new_pos;
-                }
-                node_pos += 1;
-            }
-            EreNode::Alternation => {
-                // Try matching rest of pattern; if fails, try after alternation
-                // Simplified: find the next alternation or end, and try both sides
-                let rest_after = find_alternation_end(&nodes[node_pos + 1..]);
-                // Try left side
-                let left_nodes = &nodes[node_pos + 1..node_pos + 1 + rest_after];
-                if !left_nodes.is_empty()
-                    && let Some(end_pos) = ere_match_at(left_nodes, text, text_pos, ignore_case)
-                {
-                    text_pos = end_pos;
-                    node_pos = node_pos + 1 + rest_after + 1;
-                    continue;
-                }
-                // Try right side (everything after the alternation end)
-                let right_start = node_pos + 1 + rest_after + 1;
-                if right_start < nodes.len() {
-                    node_pos = right_start;
-                    // Don't advance text_pos -- try matching from current position
-                    continue;
-                }
-                // Neither side matched
-                return None;
-            }
-            EreNode::OpenGroup | EreNode::CloseGroup => {
-                // Simplified: groups are pass-through
-                node_pos += 1;
-            }
-        }
+    if node_pos >= nodes.len() {
+        return Some(text_pos);
     }
 
-    Some(text_pos)
+    let node = &nodes[node_pos];
+    if node_pos + 1 < nodes.len() && is_ere_quantifier(&nodes[node_pos + 1]) {
+        return ere_match_quantified_sequence(
+            node,
+            &nodes[node_pos + 1],
+            nodes,
+            node_pos + 2,
+            text,
+            text_pos,
+            ignore_case,
+        );
+    }
+
+    match node {
+        EreNode::Alternation => {
+            let right_start = node_pos + 1;
+            let right_len = find_alternation_end(&nodes[right_start..]);
+            if let Some(end_pos) = ere_match_sequence(
+                &nodes[right_start..right_start + right_len],
+                0,
+                text,
+                text_pos,
+                ignore_case,
+            ) {
+                return Some(end_pos);
+            }
+            let after_right = right_start + right_len + 1;
+            if after_right < nodes.len() {
+                return ere_match_sequence(nodes, after_right, text, text_pos, ignore_case);
+            }
+            None
+        }
+        EreNode::OpenGroup | EreNode::CloseGroup => {
+            ere_match_sequence(nodes, node_pos + 1, text, text_pos, ignore_case)
+        }
+        EreNode::ZeroOrMore | EreNode::OneOrMore | EreNode::ZeroOrOne => {
+            ere_match_sequence(nodes, node_pos + 1, text, text_pos, ignore_case)
+        }
+        _ => {
+            let next_pos = match_single_node(node, text, text_pos, ignore_case)?;
+            ere_match_sequence(nodes, node_pos + 1, text, next_pos, ignore_case)
+        }
+    }
+}
+
+fn ere_match_quantified_sequence(
+    atom: &EreNode,
+    quantifier: &EreNode,
+    nodes: &[EreNode],
+    rest_pos: usize,
+    text: &[u8],
+    text_pos: usize,
+    ignore_case: bool,
+) -> Option<usize> {
+    let min_repetitions = match quantifier {
+        EreNode::OneOrMore => 1,
+        EreNode::ZeroOrMore | EreNode::ZeroOrOne => 0,
+        _ => return None,
+    };
+    let max_repetitions = match quantifier {
+        EreNode::ZeroOrOne => Some(1),
+        EreNode::ZeroOrMore | EreNode::OneOrMore => None,
+        _ => return None,
+    };
+
+    let mut positions = vec![text_pos];
+    let mut current = text_pos;
+    while max_repetitions.is_none_or(|max| positions.len() - 1 < max) {
+        let Some(next) = match_single_node(atom, text, current, ignore_case) else {
+            break;
+        };
+        if next == current {
+            break;
+        }
+        positions.push(next);
+        current = next;
+    }
+
+    if positions.len() - 1 < min_repetitions {
+        return None;
+    }
+
+    for &candidate in positions[min_repetitions..].iter().rev() {
+        if let Some(end_pos) = ere_match_sequence(nodes, rest_pos, text, candidate, ignore_case) {
+            return Some(end_pos);
+        }
+    }
+    None
 }
 
 /// Match a single node (used by quantifiers).
@@ -629,21 +575,33 @@ fn match_single_node(node: &EreNode, text: &[u8], pos: usize, ignore_case: bool)
             }
             let tc = text[pos];
             if ignore_case {
-                if tc.eq_ignore_ascii_case(b) {
-                    Some(pos + 1)
-                } else {
-                    None
+                if !tc.eq_ignore_ascii_case(b) {
+                    return None;
                 }
             } else {
-                if tc == *b { Some(pos + 1) } else { None }
+                if tc != *b {
+                    return None;
+                }
             }
+            Some(pos + 1)
         }
         EreNode::AnyChar => {
-            if pos < text.len() {
-                Some(pos + 1)
-            } else {
-                None
+            if pos >= text.len() {
+                return None;
             }
+            Some(pos + 1)
+        }
+        EreNode::StartAnchor => {
+            if pos != 0 {
+                return None;
+            }
+            Some(pos)
+        }
+        EreNode::EndAnchor => {
+            if pos != text.len() {
+                return None;
+            }
+            Some(pos)
         }
         EreNode::CharClass(chars, negated) => {
             if pos >= text.len() {
@@ -664,10 +622,15 @@ fn match_single_node(node: &EreNode, text: &[u8], pos: usize, ignore_case: bool)
                 cc == tc_cmp
             });
             if *negated {
-                if found { None } else { Some(pos + 1) }
+                if found {
+                    return None;
+                }
             } else {
-                if found { Some(pos + 1) } else { None }
+                if !found {
+                    return None;
+                }
             }
+            Some(pos + 1)
         }
         _ => None,
     }
@@ -742,6 +705,24 @@ fn ere_gsub(
     }
 
     result
+}
+
+pub(crate) fn ere_replace(
+    pattern: &str,
+    text: &str,
+    replacement: &str,
+    global: bool,
+    ignore_case: bool,
+) -> Option<String> {
+    let nodes = compile_ere(pattern).ok()?;
+    let bytes = ere_gsub(
+        &nodes,
+        text.as_bytes(),
+        replacement.as_bytes(),
+        global,
+        ignore_case,
+    );
+    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -1627,7 +1608,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "'*' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_star() {
         let nodes = test_ok(compile_ere("ab*c"));
         let Some(m) = ere_search(&nodes, b"ac", false) else {
@@ -1646,7 +1626,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "'+' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_plus() {
         let nodes = test_ok(compile_ere("ab+c"));
         assert!(ere_search(&nodes, b"ac", false).is_none());
@@ -1664,7 +1643,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "'?' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_question() {
         let nodes = test_ok(compile_ere("ab?c"));
         let Some(m) = ere_search(&nodes, b"ac", false) else {
@@ -1788,9 +1766,10 @@ mod tests {
     #[test]
     fn test_match_str_ere() {
         let nodes = test_ok(compile_ere("hel+o"));
+        assert!(match_str("helo world", "", false, Some(&nodes), false));
         assert!(match_str("hello world", "", false, Some(&nodes), false));
         assert!(match_str("helllo world", "", false, Some(&nodes), false));
-        assert!(!match_str("helo world", "", false, Some(&nodes), false));
+        assert!(!match_str("heo world", "", false, Some(&nodes), false));
     }
 
     // -- R_grep_fixed_inner tests --

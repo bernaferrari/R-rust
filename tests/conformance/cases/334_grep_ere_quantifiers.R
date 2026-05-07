@@ -1,0 +1,5 @@
+print(grepl("ab*c", c("ac", "abc", "abbbc", "adc")))
+print(grepl("ab+c", c("ac", "abc", "abbbc", "adc")))
+print(grepl("ab?c", c("ac", "abc", "abbc", "adc")))
+cat(paste(grep("h[ae]l+o", c("helo", "hello", "hallo", "hllo"), value = TRUE), collapse = "|"), "\n")
+cat(paste(gsub("ab*c", "X", c("ac", "abc", "abbbc", "adc")), collapse = "|"), "\n")

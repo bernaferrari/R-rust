@@ -1535,6 +1535,8 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let pattern_arg = CAR(args);
         let replacement_arg = CAR(CDR(args));
         let x_arg = CAR(CDR(CDR(args)));
+        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         if pattern_arg.is_null()
             || replacement_arg.is_null()
             || x_arg.is_null()
@@ -1552,10 +1554,16 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let _result_guard = protect(result);
         for i in 0..n {
             let s = elt_to_string(x_arg, i);
-            let replaced = if global {
+            let replaced = if fixed && global {
                 s.replace(&pattern, &replacement)
-            } else {
+            } else if fixed {
                 s.replacen(&pattern, &replacement, 1)
+            } else if let Some(replaced) =
+                crate::mainutils::grep::ere_replace(&pattern, &s, &replacement, global, ignore_case)
+            {
+                replaced
+            } else {
+                s
             };
             let cstr = CString::new(replaced).unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
