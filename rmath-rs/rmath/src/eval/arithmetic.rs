@@ -1363,6 +1363,7 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "break",
             "next",
             "return",
+            "switch",
             "invisible",
             "on.exit",
             "$",

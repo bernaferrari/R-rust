@@ -1,0 +1,7 @@
+print(switch(2, "one", "two", "three"))
+print(switch("b", a = 1, b = 2, 9))
+print(switch("a", a =, b = "fall", "default"))
+print(is.null(switch("z", a = 1)))
+print(switch("z", a = 1, "default"))
+print(tryCatch(switch(1, a =, b = 2), error = function(e) conditionMessage(e)))
+print(tryCatch(switch(1, ), error = function(e) conditionMessage(e)))

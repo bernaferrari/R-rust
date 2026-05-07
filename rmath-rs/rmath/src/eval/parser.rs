@@ -1438,6 +1438,16 @@ impl<'arena> Parser<'arena> {
 
         loop {
             self.skip_newlines();
+            if self.peek() == &Token::Comma {
+                args.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                self.advance();
+                self.skip_newlines();
+                if self.peek() == &Token::RParen {
+                    args.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                    break;
+                }
+                continue;
+            }
             let (name, val) = self.parse_arg()?;
             args.push((name, val));
             self.skip_newlines();
@@ -1445,8 +1455,8 @@ impl<'arena> Parser<'arena> {
             if self.peek() == &Token::Comma {
                 self.advance();
                 self.skip_newlines();
-                // Allow trailing comma
                 if self.peek() == &Token::RParen {
+                    args.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
                     break;
                 }
             } else {
@@ -1466,7 +1476,11 @@ impl<'arena> Parser<'arena> {
                 match self.peek() {
                     Token::Assign => {
                         self.advance();
-                        let val = self.parse_expr()?;
+                        let val = if self.peek() == &Token::Comma || self.peek() == &Token::RParen {
+                            unsafe { crate::sexp::globals::R_MissingArg() }
+                        } else {
+                            self.parse_expr()?
+                        };
                         Ok((Some(name), val))
                     }
                     // Handle `name = expr` where = is assignment

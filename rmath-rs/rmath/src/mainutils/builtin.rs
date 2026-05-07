@@ -689,70 +689,100 @@ pub unsafe fn do_lengthgets(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let arg = crate::eval::eval::Rf_eval(CAR(CDR(args)), rho);
-        let body = CDR(CDR(args));
+        let nargs = Rf_length(args);
+        if nargs < 1 {
+            errorcall(_call, "'EXPR' is missing");
+        }
+
+        let arg = crate::eval::eval::Rf_eval(CAR(args), rho);
+        if Rf_length(arg) != 1 {
+            errorcall(_call, "EXPR must be a length 1 vector");
+        }
+
+        let alternatives = CDR(args);
+        let mut dflt: SEXP = std::ptr::null_mut();
 
         if TYPEOF(arg) == SEXPTYPE::STRSXP {
-            let target_str = CHAR(STRING_ELT(arg, 0));
-            let target = std::ffi::CStr::from_ptr(target_str).to_bytes();
-            let mut dflt: SEXP = R_NilValue();
-            let mut found = false;
-            let mut fall_through = false;
-            let mut b = body;
-            while !isNull(b) {
-                let elem = CAR(b);
-                let this_tag = TAG(elem);
-                if isNull(this_tag) {
-                    if !isNull(CAR(elem)) && CAR(elem) != R_MissingArg() {
-                        if !isNull(dflt) {
-                            error("duplicate switch defaults");
+            let target = STRING_ELT(arg, 0);
+            let target_bytes = if target.is_null() {
+                None
+            } else {
+                Some(std::ffi::CStr::from_ptr(CHAR(target)).to_bytes())
+            };
+
+            let mut current = alternatives;
+            while !isNull(current) {
+                let tag = TAG(current);
+                if !isNull(tag) {
+                    if let Some(target_bytes) = target_bytes {
+                        let name = CHAR(PRINTNAME(tag));
+                        let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes();
+                        if name_bytes == target_bytes {
+                            while !isNull(current) && CAR(current) == R_MissingArg() {
+                                current = CDR(current);
+                                if !isNull(current) && isNull(TAG(current)) {
+                                    dflt = switch_default(CAR(current), dflt);
+                                }
+                            }
+                            if isNull(current) {
+                                crate::eval::runtime::set_visible(FALSE);
+                                return R_NilValue();
+                            }
+
+                            let mut rest = CDR(current);
+                            while !isNull(rest) {
+                                if isNull(TAG(rest)) {
+                                    dflt = switch_default(CAR(rest), dflt);
+                                }
+                                rest = CDR(rest);
+                            }
+
+                            return crate::eval::eval::Rf_eval(CAR(current), rho);
                         }
-                        dflt = elem;
                     }
                 } else {
-                    let name = CHAR(PRINTNAME(this_tag));
-                    let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes();
-                    if found && fall_through {
-                        let val = CAR(elem);
-                        if !isNull(val) && val != R_MissingArg() {
-                            return val;
-                        }
-                    }
-                    if !found && name_bytes == target {
-                        found = true;
-                        let val = CAR(elem);
-                        if isNull(val) || val == R_MissingArg() {
-                            fall_through = true;
-                        } else {
-                            return val;
-                        }
-                    }
+                    dflt = switch_default(CAR(current), dflt);
                 }
-                b = CDR(b);
+                current = CDR(current);
             }
-            if !isNull(dflt) {
-                return CAR(dflt);
+
+            if !dflt.is_null() {
+                return crate::eval::eval::Rf_eval(dflt, rho);
             }
+            crate::eval::runtime::set_visible(FALSE);
             R_NilValue()
         } else {
             let n = asInteger(arg);
-            if n == NA_INTEGER || n < 1 {
+            let alt_len = Rf_length(alternatives);
+            if n == NA_INTEGER || n < 1 || n > alt_len {
+                crate::eval::runtime::set_visible(FALSE);
                 return R_NilValue();
             }
+
             let mut idx = 0;
-            let mut b = body;
+            let mut b = alternatives;
             while !isNull(b) {
                 idx += 1;
                 if idx == n {
-                    let val = CAR(CAR(b));
-                    if isNull(val) || val == R_MissingArg() {
-                        return R_NilValue();
+                    let alt = CAR(b);
+                    if alt == R_MissingArg() {
+                        error("empty alternative in numeric switch");
                     }
-                    return val;
+                    return crate::eval::eval::Rf_eval(alt, rho);
                 }
                 b = CDR(b);
             }
+            crate::eval::runtime::set_visible(FALSE);
             R_NilValue()
         }
+    }
+}
+
+unsafe fn switch_default(value: SEXP, current: SEXP) -> SEXP {
+    unsafe {
+        if !current.is_null() {
+            error("duplicate switch defaults");
+        }
+        value
     }
 }
