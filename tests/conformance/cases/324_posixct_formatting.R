@@ -1,0 +1,15 @@
+p <- as.POSIXct("2020-02-03 04:05:06", tz = "UTC")
+print(p)
+print(format(p, tz = "UTC"))
+print(as.character(p))
+print(class(p))
+print(attr(p, "tzone"))
+
+x <- structure(1580702706, class = c("POSIXct", "POSIXt"), tzone = "UTC")
+print(x)
+print(format(x, tz = "UTC"))
+print(as.character(x))
+
+print(as.POSIXct(1580702706, origin = "1970-01-01", tz = "UTC"))
+print(as.POSIXct(character(0), tz = "UTC"))
+print(format(as.POSIXct(character(0), tz = "UTC")))

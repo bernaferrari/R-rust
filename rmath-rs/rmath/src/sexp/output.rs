@@ -636,6 +636,27 @@ fn format_date_vector(x: Sexp<'_>) -> String {
         .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
 }
 
+fn format_posixct_element(x: Sexp<'_>, i: R_xlen_t, include_tz: bool) -> String {
+    x.try_real_elt(i)
+        .ok()
+        .and_then(|seconds| crate::mainutils::essentials::posix_seconds_to_iso(seconds, include_tz))
+        .map(|value| format!("\"{}\"", escape_printed_string(&value)))
+        .unwrap_or_else(|| "NA".to_string())
+}
+
+fn format_posixct_vector(x: Sexp<'_>, include_tz: bool) -> String {
+    if x.len() == 0 {
+        return "POSIXct of length 0".to_string();
+    }
+    let vals: Vec<String> = (0..x.len().min(10))
+        .map(|i| format_posixct_element(x, i, include_tz))
+        .collect();
+    let suffix = if x.len() > 10 { " ..." } else { "" };
+    format_named_atomic_vector(x, vals.clone())
+        .map(|output| format!("{output}{suffix}"))
+        .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
+}
+
 fn format_factor(x: Sexp<'_>) -> Option<String> {
     let levels = factor_levels(x)?;
     let vals: Vec<String> = x
@@ -912,6 +933,10 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
+            if has_class(x, "POSIXct") {
+                emit(&format!("{}\n", format_posixct_vector(x, true)));
+                return;
+            }
             if has_class(x, "Date") {
                 emit(&format!("{}\n", format_date_vector(x)));
                 return;
@@ -1049,6 +1074,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format!("{base}{}", format_regexpr_attributes(x))
         }
         SEXPTYPE::REALSXP => {
+            if has_class(x, "POSIXct") {
+                return format_posixct_vector(x, true);
+            }
             if has_class(x, "Date") {
                 return format_date_vector(x);
             }

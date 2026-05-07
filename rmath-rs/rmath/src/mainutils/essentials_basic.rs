@@ -832,6 +832,23 @@ pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             }
             return result;
         }
+        if class_contains(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
+            let n = XLENGTH(x);
+            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = protect(result);
+            for i in 0..n {
+                let seconds = *REAL(x).add(i as usize);
+                let charsxp = crate::mainutils::essentials::posix_seconds_to_iso(seconds, false)
+                    .and_then(|text| CString::new(text).ok())
+                    .map(|text| Rf_mkChar(text.as_ptr()))
+                    .unwrap_or_else(|| crate::sexp::globals::R_NaString());
+                SET_STRING_ELT(result, i, charsxp);
+            }
+            return result;
+        }
         if class_contains(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
             let n = XLENGTH(x);
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);

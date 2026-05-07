@@ -2078,7 +2078,9 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         for i in 0..n {
             let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
-                if sexp_has_class(x, "Date") {
+                if sexp_has_class(x, "POSIXct") {
+                    posix_seconds_to_iso(v, false).unwrap_or_else(|| "NA".to_string())
+                } else if sexp_has_class(x, "Date") {
                     date_days_to_iso(v).unwrap_or_else(|| "NA".to_string())
                 } else if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     "NA".to_string()
@@ -4492,6 +4494,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "as.double",
             "as.character",
             "as.Date",
+            "as.POSIXct",
             "as.logical",
             "as.list",
             "as.vector",
@@ -6980,6 +6983,51 @@ pub(crate) fn date_days_to_iso(days: f64) -> Option<String> {
     }
     let (year, month, day) = civil_from_days(days.floor() as i64);
     Some(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+pub(crate) fn parse_iso_datetime_seconds(text: &str) -> Option<f64> {
+    let text = text.trim();
+    let mut fields = text.split_whitespace();
+    let date = fields.next()?;
+    let time = fields.next().unwrap_or("00:00:00");
+    if fields.next().is_some() {
+        return None;
+    }
+    let days = parse_iso_date_days(date)?;
+    let mut parts = time.split(':');
+    let hour = parts.next()?.parse::<i64>().ok()?;
+    let minute = parts.next()?.parse::<i64>().ok()?;
+    let second = parts.next().unwrap_or("0").parse::<i64>().ok()?;
+    if parts.next().is_some()
+        || !(0..=23).contains(&hour)
+        || !(0..=59).contains(&minute)
+        || !(0..=60).contains(&second)
+    {
+        return None;
+    }
+    Some(days * 86_400.0 + (hour * 3_600 + minute * 60 + second) as f64)
+}
+
+pub(crate) fn posix_seconds_to_iso(seconds: f64, include_tz: bool) -> Option<String> {
+    if seconds.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !seconds.is_finite() {
+        return None;
+    }
+    let whole = seconds.floor() as i64;
+    let days = whole.div_euclid(86_400);
+    let rem = whole.rem_euclid(86_400);
+    let date = date_days_to_iso(days as f64)?;
+    let hour = rem / 3_600;
+    let minute = (rem % 3_600) / 60;
+    let second = rem % 60;
+    let mut out = if hour == 0 && minute == 0 && second == 0 {
+        date
+    } else {
+        format!("{date} {hour:02}:{minute:02}:{second:02}")
+    };
+    if include_tz {
+        out.push_str(" UTC");
+    }
+    Some(out)
 }
 
 pub(crate) unsafe fn sexp_has_class(x: SEXP, class_name: &str) -> bool {
@@ -19489,6 +19537,32 @@ unsafe fn set_single_class(x: SEXP, class_name: &str) {
     }
 }
 
+unsafe fn set_posixct_class(x: SEXP, tz: &str) {
+    unsafe {
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if !class.is_null() {
+            let _guard = protect(class);
+            SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
+            SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+
+        let tz_cstr = CString::new(tz).unwrap_or_default();
+        let tzone = Rf_mkString(tz_cstr.as_ptr());
+        if !tzone.is_null() {
+            crate::sexp::attrib_core::setAttrib(
+                x,
+                Rf_install(CString::new("tzone").unwrap_or_default().as_ptr()),
+                tzone,
+            );
+        }
+    }
+}
+
 /// R's `as.Date(x, origin)` — coerce ISO date strings or day counts to Date.
 pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -19551,6 +19625,97 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
 
         set_single_class(result, "Date");
+        result
+    }
+}
+
+/// R's `as.POSIXct(x, tz, origin)` — coerce simple UTC inputs to POSIXct.
+pub unsafe fn do_as_POSIXct(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        if sexp_has_class(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
+            return x;
+        }
+
+        let tz_arg = arg_by_name_or_position(args, &["tz"], 1);
+        let tz = if tz_arg.is_null() || tz_arg == R_NilValue() || XLENGTH(tz_arg) == 0 {
+            "UTC".to_string()
+        } else {
+            let value = elt_to_string(tz_arg, 0);
+            if value.is_empty() {
+                "UTC".to_string()
+            } else {
+                value
+            }
+        };
+
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _guard = protect(result);
+        let out = REAL(result);
+
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            for i in 0..n {
+                let value = STRING_ELT(x, i);
+                let seconds = if value == crate::sexp::globals::R_NaString() {
+                    NA_REAL
+                } else {
+                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
+                    parse_iso_datetime_seconds(text).unwrap_or_else(|| {
+                        base_error("character string is not in a standard unambiguous format")
+                    })
+                };
+                *out.add(i as usize) = seconds;
+            }
+        } else if sexp_has_class(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
+            for i in 0..n {
+                let days = *REAL(x).add(i as usize);
+                *out.add(i as usize) = if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else {
+                    days.floor() * 86_400.0
+                };
+            }
+        } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
+            let origin = arg_by_name_or_position(args, &["origin"], 2);
+            let origin_seconds = if origin.is_null() || origin == R_NilValue() {
+                0.0
+            } else {
+                parse_iso_datetime_seconds(&elt_to_string(origin, 0))
+                    .or_else(|| {
+                        parse_iso_date_days(&elt_to_string(origin, 0)).map(|days| days * 86_400.0)
+                    })
+                    .unwrap_or_else(|| base_error("'origin' must be a character string"))
+            };
+            for i in 0..n {
+                let seconds = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    let v = *REAL(x).add(i as usize);
+                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        NA_REAL
+                    } else {
+                        origin_seconds + v
+                    }
+                } else {
+                    let v = *INTEGER(x).add(i as usize);
+                    if v == NA_INTEGER {
+                        NA_REAL
+                    } else {
+                        origin_seconds + f64::from(v)
+                    }
+                };
+                *out.add(i as usize) = seconds;
+            }
+        } else {
+            base_error("do not know how to convert 'x' to class \"POSIXct\"");
+        }
+
+        set_posixct_class(result, &tz);
         result
     }
 }
