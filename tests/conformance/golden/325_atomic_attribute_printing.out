@@ -1,0 +1,19 @@
+a b
+1 2
+attr(,"other")
+[1] "kept"
+[1] 2 1 2
+attr(,"levels")
+[1] "a" "b"
+[1] 1
+attr(,"match.length")
+[1] 1
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+[1] 1
+attr(,"a")
+[1] 1
+attr(,"b")
+[1] 2

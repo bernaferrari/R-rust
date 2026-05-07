@@ -4,8 +4,9 @@
 //! so they can be returned to the caller instead of printing
 //! to stdout/stderr.
 
-use super::accessors::{CHAR, STRING_ELT, VECTOR_ELT, XLENGTH};
+use super::accessors::{ATTRIB, CAR, CDR, CHAR, PRINTNAME, STRING_ELT, TAG, VECTOR_ELT, XLENGTH};
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
+use super::globals::R_NilValue;
 use super::instance::RInstance;
 use super::object::Sexp;
 
@@ -303,36 +304,63 @@ fn format_raw_value(v: u8) -> String {
     format!("{v:02x}")
 }
 
-fn get_named_attribute<'a>(x: Sexp<'a>, name: &str) -> Option<Sexp<'a>> {
-    let cname = std::ffi::CString::new(name).ok()?;
+fn printable_attribute_name(attr: SEXP) -> Option<String> {
     unsafe {
-        let attr = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
-            crate::sexp::symbol::Rf_install(cname.as_ptr()),
-        );
-        if attr == crate::sexp::globals::R_NilValue() {
+        let tag = TAG(attr);
+        if tag.is_null() || tag == R_NilValue() {
             return None;
         }
-        Sexp::from_raw(attr)
+        let print_name = PRINTNAME(tag);
+        if print_name.is_null() || print_name == R_NilValue() {
+            return None;
+        }
+        let chars = CHAR(print_name);
+        if chars.is_null() {
+            return None;
+        }
+        std::ffi::CStr::from_ptr(chars)
+            .to_str()
+            .ok()
+            .map(str::to_string)
     }
 }
 
-fn has_regexpr_attributes(x: Sexp<'_>) -> bool {
-    get_named_attribute(x, "match.length").is_some()
-        || get_named_attribute(x, "index.type").is_some()
-        || get_named_attribute(x, "useBytes").is_some()
+fn is_structural_print_attribute(name: &str) -> bool {
+    matches!(name, "names" | "dim" | "dimnames" | "class" | "row.names")
 }
 
-fn format_regexpr_attributes(x: Sexp<'_>) -> String {
-    let mut out = String::new();
-    for name in ["match.length", "index.type", "useBytes"] {
-        if let Some(value) = get_named_attribute(x, name) {
+fn format_printable_attributes(x: Sexp<'_>) -> String {
+    unsafe {
+        let mut attrs = ATTRIB(x.as_raw());
+        let mut visible = Vec::new();
+        while !attrs.is_null() && attrs != R_NilValue() {
+            if let Some(name) = printable_attribute_name(attrs)
+                && !is_structural_print_attribute(&name)
+            {
+                let value = CAR(attrs);
+                if !value.is_null() && value != R_NilValue() {
+                    visible.push((name, value));
+                }
+            }
+            attrs = CDR(attrs);
+        }
+
+        let mut out = String::new();
+        for (name, value) in visible.into_iter().rev() {
             out.push('\n');
             out.push_str(&format!("attr(,\"{name}\")\n"));
-            out.push_str(&format_sexp_direct(value));
+            if let Some(value) = Sexp::from_raw(value) {
+                out.push_str(&format_sexp_direct(value));
+            } else {
+                out.push_str("NULL");
+            }
         }
+        out
     }
-    out
+}
+
+fn format_with_printable_attributes(base: String, x: Sexp<'_>) -> String {
+    format!("{base}{}", format_printable_attributes(x))
 }
 
 fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
@@ -906,23 +934,18 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if has_regexpr_attributes(x) {
-                emit(&format!("{}\n", format_sexp_direct(x)));
-                return;
-            }
-            if x.len() == 1 {
-                emit(&format!("[1] {}\n", format_integer_element(x, 0)));
+            let base = if x.len() == 1 {
+                format!("[1] {}", format_integer_element(x, 0))
             } else {
                 let vals: Vec<String> = (0..x.len().min(10))
                     .map(|i| format_integer_element(x, i))
                     .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
-                    emit(&format!("{output}{suffix}\n"));
-                } else {
-                    emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
-                }
-            }
+                format_named_atomic_vector(x, vals.clone())
+                    .map(|output| format!("{output}{suffix}"))
+                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
+            };
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::REALSXP => {
             if let Some(output) = format_matrix(x) {
@@ -941,17 +964,16 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{}\n", format_date_vector(x)));
                 return;
             }
-            if x.len() == 1 {
-                emit(&format!("[1] {}\n", format_real_element(x, 0)));
+            let base = if x.len() == 1 {
+                format!("[1] {}", format_real_element(x, 0))
             } else {
                 let vals = format_real_vector_values(x, 10);
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
-                    emit(&format!("{output}{suffix}\n"));
-                } else {
-                    emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
-                }
-            }
+                format_named_atomic_vector(x, vals.clone())
+                    .map(|output| format!("{output}{suffix}"))
+                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
+            };
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::LGLSXP => {
             if let Some(output) = format_matrix(x) {
@@ -962,11 +984,10 @@ pub fn print_value(x: Sexp<'_>) {
                 .map(|i| format_logical_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
-                emit(&format!("{output}{suffix}\n"));
-            } else {
-                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
-            }
+            let base = format_named_atomic_vector(x, vals.clone())
+                .map(|output| format!("{output}{suffix}"))
+                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::CPLXSXP => {
             if let Some(output) = format_matrix(x) {
@@ -977,11 +998,10 @@ pub fn print_value(x: Sexp<'_>) {
                 .map(|i| format_complex_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            if let Some(output) = format_named_atomic_vector(x, vals.clone()) {
-                emit(&format!("{output}{suffix}\n"));
-            } else {
-                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
-            }
+            let base = format_named_atomic_vector(x, vals.clone())
+                .map(|output| format!("{output}{suffix}"))
+                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::STRSXP => {
             if let Some(output) = format_matrix(x) {
@@ -992,16 +1012,18 @@ pub fn print_value(x: Sexp<'_>) {
                 .map(|i| format_string_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            if let Some(output) = format_named_atomic_vector(x, vals) {
-                emit(&format!("{output}{suffix}\n"));
+            let base = if let Some(output) = format_named_atomic_vector(x, vals) {
+                format!("{output}{suffix}")
             } else {
-                emit(&format!("{}\n", format_string_vector(x)));
-            }
+                format_string_vector(x)
+            };
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::RAWSXP => {
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+            let base = format!("[1] {}{}", vals.join(" "), suffix);
+            emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::VECSXP => {
             if let Some(output) = format_data_frame(x) {
@@ -1071,7 +1093,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                     .map(|output| format!("{output}{suffix}"))
                     .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
             };
-            format!("{base}{}", format_regexpr_attributes(x))
+            format_with_printable_attributes(base, x)
         }
         SEXPTYPE::REALSXP => {
             if has_class(x, "POSIXct") {
@@ -1086,7 +1108,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x) {
                 return output;
             }
-            if x.len() == 1 {
+            let base = if x.len() == 1 {
                 format!("[1] {}", format_real_element(x, 0))
             } else {
                 let vals = format_real_vector_values(x, 10);
@@ -1094,7 +1116,8 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 format_named_atomic_vector(x, vals.clone())
                     .map(|output| format!("{output}{suffix}"))
                     .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
-            }
+            };
+            format_with_printable_attributes(base, x)
         }
         SEXPTYPE::LGLSXP => {
             if x.len() == 0 {
@@ -1107,9 +1130,10 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 .map(|i| format_logical_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            format_named_atomic_vector(x, vals.clone())
+            let base = format_named_atomic_vector(x, vals.clone())
                 .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
+                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            format_with_printable_attributes(base, x)
         }
         SEXPTYPE::CPLXSXP => {
             if x.len() == 0 {
@@ -1122,18 +1146,20 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 .map(|i| format_complex_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            format_named_atomic_vector(x, vals.clone())
+            let base = format_named_atomic_vector(x, vals.clone())
                 .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
+                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            format_with_printable_attributes(base, x)
         }
-        SEXPTYPE::STRSXP => format_string_vector(x),
+        SEXPTYPE::STRSXP => format_with_printable_attributes(format_string_vector(x), x),
         SEXPTYPE::RAWSXP => {
             if x.len() == 0 {
                 return "raw(0)".to_string();
             }
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            format!("[1] {}{}", vals.join(" "), suffix)
+            let base = format!("[1] {}{}", vals.join(" "), suffix);
+            format_with_printable_attributes(base, x)
         }
         SEXPTYPE::VECSXP => format_list(x),
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
