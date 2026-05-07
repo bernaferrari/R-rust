@@ -398,6 +398,134 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_seq — generate sequences
 // ---------------------------------------------------------------------------
 
+unsafe fn datetime_seq_by(arg: SEXP, class: DatetimeVectorClass, default: f64) -> f64 {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() {
+            return default;
+        }
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            let text = elt_to_string(arg, 0).to_ascii_lowercase();
+            let units = text.trim();
+            return match class {
+                DatetimeVectorClass::Date => match units {
+                    "day" | "days" => 1.0,
+                    "week" | "weeks" => 7.0,
+                    _ => base_error("invalid string for 'by'"),
+                },
+                DatetimeVectorClass::Posixct => match units {
+                    "sec" | "secs" | "second" | "seconds" => 1.0,
+                    "min" | "mins" | "minute" | "minutes" => 60.0,
+                    "hour" | "hours" => 3_600.0,
+                    "day" | "days" => 86_400.0,
+                    "week" | "weeks" => 604_800.0,
+                    _ => base_error("invalid string for 'by'"),
+                },
+            };
+        }
+        real_or_default(arg, default)
+    }
+}
+
+unsafe fn datetime_seq_endpoint(arg: SEXP, class: DatetimeVectorClass) -> f64 {
+    unsafe {
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
+            let text = elt_to_string(arg, 0);
+            return match class {
+                DatetimeVectorClass::Date => parse_iso_date_days(&text).unwrap_or_else(|| {
+                    base_error("character string is not in a standard unambiguous format")
+                }),
+                DatetimeVectorClass::Posixct => {
+                    parse_iso_datetime_seconds(&text).unwrap_or_else(|| {
+                        base_error("character string is not in a standard unambiguous format")
+                    })
+                }
+            };
+        }
+        match class {
+            DatetimeVectorClass::Date => {
+                if sexp_has_class(arg, "POSIXct") {
+                    let value = real_or_default(arg, NA_REAL);
+                    if value.to_bits() == R_NA_BIT_PATTERN {
+                        NA_REAL
+                    } else {
+                        (value / 86_400.0).floor()
+                    }
+                } else {
+                    real_or_default(arg, NA_REAL)
+                }
+            }
+            DatetimeVectorClass::Posixct => {
+                if sexp_has_class(arg, "Date") {
+                    let value = real_or_default(arg, NA_REAL);
+                    if value.to_bits() == R_NA_BIT_PATTERN {
+                        NA_REAL
+                    } else {
+                        value.floor() * 86_400.0
+                    }
+                } else {
+                    real_or_default(arg, NA_REAL)
+                }
+            }
+        }
+    }
+}
+
+unsafe fn datetime_seq(
+    from_arg: SEXP,
+    to_arg: SEXP,
+    by_arg: SEXP,
+    length_out_arg: SEXP,
+    class: DatetimeVectorClass,
+) -> SEXP {
+    unsafe {
+        let from = datetime_seq_endpoint(from_arg, class);
+        if from.to_bits() == R_NA_BIT_PATTERN {
+            base_error("'from' must be a finite number");
+        }
+
+        let length_out = if length_out_arg.is_null() || length_out_arg == R_NilValue() {
+            None
+        } else {
+            Some(numeric_elt_as_count(length_out_arg, 0))
+        };
+        let has_to = !(to_arg.is_null() || to_arg == R_NilValue());
+        let to = if has_to {
+            Some(datetime_seq_endpoint(to_arg, class))
+        } else {
+            None
+        };
+        let default_by = to
+            .map(|to| if to < from { -1.0 } else { 1.0 })
+            .unwrap_or(1.0);
+        let by = datetime_seq_by(by_arg, class, default_by);
+        if by == 0.0 {
+            base_error("invalid '(to - from)/by'");
+        }
+
+        let values: Vec<f64> = if let Some(length_out) = length_out {
+            (0..length_out).map(|i| from + i as f64 * by).collect()
+        } else if let Some(to) = to {
+            let n = ((to - from) / by).floor() as i64 + 1;
+            let n = n.max(0) as usize;
+            (0..n).map(|i| from + i as f64 * by).collect()
+        } else {
+            vec![from]
+        };
+
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let dst = REAL(result);
+        for (i, value) in values.into_iter().enumerate() {
+            *dst.add(i) = value;
+        }
+        set_datetime_class_from(result, from_arg, class);
+        result
+    }
+}
+
 /// R's `seq(from, to, by)` — generates a sequence.
 ///
 /// - seq(to) → 1:to
@@ -405,23 +533,39 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// - seq(from, to, by) → from, from+by, ... until past to
 pub unsafe fn do_seq(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let a1 = CAR(args);
-        let a2_cdr = CDR(args);
-        let a2 = if a2_cdr.is_null() || a2_cdr == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(a2_cdr)
-        };
-        let a3_cdr = if a2_cdr.is_null() {
-            R_NilValue()
-        } else {
-            CDR(a2_cdr)
-        };
-        let a3 = if a3_cdr.is_null() || a3_cdr == R_NilValue() {
-            R_NilValue()
-        } else {
-            CAR(a3_cdr)
-        };
+        let mut a1 = R_NilValue();
+        let mut a2 = R_NilValue();
+        let mut a3 = R_NilValue();
+        let mut length_out_arg = R_NilValue();
+        let mut positional = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match tag_name(current).as_deref() {
+                Some("from") => a1 = value,
+                Some("to") => a2 = value,
+                Some("by") => a3 = value,
+                Some("length.out") => length_out_arg = value,
+                _ => {
+                    match positional {
+                        0 => a1 = value,
+                        1 => a2 = value,
+                        2 => a3 = value,
+                        3 => length_out_arg = value,
+                        _ => {}
+                    }
+                    positional += 1;
+                }
+            }
+            current = CDR(current);
+        }
+
+        if sexp_has_class(a1, "POSIXct") {
+            return datetime_seq(a1, a2, a3, length_out_arg, DatetimeVectorClass::Posixct);
+        }
+        if sexp_has_class(a1, "Date") {
+            return datetime_seq(a1, a2, a3, length_out_arg, DatetimeVectorClass::Date);
+        }
 
         let (from, to, by) = if a2 == R_NilValue() {
             // seq(to)
