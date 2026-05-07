@@ -22,13 +22,17 @@
 use std::os::raw::c_int;
 
 use crate::attrib_core::{R_ClassSymbol, setAttrib};
+use crate::eval::eval::Rf_eval;
 use crate::main::errors::Rf_error;
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
+use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::protect;
+use crate::sexp::symbol::Rf_install;
 
 unsafe fn asInteger(x: SEXP) -> c_int {
     unsafe { crate::main::coerce::asInteger(x) }
@@ -247,8 +251,34 @@ unsafe fn R_typhash(h: R_hashtab_type) -> c_int {
     unsafe { hash_type(h) }
 }
 
-unsafe fn R_maphash(_h: R_hashtab_type, _fun: SEXP) -> SEXP {
-    unsafe { hash_error(b"maphash is not implemented in the Rust utils hash table yet\0") }
+unsafe fn R_maphash(h: R_hashtab_type, fun: SEXP) -> SEXP {
+    unsafe {
+        let _h_guard = protect(h);
+        let _fun_guard = protect(fun);
+        let keys = hash_keys(h);
+        let values = hash_values(h);
+        let len = XLENGTH(keys).min(XLENGTH(values));
+        let mut pairs = Vec::with_capacity(len as usize);
+        for i in 0..len {
+            pairs.push((VECTOR_ELT(keys, i), VECTOR_ELT(values, i)));
+        }
+
+        let env = NewEnvironment(R_NilValue(), R_GlobalEnv(), R_NilValue());
+        let _env_guard = protect(env);
+        let fun_sym = Rf_install(c"FUN".as_ptr());
+        let key_sym = Rf_install(c"key".as_ptr());
+        let value_sym = Rf_install(c"value".as_ptr());
+        defineVar(fun_sym, fun, env);
+
+        let call = Rf_lang3(fun_sym, key_sym, value_sym);
+        let _call_guard = protect(call);
+        for (key, value) in pairs {
+            defineVar(key_sym, key, env);
+            defineVar(value_sym, value, env);
+            let _ = Rf_eval(call, env);
+        }
+        R_NilValue()
+    }
 }
 
 unsafe fn R_clrhash(h: R_hashtab_type) {
@@ -369,6 +399,28 @@ mod tests {
     use super::*;
     use crate::sexp::session::RSession;
 
+    unsafe fn missing_formals(names: &[&'static std::ffi::CStr]) -> SEXP {
+        unsafe {
+            let formals = Rf_allocList(names.len() as c_int);
+            let _formals_guard = protect(formals);
+            let mut cell = formals;
+            for name in names {
+                SETTAG(cell, Rf_install(name.as_ptr()));
+                SETCAR(cell, R_MissingArg());
+                cell = CDR(cell);
+            }
+            formals
+        }
+    }
+
+    unsafe fn stop_callback(message: &'static std::ffi::CStr) -> SEXP {
+        unsafe {
+            let formals = missing_formals(&[c"key", c"value"]);
+            let body = Rf_lang2(Rf_install(c"stop".as_ptr()), Rf_mkString(message.as_ptr()));
+            crate::mainutils::dstruct::mkCLOSXP(formals, body, R_BaseEnv())
+        }
+    }
+
     #[test]
     fn identical_hash_table_sets_replaces_gets_and_removes() {
         let _session = RSession::new();
@@ -435,6 +487,40 @@ mod tests {
             assert_eq!(R_numhash(table), 2);
             R_clrhash(table);
             assert_eq!(R_numhash(table), 0);
+        }
+    }
+
+    #[test]
+    fn maphash_invokes_callback_for_entries() {
+        let _session = RSession::new();
+        unsafe {
+            let table = R_mkhashtab(HT_TYPE_IDENTICAL, 8);
+            R_sethash(table, Rf_ScalarInteger(1), Rf_ScalarInteger(10));
+            let callback = stop_callback(c"maphash callback invoked");
+
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                R_maphash(table, callback);
+            }));
+
+            assert!(result.is_err(), "expected callback error to propagate");
+        }
+    }
+
+    #[test]
+    fn maphash_returns_nil_after_successful_callbacks() {
+        let _session = RSession::new();
+        unsafe {
+            let table = R_mkhashtab(HT_TYPE_IDENTICAL, 8);
+            R_sethash(table, Rf_ScalarInteger(1), Rf_ScalarInteger(10));
+            R_sethash(table, Rf_ScalarInteger(2), Rf_ScalarInteger(20));
+
+            let formals = missing_formals(&[c"key", c"value"]);
+            let body = Rf_install(c"value".as_ptr());
+            let callback = crate::mainutils::dstruct::mkCLOSXP(formals, body, R_BaseEnv());
+
+            assert_eq!(R_maphash(table, callback), R_NilValue());
+
+            assert_eq!(R_numhash(table), 2);
         }
     }
 }
