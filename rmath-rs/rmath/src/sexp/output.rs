@@ -685,6 +685,35 @@ fn format_posixct_vector(x: Sexp<'_>, include_tz: bool) -> String {
         .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
 }
 
+fn difftime_units(x: Sexp<'_>) -> String {
+    unsafe {
+        let units = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::symbol::Rf_install(c"units".as_ptr()),
+        );
+        if let Some(units) = Sexp::from_raw(units)
+            && units.typeof_() == SEXPTYPE::STRSXP
+            && units.len() > 0
+            && let Some(Some(value)) = string_element_text(units, 0)
+        {
+            return value.to_string();
+        }
+        "secs".to_string()
+    }
+}
+
+fn format_difftime_vector(x: Sexp<'_>) -> String {
+    let units = difftime_units(x);
+    if x.len() == 0 {
+        return format!("Time difference of 0 {units}");
+    }
+    let value = x
+        .try_real_elt(0)
+        .map(format_real_value)
+        .unwrap_or_else(format_access_error);
+    format!("Time difference of {value} {units}")
+}
+
 fn format_factor(x: Sexp<'_>) -> Option<String> {
     let levels = factor_levels(x)?;
     let vals: Vec<String> = x
@@ -956,6 +985,10 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
+            if has_class(x, "difftime") {
+                emit(&format!("{}\n", format_difftime_vector(x)));
+                return;
+            }
             if has_class(x, "POSIXct") {
                 emit(&format!("{}\n", format_posixct_vector(x, true)));
                 return;
@@ -1096,6 +1129,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::REALSXP => {
+            if has_class(x, "difftime") {
+                return format_difftime_vector(x);
+            }
             if has_class(x, "POSIXct") {
                 return format_posixct_vector(x, true);
             }

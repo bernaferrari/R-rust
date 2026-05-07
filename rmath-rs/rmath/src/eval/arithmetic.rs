@@ -12,13 +12,16 @@
 
 use std::ffi::CString;
 
-use crate::sexp::accessors::{CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TAG, TYPEOF};
+use crate::sexp::accessors::{
+    CAR, CDR, CHAR, LENGTH, PRINTNAME, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF,
+};
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
+    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_mkChar,
 };
+use crate::sexp::context::RError;
 use crate::sexp::ffi::{
     FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE,
     TRUE,
@@ -225,6 +228,12 @@ fn warn_simple(message: &str) {
     }
 }
 
+fn arithmetic_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
+}
+
 unsafe fn copy_attr_if_present(result: SEXP, source: SEXP, symbol: SEXP) -> bool {
     unsafe {
         let attr = getAttrib(source, symbol);
@@ -275,6 +284,72 @@ pub(super) unsafe fn propagate_binary_vector_attributes(
         }
         if LENGTH(b) as R_xlen_t == result_len {
             copy_attr_if_present(result, b, R_NamesSymbol());
+        }
+    }
+}
+
+unsafe fn set_single_string_class(result: SEXP, class_name: &str) {
+    unsafe {
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if class.is_null() {
+            return;
+        }
+        let _class_guard = protect(class);
+        let cstr = CString::new(class_name).unwrap_or_default();
+        SET_STRING_ELT(class, 0, Rf_mkChar(cstr.as_ptr()));
+        setAttrib(result, Rf_install(c"class".as_ptr()), class);
+    }
+}
+
+unsafe fn set_string_attribute(result: SEXP, name: &str, value: &str) {
+    unsafe {
+        let attr = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if attr.is_null() {
+            return;
+        }
+        let _attr_guard = protect(attr);
+        let cvalue = CString::new(value).unwrap_or_default();
+        SET_STRING_ELT(attr, 0, Rf_mkChar(cvalue.as_ptr()));
+        let cname = CString::new(name).unwrap_or_default();
+        setAttrib(result, Rf_install(cname.as_ptr()), attr);
+    }
+}
+
+unsafe fn date_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
+        let b_is_date = crate::mainutils::essentials::sexp_has_class(b, "Date");
+        if !a_is_date && !b_is_date {
+            return None;
+        }
+
+        match op {
+            "+" if a_is_date && b_is_date => {
+                arithmetic_error("binary + is not defined for \"Date\" objects");
+            }
+            "+" if a_is_date || b_is_date => {
+                let result = real_binary(op, a, b);
+                set_single_string_class(result, "Date");
+                Some(result)
+            }
+            "-" if a_is_date && b_is_date => {
+                let result = real_binary(op, a, b);
+                set_string_attribute(result, "units", "days");
+                set_single_string_class(result, "difftime");
+                Some(result)
+            }
+            "-" if a_is_date => {
+                let result = real_binary(op, a, b);
+                set_single_string_class(result, "Date");
+                Some(result)
+            }
+            "-" if b_is_date => {
+                arithmetic_error("can only subtract from \"Date\" objects");
+            }
+            "*" | "/" | "^" | "%%" | "%/%" => {
+                arithmetic_error(format!("{op} not defined for \"Date\" objects"));
+            }
+            _ => None,
         }
     }
 }
@@ -353,6 +428,9 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return R_NilValue();
                 }
                 let b = CAR(b_cdr);
+                if let Some(result) = date_binary_arithmetic(op_name, a, b) {
+                    return result;
+                }
                 if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
                     return super::complex_arith::complex_binary(op_name, a, b);
                 }

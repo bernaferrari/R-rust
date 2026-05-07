@@ -1,0 +1,9 @@
+[1] "2020-02-04"
+[1] "2020-02-04"
+[1] "2020-02-02"
+Time difference of 2 days
+[1] "difftime"
+[1] "days"
+[1] "binary + is not defined for \"Date\" objects"
+[1] "can only subtract from \"Date\" objects"
+[1] "* not defined for \"Date\" objects"
