@@ -21,6 +21,7 @@ use crate::sexp::accessors::{
     TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
+use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -70,7 +71,14 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                 break;
             }
 
-            let val = Rf_eval(CAR(current), rho);
+            let expr = CAR(current);
+            if expr == R_MissingArg() {
+                std::panic::panic_any(RError {
+                    message: format!("argument {} is empty", count + 1),
+                });
+            }
+
+            let val = Rf_eval(expr, rho);
             push_pairlist_cell(&mut result, val, TAG(current));
 
             current = CDR(current);
