@@ -20,11 +20,108 @@ use crate::sexp::constructors::{
 };
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
+    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP,
+    SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum DatetimeVectorClass {
+    Date,
+    Posixct,
+}
+
+unsafe fn leading_datetime_class(args: SEXP) -> Option<(DatetimeVectorClass, SEXP)> {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            return None;
+        }
+        let first = CAR(args);
+        if sexp_has_class(first, "POSIXct") {
+            Some((DatetimeVectorClass::Posixct, first))
+        } else if sexp_has_class(first, "Date") {
+            Some((DatetimeVectorClass::Date, first))
+        } else {
+            None
+        }
+    }
+}
+
+unsafe fn posixct_tzone_string(source: SEXP) -> String {
+    unsafe {
+        let tzone = crate::sexp::attrib_core::getAttrib(source, Rf_install(c"tzone".as_ptr()));
+        if tzone.is_null() || tzone == R_NilValue() || TYPEOF(tzone) != SEXPTYPE::STRSXP {
+            return "UTC".to_string();
+        }
+        if XLENGTH(tzone) == 0 {
+            return "UTC".to_string();
+        }
+        let value = STRING_ELT(tzone, 0);
+        if value.is_null() || value == crate::sexp::globals::R_NaString() {
+            return "UTC".to_string();
+        }
+        CStr::from_ptr(CHAR(value))
+            .to_str()
+            .unwrap_or("UTC")
+            .to_string()
+    }
+}
+
+unsafe fn set_datetime_class_from(result: SEXP, source: SEXP, class: DatetimeVectorClass) {
+    unsafe {
+        match class {
+            DatetimeVectorClass::Date => set_single_class(result, "Date"),
+            DatetimeVectorClass::Posixct => {
+                set_posixct_class(result, &posixct_tzone_string(source))
+            }
+        }
+    }
+}
+
+unsafe fn datetime_c_value(source: SEXP, index: R_xlen_t, class: DatetimeVectorClass) -> f64 {
+    unsafe {
+        match class {
+            DatetimeVectorClass::Date => {
+                if TYPEOF(source) == SEXPTYPE::STRSXP {
+                    let value = STRING_ELT(source, index);
+                    if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                        return NA_REAL;
+                    }
+                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
+                    return parse_iso_date_days(text).unwrap_or_else(|| {
+                        base_error("character string is not in a standard unambiguous format");
+                    });
+                }
+                let value = real_elt_or_default(source, index, NA_REAL);
+                if sexp_has_class(source, "POSIXct") && value.to_bits() != R_NA_BIT_PATTERN {
+                    (value / 86_400.0).floor()
+                } else {
+                    value
+                }
+            }
+            DatetimeVectorClass::Posixct => {
+                if TYPEOF(source) == SEXPTYPE::STRSXP {
+                    let value = STRING_ELT(source, index);
+                    if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                        return NA_REAL;
+                    }
+                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
+                    return parse_iso_datetime_seconds(text).unwrap_or_else(|| {
+                        base_error("character string is not in a standard unambiguous format");
+                    });
+                }
+                let value = real_elt_or_default(source, index, NA_REAL);
+                if sexp_has_class(source, "Date") && value.to_bits() != R_NA_BIT_PATTERN {
+                    value.floor() * 86_400.0
+                } else {
+                    value
+                }
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // do_c — combine vectors
@@ -36,6 +133,7 @@ use crate::sexp::symbol::Rf_install;
 /// If any arg is STRSXP, result is STRSXP.
 pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let datetime_class = leading_datetime_class(args);
         // First pass: determine result type and total length
         let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
         let mut total_len: R_xlen_t = 0;
@@ -66,6 +164,8 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 if t == SEXPTYPE::VECSXP {
                     result_type = SEXPTYPE::VECSXP.as_c_int();
+                } else if datetime_class.is_some() && result_type != SEXPTYPE::VECSXP {
+                    result_type = SEXPTYPE::REALSXP.as_c_int();
                 } else if t == SEXPTYPE::STRSXP && result_type != SEXPTYPE::VECSXP {
                     result_type = SEXPTYPE::STRSXP.as_c_int();
                 } else if t == SEXPTYPE::CPLXSXP
@@ -187,7 +287,12 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let t = TYPEOF(arg);
                 let n = XLENGTH(arg);
 
-                if result_type == SEXPTYPE::REALSXP {
+                if let Some((class, _source)) = datetime_class {
+                    let dst = REAL(result);
+                    for i in 0..n {
+                        *dst.add((offset + i) as usize) = datetime_c_value(arg, i, class);
+                    }
+                } else if result_type == SEXPTYPE::REALSXP {
                     let dst = REAL(result);
                     for i in 0..n {
                         let val = if t == SEXPTYPE::REALSXP {
@@ -281,6 +386,9 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 crate::sexp::attrib_core::R_NamesSymbol(),
                 names,
             );
+        }
+        if let Some((class, source)) = datetime_class {
+            set_datetime_class_from(result, source, class);
         }
         result
     }
@@ -503,6 +611,12 @@ pub unsafe fn do_rep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         for (out_idx, &src_idx) in indices.iter().enumerate() {
             copy_vector_elt(result, out_idx as R_xlen_t, x, src_idx);
+        }
+
+        if sexp_has_class(x, "POSIXct") {
+            set_datetime_class_from(result, x, DatetimeVectorClass::Posixct);
+        } else if sexp_has_class(x, "Date") {
+            set_datetime_class_from(result, x, DatetimeVectorClass::Date);
         }
 
         result
@@ -7125,6 +7239,14 @@ pub(crate) fn parse_iso_datetime_seconds(text: &str) -> Option<f64> {
 }
 
 pub(crate) fn posix_seconds_to_iso(seconds: f64, include_tz: bool) -> Option<String> {
+    posix_seconds_to_iso_with_time(seconds, include_tz, false)
+}
+
+pub(crate) fn posix_seconds_to_iso_with_time(
+    seconds: f64,
+    include_tz: bool,
+    force_time: bool,
+) -> Option<String> {
     if seconds.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !seconds.is_finite() {
         return None;
     }
@@ -7135,7 +7257,7 @@ pub(crate) fn posix_seconds_to_iso(seconds: f64, include_tz: bool) -> Option<Str
     let hour = rem / 3_600;
     let minute = (rem % 3_600) / 60;
     let second = rem % 60;
-    let mut out = if hour == 0 && minute == 0 && second == 0 {
+    let mut out = if !force_time && hour == 0 && minute == 0 && second == 0 {
         date
     } else {
         format!("{date} {hour:02}:{minute:02}:{second:02}")

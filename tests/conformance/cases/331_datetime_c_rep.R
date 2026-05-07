@@ -1,0 +1,21 @@
+Sys.setenv(TZ = "UTC")
+
+d <- as.Date("2020-02-01")
+p <- as.POSIXct("2020-02-03 00:00:00", tz = "UTC")
+
+print(rep(d, 2))
+print(class(rep(d, 2)))
+print(c(d, as.Date("2020-02-02")))
+print(class(c(d, as.Date("2020-02-02"))))
+print(c(d, p))
+print(class(c(d, p)))
+
+print(rep(p, 2))
+print(class(rep(p, 2)))
+print(attr(rep(p, 2), "tzone"))
+print(c(p, as.POSIXct("2020-02-03 01:00:00", tz = "UTC")))
+print(class(c(p, as.POSIXct("2020-02-03 01:00:00", tz = "UTC"))))
+print(attr(c(p, as.POSIXct("2020-02-03 01:00:00", tz = "UTC")), "tzone"))
+print(c(p, d))
+print(class(c(p, d)))
+print(attr(c(p, d), "tzone"))
