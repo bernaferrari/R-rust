@@ -1,0 +1,8 @@
+[1] "unused argument (foo = x)"
+[1] "unused argument (wrong = list(x = 1))"
+[1] "unused argument (1)"
+[1] "formal argument \"expr\" matched by multiple actual arguments"
+[1] 1
+[1] "argument 1 matches multiple formal arguments"
+[1] "unused argument (ex = y)"
+[1] "formal argument \"expr\" matched by multiple actual arguments"

@@ -42,7 +42,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{
     NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
 };
-use crate::sexp::globals::{R_GlobalEnv, R_NaString as R_GlobalNaString, R_NilValue};
+use crate::sexp::globals::{R_GlobalEnv, R_MissingArg, R_NaString as R_GlobalNaString, R_NilValue};
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::protect;
@@ -3486,7 +3486,7 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
 /// Ported from R's `do_substitute()` in coerce.c.
 pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
-    use crate::sexp::accessors::{CADR, CAR, CDR, TYPEOF};
+    use crate::sexp::accessors::TYPEOF;
     use crate::sexp::constructors::Rf_cons;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
@@ -3494,14 +3494,7 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     use crate::sexp::protect::protect;
 
     unsafe {
-        // Manual argument matching: first arg is expr, second is env
-        let expr = CAR(args);
-        let rest = CDR(args);
-        let env_arg = if !rest.is_null() && rest != R_NilValue() {
-            CADR(args)
-        } else {
-            R_MissingArg()
-        };
+        let (expr, env_arg) = match_substitute_args(args);
 
         let mut env = if env_arg == R_MissingArg() {
             rho
@@ -3540,6 +3533,196 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         };
         result
     }
+}
+
+unsafe fn match_substitute_args(args: SEXP) -> (SEXP, SEXP) {
+    unsafe {
+        let mut formals = [SubstituteFormal::new("expr"), SubstituteFormal::new("env")];
+        let mut actuals = Vec::new();
+        let mut current = args;
+        let mut index = 1;
+
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            let tag = TAG(current);
+            let name = if tag.is_null() || tag == R_NilValue() {
+                None
+            } else {
+                symbol_name(tag)
+            };
+            actuals.push(SubstituteActual {
+                index,
+                value,
+                tag,
+                name,
+                used: false,
+            });
+            current = CDR(current);
+            index += 1;
+        }
+
+        for actual in actuals.iter_mut().filter(|actual| actual.name.is_some()) {
+            let Some(formal_index) = formals
+                .iter()
+                .position(|formal| Some(formal.name) == actual.name.as_deref())
+            else {
+                continue;
+            };
+            if formals[formal_index].value != R_MissingArg() {
+                duplicate_substitute_arg(formals[formal_index].name);
+            }
+            formals[formal_index].value = actual.value;
+            formals[formal_index].match_source = Some(SubstituteMatchSource::Exact);
+            actual.used = true;
+        }
+
+        for actual in actuals.iter_mut().filter(|actual| actual.name.is_some()) {
+            if actual.used {
+                continue;
+            }
+
+            let name = actual.name.as_deref().unwrap_or_default();
+            let matches = formals
+                .iter()
+                .enumerate()
+                .filter(|(_, formal)| {
+                    formal.name.starts_with(name)
+                        && (formal.value == R_MissingArg()
+                            || formal.match_source == Some(SubstituteMatchSource::Partial))
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+
+            if matches.len() > 1 {
+                substitute_error(format!(
+                    "argument {} matches multiple formal arguments",
+                    actual.index
+                ));
+            }
+
+            if let Some(formal_index) = matches.first() {
+                if formals[*formal_index].value != R_MissingArg() {
+                    duplicate_substitute_arg(formals[*formal_index].name);
+                }
+                formals[*formal_index].value = actual.value;
+                formals[*formal_index].match_source = Some(SubstituteMatchSource::Partial);
+                actual.used = true;
+            }
+        }
+
+        for actual in actuals.iter_mut().filter(|actual| actual.name.is_none()) {
+            if let Some(formal) = formals
+                .iter_mut()
+                .find(|formal| formal.value == R_MissingArg())
+            {
+                formal.value = actual.value;
+                formal.match_source = Some(SubstituteMatchSource::Positional);
+                actual.used = true;
+            }
+        }
+
+        if let Some(actual) = actuals.iter().find(|actual| !actual.used) {
+            unused_substitute_arg(actual.tag, actual.value);
+        }
+
+        (formals[0].value, formals[1].value)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SubstituteMatchSource {
+    Exact,
+    Partial,
+    Positional,
+}
+
+struct SubstituteFormal {
+    name: &'static str,
+    value: SEXP,
+    match_source: Option<SubstituteMatchSource>,
+}
+
+impl SubstituteFormal {
+    fn new(name: &'static str) -> Self {
+        unsafe {
+            Self {
+                name,
+                value: R_MissingArg(),
+                match_source: None,
+            }
+        }
+    }
+}
+
+struct SubstituteActual {
+    index: usize,
+    value: SEXP,
+    tag: SEXP,
+    name: Option<String>,
+    used: bool,
+}
+
+fn duplicate_substitute_arg(name: &str) -> ! {
+    substitute_error(format!(
+        r#"formal argument "{name}" matched by multiple actual arguments"#
+    ));
+}
+
+unsafe fn symbol_name(symbol: SEXP) -> Option<String> {
+    unsafe {
+        if symbol.is_null() || symbol == R_NilValue() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let printname = PRINTNAME(symbol);
+        if printname.is_null() || printname == R_NilValue() {
+            return None;
+        }
+        let chars = CHAR(printname);
+        if chars.is_null() {
+            None
+        } else {
+            Some(CStr::from_ptr(chars).to_string_lossy().into_owned())
+        }
+    }
+}
+
+unsafe fn deparse_substitute_arg(value: SEXP) -> String {
+    unsafe {
+        if value == R_MissingArg() {
+            return String::new();
+        }
+        let text = crate::mainutils::deparse::deparse1line(value, false);
+        if text.is_null() || text == R_NilValue() || XLENGTH(text) == 0 {
+            return String::new();
+        }
+        let elt = STRING_ELT(text, 0);
+        if elt.is_null() || elt == R_NilValue() {
+            return String::new();
+        }
+        let chars = CHAR(elt);
+        if chars.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(chars).to_string_lossy().into_owned()
+        }
+    }
+}
+
+unsafe fn unused_substitute_arg(tag: SEXP, value: SEXP) -> ! {
+    unsafe {
+        let deparsed = deparse_substitute_arg(value);
+        let arg = match symbol_name(tag) {
+            Some(name) if !name.is_empty() => format!("{name} = {deparsed}"),
+            _ => deparsed,
+        };
+        substitute_error(format!("unused argument ({arg})"));
+    }
+}
+
+fn substitute_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
 }
 
 // ---------------------------------------------------------------------------

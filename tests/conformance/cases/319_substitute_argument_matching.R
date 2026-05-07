@@ -1,0 +1,8 @@
+print(tryCatch(substitute(foo = x), error = function(e) conditionMessage(e)))
+print(tryCatch(substitute(expr = x, wrong = list(x = 1)), error = function(e) conditionMessage(e)))
+print(tryCatch(substitute(x, list(), 1), error = function(e) conditionMessage(e)))
+print(tryCatch(substitute(expr = x, expr = y), error = function(e) conditionMessage(e)))
+print(tryCatch(substitute(en = list(x = 1), x), error = function(e) conditionMessage(e)))
+print(tryCatch(substitute(e = x), error = function(e) conditionMessage(e)))
+print(tryCatch(substitute(expr = x, ex = y), error = function(e) conditionMessage(e)))
+print(tryCatch(substitute(ex = x, ex = y), error = function(e) conditionMessage(e)))

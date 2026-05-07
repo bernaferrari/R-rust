@@ -595,9 +595,13 @@ fn string_element_text<'a>(x: Sexp<'a>, i: R_xlen_t) -> Option<Option<&'a str>> 
 
 fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
     match string_element_text(x, i) {
-        Some(Some(value)) => format!("\"{}\"", value),
+        Some(Some(value)) => format!("\"{}\"", escape_printed_string(value)),
         Some(None) | None => "NA".to_string(),
     }
+}
+
+fn escape_printed_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn format_string_vector(x: Sexp<'_>) -> String {
