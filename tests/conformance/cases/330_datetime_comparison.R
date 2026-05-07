@@ -1,0 +1,18 @@
+Sys.setenv(TZ = "UTC")
+
+d <- as.Date("2020-02-03")
+print(d < as.Date("2020-02-04"))
+print(d < "2020-02-04")
+print("2020-02-02" < d)
+print(d == "2020-02-03")
+print(d < NA_character_)
+print(tryCatch(d < "not-a-date", error = function(e) conditionMessage(e)))
+
+p <- as.POSIXct("2020-02-03 04:05:06", tz = "UTC")
+print(p < as.POSIXct("2020-02-03 04:06:06", tz = "UTC"))
+print(p < "2020-02-03 04:06:06")
+print("2020-02-03 04:04:06" < p)
+print(p == "2020-02-03 04:05:06")
+print(p < NA_character_)
+print(p <= "2020-02-03")
+print(tryCatch(p < "not-a-time", error = function(e) conditionMessage(e)))

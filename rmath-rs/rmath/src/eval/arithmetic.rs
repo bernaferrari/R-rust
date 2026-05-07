@@ -405,6 +405,79 @@ unsafe fn has_class_attribute(source: SEXP) -> bool {
     }
 }
 
+unsafe fn coerce_character_comparison_operand(
+    source: SEXP,
+    parser: fn(&str) -> Option<f64>,
+) -> SEXP {
+    unsafe {
+        if TYPEOF(source) != SEXPTYPE::STRSXP {
+            return source;
+        }
+        let Some(input) = Sexp::from_raw(source) else {
+            return R_NilValue();
+        };
+        let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, input.len());
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        for i in 0..input.len() {
+            let value = STRING_ELT(source, i);
+            let parsed = if value.is_null() || value == R_NaString() {
+                NA_REAL
+            } else {
+                let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
+                parser(text).unwrap_or_else(|| {
+                    arithmetic_error("character string is not in a standard unambiguous format");
+                })
+            };
+            result.set_real_elt(i, parsed);
+        }
+        result_raw
+    }
+}
+
+fn parse_posixct_comparison_seconds(text: &str) -> Option<f64> {
+    crate::mainutils::essentials::parse_iso_datetime_seconds(text)
+}
+
+unsafe fn date_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
+        let b_is_date = crate::mainutils::essentials::sexp_has_class(b, "Date");
+        if !a_is_date && !b_is_date {
+            return None;
+        }
+
+        let a = coerce_character_comparison_operand(
+            a,
+            crate::mainutils::essentials::parse_iso_date_days,
+        );
+        let b = coerce_character_comparison_operand(
+            b,
+            crate::mainutils::essentials::parse_iso_date_days,
+        );
+        let _a_guard = protect(a);
+        let _b_guard = protect(b);
+        Some(binary_compare(op, a, b))
+    }
+}
+
+unsafe fn posixct_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_is_posixct = crate::mainutils::essentials::sexp_has_class(a, "POSIXct");
+        let b_is_posixct = crate::mainutils::essentials::sexp_has_class(b, "POSIXct");
+        if !a_is_posixct && !b_is_posixct {
+            return None;
+        }
+
+        let a = coerce_character_comparison_operand(a, parse_posixct_comparison_seconds);
+        let b = coerce_character_comparison_operand(b, parse_posixct_comparison_seconds);
+        let _a_guard = protect(a);
+        let _b_guard = protect(b);
+        Some(binary_compare(op, a, b))
+    }
+}
+
 fn auto_difftime_units(seconds: &[f64]) -> (&'static str, f64) {
     let min_abs = seconds
         .iter()
@@ -643,6 +716,12 @@ pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let b = CAR(CDR(args));
                 if a.is_null() || b.is_null() {
                     return R_NilValue();
+                }
+                if let Some(result) = date_binary_comparison(op_name, a, b) {
+                    return result;
+                }
+                if let Some(result) = posixct_binary_comparison(op_name, a, b) {
+                    return result;
                 }
                 if TYPEOF(a) == SEXPTYPE::STRSXP && TYPEOF(b) == SEXPTYPE::STRSXP {
                     return character_compare(op_name, a, b);
