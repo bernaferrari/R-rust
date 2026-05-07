@@ -2069,7 +2069,7 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         } else {
             real_or_default(nsmall_arg, 0.0) as usize
         };
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -2078,7 +2078,9 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         for i in 0..n {
             let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
-                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                if sexp_has_class(x, "Date") {
+                    date_days_to_iso(v).unwrap_or_else(|| "NA".to_string())
+                } else if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                     "NA".to_string()
                 } else if nsmall > 0 {
                     format!("{:.*}", nsmall, v)
@@ -4489,6 +4491,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "as.integer",
             "as.double",
             "as.character",
+            "as.Date",
             "as.logical",
             "as.list",
             "as.vector",
@@ -6914,6 +6917,82 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         } else {
             format!("{:?}", t)
         }
+    }
+}
+
+fn is_leap_year(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn days_in_month(year: i64, month: i64) -> i64 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+fn days_from_civil(mut year: i64, month: i64, day: i64) -> i64 {
+    year -= if month <= 2 { 1 } else { 0 };
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let yoe = year - era * 400;
+    let month_prime = month + if month > 2 { -3 } else { 9 };
+    let doy = (153 * month_prime + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+fn civil_from_days(mut days: i64) -> (i64, i64, i64) {
+    days += 719_468;
+    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
+    let doe = days - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let month_prime = (5 * doy + 2) / 153;
+    let day = doy - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    year += if month <= 2 { 1 } else { 0 };
+    (year, month, day)
+}
+
+pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
+    let text = text.trim();
+    let mut parts = text.split('-');
+    let year = parts.next()?.parse::<i64>().ok()?;
+    let month = parts.next()?.parse::<i64>().ok()?;
+    let day = parts.next()?.parse::<i64>().ok()?;
+    if parts.next().is_some()
+        || !(1..=12).contains(&month)
+        || day < 1
+        || day > days_in_month(year, month)
+    {
+        return None;
+    }
+    Some(days_from_civil(year, month, day) as f64)
+}
+
+pub(crate) fn date_days_to_iso(days: f64) -> Option<String> {
+    if days.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !days.is_finite() {
+        return None;
+    }
+    let (year, month, day) = civil_from_days(days.floor() as i64);
+    Some(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+pub(crate) unsafe fn sexp_has_class(x: SEXP, class_name: &str) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return false;
+        }
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        (0..XLENGTH(class)).any(|i| elt_to_string(class, i) == class_name)
     }
 }
 
@@ -19394,6 +19473,88 @@ pub unsafe fn do_Sys_sleep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+unsafe fn set_single_class(x: SEXP, class_name: &str) {
+    unsafe {
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if class.is_null() {
+            return;
+        }
+        let _guard = protect(class);
+        let cstr = CString::new(class_name).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            SET_STRING_ELT(class, 0, charsxp);
+        }
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
+    }
+}
+
+/// R's `as.Date(x, origin)` — coerce ISO date strings or day counts to Date.
+pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        if sexp_has_class(x, "Date") && TYPEOF(x) == SEXPTYPE::REALSXP {
+            return x;
+        }
+
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _guard = protect(result);
+        let out = REAL(result);
+
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            for i in 0..n {
+                let value = STRING_ELT(x, i);
+                let days = if value == crate::sexp::globals::R_NaString() {
+                    NA_REAL
+                } else {
+                    let text = CStr::from_ptr(CHAR(value)).to_str().unwrap_or("");
+                    parse_iso_date_days(text).unwrap_or_else(|| {
+                        base_error("character string is not in a standard unambiguous format")
+                    })
+                };
+                *out.add(i as usize) = days;
+            }
+        } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
+            let origin = arg_by_name_or_position(args, &["origin"], 1);
+            if origin.is_null() || origin == R_NilValue() {
+                base_error("'origin' must be supplied");
+            }
+            let origin_days = parse_iso_date_days(&elt_to_string(origin, 0))
+                .unwrap_or_else(|| base_error("'origin' must be a character string"));
+            for i in 0..n {
+                let days = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    let v = *REAL(x).add(i as usize);
+                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        NA_REAL
+                    } else {
+                        origin_days + v.floor()
+                    }
+                } else {
+                    let v = *INTEGER(x).add(i as usize);
+                    if v == NA_INTEGER {
+                        NA_REAL
+                    } else {
+                        origin_days + f64::from(v)
+                    }
+                };
+                *out.add(i as usize) = days;
+            }
+        } else {
+            base_error("do not know how to convert 'x' to class \"Date\"");
+        }
+
+        set_single_class(result, "Date");
+        result
+    }
+}
+
 /// R's `Sys.Date()` — current date as REALSXP (days since epoch).
 pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -19403,21 +19564,7 @@ pub unsafe fn do_Sys_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             .unwrap_or_default();
         let days = (dur.as_secs() / 86400) as f64;
         let result = Rf_ScalarReal(days);
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !class.is_null() {
-            let _p2 = protect(class);
-            let cstr = CString::new("Date").unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let data = (*class).gengc_next_node as *mut SEXP;
-                *data.add(0) = charsxp;
-            }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class,
-            );
-        }
+        set_single_class(result, "Date");
         result
     }
 }

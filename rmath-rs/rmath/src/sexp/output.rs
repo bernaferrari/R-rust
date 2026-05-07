@@ -615,6 +615,27 @@ fn format_string_vector(x: Sexp<'_>) -> String {
     format!("[1] {}{}", vals.join(" "), suffix)
 }
 
+fn format_date_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    x.try_real_elt(i)
+        .ok()
+        .and_then(crate::mainutils::essentials::date_days_to_iso)
+        .map(|value| format!("\"{}\"", escape_printed_string(&value)))
+        .unwrap_or_else(|| "NA".to_string())
+}
+
+fn format_date_vector(x: Sexp<'_>) -> String {
+    if x.len() == 0 {
+        return "Date of length 0".to_string();
+    }
+    let vals: Vec<String> = (0..x.len().min(10))
+        .map(|i| format_date_element(x, i))
+        .collect();
+    let suffix = if x.len() > 10 { " ..." } else { "" };
+    format_named_atomic_vector(x, vals.clone())
+        .map(|output| format!("{output}{suffix}"))
+        .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
+}
+
 fn format_factor(x: Sexp<'_>) -> Option<String> {
     let levels = factor_levels(x)?;
     let vals: Vec<String> = x
@@ -891,6 +912,10 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
+            if has_class(x, "Date") {
+                emit(&format!("{}\n", format_date_vector(x)));
+                return;
+            }
             if x.len() == 1 {
                 emit(&format!("[1] {}\n", format_real_element(x, 0)));
             } else {
@@ -1024,6 +1049,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format!("{base}{}", format_regexpr_attributes(x))
         }
         SEXPTYPE::REALSXP => {
+            if has_class(x, "Date") {
+                return format_date_vector(x);
+            }
             if x.len() == 0 {
                 return "numeric(0)".to_string();
             }
