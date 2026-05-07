@@ -1,0 +1,27 @@
+p <- as.POSIXct("2020-02-03 04:05:06", tz = "UTC")
+one_day <- structure(1, units = "days", class = "difftime")
+two_hours <- structure(2, units = "hours", class = "difftime")
+missing_p <- structure(NA_real_, class = c("POSIXct", "POSIXt"), tzone = "UTC")
+
+print(p + 60)
+print(60 + p)
+print(p - 60)
+print(p + one_day)
+print(one_day + p)
+print(p - two_hours)
+
+delta <- p - as.POSIXct("2020-02-03 04:04:06", tz = "UTC")
+print(delta)
+print(class(delta))
+print(attr(delta, "units"))
+
+print(p - as.POSIXct("2020-02-03 04:04:36", tz = "UTC"))
+print(p - as.POSIXct("2020-02-03 03:05:06", tz = "UTC"))
+print(p - as.POSIXct("2020-02-02 04:05:06", tz = "UTC"))
+print(p - missing_p)
+print(attr(p - missing_p, "units"))
+
+print(tryCatch(p + p, error = function(e) conditionMessage(e)))
+print(tryCatch(2 - p, error = function(e) conditionMessage(e)))
+print(tryCatch(p * 2, error = function(e) conditionMessage(e)))
+print(tryCatch(p - structure(1, class = "foo"), error = function(e) conditionMessage(e)))

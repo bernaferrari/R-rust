@@ -1,0 +1,18 @@
+[1] "2020-02-03 04:06:06 UTC"
+[1] "2020-02-03 04:06:06 UTC"
+[1] "2020-02-03 04:04:06 UTC"
+[1] "2020-02-04 04:05:06 UTC"
+[1] "2020-02-04 04:05:06 UTC"
+[1] "2020-02-03 02:05:06 UTC"
+Time difference of 1 mins
+[1] "difftime"
+[1] "mins"
+Time difference of 30 secs
+Time difference of 1 hours
+Time difference of 1 days
+Time difference of NA secs
+[1] "secs"
+[1] "binary '+' is not defined for \"POSIXt\" objects"
+[1] "can only subtract from \"POSIXt\" objects"
+[1] "'*' not defined for \"POSIXt\" objects"
+[1] "can only subtract numbers from \"POSIXt\" objects"

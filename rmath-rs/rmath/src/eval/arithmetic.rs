@@ -10,7 +10,7 @@
 //! All binary operations support R's recycling rule: shorter vectors are
 //! recycled to match the length of the longer operand.
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, LENGTH, PRINTNAME, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF,
@@ -315,6 +315,121 @@ unsafe fn set_string_attribute(result: SEXP, name: &str, value: &str) {
     }
 }
 
+unsafe fn set_posixct_attributes_from(result: SEXP, source: SEXP) {
+    unsafe {
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if !class.is_null() {
+            let _class_guard = protect(class);
+            SET_STRING_ELT(class, 0, Rf_mkChar(c"POSIXct".as_ptr()));
+            SET_STRING_ELT(class, 1, Rf_mkChar(c"POSIXt".as_ptr()));
+            setAttrib(result, Rf_install(c"class".as_ptr()), class);
+        }
+
+        let tzone = getAttrib(source, Rf_install(c"tzone".as_ptr()));
+        if !tzone.is_null() && tzone != R_NilValue() {
+            setAttrib(
+                result,
+                Rf_install(c"tzone".as_ptr()),
+                crate::mainutils::duplicate::duplicate(tzone),
+            );
+        }
+    }
+}
+
+unsafe fn string_attribute_value(source: SEXP, name: &CStr) -> Option<String> {
+    unsafe {
+        let attr = getAttrib(source, Rf_install(name.as_ptr()));
+        let attr = Sexp::from_raw(attr)?;
+        if attr.typeof_() != SEXPTYPE::STRSXP || attr.len() == 0 {
+            return None;
+        }
+        let value = STRING_ELT(attr.as_raw(), 0);
+        if value.is_null() || value == R_NaString() {
+            return None;
+        }
+        CStr::from_ptr(CHAR(value))
+            .to_str()
+            .ok()
+            .map(str::to_string)
+    }
+}
+
+fn difftime_unit_scale(unit: &str) -> f64 {
+    match unit {
+        "secs" => 1.0,
+        "mins" => 60.0,
+        "hours" => 3_600.0,
+        "days" => 86_400.0,
+        "weeks" => 604_800.0,
+        _ => 1.0,
+    }
+}
+
+unsafe fn coerce_difftime_operand(
+    source: SEXP,
+    target_unit_seconds: f64,
+    round_result: bool,
+) -> SEXP {
+    unsafe {
+        if !crate::mainutils::essentials::sexp_has_class(source, "difftime") {
+            return source;
+        }
+        let unit = string_attribute_value(source, c"units").unwrap_or_else(|| "secs".to_string());
+        let scale = difftime_unit_scale(&unit) / target_unit_seconds;
+        let Some(input) = NumericVector::from_raw(source) else {
+            return source;
+        };
+        let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, input.len());
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        for i in 0..input.len() {
+            let value = input.real_at(i);
+            let converted = if value.to_bits() == R_NA_BIT_PATTERN {
+                NA_REAL
+            } else if round_result {
+                (value * scale).round_ties_even()
+            } else {
+                value * scale
+            };
+            result.set_real_elt(i, converted);
+        }
+        result_raw
+    }
+}
+
+unsafe fn has_class_attribute(source: SEXP) -> bool {
+    unsafe {
+        let class = getAttrib(source, Rf_install(c"class".as_ptr()));
+        !class.is_null() && class != R_NilValue()
+    }
+}
+
+fn auto_difftime_units(seconds: &[f64]) -> (&'static str, f64) {
+    let min_abs = seconds
+        .iter()
+        .copied()
+        .filter(|value| value.to_bits() != R_NA_BIT_PATTERN && value.is_finite())
+        .map(f64::abs)
+        .fold(f64::INFINITY, f64::min);
+    if !min_abs.is_finite() || min_abs < 60.0 {
+        ("secs", 1.0)
+    } else if min_abs < 3_600.0 {
+        ("mins", 60.0)
+    } else if min_abs < 86_400.0 {
+        ("hours", 3_600.0)
+    } else {
+        ("days", 86_400.0)
+    }
+}
+
+unsafe fn set_difftime_attributes(result: SEXP, units: &str) {
+    unsafe {
+        set_string_attribute(result, "units", units);
+        set_single_string_class(result, "difftime");
+    }
+}
+
 unsafe fn date_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
     unsafe {
         let a_is_date = crate::mainutils::essentials::sexp_has_class(a, "Date");
@@ -328,17 +443,27 @@ unsafe fn date_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
                 arithmetic_error("binary + is not defined for \"Date\" objects");
             }
             "+" if a_is_date || b_is_date => {
+                let a = coerce_difftime_operand(a, 86_400.0, true);
+                let b = coerce_difftime_operand(b, 86_400.0, true);
+                let _a_guard = protect(a);
+                let _b_guard = protect(b);
                 let result = real_binary(op, a, b);
                 set_single_string_class(result, "Date");
                 Some(result)
             }
             "-" if a_is_date && b_is_date => {
                 let result = real_binary(op, a, b);
-                set_string_attribute(result, "units", "days");
-                set_single_string_class(result, "difftime");
+                set_difftime_attributes(result, "days");
                 Some(result)
             }
             "-" if a_is_date => {
+                if has_class_attribute(b)
+                    && !crate::mainutils::essentials::sexp_has_class(b, "difftime")
+                {
+                    arithmetic_error("can only subtract numbers from \"Date\" objects");
+                }
+                let b = coerce_difftime_operand(b, 86_400.0, true);
+                let _b_guard = protect(b);
                 let result = real_binary(op, a, b);
                 set_single_string_class(result, "Date");
                 Some(result)
@@ -348,6 +473,70 @@ unsafe fn date_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
             }
             "*" | "/" | "^" | "%%" | "%/%" => {
                 arithmetic_error(format!("{op} not defined for \"Date\" objects"));
+            }
+            _ => None,
+        }
+    }
+}
+
+unsafe fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_is_posixct = crate::mainutils::essentials::sexp_has_class(a, "POSIXct");
+        let b_is_posixct = crate::mainutils::essentials::sexp_has_class(b, "POSIXct");
+        if !a_is_posixct && !b_is_posixct {
+            return None;
+        }
+
+        match op {
+            "+" if a_is_posixct && b_is_posixct => {
+                arithmetic_error("binary '+' is not defined for \"POSIXt\" objects");
+            }
+            "+" if a_is_posixct || b_is_posixct => {
+                let posixct_source = if a_is_posixct { a } else { b };
+                let a = coerce_difftime_operand(a, 1.0, false);
+                let b = coerce_difftime_operand(b, 1.0, false);
+                let _a_guard = protect(a);
+                let _b_guard = protect(b);
+                let result = real_binary(op, a, b);
+                set_posixct_attributes_from(result, posixct_source);
+                Some(result)
+            }
+            "-" if a_is_posixct && b_is_posixct => {
+                let result = real_binary(op, a, b);
+                let Some(result_sexp) = Sexp::from_raw(result) else {
+                    return Some(result);
+                };
+                let values: Vec<f64> = (0..result_sexp.len())
+                    .filter_map(|i| result_sexp.try_real_elt(i).ok())
+                    .collect();
+                let (units, scale) = auto_difftime_units(&values);
+                for i in 0..result_sexp.len() {
+                    if let Ok(value) = result_sexp.try_real_elt(i)
+                        && value.to_bits() != R_NA_BIT_PATTERN
+                    {
+                        result_sexp.set_real_elt(i, value / scale);
+                    }
+                }
+                set_difftime_attributes(result, units);
+                Some(result)
+            }
+            "-" if a_is_posixct => {
+                if has_class_attribute(b)
+                    && !crate::mainutils::essentials::sexp_has_class(b, "difftime")
+                {
+                    arithmetic_error("can only subtract numbers from \"POSIXt\" objects");
+                }
+                let b = coerce_difftime_operand(b, 1.0, false);
+                let _b_guard = protect(b);
+                let result = real_binary(op, a, b);
+                set_posixct_attributes_from(result, a);
+                Some(result)
+            }
+            "-" if b_is_posixct => {
+                arithmetic_error("can only subtract from \"POSIXt\" objects");
+            }
+            "*" | "/" | "^" | "%%" | "%/%" => {
+                arithmetic_error(format!("'{op}' not defined for \"POSIXt\" objects"));
             }
             _ => None,
         }
@@ -429,6 +618,9 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 let b = CAR(b_cdr);
                 if let Some(result) = date_binary_arithmetic(op_name, a, b) {
+                    return result;
+                }
+                if let Some(result) = posixct_binary_arithmetic(op_name, a, b) {
                     return result;
                 }
                 if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
