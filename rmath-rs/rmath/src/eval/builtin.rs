@@ -2035,6 +2035,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_Sys_timezone,
     },
     EvaluatedBuiltin {
+        name: "OlsonNames",
+        handler: crate::mainutils::essentials::do_OlsonNames,
+    },
+    EvaluatedBuiltin {
         name: "Sys.localeconv",
         handler: crate::mainutils::essentials::do_Sys_localeconv,
     },

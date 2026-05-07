@@ -4992,6 +4992,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Sys.sleep",
             "Sys.Date",
             "Sys.timezone",
+            "OlsonNames",
             "Sys.localeconv",
             "Sys.getlocale",
             "Sys.setlocale",
@@ -19461,6 +19462,67 @@ fn timezone_name_from_zoneinfo_path(path: &Path) -> Option<String> {
     None
 }
 
+/// R's `OlsonNames()` — known IANA timezone names from the system zoneinfo DB.
+pub unsafe fn do_OlsonNames(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let zones = olson_names();
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, zones.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for (i, zone) in zones.iter().enumerate() {
+            SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(zone.as_str()).unwrap_or_default().as_ptr()),
+            );
+        }
+        result
+    }
+}
+
+fn olson_names() -> Vec<String> {
+    let mut names = BTreeSet::new();
+    for root in ["/var/db/timezone/zoneinfo", "/usr/share/zoneinfo"] {
+        collect_olson_names(Path::new(root), Path::new(""), &mut names);
+    }
+    names.into_iter().collect()
+}
+
+fn collect_olson_names(root: &Path, relative: &Path, names: &mut BTreeSet<String>) {
+    let current = root.join(relative);
+    let Ok(entries) = std::fs::read_dir(current) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if skip_olson_component(&file_name) {
+            continue;
+        }
+
+        let next_relative = relative.join(file_name.as_ref());
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            collect_olson_names(root, &next_relative, names);
+        } else if file_type.is_file() && next_relative.components().count() > 1 {
+            names.insert(next_relative.to_string_lossy().replace('\\', "/"));
+        }
+    }
+}
+
+fn skip_olson_component(name: &str) -> bool {
+    let metadata_extension = Path::new(name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension, "tab" | "list" | "zi"));
+    name.starts_with('.') || matches!(name, "posix" | "right" | "SystemV") || metadata_extension
+}
+
 /// R's `Sys.localeconv()` — locale formatting conventions.
 pub unsafe fn do_Sys_localeconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -23849,6 +23911,14 @@ mod tests {
             timezone_name_from_zoneinfo_path(Path::new("/tmp/localtime")),
             None
         );
+    }
+
+    #[test]
+    fn skip_olson_metadata_components() {
+        assert!(skip_olson_component("zone.tab"));
+        assert!(skip_olson_component("posix"));
+        assert!(!skip_olson_component("Africa"));
+        assert!(!skip_olson_component("Sao_Paulo"));
     }
 
     #[test]
