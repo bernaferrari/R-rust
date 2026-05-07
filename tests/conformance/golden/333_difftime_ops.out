@@ -1,0 +1,13 @@
+Time difference of 2 mins
+[1] "difftime"
+[1] "mins"
+Time difference of 90 secs
+[1] "secs"
+Time difference of -1 mins
+Time difference of 2 mins
+Time difference of 2 mins
+Time difference of 0.5 mins
+[1] TRUE
+[1] FALSE
+[1] "second argument of / cannot be a \"difftime\" object"
+[1] "both arguments of * cannot be \"difftime\" objects"

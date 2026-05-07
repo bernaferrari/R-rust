@@ -1,0 +1,20 @@
+Sys.setenv(TZ = "UTC")
+
+p <- as.POSIXct("2020-02-03 00:01:00", tz = "UTC")
+q <- as.POSIXct("2020-02-03 00:00:00", tz = "UTC")
+dt <- p - q
+half <- structure(30, units = "secs", class = "difftime")
+
+print(dt + dt)
+print(class(dt + dt))
+print(attr(dt + dt, "units"))
+print(dt + half)
+print(attr(dt + half, "units"))
+print(-dt)
+print(dt * 2)
+print(2 * dt)
+print(dt / 2)
+print(dt > half)
+print(dt == half)
+print(tryCatch(dt / dt, error = function(e) conditionMessage(e)))
+print(tryCatch(dt * dt, error = function(e) conditionMessage(e)))

@@ -365,6 +365,10 @@ fn difftime_unit_scale(unit: &str) -> f64 {
     }
 }
 
+unsafe fn difftime_units(source: SEXP) -> String {
+    unsafe { string_attribute_value(source, c"units").unwrap_or_else(|| "secs".to_string()) }
+}
+
 unsafe fn coerce_difftime_operand(
     source: SEXP,
     target_unit_seconds: f64,
@@ -395,6 +399,13 @@ unsafe fn coerce_difftime_operand(
             result.set_real_elt(i, converted);
         }
         result_raw
+    }
+}
+
+unsafe fn coerce_difftime_to_units(source: SEXP, target_units: &str) -> SEXP {
+    unsafe {
+        let target_unit_seconds = difftime_unit_scale(target_units);
+        coerce_difftime_operand(source, target_unit_seconds, false)
     }
 }
 
@@ -433,6 +444,26 @@ unsafe fn coerce_character_comparison_operand(
             result.set_real_elt(i, parsed);
         }
         result_raw
+    }
+}
+
+unsafe fn difftime_binary_comparison(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_is_difftime = crate::mainutils::essentials::sexp_has_class(a, "difftime");
+        let b_is_difftime = crate::mainutils::essentials::sexp_has_class(b, "difftime");
+        if !a_is_difftime && !b_is_difftime {
+            return None;
+        }
+
+        if a_is_difftime && b_is_difftime {
+            let a = coerce_difftime_to_units(a, "secs");
+            let b = coerce_difftime_to_units(b, "secs");
+            let _a_guard = protect(a);
+            let _b_guard = protect(b);
+            return Some(binary_compare(op, a, b));
+        }
+
+        Some(binary_compare(op, a, b))
     }
 }
 
@@ -546,6 +577,60 @@ unsafe fn date_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
             }
             "*" | "/" | "^" | "%%" | "%/%" => {
                 arithmetic_error(format!("{op} not defined for \"Date\" objects"));
+            }
+            _ => None,
+        }
+    }
+}
+
+unsafe fn difftime_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_is_difftime = crate::mainutils::essentials::sexp_has_class(a, "difftime");
+        let b_is_difftime = crate::mainutils::essentials::sexp_has_class(b, "difftime");
+        if !a_is_difftime && !b_is_difftime {
+            return None;
+        }
+
+        match op {
+            "+" | "-" if a_is_difftime && b_is_difftime => {
+                let a_units = difftime_units(a);
+                let b_units = difftime_units(b);
+                let (a, b, result_units) = if a_units == b_units {
+                    (a, b, a_units)
+                } else {
+                    let a = coerce_difftime_to_units(a, "secs");
+                    let b = coerce_difftime_to_units(b, "secs");
+                    (a, b, "secs".to_string())
+                };
+                let _a_guard = protect(a);
+                let _b_guard = protect(b);
+                let result = real_binary(op, a, b);
+                set_difftime_attributes(result, &result_units);
+                Some(result)
+            }
+            "+" | "-" if a_is_difftime || b_is_difftime => {
+                let result = real_binary(op, a, b);
+                set_difftime_attributes(result, &difftime_units(if a_is_difftime { a } else { b }));
+                Some(result)
+            }
+            "*" if a_is_difftime && b_is_difftime => {
+                arithmetic_error("both arguments of * cannot be \"difftime\" objects");
+            }
+            "*" if a_is_difftime || b_is_difftime => {
+                let result = real_binary(op, a, b);
+                set_difftime_attributes(result, &difftime_units(if a_is_difftime { a } else { b }));
+                Some(result)
+            }
+            "/" if b_is_difftime => {
+                arithmetic_error("second argument of / cannot be a \"difftime\" object");
+            }
+            "/" if a_is_difftime => {
+                let result = real_binary(op, a, b);
+                set_difftime_attributes(result, &difftime_units(a));
+                Some(result)
+            }
+            "^" | "%%" | "%/%" => {
+                arithmetic_error(format!("'{op}' not defined for \"difftime\" objects"));
             }
             _ => None,
         }
@@ -682,7 +767,11 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if b_cdr.is_null() || b_cdr == R_NilValue() {
                     // Unary +/-
                     if op_name == "-" {
-                        return unary_minus(a);
+                        let result = unary_minus(a);
+                        if crate::mainutils::essentials::sexp_has_class(a, "difftime") {
+                            set_difftime_attributes(result, &difftime_units(a));
+                        }
+                        return result;
                     }
                     if op_name == "+" {
                         return a;
@@ -694,6 +783,9 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return result;
                 }
                 if let Some(result) = posixct_binary_arithmetic(op_name, a, b) {
+                    return result;
+                }
+                if let Some(result) = difftime_binary_arithmetic(op_name, a, b) {
                     return result;
                 }
                 if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
@@ -721,6 +813,9 @@ pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return result;
                 }
                 if let Some(result) = posixct_binary_comparison(op_name, a, b) {
+                    return result;
+                }
+                if let Some(result) = difftime_binary_comparison(op_name, a, b) {
                     return result;
                 }
                 if TYPEOF(a) == SEXPTYPE::STRSXP && TYPEOF(b) == SEXPTYPE::STRSXP {
