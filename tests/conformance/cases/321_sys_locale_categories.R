@@ -1,0 +1,7 @@
+print(is.character(Sys.getlocale()))
+print(length(Sys.getlocale()))
+print(nzchar(Sys.getlocale()))
+print(nzchar(Sys.getlocale("LC_TIME")))
+print(nzchar(Sys.getlocale("LC_NUMERIC")))
+print(nzchar(Sys.setlocale("LC_TIME")))
+print(tryCatch(Sys.getlocale("BAD"), error = function(e) conditionMessage(e)))

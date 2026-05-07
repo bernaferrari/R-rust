@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
+use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
@@ -19488,18 +19488,91 @@ pub unsafe fn do_Sys_localeconv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 /// R's `Sys.getlocale(category)` — get locale (simplified).
 pub unsafe fn do_Sys_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let s = CString::new("C").unwrap_or_default();
-        Rf_mkString(s.as_ptr())
+        let category = locale_category_from_arg(CAR(args));
+        locale_string_from_libc(category)
     }
 }
 
 /// R's `Sys.setlocale(category, locale)` — set locale (simplified).
 pub unsafe fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let _category = CAR(args);
-        let _locale = CAR(CDR(args));
-        let s = CString::new("C").unwrap_or_default();
-        Rf_mkString(s.as_ptr())
+        let category = locale_category_from_arg(CAR(args));
+        let locale_arg = CAR(CDR(args));
+        let locale = locale_string_arg(locale_arg);
+        let locale_ptr = match locale.as_ref() {
+            Some(locale) => locale.as_ptr(),
+            None => std::ptr::null(),
+        };
+        let result = libc::setlocale(category, locale_ptr);
+        if result.is_null() {
+            Rf_mkString(b"\0".as_ptr() as *const c_char)
+        } else {
+            Rf_mkString(result)
+        }
+    }
+}
+
+unsafe fn locale_category_from_arg(category: SEXP) -> c_int {
+    unsafe {
+        if category.is_null() || category == R_NilValue() {
+            return libc::LC_ALL;
+        }
+
+        match TYPEOF(category) {
+            t if t == SEXPTYPE::STRSXP => {
+                let name = elt_to_string(category, 0);
+                locale_category_from_name(&name)
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => match *INTEGER(category) {
+                1 => libc::LC_ALL,
+                2 => libc::LC_COLLATE,
+                3 => libc::LC_CTYPE,
+                4 => libc::LC_MONETARY,
+                5 => libc::LC_NUMERIC,
+                6 => libc::LC_TIME,
+                7 => libc::LC_MESSAGES,
+                _ => base_error("invalid 'category' argument"),
+            },
+            _ => base_error("invalid 'category' argument"),
+        }
+    }
+}
+
+fn locale_category_from_name(name: &str) -> c_int {
+    match name {
+        "LC_ALL" => libc::LC_ALL,
+        "LC_COLLATE" => libc::LC_COLLATE,
+        "LC_CTYPE" => libc::LC_CTYPE,
+        "LC_MONETARY" => libc::LC_MONETARY,
+        "LC_NUMERIC" => libc::LC_NUMERIC,
+        "LC_TIME" => libc::LC_TIME,
+        "LC_MESSAGES" => libc::LC_MESSAGES,
+        _ => base_error("invalid 'category' argument"),
+    }
+}
+
+unsafe fn locale_string_arg(locale: SEXP) -> Option<CString> {
+    unsafe {
+        if locale.is_null() || locale == R_NilValue() {
+            return None;
+        }
+        if TYPEOF(locale) != SEXPTYPE::STRSXP || XLENGTH(locale) == 0 {
+            base_error("invalid 'locale' argument");
+        }
+        CString::new(elt_to_string(locale, 0))
+            .map(Some)
+            .unwrap_or_else(|_| base_error("invalid 'locale' argument"))
+    }
+}
+
+unsafe fn locale_string_from_libc(category: c_int) -> SEXP {
+    unsafe {
+        let result = libc::setlocale(category, std::ptr::null());
+        if result.is_null() {
+            Rf_mkString(b"\0".as_ptr() as *const c_char)
+        } else {
+            Rf_mkString(result)
+        }
     }
 }
 
