@@ -19595,6 +19595,15 @@ pub unsafe fn do_as_Date(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 };
                 *out.add(i as usize) = days;
             }
+        } else if sexp_has_class(x, "POSIXct") && TYPEOF(x) == SEXPTYPE::REALSXP {
+            for i in 0..n {
+                let seconds = *REAL(x).add(i as usize);
+                *out.add(i as usize) = if seconds.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else {
+                    (seconds / 86_400.0).floor()
+                };
+            }
         } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(x) == SEXPTYPE::INTSXP {
             let origin = arg_by_name_or_position(args, &["origin"], 1);
             if origin.is_null() || origin == R_NilValue() {
