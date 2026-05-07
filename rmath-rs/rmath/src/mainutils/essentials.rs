@@ -13777,6 +13777,29 @@ pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "{nargs} arguments passed to 'quote' which requires 1"
             ));
         }
+        let tag = TAG(args);
+        if !tag.is_null() && tag != R_NilValue() {
+            let name = if TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                let printname = PRINTNAME(tag);
+                if printname.is_null() {
+                    String::new()
+                } else {
+                    let chars = CHAR(printname);
+                    if chars.is_null() {
+                        String::new()
+                    } else {
+                        CStr::from_ptr(chars).to_string_lossy().into_owned()
+                    }
+                }
+            } else {
+                String::new()
+            };
+            if name != "expr" {
+                base_error(format!(
+                    "supplied argument name '{name}' does not match 'expr'"
+                ));
+            }
+        }
         let val = CAR(args);
         if val.is_null() || val == R_NilValue() {
             return R_NilValue();
