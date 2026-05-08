@@ -12,7 +12,9 @@ use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
     Rf_mkString,
 };
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{
+    FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE,
+};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -549,13 +551,21 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
 
-        // Use REALSXP for result (can handle all types)
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let result_type = if TYPEOF(yes) == SEXPTYPE::STRSXP || TYPEOF(no) == SEXPTYPE::STRSXP {
+            SEXPTYPE::STRSXP
+        } else if TYPEOF(yes) == SEXPTYPE::REALSXP || TYPEOF(no) == SEXPTYPE::REALSXP {
+            SEXPTYPE::REALSXP
+        } else if TYPEOF(yes) == SEXPTYPE::LGLSXP && TYPEOF(no) == SEXPTYPE::LGLSXP {
+            SEXPTYPE::LGLSXP
+        } else {
+            SEXPTYPE::INTSXP
+        };
+
+        let result = Rf_allocVector3(result_type, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
         let test_n = XLENGTH(test);
         let yes_n = XLENGTH(yes);
         let no_n = XLENGTH(no);
@@ -572,8 +582,8 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             } else {
                 0
             };
-            if test_value == NA_INTEGER {
-                *dst.add(i as usize) = NA_REAL;
+            if test_value == NA_LOGICAL {
+                set_ifelse_na(result, result_type, i);
                 continue;
             }
             let cond = test_value != 0;
@@ -582,17 +592,138 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let src_n = if cond { yes_n } else { no_n };
             let src_idx = if src_n == 0 { 0 } else { i % src_n };
 
-            let val = if TYPEOF(src) == SEXPTYPE::REALSXP {
-                *REAL(src).add(src_idx as usize)
-            } else if TYPEOF(src) == SEXPTYPE::INTSXP || TYPEOF(src) == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(src).add(src_idx as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            *dst.add(i as usize) = val;
+            set_ifelse_value(result, result_type, i, src, src_idx);
         }
         result
+    }
+}
+
+unsafe fn set_ifelse_na(result: SEXP, result_type: SEXPTYPE, index: R_xlen_t) {
+    unsafe {
+        match result_type {
+            SEXPTYPE::STRSXP => {
+                SET_STRING_ELT(result, index, crate::sexp::globals::R_NaString());
+            }
+            SEXPTYPE::REALSXP => *REAL(result).add(index as usize) = NA_REAL,
+            SEXPTYPE::LGLSXP => *LOGICAL(result).add(index as usize) = NA_LOGICAL,
+            SEXPTYPE::INTSXP => *INTEGER(result).add(index as usize) = NA_INTEGER,
+            _ => {}
+        }
+    }
+}
+
+unsafe fn set_ifelse_value(
+    result: SEXP,
+    result_type: SEXPTYPE,
+    out_index: R_xlen_t,
+    src: SEXP,
+    src_index: R_xlen_t,
+) {
+    unsafe {
+        match result_type {
+            SEXPTYPE::STRSXP => {
+                let value = if TYPEOF(src) == SEXPTYPE::STRSXP {
+                    STRING_ELT(src, src_index)
+                } else {
+                    let text = elt_to_string(src, src_index);
+                    if text == "NA" && source_element_is_na(src, src_index) {
+                        crate::sexp::globals::R_NaString()
+                    } else {
+                        let c_text = CString::new(text).unwrap_or_default();
+                        Rf_mkChar(c_text.as_ptr())
+                    }
+                };
+                SET_STRING_ELT(result, out_index, value);
+            }
+            SEXPTYPE::REALSXP => {
+                *REAL(result).add(out_index as usize) = source_element_as_real(src, src_index);
+            }
+            SEXPTYPE::LGLSXP => {
+                *LOGICAL(result).add(out_index as usize) =
+                    source_element_as_logical(src, src_index);
+            }
+            SEXPTYPE::INTSXP => {
+                *INTEGER(result).add(out_index as usize) =
+                    source_element_as_integer(src, src_index);
+            }
+            _ => {}
+        }
+    }
+}
+
+unsafe fn source_element_is_na(src: SEXP, index: R_xlen_t) -> bool {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                *INTEGER(src).add(index as usize) == NA_INTEGER
+            }
+            t if t == SEXPTYPE::REALSXP => ISNAN(*REAL(src).add(index as usize)),
+            t if t == SEXPTYPE::STRSXP => {
+                STRING_ELT(src, index) == crate::sexp::globals::R_NaString()
+            }
+            _ => true,
+        }
+    }
+}
+
+unsafe fn source_element_as_real(src: SEXP, index: R_xlen_t) -> f64 {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::REALSXP => *REAL(src).add(index as usize),
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                let value = *INTEGER(src).add(index as usize);
+                if value == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    value as f64
+                }
+            }
+            _ => NA_REAL,
+        }
+    }
+}
+
+unsafe fn source_element_as_integer(src: SEXP, index: R_xlen_t) -> i32 {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                *INTEGER(src).add(index as usize)
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let value = *REAL(src).add(index as usize);
+                if ISNAN(value) {
+                    NA_INTEGER
+                } else {
+                    value as i32
+                }
+            }
+            _ => NA_INTEGER,
+        }
+    }
+}
+
+unsafe fn source_element_as_logical(src: SEXP, index: R_xlen_t) -> i32 {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::LGLSXP => *LOGICAL(src).add(index as usize),
+            t if t == SEXPTYPE::INTSXP => {
+                let value = *INTEGER(src).add(index as usize);
+                if value == NA_INTEGER {
+                    NA_LOGICAL
+                } else {
+                    (value != 0) as i32
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let value = *REAL(src).add(index as usize);
+                if ISNAN(value) {
+                    NA_LOGICAL
+                } else {
+                    (value != 0.0) as i32
+                }
+            }
+            _ => NA_LOGICAL,
+        }
     }
 }
 

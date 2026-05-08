@@ -20,8 +20,8 @@ use crate::sexp::constructors::{
 };
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP,
-    SEXPTYPE, TRUE,
+    FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex,
+    SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
@@ -10210,79 +10210,202 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
-/// R's `sort(x, decreasing)` — sort a vector.
+/// R's `sort(x, decreasing, na.last)` — sort an atomic vector.
 pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let dec_arg = CAR(CDR(args));
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
 
-        let decreasing = if dec_arg.is_null() || dec_arg == R_NilValue() {
-            false
-        } else {
-            TYPEOF(dec_arg) == SEXPTYPE::LGLSXP && *LOGICAL(dec_arg) != 0
-        };
+        let decreasing = sort_logical_arg(args, &["decreasing"], 1).unwrap_or(false);
+        let na_placement = sort_na_placement(args);
 
         let t = TYPEOF(x);
         let n = XLENGTH(x);
-        let result = Rf_allocVector3(t, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        // Copy and sort
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let mut vals: Vec<i32> = Vec::with_capacity(n as usize);
+            let mut na_count = 0usize;
             for i in 0..n {
-                vals.push(*INTEGER(x).add(i as usize));
+                let value = *INTEGER(x).add(i as usize);
+                if value == NA_INTEGER {
+                    na_count += 1;
+                } else {
+                    vals.push(value);
+                }
             }
             if decreasing {
                 vals.sort_by(|a, b| b.cmp(a));
             } else {
                 vals.sort_unstable();
             }
-            let dst = INTEGER(result);
-            for (i, v) in vals.iter().enumerate() {
-                *dst.add(i) = *v;
+            let output_len = sorted_len(vals.len(), na_count, na_placement);
+            let result = Rf_allocVector3(t, output_len as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
             }
+            let _result_guard = protect(result);
+            let dst = INTEGER(result);
+            let mut out = 0usize;
+            if na_placement == SortNaPlacement::First {
+                for _ in 0..na_count {
+                    *dst.add(out) = NA_INTEGER;
+                    out += 1;
+                }
+            }
+            for value in vals {
+                *dst.add(out) = value;
+                out += 1;
+            }
+            if na_placement == SortNaPlacement::Last {
+                for _ in 0..na_count {
+                    *dst.add(out) = NA_INTEGER;
+                    out += 1;
+                }
+            }
+            result
         } else if t == SEXPTYPE::REALSXP {
             let mut vals: Vec<f64> = Vec::with_capacity(n as usize);
+            let mut na_count = 0usize;
             for i in 0..n {
-                vals.push(*REAL(x).add(i as usize));
+                let value = *REAL(x).add(i as usize);
+                if ISNAN(value) {
+                    na_count += 1;
+                } else {
+                    vals.push(value);
+                }
             }
             vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             if decreasing {
                 vals.reverse();
             }
-            let dst = REAL(result);
-            for (i, v) in vals.iter().enumerate() {
-                *dst.add(i) = *v;
+            let output_len = sorted_len(vals.len(), na_count, na_placement);
+            let result = Rf_allocVector3(t, output_len as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
             }
+            let _result_guard = protect(result);
+            let dst = REAL(result);
+            let mut out = 0usize;
+            if na_placement == SortNaPlacement::First {
+                for _ in 0..na_count {
+                    *dst.add(out) = NA_REAL;
+                    out += 1;
+                }
+            }
+            for value in vals {
+                *dst.add(out) = value;
+                out += 1;
+            }
+            if na_placement == SortNaPlacement::Last {
+                for _ in 0..na_count {
+                    *dst.add(out) = NA_REAL;
+                    out += 1;
+                }
+            }
+            result
         } else if t == SEXPTYPE::STRSXP {
             let mut vals: Vec<SEXP> = Vec::with_capacity(n as usize);
+            let mut na_count = 0usize;
             for i in 0..n {
-                vals.push(STRING_ELT(x, i));
+                let value = STRING_ELT(x, i);
+                if charsxp_is_na(value) {
+                    na_count += 1;
+                } else {
+                    vals.push(value);
+                }
             }
             vals.sort_by(|a, b| compare_charsxp_for_sort(*a, *b));
             if decreasing {
                 vals.reverse();
             }
-            for (i, value) in vals.iter().enumerate() {
-                SET_STRING_ELT(result, i as R_xlen_t, *value);
+            let output_len = sorted_len(vals.len(), na_count, na_placement);
+            let result = Rf_allocVector3(t, output_len as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
             }
+            let _result_guard = protect(result);
+            let mut out = 0usize;
+            if na_placement == SortNaPlacement::First {
+                for _ in 0..na_count {
+                    SET_STRING_ELT(result, out as R_xlen_t, crate::sexp::globals::R_NaString());
+                    out += 1;
+                }
+            }
+            for value in vals {
+                SET_STRING_ELT(result, out as R_xlen_t, value);
+                out += 1;
+            }
+            if na_placement == SortNaPlacement::Last {
+                for _ in 0..na_count {
+                    SET_STRING_ELT(result, out as R_xlen_t, crate::sexp::globals::R_NaString());
+                    out += 1;
+                }
+            }
+            result
+        } else {
+            let result = Rf_allocVector3(t, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            result
         }
-
-        result
     }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum SortNaPlacement {
+    Remove,
+    Last,
+    First,
+}
+
+fn sorted_len(value_count: usize, na_count: usize, na_placement: SortNaPlacement) -> usize {
+    value_count
+        + match na_placement {
+            SortNaPlacement::Remove => 0,
+            SortNaPlacement::Last | SortNaPlacement::First => na_count,
+        }
+}
+
+fn sort_na_placement(args: SEXP) -> SortNaPlacement {
+    match sort_logical_arg(args, &["na.last"], 2) {
+        Some(true) => SortNaPlacement::Last,
+        Some(false) => SortNaPlacement::First,
+        None => SortNaPlacement::Remove,
+    }
+}
+
+fn sort_logical_arg(args: SEXP, names: &[&str], position: usize) -> Option<bool> {
+    unsafe {
+        let arg = arg_by_name_or_position(args, names, position);
+        if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
+            return None;
+        }
+        let raw = if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
+            *INTEGER(arg)
+        } else if TYPEOF(arg) == SEXPTYPE::REALSXP {
+            let value = *REAL(arg);
+            if ISNAN(value) {
+                NA_LOGICAL
+            } else {
+                value as c_int
+            }
+        } else {
+            return None;
+        };
+        (raw != NA_LOGICAL).then_some(raw != 0)
+    }
+}
+
+fn charsxp_is_na(value: SEXP) -> bool {
+    unsafe { value.is_null() || value == crate::sexp::globals::R_NaString() }
 }
 
 fn compare_charsxp_for_sort(a: SEXP, b: SEXP) -> std::cmp::Ordering {
     unsafe {
-        let a_is_na = a.is_null() || a == crate::sexp::globals::R_NaString();
-        let b_is_na = b.is_null() || b == crate::sexp::globals::R_NaString();
+        let a_is_na = charsxp_is_na(a);
+        let b_is_na = charsxp_is_na(b);
         match (a_is_na, b_is_na) {
             (true, true) => return std::cmp::Ordering::Equal,
             (true, false) => return std::cmp::Ordering::Greater,

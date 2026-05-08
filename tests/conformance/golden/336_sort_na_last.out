@@ -1,0 +1,8 @@
+a|b
+a|b|NA
+NA|a|b
+b|a|NA
+1|2
+1|2|NA
+NA|1|2
+FALSE|TRUE|NA
