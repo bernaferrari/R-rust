@@ -10261,9 +10261,47 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             for (i, v) in vals.iter().enumerate() {
                 *dst.add(i) = *v;
             }
+        } else if t == SEXPTYPE::STRSXP {
+            let mut vals: Vec<SEXP> = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                vals.push(STRING_ELT(x, i));
+            }
+            vals.sort_by(|a, b| compare_charsxp_for_sort(*a, *b));
+            if decreasing {
+                vals.reverse();
+            }
+            for (i, value) in vals.iter().enumerate() {
+                SET_STRING_ELT(result, i as R_xlen_t, *value);
+            }
         }
 
         result
+    }
+}
+
+fn compare_charsxp_for_sort(a: SEXP, b: SEXP) -> std::cmp::Ordering {
+    unsafe {
+        let a_is_na = a.is_null() || a == crate::sexp::globals::R_NaString();
+        let b_is_na = b.is_null() || b == crate::sexp::globals::R_NaString();
+        match (a_is_na, b_is_na) {
+            (true, true) => return std::cmp::Ordering::Equal,
+            (true, false) => return std::cmp::Ordering::Greater,
+            (false, true) => return std::cmp::Ordering::Less,
+            (false, false) => {}
+        }
+        let a_ptr = CHAR(a);
+        let b_ptr = CHAR(b);
+        let a_text = if a_ptr.is_null() {
+            ""
+        } else {
+            std::ffi::CStr::from_ptr(a_ptr).to_str().unwrap_or("")
+        };
+        let b_text = if b_ptr.is_null() {
+            ""
+        } else {
+            std::ffi::CStr::from_ptr(b_ptr).to_str().unwrap_or("")
+        };
+        a_text.cmp(b_text)
     }
 }
 
