@@ -16,13 +16,13 @@
 
 use crate::sexp::accessors::{
     CAD5R, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
-    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
     R_TspSymbol, getAttrib, setAttrib,
 };
-use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
+use crate::sexp::constructors::{Rf_allocList, Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue, R_UnboundValue};
@@ -371,12 +371,44 @@ fn InStringAscii(reader: &mut impl BufRead) -> io::Result<Option<String>> {
 
 unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
     unsafe {
+        if value.is_null() {
+            OutIntegerAscii(writer, SEXPTYPE::NILSXP.as_c_int())?;
+            OutNewlineAscii(writer)?;
+            return write_standard_attrs(writer, R_NilValue());
+        }
         let sexptype = TYPEOF(value);
         OutIntegerAscii(writer, sexptype)?;
         OutNewlineAscii(writer)?;
 
         match SEXPTYPE::from(sexptype) {
             SEXPTYPE::NILSXP => {
+                write_standard_attrs(writer, value)?;
+                Ok(())
+            }
+            SEXPTYPE::SYMSXP => {
+                let name = PRINTNAME(value);
+                if name.is_null() || name == R_NilValue() {
+                    OutStringAscii(writer, "")?;
+                } else {
+                    let text = std::ffi::CStr::from_ptr(CHAR(name))
+                        .to_str()
+                        .map_err(io::Error::other)?;
+                    OutStringAscii(writer, text)?;
+                }
+                OutNewlineAscii(writer)?;
+                write_standard_attrs(writer, value)?;
+                Ok(())
+            }
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
+                let len = pairlist_length(value);
+                OutIntegerAscii(writer, len)?;
+                OutNewlineAscii(writer)?;
+                let mut current = value;
+                while !current.is_null() && current != R_NilValue() {
+                    write_saved_object(writer, TAG(current))?;
+                    write_saved_object(writer, CAR(current))?;
+                    current = CDR(current);
+                }
                 write_standard_attrs(writer, value)?;
                 Ok(())
             }
@@ -470,6 +502,18 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 format!("unsupported saved object type {sexptype}"),
             )),
         }
+    }
+}
+
+unsafe fn pairlist_length(value: SEXP) -> c_int {
+    unsafe {
+        let mut len = 0;
+        let mut current = value;
+        while !current.is_null() && current != R_NilValue() {
+            len += 1;
+            current = CDR(current);
+        }
+        len
     }
 }
 
@@ -669,6 +713,28 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
         let sexptype = InIntegerAscii(reader)?;
         let value = match SEXPTYPE::from(sexptype) {
             SEXPTYPE::NILSXP => Ok(R_NilValue()),
+            SEXPTYPE::SYMSXP => {
+                let name = InStringAscii(reader)?.unwrap_or_default();
+                let cstr = std::ffi::CString::new(name).map_err(io::Error::other)?;
+                Ok(Rf_install(cstr.as_ptr()))
+            }
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocList(len);
+                let _guard = protect(value);
+                let mut current = value;
+                for _ in 0..len {
+                    if SEXPTYPE::from(sexptype) == SEXPTYPE::LANGSXP {
+                        (*current).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                    }
+                    let tag = read_saved_object(reader)?;
+                    let car = read_saved_object(reader)?;
+                    SETTAG(current, tag);
+                    SETCAR(current, car);
+                    current = CDR(current);
+                }
+                Ok(value)
+            }
             SEXPTYPE::LGLSXP => {
                 let len = InIntegerAscii(reader)?;
                 let value = Rf_allocVector3(SEXPTYPE::LGLSXP, len as R_xlen_t);

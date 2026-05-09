@@ -1,4 +1,5 @@
 expr
-a|b|c|d
+a|b|c|d|e|f
 expression
-integer|character|logical|double
+integer|character|logical|double|language|language
+1 + 2|quote(foo(bar = 3))
