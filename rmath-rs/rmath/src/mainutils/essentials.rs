@@ -5013,6 +5013,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "char.expand",
             "type.convert",
             "as.environment",
+            "pos.to.env",
             "sort.list",
             "match.fun",
             "as.integer",
@@ -25663,6 +25664,40 @@ pub unsafe fn do_as_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         }
         // Simplified: return global env
         crate::sexp::globals::R_GlobalEnv()
+    }
+}
+
+/// R's `pos.to.env(pos)` — map a search path position to an environment.
+pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pos = integer_arg_by_name_or_position(args, "pos", 0).unwrap_or(NA_INTEGER);
+        if pos == 1 {
+            return crate::sexp::globals::R_GlobalEnv();
+        }
+        let search_len = search_path_len();
+        if pos == search_len {
+            return crate::sexp::globals::R_BaseEnv();
+        }
+        std::panic::panic_any(RError {
+            message: "invalid 'pos' argument".to_string(),
+        });
+    }
+}
+
+unsafe fn search_path_len() -> c_int {
+    unsafe {
+        let global = crate::sexp::globals::R_GlobalEnv();
+        let base = crate::sexp::globals::R_BaseEnv();
+        if global.is_null() || base.is_null() {
+            return 0;
+        }
+        let mut len = 2;
+        let mut env = crate::sexp::accessors::ENCLOS(global);
+        while !env.is_null() && env != base {
+            len += 1;
+            env = crate::sexp::accessors::ENCLOS(env);
+        }
+        len
     }
 }
 

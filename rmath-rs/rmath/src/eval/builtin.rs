@@ -2399,6 +2399,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_environment,
     },
     EvaluatedBuiltin {
+        name: "pos.to.env",
+        handler: crate::mainutils::essentials::do_pos_to_env,
+    },
+    EvaluatedBuiltin {
         name: "sort.list",
         handler: crate::mainutils::essentials::do_sort_list,
     },
