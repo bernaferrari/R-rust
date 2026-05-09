@@ -229,6 +229,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_namespace_get,
         restore_visibility_always: false,
     },
+    UnevaluatedBuiltin {
+        name: "~",
+        handler: crate::mainutils::names::do_tilde,
+        restore_visibility_always: false,
+    },
 ];
 
 #[derive(Clone, Copy)]

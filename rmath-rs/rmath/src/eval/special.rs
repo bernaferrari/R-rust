@@ -76,6 +76,7 @@ unsafe fn dispatch_special_by_name(
             "invisible" => do_invisible(CDR(call), rho),
             "on.exit" => do_on_exit_from_args(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
+            "~" => crate::mainutils::names::do_tilde(call, op, args, rho),
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
             _ => unimplemented_special_form(name),
         }

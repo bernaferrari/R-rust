@@ -728,6 +728,16 @@ impl<'arena> Parser<'arena> {
 
     /// tilde: or ('~' or)*
     fn parse_tilde(&mut self) -> Result<SEXP, ParseError> {
+        if self.peek() == &Token::Tilde {
+            self.advance();
+            self.skip_newlines();
+            let right = self.parse_or()?;
+            unsafe {
+                let op = Rf_install(c"~".as_ptr());
+                return Ok(self.lang2(op, right));
+            }
+        }
+
         let mut left = self.parse_or()?;
         loop {
             if self.peek() == &Token::Tilde {
