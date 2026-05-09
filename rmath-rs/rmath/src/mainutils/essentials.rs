@@ -21245,14 +21245,15 @@ unsafe fn named_empty_list() -> SEXP {
 pub unsafe fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let formula = CAR(args);
-        if let Some(result) = xtabs_one_sided_vector(formula, rho) {
+        let data = CAR(CDR(args));
+        if let Some(result) = xtabs_one_sided_vector(formula, data, rho) {
             return result;
         }
         Rf_allocVector3(SEXPTYPE::INTSXP, 0)
     }
 }
 
-unsafe fn xtabs_one_sided_vector(formula: SEXP, rho: SEXP) -> Option<SEXP> {
+unsafe fn xtabs_one_sided_vector(formula: SEXP, data: SEXP, rho: SEXP) -> Option<SEXP> {
     unsafe {
         if formula.is_null() || formula == R_NilValue() || TYPEOF(formula) != SEXPTYPE::LANGSXP {
             return None;
@@ -21264,7 +21265,7 @@ unsafe fn xtabs_one_sided_vector(formula: SEXP, rho: SEXP) -> Option<SEXP> {
         if rhs.is_null() || rhs == R_NilValue() {
             return None;
         }
-        let values = crate::eval::eval::Rf_eval(rhs, rho);
+        let values = xtabs_resolve_rhs(rhs, data, rho);
         if values.is_null() || values == R_NilValue() {
             return None;
         }
@@ -21354,6 +21355,38 @@ unsafe fn xtabs_one_sided_vector(formula: SEXP, rho: SEXP) -> Option<SEXP> {
             );
         }
         Some(result)
+    }
+}
+
+unsafe fn xtabs_resolve_rhs(rhs: SEXP, data: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if !data.is_null() && data != R_NilValue() && TYPEOF(rhs) == SEXPTYPE::SYMSXP {
+            if let Some(name) = symbol_name(rhs) {
+                if let Some(column) = list_element_by_name(data, &name) {
+                    return column;
+                }
+            }
+        }
+        crate::eval::eval::Rf_eval(rhs, rho)
+    }
+}
+
+unsafe fn list_element_by_name(list: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        if list.is_null() || list == R_NilValue() || TYPEOF(list) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        for i in 0..XLENGTH(list) {
+            if string_at_or_empty(names, i) == name {
+                return Some(VECTOR_ELT(list, i));
+            }
+        }
+        None
     }
 }
 
