@@ -889,6 +889,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_class_get,
     },
     EvaluatedBuiltin {
+        name: ".class2",
+        handler: crate::mainutils::essentials::do_class2,
+    },
+    EvaluatedBuiltin {
         name: "list",
         handler: crate::mainutils::essentials::do_list,
     },
@@ -2023,6 +2027,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "gc",
         handler: crate::mainutils::essentials::do_gc,
+    },
+    EvaluatedBuiltin {
+        name: "gc.time",
+        handler: crate::mainutils::essentials::do_gc_time,
     },
     EvaluatedBuiltin {
         name: "gcinfo",

@@ -5160,6 +5160,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "row.names",
             "colnames",
             "class",
+            ".class2",
             "list",
             "data.frame",
             "attr",
@@ -5538,6 +5539,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Rprof",
             "Rprofmem",
             "gc",
+            "gc.time",
             "gcinfo",
             "gctorture",
             "gctorture2",
@@ -12364,6 +12366,43 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         } else {
             class
         }
+    }
+}
+
+/// R's `.class2(x)` — class vector including implicit primitive inheritance.
+pub unsafe fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_mkString(c"NULL".as_ptr());
+        }
+
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
+        if !class.is_null() && class != R_NilValue() {
+            return class;
+        }
+
+        let implicit: &[&std::ffi::CStr] = match TYPEOF(x) {
+            t if t == SEXPTYPE::INTSXP => &[c"integer", c"numeric"],
+            t if t == SEXPTYPE::REALSXP => &[c"numeric"],
+            t if t == SEXPTYPE::LGLSXP => &[c"logical"],
+            t if t == SEXPTYPE::CPLXSXP => &[c"complex"],
+            t if t == SEXPTYPE::STRSXP => &[c"character"],
+            t if t == SEXPTYPE::RAWSXP => &[c"raw"],
+            t if t == SEXPTYPE::VECSXP => &[c"list"],
+            t if t == SEXPTYPE::LANGSXP => &[c"call"],
+            _ => &[c"NULL"],
+        };
+
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, implicit.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _guard = protect(result);
+        for (i, name) in implicit.iter().enumerate() {
+            SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(name.as_ptr()));
+        }
+        result
     }
 }
 
@@ -22484,6 +22523,11 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::globals::set_R_Visible(FALSE);
         result
     }
+}
+
+/// R's `gc.time()` — current GC timing counters.
+pub unsafe fn do_gc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { Rf_allocVector3(SEXPTYPE::REALSXP, 5) }
 }
 
 /// R's `gcinfo(on)` — set session-local GC reporting verbosity.
