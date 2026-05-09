@@ -17133,50 +17133,128 @@ pub unsafe fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 
 /// R's `na.omit(x)` — returns x with rows containing any NA removed (simplified: works on vectors).
 pub unsafe fn do_na_omit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { na_omit_atomic(args, "omit") }
+}
+
+/// R's `na.exclude(x)` — like na.omit but remembers excluded rows. Simplified: same as na.omit.
+pub unsafe fn do_na_exclude(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { na_omit_atomic(args, "exclude") }
+}
+
+unsafe fn na_omit_atomic(args: SEXP, action_class: &str) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
         let t = TYPEOF(x);
+        let sexptype = SEXPTYPE(t);
+        if !matches!(
+            sexptype,
+            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::STRSXP
+        ) {
+            return x;
+        }
+
         let n = XLENGTH(x);
-        // Find non-NA indices
         let mut keep: Vec<R_xlen_t> = Vec::new();
+        let mut dropped: Vec<R_xlen_t> = Vec::new();
         for i in 0..n {
-            let na = if t == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(x).add(i as usize) == NA_INTEGER
+            if atomic_value_is_missing(x, i) {
+                dropped.push(i);
             } else {
-                false
-            };
-            if !na {
                 keep.push(i);
             }
         }
+
         let result = Rf_allocVector3(t, keep.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = protect(result);
-        if t == SEXPTYPE::REALSXP {
-            let dst = REAL(result);
-            for (j, &i) in keep.iter().enumerate() {
-                *dst.add(j) = *REAL(x).add(i as usize);
-            }
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let dst = INTEGER(result);
-            for (j, &i) in keep.iter().enumerate() {
-                *dst.add(j) = *INTEGER(x).add(i as usize);
-            }
+        let _result_guard = protect(result);
+        for (out, &src) in keep.iter().enumerate() {
+            copy_vector_element(result, out as R_xlen_t, x, src, sexptype);
+        }
+        set_selected_names_attribute(x, result, &keep);
+        if !dropped.is_empty() {
+            set_na_action_attribute(x, result, &dropped, action_class);
         }
         result
     }
 }
 
-/// R's `na.exclude(x)` — like na.omit but remembers excluded rows. Simplified: same as na.omit.
-pub unsafe fn do_na_exclude(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_na_omit(_call, _op, args, _rho) }
+unsafe fn set_selected_names_attribute(x: SEXP, result: SEXP, indices: &[R_xlen_t]) {
+    unsafe {
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return;
+        }
+        let selected = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
+        if selected.is_null() {
+            return;
+        }
+        let _selected_guard = protect(selected);
+        for (out, &src) in indices.iter().enumerate() {
+            SET_STRING_ELT(selected, out as R_xlen_t, STRING_ELT(names, src));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            selected,
+        );
+    }
+}
+
+unsafe fn set_na_action_attribute(
+    source: SEXP,
+    result: SEXP,
+    dropped: &[R_xlen_t],
+    action_class: &str,
+) {
+    unsafe {
+        let action = Rf_allocVector3(SEXPTYPE::INTSXP, dropped.len() as R_xlen_t);
+        if action.is_null() {
+            return;
+        }
+        let _action_guard = protect(action);
+        for (out, &src) in dropped.iter().enumerate() {
+            *INTEGER(action).add(out) = (src + 1) as c_int;
+        }
+
+        let names =
+            crate::sexp::attrib_core::getAttrib(source, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            let action_names = Rf_allocVector3(SEXPTYPE::STRSXP, dropped.len() as R_xlen_t);
+            if !action_names.is_null() {
+                let _names_guard = protect(action_names);
+                for (out, &src) in dropped.iter().enumerate() {
+                    SET_STRING_ELT(action_names, out as R_xlen_t, STRING_ELT(names, src));
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    action,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    action_names,
+                );
+            }
+        }
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if !class.is_null() {
+            let _class_guard = protect(class);
+            SET_STRING_ELT(
+                class,
+                0,
+                Rf_mkChar(CString::new(action_class).unwrap_or_default().as_ptr()),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                action,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"na.action".as_ptr()), action);
+    }
 }
 
 /// R's `is_complete(x)` — logical vector of complete cases for a single vector.
