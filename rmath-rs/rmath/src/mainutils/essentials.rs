@@ -5655,6 +5655,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "droplevels",
             "factor",
             "ordered",
+            "gl",
             "addNA",
             "is.factor",
             "is.ordered",
@@ -22875,6 +22876,89 @@ pub unsafe fn do_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             set_ordered_factor_class(result);
         }
         result
+    }
+}
+
+/// R's `gl(n, k, length = n*k, labels = seq_len(n), ordered = FALSE)`.
+pub unsafe fn do_gl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n_arg = arg_by_name_or_position(args, &["n"], 0);
+        let k_arg = arg_by_name_or_position(args, &["k"], 1);
+        let n = gl_nonnegative_count(n_arg, "argument must be coercible to non-negative integer");
+        let k = gl_nonnegative_count(k_arg, "invalid 'times' value");
+        let default_len = n.saturating_mul(k);
+        let length_arg = arg_by_name_or_position(args, &["length"], 2);
+        let out_len = if length_arg.is_null() || length_arg == R_NilValue() {
+            default_len
+        } else {
+            gl_nonnegative_count(length_arg, "invalid 'length.out' value")
+        };
+
+        let labels_arg = arg_by_name_or_position(args, &["labels"], 3);
+        let levels = if labels_arg.is_null() || labels_arg == R_NilValue() {
+            (1..=n).map(|i| i.to_string()).collect::<Vec<_>>()
+        } else {
+            (0..XLENGTH(labels_arg))
+                .map(|i| elt_to_string(labels_arg, i))
+                .collect::<Vec<_>>()
+        };
+        let ordered_arg = arg_by_name_or_position(args, &["ordered"], 4);
+        let ordered = if ordered_arg.is_null() || ordered_arg == R_NilValue() {
+            false
+        } else {
+            match logical_arg_by_name_or_position(args, "ordered", 4) {
+                Some(value) => value,
+                None => {
+                    std::panic::panic_any(RError {
+                        message: "missing value where TRUE/FALSE needed".to_string(),
+                    });
+                }
+            }
+        };
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, out_len);
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        for i in 0..out_len {
+            let code = if n == 0 || k == 0 {
+                NA_INTEGER
+            } else {
+                ((i / k) % n + 1) as i32
+            };
+            *INTEGER(result).add(i as usize) = code;
+        }
+        set_factor_attrs(result, &levels);
+        if ordered {
+            set_ordered_factor_class(result);
+        }
+        result
+    }
+}
+
+unsafe fn gl_nonnegative_count(arg: SEXP, error_message: &str) -> R_xlen_t {
+    unsafe {
+        let value = if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
+            NA_REAL
+        } else if TYPEOF(arg) == SEXPTYPE::REALSXP {
+            *REAL(arg)
+        } else if TYPEOF(arg) == SEXPTYPE::INTSXP || TYPEOF(arg) == SEXPTYPE::LGLSXP {
+            let raw = *INTEGER(arg);
+            if raw == NA_INTEGER {
+                NA_REAL
+            } else {
+                raw as f64
+            }
+        } else {
+            NA_REAL
+        };
+        if ISNAN(value) || !value.is_finite() || value < 0.0 {
+            std::panic::panic_any(RError {
+                message: error_message.to_string(),
+            });
+        }
+        value.floor() as R_xlen_t
     }
 }
 

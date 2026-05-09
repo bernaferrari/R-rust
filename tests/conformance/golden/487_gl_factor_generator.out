@@ -1,0 +1,13 @@
+a|a|a|b|b|b
+a|b
+factor
+1|1|2|2|1
+1|2
+ordered|factor
+TRUE|TRUE
+0
+
+argument must be coercible to non-negative integer
+invalid 'times' value
+invalid 'length.out' value
+missing value where TRUE/FALSE needed
