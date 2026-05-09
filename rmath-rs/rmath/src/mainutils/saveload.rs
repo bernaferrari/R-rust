@@ -19,8 +19,8 @@ use crate::sexp::accessors::{
     SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
-    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_TspSymbol,
-    getAttrib, setAttrib,
+    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
+    R_TspSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
@@ -425,7 +425,8 @@ unsafe fn write_standard_attrs(writer: &mut impl Write, value: SEXP) -> io::Resu
         write_dimnames_attr(writer, value)?;
         write_real_attr(writer, value, R_TspSymbol())?;
         write_string_attr(writer, value, R_ClassSymbol())?;
-        write_string_attr(writer, value, R_LevelsSymbol())
+        write_string_attr(writer, value, R_LevelsSymbol())?;
+        write_row_names_attr(writer, value)
     }
 }
 
@@ -552,6 +553,41 @@ unsafe fn write_real_attr(writer: &mut impl Write, value: SEXP, symbol: SEXP) ->
     }
 }
 
+unsafe fn write_row_names_attr(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let attr = getAttrib(value, R_RowNamesSymbol());
+        if attr.is_null() || attr == R_NilValue() {
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
+
+        match SEXPTYPE::from(TYPEOF(attr)) {
+            SEXPTYPE::INTSXP => {
+                OutIntegerAscii(writer, SEXPTYPE::INTSXP.as_c_int())?;
+                OutNewlineAscii(writer)?;
+                let len = XLENGTH(attr);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len as usize {
+                    OutIntegerAscii(writer, *INTEGER(attr).add(i))?;
+                    OutNewlineAscii(writer)?;
+                }
+            }
+            SEXPTYPE::STRSXP => {
+                OutIntegerAscii(writer, SEXPTYPE::STRSXP.as_c_int())?;
+                OutNewlineAscii(writer)?;
+                write_string_vector_payload(writer, attr)?;
+            }
+            _ => {
+                OutIntegerAscii(writer, 0)?;
+                OutNewlineAscii(writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 unsafe fn write_string_vector_payload(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
     unsafe {
         let len = XLENGTH(value);
@@ -643,7 +679,8 @@ unsafe fn read_standard_attrs(reader: &mut impl BufRead, value: SEXP) -> io::Res
         read_dimnames_attr(reader, value)?;
         read_real_attr(reader, value, R_TspSymbol())?;
         read_string_attr(reader, value, R_ClassSymbol())?;
-        read_string_attr(reader, value, R_LevelsSymbol())
+        read_string_attr(reader, value, R_LevelsSymbol())?;
+        read_row_names_attr(reader, value)
     }
 }
 
@@ -737,6 +774,35 @@ unsafe fn read_real_attr(reader: &mut impl BufRead, value: SEXP, symbol: SEXP) -
         }
         setAttrib(value, symbol, attr);
         Ok(())
+    }
+}
+
+unsafe fn read_row_names_attr(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let attr_type = InIntegerAscii(reader)?;
+        match SEXPTYPE::from(attr_type) {
+            SEXPTYPE::NILSXP => Ok(()),
+            SEXPTYPE::INTSXP => {
+                let len = InIntegerAscii(reader)?;
+                let attr = Rf_allocVector3(SEXPTYPE::INTSXP, len as R_xlen_t);
+                let _guard = protect(attr);
+                for i in 0..len as usize {
+                    *INTEGER(attr).add(i) = InIntegerAscii(reader)?;
+                }
+                setAttrib(value, R_RowNamesSymbol(), attr);
+                Ok(())
+            }
+            SEXPTYPE::STRSXP => {
+                let attr = read_string_vector_payload(reader)?;
+                let _guard = protect(attr);
+                setAttrib(value, R_RowNamesSymbol(), attr);
+                Ok(())
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unsupported row.names attribute type",
+            )),
+        }
     }
 }
 
