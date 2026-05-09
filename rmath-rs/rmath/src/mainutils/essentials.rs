@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    ATTRIB, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
+    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
     PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR, SETTAG,
     STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
@@ -76,6 +76,73 @@ unsafe fn set_datetime_class_from(result: SEXP, source: SEXP, class: DatetimeVec
             DatetimeVectorClass::Posixct => {
                 set_posixct_class(result, &posixct_tzone_string(source))
             }
+        }
+    }
+}
+
+pub unsafe fn do_cache_class(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
+            std::panic::panic_any(RError {
+                message: "invalid class argument to internal .class_cache".to_string(),
+            });
+        }
+
+        let class = CAR(args);
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            std::panic::panic_any(RError {
+                message: "invalid class argument to internal .class_cache".to_string(),
+            });
+        }
+
+        CADR(args)
+    }
+}
+
+pub unsafe fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let x = CAR(args);
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::LGLSXP => x,
+            t if t == SEXPTYPE::STRSXP => {
+                let n = XLENGTH(x);
+                let out = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+                let _out_guard = protect(out);
+
+                let mut values = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let elt = STRING_ELT(x, i);
+                    let value = if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                        None
+                    } else {
+                        Some(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned())
+                    };
+                    values.push(value);
+                }
+
+                let mut sorted: Vec<String> = values.iter().filter_map(Clone::clone).collect();
+                sorted.sort();
+                sorted.dedup();
+
+                let ranks: BTreeMap<String, c_int> = sorted
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, value)| (value, (idx + 1) as c_int))
+                    .collect();
+
+                let data = INTEGER(out);
+                for (i, value) in values.into_iter().enumerate() {
+                    *data.add(i) = value
+                        .and_then(|value| ranks.get(&value).copied())
+                        .unwrap_or(NA_INTEGER);
+                }
+                out
+            }
+            _ => x,
         }
     }
 }
@@ -5056,6 +5123,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "unique",
             ".primTrace",
             ".primUntrace",
+            ".cache_class",
             "...elt",
             "...length",
             "...names",
@@ -5063,6 +5131,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "declare",
             "environment<-",
             "standardGeneric",
+            "xtfrm",
             "[",
             ".subset",
             "[[",

@@ -287,6 +287,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::debug::do_trace,
     },
     EvaluatedBuiltin {
+        name: ".cache_class",
+        handler: crate::mainutils::essentials::do_cache_class,
+    },
+    EvaluatedBuiltin {
         name: ".Primitive",
         handler: crate::mainutils::names::do_primitive,
     },
@@ -297,6 +301,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "standardGeneric",
         handler: crate::mainutils::objects::do_standardGeneric,
+    },
+    EvaluatedBuiltin {
+        name: "xtfrm",
+        handler: crate::mainutils::essentials::do_xtfrm,
     },
     EvaluatedBuiltin {
         name: "+",
