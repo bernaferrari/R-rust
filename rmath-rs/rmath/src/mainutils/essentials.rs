@@ -21126,12 +21126,145 @@ pub unsafe fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 /// R's `xtabs(formula, data)` — cross-tabulation (simplified).
-pub unsafe fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let _formula = CAR(args);
-        let _data = CAR(CDR(args));
-        // Simplified: return empty table
+        let formula = CAR(args);
+        if let Some(result) = xtabs_one_sided_vector(formula, rho) {
+            return result;
+        }
         Rf_allocVector3(SEXPTYPE::INTSXP, 0)
+    }
+}
+
+unsafe fn xtabs_one_sided_vector(formula: SEXP, rho: SEXP) -> Option<SEXP> {
+    unsafe {
+        if formula.is_null() || formula == R_NilValue() || TYPEOF(formula) != SEXPTYPE::LANGSXP {
+            return None;
+        }
+        if pairlist_apply_len(formula) != 2 {
+            return None;
+        }
+        let rhs = CADR(formula);
+        if rhs.is_null() || rhs == R_NilValue() {
+            return None;
+        }
+        let values = crate::eval::eval::Rf_eval(rhs, rho);
+        if values.is_null() || values == R_NilValue() {
+            return None;
+        }
+        let value_type = TYPEOF(values);
+        if value_type != SEXPTYPE::STRSXP
+            && value_type != SEXPTYPE::INTSXP
+            && value_type != SEXPTYPE::REALSXP
+            && value_type != SEXPTYPE::LGLSXP
+        {
+            return None;
+        }
+
+        let mut counts = BTreeMap::<String, i32>::new();
+        for i in 0..XLENGTH(values) {
+            if atomic_value_is_missing(values, i) {
+                continue;
+            }
+            let key = elt_to_string(values, i);
+            *counts.entry(key).or_insert(0) += 1;
+        }
+
+        let n = counts.len() as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        if result.is_null() {
+            return Some(result);
+        }
+        let _result_guard = protect(result);
+        let labels = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if labels.is_null() {
+            return Some(R_NilValue());
+        }
+        let _labels_guard = protect(labels);
+        for (i, (label, count)) in counts.into_iter().enumerate() {
+            *INTEGER(result).add(i) = count;
+            let c_label = CString::new(label).unwrap_or_default();
+            SET_STRING_ELT(labels, i as R_xlen_t, Rf_mkChar(c_label.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            labels,
+        );
+
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        if !dim.is_null() {
+            let _dim_guard = protect(dim);
+            *INTEGER(dim) = n as c_int;
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                dim,
+            );
+        }
+
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        if !dimnames.is_null() {
+            let _dimnames_guard = protect(dimnames);
+            SET_VECTOR_ELT(dimnames, 0, labels);
+            let dimnames_names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            if !dimnames_names.is_null() {
+                let _names_guard = protect(dimnames_names);
+                let title = deparse_one_line(rhs);
+                let c_title = CString::new(title).unwrap_or_default();
+                SET_STRING_ELT(dimnames_names, 0, Rf_mkChar(c_title.as_ptr()));
+                crate::sexp::attrib_core::setAttrib(
+                    dimnames,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    dimnames_names,
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
+        }
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if !class.is_null() {
+            let _class_guard = protect(class);
+            SET_STRING_ELT(class, 0, Rf_mkChar(c"xtabs".as_ptr()));
+            SET_STRING_ELT(class, 1, Rf_mkChar(c"table".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+        Some(result)
+    }
+}
+
+unsafe fn pairlist_apply_len(x: SEXP) -> R_xlen_t {
+    unsafe {
+        let mut len = 0;
+        let mut current = x;
+        while !current.is_null() && current != R_NilValue() {
+            len += 1;
+            current = CDR(current);
+        }
+        len
+    }
+}
+
+unsafe fn deparse_one_line(expr: SEXP) -> String {
+    unsafe {
+        let lines = crate::mainutils::deparse::deparse1(
+            expr,
+            false,
+            crate::mainutils::deparse::DEFAULT_USER_DEPARSE,
+        );
+        if lines.is_null() || lines == R_NilValue() || XLENGTH(lines) == 0 {
+            String::new()
+        } else {
+            elt_to_string(lines, 0)
+        }
     }
 }
 

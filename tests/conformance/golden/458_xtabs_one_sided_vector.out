@@ -1,0 +1,5 @@
+xtabs|table
+2
+2|1
+a|b
+c("a", "b", "a")
