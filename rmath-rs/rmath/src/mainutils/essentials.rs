@@ -22654,10 +22654,84 @@ unsafe fn interaction_value_at(arg: SEXP, i: R_xlen_t) -> Option<String> {
 pub unsafe fn do_relevel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
+        let ref_arg = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        x
+        let Some(levels) = aggregate_factor_levels(x) else {
+            base_error("'relevel' only for (unordered) factors");
+        };
+        if ref_arg.is_null() || ref_arg == R_NilValue() || XLENGTH(ref_arg) == 0 {
+            base_error("'ref' must be of length one");
+        }
+        let ref_type = TYPEOF(ref_arg);
+        let ref_pos = if ref_type == SEXPTYPE::INTSXP {
+            let value = *INTEGER(ref_arg);
+            if value == NA_INTEGER || value < 1 || value as usize > levels.len() {
+                base_error("'ref' must be an existing level");
+            }
+            (value - 1) as usize
+        } else if ref_type == SEXPTYPE::REALSXP {
+            let value = *REAL(ref_arg);
+            if value.to_bits() == R_NA_BIT_PATTERN
+                || value.is_nan()
+                || value < 1.0
+                || value > levels.len() as f64
+            {
+                base_error("'ref' must be an existing level");
+            }
+            value as usize - 1
+        } else {
+            let ref_level = elt_to_string(ref_arg, 0);
+            levels
+                .iter()
+                .position(|level| level == &ref_level)
+                .unwrap_or_else(|| base_error("'ref' must be an existing level"))
+        };
+
+        let mut new_levels = Vec::with_capacity(levels.len());
+        new_levels.push(levels[ref_pos].clone());
+        new_levels.extend(
+            levels
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != ref_pos)
+                .map(|(_, level)| level.clone()),
+        );
+        let new_positions = new_levels
+            .iter()
+            .enumerate()
+            .map(|(i, level)| (level.clone(), i as i32 + 1))
+            .collect::<BTreeMap<_, _>>();
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(x));
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        for i in 0..XLENGTH(x) {
+            let code = *INTEGER(x).add(i as usize);
+            *INTEGER(result).add(i as usize) = if code == NA_INTEGER || code <= 0 {
+                NA_INTEGER
+            } else {
+                let old_label = levels.get((code - 1) as usize);
+                old_label
+                    .and_then(|label| new_positions.get(label))
+                    .copied()
+                    .unwrap_or(NA_INTEGER)
+            };
+        }
+        set_factor_attrs(result, &new_levels);
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        result
     }
 }
 

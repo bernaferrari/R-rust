@@ -1,0 +1,11 @@
+f <- factor(c("b", "a", "c"), levels = c("a", "b", "c"))
+z <- relevel(f, "c")
+cat(paste(as.character(z), collapse = "|"), "\n", sep = "")
+cat(paste(levels(z), collapse = "|"), "\n", sep = "")
+cat(paste(class(z), collapse = "|"), "\n", sep = "")
+
+names(f) <- c("x", "y", "z")
+w <- relevel(f, 2)
+cat(paste(as.character(w), collapse = "|"), "\n", sep = "")
+cat(paste(levels(w), collapse = "|"), "\n", sep = "")
+cat(paste(names(w), collapse = "|"), "\n", sep = "")

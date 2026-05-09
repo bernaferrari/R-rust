@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 535 |
-| Passing | 535 |
+| Total parity cases | 537 |
+| Passing | 537 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -106,12 +106,12 @@ Current domain coverage:
 | --- | ---: | --- |
 | Parser and scalar basics | 178 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, shape-helper, array-creation, and broad parser/runtime smoke cases |
 | Evaluator, closures, and control flow | 11 | Closures, lexical scope, lazy/default args, missing args, loops, and evaluator visibility/control-flow checks |
-| Vectors, lists, attributes, and objects | 75 | Vectors, typed vector constructors, lists, names, subsetting, factors, interaction factors, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
+| Vectors, lists, attributes, and objects | 76 | Vectors, typed vector constructors, lists, names, subsetting, factors, interaction factors, releveling, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
 | Base functions, conditions, and platform helpers | 139 | Sorting/set helpers, output capture, conditions, search-path/environment helpers, options, file/temp/path helpers, connections, platform state, `.Internal` dispatch, and non-GNU alias absence semantics |
 | Stats, math, and RNG | 68 | Numeric summaries, distributions, tail/log flags, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int`, aggregate/tapply/by grouped summaries, and summary-vector parity |
 | Packages, namespaces, and S3 | 5 | Package namespace and S3 fixtures, `system.file()`, S3 method-export absence, and the pure-R package corpus gate |
 | Graphics and Android embedding | 2 | Base graphics layout state and external graphics dispatch smoke; broader graphics parity remains tracked separately |
-| Error semantics | 57 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, internal dispatch errors, and selected platform expected errors |
+| Error semantics | 58 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, internal dispatch errors, `relevel()` validation, and selected platform expected errors |
 
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
