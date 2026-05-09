@@ -5571,6 +5571,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "attach",
             "detach",
             "search",
+            "searchpaths",
             // Complete R runtime — source, demo, example
             "source",
             "sys.source",
@@ -25753,6 +25754,22 @@ unsafe fn search_env_label(env: SEXP) -> String {
             }
         }
         "(unknown)".to_string()
+    }
+}
+
+/// R's `searchpaths()` — filesystem/search labels for entries on the search path.
+pub unsafe fn do_searchpaths(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let entries = search_path_entries();
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, entries.len() as R_xlen_t);
+        for (i, (label, _)) in entries.iter().enumerate() {
+            SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(label.as_str()).unwrap_or_default().as_ptr()),
+            );
+        }
+        result
     }
 }
 

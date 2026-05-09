@@ -2147,6 +2147,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::envir::do_search,
     },
     EvaluatedBuiltin {
+        name: "searchpaths",
+        handler: crate::mainutils::essentials::do_searchpaths,
+    },
+    EvaluatedBuiltin {
         name: "find",
         handler: crate::mainutils::essentials::do_find,
     },

@@ -1,0 +1,7 @@
+print(searchpaths()[1])
+print(length(searchpaths()) == length(search()))
+e <- new.env()
+attach(e, name = "myenv")
+print(searchpaths()[1:2])
+detach("myenv")
+print(searchpaths()[1])
