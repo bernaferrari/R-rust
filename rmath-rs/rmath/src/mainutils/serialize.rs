@@ -64,6 +64,80 @@ unsafe fn require_arg(args: SEXP, index: usize) -> SEXP {
 }
 
 #[inline]
+unsafe fn optional_arg(args: SEXP, index: usize) -> SEXP {
+    let mut cur = args;
+    for _ in 0..index {
+        if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+            return unsafe { R_NilValue() };
+        }
+        cur = unsafe { CDR(cur) };
+    }
+    if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+        return unsafe { R_NilValue() };
+    }
+    unsafe { CAR(cur) }
+}
+
+unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
+    unsafe {
+        let mut cur = args;
+        while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
+            if call_arg_tag_name(cur).as_deref() == Some(name) {
+                return CAR(cur);
+            }
+            cur = CDR(cur);
+        }
+
+        let mut cur = args;
+        let mut untagged = 0usize;
+        while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
+            if call_arg_tag_name(cur).is_none() {
+                if untagged == position {
+                    return CAR(cur);
+                }
+                untagged += 1;
+            }
+            cur = CDR(cur);
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn call_arg_tag_name(node: SEXP) -> Option<String> {
+    unsafe {
+        let tag = TAG(node);
+        if tag.is_null() || tag == R_NilValue() {
+            return None;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() || pname == R_NaString() {
+            return None;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            return None;
+        }
+        Some(CStr::from_ptr(chars).to_string_lossy().into_owned())
+    }
+}
+
+unsafe fn scalar_integer_value(value: SEXP) -> Option<c_int> {
+    unsafe {
+        if value.is_null() || value == R_NilValue() || LENGTH(value) < 1 {
+            return None;
+        }
+        let kind = TYPEOF(value);
+        if kind == SEXPTYPE::INTSXP || kind == SEXPTYPE::LGLSXP {
+            Some(*INTEGER(value))
+        } else if kind == SEXPTYPE::REALSXP {
+            Some(*REAL(value) as c_int)
+        } else {
+            None
+        }
+    }
+}
+
+#[inline]
 unsafe fn sexp_to_path(file: SEXP) -> PathBuf {
     if unsafe { TYPEOF(file) } != SEXPTYPE::STRSXP || unsafe { LENGTH(file) } <= 0 {
         unsafe { error("not a proper file name") };
@@ -1545,11 +1619,21 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             error("wrong number of arguments");
         }
 
-        // serialize(object, connection, ascii)
-        // object = CAR(args), connection = CADR(args), ascii = CADDR(args)
-        let object = CAR(args);
-        let _conn = CADR(args);
-        let ascii = CADDR(args);
+        // serialize(object, connection, ascii, xdr, version, refhook)
+        let object = arg_by_name_or_position(args, "object", 0);
+        let _conn = arg_by_name_or_position(args, "connection", 1);
+        if object.is_null() || object == R_NilValue() {
+            error("wrong number of arguments");
+        }
+        let mut ascii = arg_by_name_or_position(args, "ascii", 2);
+        let mut version = arg_by_name_or_position(args, "version", 4);
+        if version == R_NilValue()
+            && matches!(scalar_integer_value(ascii), Some(2 | 3))
+            && optional_arg(args, 3) == R_NilValue()
+        {
+            version = ascii;
+            ascii = R_NilValue();
+        }
 
         // Use R_serialize to get a RAWSXP
         let _ascii_flag =
@@ -1559,7 +1643,7 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                 false
             };
 
-        R_serialize(object, R_NilValue(), ascii, R_NilValue(), R_NilValue())
+        R_serialize(object, R_NilValue(), ascii, version, R_NilValue())
     }
 }
 
