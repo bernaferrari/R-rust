@@ -2522,46 +2522,144 @@ pub unsafe fn do_format_info(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 /// R's `order(...)` — returns permutation of indices that sort the input.
 pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
         let n = XLENGTH(x);
-        let mut indices: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let v = elt_real_safe(x, i);
-            indices.push((v, i));
-        }
         let decreasing = named_logical_arg(args, "decreasing").unwrap_or(false);
-        indices.sort_by(|a, b| {
-            let a_na = a.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-            let b_na = b.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-            if a_na && b_na {
-                return std::cmp::Ordering::Equal;
+        let na_placement = order_na_placement(args);
+
+        let mut missing_indices: Vec<R_xlen_t> = Vec::new();
+        let mut ordered_indices: Vec<R_xlen_t> = match TYPEOF(x) {
+            t if t == SEXPTYPE::STRSXP => {
+                let mut values: Vec<(SEXP, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let value = STRING_ELT(x, i);
+                    if charsxp_is_na(value) {
+                        missing_indices.push(i);
+                    } else {
+                        values.push((value, i));
+                    }
+                }
+                values.sort_by(|a, b| {
+                    let ordering = compare_charsxp_for_sort(a.0, b.0);
+                    if decreasing {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                });
+                values.into_iter().map(|(_, index)| index).collect()
             }
-            if a_na {
-                return std::cmp::Ordering::Greater;
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                let mut values: Vec<(c_int, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let value = *INTEGER(x).add(i as usize);
+                    if value == NA_INTEGER {
+                        missing_indices.push(i);
+                    } else {
+                        values.push((value, i));
+                    }
+                }
+                values.sort_by(|a, b| {
+                    let ordering = a.0.cmp(&b.0);
+                    if decreasing {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                });
+                values.into_iter().map(|(_, index)| index).collect()
             }
-            if b_na {
-                return std::cmp::Ordering::Less;
+            t if t == SEXPTYPE::REALSXP => {
+                let mut values: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let value = *REAL(x).add(i as usize);
+                    if ISNAN(value) {
+                        missing_indices.push(i);
+                    } else {
+                        values.push((value, i));
+                    }
+                }
+                values.sort_by(|a, b| {
+                    let ordering = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal);
+                    if decreasing {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                });
+                values.into_iter().map(|(_, index)| index).collect()
             }
-            let ordering = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal);
-            if decreasing {
-                ordering.reverse()
-            } else {
-                ordering
+            _ => {
+                let mut values: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let value = elt_real_safe(x, i);
+                    if ISNAN(value) {
+                        missing_indices.push(i);
+                    } else {
+                        values.push((value, i));
+                    }
+                }
+                values.sort_by(|a, b| {
+                    let ordering = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal);
+                    if decreasing {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                });
+                values.into_iter().map(|(_, index)| index).collect()
             }
-        });
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        };
+
+        match na_placement {
+            SortNaPlacement::First => {
+                let mut with_missing = missing_indices;
+                with_missing.extend(ordered_indices);
+                ordered_indices = with_missing;
+            }
+            SortNaPlacement::Last => ordered_indices.extend(missing_indices),
+            SortNaPlacement::Remove => {}
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, ordered_indices.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
         let dst = INTEGER(result);
-        for (i, &(_, orig_idx)) in indices.iter().enumerate() {
+        for (i, &orig_idx) in ordered_indices.iter().enumerate() {
             *dst.add(i) = (orig_idx + 1) as c_int;
         }
         result
+    }
+}
+
+fn order_na_placement(args: SEXP) -> SortNaPlacement {
+    unsafe {
+        let arg = arg_by_name_or_position(args, &["na.last"], 1);
+        if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
+            return SortNaPlacement::Last;
+        }
+        let raw = if TYPEOF(arg) == SEXPTYPE::LGLSXP || TYPEOF(arg) == SEXPTYPE::INTSXP {
+            *INTEGER(arg)
+        } else if TYPEOF(arg) == SEXPTYPE::REALSXP {
+            let value = *REAL(arg);
+            if ISNAN(value) {
+                NA_LOGICAL
+            } else {
+                value as c_int
+            }
+        } else {
+            TRUE
+        };
+        match raw {
+            NA_LOGICAL => SortNaPlacement::Remove,
+            FALSE => SortNaPlacement::First,
+            _ => SortNaPlacement::Last,
+        }
     }
 }
 
