@@ -103,6 +103,31 @@ unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SE
     }
 }
 
+unsafe fn arg_present_by_name_or_position(args: SEXP, name: &str, position: usize) -> bool {
+    unsafe {
+        let mut cur = args;
+        while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
+            if call_arg_tag_name(cur).as_deref() == Some(name) {
+                return true;
+            }
+            cur = CDR(cur);
+        }
+
+        let mut cur = args;
+        let mut untagged = 0usize;
+        while !cur.is_null() && TYPEOF(cur) != SEXPTYPE::NILSXP {
+            if call_arg_tag_name(cur).is_none() {
+                if untagged == position {
+                    return true;
+                }
+                untagged += 1;
+            }
+            cur = CDR(cur);
+        }
+        false
+    }
+}
+
 unsafe fn call_arg_tag_name(node: SEXP) -> Option<String> {
     unsafe {
         let tag = TAG(node);
@@ -441,23 +466,46 @@ fn read_item_depth_for_test() -> c_int {
 /// Internal serializer that writes to a Vec<u8>.
 struct BinaryWriter {
     buf: Vec<u8>,
+    ascii_body: bool,
 }
 
 impl BinaryWriter {
     fn new() -> Self {
-        BinaryWriter { buf: Vec::new() }
+        BinaryWriter {
+            buf: Vec::new(),
+            ascii_body: false,
+        }
+    }
+
+    fn set_ascii_body(&mut self, ascii_body: bool) {
+        self.ascii_body = ascii_body;
     }
 
     fn write_i32(&mut self, val: i32) {
-        self.buf.extend_from_slice(&val.to_ne_bytes());
+        if self.ascii_body {
+            self.buf.extend_from_slice(val.to_string().as_bytes());
+            self.buf.push(b'\n');
+        } else {
+            self.buf.extend_from_slice(&val.to_ne_bytes());
+        }
     }
 
     fn write_f64(&mut self, val: f64) {
-        self.buf.extend_from_slice(&val.to_ne_bytes());
+        if self.ascii_body {
+            self.buf.extend_from_slice(format!("{val:?}").as_bytes());
+            self.buf.push(b'\n');
+        } else {
+            self.buf.extend_from_slice(&val.to_ne_bytes());
+        }
     }
 
     fn write_byte(&mut self, val: u8) {
-        self.buf.push(val);
+        if self.ascii_body {
+            self.buf.extend_from_slice(val.to_string().as_bytes());
+            self.buf.push(b'\n');
+        } else {
+            self.buf.push(val);
+        }
     }
 
     fn write_bytes(&mut self, data: &[u8]) {
@@ -469,6 +517,9 @@ impl BinaryWriter {
             // SAFETY: Caller ensures s points to at least `len` valid bytes.
             let slice = unsafe { slice::from_raw_parts(s as *const u8, len as usize) };
             self.buf.extend_from_slice(slice);
+            if self.ascii_body {
+                self.buf.push(b'\n');
+            }
         }
     }
 
@@ -481,11 +532,20 @@ impl BinaryWriter {
 struct BinaryReader<'a> {
     data: &'a [u8],
     pos: usize,
+    ascii_body: bool,
 }
 
 impl<'a> BinaryReader<'a> {
     fn new(data: &'a [u8]) -> Self {
-        BinaryReader { data, pos: 0 }
+        BinaryReader {
+            data,
+            pos: 0,
+            ascii_body: false,
+        }
+    }
+
+    fn set_ascii_body(&mut self, ascii_body: bool) {
+        self.ascii_body = ascii_body;
     }
 
     fn remaining(&self) -> usize {
@@ -493,6 +553,12 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_i32(&mut self) -> Result<i32, String> {
+        if self.ascii_body {
+            let token = self.read_ascii_token()?;
+            return token
+                .parse::<i32>()
+                .map_err(|_| format!("read error: invalid integer token '{token}'"));
+        }
         if self.remaining() < 4 {
             return Err("read error: not enough bytes for i32".into());
         }
@@ -504,6 +570,12 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_f64(&mut self) -> Result<f64, String> {
+        if self.ascii_body {
+            let token = self.read_ascii_token()?;
+            return token
+                .parse::<f64>()
+                .map_err(|_| format!("read error: invalid real token '{token}'"));
+        }
         if self.remaining() < 8 {
             return Err("read error: not enough bytes for f64".into());
         }
@@ -515,6 +587,12 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_byte(&mut self) -> Result<u8, String> {
+        if self.ascii_body {
+            let token = self.read_ascii_token()?;
+            return token
+                .parse::<u8>()
+                .map_err(|_| format!("read error: invalid byte token '{token}'"));
+        }
         if self.remaining() < 1 {
             return Err("read error: not enough bytes for byte".into());
         }
@@ -524,12 +602,38 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_bytes(&mut self, len: usize) -> Result<&'a [u8], String> {
+        if self.ascii_body {
+            self.skip_ascii_whitespace();
+        }
         if self.remaining() < len {
             return Err(format!("read error: not enough bytes for {} bytes", len));
         }
         let slice = &self.data[self.pos..self.pos + len];
         self.pos += len;
+        if self.ascii_body && self.remaining() > 0 && self.data[self.pos] == b'\n' {
+            self.pos += 1;
+        }
         Ok(slice)
+    }
+
+    fn read_ascii_token(&mut self) -> Result<String, String> {
+        self.skip_ascii_whitespace();
+        let start = self.pos;
+        while self.pos < self.data.len() && !self.data[self.pos].is_ascii_whitespace() {
+            self.pos += 1;
+        }
+        if start == self.pos {
+            return Err("read error: missing ASCII token".to_string());
+        }
+        std::str::from_utf8(&self.data[start..self.pos])
+            .map(|s| s.to_string())
+            .map_err(|_| "read error: invalid ASCII token".to_string())
+    }
+
+    fn skip_ascii_whitespace(&mut self) {
+        while self.pos < self.data.len() && self.data[self.pos].is_ascii_whitespace() {
+            self.pos += 1;
+        }
     }
 }
 
@@ -1507,8 +1611,8 @@ pub unsafe fn R_serialize(
             defaultSerializeVersion()
         } else {
             let version = asInteger(Sversion);
-            if version <= 0 {
-                error("bad version value");
+            if version != 2 && version != 3 {
+                error(&format!("version {version} not supported"));
             }
             version
         };
@@ -1519,6 +1623,7 @@ pub unsafe fn R_serialize(
         let mut writer = BinaryWriter::new();
         writer.write_byte(if ascii_format { b'A' } else { b'B' });
         writer.write_byte(b'\n');
+        writer.set_ascii_body(ascii_format);
 
         // Version info
         writer.write_i32(version); // version
@@ -1572,6 +1677,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
         if (fmt1 != b'A' && fmt1 != b'B') || fmt2 != b'\n' {
             error("unknown input format");
         }
+        reader.set_ascii_body(fmt1 == b'A');
 
         // Read version
         let version = reader.read_i32().unwrap_or(0);
@@ -1617,19 +1723,26 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
-            error("wrong number of arguments");
+            error("argument \"connection\" is missing, with no default");
         }
 
         // serialize(object, connection, ascii, xdr, version, refhook)
         let object = arg_by_name_or_position(args, "object", 0);
-        let _conn = arg_by_name_or_position(args, "connection", 1);
+        let conn = arg_by_name_or_position(args, "connection", 1);
         if object.is_null() || object == R_NilValue() {
-            error("wrong number of arguments");
+            error("argument \"connection\" is missing, with no default");
+        }
+        let has_conn = arg_present_by_name_or_position(args, "connection", 1);
+        if !has_conn || conn.is_null() || conn == R_MissingArg() {
+            error("argument \"connection\" is missing, with no default");
         }
         let mut ascii = arg_by_name_or_position(args, "ascii", 2);
         let mut version = arg_by_name_or_position(args, "version", 4);
         if version == R_NilValue()
-            && matches!(scalar_integer_value(ascii), Some(2 | 3))
+            && !ascii.is_null()
+            && ascii != R_NilValue()
+            && TYPEOF(ascii) != SEXPTYPE::LGLSXP
+            && scalar_integer_value(ascii).is_some()
             && optional_arg(args, 3) == R_NilValue()
         {
             version = ascii;
@@ -1693,7 +1806,7 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
             return R_unserialize(conn, R_NilValue());
         }
 
-        error("connection not open for reading");
+        error("'connection' must be a connection");
     }
 }
 
