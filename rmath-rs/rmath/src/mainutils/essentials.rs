@@ -5287,8 +5287,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "lockEnvironment",
             "environmentIsLocked",
             // R runtime essentials
-            "version",
-            "R.version",
             "args",
             "formals",
             "body",
@@ -5407,7 +5405,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "interactive",
             "is_interactive",
             "getRversion",
-            "R.version.string",
             "R.Version",
             // List operations
             "list.append",
@@ -5730,6 +5727,32 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         let pi_cell = Rf_cons(pi_value, chain);
         (*pi_cell).data.listsxp.tagval = pi_sym;
         chain = pi_cell;
+
+        let version_value = do_R_version(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            R_NilValue(),
+            env,
+        );
+        let _version_guard = protect(version_value);
+        for name in ["R.version", "version"] {
+            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let cell = Rf_cons(version_value, chain);
+            (*cell).data.listsxp.tagval = sym;
+            chain = cell;
+        }
+
+        let version_string = do_R_version_string(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            R_NilValue(),
+            env,
+        );
+        let _version_string_guard = protect(version_string);
+        let sym = Rf_install(c"R.version.string".as_ptr());
+        let cell = Rf_cons(version_string, chain);
+        (*cell).data.listsxp.tagval = sym;
+        chain = cell;
         SET_FRAME(env, chain);
     }
 }
@@ -14400,47 +14423,42 @@ unsafe fn binding_symbol_arg(value: SEXP) -> SEXP {
 // R runtime essentials
 // ---------------------------------------------------------------------------
 
-/// R's `version` — returns the version as a character string.
-pub unsafe fn do_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+unsafe fn make_r_version_list(simple_list_class: bool) -> SEXP {
     unsafe {
-        let s = CString::new("4.4.1").unwrap_or_default();
-        Rf_mkString(s.as_ptr())
-    }
-}
+        let fields = [
+            ("platform", "rust-port"),
+            ("arch", std::env::consts::ARCH),
+            ("os", std::env::consts::OS),
+            ("system", "rust-port"),
+            ("status", ""),
+            ("major", "4"),
+            ("minor", "4.1"),
+            ("year", "2026"),
+            ("month", "05"),
+            ("day", "09"),
+            ("svn rev", ""),
+            ("language", "R"),
+            ("version.string", "R version 4.4.1 (Rust Port)"),
+            ("nickname", "Rust Port"),
+        ];
 
-/// R's `R.version` — returns a named list with version info.
-pub unsafe fn do_R_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 5);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, fields.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
 
-        let platform = CString::new("rust-port").unwrap_or_default();
-        let major = CString::new("4").unwrap_or_default();
-        let minor = CString::new("4.1").unwrap_or_default();
-        let language = CString::new("R").unwrap_or_default();
-        let version_string = CString::new("R version 4.4.1 (Rust Port)").unwrap_or_default();
+        for (i, (_, value)) in fields.iter().enumerate() {
+            let value = CString::new(*value).unwrap_or_default();
+            SET_VECTOR_ELT(result, i as R_xlen_t, Rf_mkString(value.as_ptr()));
+        }
 
-        SET_VECTOR_ELT(result, 0, Rf_mkString(platform.as_ptr()));
-        SET_VECTOR_ELT(result, 1, Rf_mkString(major.as_ptr()));
-        SET_VECTOR_ELT(result, 2, Rf_mkString(minor.as_ptr()));
-        SET_VECTOR_ELT(result, 3, Rf_mkString(language.as_ptr()));
-        SET_VECTOR_ELT(result, 4, Rf_mkString(version_string.as_ptr()));
-
-        // Set names
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, fields.len() as R_xlen_t);
         if !names.is_null() {
             let _names_guard = protect(names);
-            let ns = ["platform", "major", "minor", "language", "version.string"];
-            for (i, &n) in ns.iter().enumerate() {
-                let cs = CString::new(n).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
-                if !charsxp.is_null() {
-                    let data = (*names).gengc_next_node as *mut SEXP;
-                    *data.add(i) = charsxp;
-                }
+            for (i, (name, _)) in fields.iter().enumerate() {
+                let name = CString::new(*name).unwrap_or_default();
+                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(name.as_ptr()));
             }
             crate::sexp::attrib_core::setAttrib(
                 result,
@@ -14449,13 +14467,33 @@ pub unsafe fn do_R_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
             );
         }
 
+        if simple_list_class {
+            let class = Rf_mkString(c"simple.list".as_ptr());
+            let _class_guard = protect(class);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+
         result
     }
 }
 
-/// R's `R.Version()` — returns the version info list (alias for R.version).
-pub unsafe fn do_R_Version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_R_version(_call, _op, args, _rho) }
+/// R's `version` — legacy constant alias for `R.version`.
+pub unsafe fn do_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { make_r_version_list(true) }
+}
+
+/// R's `R.version` — returns a named list with version info.
+pub unsafe fn do_R_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { make_r_version_list(true) }
+}
+
+/// R's `R.Version()` — returns the version info list without `simple.list` class.
+pub unsafe fn do_R_Version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { make_r_version_list(false) }
 }
 
 /// R's `args(fn)` — returns the formal arguments of a function as a pairlist.
@@ -16928,11 +16966,42 @@ pub unsafe fn do_is_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP)
     unsafe { Rf_ScalarLogical(FALSE) }
 }
 
-/// R's `getRversion()` — returns R version as a string.
+/// R's `getRversion()` — returns an `R_system_version` package-version object.
 pub unsafe fn do_getRversion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let s = CString::new("4.4.1").unwrap_or_default();
-        Rf_mkString(s.as_ptr())
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        let version = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+        if !version.is_null() {
+            let _version_guard = protect(version);
+            let data = INTEGER(version);
+            *data.add(0) = 4;
+            *data.add(1) = 4;
+            *data.add(2) = 1;
+            SET_VECTOR_ELT(result, 0, version);
+        }
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        if !class.is_null() {
+            let _class_guard = protect(class);
+            for (i, name) in ["R_system_version", "package_version", "numeric_version"]
+                .iter()
+                .enumerate()
+            {
+                let value = CString::new(*name).unwrap_or_default();
+                SET_STRING_ELT(class, i as R_xlen_t, Rf_mkChar(value.as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+        result
     }
 }
 

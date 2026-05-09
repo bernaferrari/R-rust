@@ -1215,14 +1215,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_environmentIsLocked,
     },
     EvaluatedBuiltin {
-        name: "version",
-        handler: crate::mainutils::essentials::do_version,
-    },
-    EvaluatedBuiltin {
-        name: "R.version",
-        handler: crate::mainutils::essentials::do_R_version,
-    },
-    EvaluatedBuiltin {
         name: "args",
         handler: crate::mainutils::essentials::do_args,
     },
@@ -1613,10 +1605,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "getRversion",
         handler: crate::mainutils::essentials::do_getRversion,
-    },
-    EvaluatedBuiltin {
-        name: "R.version.string",
-        handler: crate::mainutils::essentials::do_R_version_string,
     },
     EvaluatedBuiltin {
         name: "R.Version",
