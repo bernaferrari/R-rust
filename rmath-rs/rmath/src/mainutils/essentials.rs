@@ -5662,7 +5662,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Mod",
             "Arg",
             "Conj",
-            "pi",
             "sin",
             "cos",
             "tan",
@@ -5725,6 +5724,12 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             (*cell).data.listsxp.tagval = sym;
             chain = cell;
         }
+        let pi_sym = Rf_install(c"pi".as_ptr());
+        let pi_value = Rf_ScalarReal(std::f64::consts::PI);
+        let _pi_value_guard = protect(pi_value);
+        let pi_cell = Rf_cons(pi_value, chain);
+        (*pi_cell).data.listsxp.tagval = pi_sym;
+        chain = pi_cell;
         SET_FRAME(env, chain);
     }
 }
@@ -8672,8 +8677,36 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
         let env = environment_arg_or_default(args, &["envir", "where", "frame"], 1, rho);
         let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
-        let found = crate::sexp::envir::binding_exists_raw(env, sym, inherits)
-            || crate::eval::builtin::has_builtin_handler(&name);
+        let mode_arg = {
+            let named = arg_by_name_or_position(args, &["mode"], 2);
+            if !named.is_null() && named != R_NilValue() {
+                named
+            } else {
+                let second = arg_by_name_or_position(args, &[], 1);
+                if !second.is_null() && second != R_NilValue() && TYPEOF(second) == SEXPTYPE::STRSXP
+                {
+                    second
+                } else {
+                    R_NilValue()
+                }
+            }
+        };
+        let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
+            "any".to_string()
+        } else {
+            elt_to_string(mode_arg, 0)
+        };
+        let found = if mode == "function" {
+            let value = if inherits {
+                crate::sexp::envir::R_findVar(sym, env)
+            } else {
+                crate::sexp::envir::R_findVarInFrame(env, sym)
+            };
+            crate::eval::builtin::has_builtin_handler(&name) || is_function_value(value)
+        } else {
+            crate::sexp::envir::binding_exists_raw(env, sym, inherits)
+                || crate::eval::builtin::has_builtin_handler(&name)
+        };
         Rf_ScalarLogical(if found { TRUE } else { FALSE })
     }
 }
@@ -24340,11 +24373,6 @@ pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         result
     }
-}
-
-/// R's `pi` — mathematical constant π.
-pub unsafe fn do_pi(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarReal(std::f64::consts::PI) }
 }
 
 /// R's `sin(x)` — sine function.

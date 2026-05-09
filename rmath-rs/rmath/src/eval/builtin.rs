@@ -2515,10 +2515,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::complex_cmath::do_cmathfuns,
     },
     EvaluatedBuiltin {
-        name: "pi",
-        handler: crate::mainutils::essentials::do_pi,
-    },
-    EvaluatedBuiltin {
         name: "sin",
         handler: crate::mainutils::essentials::do_sin,
     },

@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 393 |
-| Passing | 393 |
+| Total parity cases | 395 |
+| Passing | 395 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -107,11 +107,11 @@ Current domain coverage:
 | Parser and scalar basics | 121 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, shape-helper, array-creation, and `drop()` dimension-reduction cases, `substitute()` promise lookup, named-argument IO smoke including readLines/writeLines, locale/capability/runtime-introspection/platform/date/umask/Sys.info shape smoke, zero-length paste/bind/read.fwf shape cases, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
 | Vectors, lists, attributes, and objects | 53 | Vectors, typed vector constructors including legacy `single()` marker attributes, lists, names, subsetting, factors, class replacement/unclass/oldClass behavior, date/time class attributes, data-frame helper transforms, directory and file listing shape cases, row/col matrix-shape helpers, arithmetic attributes |
-| Base functions, conditions, and platform helpers | 130 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, `Sys.getpid`, `gcinfo()`/`gctorture()` session-state behavior, reflective builtin absence checks, options/getOption including defaults, broader `sprintf` integer/float formats and recycling errors, `proc.time`, file/temp helpers including `file.info`, `file.size`, `file.mtime`, `cat(file=...)`, path-string `readLines`, `file.access`/append/copy/link/symlink/rename/remove, `normalizePath`, `Sys.readlink`, unique per-session `tempfile()`, wrapping helpers, language-call `deparse()` parity, character transform NA/zero-length parity, message/warning concatenation, match.arg/char.expand edge behavior, zero-length `format.data.frame`, and factor `levels<-` remapping |
+| Base functions, conditions, and platform helpers | 131 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, `Sys.getpid`, `gcinfo()`/`gctorture()` session-state behavior, reflective builtin absence checks, `pi` constant binding semantics, options/getOption including defaults, broader `sprintf` integer/float formats and recycling errors, `proc.time`, file/temp helpers including `file.info`, `file.size`, `file.mtime`, `cat(file=...)`, path-string `readLines`, `file.access`/append/copy/link/symlink/rename/remove, `normalizePath`, `Sys.readlink`, unique per-session `tempfile()`, wrapping helpers, language-call `deparse()` parity, character transform NA/zero-length parity, message/warning concatenation, match.arg/char.expand edge behavior, zero-length `format.data.frame`, and factor `levels<-` remapping |
 | Stats, math, and RNG | 58 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int` invariants |
 | Packages, namespaces, and S3 | 4 | Package namespace and S3 fixtures plus `system.file()` and the pure-R package corpus gate |
 | Graphics and Android embedding | 1 | Base graphics layout state parity plus renderer/unit tests; broader graphics parity remains tracked by `rport-pluy` |
-| Error semantics | 16 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, and selected expected errors |
+| Error semantics | 17 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, and selected expected errors |
 
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
