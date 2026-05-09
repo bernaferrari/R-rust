@@ -8475,6 +8475,7 @@ pub unsafe fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 struct TapplyIndex {
     labels: Vec<String>,
     row_codes: Vec<Option<usize>>,
+    dim_name: Option<String>,
 }
 
 unsafe fn tapply_numeric_array(x: SEXP, index: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
@@ -8535,17 +8536,35 @@ unsafe fn tapply_indexes(index: SEXP, n: R_xlen_t) -> Option<Vec<TapplyIndex>> {
     unsafe {
         if TYPEOF(index) == SEXPTYPE::VECSXP {
             let mut indexes = Vec::with_capacity(XLENGTH(index) as usize);
+            let names = crate::sexp::attrib_core::getAttrib(
+                index,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
             for i in 0..XLENGTH(index) {
-                indexes.push(tapply_one_index(VECTOR_ELT(index, i), n)?);
+                let dim_name = if !names.is_null()
+                    && names != R_NilValue()
+                    && TYPEOF(names) == SEXPTYPE::STRSXP
+                    && XLENGTH(names) > i
+                {
+                    let name = string_at_or_empty(names, i);
+                    if name.is_empty() { None } else { Some(name) }
+                } else {
+                    None
+                };
+                indexes.push(tapply_one_index(VECTOR_ELT(index, i), n, dim_name)?);
             }
             Some(indexes)
         } else {
-            Some(vec![tapply_one_index(index, n)?])
+            Some(vec![tapply_one_index(index, n, None)?])
         }
     }
 }
 
-unsafe fn tapply_one_index(index: SEXP, n: R_xlen_t) -> Option<TapplyIndex> {
+unsafe fn tapply_one_index(
+    index: SEXP,
+    n: R_xlen_t,
+    dim_name: Option<String>,
+) -> Option<TapplyIndex> {
     unsafe {
         if index.is_null() || index == R_NilValue() || XLENGTH(index) == 0 {
             return None;
@@ -8566,6 +8585,7 @@ unsafe fn tapply_one_index(index: SEXP, n: R_xlen_t) -> Option<TapplyIndex> {
                 return Some(TapplyIndex {
                     labels: levels,
                     row_codes,
+                    dim_name,
                 });
             }
             let mut labels = std::collections::BTreeSet::<i32>::new();
@@ -8592,6 +8612,7 @@ unsafe fn tapply_one_index(index: SEXP, n: R_xlen_t) -> Option<TapplyIndex> {
             return Some(TapplyIndex {
                 labels: labels.into_iter().map(|value| value.to_string()).collect(),
                 row_codes,
+                dim_name,
             });
         }
 
@@ -8618,7 +8639,11 @@ unsafe fn tapply_one_index(index: SEXP, n: R_xlen_t) -> Option<TapplyIndex> {
                 .into_iter()
                 .map(|value| value.and_then(|value| positions.get(&value).copied()))
                 .collect();
-            return Some(TapplyIndex { labels, row_codes });
+            return Some(TapplyIndex {
+                labels,
+                row_codes,
+                dim_name,
+            });
         }
 
         None
@@ -8668,6 +8693,20 @@ unsafe fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
                 SET_STRING_ELT(names, j as R_xlen_t, Rf_mkChar(label_c.as_ptr()));
             }
             SET_VECTOR_ELT(dimnames, i as R_xlen_t, names);
+        }
+        let dimname_names = Rf_allocVector3(SEXPTYPE::STRSXP, indexes.len() as R_xlen_t);
+        if !dimname_names.is_null() {
+            let _dimname_names_guard = protect(dimname_names);
+            for (i, index) in indexes.iter().enumerate() {
+                let label_c =
+                    CString::new(index.dim_name.as_deref().unwrap_or("")).unwrap_or_default();
+                SET_STRING_ELT(dimname_names, i as R_xlen_t, Rf_mkChar(label_c.as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(
+                dimnames,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                dimname_names,
+            );
         }
         crate::sexp::attrib_core::setAttrib(
             result,
