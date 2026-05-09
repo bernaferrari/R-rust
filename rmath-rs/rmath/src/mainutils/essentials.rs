@@ -5791,6 +5791,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "var",
             "sd",
             "median",
+            "IQR",
             "cummin",
             "cummax",
             "dimnames",
@@ -21615,6 +21616,7 @@ enum AggregateSummary {
     Median,
     Sd,
     Var,
+    Iqr,
 }
 
 unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
@@ -21705,6 +21707,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEX
                     AggregateSummary::Median => median_value(&mut values),
                     AggregateSummary::Sd => sample_sd_value(&values),
                     AggregateSummary::Var => sample_variance_value(&values),
+                    AggregateSummary::Iqr => iqr_value(&mut values),
                 }
             };
         }
@@ -21736,14 +21739,12 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEX
 
 unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummary> {
     unsafe {
-        if call_fun_name(call).as_deref() == Some("median") {
-            return Some(AggregateSummary::Median);
-        }
-        if call_fun_name(call).as_deref() == Some("sd") {
-            return Some(AggregateSummary::Sd);
-        }
-        if call_fun_name(call).as_deref() == Some("var") {
-            return Some(AggregateSummary::Var);
+        match call_fun_name(call).as_deref() {
+            Some("median") => return Some(AggregateSummary::Median),
+            Some("sd") => return Some(AggregateSummary::Sd),
+            Some("var") => return Some(AggregateSummary::Var),
+            Some("IQR") => return Some(AggregateSummary::Iqr),
+            _ => {}
         }
         if fun.is_null() || fun == R_NilValue() {
             return Some(AggregateSummary::Mean);
@@ -21759,6 +21760,7 @@ unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummar
                 "median" => Some(AggregateSummary::Median),
                 "sd" => Some(AggregateSummary::Sd),
                 "var" => Some(AggregateSummary::Var),
+                "IQR" => Some(AggregateSummary::Iqr),
                 _ => Some(AggregateSummary::Mean),
             }
         } else if fun_type == SEXPTYPE::SYMSXP {
@@ -21771,6 +21773,7 @@ unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummar
                 Some("median") => Some(AggregateSummary::Median),
                 Some("sd") => Some(AggregateSummary::Sd),
                 Some("var") => Some(AggregateSummary::Var),
+                Some("IQR") => Some(AggregateSummary::Iqr),
                 _ => Some(AggregateSummary::Mean),
             }
         } else {
@@ -21790,6 +21793,14 @@ fn median_value(values: &mut [f64]) -> f64 {
     } else {
         values[mid]
     }
+}
+
+fn iqr_value(values: &mut [f64]) -> f64 {
+    if values.is_empty() {
+        return NA_REAL;
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    quantile_type7(values, 0.75) - quantile_type7(values, 0.25)
 }
 
 fn sample_sd_value(values: &[f64]) -> f64 {
@@ -26216,6 +26227,51 @@ pub unsafe fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         } else {
             Rf_ScalarReal(vals[mid])
         }
+    }
+}
+
+/// R's `IQR(x, na.rm = FALSE)` — interquartile range using quantile type 7.
+pub unsafe fn do_iqr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_ScalarReal(NA_REAL);
+        }
+
+        let na_rm_arg = CAR(CDR(args));
+        let na_rm = !na_rm_arg.is_null()
+            && na_rm_arg != R_NilValue()
+            && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let mut vals = Vec::new();
+
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+
+            if val.to_bits() == R_NA_BIT_PATTERN || val.is_nan() {
+                if !na_rm {
+                    return Rf_ScalarReal(NA_REAL);
+                }
+            } else {
+                vals.push(val);
+            }
+        }
+
+        if vals.is_empty() {
+            return Rf_ScalarReal(NA_REAL);
+        }
+
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        Rf_ScalarReal(iqr_value(&mut vals))
     }
 }
 

@@ -2417,6 +2417,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_median,
     },
     EvaluatedBuiltin {
+        name: "IQR",
+        handler: crate::mainutils::essentials::do_iqr,
+    },
+    EvaluatedBuiltin {
         name: "cummin",
         handler: crate::mainutils::essentials::do_cummin,
     },

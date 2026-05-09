@@ -1,0 +1,6 @@
+z <- aggregate(c(1, 3, 3, 7), list(g = c("a", "a", "b", "b")), IQR)
+cat(paste(names(z), collapse = "|"), "\n", sep = "")
+cat(paste(z[[1]], collapse = "|"), "\n", sep = "")
+cat(paste(sprintf("%.12g", z[[2]]), collapse = "|"), "\n", sep = "")
+cat(paste(class(z), collapse = "|"), "\n", sep = "")
+cat(paste(dim(z), collapse = "|"), "\n", sep = "")
