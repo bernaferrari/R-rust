@@ -7420,6 +7420,9 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
+        if n == 0 {
+            return String::new();
+        }
         let idx = i % n;
 
         if t == SEXPTYPE::REALSXP {

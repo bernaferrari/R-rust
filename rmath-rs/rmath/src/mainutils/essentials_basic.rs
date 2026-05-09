@@ -61,14 +61,13 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
             current = CDR(current);
         }
 
-        if arg_vecs.is_empty() {
-            let s = CString::new("").unwrap_or_default();
-            return Rf_mkString(s.as_ptr());
+        if arg_vecs.is_empty() || max_len == 0 {
+            if collapse.is_some() {
+                let s = CString::new("").unwrap_or_default();
+                return Rf_mkString(s.as_ptr());
+            }
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
-        if max_len == 0 {
-            max_len = 1;
-        }
-
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, max_len);
         if result.is_null() {
             return R_NilValue();
