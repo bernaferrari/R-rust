@@ -257,6 +257,18 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
+        name: "...elt",
+        handler: crate::eval::missing::do_dots_elt,
+    },
+    EvaluatedBuiltin {
+        name: "...length",
+        handler: crate::eval::missing::do_dots_length,
+    },
+    EvaluatedBuiltin {
+        name: "...names",
+        handler: crate::eval::missing::do_dots_names,
+    },
+    EvaluatedBuiltin {
         name: ".Primitive",
         handler: crate::mainutils::names::do_primitive,
     },

@@ -29,7 +29,7 @@ use std::ptr;
 use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
     BODY, CADDR, CADR, CAR, CDDR, CDR, CHAR, CLOENV, FORMALS, LENGTH, NAMED, PRINTNAME, SET_FRAME,
-    SET_NAMED, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    SET_NAMED, SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -39,7 +39,7 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::memory_ext::{NewEnvironment, allocLang, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
+use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
 
 use super::builtin::PRIMNAME;
 use super::closure::applyClosure;
@@ -58,6 +58,105 @@ pub struct R_varloc_t {
 unsafe fn R_findVarLocInFrame(_rho: SEXP, _symbol: SEXP) -> R_varloc_t {
     R_varloc_t {
         cell: ptr::null_mut(),
+    }
+}
+
+fn dots_context_error(message: &str) -> ! {
+    std::panic::panic_any(RError {
+        message: message.to_string(),
+    });
+}
+
+unsafe fn current_dots(rho: SEXP) -> SEXP {
+    unsafe {
+        let dots = R_findVarInFrame(rho, R_DotsSymbol());
+        if dots.is_null()
+            || dots == R_UnboundValue()
+            || dots == R_MissingArg()
+            || TYPEOF(dots) != SEXPTYPE::DOTSXP
+        {
+            dots_context_error("incorrect context: the current call has no '...' to look in");
+        }
+        dots
+    }
+}
+
+unsafe fn dots_len(dots: SEXP) -> c_int {
+    unsafe {
+        let mut n = 0;
+        let mut cell = dots;
+        while !cell.is_null() && cell != R_NilValue() {
+            n += 1;
+            cell = CDR(cell);
+        }
+        n
+    }
+}
+
+unsafe fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
+    unsafe {
+        if index <= 0 {
+            dots_context_error("indexing '...' with an invalid index");
+        }
+
+        let mut i = 1;
+        let mut cell = dots;
+        while !cell.is_null() && cell != R_NilValue() {
+            if i == index {
+                return cell;
+            }
+            i += 1;
+            cell = CDR(cell);
+        }
+
+        dots_context_error("indexing '...' with an invalid index");
+    }
+}
+
+pub unsafe fn do_dots_length(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { Rf_ScalarInteger(dots_len(current_dots(rho))) }
+}
+
+pub unsafe fn do_dots_names(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let dots = current_dots(rho);
+        let len = dots_len(dots);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _names_guard = protect(names);
+        let blank = Rf_mkChar(c"".as_ptr());
+
+        let mut i: R_xlen_t = 0;
+        let mut cell = dots;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let name = if tag.is_null() || tag == R_NilValue() {
+                blank
+            } else {
+                PRINTNAME(tag)
+            };
+            SET_STRING_ELT(names, i, name);
+            i += 1;
+            cell = CDR(cell);
+        }
+
+        names
+    }
+}
+
+pub unsafe fn do_dots_elt(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let index = if args.is_null() || args == R_NilValue() {
+            NA_INTEGER
+        } else {
+            crate::mainutils::coerce::asInteger(CAR(args))
+        };
+        let cell = dots_cell_at(current_dots(rho), index);
+        let value = CAR(cell);
+        if TYPEOF(value) == SEXPTYPE::PROMSXP {
+            Rf_eval(value, rho)
+        } else {
+            value
+        }
     }
 }
 
