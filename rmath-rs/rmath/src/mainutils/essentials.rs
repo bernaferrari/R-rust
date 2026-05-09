@@ -8474,7 +8474,8 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `warning(...)` — issue warning.
 pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let warning_text = elt_to_string(CAR(args), 0);
+        let warning_text =
+            condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
         let condition = simple_condition(&warning_text, &["simpleWarning", "warning", "condition"]);
         signal_calling_handlers(condition, rho);
 
@@ -8492,7 +8493,8 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 /// R's `message(...)` — print message.
 pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let message = format!("{}\n", elt_to_string(CAR(args), 0));
+        let text = condition_message_text(args, &["domain", "appendLF"]);
+        let message = format!("{}\n", text);
         let condition = simple_condition(&message, &["simpleMessage", "message", "condition"]);
         signal_calling_handlers(condition, rho);
 
@@ -17920,6 +17922,26 @@ fn string_arg_values(x: SEXP) -> Vec<String> {
     }
 }
 
+unsafe fn condition_message_text(args: SEXP, option_names: &[&str]) -> String {
+    unsafe {
+        let mut parts = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let arg = CAR(current);
+            let is_option = tag_name(current)
+                .as_deref()
+                .is_some_and(|name| option_names.contains(&name));
+            if !is_option && !arg.is_null() && arg != R_NilValue() {
+                for i in 0..XLENGTH(arg) {
+                    parts.push(elt_to_string(arg, i));
+                }
+            }
+            current = CDR(current);
+        }
+        parts.join("")
+    }
+}
+
 fn build_data_frame(columns: Vec<SEXP>, names: Vec<String>, row_names: SEXP) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
@@ -17969,19 +17991,7 @@ pub unsafe fn do_cat_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R-like `message_args(...)` — message with domain.
 pub unsafe fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut parts: Vec<String> = Vec::new();
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                let n = XLENGTH(arg).max(1);
-                for i in 0..n {
-                    parts.push(elt_to_string(arg, i));
-                }
-            }
-            current = CDR(current);
-        }
-        let output = parts.join(" ");
+        let output = condition_message_text(args, &["domain", "appendLF"]);
         eprintln!("{}", output);
         crate::sexp::globals::set_R_Visible(FALSE);
         R_NilValue()
@@ -17991,19 +18001,7 @@ pub unsafe fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 /// R's `packageStartupMessage(...)` — startup message.
 pub unsafe fn do_package_startup_message(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut parts: Vec<String> = Vec::new();
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                let n = XLENGTH(arg).max(1);
-                for i in 0..n {
-                    parts.push(elt_to_string(arg, i));
-                }
-            }
-            current = CDR(current);
-        }
-        let output = parts.join(" ");
+        let output = condition_message_text(args, &["domain", "appendLF"]);
         eprintln!("{}", output);
         crate::sexp::globals::set_R_Visible(FALSE);
         R_NilValue()
@@ -21153,19 +21151,7 @@ pub unsafe fn do_cat_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 /// R's enhanced `message(..., domain, appendLF)` — simplified.
 pub unsafe fn do_message_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut parts: Vec<String> = Vec::new();
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                let n = XLENGTH(arg).max(1);
-                for i in 0..n {
-                    parts.push(elt_to_string(arg, i));
-                }
-            }
-            current = CDR(current);
-        }
-        let output = parts.join(" ");
+        let output = condition_message_text(args, &["domain", "appendLF"]);
         eprintln!("{}", output);
         R_NilValue()
     }
@@ -21174,28 +21160,11 @@ pub unsafe fn do_message_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 /// R's enhanced `warning(..., call., immediate., noBreaks., domain.)` — simplified.
 pub unsafe fn do_warning_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let mut parts: Vec<String> = Vec::new();
-        let mut current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                let t = TYPEOF(arg);
-                // Skip logical args (call., immediate., etc.)
-                if t == SEXPTYPE::LGLSXP {
-                    current = CDR(current);
-                    continue;
-                }
-                let n = XLENGTH(arg).max(1);
-                for i in 0..n {
-                    parts.push(elt_to_string(arg, i));
-                }
-            }
-            current = CDR(current);
+        let mut output =
+            condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
+        if output.is_empty() {
+            output = "warning".to_string();
         }
-        if parts.is_empty() {
-            parts.push("warning".to_string());
-        }
-        let output = parts.join(" ");
         eprintln!("Warning: {}", output);
         R_NilValue()
     }
