@@ -964,6 +964,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit("NULL\n");
         }
         SEXPTYPE::INTSXP => {
+            if x.len() == 0 {
+                emit("integer(0)\n");
+                return;
+            }
             if let Some(output) = format_matrix(x) {
                 emit(&format!("{output}\n"));
                 return;
@@ -990,6 +994,14 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::REALSXP => {
+            if x.len() == 0
+                && !has_class(x, "difftime")
+                && !has_class(x, "POSIXct")
+                && !has_class(x, "Date")
+            {
+                emit("numeric(0)\n");
+                return;
+            }
             if let Some(output) = format_matrix(x) {
                 emit(&format!("{output}\n"));
                 return;
@@ -1022,6 +1034,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::LGLSXP => {
+            if x.len() == 0 {
+                emit("logical(0)\n");
+                return;
+            }
             if let Some(output) = format_matrix(x) {
                 emit(&format!("{output}\n"));
                 return;
@@ -1036,6 +1052,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::CPLXSXP => {
+            if x.len() == 0 {
+                emit("complex(0)\n");
+                return;
+            }
             if let Some(output) = format_matrix(x) {
                 emit(&format!("{output}\n"));
                 return;
@@ -1066,6 +1086,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::RAWSXP => {
+            if x.len() == 0 {
+                emit("raw(0)\n");
+                return;
+            }
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
             let base = format!("[1] {}{}", vals.join(" "), suffix);

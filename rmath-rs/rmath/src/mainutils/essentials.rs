@@ -17531,7 +17531,12 @@ pub unsafe fn do_print_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("integer(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
+        if n == 0 {
+            println!("integer(0)");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         print!("[1]");
         for i in 0..n.min(500) {
             let v = *INTEGER(x).add(i as usize);
@@ -17568,7 +17573,12 @@ pub unsafe fn do_print_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("numeric(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
+        if n == 0 {
+            println!("numeric(0)");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         print!("[1]");
         for i in 0..n.min(500) {
             let v = *REAL(x).add(i as usize);
@@ -17605,7 +17615,12 @@ pub unsafe fn do_print_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("logical(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
+        if n == 0 {
+            println!("logical(0)");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         print!("[1]");
         for i in 0..n.min(500) {
             let v = *LOGICAL(x).add(i as usize);
@@ -17644,7 +17659,12 @@ pub unsafe fn do_print_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             println!("character(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
+        if n == 0 {
+            println!("character(0)");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         for i in 0..n.min(500) {
             let s = elt_to_string(x, i);
             println!("[{}] \"{}\"", i + 1, s);
@@ -17668,7 +17688,12 @@ pub unsafe fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("complex(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
+        if n == 0 {
+            println!("complex(0)");
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         print!("[1]");
         for i in 0..n.min(500) {
             // Complex data is stored as pairs of f64

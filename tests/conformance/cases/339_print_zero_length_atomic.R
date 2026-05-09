@@ -1,0 +1,6 @@
+print(logical(0))
+print(integer(0))
+print(numeric(0))
+print(character(0))
+print(raw(0))
+print(complex(0))
