@@ -1,0 +1,7 @@
+m <- matrix(1:4, 2, 2)
+print(as.vector(prop.table(m)))
+print(dim(prop.table(m)))
+print(sprintf("%.6f", as.vector(prop.table(m, 1))))
+print(dim(prop.table(m, 1)))
+print(sprintf("%.6f", as.vector(prop.table(m, 2))))
+print(dim(prop.table(m, 2)))

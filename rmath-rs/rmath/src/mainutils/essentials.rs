@@ -20819,7 +20819,7 @@ pub unsafe fn do_transform(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 // Complete base R functions — table operations, factors, aggregation
 // ---------------------------------------------------------------------------
 
-/// R's `prop.table(x)` — proportion table (simplified).
+/// R's `prop.table(x, margin)` — proportion table for numeric vectors and 2D matrices.
 pub unsafe fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -20831,16 +20831,55 @@ pub unsafe fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             return x;
         }
         let n = XLENGTH(x);
-        // Calculate total
-        let mut total = 0.0;
-        if t == SEXPTYPE::REALSXP {
-            for i in 0..n {
-                total += *REAL(x).add(i as usize);
-            }
+        let margin = CAR(CDR(args));
+        let margin_value = if margin.is_null() || margin == R_NilValue() {
+            0
         } else {
-            for i in 0..n {
-                total += *INTEGER(x).add(i as usize) as f64;
+            crate::mainutils::coerce::asInteger(margin)
+        };
+
+        if margin_value == 1 || margin_value == 2 {
+            let dim =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            if !dim.is_null()
+                && dim != R_NilValue()
+                && TYPEOF(dim) == SEXPTYPE::INTSXP
+                && LENGTH(dim) == 2
+            {
+                let nrow = *INTEGER(dim) as R_xlen_t;
+                let ncol = *INTEGER(dim).add(1) as R_xlen_t;
+                let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let _p = protect(result);
+                for col in 0..ncol {
+                    for row in 0..nrow {
+                        let index = row + col * nrow;
+                        let denom = if margin_value == 1 {
+                            (0..ncol)
+                                .map(|c| numeric_value_at(x, t, row + c * nrow))
+                                .sum::<f64>()
+                        } else {
+                            (0..nrow)
+                                .map(|r| numeric_value_at(x, t, r + col * nrow))
+                                .sum::<f64>()
+                        };
+                        *REAL(result).add(index as usize) = if denom == 0.0 {
+                            numeric_value_at(x, t, index)
+                        } else {
+                            numeric_value_at(x, t, index) / denom
+                        };
+                    }
+                }
+                set_two_dim_attr(result, nrow, ncol);
+                return result;
             }
+        }
+
+        let mut total = 0.0;
+        for i in 0..n {
+            total += numeric_value_at(x, t, i);
         }
         if total == 0.0 {
             return x;
@@ -20851,16 +20890,37 @@ pub unsafe fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
         let _p = protect(result);
         let dst = REAL(result);
-        if t == SEXPTYPE::REALSXP {
-            for i in 0..n {
-                *dst.add(i as usize) = *REAL(x).add(i as usize) / total;
-            }
-        } else {
-            for i in 0..n {
-                *dst.add(i as usize) = *INTEGER(x).add(i as usize) as f64 / total;
-            }
+        for i in 0..n {
+            *dst.add(i as usize) = numeric_value_at(x, t, i) / total;
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && LENGTH(dim) == 2
+        {
+            set_two_dim_attr(
+                result,
+                *INTEGER(dim) as R_xlen_t,
+                *INTEGER(dim).add(1) as R_xlen_t,
+            );
         }
         result
+    }
+}
+
+unsafe fn numeric_value_at(x: SEXP, t: c_int, index: R_xlen_t) -> f64 {
+    unsafe {
+        if t == SEXPTYPE::INTSXP {
+            let value = *INTEGER(x).add(index as usize);
+            if value == NA_INTEGER {
+                NA_REAL
+            } else {
+                value as f64
+            }
+        } else {
+            *REAL(x).add(index as usize)
+        }
     }
 }
 
