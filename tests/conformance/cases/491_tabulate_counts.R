@@ -1,0 +1,7 @@
+cat(paste(tabulate(c(1, 2, 2, NA, 0, -1, 3), nbins = 4), collapse = "|"), "\n", sep = "")
+cat(paste(tabulate(c(1.2, 1.9, 2.1), nbins = 3), collapse = "|"), "\n", sep = "")
+cat(paste(tabulate(integer(0)), collapse = "|"), "\n", sep = "")
+cat(paste(tabulate(c(2L, 5L)), collapse = "|"), "\n", sep = "")
+cat(paste(tabulate(c(2L, 5L), nbins = 3), collapse = "|"), "\n", sep = "")
+cat(paste(tabulate(c(NA, 0, -1), nbins = 2), collapse = "|"), "\n", sep = "")
+cat(typeof(tabulate(c(1L, 1L), nbins = 2)), "\n", sep = "")

@@ -613,6 +613,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_rep,
     },
     EvaluatedBuiltin {
+        name: "rep.int",
+        handler: crate::mainutils::essentials::do_rep_int,
+    },
+    EvaluatedBuiltin {
+        name: "rep_len",
+        handler: crate::mainutils::essentials::do_rep_len,
+    },
+    EvaluatedBuiltin {
         name: "paste",
         handler: crate::mainutils::essentials::do_paste,
     },
@@ -679,6 +687,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "table",
         handler: crate::mainutils::essentials::do_table,
+    },
+    EvaluatedBuiltin {
+        name: "tabulate",
+        handler: crate::mainutils::essentials::do_tabulate,
     },
     EvaluatedBuiltin {
         name: "pairlist",

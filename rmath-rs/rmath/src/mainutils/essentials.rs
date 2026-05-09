@@ -930,6 +930,135 @@ pub unsafe fn do_rep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// R's `rep.int(x, times)` — compact repetition helper without names.
+pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_rep(call, op, args, rho) }
+}
+
+/// R's `rep_len(x, length.out)` — repeat or truncate to an exact length.
+pub unsafe fn do_rep_len(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let length_arg = arg_by_name_or_position(args, &["length.out"], 1);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let length_out = (real_or_default(length_arg, 0.0) as i64).max(0) as R_xlen_t;
+        let result = Rf_allocVector3(TYPEOF(x), length_out);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        let source_len = XLENGTH(x);
+        if source_len == 0 {
+            fill_repeated_empty_value(result);
+            return result;
+        }
+
+        for out_idx in 0..length_out {
+            copy_vector_elt(result, out_idx, x, out_idx % source_len);
+        }
+        result
+    }
+}
+
+fn fill_repeated_empty_value(x: SEXP) {
+    unsafe {
+        for i in 0..XLENGTH(x) {
+            match TYPEOF(x) {
+                t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(i as usize) = NA_LOGICAL,
+                t if t == SEXPTYPE::INTSXP => *INTEGER(x).add(i as usize) = NA_INTEGER,
+                t if t == SEXPTYPE::REALSXP => *REAL(x).add(i as usize) = NA_REAL,
+                t if t == SEXPTYPE::CPLXSXP => {
+                    *COMPLEX(x).add(i as usize) = Rcomplex {
+                        r: NA_REAL,
+                        i: NA_REAL,
+                    };
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    SET_STRING_ELT(x, i, crate::sexp::globals::R_NaString());
+                }
+                t if t == SEXPTYPE::VECSXP => SET_VECTOR_ELT(x, i, R_NilValue()),
+                t if t == SEXPTYPE::RAWSXP => *RAW(x).add(i as usize) = 0,
+                _ => {}
+            }
+        }
+    }
+}
+
+/// R's `tabulate(bin, nbins)` — count positive integer bin occurrences.
+pub unsafe fn do_tabulate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let bins = arg_by_name_or_position(args, &["bin"], 0);
+        if bins.is_null() || bins == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+
+        let nbins_arg = arg_by_name_or_position(args, &["nbins"], 1);
+        let nbins = if nbins_arg.is_null() || nbins_arg == R_NilValue() {
+            default_tabulate_bins(bins)
+        } else {
+            (real_or_default(nbins_arg, 0.0) as i64).max(0) as usize
+        };
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, nbins as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for i in 0..nbins {
+            *INTEGER(result).add(i) = 0;
+        }
+
+        for i in 0..XLENGTH(bins) {
+            let Some(bin) = tabulate_bin_value(bins, i) else {
+                continue;
+            };
+            if bin > 0 && bin <= nbins {
+                let slot = INTEGER(result).add(bin - 1);
+                *slot = slot.read().saturating_add(1);
+            }
+        }
+        result
+    }
+}
+
+fn default_tabulate_bins(bins: SEXP) -> usize {
+    unsafe {
+        let mut max_bin = 1_usize;
+        for i in 0..XLENGTH(bins) {
+            if let Some(bin) = tabulate_bin_value(bins, i)
+                && bin > max_bin
+            {
+                max_bin = bin;
+            }
+        }
+        max_bin
+    }
+}
+
+fn tabulate_bin_value(bins: SEXP, index: R_xlen_t) -> Option<usize> {
+    unsafe {
+        match TYPEOF(bins) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                let value = *INTEGER(bins).add(index as usize);
+                (value != NA_INTEGER).then_some(value.max(0) as usize)
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let value = *REAL(bins).add(index as usize);
+                if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() || !value.is_finite() {
+                    None
+                } else {
+                    Some((value as i64).max(0) as usize)
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Core vector/scalar helpers live in `essentials_basic`.
 // ---------------------------------------------------------------------------
@@ -5213,6 +5342,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "seq_len",
             "seq_along",
             "rep",
+            "rep.int",
+            "rep_len",
             "paste",
             "paste0",
             "cat",
@@ -5238,6 +5369,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "any",
             "all",
             "table",
+            "tabulate",
             "pairlist",
             "simplify2array",
             "match.arg",
