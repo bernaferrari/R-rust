@@ -1699,35 +1699,30 @@ unsafe fn do_which_minmax(args: SEXP, is_min: bool) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
-            return Rf_ScalarInteger(0);
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
         let n = XLENGTH(x);
-        let mut best_idx: R_xlen_t = 0;
-        let mut best_val = elt_real_safe(x, 0);
-        for i in 1..n {
+        let mut best: Option<(R_xlen_t, f64)> = None;
+        for i in 0..n {
             let v = elt_real_safe(x, i);
-            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
                 continue;
             }
-            if best_val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                best_idx = i;
-                best_val = v;
-            } else if is_min {
-                if v < best_val {
-                    best_idx = i;
-                    best_val = v;
+            match best {
+                None => best = Some((i, v)),
+                Some((_, best_val)) if is_min && v < best_val => {
+                    best = Some((i, v));
                 }
-            } else {
-                if v > best_val {
-                    best_idx = i;
-                    best_val = v;
+                Some((_, best_val)) if !is_min && v > best_val => {
+                    best = Some((i, v));
                 }
+                _ => {}
             }
         }
-        if best_val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-            Rf_ScalarInteger(0)
-        } else {
+        if let Some((best_idx, _)) = best {
             Rf_ScalarInteger((best_idx + 1) as c_int)
+        } else {
+            Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         }
     }
 }
