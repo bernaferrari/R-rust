@@ -546,12 +546,11 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
 
-        let n = XLENGTH(test).max(XLENGTH(yes)).max(XLENGTH(no));
-        if n == 0 {
-            return R_NilValue();
-        }
+        let n = XLENGTH(test);
 
-        let result_type = if TYPEOF(yes) == SEXPTYPE::STRSXP || TYPEOF(no) == SEXPTYPE::STRSXP {
+        let result_type = if n == 0 {
+            SEXPTYPE::LGLSXP
+        } else if TYPEOF(yes) == SEXPTYPE::STRSXP || TYPEOF(no) == SEXPTYPE::STRSXP {
             SEXPTYPE::STRSXP
         } else if TYPEOF(yes) == SEXPTYPE::REALSXP || TYPEOF(no) == SEXPTYPE::REALSXP {
             SEXPTYPE::REALSXP
@@ -566,19 +565,17 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
         let _p = protect(result);
-        let test_n = XLENGTH(test);
         let yes_n = XLENGTH(yes);
         let no_n = XLENGTH(no);
 
         for i in 0..n {
-            let test_idx = if test_n == 0 { 0 } else { i % test_n };
             let test_value = if TYPEOF(test) == SEXPTYPE::LGLSXP {
-                *LOGICAL(test).add(test_idx as usize)
+                *LOGICAL(test).add(i as usize)
             } else if TYPEOF(test) == SEXPTYPE::INTSXP {
-                *INTEGER(test).add(test_idx as usize)
+                *INTEGER(test).add(i as usize)
             } else if TYPEOF(test) == SEXPTYPE::REALSXP {
-                let v = *REAL(test).add(test_idx as usize);
-                if v.is_nan() { NA_INTEGER } else { v as c_int }
+                let v = *REAL(test).add(i as usize);
+                if v.is_nan() { NA_LOGICAL } else { v as c_int }
             } else {
                 0
             };
@@ -590,7 +587,11 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
             let src = if cond { yes } else { no };
             let src_n = if cond { yes_n } else { no_n };
-            let src_idx = if src_n == 0 { 0 } else { i % src_n };
+            if src_n == 0 {
+                set_ifelse_na(result, result_type, i);
+                continue;
+            }
+            let src_idx = i % src_n;
 
             set_ifelse_value(result, result_type, i, src, src_idx);
         }
