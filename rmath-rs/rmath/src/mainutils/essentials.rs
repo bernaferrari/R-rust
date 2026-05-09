@@ -9193,8 +9193,19 @@ pub unsafe fn do_dmultinom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return R_NilValue();
         }
 
-        let nx = XLENGTH(x_arg).max(1);
-        let np = XLENGTH(prob_arg).max(1);
+        let nx = if x_arg == R_NilValue() {
+            0
+        } else {
+            XLENGTH(x_arg)
+        };
+        let np = if prob_arg == R_NilValue() {
+            0
+        } else {
+            XLENGTH(prob_arg)
+        };
+        if nx != np {
+            base_error("x[] and prob[] must be equal length vectors.");
+        }
         let give_log = if log_arg.is_null() || log_arg == R_NilValue() {
             false
         } else {
@@ -9207,10 +9218,22 @@ pub unsafe fn do_dmultinom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             xv.push(elt_real_safe(x_arg, i));
         }
 
-        // Collect prob values
+        // Collect and validate prob values
         let mut pv: Vec<f64> = Vec::with_capacity(np as usize);
+        let mut prob_sum = 0.0;
         for i in 0..np {
-            pv.push(elt_real_safe(prob_arg, i));
+            let p = elt_real_safe(prob_arg, i);
+            if !p.is_finite() || p < 0.0 {
+                base_error("probabilities must be finite, non-negative and not all 0");
+            }
+            prob_sum += p;
+            pv.push(p);
+        }
+        if prob_sum <= 0.0 {
+            base_error("probabilities must be finite, non-negative and not all 0");
+        }
+        for p in &mut pv {
+            *p /= prob_sum;
         }
 
         // dmultinom: log-probability of multinomial outcome

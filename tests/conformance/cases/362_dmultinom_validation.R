@@ -1,0 +1,6 @@
+print(dmultinom(c(1, 2), prob = c(0.25, 0.75)))
+print(dmultinom(c(1, 2), prob = c(1, 3)))
+print(dmultinom(c(1, 2), prob = c(0.25, 0.75), log = TRUE))
+print(dmultinom(c(0, 0), prob = c(0.25, 0.75)))
+print(dmultinom(c(1, 0), prob = c(0, 1)))
+print(dmultinom(c(0, 1), prob = c(0, 1)))
