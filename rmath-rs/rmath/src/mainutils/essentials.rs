@@ -7640,6 +7640,8 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
             let v = *INTEGER(x).add(idx as usize);
             if v == NA_INTEGER {
                 "NA".to_string()
+            } else if let Some(label) = factor_label_at(x, v) {
+                label
             } else {
                 format!("{}", v)
             }
@@ -7684,6 +7686,29 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
             }
         } else {
             format!("{:?}", t)
+        }
+    }
+}
+
+unsafe fn factor_label_at(x: SEXP, code: i32) -> Option<String> {
+    unsafe {
+        if code <= 0 {
+            return None;
+        }
+        let levels =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let index = (code - 1) as R_xlen_t;
+        if index >= XLENGTH(levels) {
+            return None;
+        }
+        let charsxp = STRING_ELT(levels, index);
+        if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
+            None
+        } else {
+            Some(CStr::from_ptr(CHAR(charsxp)).to_string_lossy().into_owned())
         }
     }
 }
@@ -21690,6 +21715,19 @@ struct AggregateInputColumn {
     data_type: c_int,
 }
 
+struct AggregateByColumn {
+    data: SEXP,
+    data_type: c_int,
+    levels: Option<Vec<String>>,
+}
+
+#[derive(Clone)]
+struct AggregateGroupValue {
+    label: String,
+    order_key: String,
+    factor_code: Option<i32>,
+}
+
 unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
     unsafe {
         let summary = aggregate_summary_fun(fun, call)?;
@@ -21709,16 +21747,23 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
             if group_type != SEXPTYPE::STRSXP && group_type != SEXPTYPE::INTSXP {
                 return None;
             }
-            group_columns.push((group, group_type));
+            group_columns.push(AggregateByColumn {
+                data: group,
+                data_type: group_type,
+                levels: aggregate_factor_levels(group),
+            });
         }
 
-        let mut groups = BTreeMap::<Vec<String>, (Vec<String>, Vec<AggregateGroupState>)>::new();
+        let mut groups =
+            BTreeMap::<Vec<String>, (Vec<AggregateGroupValue>, Vec<AggregateGroupState>)>::new();
         for i in 0..row_count {
             let mut labels = Vec::with_capacity(group_columns.len());
-            for &(group, group_type) in &group_columns {
-                labels.push(aggregate_group_key(group, group_type, i)?);
+            let mut order_key = Vec::with_capacity(group_columns.len());
+            for group in &group_columns {
+                let value = aggregate_group_value(group, i)?;
+                order_key.push(value.order_key.clone());
+                labels.push(value);
             }
-            let mut order_key = labels.clone();
             order_key.reverse();
             let states = &mut groups
                 .entry(order_key)
@@ -21746,12 +21791,20 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
         let n = groups.len() as R_xlen_t;
 
         let mut group_result_cols = Vec::with_capacity(group_columns.len());
-        for j in 0..group_columns.len() {
-            let group_col = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        for (j, group) in group_columns.iter().enumerate() {
+            let group_col_type = if group.levels.is_some() {
+                SEXPTYPE::INTSXP
+            } else {
+                SEXPTYPE::STRSXP
+            };
+            let group_col = Rf_allocVector3(group_col_type, n);
             if group_col.is_null() {
                 return Some(R_NilValue());
             }
             let _group_guard = protect(group_col);
+            if let Some(levels) = &group.levels {
+                set_factor_attrs(group_col, levels);
+            }
             SET_VECTOR_ELT(result, j as R_xlen_t, group_col);
             group_result_cols.push(group_col);
         }
@@ -21769,12 +21822,16 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
 
         for (i, (_order_key, (labels, states))) in groups.into_iter().enumerate() {
             for (j, value) in labels.into_iter().enumerate() {
-                let value_c = CString::new(value).unwrap_or_default();
-                SET_STRING_ELT(
-                    group_result_cols[j],
-                    i as R_xlen_t,
-                    Rf_mkChar(value_c.as_ptr()),
-                );
+                if let Some(code) = value.factor_code {
+                    *INTEGER(group_result_cols[j]).add(i) = code;
+                } else {
+                    let value_c = CString::new(value.label).unwrap_or_default();
+                    SET_STRING_ELT(
+                        group_result_cols[j],
+                        i as R_xlen_t,
+                        Rf_mkChar(value_c.as_ptr()),
+                    );
+                }
             }
             for (value_col, state) in value_cols.iter().zip(states.into_iter()) {
                 *REAL(*value_col).add(i) = state.summarize(summary);
@@ -21875,6 +21932,55 @@ fn aggregate_input_row_count(columns: &[AggregateInputColumn]) -> Option<R_xlen_
         Some(row_count)
     } else {
         None
+    }
+}
+
+unsafe fn aggregate_factor_levels(group: SEXP) -> Option<Vec<String>> {
+    unsafe {
+        if TYPEOF(group) != SEXPTYPE::INTSXP {
+            return None;
+        }
+        let levels =
+            crate::sexp::attrib_core::getAttrib(group, crate::sexp::attrib_core::R_LevelsSymbol());
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        Some(
+            (0..XLENGTH(levels))
+                .map(|i| string_at_or_empty(levels, i))
+                .collect(),
+        )
+    }
+}
+
+unsafe fn set_factor_attrs(column: SEXP, levels: &[String]) {
+    unsafe {
+        let levels_sexp = Rf_allocVector3(SEXPTYPE::STRSXP, levels.len() as R_xlen_t);
+        if levels_sexp.is_null() {
+            return;
+        }
+        let _levels_guard = protect(levels_sexp);
+        for (i, level) in levels.iter().enumerate() {
+            let level_c = CString::new(level.as_str()).unwrap_or_default();
+            SET_STRING_ELT(levels_sexp, i as R_xlen_t, Rf_mkChar(level_c.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            column,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+            levels_sexp,
+        );
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if class.is_null() {
+            return;
+        }
+        let _class_guard = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"factor".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            column,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
     }
 }
 
@@ -21988,21 +22094,42 @@ unsafe fn call_fun_name(call: SEXP) -> Option<String> {
     }
 }
 
-unsafe fn aggregate_group_key(group: SEXP, group_type: c_int, i: R_xlen_t) -> Option<String> {
+unsafe fn aggregate_group_value(
+    group: &AggregateByColumn,
+    i: R_xlen_t,
+) -> Option<AggregateGroupValue> {
     unsafe {
-        if group_type == SEXPTYPE::STRSXP {
-            let elt = STRING_ELT(group, i);
+        if group.data_type == SEXPTYPE::STRSXP {
+            let elt = STRING_ELT(group.data, i);
             if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
                 None
             } else {
-                Some(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned())
+                let label = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
+                Some(AggregateGroupValue {
+                    order_key: label.clone(),
+                    label,
+                    factor_code: None,
+                })
             }
-        } else if group_type == SEXPTYPE::INTSXP {
-            let value = *INTEGER(group).add(i as usize);
+        } else if group.data_type == SEXPTYPE::INTSXP {
+            let value = *INTEGER(group.data).add(i as usize);
             if value == NA_INTEGER {
                 None
+            } else if let Some(levels) = &group.levels {
+                let level_index = (value - 1) as usize;
+                let label = levels.get(level_index)?.clone();
+                Some(AggregateGroupValue {
+                    label,
+                    order_key: format!("{value:010}"),
+                    factor_code: Some(value),
+                })
             } else {
-                Some(value.to_string())
+                let label = value.to_string();
+                Some(AggregateGroupValue {
+                    order_key: label.clone(),
+                    label,
+                    factor_code: None,
+                })
             }
         } else {
             None
