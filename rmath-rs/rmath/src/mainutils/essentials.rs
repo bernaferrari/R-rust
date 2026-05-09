@@ -3836,13 +3836,13 @@ pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 // do_cut — cut numeric vector into intervals
 // ---------------------------------------------------------------------------
 
-/// R's `cut(x, breaks)` — cuts numeric vector into intervals, returns STRSXP.
+/// R's `cut(x, breaks)` — cut a numeric vector into interval factor codes.
 pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let breaks_arg = CAR(CDR(args));
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let breaks_arg = arg_by_name_or_position(args, &["breaks"], 1);
         if x.is_null() || x == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
         let n = XLENGTH(x);
         let mut break_pts: Vec<f64> = Vec::new();
@@ -3889,33 +3889,100 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if break_pts.len() < 2 {
             break_pts = vec![0.0, 1.0];
         }
-        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let right = logical_arg_by_name_or_position(args, "right", 3).unwrap_or(true);
+        let include_lowest =
+            logical_arg_by_name_or_position(args, "include.lowest", 4).unwrap_or(false);
+        let labels_arg = arg_by_name_or_position(args, &["labels"], 2);
+        let labels_false = if labels_arg.is_null() || labels_arg == R_NilValue() {
+            false
+        } else if TYPEOF(labels_arg) == SEXPTYPE::LGLSXP && XLENGTH(labels_arg) > 0 {
+            *LOGICAL(labels_arg) == FALSE
+        } else {
+            false
+        };
+        let levels = if labels_arg.is_null()
+            || labels_arg == R_NilValue()
+            || (TYPEOF(labels_arg) == SEXPTYPE::LGLSXP && XLENGTH(labels_arg) > 0)
+        {
+            cut_interval_labels(&break_pts, right, include_lowest)
+        } else {
+            (0..XLENGTH(labels_arg))
+                .map(|i| elt_to_string(labels_arg, i))
+                .collect::<Vec<_>>()
+        };
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
         for i in 0..n {
             let v = elt_real_safe(x, i);
-            let label = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
-                "NA".to_string()
-            } else {
-                let mut lo_idx = break_pts.len() - 1;
-                for j in 0..break_pts.len() - 1 {
-                    if v >= break_pts[j] && v < break_pts[j + 1] {
-                        lo_idx = j;
-                        break;
-                    }
-                }
-                format!("({},{})", break_pts[lo_idx], break_pts[lo_idx + 1])
-            };
-            let cstr = CString::new(label).unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let data = (*result).gengc_next_node as *mut SEXP;
-                *data.add(i as usize) = charsxp;
-            }
+            *INTEGER(result).add(i as usize) =
+                cut_interval_code(v, &break_pts, right, include_lowest);
+        }
+        if !labels_false {
+            set_factor_attrs(result, &levels);
         }
         result
+    }
+}
+
+fn cut_interval_code(value: f64, breaks: &[f64], right: bool, include_lowest: bool) -> c_int {
+    if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+        return NA_INTEGER;
+    }
+    for interval in 0..breaks.len().saturating_sub(1) {
+        let lower = breaks[interval];
+        let upper = breaks[interval + 1];
+        let contains = if right {
+            let lower_ok = value > lower || (include_lowest && interval == 0 && value == lower);
+            lower_ok && value <= upper
+        } else {
+            let upper_ok =
+                value < upper || (include_lowest && interval + 2 == breaks.len() && value == upper);
+            value >= lower && upper_ok
+        };
+        if contains {
+            return interval as c_int + 1;
+        }
+    }
+    NA_INTEGER
+}
+
+fn cut_interval_labels(breaks: &[f64], right: bool, include_lowest: bool) -> Vec<String> {
+    let mut labels = Vec::with_capacity(breaks.len().saturating_sub(1));
+    for interval in 0..breaks.len().saturating_sub(1) {
+        let left_bracket = if right && include_lowest && interval == 0 {
+            "["
+        } else if right {
+            "("
+        } else {
+            "["
+        };
+        let right_bracket = if !right && include_lowest && interval + 2 == breaks.len() {
+            "]"
+        } else if right {
+            "]"
+        } else {
+            ")"
+        };
+        labels.push(format!(
+            "{}{},{}{}",
+            left_bracket,
+            format_cut_number(breaks[interval]),
+            format_cut_number(breaks[interval + 1]),
+            right_bracket
+        ));
+    }
+    labels
+}
+
+fn format_cut_number(value: f64) -> String {
+    if value.is_finite() && value.fract() == 0.0 {
+        format!("{}", value as i64)
+    } else {
+        format!("{}", value)
     }
 }
 
@@ -14266,6 +14333,42 @@ unsafe fn named_summary_result(ty: SEXPTYPE, names: &[&str]) -> SEXP {
     }
 }
 
+unsafe fn summary_factor_result(x: SEXP, levels: Vec<String>) -> SEXP {
+    unsafe {
+        let mut counts = vec![0_i32; levels.len()];
+        let mut na_count = 0_i32;
+
+        for i in 0..XLENGTH(x) {
+            let code = *INTEGER(x).add(i as usize);
+            if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
+                na_count += 1;
+            } else {
+                counts[(code - 1) as usize] += 1;
+            }
+        }
+
+        let include_na = na_count > 0;
+        let result_len = counts.len() + usize::from(include_na);
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, result_len as R_xlen_t);
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+
+        for (i, count) in counts.iter().enumerate() {
+            *INTEGER(result).add(i) = *count;
+        }
+
+        let mut names = levels;
+        if include_na {
+            *INTEGER(result).add(counts.len()) = na_count;
+            names.push("NAs".to_string());
+        }
+        set_string_names(result, &names);
+        result
+    }
+}
+
 /// R's `summary.default(x)`: return GNU R-shaped summaryDefault/table vectors.
 pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -14275,6 +14378,10 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
+
+        if let Some(levels) = aggregate_factor_levels(x) {
+            return summary_factor_result(x, levels);
+        }
 
         if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP {
             let mut vals: Vec<f64> = Vec::new();

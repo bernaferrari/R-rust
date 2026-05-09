@@ -1,0 +1,16 @@
+f <- factor(c("b", "a", "b", NA), levels = c("a", "b", "c"))
+s <- summary(f)
+cat(paste(names(s), collapse = "|"), "\n", sep = "")
+cat(paste(as.integer(s), collapse = "|"), "\n", sep = "")
+cat(typeof(s), "\n", sep = "")
+cat(paste(class(s), collapse = "|"), "\n", sep = "")
+
+g <- factor(c("b", "a", "b"), levels = c("a", "b", "c"))
+sg <- summary(g)
+cat(paste(names(sg), collapse = "|"), "\n", sep = "")
+cat(paste(as.integer(sg), collapse = "|"), "\n", sep = "")
+
+o <- ordered(c("b", "a", NA), levels = c("a", "b", "c"))
+so <- summary(o)
+cat(paste(names(so), collapse = "|"), "\n", sep = "")
+cat(paste(as.integer(so), collapse = "|"), "\n", sep = "")
