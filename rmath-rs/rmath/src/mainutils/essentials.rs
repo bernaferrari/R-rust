@@ -13850,8 +13850,11 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
             return R_NilValue();
         }
         if TYPEOF(x) != SEXPTYPE::VECSXP {
+            if XLENGTH(x) == 0 {
+                return x;
+            }
             // Return a single-column STRSXP of formatted values
-            let n = XLENGTH(x).max(1);
+            let n = XLENGTH(x);
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             if result.is_null() {
                 return R_NilValue();
