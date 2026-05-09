@@ -20864,15 +20864,82 @@ pub unsafe fn do_prop_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// R's `addmargins(A)` — add margins to table (simplified: returns input).
+/// R's `addmargins(A)` — add row, column, and grand totals for 2D numeric tables.
 pub unsafe fn do_addmargins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        // Simplified: return as-is
-        x
+        let t = TYPEOF(x);
+        if t != SEXPTYPE::INTSXP && t != SEXPTYPE::REALSXP {
+            return x;
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || LENGTH(dim) != 2
+        {
+            return x;
+        }
+        let nrow = *INTEGER(dim) as R_xlen_t;
+        let ncol = *INTEGER(dim).add(1) as R_xlen_t;
+        if nrow < 0 || ncol < 0 {
+            return x;
+        }
+
+        let out_nrow = nrow + 1;
+        let out_ncol = ncol + 1;
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, out_nrow * out_ncol);
+        let _result_guard = protect(result);
+        let out = REAL(result);
+        for i in 0..out_nrow * out_ncol {
+            *out.add(i as usize) = 0.0;
+        }
+
+        for col in 0..ncol {
+            for row in 0..nrow {
+                let src_index = row + col * nrow;
+                let value = if t == SEXPTYPE::INTSXP {
+                    let value = *INTEGER(x).add(src_index as usize);
+                    if value == NA_INTEGER {
+                        NA_REAL
+                    } else {
+                        value as f64
+                    }
+                } else {
+                    *REAL(x).add(src_index as usize)
+                };
+                let dst_index = row + col * out_nrow;
+                *out.add(dst_index as usize) = value;
+            }
+        }
+
+        for row in 0..nrow {
+            let mut sum = 0.0;
+            for col in 0..ncol {
+                sum += *out.add((row + col * out_nrow) as usize);
+            }
+            *out.add((row + ncol * out_nrow) as usize) = sum;
+        }
+
+        for col in 0..ncol {
+            let mut sum = 0.0;
+            for row in 0..nrow {
+                sum += *out.add((row + col * out_nrow) as usize);
+            }
+            *out.add((nrow + col * out_nrow) as usize) = sum;
+        }
+
+        let mut total = 0.0;
+        for row in 0..nrow {
+            total += *out.add((row + ncol * out_nrow) as usize);
+        }
+        *out.add((nrow + ncol * out_nrow) as usize) = total;
+
+        set_two_dim_attr(result, out_nrow, out_ncol);
+        result
     }
 }
 
