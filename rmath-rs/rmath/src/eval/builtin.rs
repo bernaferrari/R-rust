@@ -1819,10 +1819,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_is_vector,
     },
     EvaluatedBuiltin {
-        name: "is.scalar",
-        handler: crate::mainutils::essentials::do_is_scalar,
-    },
-    EvaluatedBuiltin {
         name: "is.named",
         handler: crate::mainutils::essentials::do_is_named,
     },

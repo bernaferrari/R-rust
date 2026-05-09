@@ -252,7 +252,7 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
         find_fun_result(fun, rho)?
             .or_else(|| primitive_for_symbol(fun))
             .ok_or_else(|| {
-                format!("could not find function '{}'", unsafe {
+                format!("could not find function \"{}\"", unsafe {
                     get_symbol_name(fun.as_raw())
                 })
             })?

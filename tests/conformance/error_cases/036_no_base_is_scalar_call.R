@@ -1,0 +1,1 @@
+is.scalar(1)
