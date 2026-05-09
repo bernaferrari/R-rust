@@ -238,7 +238,7 @@ pub(super) struct EvaluatedBuiltin {
 }
 
 /// Find the Rust implementation for an evaluated builtin name.
-pub(super) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHandler> {
+pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHandler> {
     EVALUATED_BUILTINS
         .iter()
         .find(|builtin| builtin.name == name)
@@ -246,6 +246,10 @@ pub(super) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 }
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
+    EvaluatedBuiltin {
+        name: ".Primitive",
+        handler: crate::mainutils::names::do_primitive,
+    },
     EvaluatedBuiltin {
         name: "+",
         handler: super::arithmetic::do_arith,

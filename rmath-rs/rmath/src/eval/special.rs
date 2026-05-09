@@ -69,6 +69,8 @@ unsafe fn dispatch_special_by_name(
             "return" => do_return(CDR(call), rho),
             "switch" => crate::mainutils::builtin::do_switch(call, op, args, rho),
             "quote" => crate::mainutils::essentials::do_quote(call, op, args, rho),
+            ".Internal" => crate::mainutils::names::do_internal(call, op, args, rho),
+            ".Primitive" => crate::mainutils::names::do_primitive(call, op, args, rho),
             "expression" => do_expression(CDR(call)),
             "substitute" => crate::mainutils::coerce::do_substitute(call, op, args, rho),
             "invisible" => do_invisible(CDR(call), rho),

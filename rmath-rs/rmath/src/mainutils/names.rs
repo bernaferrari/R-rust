@@ -4822,7 +4822,7 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
 }
 
 // ---------------------------------------------------------------------------
-// do_internal (stub)
+// do_internal
 // ---------------------------------------------------------------------------
 
 /// Implementation of .Internal()
@@ -4830,8 +4830,10 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
 pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
-        // s must be a pairlist
-        if s.is_null() || TYPEOF(s) != SEXPTYPE::LISTSXP {
+        // s is the unevaluated call supplied to .Internal, represented as a
+        // language object in ordinary source and as a pairlist in a few
+        // low-level call paths.
+        if s.is_null() || (TYPEOF(s) != SEXPTYPE::LISTSXP && TYPEOF(s) != SEXPTYPE::LANGSXP) {
             panic_any(RError {
                 message: "invalid .Internal() argument".to_string(),
             });
@@ -4843,22 +4845,33 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                 message: "invalid .Internal() argument".to_string(),
             });
         }
-        let internal_val = crate::sexp::accessors::INTERNAL(fun);
-        if internal_val.is_null() || internal_val == R_NilValue() {
-            let pname = PRINTNAME(fun);
-            let name_str = if !pname.is_null() {
-                let pc = CHAR(pname);
-                if !pc.is_null() {
-                    std::ffi::CStr::from_ptr(pc)
-                        .to_str()
-                        .unwrap_or("?")
-                        .to_string()
-                } else {
-                    "?".to_string()
-                }
+        let pname = PRINTNAME(fun);
+        let name_str = if !pname.is_null() {
+            let pc = CHAR(pname);
+            if !pc.is_null() {
+                std::ffi::CStr::from_ptr(pc)
+                    .to_str()
+                    .unwrap_or("?")
+                    .to_string()
             } else {
                 "?".to_string()
-            };
+            }
+        } else {
+            "?".to_string()
+        };
+
+        let mut internal_val = crate::sexp::accessors::INTERNAL(fun);
+        if internal_val.is_null() || internal_val == R_NilValue() {
+            let name_cstr = std::ffi::CString::new(name_str.as_str()).unwrap_or_default();
+            let idx = StrToInternal(name_cstr.as_ptr());
+            if idx != NA_INTEGER {
+                let entry = &R_FunTab[idx as usize];
+                if (entry.eval % 100) / 10 != 0 {
+                    internal_val = mkPRIMSXP(idx, entry.eval % 10);
+                }
+            }
+        }
+        if internal_val.is_null() || internal_val == R_NilValue() {
             panic_any(RError {
                 message: format!("there is no .Internal function '{}'", name_str),
             });
@@ -4869,7 +4882,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         // For BUILTINSXP, evaluate the argument list; for SPECIALSXP, pass as-is
         let evaluated_args = if TYPEOF(internal_val) == SEXPTYPE::BUILTINSXP {
-            crate::eval::dispatch::evalList(actual_args, env, call, 0)
+            crate::eval::dispatch::evalList(actual_args, env, call, -1)
         } else {
             actual_args
         };
@@ -4880,19 +4893,28 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         // Set R_Visible: flag != 1 means visible
         crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
 
-        // Get the function pointer from the FunTab via offset
         let offset = PRIMOFFSET(internal_val);
         let entry = &R_FunTab[offset as usize];
+        let mut end = entry.name.len();
+        if end > 0 && entry.name[end - 1] == 0 {
+            end -= 1;
+        }
+        let name = std::str::from_utf8(&entry.name[..end]).unwrap_or("<invalid>");
+
+        if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name) {
+            let ans = handler(s, internal_val, evaluated_args, env);
+            if flag < 2 {
+                crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
+            }
+            return ans;
+        }
+
+        // Get the function pointer from the FunTab via offset.
         let cfun = entry.cfun;
 
         let ans = if let Some(f) = cfun {
             f(s, internal_val, evaluated_args, env)
         } else {
-            let mut end = entry.name.len();
-            if end > 0 && entry.name[end - 1] == 0 {
-                end -= 1;
-            }
-            let name = std::str::from_utf8(&entry.name[..end]).unwrap_or("<invalid>");
             panic_any(RError {
                 message: format!("internal function '{name}' is not implemented"),
             });
