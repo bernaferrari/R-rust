@@ -5469,6 +5469,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Sys.getenv",
             "Sys.setenv",
             "Sys.unsetenv",
+            "Sys.which",
             "Sys.info",
             "Sys.time",
             "Sys.sleep",
@@ -5734,6 +5735,17 @@ unsafe fn optional_string_vector(values: &[Option<String>]) -> SEXP {
             };
             SET_STRING_ELT(result, i as R_xlen_t, charsxp);
         }
+        result
+    }
+}
+
+unsafe fn named_string_vector(values: &[String], names: &[String]) -> SEXP {
+    unsafe {
+        let result = string_vector(values);
+        if result.is_null() || result == R_NilValue() {
+            return result;
+        }
+        set_string_names(result, names);
         result
     }
 }
@@ -15796,6 +15808,15 @@ unsafe fn string_vector_values(x: SEXP) -> Vec<String> {
     }
 }
 
+unsafe fn coerce_string_values(x: SEXP) -> Vec<String> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Vec::new();
+        }
+        (0..XLENGTH(x)).map(|i| elt_to_string(x, i)).collect()
+    }
+}
+
 unsafe fn string_vector_names_or_values(x: SEXP) -> Vec<String> {
     unsafe {
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
@@ -20937,6 +20958,83 @@ pub unsafe fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         }
         Rf_ScalarLogical(TRUE)
     }
+}
+
+/// R's `Sys.which(names)` — resolve command names against PATH.
+pub unsafe fn do_Sys_which(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let names_arg = arg_by_name_or_position(args, &["names"], 0);
+        if names_arg.is_null() || names_arg == R_NilValue() || names_arg == R_MissingArg() {
+            base_error("argument \"names\" is missing, with no default");
+        }
+
+        let names = coerce_string_values(names_arg);
+        let paths = names
+            .iter()
+            .map(|name| find_executable_on_path(name).unwrap_or_default())
+            .collect::<Vec<_>>();
+        named_string_vector(&paths, &names)
+    }
+}
+
+fn find_executable_on_path(command: &str) -> Option<String> {
+    if command.is_empty() || command == "NA" {
+        return None;
+    }
+    if command.contains(std::path::MAIN_SEPARATOR)
+        || command.contains('/')
+        || command.contains('\\')
+    {
+        return executable_path_if_runnable(Path::new(command));
+    }
+
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(command);
+        if let Some(found) = executable_path_if_runnable(&candidate) {
+            return Some(found);
+        }
+
+        #[cfg(windows)]
+        {
+            if Path::new(command).extension().is_none() {
+                for ext in windows_path_extensions() {
+                    let candidate = dir.join(format!("{command}{ext}"));
+                    if let Some(found) = executable_path_if_runnable(&candidate) {
+                        return Some(found);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn executable_path_if_runnable(path: &Path) -> Option<String> {
+    let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return None;
+        }
+    }
+
+    Some(path.to_string_lossy().into_owned())
+}
+
+#[cfg(windows)]
+fn windows_path_extensions() -> Vec<String> {
+    std::env::var("PATHEXT")
+        .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string())
+        .split(';')
+        .filter(|ext| !ext.is_empty())
+        .map(|ext| ext.to_string())
+        .collect()
 }
 
 /// R's `Sys.info()` — named character vector with host/user information.

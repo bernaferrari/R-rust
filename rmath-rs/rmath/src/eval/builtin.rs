@@ -1847,6 +1847,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_Sys_unsetenv,
     },
     EvaluatedBuiltin {
+        name: "Sys.which",
+        handler: crate::mainutils::essentials::do_Sys_which,
+    },
+    EvaluatedBuiltin {
         name: "Sys.info",
         handler: crate::mainutils::essentials::do_Sys_info,
     },
