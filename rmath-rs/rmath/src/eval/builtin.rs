@@ -1111,14 +1111,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_unlist,
     },
     EvaluatedBuiltin {
-        name: "list.get",
-        handler: crate::mainutils::essentials::do_list_get,
-    },
-    EvaluatedBuiltin {
-        name: "list.set",
-        handler: crate::mainutils::essentials::do_list_set,
-    },
-    EvaluatedBuiltin {
         name: "print.default",
         handler: crate::mainutils::essentials::do_print_default,
     },
@@ -1287,10 +1279,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_is,
     },
     EvaluatedBuiltin {
-        name: "S3_class",
-        handler: crate::mainutils::essentials::do_S3_class,
-    },
-    EvaluatedBuiltin {
         name: "setClass",
         handler: crate::mainutils::essentials::do_setClass,
     },
@@ -1319,10 +1307,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_slot,
     },
     EvaluatedBuiltin {
-        name: "set_slot",
-        handler: crate::mainutils::essentials::do_set_slot,
-    },
-    EvaluatedBuiltin {
         name: "extends",
         handler: crate::mainutils::essentials::do_extends,
     },
@@ -1337,10 +1321,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "representation",
         handler: crate::mainutils::essentials::do_representation,
-    },
-    EvaluatedBuiltin {
-        name: "containsClass",
-        handler: crate::mainutils::essentials::do_containsClass,
     },
     EvaluatedBuiltin {
         name: "possibleExtends",
@@ -1365,10 +1345,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "isGeneric",
         handler: crate::mainutils::essentials::do_isGeneric,
-    },
-    EvaluatedBuiltin {
-        name: "isMethod",
-        handler: crate::mainutils::essentials::do_isMethod,
     },
     EvaluatedBuiltin {
         name: "findMethod",
