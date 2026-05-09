@@ -5177,7 +5177,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "nargs",
             "UseMethod",
             "NextMethod",
-            "useMethod",
             "missing",
             "parent.frame",
             "sys.call",
@@ -5396,14 +5395,11 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "scale",
             "rle",
             "inverse.rle",
-            // Matrix
-            "which_array",
             // R runtime
             "commandArgs",
             "getOption",
             "options",
             "interactive",
-            "is_interactive",
             "getRversion",
             "R.Version",
             // List operations
@@ -5440,8 +5436,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "column_to_rownames",
             "relocate",
             // Complete I/O
-            "cat_args",
-            "message_args",
             "packageStartupMessage",
             // Environment completion
             "parent.env",

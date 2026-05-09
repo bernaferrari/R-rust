@@ -875,10 +875,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::objects::do_nextmethod,
     },
     EvaluatedBuiltin {
-        name: "useMethod",
-        handler: crate::mainutils::objects::do_usemethod,
-    },
-    EvaluatedBuiltin {
         name: "missing",
         handler: crate::mainutils::essentials::do_missing,
     },
@@ -1579,10 +1575,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_inverse_rle,
     },
     EvaluatedBuiltin {
-        name: "which_array",
-        handler: crate::mainutils::essentials::do_which_array,
-    },
-    EvaluatedBuiltin {
         name: "commandArgs",
         handler: crate::mainutils::essentials::do_commandArgs,
     },
@@ -1597,10 +1589,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "interactive",
         handler: crate::mainutils::essentials::do_interactive,
-    },
-    EvaluatedBuiltin {
-        name: "is_interactive",
-        handler: crate::mainutils::essentials::do_is_interactive,
     },
     EvaluatedBuiltin {
         name: "getRversion",
@@ -1705,14 +1693,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "relocate",
         handler: crate::mainutils::essentials::do_relocate,
-    },
-    EvaluatedBuiltin {
-        name: "cat_args",
-        handler: crate::mainutils::essentials::do_cat_args,
-    },
-    EvaluatedBuiltin {
-        name: "message_args",
-        handler: crate::mainutils::essentials::do_message_args,
     },
     EvaluatedBuiltin {
         name: "packageStartupMessage",
