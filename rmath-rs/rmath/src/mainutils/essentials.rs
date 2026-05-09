@@ -1980,7 +1980,9 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                 && arg != R_NilValue()
             {
                 arg_vecs.push(arg);
-                if TYPEOF(arg) == SEXPTYPE::REALSXP {
+                if TYPEOF(arg) == SEXPTYPE::STRSXP {
+                    result_type = SEXPTYPE::STRSXP;
+                } else if TYPEOF(arg) == SEXPTYPE::REALSXP && result_type != SEXPTYPE::STRSXP {
                     result_type = SEXPTYPE::REALSXP;
                 }
                 let n = XLENGTH(arg);
@@ -1992,6 +1994,9 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
         }
         if arg_vecs.is_empty() || max_len == 0 {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        if result_type == SEXPTYPE::STRSXP {
+            return pminmax_character(&arg_vecs, max_len, is_min, na_rm);
         }
         let result = Rf_allocVector3(result_type, max_len);
         if result.is_null() {
@@ -2038,6 +2043,59 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                 } else {
                     best as c_int
                 };
+            }
+        }
+        result
+    }
+}
+
+unsafe fn pminmax_character(
+    arg_vecs: &[SEXP],
+    max_len: R_xlen_t,
+    is_min: bool,
+    na_rm: bool,
+) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, max_len);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for i in 0..max_len {
+            let mut best = String::new();
+            let mut seen_value = false;
+            let mut seen_missing = false;
+            for &arg in arg_vecs {
+                let n = XLENGTH(arg);
+                if n == 0 {
+                    continue;
+                }
+                let idx = i % n;
+                let missing = if TYPEOF(arg) == SEXPTYPE::STRSXP {
+                    let charsxp = crate::sexp::accessors::STRING_ELT(arg, idx);
+                    charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString()
+                } else {
+                    let v = elt_real_safe(arg, idx);
+                    v.to_bits() == R_NA_BIT_PATTERN || v.is_nan()
+                };
+                if missing {
+                    seen_missing = true;
+                    continue;
+                }
+                let value = elt_to_string(arg, idx);
+                if !seen_value {
+                    best = value;
+                    seen_value = true;
+                } else if (is_min && value < best) || (!is_min && value > best) {
+                    best = value;
+                }
+            }
+            if (seen_missing && !na_rm) || !seen_value {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+            } else {
+                let cstr = CString::new(best).unwrap_or_default();
+                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                SET_STRING_ELT(result, i, charsxp);
             }
         }
         result

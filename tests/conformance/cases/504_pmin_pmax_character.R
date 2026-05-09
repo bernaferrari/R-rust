@@ -1,0 +1,6 @@
+cat(typeof(pmin(c("b", NA, "d"), c("a", "c", NA))), "\n", sep = "")
+cat(paste(pmin(c("b", NA, "d"), c("a", "c", NA)), collapse = "|"), "\n", sep = "")
+cat(paste(pmin(c("b", NA, "d"), c("a", "c", NA), na.rm = TRUE), collapse = "|"), "\n", sep = "")
+cat(paste(pmax(c("b", NA, "d"), c("a", "c", NA), na.rm = TRUE), collapse = "|"), "\n", sep = "")
+cat(typeof(pmin("2", 1)), "\n", sep = "")
+cat(paste(pmin(c("2", "10"), c(1, 20)), collapse = "|"), "\n", sep = "")
