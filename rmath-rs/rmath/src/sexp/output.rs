@@ -814,6 +814,83 @@ fn format_table(x: Sexp<'_>) -> Option<String> {
     }
 }
 
+fn format_summary_real_value(x: Sexp<'_>, i: R_xlen_t) -> String {
+    if let Some(values) = x.as_real_slice() {
+        let value = values[i as usize];
+        if R_IsNA(value) {
+            return "NA".to_string();
+        }
+        if R_IsNaN(value) {
+            return "NaN".to_string();
+        }
+        return format!("{value:.1}");
+    }
+    "NA".to_string()
+}
+
+fn format_summary_default(x: Sexp<'_>) -> Option<String> {
+    if !has_class(x, "summaryDefault") || !has_class(x, "table") {
+        return None;
+    }
+    let names = table_names(x)?;
+    let values: Vec<String> = match x.typeof_() {
+        SEXPTYPE::REALSXP => (0..x.len())
+            .map(|i| {
+                if matches!(names.get(i as usize).map(String::as_str), Some("NAs")) {
+                    x.as_real_slice()
+                        .map(|values| format!("{}", values[i as usize] as i64))
+                        .unwrap_or_else(|| format_summary_real_value(x, i))
+                } else {
+                    format_summary_real_value(x, i)
+                }
+            })
+            .collect(),
+        SEXPTYPE::INTSXP => (0..x.len())
+            .map(|i| {
+                if matches!(
+                    names.get(i as usize).map(String::as_str),
+                    Some("Min.nchar" | "Max.nchar")
+                ) && format_integer_element(x, i) == "NA"
+                {
+                    String::new()
+                } else {
+                    format_integer_element(x, i)
+                }
+            })
+            .collect(),
+        SEXPTYPE::STRSXP => (0..x.len())
+            .map(|i| match string_element_text(x, i) {
+                Some(Some(value)) => value.to_string(),
+                Some(None) | None => "NA".to_string(),
+            })
+            .collect(),
+        _ => return None,
+    };
+    let min_width = match x.typeof_() {
+        SEXPTYPE::REALSXP | SEXPTYPE::STRSXP => 7,
+        SEXPTYPE::INTSXP => 8,
+        _ => 0,
+    };
+    let widths: Vec<usize> = names
+        .iter()
+        .zip(&values)
+        .map(|(name, value)| name.len().max(value.len()).max(min_width))
+        .collect();
+    let name_line = names
+        .iter()
+        .zip(&widths)
+        .map(|(name, width)| format!("{name:>width$}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let value_line = values
+        .iter()
+        .zip(&widths)
+        .map(|(value, width)| format!("{value:>width$}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!("{name_line}\n{value_line}"))
+}
+
 fn list_names(x: Sexp<'_>) -> Vec<String> {
     unsafe {
         let names = crate::sexp::attrib_core::getAttrib(
@@ -877,16 +954,40 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
     let names = list_names(x);
     let nrow = data_frame_nrows(x);
     let columns: Vec<Sexp<'_>> = x.iter_vector().collect();
-    let header = format!("  {}", names.join(" "));
+    let row_width = nrow.to_string().len().max(1);
+    let widths: Vec<usize> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, col)| {
+            let name_width = names.get(i).map(String::len).unwrap_or(0);
+            let value_width = (0..nrow)
+                .map(|row| format_data_frame_cell(*col, row).len())
+                .max()
+                .unwrap_or(0);
+            name_width.max(value_width)
+        })
+        .collect();
+    let header = format!(
+        "{} {}",
+        " ".repeat(row_width),
+        names
+            .iter()
+            .zip(&widths)
+            .map(|(name, width)| format!("{name:>width$}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
     let mut lines = Vec::with_capacity(nrow as usize + 1);
     lines.push(header);
     for row in 0..nrow {
-        let mut parts = Vec::with_capacity(columns.len() + 1);
-        parts.push((row + 1).to_string());
-        for col in &columns {
-            parts.push(format_data_frame_cell(*col, row));
-        }
-        lines.push(parts.join(" "));
+        let row_name = format!("{:>row_width$}", row + 1);
+        let cells = columns
+            .iter()
+            .zip(&widths)
+            .map(|(col, width)| format!("{:>width$}", format_data_frame_cell(*col, row)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        lines.push(format!("{row_name} {cells}"));
     }
     Some(lines.join("\n"))
 }
@@ -975,6 +1076,10 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
+            if let Some(output) = format_summary_default(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if let Some(output) = format_table(x) {
                 emit(&format!("{output}\n"));
                 return;
@@ -1009,6 +1114,10 @@ pub fn print_value(x: Sexp<'_>) {
                 return;
             }
             if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
+            if let Some(output) = format_summary_default(x) {
                 emit(&format!("{output}\n"));
                 return;
             }
@@ -1083,6 +1192,10 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::STRSXP => {
             if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
+            if let Some(output) = format_summary_default(x) {
                 emit(&format!("{output}\n"));
                 return;
             }

@@ -1,0 +1,7 @@
+d <- data.frame(a = 1:2, b = 3:4)
+print(data.frame(id = row.names(d), d))
+print(all(names(data.frame(id = row.names(d), d)) == c("id", "a", "b")))
+print(dim(data.frame(id = row.names(d), d)))
+print(row.names(data.frame(id = row.names(d), d)))
+print(data.frame(z = d))
+print(all(names(data.frame(d, d)) == c("a", "b", "a.1", "b.1")))

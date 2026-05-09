@@ -12285,51 +12285,212 @@ pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `data.frame(...)` — simplified: create list with "data.frame" class and row.names.
+unsafe fn string_at_or_empty(x: SEXP, index: R_xlen_t) -> String {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP || index >= XLENGTH(x)
+        {
+            return String::new();
+        }
+        let value = STRING_ELT(x, index);
+        if value.is_null() || value == crate::sexp::globals::R_NaString() {
+            return String::new();
+        }
+        CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned()
+    }
+}
+
+unsafe fn set_string_names(x: SEXP, names: &[String]) {
+    unsafe {
+        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+        if names_vec.is_null() {
+            return;
+        }
+        let _names_guard = protect(names_vec);
+        for (i, name) in names.iter().enumerate() {
+            let cstr = CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(names_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names_vec,
+        );
+    }
+}
+
+unsafe fn set_compact_row_names(x: SEXP, nrow: R_xlen_t) {
+    unsafe {
+        let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if rn.is_null() {
+            return;
+        }
+        let _row_names_guard = protect(rn);
+        *INTEGER(rn) = NA_INTEGER;
+        *INTEGER(rn).add(1) = -(nrow as i32);
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_RowNamesSymbol(), rn);
+    }
+}
+
+unsafe fn set_data_frame_class(x: SEXP) {
+    unsafe {
+        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if class_vec.is_null() {
+            return;
+        }
+        let _class_guard = protect(class_vec);
+        SET_STRING_ELT(class_vec, 0, Rf_mkChar(c"data.frame".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), class_vec);
+    }
+}
+
+unsafe fn set_summary_default_class(x: SEXP) {
+    unsafe {
+        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if class_vec.is_null() {
+            return;
+        }
+        let _class_guard = protect(class_vec);
+        SET_STRING_ELT(class_vec, 0, Rf_mkChar(c"summaryDefault".as_ptr()));
+        SET_STRING_ELT(class_vec, 1, Rf_mkChar(c"table".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), class_vec);
+    }
+}
+
+fn repair_data_frame_names(names: &mut [String]) {
+    let mut used: BTreeMap<String, usize> = BTreeMap::new();
+    for (i, name) in names.iter_mut().enumerate() {
+        if name.is_empty() {
+            *name = format!("X{}", i + 1);
+        }
+        let base = name.clone();
+        let mut suffix = *used.get(&base).unwrap_or(&0);
+        if suffix == 0 && !used.contains_key(&base) {
+            used.insert(base, 1);
+            continue;
+        }
+        loop {
+            let candidate = format!("{base}.{suffix}");
+            suffix += 1;
+            if !used.contains_key(&candidate) {
+                used.insert(base.clone(), suffix);
+                used.insert(candidate.clone(), 1);
+                *name = candidate;
+                break;
+            }
+        }
+    }
+}
+
+unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
+    unsafe {
+        let len = XLENGTH(x);
+        if len == target_len || target_len == 0 {
+            return x;
+        }
+        if len != 1 {
+            base_error(format!(
+                "arguments imply differing number of rows: {target_len}, {len}"
+            ));
+        }
+        let ty = TYPEOF(x);
+        let out = Rf_allocVector3(ty, target_len);
+        if out.is_null() {
+            return out;
+        }
+        let _out_guard = protect(out);
+        for i in 0..target_len {
+            match ty {
+                t if t == SEXPTYPE::REALSXP => *REAL(out).add(i as usize) = *REAL(x),
+                t if t == SEXPTYPE::INTSXP => *INTEGER(out).add(i as usize) = *INTEGER(x),
+                t if t == SEXPTYPE::LGLSXP => *LOGICAL(out).add(i as usize) = *LOGICAL(x),
+                t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(out, i, STRING_ELT(x, 0)),
+                _ => return x,
+            }
+        }
+        out
+    }
+}
+
+/// R's `data.frame(...)`: build a data-frame list while expanding data-frame arguments.
 pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let result = do_list(_call, _op, args, _rho);
-        if result.is_null() || result == R_NilValue() {
+        let initial = do_list(_call, _op, args, _rho);
+        if initial.is_null() || initial == R_NilValue() {
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+            if !result.is_null() {
+                let _result_guard = protect(result);
+                set_string_names(result, &[]);
+                set_compact_row_names(result, 0);
+                set_data_frame_class(result);
+            }
+            return result;
+        }
+        let _initial_guard = protect(initial);
+        let arg_names =
+            crate::sexp::attrib_core::getAttrib(initial, crate::sexp::attrib_core::R_NamesSymbol());
+        let mut columns: Vec<SEXP> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        let mut nrow: Option<R_xlen_t> = None;
+
+        for i in 0..XLENGTH(initial) {
+            let value = VECTOR_ELT(initial, i);
+            let arg_name = string_at_or_empty(arg_names, i);
+            if sexp_has_class(value, "data.frame") && TYPEOF(value) == SEXPTYPE::VECSXP {
+                let inner_names = crate::sexp::attrib_core::getAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                for j in 0..XLENGTH(value) {
+                    let column = VECTOR_ELT(value, j);
+                    let len = XLENGTH(column);
+                    match nrow {
+                        Some(existing) if len != existing => base_error(format!(
+                            "arguments imply differing number of rows: {existing}, {len}"
+                        )),
+                        None => nrow = Some(len),
+                        _ => {}
+                    }
+                    columns.push(column);
+                    let child_name = string_at_or_empty(inner_names, j);
+                    names.push(if arg_name.is_empty() {
+                        child_name
+                    } else if child_name.is_empty() {
+                        arg_name.clone()
+                    } else {
+                        format!("{arg_name}.{child_name}")
+                    });
+                }
+            } else {
+                let len = XLENGTH(value);
+                match nrow {
+                    Some(existing) if len != existing && len != 1 => base_error(format!(
+                        "arguments imply differing number of rows: {existing}, {len}"
+                    )),
+                    None => nrow = Some(len),
+                    _ => {}
+                }
+                columns.push(value);
+                names.push(arg_name);
+            }
+        }
+
+        repair_data_frame_names(&mut names);
+        let row_count = nrow.unwrap_or(0);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, columns.len() as R_xlen_t);
+        if result.is_null() {
             return result;
         }
         let _result_guard = protect(result);
-
-        // Set class to "data.frame"
-        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !class_vec.is_null() {
-            let _class_guard = protect(class_vec);
-            let cstr = CString::new("data.frame").unwrap_or_default();
-            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-            if !charsxp.is_null() {
-                let data = (*class_vec).gengc_next_node as *mut SEXP;
-                *data.add(0) = charsxp;
-            }
-            crate::sexp::attrib_core::setAttrib(
+        for (i, column) in columns.iter().enumerate() {
+            SET_VECTOR_ELT(
                 result,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class_vec,
+                i as R_xlen_t,
+                recycle_column_if_needed(*column, row_count),
             );
         }
-
-        // Determine number of rows from the first column
-        let ncol = XLENGTH(result);
-        if ncol > 0 {
-            let first_col = VECTOR_ELT(result, 0);
-            if !first_col.is_null() {
-                let nrow = XLENGTH(first_col);
-                let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-                if !rn.is_null() {
-                    let _row_names_guard = protect(rn);
-                    *INTEGER(rn) = NA_INTEGER;
-                    *INTEGER(rn).add(1) = -(nrow as i32);
-                    crate::sexp::attrib_core::setAttrib(
-                        result,
-                        Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
-                        rn,
-                    );
-                }
-            }
-        }
+        set_string_names(result, &names);
+        set_compact_row_names(result, row_count);
+        set_data_frame_class(result);
 
         result
     }
@@ -13222,7 +13383,39 @@ pub unsafe fn do_print_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// R's `summary.default(x)` — basic summary statistics.
+fn quantile_type7(sorted: &[f64], prob: f64) -> f64 {
+    if sorted.is_empty() {
+        return NA_REAL;
+    }
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let h = 1.0 + (sorted.len() as f64 - 1.0) * prob;
+    let lo = h.floor() as usize;
+    let hi = h.ceil() as usize;
+    let frac = h - lo as f64;
+    let lower = sorted[lo.saturating_sub(1)];
+    let upper = sorted[hi.saturating_sub(1)];
+    lower + frac * (upper - lower)
+}
+
+unsafe fn named_summary_result(ty: SEXPTYPE, names: &[&str]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(ty, names.len() as R_xlen_t);
+        if !result.is_null() {
+            let _result_guard = protect(result);
+            let owned_names = names
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect::<Vec<_>>();
+            set_string_names(result, &owned_names);
+            set_summary_default_class(result);
+        }
+        result
+    }
+}
+
+/// R's `summary.default(x)`: return GNU R-shaped summaryDefault/table vectors.
 pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -13230,68 +13423,141 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             return R_NilValue();
         }
         let t = TYPEOF(x);
-        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP {
-            // For non-numeric, just return type info
-            return do_typeof(_call, _op, args, _rho);
-        }
         let n = XLENGTH(x);
-        if n == 0 {
-            return R_NilValue();
-        }
-        let mut vals: Vec<f64> = Vec::new();
-        for i in 0..n {
-            let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
+
+        if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP {
+            let mut vals: Vec<f64> = Vec::new();
+            let mut na_count = 0_i32;
+            for i in 0..n {
+                let v = if t == SEXPTYPE::REALSXP {
+                    *REAL(x).add(i as usize)
+                } else {
+                    let iv = *INTEGER(x).add(i as usize);
+                    if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+                };
+                if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
+                    na_count += 1;
+                } else {
+                    vals.push(v);
+                }
+            }
+            let names: Vec<&str> = if na_count > 0 {
+                vec![
+                    "Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.", "NAs",
+                ]
             } else {
-                let iv = *INTEGER(x).add(i as usize);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
+                vec!["Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max."]
             };
-            if v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && !v.is_nan() {
-                vals.push(v);
+            let result = named_summary_result(SEXPTYPE::REALSXP, &names);
+            if result.is_null() {
+                return result;
             }
-        }
-        if vals.is_empty() {
-            println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
-            println!(
-                "     NA      NA      NA      NA      NA      NA       {}",
-                n
-            );
-            return x;
-        }
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let min_v = vals[0];
-        let max_v = vals[vals.len() - 1];
-        let mean_v: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
-        let median_idx = vals.len() / 2;
-        let median_v = if vals.len() % 2 == 1 {
-            vals[median_idx]
-        } else {
-            (vals[median_idx - 1] + vals[median_idx]) / 2.0
-        };
-        let q1_idx = vals.len() / 4;
-        let q3_idx = 3 * vals.len() / 4;
-        let q1_v = vals[q1_idx];
-        let q3_v = vals[q3_idx];
-        let na_count = n - vals.len() as R_xlen_t;
-
-        println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
-        println!(
-            "{:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8}",
-            min_v,
-            q1_v,
-            median_v,
-            mean_v,
-            q3_v,
-            max_v,
-            if na_count > 0 {
-                na_count.to_string()
+            let _result_guard = protect(result);
+            vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let values = if vals.is_empty() {
+                vec![NA_REAL, NA_REAL, NA_REAL, f64::NAN, NA_REAL, NA_REAL]
             } else {
-                String::new()
+                vec![
+                    vals[0],
+                    quantile_type7(&vals, 0.25),
+                    quantile_type7(&vals, 0.5),
+                    vals.iter().sum::<f64>() / vals.len() as f64,
+                    quantile_type7(&vals, 0.75),
+                    vals[vals.len() - 1],
+                ]
+            };
+            for (i, value) in values.iter().enumerate() {
+                *REAL(result).add(i) = *value;
             }
-        );
+            if na_count > 0 {
+                *REAL(result).add(6) = na_count as f64;
+            }
+            return result;
+        }
 
-        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        x
+        if t == SEXPTYPE::LGLSXP {
+            let mut false_count = 0_i32;
+            let mut true_count = 0_i32;
+            let mut na_count = 0_i32;
+            for i in 0..n {
+                match *LOGICAL(x).add(i as usize) {
+                    TRUE => true_count += 1,
+                    FALSE => false_count += 1,
+                    _ => na_count += 1,
+                }
+            }
+            let names: Vec<&str> = if na_count > 0 {
+                vec!["Mode", "FALSE", "TRUE", "NAs"]
+            } else {
+                vec!["Mode", "FALSE", "TRUE"]
+            };
+            let result = named_summary_result(SEXPTYPE::STRSXP, &names);
+            if result.is_null() {
+                return result;
+            }
+            let _result_guard = protect(result);
+            SET_STRING_ELT(result, 0, Rf_mkChar(c"logical".as_ptr()));
+            let false_text = CString::new(false_count.to_string()).unwrap_or_default();
+            let true_text = CString::new(true_count.to_string()).unwrap_or_default();
+            SET_STRING_ELT(result, 1, Rf_mkChar(false_text.as_ptr()));
+            SET_STRING_ELT(result, 2, Rf_mkChar(true_text.as_ptr()));
+            if na_count > 0 {
+                let na_text = CString::new(na_count.to_string()).unwrap_or_default();
+                SET_STRING_ELT(result, 3, Rf_mkChar(na_text.as_ptr()));
+            }
+            return result;
+        }
+
+        if t == SEXPTYPE::STRSXP {
+            let mut unique = BTreeSet::new();
+            let mut blank_count = 0_i32;
+            let mut min_chars: Option<usize> = None;
+            let mut max_chars: Option<usize> = None;
+            let mut na_count = 0_i32;
+            for i in 0..n {
+                let value = STRING_ELT(x, i);
+                if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                    na_count += 1;
+                    continue;
+                }
+                let text = CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned();
+                if text.is_empty() {
+                    blank_count += 1;
+                }
+                let chars = text.chars().count();
+                min_chars = Some(min_chars.map_or(chars, |current| current.min(chars)));
+                max_chars = Some(max_chars.map_or(chars, |current| current.max(chars)));
+                unique.insert(text);
+            }
+            let names: Vec<&str> = if na_count > 0 {
+                vec![
+                    "Length",
+                    "N.unique",
+                    "N.blank",
+                    "Min.nchar",
+                    "Max.nchar",
+                    "NAs",
+                ]
+            } else {
+                vec!["Length", "N.unique", "N.blank", "Min.nchar", "Max.nchar"]
+            };
+            let result = named_summary_result(SEXPTYPE::INTSXP, &names);
+            if result.is_null() {
+                return result;
+            }
+            let _result_guard = protect(result);
+            *INTEGER(result) = n as i32;
+            *INTEGER(result).add(1) = unique.len() as i32;
+            *INTEGER(result).add(2) = blank_count;
+            *INTEGER(result).add(3) = min_chars.map(|v| v as i32).unwrap_or(NA_INTEGER);
+            *INTEGER(result).add(4) = max_chars.map(|v| v as i32).unwrap_or(NA_INTEGER);
+            if na_count > 0 {
+                *INTEGER(result).add(5) = na_count;
+            }
+            return result;
+        }
+
+        do_typeof(_call, _op, args, _rho)
     }
 }
 

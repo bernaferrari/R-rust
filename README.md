@@ -6,8 +6,8 @@ session-owned Rust runtime that can eventually power an RStudio-like Android
 app while keeping enough source-shape discipline that upstream R behavior can be
 reapplied and compared.
 
-Current release proof: **226/226 stock C R conformance cases pass** in the local
-parity suite, plus **14/14 curated upstream GNU R core slices**, with focused unit
+Current release proof: **443/443 stock C R conformance cases pass** in the local
+parity suite, plus **15/15 curated upstream GNU R core slices**, with focused unit
 coverage for packages, S3 registration, multi-session isolation, UniFFI, and
 Android plot rendering.
 
