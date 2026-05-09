@@ -526,9 +526,30 @@ impl BinaryWriter {
         if len > 0 && !s.is_null() {
             // SAFETY: Caller ensures s points to at least `len` valid bytes.
             let slice = unsafe { slice::from_raw_parts(s as *const u8, len as usize) };
-            self.buf.extend_from_slice(slice);
             if self.ascii_body {
+                for &byte in slice {
+                    match byte {
+                        b'\n' => self.buf.extend_from_slice(b"\\n"),
+                        b'\t' => self.buf.extend_from_slice(b"\\t"),
+                        0x0b => self.buf.extend_from_slice(b"\\v"),
+                        0x08 => self.buf.extend_from_slice(b"\\b"),
+                        b'\r' => self.buf.extend_from_slice(b"\\r"),
+                        0x0c => self.buf.extend_from_slice(b"\\f"),
+                        0x07 => self.buf.extend_from_slice(b"\\a"),
+                        b'\\' => self.buf.extend_from_slice(b"\\\\"),
+                        b'?' => self.buf.extend_from_slice(b"\\?"),
+                        b'\'' => self.buf.extend_from_slice(b"\\'"),
+                        b'"' => self.buf.extend_from_slice(b"\\\""),
+                        0..=32 | 127..=255 => {
+                            self.buf
+                                .extend_from_slice(format!("\\{byte:03o}").as_bytes());
+                        }
+                        _ => self.buf.push(byte),
+                    }
+                }
                 self.buf.push(b'\n');
+            } else {
+                self.buf.extend_from_slice(slice);
             }
         }
     }
@@ -637,6 +658,64 @@ impl<'a> BinaryReader<'a> {
             self.pos += 1;
         }
         Ok(slice)
+    }
+
+    fn read_string_bytes(&mut self, len: usize) -> Result<Vec<u8>, String> {
+        if !self.ascii_body {
+            return self.read_bytes(len).map(|bytes| bytes.to_vec());
+        }
+
+        self.skip_ascii_whitespace();
+        let mut out = Vec::with_capacity(len);
+        while out.len() < len {
+            if self.pos >= self.data.len() {
+                return Err("read error: unexpected end of ASCII string".to_string());
+            }
+            let byte = self.data[self.pos];
+            self.pos += 1;
+            if byte != b'\\' {
+                out.push(byte);
+                continue;
+            }
+            if self.pos >= self.data.len() {
+                return Err("read error: truncated ASCII string escape".to_string());
+            }
+            let escaped = self.data[self.pos];
+            self.pos += 1;
+            match escaped {
+                b'n' => out.push(b'\n'),
+                b't' => out.push(b'\t'),
+                b'v' => out.push(0x0b),
+                b'b' => out.push(0x08),
+                b'r' => out.push(b'\r'),
+                b'f' => out.push(0x0c),
+                b'a' => out.push(0x07),
+                b'\\' => out.push(b'\\'),
+                b'?' => out.push(b'?'),
+                b'\'' => out.push(b'\''),
+                b'"' => out.push(b'"'),
+                b'0'..=b'7' => {
+                    let mut value = (escaped - b'0') as u8;
+                    let mut digits = 1usize;
+                    while digits < 3
+                        && self.pos < self.data.len()
+                        && matches!(self.data[self.pos], b'0'..=b'7')
+                    {
+                        value = value
+                            .saturating_mul(8)
+                            .saturating_add(self.data[self.pos] - b'0');
+                        self.pos += 1;
+                        digits += 1;
+                    }
+                    out.push(value);
+                }
+                other => out.push(other),
+            }
+        }
+        if self.remaining() > 0 && self.data[self.pos] == b'\n' {
+            self.pos += 1;
+        }
+        Ok(out)
     }
 
     fn read_ascii_token(&mut self) -> Result<String, String> {
@@ -1103,7 +1182,7 @@ unsafe fn ReadItemInternal(
                 let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
                 Ok(s)
             } else {
-                let bytes = reader.read_bytes(len as usize)?;
+                let bytes = reader.read_string_bytes(len as usize)?;
                 let s = Rf_mkCharLen(bytes.as_ptr() as *const c_char, len);
                 Ok(s)
             }
