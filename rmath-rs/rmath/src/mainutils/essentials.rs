@@ -21139,12 +21139,14 @@ pub unsafe fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        let _by = CAR(CDR(args));
+        let by = CAR(CDR(args));
         let fun = CAR(CDR(CDR(args)));
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        // Simplified: apply FUN to whole vector
+        if let Some(result) = aggregate_numeric_by_one_group(x, by) {
+            return result;
+        }
         if !fun.is_null() && fun != R_NilValue() {
             let call_args = Rf_cons(x, R_NilValue());
             let call_sexp = Rf_cons(fun, call_args);
@@ -21154,6 +21156,117 @@ pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             return crate::eval::eval::Rf_eval(call_sexp, rho);
         }
         x
+    }
+}
+
+unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP) -> Option<SEXP> {
+    unsafe {
+        let x_type = TYPEOF(x);
+        if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
+            return None;
+        }
+        if by.is_null() || by == R_NilValue() || TYPEOF(by) != SEXPTYPE::VECSXP || XLENGTH(by) != 1
+        {
+            return None;
+        }
+        let group = VECTOR_ELT(by, 0);
+        if group.is_null() || group == R_NilValue() || XLENGTH(group) != XLENGTH(x) {
+            return None;
+        }
+        let group_type = TYPEOF(group);
+        if group_type != SEXPTYPE::STRSXP && group_type != SEXPTYPE::INTSXP {
+            return None;
+        }
+
+        let mut groups = BTreeMap::<String, (f64, usize, bool)>::new();
+        for i in 0..XLENGTH(x) {
+            let key = aggregate_group_key(group, group_type, i)?;
+            let value = if x_type == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else {
+                let value = *INTEGER(x).add(i as usize);
+                if value == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    value as f64
+                }
+            };
+            let entry = groups.entry(key).or_insert((0.0, 0, false));
+            if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+                entry.2 = true;
+            } else {
+                entry.0 += value;
+                entry.1 += 1;
+            }
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if result.is_null() {
+            return Some(result);
+        }
+        let _result_guard = protect(result);
+        let n = groups.len() as R_xlen_t;
+        let group_col = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let value_col = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if group_col.is_null() || value_col.is_null() {
+            return Some(R_NilValue());
+        }
+        let _group_guard = protect(group_col);
+        let _value_guard = protect(value_col);
+        for (i, (key, (sum, count, has_na))) in groups.into_iter().enumerate() {
+            let key_c = CString::new(key).unwrap_or_default();
+            SET_STRING_ELT(group_col, i as R_xlen_t, Rf_mkChar(key_c.as_ptr()));
+            *REAL(value_col).add(i) = if has_na || count == 0 {
+                NA_REAL
+            } else {
+                sum / count as f64
+            };
+        }
+        SET_VECTOR_ELT(result, 0, group_col);
+        SET_VECTOR_ELT(result, 1, value_col);
+
+        let by_names =
+            crate::sexp::attrib_core::getAttrib(by, crate::sexp::attrib_core::R_NamesSymbol());
+        let group_name = if !by_names.is_null()
+            && by_names != R_NilValue()
+            && TYPEOF(by_names) == SEXPTYPE::STRSXP
+            && XLENGTH(by_names) > 0
+        {
+            let name = string_at_or_empty(by_names, 0);
+            if name.is_empty() {
+                "Group.1".to_string()
+            } else {
+                name
+            }
+        } else {
+            "Group.1".to_string()
+        };
+        set_string_names(result, &[group_name, "x".to_string()]);
+        set_compact_row_names(result, n);
+        set_data_frame_class(result);
+        Some(result)
+    }
+}
+
+unsafe fn aggregate_group_key(group: SEXP, group_type: c_int, i: R_xlen_t) -> Option<String> {
+    unsafe {
+        if group_type == SEXPTYPE::STRSXP {
+            let elt = STRING_ELT(group, i);
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                None
+            } else {
+                Some(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned())
+            }
+        } else if group_type == SEXPTYPE::INTSXP {
+            let value = *INTEGER(group).add(i as usize);
+            if value == NA_INTEGER {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        } else {
+            None
+        }
     }
 }
 

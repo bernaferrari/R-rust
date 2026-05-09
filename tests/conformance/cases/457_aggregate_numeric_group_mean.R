@@ -1,0 +1,6 @@
+out <- aggregate(c(1, 2, 3, 4), list(g = c("a", "a", "b", "b")), mean)
+cat(paste(class(out), collapse = "|"), "\n", sep = "")
+cat(paste(names(out), collapse = "|"), "\n", sep = "")
+cat(paste(out$g, collapse = "|"), "\n", sep = "")
+cat(paste(out$x, collapse = "|"), "\n", sep = "")
+cat(paste(rownames(out), collapse = "|"), "\n", sep = "")
