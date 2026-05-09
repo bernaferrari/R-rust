@@ -111,6 +111,10 @@ const SIMPLEDEPARSE: c_int = 0;
 /// Default deparse options (show attributes).
 const DEFAULTDEPARSE: c_int = SHOWATTRIBUTES;
 
+/// R's user-facing default `deparse()` control set:
+/// keepNA, keepInteger, niceNames, and showAttributes.
+pub(crate) const DEFAULT_USER_DEPARSE: c_int = KEEPNA | KEEPINTEGER | NICE_NAMES | SHOWATTRIBUTES;
+
 /// Simple opts mask: keep KEEPINTEGER | USESOURCE | KEEPNA | S_COMPAT | WARNINCOMPLETE.
 const SIMPLE_OPTS: c_int = !(QUOTEEXPRESSIONS | SHOWATTRIBUTES | DELAYPROMISES);
 
@@ -2754,7 +2758,7 @@ pub unsafe fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         args = CDR(args);
 
         let opts = if isNull(CAR(args)) {
-            SHOWATTRIBUTES
+            DEFAULT_USER_DEPARSE
         } else {
             Rf_asInteger(CAR(args))
         };

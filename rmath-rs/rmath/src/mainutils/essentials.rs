@@ -18391,7 +18391,11 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 fn deparse_lines(expr: SEXP) -> Vec<String> {
     unsafe {
-        let deparsed = crate::mainutils::deparse::deparse1(expr, false, 0);
+        let deparsed = crate::mainutils::deparse::deparse1(
+            expr,
+            false,
+            crate::mainutils::deparse::DEFAULT_USER_DEPARSE,
+        );
         let n = XLENGTH(deparsed);
         if deparsed.is_null() || deparsed == R_NilValue() || n == 0 {
             return vec!["NULL".to_string()];

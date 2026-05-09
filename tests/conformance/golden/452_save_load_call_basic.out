@@ -1,0 +1,6 @@
+call
+language
+foo(1L, bar = 2.5, baz = "x")
+4
+||bar|baz
+symbol|integer|double|character
