@@ -1,0 +1,5 @@
+z <- tapply(c(1, 2), factor(c("a", "a"), levels = c("a", "b")), sum)
+cat(paste(names(z), collapse = "|"), "\n", sep = "")
+cat(paste(ifelse(is.na(z), "NA", sprintf("%.12g", z)), collapse = "|"), "\n", sep = "")
+cat(paste(dim(z), collapse = "|"), "\n", sep = "")
+cat(paste(dimnames(z)[[1]], collapse = "|"), "\n", sep = "")
