@@ -18,7 +18,7 @@ use crate::sexp::accessors::{
     CAD5R, CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, SET_STRING_ELT,
     SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
+use crate::sexp::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -342,7 +342,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
 
         match SEXPTYPE::from(sexptype) {
             SEXPTYPE::NILSXP => {
-                write_names_attr(writer, value)?;
+                write_standard_attrs(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::LGLSXP => {
@@ -353,7 +353,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutIntegerAscii(writer, *LOGICAL(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
-                write_names_attr(writer, value)?;
+                write_standard_attrs(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::INTSXP => {
@@ -364,7 +364,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutIntegerAscii(writer, *INTEGER(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
-                write_names_attr(writer, value)?;
+                write_standard_attrs(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::REALSXP => {
@@ -375,7 +375,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutDoubleAscii(writer, *REAL(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
-                write_names_attr(writer, value)?;
+                write_standard_attrs(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::STRSXP => {
@@ -394,7 +394,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                         OutNewlineAscii(writer)?;
                     }
                 }
-                write_names_attr(writer, value)?;
+                write_standard_attrs(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::VECSXP => {
@@ -404,7 +404,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 for i in 0..len {
                     write_saved_object(writer, VECTOR_ELT(value, i))?;
                 }
-                write_names_attr(writer, value)?;
+                write_standard_attrs(writer, value)?;
                 Ok(())
             }
             _ => Err(io::Error::new(
@@ -412,6 +412,13 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 format!("unsupported saved object type {sexptype}"),
             )),
         }
+    }
+}
+
+unsafe fn write_standard_attrs(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+    unsafe {
+        write_names_attr(writer, value)?;
+        write_dim_attr(writer, value)
     }
 }
 
@@ -440,6 +447,28 @@ unsafe fn write_names_attr(writer: &mut impl Write, value: SEXP) -> io::Result<(
                 OutStringAscii(writer, text)?;
                 OutNewlineAscii(writer)?;
             }
+        }
+        Ok(())
+    }
+}
+
+unsafe fn write_dim_attr(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let dim = getAttrib(value, R_DimSymbol());
+        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
+
+        OutIntegerAscii(writer, 1)?;
+        OutNewlineAscii(writer)?;
+        let len = XLENGTH(dim);
+        OutIntegerAscii(writer, len as c_int)?;
+        OutNewlineAscii(writer)?;
+        for i in 0..len as usize {
+            OutIntegerAscii(writer, *INTEGER(dim).add(i))?;
+            OutNewlineAscii(writer)?;
         }
         Ok(())
     }
@@ -503,8 +532,15 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                 format!("unsupported saved object type {sexptype}"),
             )),
         }?;
-        read_names_attr(reader, value)?;
+        read_standard_attrs(reader, value)?;
         Ok(value)
+    }
+}
+
+unsafe fn read_standard_attrs(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
+    unsafe {
+        read_names_attr(reader, value)?;
+        read_dim_attr(reader, value)
     }
 }
 
@@ -527,6 +563,23 @@ unsafe fn read_names_attr(reader: &mut impl BufRead, value: SEXP) -> io::Result<
             }
         }
         setAttrib(value, R_NamesSymbol(), names);
+        Ok(())
+    }
+}
+
+unsafe fn read_dim_attr(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let has_dim = InIntegerAscii(reader)?;
+        if has_dim == 0 {
+            return Ok(());
+        }
+        let len = InIntegerAscii(reader)?;
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, len as R_xlen_t);
+        let _guard = protect(dim);
+        for i in 0..len as usize {
+            *INTEGER(dim).add(i) = InIntegerAscii(reader)?;
+        }
+        setAttrib(value, R_DimSymbol(), dim);
         Ok(())
     }
 }
