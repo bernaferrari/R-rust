@@ -759,7 +759,11 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let t = TYPEOF(x);
-        if t != SEXPTYPE::INTSXP && t != SEXPTYPE::REALSXP && t != SEXPTYPE::LGLSXP {
+        if t != SEXPTYPE::INTSXP
+            && t != SEXPTYPE::REALSXP
+            && t != SEXPTYPE::LGLSXP
+            && t != SEXPTYPE::STRSXP
+        {
             return R_NilValue();
         }
         let use_na = table_use_na(args);
@@ -835,6 +839,47 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 result,
                 Rf_install(c"table.name".as_ptr()),
                 title_value,
+            );
+        }
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+        if !dim.is_null() {
+            let _dim_p = protect(dim);
+            *INTEGER(dim) = len as c_int;
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                dim,
+            );
+        }
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        if !dimnames.is_null() {
+            let _dimnames_p = protect(dimnames);
+            let dim_labels = Rf_allocVector3(SEXPTYPE::STRSXP, len);
+            if !dim_labels.is_null() {
+                let _labels_p = protect(dim_labels);
+                for (i, label) in labels.iter().enumerate() {
+                    let cstr = CString::new(label.as_str()).unwrap_or_default();
+                    SET_STRING_ELT(dim_labels, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                }
+                SET_VECTOR_ELT(dimnames, 0, dim_labels);
+            }
+            if let Some(title) = table_title(call, args) {
+                let dimnames_names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                if !dimnames_names.is_null() {
+                    let _dimnames_names_p = protect(dimnames_names);
+                    let cstr = CString::new(title).unwrap_or_default();
+                    SET_STRING_ELT(dimnames_names, 0, Rf_mkChar(cstr.as_ptr()));
+                    crate::sexp::attrib_core::setAttrib(
+                        dimnames,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                        dimnames_names,
+                    );
+                }
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
             );
         }
         result

@@ -1,0 +1,7 @@
+x <- table(v = c("a", "b", "a"))
+cat(paste(class(x), collapse = "|"), "\n", sep = "")
+cat(paste(dim(x), collapse = "|"), "\n", sep = "")
+cat(paste(as.vector(x), collapse = "|"), "\n", sep = "")
+cat(paste(names(x), collapse = "|"), "\n", sep = "")
+cat(paste(names(dimnames(x)), collapse = "|"), "\n", sep = "")
+cat(paste(dimnames(x)[[1]], collapse = "|"), "\n", sep = "")
