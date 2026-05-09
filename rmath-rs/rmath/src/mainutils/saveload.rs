@@ -19,7 +19,8 @@ use crate::sexp::accessors::{
     SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
-    R_ClassSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib, setAttrib,
+    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib,
+    setAttrib,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
@@ -421,6 +422,7 @@ unsafe fn write_standard_attrs(writer: &mut impl Write, value: SEXP) -> io::Resu
     unsafe {
         write_names_attr(writer, value)?;
         write_dim_attr(writer, value)?;
+        write_dimnames_attr(writer, value)?;
         write_string_attr(writer, value, R_ClassSymbol())?;
         write_string_attr(writer, value, R_LevelsSymbol())
     }
@@ -478,6 +480,40 @@ unsafe fn write_dim_attr(writer: &mut impl Write, value: SEXP) -> io::Result<()>
     }
 }
 
+unsafe fn write_dimnames_attr(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let dimnames = getAttrib(value, R_DimNamesSymbol());
+        if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
+
+        OutIntegerAscii(writer, 1)?;
+        OutNewlineAscii(writer)?;
+        let len = XLENGTH(dimnames);
+        OutIntegerAscii(writer, len as c_int)?;
+        OutNewlineAscii(writer)?;
+        for i in 0..len {
+            let elt = VECTOR_ELT(dimnames, i);
+            if elt.is_null() || elt == R_NilValue() {
+                OutIntegerAscii(writer, 0)?;
+                OutNewlineAscii(writer)?;
+            } else if TYPEOF(elt) == SEXPTYPE::STRSXP {
+                OutIntegerAscii(writer, 1)?;
+                OutNewlineAscii(writer)?;
+                write_string_vector_payload(writer, elt)?;
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "unsupported dimnames element",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 unsafe fn write_string_attr(writer: &mut impl Write, value: SEXP, symbol: SEXP) -> io::Result<()> {
     unsafe {
         let attr = getAttrib(value, symbol);
@@ -489,11 +525,17 @@ unsafe fn write_string_attr(writer: &mut impl Write, value: SEXP, symbol: SEXP) 
 
         OutIntegerAscii(writer, 1)?;
         OutNewlineAscii(writer)?;
-        let len = XLENGTH(attr);
+        write_string_vector_payload(writer, attr)
+    }
+}
+
+unsafe fn write_string_vector_payload(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let len = XLENGTH(value);
         OutIntegerAscii(writer, len as c_int)?;
         OutNewlineAscii(writer)?;
         for i in 0..len {
-            let charsxp = STRING_ELT(attr, i);
+            let charsxp = STRING_ELT(value, i);
             if charsxp.is_null() || charsxp == R_NaString() {
                 writer.write_all(b"NA\n")?;
             } else {
@@ -575,6 +617,7 @@ unsafe fn read_standard_attrs(reader: &mut impl BufRead, value: SEXP) -> io::Res
     unsafe {
         read_names_attr(reader, value)?;
         read_dim_attr(reader, value)?;
+        read_dimnames_attr(reader, value)?;
         read_string_attr(reader, value, R_ClassSymbol())?;
         read_string_attr(reader, value, R_LevelsSymbol())
     }
@@ -620,26 +663,57 @@ unsafe fn read_dim_attr(reader: &mut impl BufRead, value: SEXP) -> io::Result<()
     }
 }
 
+unsafe fn read_dimnames_attr(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let has_dimnames = InIntegerAscii(reader)?;
+        if has_dimnames == 0 {
+            return Ok(());
+        }
+        let len = InIntegerAscii(reader)?;
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
+        let _guard = protect(dimnames);
+        for i in 0..len as R_xlen_t {
+            let has_elt = InIntegerAscii(reader)?;
+            if has_elt == 0 {
+                SET_VECTOR_ELT(dimnames, i, R_NilValue());
+            } else {
+                let elt = read_string_vector_payload(reader)?;
+                SET_VECTOR_ELT(dimnames, i, elt);
+            }
+        }
+        setAttrib(value, R_DimNamesSymbol(), dimnames);
+        Ok(())
+    }
+}
+
 unsafe fn read_string_attr(reader: &mut impl BufRead, value: SEXP, symbol: SEXP) -> io::Result<()> {
     unsafe {
         let has_attr = InIntegerAscii(reader)?;
         if has_attr == 0 {
             return Ok(());
         }
-        let len = InIntegerAscii(reader)?;
-        let attr = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let attr = read_string_vector_payload(reader)?;
         let _guard = protect(attr);
+        setAttrib(value, symbol, attr);
+        Ok(())
+    }
+}
+
+unsafe fn read_string_vector_payload(reader: &mut impl BufRead) -> io::Result<SEXP> {
+    unsafe {
+        let len = InIntegerAscii(reader)?;
+        let value = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _guard = protect(value);
         for i in 0..len as R_xlen_t {
             match InStringAscii(reader)? {
                 Some(text) => {
                     let cstr = std::ffi::CString::new(text).map_err(io::Error::other)?;
-                    SET_STRING_ELT(attr, i, Rf_mkChar(cstr.as_ptr()));
+                    SET_STRING_ELT(value, i, Rf_mkChar(cstr.as_ptr()));
                 }
-                None => SET_STRING_ELT(attr, i, R_NaString()),
+                None => SET_STRING_ELT(value, i, R_NaString()),
             }
         }
-        setAttrib(value, symbol, attr);
-        Ok(())
+        Ok(value)
     }
 }
 
