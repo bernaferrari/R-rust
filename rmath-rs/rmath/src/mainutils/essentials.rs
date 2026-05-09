@@ -3820,7 +3820,7 @@ pub unsafe fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         } else {
             elt_to_string(pad_arg, 0)
         };
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -3867,7 +3867,7 @@ pub unsafe fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
         let pattern = elt_to_string(pattern_arg, 0);
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -7420,7 +7420,7 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
-        let idx = if n == 0 { 0 } else { i % n };
+        let idx = i % n;
 
         if t == SEXPTYPE::REALSXP {
             let v = *REAL(x).add(idx as usize);
@@ -9259,12 +9259,18 @@ fn do_dist_tertiary(
         if x.is_null() {
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        if x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
+        if n == 0 {
+            return result;
+        }
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = f(elt_real_safe(x, i), p1, p2, p3);
@@ -9292,12 +9298,18 @@ fn do_dist_unary(
         if x.is_null() {
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        if x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
+        if n == 0 {
+            return result;
+        }
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = f(elt_real_safe(x, i), p1, p2);
@@ -9369,6 +9381,9 @@ unsafe fn map_real_distribution(mut x: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
             return R_NilValue();
         }
         let _result_guard = protect(result);
+        if n == 0 {
+            return result;
+        }
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = f(elt_real_safe(x, i));
@@ -9379,10 +9394,13 @@ unsafe fn map_real_distribution(mut x: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
 
 fn elt_real_safe(x: SEXP, i: R_xlen_t) -> f64 {
     unsafe {
-        if x.is_null() {
+        if x.is_null() || x == R_NilValue() {
             return NA_REAL;
         }
         let n = XLENGTH(x);
+        if n == 0 {
+            return NA_REAL;
+        }
         let idx = if n == 0 { 0 } else { i % n };
         let t = TYPEOF(x);
         if t == SEXPTYPE::REALSXP {
