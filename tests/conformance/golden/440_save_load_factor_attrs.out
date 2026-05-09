@@ -1,0 +1,5 @@
+g
+factor
+a|b
+b|a|NA|b
+FALSE|FALSE|TRUE|FALSE

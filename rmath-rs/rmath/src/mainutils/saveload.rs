@@ -18,7 +18,9 @@ use crate::sexp::accessors::{
     CAD5R, CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, SET_STRING_ELT,
     SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
+use crate::sexp::attrib_core::{
+    R_ClassSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib, setAttrib,
+};
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -418,7 +420,9 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
 unsafe fn write_standard_attrs(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
     unsafe {
         write_names_attr(writer, value)?;
-        write_dim_attr(writer, value)
+        write_dim_attr(writer, value)?;
+        write_string_attr(writer, value, R_ClassSymbol())?;
+        write_string_attr(writer, value, R_LevelsSymbol())
     }
 }
 
@@ -469,6 +473,36 @@ unsafe fn write_dim_attr(writer: &mut impl Write, value: SEXP) -> io::Result<()>
         for i in 0..len as usize {
             OutIntegerAscii(writer, *INTEGER(dim).add(i))?;
             OutNewlineAscii(writer)?;
+        }
+        Ok(())
+    }
+}
+
+unsafe fn write_string_attr(writer: &mut impl Write, value: SEXP, symbol: SEXP) -> io::Result<()> {
+    unsafe {
+        let attr = getAttrib(value, symbol);
+        if attr.is_null() || attr == R_NilValue() || TYPEOF(attr) != SEXPTYPE::STRSXP {
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
+
+        OutIntegerAscii(writer, 1)?;
+        OutNewlineAscii(writer)?;
+        let len = XLENGTH(attr);
+        OutIntegerAscii(writer, len as c_int)?;
+        OutNewlineAscii(writer)?;
+        for i in 0..len {
+            let charsxp = STRING_ELT(attr, i);
+            if charsxp.is_null() || charsxp == R_NaString() {
+                writer.write_all(b"NA\n")?;
+            } else {
+                let text = std::ffi::CStr::from_ptr(CHAR(charsxp))
+                    .to_str()
+                    .map_err(io::Error::other)?;
+                OutStringAscii(writer, text)?;
+                OutNewlineAscii(writer)?;
+            }
         }
         Ok(())
     }
@@ -540,7 +574,9 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
 unsafe fn read_standard_attrs(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
     unsafe {
         read_names_attr(reader, value)?;
-        read_dim_attr(reader, value)
+        read_dim_attr(reader, value)?;
+        read_string_attr(reader, value, R_ClassSymbol())?;
+        read_string_attr(reader, value, R_LevelsSymbol())
     }
 }
 
@@ -580,6 +616,29 @@ unsafe fn read_dim_attr(reader: &mut impl BufRead, value: SEXP) -> io::Result<()
             *INTEGER(dim).add(i) = InIntegerAscii(reader)?;
         }
         setAttrib(value, R_DimSymbol(), dim);
+        Ok(())
+    }
+}
+
+unsafe fn read_string_attr(reader: &mut impl BufRead, value: SEXP, symbol: SEXP) -> io::Result<()> {
+    unsafe {
+        let has_attr = InIntegerAscii(reader)?;
+        if has_attr == 0 {
+            return Ok(());
+        }
+        let len = InIntegerAscii(reader)?;
+        let attr = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _guard = protect(attr);
+        for i in 0..len as R_xlen_t {
+            match InStringAscii(reader)? {
+                Some(text) => {
+                    let cstr = std::ffi::CString::new(text).map_err(io::Error::other)?;
+                    SET_STRING_ELT(attr, i, Rf_mkChar(cstr.as_ptr()));
+                }
+                None => SET_STRING_ELT(attr, i, R_NaString()),
+            }
+        }
+        setAttrib(value, symbol, attr);
         Ok(())
     }
 }
