@@ -18138,7 +18138,7 @@ pub unsafe fn do_na_omit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe { na_omit_atomic(args, "omit") }
 }
 
-/// R's `na.exclude(x)` — like na.omit but remembers excluded rows. Simplified: same as na.omit.
+/// R's `na.exclude(x)` — like na.omit with "exclude" na.action metadata.
 pub unsafe fn do_na_exclude(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { na_omit_atomic(args, "exclude") }
 }
