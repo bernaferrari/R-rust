@@ -22483,12 +22483,15 @@ pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let data = CAR(args);
-        let _indices = CAR(CDR(args));
+        let indices = CAR(CDR(args));
         let fun = CAR(CDR(CDR(args)));
         if data.is_null() || data == R_NilValue() {
             return R_NilValue();
         }
-        // Simplified: apply FUN to data
+        if let Some(result) = tapply_numeric_array(data, indices, fun, _call) {
+            set_single_class(result, "by");
+            return result;
+        }
         if !fun.is_null() && fun != R_NilValue() {
             let call_args = Rf_cons(data, R_NilValue());
             let call_sexp = Rf_cons(fun, call_args);
