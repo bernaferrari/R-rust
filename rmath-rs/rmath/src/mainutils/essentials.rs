@@ -21589,7 +21589,7 @@ pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        if let Some(result) = aggregate_numeric_by_one_group(x, by) {
+        if let Some(result) = aggregate_numeric_by_one_group(x, by, fun) {
             return result;
         }
         if !fun.is_null() && fun != R_NilValue() {
@@ -21604,8 +21604,15 @@ pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     }
 }
 
-unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP) -> Option<SEXP> {
+#[derive(Clone, Copy)]
+enum AggregateSummary {
+    Mean,
+    Sum,
+}
+
+unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option<SEXP> {
     unsafe {
+        let summary = aggregate_summary_fun(fun)?;
         let x_type = TYPEOF(x);
         if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
             return None;
@@ -21664,7 +21671,10 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP) -> Option<SEXP> {
             *REAL(value_col).add(i) = if has_na || count == 0 {
                 NA_REAL
             } else {
-                sum / count as f64
+                match summary {
+                    AggregateSummary::Mean => sum / count as f64,
+                    AggregateSummary::Sum => sum,
+                }
             };
         }
         SET_VECTOR_ELT(result, 0, group_col);
@@ -21690,6 +21700,28 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP) -> Option<SEXP> {
         set_compact_row_names(result, n);
         set_data_frame_class(result);
         Some(result)
+    }
+}
+
+unsafe fn aggregate_summary_fun(fun: SEXP) -> Option<AggregateSummary> {
+    unsafe {
+        if fun.is_null() || fun == R_NilValue() {
+            return Some(AggregateSummary::Mean);
+        }
+        let fun_type = TYPEOF(fun);
+        if fun_type == SEXPTYPE::BUILTINSXP || fun_type == SEXPTYPE::SPECIALSXP {
+            match crate::eval::primitive::PRIMNAME(fun) {
+                "sum" => Some(AggregateSummary::Sum),
+                _ => Some(AggregateSummary::Mean),
+            }
+        } else if fun_type == SEXPTYPE::SYMSXP {
+            match symbol_name(fun).as_deref() {
+                Some("sum") => Some(AggregateSummary::Sum),
+                _ => Some(AggregateSummary::Mean),
+            }
+        } else {
+            Some(AggregateSummary::Mean)
+        }
     }
 }
 
