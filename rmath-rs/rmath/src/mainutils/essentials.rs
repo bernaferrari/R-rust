@@ -25662,8 +25662,25 @@ pub unsafe fn do_as_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         if TYPEOF(x) == SEXPTYPE::ENVSXP {
             return x;
         }
-        // Simplified: return global env
-        crate::sexp::globals::R_GlobalEnv()
+        if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::REALSXP {
+            let pos = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                *INTEGER(x)
+            } else {
+                *REAL(x) as c_int
+            };
+            return search_env_from_position(pos);
+        }
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let name = if XLENGTH(x) == 0 {
+                "NA".to_string()
+            } else {
+                elt_to_string(x, 0)
+            };
+            return search_env_from_name(&name);
+        }
+        std::panic::panic_any(RError {
+            message: "invalid object for as.environment".to_string(),
+        });
     }
 }
 
@@ -25671,6 +25688,12 @@ pub unsafe fn do_as_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pos = integer_arg_by_name_or_position(args, "pos", 0).unwrap_or(NA_INTEGER);
+        search_env_from_position(pos)
+    }
+}
+
+unsafe fn search_env_from_position(pos: c_int) -> SEXP {
+    unsafe {
         if pos == 1 {
             return crate::sexp::globals::R_GlobalEnv();
         }
@@ -25681,6 +25704,18 @@ pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         std::panic::panic_any(RError {
             message: "invalid 'pos' argument".to_string(),
         });
+    }
+}
+
+unsafe fn search_env_from_name(name: &str) -> SEXP {
+    unsafe {
+        match name {
+            ".GlobalEnv" => crate::sexp::globals::R_GlobalEnv(),
+            "package:base" | "base" => crate::sexp::globals::R_BaseEnv(),
+            _ => std::panic::panic_any(RError {
+                message: format!("no item called \"{name}\" on the search list"),
+            }),
+        }
     }
 }
 
