@@ -4221,7 +4221,7 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
-        b"eSoftVersion\0",
+        b"extSoftVersion\0",
         None,
         0,
         11,
@@ -5132,6 +5132,22 @@ mod tests {
             assert_eq!(entry.name, b"Sys.which\0");
             assert_eq!(entry.arity, 1);
             assert_eq!(entry.eval, 11);
+        }
+    }
+
+    #[test]
+    fn test_str_to_internal_finds_ext_soft_version() {
+        unsafe {
+            let result = StrToInternal(b"extSoftVersion\0".as_ptr() as *const c_char);
+            assert_ne!(result, NA_INTEGER);
+            let entry = &R_FunTab[result as usize];
+            assert_eq!(entry.name, b"extSoftVersion\0");
+            assert_eq!(entry.arity, 0);
+            assert_eq!(entry.eval, 11);
+            assert_eq!(
+                StrToInternal(b"eSoftVersion\0".as_ptr() as *const c_char),
+                NA_INTEGER
+            );
         }
     }
 
