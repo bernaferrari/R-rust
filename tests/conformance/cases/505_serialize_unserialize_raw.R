@@ -1,0 +1,8 @@
+x <- list(a = 1:3, b = c("x", NA))
+raw <- serialize(x, NULL)
+cat(typeof(raw), "\n", sep = "")
+cat(is.raw(raw), "\n", sep = "")
+y <- unserialize(raw)
+cat(identical(y, x), "\n", sep = "")
+cat(paste(y$a, collapse = "|"), "\n", sep = "")
+cat(paste(ifelse(is.na(y$b), "NA", y$b), collapse = "|"), "\n", sep = "")

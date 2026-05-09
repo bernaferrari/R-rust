@@ -15,10 +15,11 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, BODY, CAR, CDR, CLOENV, COMPLEX, FORMALS, INTEGER, LENGTH, LOGICAL, PRIMOFFSET, RAW,
-    REAL, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, LENGTH, LOGICAL, PRIMOFFSET,
+    RAW, REAL, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, SEXP, SEXPTYPE};
+use crate::sexp::globals::R_NaString;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -183,6 +184,33 @@ pub fn eqWithNaN(x: f64, y: f64, str: c_int) -> bool {
 #[inline]
 pub fn ne_with_nan(x: f64, y: f64, str: c_int) -> bool {
     unsafe { neWithNaN(x, y, str) != 0 }
+}
+
+unsafe fn charsxp_identical(x: SEXP, y: SEXP) -> bool {
+    unsafe {
+        if x == y {
+            return true;
+        }
+        if x.is_null() || y.is_null() {
+            return false;
+        }
+        let x_na = x == R_NaString();
+        let y_na = y == R_NaString();
+        if x_na || y_na {
+            return x_na && y_na;
+        }
+        if TYPEOF(x) != SEXPTYPE::CHARSXP || TYPEOF(y) != SEXPTYPE::CHARSXP {
+            return false;
+        }
+        let len = LENGTH(x);
+        if len != LENGTH(y) {
+            return false;
+        }
+        if len <= 0 {
+            return true;
+        }
+        libc::memcmp(CHAR(x) as *const _, CHAR(y) as *const _, len as usize) == 0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -369,16 +397,9 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             for i in 0..nx as i64 {
                 let sx = STRING_ELT(x, i);
                 let sy = STRING_ELT(y, i);
-                if sx == sy {
-                    continue;
-                }
-                if sx.is_null() && sy.is_null() {
-                    continue;
-                }
-                if sx.is_null() || sy.is_null() {
+                if !charsxp_identical(sx, sy) {
                     return 0;
                 }
-                return 0;
             }
             return 1;
         } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {

@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 561 |
-| Passing | 561 |
+| Total parity cases | 562 |
+| Passing | 562 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -106,7 +106,7 @@ Current domain coverage:
 | --- | ---: | --- |
 | Parser and scalar basics | 183 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, repetition helpers, tabulation, findInterval boundary options including single-break edges, shape-helper, array-creation, and broad parser/runtime smoke cases |
 | Evaluator, closures, and control flow | 11 | Closures, lexical scope, lazy/default args, missing args, loops, and evaluator visibility/control-flow checks |
-| Vectors, lists, attributes, and objects | 88 | Vectors, typed vector constructors, lists, names, name-preserving repetition, list/complex repetition, named and ordered mixed-list unlisting, recursive unlist control, typed rle/inverse.rle, subsetting, factors, explicit missing factor levels, generated factors, factor coercion, factor summaries, interval cutting, ordered factors, ordered comparisons, interaction factors, releveling, droplevels, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
+| Vectors, lists, attributes, and objects | 89 | Vectors, typed vector constructors, lists, names, name-preserving repetition, list/complex repetition, named and ordered mixed-list unlisting, recursive unlist control, typed rle/inverse.rle, raw-vector serialization roundtrips, subsetting, factors, explicit missing factor levels, generated factors, factor coercion, factor summaries, interval cutting, ordered factors, ordered comparisons, interaction factors, releveling, droplevels, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
 | Base functions, conditions, and platform helpers | 139 | Sorting/set helpers, output capture, conditions, search-path/environment helpers, options, file/temp/path helpers, connections, platform state, `.Internal` dispatch, and non-GNU alias absence semantics |
 | Stats, math, and RNG | 75 | Numeric summaries, distributions, tail/log flags, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int`, pmin/pmax missing-value and character coercion semantics, typed cumulative extrema, typed cumulative sum/product NA semantics, typed `diff()` integer/logical and overflow semantics, array margin summaries, aggregate/tapply/by grouped summaries, and summary-vector parity |
 | Packages, namespaces, and S3 | 5 | Package namespace and S3 fixtures, `system.file()`, S3 method-export absence, and the pure-R package corpus gate |

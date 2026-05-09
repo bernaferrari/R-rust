@@ -2229,6 +2229,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_saveRDS,
     },
     EvaluatedBuiltin {
+        name: "serialize",
+        handler: crate::mainutils::serialize::do_serialize,
+    },
+    EvaluatedBuiltin {
+        name: "unserialize",
+        handler: crate::mainutils::serialize::do_unserializeFromConn,
+    },
+    EvaluatedBuiltin {
         name: "load",
         handler: crate::mainutils::saveload::do_load_user,
     },
