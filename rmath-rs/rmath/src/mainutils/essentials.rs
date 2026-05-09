@@ -5568,6 +5568,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "asNamespace",
             "loadedNamespaces",
             "data",
+            "attach",
             "detach",
             "search",
             // Complete R runtime — source, demo, example
@@ -8698,14 +8699,10 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
         let mut matches = Vec::new();
-        let global = crate::sexp::globals::R_GlobalEnv();
-        let base = crate::sexp::globals::R_BaseEnv();
-
-        if find_matches_mode(global, sym, &name, want_function) {
-            matches.push(".GlobalEnv");
-        }
-        if find_matches_mode(base, sym, &name, want_function) {
-            matches.push("package:base");
+        for (label, env) in search_path_entries() {
+            if find_matches_mode(env, sym, &name, want_function) {
+                matches.push(label);
+            }
         }
 
         if numeric {
@@ -8717,14 +8714,14 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             SET_STRING_ELT(
                 result,
                 i as R_xlen_t,
-                Rf_mkChar(CString::new(*value).unwrap_or_default().as_ptr()),
+                Rf_mkChar(CString::new(value.as_str()).unwrap_or_default().as_ptr()),
             );
         }
         result
     }
 }
 
-unsafe fn find_numeric_result(matches: &[&str]) -> SEXP {
+unsafe fn find_numeric_result(matches: &[String]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, matches.len() as R_xlen_t);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
@@ -8733,7 +8730,7 @@ unsafe fn find_numeric_result(matches: &[&str]) -> SEXP {
             SET_STRING_ELT(
                 names,
                 i as R_xlen_t,
-                Rf_mkChar(CString::new(*value).unwrap_or_default().as_ptr()),
+                Rf_mkChar(CString::new(value.as_str()).unwrap_or_default().as_ptr()),
             );
         }
         crate::sexp::attrib_core::setAttrib(
@@ -18468,6 +18465,13 @@ pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if env == crate::sexp::globals::R_BaseEnv() {
             return Rf_mkString(CString::new("base").unwrap_or_default().as_ptr());
         }
+        let name = crate::sexp::attrib_core::getAttrib(env, Rf_install(c"name".as_ptr()));
+        if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
+            let value = STRING_ELT(name, 0);
+            if !value.is_null() && value != R_NilValue() {
+                return Rf_mkString(CHAR(value));
+            }
+        }
         Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
     }
 }
@@ -25694,12 +25698,10 @@ pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 unsafe fn search_env_from_position(pos: c_int) -> SEXP {
     unsafe {
-        if pos == 1 {
-            return crate::sexp::globals::R_GlobalEnv();
-        }
-        let search_len = search_path_len();
-        if pos == search_len {
-            return crate::sexp::globals::R_BaseEnv();
+        if pos > 0
+            && let Some((_, env)) = search_path_entries().get((pos - 1) as usize)
+        {
+            return *env;
         }
         std::panic::panic_any(RError {
             message: "invalid 'pos' argument".to_string(),
@@ -25708,31 +25710,49 @@ unsafe fn search_env_from_position(pos: c_int) -> SEXP {
 }
 
 unsafe fn search_env_from_name(name: &str) -> SEXP {
-    unsafe {
-        match name {
-            ".GlobalEnv" => crate::sexp::globals::R_GlobalEnv(),
-            "package:base" | "base" => crate::sexp::globals::R_BaseEnv(),
-            _ => std::panic::panic_any(RError {
-                message: format!("no item called \"{name}\" on the search list"),
-            }),
+    for (label, env) in unsafe { search_path_entries() } {
+        if label == name || (name == "base" && label == "package:base") {
+            return env;
         }
     }
+    std::panic::panic_any(RError {
+        message: format!("no item called \"{name}\" on the search list"),
+    });
 }
 
 unsafe fn search_path_len() -> c_int {
+    unsafe { search_path_entries().len() as c_int }
+}
+
+unsafe fn search_path_entries() -> Vec<(String, SEXP)> {
     unsafe {
         let global = crate::sexp::globals::R_GlobalEnv();
         let base = crate::sexp::globals::R_BaseEnv();
         if global.is_null() || base.is_null() {
-            return 0;
+            return Vec::new();
         }
-        let mut len = 2;
+
+        let mut entries = vec![(".GlobalEnv".to_string(), global)];
         let mut env = crate::sexp::accessors::ENCLOS(global);
         while !env.is_null() && env != base {
-            len += 1;
+            entries.push((search_env_label(env), env));
             env = crate::sexp::accessors::ENCLOS(env);
         }
-        len
+        entries.push(("package:base".to_string(), base));
+        entries
+    }
+}
+
+unsafe fn search_env_label(env: SEXP) -> String {
+    unsafe {
+        let name = crate::sexp::attrib_core::getAttrib(env, Rf_install(c"name".as_ptr()));
+        if TYPEOF(name) == SEXPTYPE::STRSXP && XLENGTH(name) > 0 {
+            let value = STRING_ELT(name, 0);
+            if !value.is_null() && value != R_NilValue() {
+                return CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned();
+            }
+        }
+        "(unknown)".to_string()
     }
 }
 

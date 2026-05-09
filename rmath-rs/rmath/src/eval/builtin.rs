@@ -2135,6 +2135,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_data,
     },
     EvaluatedBuiltin {
+        name: "attach",
+        handler: crate::mainutils::envir::do_attach,
+    },
+    EvaluatedBuiltin {
         name: "detach",
         handler: crate::mainutils::envir::do_detach,
     },

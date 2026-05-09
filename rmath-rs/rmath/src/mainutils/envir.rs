@@ -22,7 +22,7 @@ pub const CHAR_HASH_SIZE: u32 = 65536;
 pub const CHAR_HASH_MASK: u32 = CHAR_HASH_SIZE - 1;
 
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::Rf_ScalarLogical;
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_mkString};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
@@ -581,8 +581,10 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             error("invalid first argument");
         }
 
+        let what = arg_by_name_or_position(args, "what", 0);
+
         // pos argument
-        let pos_arg = CADR(args);
+        let pos_arg = arg_by_name_or_position(args, "pos", 1);
         let pos = if !pos_arg.is_null()
             && TYPEOF(pos_arg) == SEXPTYPE::INTSXP
             && LENGTH(pos_arg) >= 1
@@ -597,7 +599,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         };
 
         // name argument
-        let name_arg = CADDR(args);
+        let name_arg = arg_by_name_or_position(args, "name", 2);
 
         // Create a new environment
         let s = allocSExp(SEXPTYPE(SEXPTYPE::ENVSXP.as_c_int()));
@@ -607,7 +609,6 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let _s_guard = protect(s);
 
         // Copy bindings from the source (list or environment)
-        let what = CAR(args);
         if isNewList(what) {
             // It's a list/vector — walk its elements
             let names = getAttrib(what, R_NameSymbol());
@@ -649,7 +650,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             } else {
                 name_arg
             };
-            setAttrib(s, R_NameSymbol(), name_str);
+            setAttrib(s, R_NameSymbol(), Rf_mkString(CHAR(name_str)));
         }
 
         // Insert into search path at position `pos`
@@ -669,6 +670,51 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
 
         s
+    }
+}
+
+unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if cell_tag_name(current).as_deref() == Some(name) {
+                return CAR(current);
+            }
+            current = CDR(current);
+        }
+
+        let mut current = args;
+        let mut index = 0usize;
+        while !current.is_null() && current != R_NilValue() {
+            if index == position {
+                return CAR(current);
+            }
+            index += 1;
+            current = CDR(current);
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn cell_tag_name(cell: SEXP) -> Option<String> {
+    unsafe {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() {
+            return None;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(chars)
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
 }
 

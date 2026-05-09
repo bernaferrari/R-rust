@@ -1,0 +1,11 @@
+e <- new.env()
+e$a <- 1
+attached <- attach(e, name = "myenv")
+print(environmentName(attached))
+print(search()[1:2])
+print(find("a"))
+print(identical(as.environment("myenv"), attached))
+print(identical(pos.to.env(2), attached))
+detach("myenv")
+print(find("a"))
+print(search()[1])
