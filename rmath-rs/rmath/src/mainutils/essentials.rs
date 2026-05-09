@@ -5231,6 +5231,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "environment<-",
             "standardGeneric",
             "xtfrm",
+            ".External.graphics",
             "[",
             ".subset",
             "[[",

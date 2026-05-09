@@ -300,6 +300,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::names::do_primitive,
     },
     EvaluatedBuiltin {
+        name: ".External.graphics",
+        handler: crate::mainutils::dotcode::do_Externalgr,
+    },
+    EvaluatedBuiltin {
         name: "environment<-",
         handler: crate::mainutils::builtin::do_envirgets,
     },
