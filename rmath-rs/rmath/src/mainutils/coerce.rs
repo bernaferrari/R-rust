@@ -3203,12 +3203,12 @@ pub unsafe fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
     use crate::mainutils::errors::Rf_error;
-    use crate::sexp::accessors::{CAR, CDR, CHAR, LENGTH, SETCAR, STRING_ELT};
+    use crate::sexp::accessors::{CAR, CDR, CHAR, SETCAR, STRING_ELT};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::symbol::Rf_install;
 
     unsafe {
-        if LENGTH(args) < 1 {
+        if crate::sexp::constructors::Rf_length(args) < 1 {
             Rf_error(b"'name' is missing\0".as_ptr() as *const c_char);
         }
 

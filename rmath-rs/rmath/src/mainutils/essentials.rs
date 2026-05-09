@@ -5024,11 +5024,14 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "as.logical",
             "as.list",
             "as.vector",
+            "as.call",
             "length",
             "nchar",
             "substr",
             "tolower",
             "toupper",
+            "enc2native",
+            "enc2utf8",
             "trimws",
             "sprintf",
             "gsub",
@@ -18903,6 +18906,26 @@ pub unsafe fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
         println!("<environment: {}>", name);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
+    }
+}
+
+/// R's `enc2native(x)` — normalize character encodings to the native runtime encoding.
+pub unsafe fn do_enc2native(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_enc2(args) }
+}
+
+/// R's `enc2utf8(x)` — normalize character encodings to UTF-8.
+pub unsafe fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_enc2(args) }
+}
+
+unsafe fn do_enc2(args: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            base_error("argument is not a character vector");
+        }
+        crate::mainutils::duplicate::duplicate(x)
     }
 }
 

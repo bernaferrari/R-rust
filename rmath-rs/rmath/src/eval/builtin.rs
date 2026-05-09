@@ -637,6 +637,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_vector,
     },
     EvaluatedBuiltin {
+        name: "as.call",
+        handler: crate::mainutils::coerce::do_ascall,
+    },
+    EvaluatedBuiltin {
         name: "as.list",
         handler: crate::mainutils::essentials::do_as_list,
     },
@@ -655,6 +659,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "toupper",
         handler: crate::mainutils::essentials::do_toupper,
+    },
+    EvaluatedBuiltin {
+        name: "enc2native",
+        handler: crate::mainutils::essentials::do_enc2native,
+    },
+    EvaluatedBuiltin {
+        name: "enc2utf8",
+        handler: crate::mainutils::essentials::do_enc2utf8,
     },
     EvaluatedBuiltin {
         name: "set.seed",

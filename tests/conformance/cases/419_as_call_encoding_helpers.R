@@ -1,0 +1,7 @@
+expr <- as.call(list(quote(foo), 1, quote(bar)))
+print(expr)
+print(typeof(expr))
+print(length(expr))
+print(enc2native(c("abc", NA)))
+print(enc2utf8(c("abc", NA)))
+print(names(enc2utf8(c(a = "x"))))
