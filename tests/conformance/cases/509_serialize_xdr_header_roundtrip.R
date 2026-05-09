@@ -1,0 +1,7 @@
+x <- list(a = 1:2, b = pi)
+r_xdr <- serialize(x, NULL)
+r_bin <- serialize(x, NULL, xdr = FALSE)
+cat(rawToChar(r_xdr[1:2]), "\n", sep = "")
+cat(rawToChar(r_bin[1:2]), "\n", sep = "")
+cat(identical(unserialize(r_xdr), x), "\n", sep = "")
+cat(identical(unserialize(r_bin), x), "\n", sep = "")

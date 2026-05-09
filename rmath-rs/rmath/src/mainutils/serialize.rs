@@ -467,6 +467,7 @@ fn read_item_depth_for_test() -> c_int {
 struct BinaryWriter {
     buf: Vec<u8>,
     ascii_body: bool,
+    xdr_body: bool,
 }
 
 impl BinaryWriter {
@@ -474,6 +475,7 @@ impl BinaryWriter {
         BinaryWriter {
             buf: Vec::new(),
             ascii_body: false,
+            xdr_body: false,
         }
     }
 
@@ -481,10 +483,16 @@ impl BinaryWriter {
         self.ascii_body = ascii_body;
     }
 
+    fn set_xdr_body(&mut self, xdr_body: bool) {
+        self.xdr_body = xdr_body;
+    }
+
     fn write_i32(&mut self, val: i32) {
         if self.ascii_body {
             self.buf.extend_from_slice(val.to_string().as_bytes());
             self.buf.push(b'\n');
+        } else if self.xdr_body {
+            self.buf.extend_from_slice(&val.to_be_bytes());
         } else {
             self.buf.extend_from_slice(&val.to_ne_bytes());
         }
@@ -494,6 +502,8 @@ impl BinaryWriter {
         if self.ascii_body {
             self.buf.extend_from_slice(format!("{val:?}").as_bytes());
             self.buf.push(b'\n');
+        } else if self.xdr_body {
+            self.buf.extend_from_slice(&val.to_be_bytes());
         } else {
             self.buf.extend_from_slice(&val.to_ne_bytes());
         }
@@ -533,6 +543,7 @@ struct BinaryReader<'a> {
     data: &'a [u8],
     pos: usize,
     ascii_body: bool,
+    xdr_body: bool,
 }
 
 impl<'a> BinaryReader<'a> {
@@ -541,11 +552,16 @@ impl<'a> BinaryReader<'a> {
             data,
             pos: 0,
             ascii_body: false,
+            xdr_body: false,
         }
     }
 
     fn set_ascii_body(&mut self, ascii_body: bool) {
         self.ascii_body = ascii_body;
+    }
+
+    fn set_xdr_body(&mut self, xdr_body: bool) {
+        self.xdr_body = xdr_body;
     }
 
     fn remaining(&self) -> usize {
@@ -566,7 +582,11 @@ impl<'a> BinaryReader<'a> {
             .try_into()
             .unwrap_or([0; 4]);
         self.pos += 4;
-        Ok(i32::from_ne_bytes(bytes))
+        Ok(if self.xdr_body {
+            i32::from_be_bytes(bytes)
+        } else {
+            i32::from_ne_bytes(bytes)
+        })
     }
 
     fn read_f64(&mut self) -> Result<f64, String> {
@@ -583,7 +603,11 @@ impl<'a> BinaryReader<'a> {
             .try_into()
             .unwrap_or([0; 8]);
         self.pos += 8;
-        Ok(f64::from_ne_bytes(bytes))
+        Ok(if self.xdr_body {
+            f64::from_be_bytes(bytes)
+        } else {
+            f64::from_ne_bytes(bytes)
+        })
     }
 
     fn read_byte(&mut self) -> Result<u8, String> {
@@ -1602,6 +1626,17 @@ pub unsafe fn R_serialize(
     Sversion: SEXP,
     fun: SEXP,
 ) -> SEXP {
+    unsafe { R_serialize_with_xdr(object, icon, ascii, R_NilValue(), Sversion, fun) }
+}
+
+unsafe fn R_serialize_with_xdr(
+    object: SEXP,
+    icon: SEXP,
+    ascii: SEXP,
+    xdr: SEXP,
+    Sversion: SEXP,
+    fun: SEXP,
+) -> SEXP {
     unsafe {
         if object.is_null() {
             error("read error");
@@ -1618,12 +1653,20 @@ pub unsafe fn R_serialize(
         };
 
         let ascii_format = !ascii.is_null() && ascii != R_NilValue() && asLogical(ascii) != 0;
+        let xdr_format = !ascii_format && (xdr == R_NilValue() || asLogical(xdr) != 0);
 
         // Build the header
         let mut writer = BinaryWriter::new();
-        writer.write_byte(if ascii_format { b'A' } else { b'B' });
+        writer.write_byte(if ascii_format {
+            b'A'
+        } else if xdr_format {
+            b'X'
+        } else {
+            b'B'
+        });
         writer.write_byte(b'\n');
         writer.set_ascii_body(ascii_format);
+        writer.set_xdr_body(xdr_format);
 
         // Version info
         writer.write_i32(version); // version
@@ -1674,10 +1717,11 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
         // Read format header: two bytes (`A\n` or `B\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);
         let fmt2 = reader.read_byte().unwrap_or(0);
-        if (fmt1 != b'A' && fmt1 != b'B') || fmt2 != b'\n' {
+        if (fmt1 != b'A' && fmt1 != b'B' && fmt1 != b'X') || fmt2 != b'\n' {
             error("unknown input format");
         }
         reader.set_ascii_body(fmt1 == b'A');
+        reader.set_xdr_body(fmt1 == b'X');
 
         // Read version
         let version = reader.read_i32().unwrap_or(0);
@@ -1712,7 +1756,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
-    unsafe { R_serialize(object, icon, xdr, Sversion, fun) }
+    unsafe { R_serialize_with_xdr(object, icon, R_NilValue(), xdr, Sversion, fun) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1757,7 +1801,8 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                 false
             };
 
-        R_serialize(object, R_NilValue(), ascii, version, R_NilValue())
+        let xdr = arg_by_name_or_position(args, "xdr", 3);
+        R_serialize_with_xdr(object, R_NilValue(), ascii, xdr, version, R_NilValue())
     }
 }
 
@@ -1778,8 +1823,9 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 
         // Serialize to a raw vector, then the connection layer would write it
         //  do the serialization
-        R_serialize(
+        R_serialize_with_xdr(
             object,
+            R_NilValue(),
             R_NilValue(),
             R_NilValue(),
             R_NilValue(),

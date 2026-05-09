@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 568 |
-| Passing | 568 |
+| Total parity cases | 569 |
+| Passing | 569 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -104,7 +104,7 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 186 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, repetition helpers, tabulation, findInterval boundary options including single-break edges, serialize version/ascii header and payload handling, shape-helper, array-creation, and broad parser/runtime smoke cases |
+| Parser and scalar basics | 187 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, repetition helpers, tabulation, findInterval boundary options including single-break edges, serialize version/ascii/xdr header and payload handling, shape-helper, array-creation, and broad parser/runtime smoke cases |
 | Evaluator, closures, and control flow | 11 | Closures, lexical scope, lazy/default args, missing args, loops, and evaluator visibility/control-flow checks |
 | Vectors, lists, attributes, and objects | 89 | Vectors, typed vector constructors, lists, names, name-preserving repetition, list/complex repetition, named and ordered mixed-list unlisting, recursive unlist control, typed rle/inverse.rle, raw-vector serialization roundtrips, subsetting, factors, explicit missing factor levels, generated factors, factor coercion, factor summaries, interval cutting, ordered factors, ordered comparisons, interaction factors, releveling, droplevels, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
 | Base functions, conditions, and platform helpers | 139 | Sorting/set helpers, output capture, conditions, search-path/environment helpers, options, file/temp/path helpers, connections, platform state, `.Internal` dispatch, and non-GNU alias absence semantics |
@@ -152,11 +152,11 @@ claim must either fix the behavior or explicitly remove the case from the gate.
 case_id<TAB>owner_bead<TAB>reason
 ```
 
-## Release Gaps
+## Release-Gap Tracking
 
 The parity suite is strong enough to catch regressions in the covered surface,
-but it is not a full R compatibility claim. The release roadmap tracks the
-remaining coverage expansions:
+but it is not a full R compatibility claim. The original release-gap beads for
+the Android-ready slice are closed:
 
 - `rport-az2r`: base language parity top-50 gaps
 - `rport-x3pp`: S3 release parity beyond the first registry slice
@@ -165,9 +165,12 @@ remaining coverage expansions:
 - `rport-c6ap`: graphics path release quality
 - `rport-89pz`: Android UniFFI release surface hardening
 
-New behavior should land with a stock-R fixture whenever possible. If exact
-stock-R parity is intentionally out of scope for Android, add a policy note and
-an owner bead instead of silently broadening claims.
+Broader GNU R compatibility still requires new scoped beads before it can be
+claimed: full upstream test expansion, compiler/bytecode/lazyload depth, full
+methods/S4 coverage, complete graphics/device behavior, and host/native package
+policy. New behavior should land with a stock-R fixture whenever possible. If
+exact stock-R parity is intentionally out of scope for Android, add a policy
+note and an owner bead instead of silently broadening claims.
 
 ## RNG Policy
 
