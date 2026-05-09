@@ -304,6 +304,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::dotcode::do_Externalgr,
     },
     EvaluatedBuiltin {
+        name: "browser",
+        handler: crate::eval::context::do_browser,
+    },
+    EvaluatedBuiltin {
         name: "environment<-",
         handler: crate::mainutils::builtin::do_envirgets,
     },

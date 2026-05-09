@@ -466,6 +466,10 @@ pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     })
 }
 
+pub unsafe fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
+
 pub unsafe fn do_sysbrowser_in(
     instance: &mut RInstance,
     call: SEXP,

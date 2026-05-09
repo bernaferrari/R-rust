@@ -1,0 +1,1 @@
+invisible(capture.output(browser()))
