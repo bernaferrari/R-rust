@@ -40,7 +40,16 @@ android {
     buildFeatures {
         compose = true
     }
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/java", "generated/kotlin")
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -64,6 +73,8 @@ dependencies {
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.3")
+    implementation("androidx.annotation:annotation:1.9.1")
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
 
     // Icons
     implementation("androidx.compose.material:material-icons-extended:1.7.5")

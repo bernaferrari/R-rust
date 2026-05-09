@@ -13,18 +13,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -35,29 +34,16 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 
 @Composable
-fun ScriptEditor() {
-    var code by remember {
-        mutableStateOf(
-            """# R Script Example
-library(ggplot2)
-
-# Sample data
-data <- data.frame(
-  x = rnorm(100),
-  y = rnorm(100)
-)
-
-# Create plot
-ggplot(data, aes(x, y)) +
-  geom_point(color = "#0E639C", alpha = 0.7) +
-  theme_minimal() +
-  labs(title = "Sample Scatter Plot")
-
-print(summary(data))
-"""
-        )
-    }
-
+fun ScriptEditor(
+    code: String,
+    fileName: String,
+    isRunning: Boolean,
+    status: String,
+    onCodeChange: (String) -> Unit,
+    onRun: () -> Unit,
+    onRenderPlot: () -> Unit,
+    onImportCsv: () -> Unit,
+) {
     val lineCount = code.split('\n').size
     val listState = rememberLazyListState()
 
@@ -67,10 +53,23 @@ print(summary(data))
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("untitled.R", style = MaterialTheme.typography.titleSmall)
-            FilledTonalButton(onClick = { /* Run script */ }) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "Run")
-                Text("Run")
+            Column {
+                Text(fileName, style = MaterialTheme.typography.titleSmall)
+                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onImportCsv, enabled = !isRunning) {
+                    Icon(Icons.Default.FileOpen, contentDescription = "Import CSV")
+                    Text("CSV")
+                }
+                OutlinedButton(onClick = onRenderPlot, enabled = !isRunning) {
+                    Icon(Icons.Default.Image, contentDescription = "Plot")
+                    Text("Plot")
+                }
+                FilledTonalButton(onClick = onRun, enabled = !isRunning) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Run")
+                    Text("Run")
+                }
             }
         }
 
@@ -95,7 +94,7 @@ print(summary(data))
             // Code editor
             BasicTextField(
                 value = code,
-                onValueChange = { code = it },
+                onValueChange = onCodeChange,
                 modifier = Modifier.fillMaxSize().padding(8.dp),
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,

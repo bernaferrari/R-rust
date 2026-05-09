@@ -1,14 +1,16 @@
 # R Studio Mobile for Android
 
-Complete R Studio style mobile application built with Jetpack Compose Material 3.
+R Studio style mobile application built with Jetpack Compose Material 3 and the
+Rust/UniFFI R runtime.
 
 ## Features Implemented
 
-✅ **Script Editor** with full R syntax highlighting
-✅ **Console Output** with ANSI color support
-✅ **Plot View** with pinch zoom and pan gestures
-✅ **Environment Browser**
-✅ **File Browser**
+✅ **Script Editor** with R syntax highlighting and real runtime execution
+✅ **Console Output** with ANSI color support and typed result summary
+✅ **Plot View** backed by Rust-rendered PNG plots with pinch zoom and pan gestures
+✅ **Environment Browser** backed by `ls(all.names = TRUE)` and typed value summaries
+✅ **CSV Import** through Android's document picker into app-private storage
+✅ **File Browser** showing imported workspace files
 ✅ **Help / Documentation Viewer**
 ✅ **Tab Navigation** for all panes
 ✅ **Adaptive Layout** for phones and tablets
@@ -58,6 +60,14 @@ For the release smoke path, run:
 - 48dp minimum touch targets for all interactive elements
 - Proper keyboard insets handling
 - Edge-to-edge display support
+
+## Current Runtime Scope
+
+The debug app packages the generated Kotlin UniFFI binding and the arm64-v8a
+`libr_uniffi.so`. It can run R code, import CSV files selected from Android
+Files, inspect allocated variables, and render supported base `plot(...)`
+calls. Broader package installation, native CRAN extensions, and arbitrary
+RStudio IDE workflows are still outside this mobile MVP.
 
 ## License
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,12 +21,11 @@ private data class FileEntry(
 )
 
 @Composable
-fun FileBrowser() {
+fun FileBrowser(importedPath: String?, onImportCsv: () -> Unit) {
     val entries = listOf(
-        FileEntry("/data/data/com.rstudio.mobile/files", "App-private working directory."),
-        FileEntry("/sdcard/Download", "User-visible download location."),
-        FileEntry("/sdcard/Documents", "Shared documents area."),
-        FileEntry("./", "Project-relative path for scripted workflows."),
+        FileEntry("App files", "R sees copied/imported files through the app-private workspace."),
+        FileEntry("CSV import", importedPath ?: "Choose a CSV from Android files to import it into R."),
+        FileEntry("Temporary files", "tempdir() and tempfile() resolve inside Android cache."),
     )
 
     Column(
@@ -34,11 +34,13 @@ fun FileBrowser() {
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Files", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Baseline browser view for local files and project assets.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Files", style = MaterialTheme.typography.titleMedium)
+            FilledTonalButton(onClick = onImportCsv) { Text("Import CSV") }
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

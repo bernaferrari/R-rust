@@ -1,12 +1,21 @@
 package com.rstudio.mobile.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,49 +25,57 @@ import androidx.compose.ui.unit.sp
 import com.rstudio.mobile.util.AnsiParser
 
 @Composable
-fun ConsoleView() {
-    val consoleLines = listOf(
-        "\u001B[32mR version 4.3.1 (2023-06-16) -- \"Beagle Scouts\"\u001B[0m",
-        "Copyright (C) 2023 The R Foundation for Statistical Computing",
-        "Platform: aarch64-apple-darwin20 (64-bit)",
-        "",
-        "R is free software and comes with ABSOLUTELY NO WARRANTY.",
-        "You are welcome to redistribute it under certain conditions.",
-        "Type 'license()' or 'licence()' for distribution details.",
-        "",
-        "  Natural language support but running in an English locale",
-        "",
-        "R is a collaborative project with many contributors.",
-        "Type 'contributors()' for more information and",
-        "'citation()' on how to cite R or R packages in publications.",
-        "",
-        "Type 'demo()' for some demos, 'help()' for on-line help, or",
-        "'help.start()' for an HTML browser interface to help.",
-        "Type 'q()' to quit R.",
-        "",
-        "\u001B[34m> \u001B[0m"
-    )
-
+fun ConsoleView(
+    console: String,
+    lastValueSummary: String,
+    isRunning: Boolean,
+    status: String,
+    onClear: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val consoleLines = console.lines()
     val listState = rememberLazyListState()
 
     LaunchedEffect(consoleLines.size) {
         listState.animateScrollToItem(consoleLines.size - 1)
     }
 
-    Box(Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(8.dp)
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            items(consoleLines) { line ->
-                Text(
-                    text = AnsiParser.parse(line),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
+            AssistChip(onClick = {}, label = { Text(status) })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isRunning) {
+                    Button(onClick = onCancel) { Text("Cancel") }
+                }
+                TextButton(onClick = onClear) { Text("Clear") }
+            }
+        }
+        Card(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+            Text(
+                text = lastValueSummary,
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        HorizontalDivider()
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize().padding(8.dp)
+            ) {
+                items(consoleLines) { line ->
+                    Text(
+                        text = AnsiParser.parse(line),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
                     )
-                )
+                }
             }
         }
     }
