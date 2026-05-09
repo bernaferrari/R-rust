@@ -1,0 +1,8 @@
+expr <- call("foo", 1, bar = 2)
+print(expr)
+print(typeof(expr))
+print(is.call(expr))
+print(length(expr))
+print(as.character(expr[[1]]))
+print(expr[[2]])
+print(expr[[3]])

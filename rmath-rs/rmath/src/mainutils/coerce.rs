@@ -3204,6 +3204,7 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{CAR, CDR, CHAR, LENGTH, SETCAR, STRING_ELT};
+    use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::symbol::Rf_install;
 
     unsafe {
@@ -3241,6 +3242,9 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Build LANGSXP: (sym arg1 arg2 ...)
         let result = Rf_cons(sym, evargs);
+        if !result.is_null() {
+            (*result).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
         result
     }
 }

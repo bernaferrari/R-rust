@@ -215,6 +215,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "call",
+        handler: crate::mainutils::coerce::do_call,
+        restore_visibility_always: true,
+    },
+    UnevaluatedBuiltin {
         name: "bquote",
         handler: crate::mainutils::essentials::do_bquote,
         restore_visibility_always: true,
