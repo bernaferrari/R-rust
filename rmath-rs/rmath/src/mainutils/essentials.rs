@@ -2873,64 +2873,14 @@ fn assign_tied_ranks<T, F>(
 /// - `nmax`: max number of unique elements expected (optimization hint; NA_INTEGER = no limit)
 pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
 
-        // Parse optional args: incomparables, fromLast, nmax
-        let incomparables = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                R_NilValue()
-            } else {
-                let a = CAR(rest);
-                if a == R_NilValue() || a.is_null() {
-                    R_NilValue()
-                } else {
-                    a
-                }
-            }
-        };
-
-        let from_last = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                false
-            } else {
-                let rest2 = CDR(rest);
-                if rest2.is_null() || rest2 == R_NilValue() {
-                    false
-                } else {
-                    let v = real_or_default(CAR(rest2), 0.0);
-                    v != 0.0
-                }
-            }
-        };
-
-        let nmax = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                NA_INTEGER
-            } else {
-                let rest2 = CDR(rest);
-                if rest2.is_null() || rest2 == R_NilValue() {
-                    NA_INTEGER
-                } else {
-                    let rest3 = CDR(rest2);
-                    if rest3.is_null() || rest3 == R_NilValue() {
-                        NA_INTEGER
-                    } else {
-                        let v = real_or_default(CAR(rest3), NA_REAL);
-                        if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                            NA_INTEGER
-                        } else {
-                            v as c_int
-                        }
-                    }
-                }
-            }
-        };
+        let incomparables = arg_by_name_or_position(args, &["incomparables"], 1);
+        let from_last = logical_arg_by_name_or_position(args, "fromLast", 2).unwrap_or(false);
+        let nmax = integer_arg_by_name_or_position(args, "nmax", 3).unwrap_or(NA_INTEGER);
 
         // Build incomparables set
         let mut incomparable_set: std::collections::BTreeSet<String> =
@@ -2939,9 +2889,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let in_n = XLENGTH(incomparables);
             for i in 0..in_n {
                 let s = elt_to_string(incomparables, i);
-                if s != "NA" {
-                    incomparable_set.insert(s);
-                }
+                incomparable_set.insert(s);
             }
         }
 
@@ -2963,28 +2911,27 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if from_last {
             // Scan from last to first; last occurrence is original, earlier are duplicates
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            // First pass: collect all unique values (from end)
-            for i in (0..n).rev() {
-                let s = elt_to_string(x, i);
-                if !incomparable_set.contains(&s) {
-                    seen.insert(s);
-                    if seen.len() >= effective_nmax {
-                        break;
-                    }
-                }
-            }
-            // Second pass: mark as duplicated if already seen (from start)
-            let mut encountered: std::collections::BTreeSet<String> =
-                std::collections::BTreeSet::new();
             for i in 0..n {
+                *dst.add(i as usize) = FALSE;
+            }
+            for i in (0..n).rev() {
                 let s = elt_to_string(x, i);
                 if incomparable_set.contains(&s) {
                     *dst.add(i as usize) = FALSE;
-                } else if encountered.contains(&s) {
+                } else if seen.contains(&s) {
                     *dst.add(i as usize) = TRUE;
                 } else {
-                    encountered.insert(s);
+                    seen.insert(s);
                     *dst.add(i as usize) = FALSE;
+                    if seen.len() >= effective_nmax {
+                        for j in 0..i {
+                            let sj = elt_to_string(x, j);
+                            if !incomparable_set.contains(&sj) {
+                                *dst.add(j as usize) = TRUE;
+                            }
+                        }
+                        break;
+                    }
                 }
             }
         } else {
@@ -3028,64 +2975,14 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// Supports incomparables, fromLast, and nmax parameters just like `duplicated()`.
 pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
 
-        // Parse optional args: incomparables, fromLast, nmax
-        let incomparables = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                R_NilValue()
-            } else {
-                let a = CAR(rest);
-                if a == R_NilValue() || a.is_null() {
-                    R_NilValue()
-                } else {
-                    a
-                }
-            }
-        };
-
-        let from_last = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                false
-            } else {
-                let rest2 = CDR(rest);
-                if rest2.is_null() || rest2 == R_NilValue() {
-                    false
-                } else {
-                    let v = real_or_default(CAR(rest2), 0.0);
-                    v != 0.0
-                }
-            }
-        };
-
-        let nmax = {
-            let rest = CDR(args);
-            if rest.is_null() || rest == R_NilValue() {
-                NA_INTEGER
-            } else {
-                let rest2 = CDR(rest);
-                if rest2.is_null() || rest2 == R_NilValue() {
-                    NA_INTEGER
-                } else {
-                    let rest3 = CDR(rest2);
-                    if rest3.is_null() || rest3 == R_NilValue() {
-                        NA_INTEGER
-                    } else {
-                        let v = real_or_default(CAR(rest3), NA_REAL);
-                        if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                            NA_INTEGER
-                        } else {
-                            v as c_int
-                        }
-                    }
-                }
-            }
-        };
+        let incomparables = arg_by_name_or_position(args, &["incomparables"], 1);
+        let from_last = logical_arg_by_name_or_position(args, "fromLast", 2).unwrap_or(false);
+        let nmax = integer_arg_by_name_or_position(args, "nmax", 3).unwrap_or(NA_INTEGER);
 
         // Build incomparables set
         let mut incomparable_set: std::collections::BTreeSet<String> =
@@ -3094,9 +2991,7 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             let in_n = XLENGTH(incomparables);
             for i in 0..in_n {
                 let s = elt_to_string(incomparables, i);
-                if s != "NA" {
-                    incomparable_set.insert(s);
-                }
+                incomparable_set.insert(s);
             }
         }
 
@@ -3110,12 +3005,11 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         if from_last {
             // From last: find last duplicated element index
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            let mut result_idx = 0i32;
             for i in (0..n).rev() {
                 let s = elt_to_string(x, i);
                 if !incomparable_set.contains(&s) {
                     if seen.contains(&s) {
-                        result_idx = (i + 1) as c_int; // R is 1-indexed
+                        return Rf_ScalarInteger((i + 1) as c_int);
                     } else {
                         seen.insert(s);
                         if seen.len() >= effective_nmax {
@@ -3124,7 +3018,7 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                     }
                 }
             }
-            Rf_ScalarInteger(result_idx)
+            Rf_ScalarInteger(0)
         } else {
             // From first: find first duplicated element index
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -7263,6 +7157,50 @@ fn named_logical_arg(args: SEXP, name: &str) -> Option<bool> {
             current = CDR(current);
         }
         None
+    }
+}
+
+fn logical_arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> Option<bool> {
+    unsafe {
+        let value = arg_by_name_or_position(args, &[name], position);
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+            return None;
+        }
+        let raw = if TYPEOF(value) == SEXPTYPE::LGLSXP || TYPEOF(value) == SEXPTYPE::INTSXP {
+            *INTEGER(value)
+        } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+            let value = *REAL(value);
+            if ISNAN(value) {
+                NA_LOGICAL
+            } else {
+                value as c_int
+            }
+        } else {
+            return None;
+        };
+        (raw != NA_INTEGER).then_some(raw != 0)
+    }
+}
+
+fn integer_arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> Option<c_int> {
+    unsafe {
+        let value = arg_by_name_or_position(args, &[name], position);
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+            return None;
+        }
+        let raw = if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::LGLSXP {
+            *INTEGER(value)
+        } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+            let value = *REAL(value);
+            if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || value.is_nan() {
+                NA_INTEGER
+            } else {
+                value as c_int
+            }
+        } else {
+            return None;
+        };
+        Some(raw)
     }
 }
 

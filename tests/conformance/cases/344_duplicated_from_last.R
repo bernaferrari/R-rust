@@ -1,0 +1,6 @@
+print(duplicated(c("a", "b", "a", NA, NA), fromLast = TRUE))
+print(duplicated(c(1, 2, 1, NA, NA), fromLast = TRUE))
+print(anyDuplicated(c("a", "b", "a", NA, NA), fromLast = TRUE))
+print(anyDuplicated(c(1, 2, 1, NA, NA), fromLast = TRUE))
+print(duplicated(c("a", "b", "a", NA, NA), incomparables = NA))
+print(anyDuplicated(c("a", "b", "a", NA, NA), incomparables = NA))
