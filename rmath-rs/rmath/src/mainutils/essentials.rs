@@ -5653,6 +5653,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "interaction",
             "relevel",
             "factor",
+            "ordered",
             "addNA",
             "is.factor",
             "is.ordered",
@@ -22803,6 +22804,30 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             class,
         );
         result
+    }
+}
+
+/// R's `ordered(x, levels = ...)` — construct an ordered factor.
+pub unsafe fn do_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let result = do_factor(call, op, args, rho);
+        if !result.is_null() && result != R_NilValue() && TYPEOF(result) == SEXPTYPE::INTSXP {
+            set_ordered_factor_class(result);
+        }
+        result
+    }
+}
+
+unsafe fn set_ordered_factor_class(x: SEXP) {
+    unsafe {
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if class.is_null() {
+            return;
+        }
+        let _class_guard = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"ordered".as_ptr()));
+        SET_STRING_ELT(class, 1, Rf_mkChar(c"factor".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(x, crate::sexp::attrib_core::R_ClassSymbol(), class);
     }
 }
 

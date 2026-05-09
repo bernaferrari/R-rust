@@ -1941,6 +1941,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_factor,
     },
     EvaluatedBuiltin {
+        name: "ordered",
+        handler: crate::mainutils::essentials::do_ordered,
+    },
+    EvaluatedBuiltin {
         name: "addNA",
         handler: crate::mainutils::essentials::do_addNA,
     },
