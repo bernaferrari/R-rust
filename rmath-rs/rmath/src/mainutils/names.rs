@@ -4109,6 +4109,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
+        b"Sys.which\0",
+        None,
+        0,
+        11,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
         b"Sys.getlocale\0",
         None,
         0,
@@ -5112,6 +5120,18 @@ mod tests {
         unsafe {
             let result = StrToInternal(b"if\0".as_ptr() as *const c_char);
             assert_eq!(result, 0);
+        }
+    }
+
+    #[test]
+    fn test_str_to_internal_finds_sys_which() {
+        unsafe {
+            let result = StrToInternal(b"Sys.which\0".as_ptr() as *const c_char);
+            assert_ne!(result, NA_INTEGER);
+            let entry = &R_FunTab[result as usize];
+            assert_eq!(entry.name, b"Sys.which\0");
+            assert_eq!(entry.arity, 1);
+            assert_eq!(entry.eval, 11);
         }
     }
 
