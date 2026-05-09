@@ -8,7 +8,7 @@ use crate::mainutils::relop::{PRIMNAME, checkArity};
 use crate::sexp::accessors::{
     BODY, CADDR, CADR, CAR, CDR, CHAR, CLOENV, COMPLEX, ENCLOS, FORMALS, INTEGER, LENGTH,
     PRINTNAME, RAW, REAL, SET_BODY, SET_CLOENV, SET_ENCLOS, SET_FORMALS, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH, translateChar,
+    SET_VECTOR_ELT, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{getAttrib, setAttrib};
 use crate::sexp::constructors::{
@@ -48,8 +48,21 @@ unsafe fn isNull(x: SEXP) -> bool {
 
 unsafe fn installTrChar(x: SEXP) -> SEXP {
     unsafe {
-        let s = translateChar(x);
-        Rf_install(s)
+        let p = CHAR(x);
+        if p.is_null() {
+            error("invalid string in installTrChar");
+        }
+        Rf_install(p)
+    }
+}
+
+unsafe fn first_string_char(x: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::CHARSXP {
+            x
+        } else {
+            STRING_ELT(x, 0)
+        }
     }
 }
 
@@ -132,7 +145,7 @@ pub unsafe fn do_delayed(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if Rf_isString(CAR(args)) == 0 || LENGTH(CAR(args)) == 0 {
             error("invalid first argument");
         }
-        let name = installTrChar(STRING_ELT(CAR(args), 0));
+        let name = installTrChar(first_string_char(CAR(args)));
         let args = CDR(args);
         let expr = CAR(args);
         let args = CDR(args);
@@ -183,7 +196,11 @@ pub unsafe fn do_makelazy(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let n = XLENGTH(names);
         for i in 0..n {
-            let name = installTrChar(STRING_ELT(names, i));
+            let name = installTrChar(if TYPEOF(names) == SEXPTYPE::CHARSXP {
+                names
+            } else {
+                STRING_ELT(names, i)
+            });
             let val = crate::eval::eval::Rf_eval(VECTOR_ELT(values, i), eenv);
             let expr0 = duplicate(expr);
             SETCAR(CDR(expr0), val);
@@ -213,7 +230,7 @@ pub unsafe fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         checkArity(op, args);
         let mut input = CAR(args);
         if TYPEOF(input) == SEXPTYPE::STRSXP && LENGTH(input) == 1 {
-            let s = installTrChar(STRING_ELT(input, 0));
+            let s = installTrChar(first_string_char(input));
             input = findFun(s, rho);
         }
         if TYPEOF(input) == SEXPTYPE::CLOSXP {
