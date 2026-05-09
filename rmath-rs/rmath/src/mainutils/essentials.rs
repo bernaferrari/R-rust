@@ -5599,8 +5599,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "setGeneric",
             "setMethod",
             // Complete R runtime — serialization
-            "Random.seed",
-            "loadRDS",
             "readRDS",
             "saveRDS",
             // Complete R runtime — parallel operations

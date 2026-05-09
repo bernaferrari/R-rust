@@ -2231,14 +2231,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_setMethod,
     },
     EvaluatedBuiltin {
-        name: "Random.seed",
-        handler: crate::mainutils::essentials::do_Random_seed,
-    },
-    EvaluatedBuiltin {
-        name: "loadRDS",
-        handler: crate::mainutils::essentials::do_loadRDS,
-    },
-    EvaluatedBuiltin {
         name: "readRDS",
         handler: crate::mainutils::essentials::do_loadRDS,
     },

@@ -1,0 +1,6 @@
+print(exists("Random.seed"))
+print(exists("Random.seed", mode = "function"))
+print(exists("loadRDS"))
+print(exists("loadRDS", mode = "function"))
+print(exists("readRDS", mode = "function"))
+print(exists("saveRDS", mode = "function"))
