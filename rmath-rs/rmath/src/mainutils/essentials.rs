@@ -5152,7 +5152,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "class",
             "list",
             "data.frame",
-            "Names",
             "attr",
             "attributes",
             "structure",
@@ -5313,9 +5312,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // String operations
             "startsWith",
             "endsWith",
-            "str_pad",
-            "str_count",
-            "str_replace",
             // R runtime type checks
             "is.language",
             "is.call",
@@ -5451,16 +5447,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "isTRUE",
             "isFALSE",
             "anyNA",
-            "allNA",
-            "anyNaN",
-            "allNaN",
             // Complete list operations
             "modifyList",
-            "splice",
-            "flatten",
             "split",
-            "melt",
-            "cast",
             // Complete R runtime — with/within/transform
             "with",
             "within",
@@ -5481,11 +5470,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "levels",
             "levels<-",
             "nlevels",
-            // Complete string operations — str_locate, str_sub
-            "str_locate",
-            "str_locate_all",
-            "str_sub",
-            "str_sub_all",
             // Complete R runtime — Sys.* functions, R.home
             "R.home",
             "date",
@@ -12239,11 +12223,6 @@ pub unsafe fn do_oldClass_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
-}
-
-/// R's `Names(x)` — get names (alias, commonly used internally).
-pub unsafe fn do_Names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_names(_call, _op, args, _rho) }
 }
 
 // ---------------------------------------------------------------------------

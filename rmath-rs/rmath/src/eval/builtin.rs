@@ -835,10 +835,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_data_frame,
     },
     EvaluatedBuiltin {
-        name: "Names",
-        handler: crate::mainutils::essentials::do_Names,
-    },
-    EvaluatedBuiltin {
         name: "attr",
         handler: crate::mainutils::essentials::do_attr,
     },
@@ -1447,18 +1443,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_endsWith,
     },
     EvaluatedBuiltin {
-        name: "str_pad",
-        handler: crate::mainutils::essentials::do_str_pad,
-    },
-    EvaluatedBuiltin {
-        name: "str_count",
-        handler: crate::mainutils::essentials::do_str_count,
-    },
-    EvaluatedBuiltin {
-        name: "str_replace",
-        handler: crate::mainutils::essentials::do_str_replace,
-    },
-    EvaluatedBuiltin {
         name: "is.language",
         handler: crate::mainutils::essentials::do_is_language,
     },
@@ -1787,40 +1771,12 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_any_na,
     },
     EvaluatedBuiltin {
-        name: "allNA",
-        handler: crate::mainutils::essentials::do_all_na,
-    },
-    EvaluatedBuiltin {
-        name: "anyNaN",
-        handler: crate::mainutils::essentials::do_any_nan,
-    },
-    EvaluatedBuiltin {
-        name: "allNaN",
-        handler: crate::mainutils::essentials::do_all_nan,
-    },
-    EvaluatedBuiltin {
         name: "modifyList",
         handler: crate::mainutils::essentials::do_modify_list,
     },
     EvaluatedBuiltin {
-        name: "splice",
-        handler: crate::mainutils::essentials::do_splice,
-    },
-    EvaluatedBuiltin {
-        name: "flatten",
-        handler: crate::mainutils::essentials::do_flatten,
-    },
-    EvaluatedBuiltin {
         name: "split",
         handler: crate::mainutils::essentials::do_split,
-    },
-    EvaluatedBuiltin {
-        name: "melt",
-        handler: crate::mainutils::essentials::do_melt,
-    },
-    EvaluatedBuiltin {
-        name: "cast",
-        handler: crate::mainutils::essentials::do_cast,
     },
     EvaluatedBuiltin {
         name: "with",
@@ -1893,22 +1849,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "nlevels",
         handler: crate::mainutils::essentials::do_nlevels,
-    },
-    EvaluatedBuiltin {
-        name: "str_locate",
-        handler: crate::mainutils::essentials::do_str_locate,
-    },
-    EvaluatedBuiltin {
-        name: "str_locate_all",
-        handler: crate::mainutils::essentials::do_str_locate_all,
-    },
-    EvaluatedBuiltin {
-        name: "str_sub",
-        handler: crate::mainutils::essentials::do_str_sub,
-    },
-    EvaluatedBuiltin {
-        name: "str_sub_all",
-        handler: crate::mainutils::essentials::do_str_sub_all,
     },
     EvaluatedBuiltin {
         name: "R.home",

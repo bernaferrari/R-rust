@@ -1,0 +1,5 @@
+print(exists("Names"))
+x <- c(a = 1, b = 2)
+print(names(x))
+names(x) <- c("c", "d")
+print(names(x))
