@@ -1,0 +1,6 @@
+z <- tapply(c(1, 2, 3, 4), factor(c("b", "a", "b", "a"), levels = c("b", "a")), sum)
+cat(paste(names(z), collapse = "|"), "\n", sep = "")
+cat(paste(sprintf("%.12g", z), collapse = "|"), "\n", sep = "")
+cat(paste(dim(z), collapse = "|"), "\n", sep = "")
+cat(paste(dimnames(z)[[1]], collapse = "|"), "\n", sep = "")
+cat(paste(class(z), collapse = "|"), "\n", sep = "")

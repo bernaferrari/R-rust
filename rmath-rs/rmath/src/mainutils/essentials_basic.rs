@@ -372,10 +372,30 @@ pub unsafe fn do_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             x,
             Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
         );
-        if names.is_null() {
-            return R_NilValue();
+        if !names.is_null() && names != R_NilValue() {
+            return names;
         }
-        names
+
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if !dim.is_null()
+            && dim != R_NilValue()
+            && TYPEOF(dim) == SEXPTYPE::INTSXP
+            && XLENGTH(dim) == 1
+        {
+            let dimnames = crate::sexp::attrib_core::getAttrib(
+                x,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+            );
+            if !dimnames.is_null()
+                && dimnames != R_NilValue()
+                && TYPEOF(dimnames) == SEXPTYPE::VECSXP
+                && XLENGTH(dimnames) > 0
+            {
+                return VECTOR_ELT(dimnames, 0);
+            }
+        }
+
+        R_NilValue()
     }
 }
 

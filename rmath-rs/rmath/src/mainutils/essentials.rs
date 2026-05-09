@@ -8404,6 +8404,9 @@ pub unsafe fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() || index.is_null() || fun.is_null() {
             return R_NilValue();
         }
+        if let Some(result) = tapply_numeric_array(x, index, fun, _call) {
+            return result;
+        }
 
         let n = XLENGTH(x);
         let idx_n = XLENGTH(index);
@@ -8466,6 +8469,211 @@ pub unsafe fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         result
+    }
+}
+
+struct TapplyIndex {
+    labels: Vec<String>,
+    row_codes: Vec<Option<usize>>,
+}
+
+unsafe fn tapply_numeric_array(x: SEXP, index: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
+    unsafe {
+        let summary = aggregate_summary_fun(fun, call)?;
+        let x_type = TYPEOF(x);
+        if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
+            return None;
+        }
+        let n = XLENGTH(x);
+        let indexes = tapply_indexes(index, n)?;
+        if indexes.is_empty() || indexes.iter().any(|index| index.labels.is_empty()) {
+            return None;
+        }
+
+        let dims = indexes
+            .iter()
+            .map(|index| index.labels.len())
+            .collect::<Vec<_>>();
+        let total_len = dims.iter().product::<usize>() as R_xlen_t;
+        let mut states = vec![AggregateGroupState::new(); total_len as usize];
+
+        for row in 0..n {
+            let mut offset = 0_usize;
+            let mut stride = 1_usize;
+            let mut keep = true;
+            for (index, dim) in indexes.iter().zip(dims.iter()) {
+                match index.row_codes[row as usize] {
+                    Some(code) => {
+                        offset += code * stride;
+                        stride *= *dim;
+                    }
+                    None => {
+                        keep = false;
+                        break;
+                    }
+                }
+            }
+            if keep {
+                states[offset].record(tapply_value_at(x, x_type, row), summary);
+            }
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, total_len);
+        if result.is_null() {
+            return Some(result);
+        }
+        let _result_guard = protect(result);
+        for (i, state) in states.into_iter().enumerate() {
+            *REAL(result).add(i) = state.summarize(summary);
+        }
+        set_tapply_dim_attrs(result, &indexes);
+        Some(result)
+    }
+}
+
+unsafe fn tapply_indexes(index: SEXP, n: R_xlen_t) -> Option<Vec<TapplyIndex>> {
+    unsafe {
+        if TYPEOF(index) == SEXPTYPE::VECSXP {
+            let mut indexes = Vec::with_capacity(XLENGTH(index) as usize);
+            for i in 0..XLENGTH(index) {
+                indexes.push(tapply_one_index(VECTOR_ELT(index, i), n)?);
+            }
+            Some(indexes)
+        } else {
+            Some(vec![tapply_one_index(index, n)?])
+        }
+    }
+}
+
+unsafe fn tapply_one_index(index: SEXP, n: R_xlen_t) -> Option<TapplyIndex> {
+    unsafe {
+        if index.is_null() || index == R_NilValue() || XLENGTH(index) == 0 {
+            return None;
+        }
+        let index_type = TYPEOF(index);
+        if index_type == SEXPTYPE::INTSXP {
+            if let Some(levels) = aggregate_factor_levels(index) {
+                let row_codes = (0..n)
+                    .map(|row| {
+                        let value = *INTEGER(index).add((row % XLENGTH(index)) as usize);
+                        if value == NA_INTEGER || value <= 0 || value as usize > levels.len() {
+                            None
+                        } else {
+                            Some((value - 1) as usize)
+                        }
+                    })
+                    .collect();
+                return Some(TapplyIndex {
+                    labels: levels,
+                    row_codes,
+                });
+            }
+            let mut labels = std::collections::BTreeSet::<i32>::new();
+            let mut values = Vec::with_capacity(n as usize);
+            for row in 0..n {
+                let value = *INTEGER(index).add((row % XLENGTH(index)) as usize);
+                if value == NA_INTEGER {
+                    values.push(None);
+                } else {
+                    labels.insert(value);
+                    values.push(Some(value));
+                }
+            }
+            let labels = labels.into_iter().collect::<Vec<_>>();
+            let positions = labels
+                .iter()
+                .enumerate()
+                .map(|(i, value)| (*value, i))
+                .collect::<BTreeMap<_, _>>();
+            let row_codes = values
+                .into_iter()
+                .map(|value| value.and_then(|value| positions.get(&value).copied()))
+                .collect();
+            return Some(TapplyIndex {
+                labels: labels.into_iter().map(|value| value.to_string()).collect(),
+                row_codes,
+            });
+        }
+
+        if index_type == SEXPTYPE::STRSXP {
+            let mut labels = std::collections::BTreeSet::<String>::new();
+            let mut values = Vec::with_capacity(n as usize);
+            for row in 0..n {
+                let elt = STRING_ELT(index, row % XLENGTH(index));
+                if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                    values.push(None);
+                } else {
+                    let value = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
+                    labels.insert(value.clone());
+                    values.push(Some(value));
+                }
+            }
+            let labels = labels.into_iter().collect::<Vec<_>>();
+            let positions = labels
+                .iter()
+                .enumerate()
+                .map(|(i, value)| (value.clone(), i))
+                .collect::<BTreeMap<_, _>>();
+            let row_codes = values
+                .into_iter()
+                .map(|value| value.and_then(|value| positions.get(&value).copied()))
+                .collect();
+            return Some(TapplyIndex { labels, row_codes });
+        }
+
+        None
+    }
+}
+
+unsafe fn tapply_value_at(x: SEXP, x_type: c_int, i: R_xlen_t) -> f64 {
+    unsafe {
+        if x_type == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else {
+            let value = *INTEGER(x).add(i as usize);
+            if value == NA_INTEGER {
+                NA_REAL
+            } else {
+                value as f64
+            }
+        }
+    }
+}
+
+unsafe fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
+    unsafe {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, indexes.len() as R_xlen_t);
+        if dim.is_null() {
+            return;
+        }
+        let _dim_guard = protect(dim);
+        for (i, index) in indexes.iter().enumerate() {
+            *INTEGER(dim).add(i) = index.labels.len() as i32;
+        }
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, indexes.len() as R_xlen_t);
+        if dimnames.is_null() {
+            return;
+        }
+        let _dimnames_guard = protect(dimnames);
+        for (i, index) in indexes.iter().enumerate() {
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, index.labels.len() as R_xlen_t);
+            if names.is_null() {
+                return;
+            }
+            let _names_guard = protect(names);
+            for (j, label) in index.labels.iter().enumerate() {
+                let label_c = CString::new(label.as_str()).unwrap_or_default();
+                SET_STRING_ELT(names, j as R_xlen_t, Rf_mkChar(label_c.as_ptr()));
+            }
+            SET_VECTOR_ELT(dimnames, i as R_xlen_t, names);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dimnames,
+        );
     }
 }
 
@@ -12688,6 +12896,21 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
         );
         if class.is_null() || class == R_NilValue() {
+            let dim =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+            if !dim.is_null() && dim != R_NilValue() && TYPEOF(dim) == SEXPTYPE::INTSXP {
+                if XLENGTH(dim) == 2 {
+                    let result = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                    if result.is_null() {
+                        return result;
+                    }
+                    let _result_guard = protect(result);
+                    SET_STRING_ELT(result, 0, Rf_mkChar(c"matrix".as_ptr()));
+                    SET_STRING_ELT(result, 1, Rf_mkChar(c"array".as_ptr()));
+                    return result;
+                }
+                return Rf_mkString(c"array".as_ptr());
+            }
             let t = TYPEOF(x);
             let name = if t == SEXPTYPE::REALSXP {
                 "numeric"

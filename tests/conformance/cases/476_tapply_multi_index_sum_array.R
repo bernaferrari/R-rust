@@ -1,0 +1,5 @@
+z <- tapply(c(1, 2, 3, 4, 5), list(g = c("b", "a", "b", "a", "b"), h = c("x", "x", "y", "y", "x")), sum)
+cat(paste(dim(z), collapse = "|"), "\n", sep = "")
+cat(paste(dimnames(z)[[1]], collapse = "|"), "\n", sep = "")
+cat(paste(dimnames(z)[[2]], collapse = "|"), "\n", sep = "")
+cat(paste(sprintf("%.12g", as.vector(z)), collapse = "|"), "\n", sep = "")
