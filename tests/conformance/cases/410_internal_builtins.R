@@ -1,0 +1,7 @@
+internals <- .Internal(builtins(TRUE))
+all_builtins <- .Internal(builtins(FALSE))
+print("+" %in% all_builtins)
+print("builtins" %in% internals)
+print("+" %in% internals)
+print(length(internals) > 0)
+print(length(all_builtins) >= length(internals))

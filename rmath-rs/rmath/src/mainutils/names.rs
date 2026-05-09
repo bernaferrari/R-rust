@@ -15,12 +15,12 @@ use crate::eval::attrib_core::setAttrib;
 use crate::mainutils::dstruct::mkPRIMSXP;
 use crate::mainutils::duplicate::duplicate;
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, LENGTH, OBJECT, PRIMOFFSET, PRINTNAME, SET_ATTRIB, SET_INTERNAL, SET_PRINTNAME,
-    SET_SYMVALUE, STRING_ELT, TYPEOF,
+    CAR, CDR, CHAR, INTEGER, LENGTH, OBJECT, PRIMOFFSET, PRINTNAME, SET_ATTRIB, SET_INTERNAL,
+    SET_PRINTNAME, SET_STRING_ELT, SET_SYMVALUE, STRING_ELT, TYPEOF,
 };
-use crate::sexp::constructors::Rf_mkString;
+use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar, Rf_mkString};
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
 use crate::sexp::memory::with_arena;
@@ -4949,6 +4949,7 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
+        "builtins" => Some(do_builtins),
         "stop" => Some(crate::mainutils::errors::do_stop_internal),
         "warning" => Some(crate::mainutils::errors::do_warning),
         "gettext" => Some(crate::mainutils::errors::do_gettext),
@@ -4963,6 +4964,63 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "debug" | "undebug" | "isdebugged" | "debugonce" => Some(crate::mainutils::debug::do_debug),
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
         _ => None,
+    }
+}
+
+/// R's `.Internal(builtins(internal))` — sorted builtin/internal name listing.
+pub unsafe fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let internal = if args.is_null() || args == R_NilValue() || LENGTH(args) == 0 {
+            false
+        } else {
+            let first = CAR(args);
+            if first.is_null() || first == R_NilValue() || LENGTH(first) == 0 {
+                false
+            } else if TYPEOF(first) == SEXPTYPE::LGLSXP || TYPEOF(first) == SEXPTYPE::INTSXP {
+                let value = *INTEGER(first);
+                value != FALSE && value != NA_INTEGER
+            } else {
+                false
+            }
+        };
+
+        let mut names = builtin_names_from_funtab(internal);
+        names.sort();
+        names.dedup();
+        string_vector_from_bytes(&names)
+    }
+}
+
+fn builtin_names_from_funtab(internal: bool) -> Vec<Vec<u8>> {
+    R_FunTab
+        .iter()
+        .take_while(|entry| !entry.is_sentinel())
+        .filter(|entry| {
+            let is_internal = (entry.eval % 100) / 10 != 0;
+            !internal || is_internal
+        })
+        .map(|entry| {
+            let mut end = entry.name.len();
+            if end > 0 && entry.name[end - 1] == 0 {
+                end -= 1;
+            }
+            entry.name[..end].to_vec()
+        })
+        .collect()
+}
+
+unsafe fn string_vector_from_bytes(values: &[Vec<u8>]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _guard = protect(result);
+        for (i, value) in values.iter().enumerate() {
+            let cstr = std::ffi::CString::new(value.as_slice()).unwrap_or_default();
+            SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+        result
     }
 }
 
@@ -5149,6 +5207,19 @@ mod tests {
                 NA_INTEGER
             );
         }
+    }
+
+    #[test]
+    fn test_builtin_name_listing_uses_funtab() {
+        let all = builtin_names_from_funtab(false);
+        assert!(all.iter().any(|name| name == b"+"));
+        assert!(all.iter().any(|name| name == b"Sys.which"));
+        assert!(all.iter().any(|name| name == b"builtins"));
+
+        let internal = builtin_names_from_funtab(true);
+        assert!(internal.iter().any(|name| name == b"stop"));
+        assert!(internal.iter().any(|name| name == b"builtins"));
+        assert!(!internal.iter().any(|name| name == b"+"));
     }
 
     #[test]
