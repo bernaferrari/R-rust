@@ -81,6 +81,7 @@ unsafe fn dispatch_special_by_name(
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
             "@" => crate::mainutils::essentials::do_at(call, op, args, rho),
             "@<-" => crate::mainutils::essentials::do_at_set(call, op, args, rho),
+            "$<-" => crate::mainutils::essentials::do_dollar_set(call, op, args, rho),
             _ => unimplemented_special_form(name),
         }
     }

@@ -316,6 +316,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_at_set,
     },
     EvaluatedBuiltin {
+        name: "$<-",
+        handler: crate::mainutils::essentials::do_dollar_set,
+    },
+    EvaluatedBuiltin {
         name: "+",
         handler: super::arithmetic::do_arith,
     },

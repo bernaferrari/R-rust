@@ -173,6 +173,76 @@ pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+unsafe fn replacement_name(arg: SEXP) -> String {
+    unsafe {
+        if arg.is_null() || arg == R_NilValue() {
+            String::new()
+        } else if TYPEOF(arg) == SEXPTYPE::SYMSXP {
+            elt_to_string(arg, 0)
+        } else {
+            elt_to_string(arg, 0)
+        }
+    }
+}
+
+pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let object = CAR(args);
+        let field = replacement_name(CAR(CDR(args)));
+        let value = CAR(CDR(CDR(args)));
+        if object.is_null() || object == R_NilValue() || field.is_empty() {
+            return object;
+        }
+        if TYPEOF(object) != SEXPTYPE::VECSXP {
+            return object;
+        }
+
+        let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
+        let names = crate::sexp::attrib_core::getAttrib(object, names_sym);
+        let n = XLENGTH(object);
+
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            for i in 0..n {
+                let name = STRING_ELT(names, i);
+                if !name.is_null() && CStr::from_ptr(CHAR(name)).to_string_lossy() == field {
+                    SET_VECTOR_ELT(object, i, value);
+                    return object;
+                }
+            }
+        }
+
+        let out = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
+        let _out_guard = protect(out);
+        let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, n + 1);
+        let _names_guard = protect(out_names);
+        let blank = Rf_mkChar(c"".as_ptr());
+
+        for i in 0..n {
+            SET_VECTOR_ELT(out, i, VECTOR_ELT(object, i));
+            let name = if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && i < XLENGTH(names)
+            {
+                STRING_ELT(names, i)
+            } else {
+                blank
+            };
+            SET_STRING_ELT(out_names, i, name);
+        }
+
+        SET_VECTOR_ELT(out, n, value);
+        let field_c = CString::new(field).unwrap_or_default();
+        SET_STRING_ELT(out_names, n, Rf_mkChar(field_c.as_ptr()));
+        crate::sexp::attrib_core::setAttrib(out, names_sym, out_names);
+        out
+    }
+}
+
 unsafe fn datetime_c_value(source: SEXP, index: R_xlen_t, class: DatetimeVectorClass) -> f64 {
     unsafe {
         match class {
@@ -5151,6 +5221,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             ".primUntrace",
             "@",
             "@<-",
+            "$<-",
             ".cache_class",
             "...elt",
             "...length",

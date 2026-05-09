@@ -246,7 +246,8 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
             let call_args = CDDR(lhs);
             let slot_subs;
-            let evaluated_subs = if symbol_name(func_sym).as_deref() == Some("@") {
+            let raw_subscript = matches!(symbol_name(func_sym).as_deref(), Some("@") | Some("$"));
+            let evaluated_subs = if raw_subscript {
                 call_args
             } else {
                 slot_subs = super::dispatch::evalList(call_args, rho, lhs, -1);
@@ -355,6 +356,7 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
         match name {
             "[<-" => crate::mainutils::subassign::do_subassign_dflt(call, assign_fn, args, rho),
             "[[<-" => crate::mainutils::subassign::do_subassign2_dflt(call, assign_fn, args, rho),
+            "$<-" => crate::mainutils::essentials::do_dollar_set(call, assign_fn, args, rho),
             "@<-" => crate::mainutils::essentials::do_at_set(call, assign_fn, args, rho),
             "names<-" => crate::mainutils::essentials::do_names_set(call, assign_fn, args, rho),
             "dim<-" => crate::mainutils::essentials::do_dim_set(call, assign_fn, args, rho),
