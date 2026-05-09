@@ -1311,31 +1311,31 @@ pub unsafe fn PrintWarnings() {
         let names = CAR(ATTRIB(warnings_ptr));
 
         if cw == 1 {
-            eprintln!("Warning message:\n");
+            eprintln!("Warning message:");
             if !isNull(VECTOR_ELT(warnings_ptr, 0)) != 0 {
                 if !names.is_null() {
                     let msg = CHAR_local(STRING_ELT(names, 0));
                     let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-                    eprintln!(" {}\n", msg_str);
+                    eprintln!("{}", msg_str);
                 }
             } else {
                 if !names.is_null() {
                     let msg = CHAR_local(STRING_ELT(names, 0));
                     let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-                    eprintln!(" {}\n", msg_str);
+                    eprintln!("{}", msg_str);
                 }
             }
         } else if cw <= 10 {
-            eprintln!("Warning messages:\n");
+            eprintln!("Warning messages:");
             for i in 0..cw {
                 let call = VECTOR_ELT(warnings_ptr, i as R_xlen_t);
                 if !names.is_null() {
                     let msg = CHAR_local(STRING_ELT(names, i as R_xlen_t));
                     let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
                     if isNull(call) != 0 {
-                        eprintln!("{}: {}\n", i + 1, msg_str);
+                        eprintln!("{}: {}", i + 1, msg_str);
                     } else {
-                        eprintln!("{}: In <call> : {}\n", i + 1, msg_str);
+                        eprintln!("{}: In <call> : {}", i + 1, msg_str);
                     }
                 }
             }
@@ -1675,7 +1675,9 @@ pub unsafe fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> S
 pub unsafe fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        R_PrintDeferredWarnings();
+        if r_show_error_messages() && collect_warnings() > 0 {
+            PrintWarnings();
+        }
         globals::R_NilValue()
     }
 }
@@ -2324,9 +2326,9 @@ pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             errorcall(call, b"bad error message\x00".as_ptr() as *const c_char);
         }
         let msg = translateChar(STRING_ELT(CAR(args), 0));
-        let ecall = CADR(args);
-        verrorcall_dflt(ecall, msg, ptr::null_mut());
-        ptr::null_mut()
+        let message = CStr::from_ptr(msg).to_str().unwrap_or("").to_string();
+        R_SetErrmessage(&message);
+        std::panic::panic_any(RError { message })
     }
 }
 
