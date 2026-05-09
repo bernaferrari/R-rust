@@ -4007,6 +4007,26 @@ pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 *dst.add(i as usize) = 0;
                 continue;
             }
+            if vn == 1 {
+                let b = vvals[0];
+                let interval = if all_inside {
+                    if xi < b || (left_open && xi == b) {
+                        1
+                    } else {
+                        0
+                    }
+                } else if rightmost_closed && xi == b {
+                    if left_open { 1 } else { 0 }
+                } else if left_open {
+                    if xi > b { 1 } else { 0 }
+                } else if xi >= b {
+                    1
+                } else {
+                    0
+                };
+                *dst.add(i as usize) = interval;
+                continue;
+            }
             let mut lo = 0usize;
             let mut hi = vvals.len();
             while lo < hi {
@@ -12237,14 +12257,51 @@ pub unsafe fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let n = XLENGTH(x);
         if n <= lag as R_xlen_t {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            let empty_type = if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
+                SEXPTYPE::INTSXP
+            } else {
+                SEXPTYPE::REALSXP
+            };
+            return Rf_allocVector3(empty_type, 0);
         }
         let result_len = n - lag as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
+        let result_type = if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
+            SEXPTYPE::INTSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        let result = Rf_allocVector3(result_type, result_len);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
+
+        if result_type == SEXPTYPE::INTSXP {
+            let dst = INTEGER(result);
+            let mut warned = false;
+            for i in 0..result_len {
+                let a = *INTEGER(x).add(i as usize);
+                let b = *INTEGER(x).add((i + lag as R_xlen_t) as usize);
+                *dst.add(i as usize) = if a == NA_INTEGER || b == NA_INTEGER {
+                    NA_INTEGER
+                } else {
+                    let diff = b as i64 - a as i64;
+                    if diff > i32::MAX as i64 || diff < i32::MIN as i64 {
+                        if !warned {
+                            warned = true;
+                            let msg = CString::new("NAs produced by integer overflow")
+                                .unwrap_or_default();
+                            crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                        }
+                        NA_INTEGER
+                    } else {
+                        diff as c_int
+                    }
+                };
+            }
+            return result;
+        }
+
         let dst = REAL(result);
         for i in 0..result_len {
             let a = elt_real_safe(x, i);
