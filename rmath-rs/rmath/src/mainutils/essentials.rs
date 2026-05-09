@@ -7781,6 +7781,12 @@ fn copy_vector_elt(dst: SEXP, dst_idx: R_xlen_t, src: SEXP, src_idx: R_xlen_t) {
             t if t == SEXPTYPE::STRSXP => {
                 SET_STRING_ELT(dst, dst_idx, STRING_ELT(src, src_idx));
             }
+            t if t == SEXPTYPE::CPLXSXP => {
+                *COMPLEX(dst).add(dst_idx as usize) = *COMPLEX(src).add(src_idx as usize);
+            }
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                SET_VECTOR_ELT(dst, dst_idx, VECTOR_ELT(src, src_idx));
+            }
             t if t == SEXPTYPE::RAWSXP => {
                 *RAW(dst).add(dst_idx as usize) = *RAW(src).add(src_idx as usize);
             }

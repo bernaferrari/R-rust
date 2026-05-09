@@ -1,0 +1,23 @@
+x <- list(a = 1, b = "x")
+y <- rep(x, 2)
+print(length(y))
+print(names(y))
+print(y[[1]])
+print(y[[2]])
+print(y[[3]])
+print(y[[4]])
+
+z <- rep(c(first = 1 + 2i, second = 3 + 4i), 2)
+cat(paste(as.character(z), collapse = "|"), "\n", sep = "")
+print(typeof(z))
+cat(paste(names(z), collapse = "|"), "\n", sep = "")
+
+w <- rep_len(list(1, "x"), 3)
+print(length(w))
+print(w[[1]])
+print(w[[2]])
+print(w[[3]])
+print(names(w))
+
+u <- rep_len(c(1 + 2i, 3 + 4i), 3)
+cat(paste(as.character(u), collapse = "|"), "\n", sep = "")
