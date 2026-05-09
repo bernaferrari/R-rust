@@ -16296,21 +16296,28 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         };
 
         let mut output = String::new();
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
 
         if t == SEXPTYPE::VECSXP {
             // Data frame-like: write columns
             let ncols = n;
             let nrows = if n > 0 {
-                XLENGTH(VECTOR_ELT(x_arg, 0)).max(1)
+                XLENGTH(VECTOR_ELT(x_arg, 0))
             } else {
                 0
             };
+            if ncols == 0 {
+                output.push_str("\"\"\n");
+            }
             // Write header with column names
             let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
             let names = crate::sexp::attrib_core::getAttrib(x_arg, names_sym);
-            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            if ncols > 0
+                && !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+            {
                 let mut header = Vec::new();
                 for j in 0..ncols {
                     let charsxp = crate::sexp::accessors::STRING_ELT(names, j);
@@ -22630,7 +22637,7 @@ pub unsafe fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             return R_NilValue();
         }
 
-        let ncols = XLENGTH(x).max(1) as usize;
+        let ncols = XLENGTH(x) as usize;
 
         // Get names if available
         let names_attr = crate::sexp::attrib_core::getAttrib(
@@ -22639,9 +22646,12 @@ pub unsafe fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         );
 
         let mut out = String::new();
+        if ncols == 0 {
+            out.push_str("\"\"\n");
+        }
 
         // Header
-        if !names_attr.is_null() && names_attr != R_NilValue() {
+        if ncols > 0 && !names_attr.is_null() && names_attr != R_NilValue() {
             let mut headers: Vec<String> = Vec::new();
             for j in 0..ncols {
                 let nm = elt_to_string(names_attr, j as R_xlen_t);
@@ -22656,7 +22666,7 @@ pub unsafe fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             let data = (*x).gengc_next_node as *mut SEXP;
             let col = *data;
             if !col.is_null() {
-                XLENGTH(col).max(0) as usize
+                XLENGTH(col) as usize
             } else {
                 0
             }
@@ -22665,22 +22675,24 @@ pub unsafe fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         };
 
         // Data rows
-        let data = (*x).gengc_next_node as *mut SEXP;
-        for i in 0..nrows {
-            let mut row: Vec<String> = Vec::new();
-            for j in 0..ncols {
-                let col = *data.add(j);
-                let val = if !col.is_null() {
-                    elt_to_string(col, i as R_xlen_t)
-                } else {
-                    "NA".to_string()
-                };
-                // Use comma as decimal separator for European format
-                let eu_val = val.replace('.', ",");
-                row.push(format!("\"{}\"", eu_val));
+        if ncols > 0 {
+            let data = (*x).gengc_next_node as *mut SEXP;
+            for i in 0..nrows {
+                let mut row: Vec<String> = Vec::new();
+                for j in 0..ncols {
+                    let col = *data.add(j);
+                    let val = if !col.is_null() {
+                        elt_to_string(col, i as R_xlen_t)
+                    } else {
+                        "NA".to_string()
+                    };
+                    // Use comma as decimal separator for European format
+                    let eu_val = val.replace('.', ",");
+                    row.push(format!("\"{}\"", eu_val));
+                }
+                out.push_str(&row.join(";"));
+                out.push('\n');
             }
-            out.push_str(&row.join(";"));
-            out.push('\n');
         }
 
         // Write to file

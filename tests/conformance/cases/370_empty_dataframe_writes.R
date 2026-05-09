@@ -1,0 +1,7 @@
+f1 <- tempfile()
+f2 <- tempfile()
+write.table(data.frame(), f1, sep = ",")
+write.csv2(data.frame(), f2)
+cat(file.info(f1)$size, file.info(f2)$size, "\n")
+cat(readChar(f1, file.info(f1)$size), sep = "")
+cat(readChar(f2, file.info(f2)$size), sep = "")
