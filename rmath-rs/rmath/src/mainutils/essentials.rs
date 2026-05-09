@@ -21614,6 +21614,7 @@ enum AggregateSummary {
     Length,
     Median,
     Sd,
+    Var,
 }
 
 unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
@@ -21703,6 +21704,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEX
                     AggregateSummary::Length => count as f64,
                     AggregateSummary::Median => median_value(&mut values),
                     AggregateSummary::Sd => sample_sd_value(&values),
+                    AggregateSummary::Var => sample_variance_value(&values),
                 }
             };
         }
@@ -21740,6 +21742,9 @@ unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummar
         if call_fun_name(call).as_deref() == Some("sd") {
             return Some(AggregateSummary::Sd);
         }
+        if call_fun_name(call).as_deref() == Some("var") {
+            return Some(AggregateSummary::Var);
+        }
         if fun.is_null() || fun == R_NilValue() {
             return Some(AggregateSummary::Mean);
         }
@@ -21753,6 +21758,7 @@ unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummar
                 "length" => Some(AggregateSummary::Length),
                 "median" => Some(AggregateSummary::Median),
                 "sd" => Some(AggregateSummary::Sd),
+                "var" => Some(AggregateSummary::Var),
                 _ => Some(AggregateSummary::Mean),
             }
         } else if fun_type == SEXPTYPE::SYMSXP {
@@ -21764,6 +21770,7 @@ unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummar
                 Some("length") => Some(AggregateSummary::Length),
                 Some("median") => Some(AggregateSummary::Median),
                 Some("sd") => Some(AggregateSummary::Sd),
+                Some("var") => Some(AggregateSummary::Var),
                 _ => Some(AggregateSummary::Mean),
             }
         } else {
@@ -21786,19 +21793,22 @@ fn median_value(values: &mut [f64]) -> f64 {
 }
 
 fn sample_sd_value(values: &[f64]) -> f64 {
+    sample_variance_value(values).sqrt()
+}
+
+fn sample_variance_value(values: &[f64]) -> f64 {
     if values.len() < 2 {
         return NA_REAL;
     }
     let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let variance = values
+    values
         .iter()
         .map(|value| {
             let delta = *value - mean;
             delta * delta
         })
         .sum::<f64>()
-        / (values.len() - 1) as f64;
-    variance.sqrt()
+        / (values.len() - 1) as f64
 }
 
 unsafe fn call_fun_name(call: SEXP) -> Option<String> {
