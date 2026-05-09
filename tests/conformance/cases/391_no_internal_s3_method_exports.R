@@ -1,0 +1,5 @@
+print(exists("print.matrix"))
+print(exists("print.list"))
+print(exists("c.list"))
+print(matrix(1:4, nrow = 2))
+print(list(a = 1, b = 2))

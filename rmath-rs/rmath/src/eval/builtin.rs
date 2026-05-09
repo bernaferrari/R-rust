@@ -1099,14 +1099,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_writeBin,
     },
     EvaluatedBuiltin {
-        name: "print.matrix",
-        handler: crate::mainutils::essentials::do_print_matrix,
-    },
-    EvaluatedBuiltin {
-        name: "print.list",
-        handler: crate::mainutils::essentials::do_print_list,
-    },
-    EvaluatedBuiltin {
         name: "summary",
         handler: crate::mainutils::essentials::do_summary_default,
     },
@@ -1121,10 +1113,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "as.data.frame",
         handler: crate::mainutils::essentials::do_as_data_frame,
-    },
-    EvaluatedBuiltin {
-        name: "c.list",
-        handler: crate::mainutils::essentials::do_c_list,
     },
     EvaluatedBuiltin {
         name: "unlist",

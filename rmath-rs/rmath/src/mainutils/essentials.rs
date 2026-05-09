@@ -5238,12 +5238,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "rawConnection",
             "close",
             "flush",
-            "print.matrix",
-            "print.list",
             "summary",
             "str",
             "as.data.frame",
-            "c.list",
             "unlist",
             // S3 print/summary dispatch
             "print.default",
