@@ -14050,10 +14050,11 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             return x;
         }
-        let mut values = Vec::new();
-        collect_unlist_values(x, &mut values);
-        let result_type = unlist_result_type(&values);
-        let total = values.len() as R_xlen_t;
+        let use_names = logical_arg_by_name_or_position(args, "use.names", 2).unwrap_or(true);
+        let mut entries = Vec::new();
+        collect_unlist_entries(x, None, use_names, &mut entries);
+        let result_type = unlist_result_type(&entries);
+        let total = entries.len() as R_xlen_t;
 
         let result = Rf_allocVector3(result_type, total);
         if result.is_null() {
@@ -14061,10 +14062,10 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let _result_guard = protect(result);
 
-        for (idx, value) in values.iter().enumerate() {
+        for (idx, entry) in entries.iter().enumerate() {
             match result_type {
                 t if t == SEXPTYPE::STRSXP => {
-                    let cstr = CString::new(value.as_string()).unwrap_or_default();
+                    let cstr = CString::new(entry.value.as_string()).unwrap_or_default();
                     let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                     if !charsxp.is_null() {
                         let data = (*result).gengc_next_node as *mut SEXP;
@@ -14072,19 +14073,41 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     }
                 }
                 t if t == SEXPTYPE::CPLXSXP => {
-                    *COMPLEX(result).add(idx) = value.as_complex();
+                    *COMPLEX(result).add(idx) = entry.value.as_complex();
                 }
                 t if t == SEXPTYPE::REALSXP => {
-                    *REAL(result).add(idx) = value.as_real();
+                    *REAL(result).add(idx) = entry.value.as_real();
                 }
                 _ => {
-                    *INTEGER(result).add(idx) = value.as_integer();
+                    *INTEGER(result).add(idx) = entry.value.as_integer();
                 }
+            }
+        }
+
+        if use_names && entries.iter().any(|entry| entry.name.is_some()) {
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, total);
+            if !names.is_null() {
+                let _names_guard = protect(names);
+                for (idx, entry) in entries.iter().enumerate() {
+                    let cstr =
+                        CString::new(entry.name.as_deref().unwrap_or("")).unwrap_or_default();
+                    SET_STRING_ELT(names, idx as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
             }
         }
 
         result
     }
+}
+
+struct UnlistEntry {
+    value: UnlistValue,
+    name: Option<String>,
 }
 
 enum UnlistValue {
@@ -14176,20 +14199,20 @@ impl UnlistValue {
     }
 }
 
-fn unlist_result_type(values: &[UnlistValue]) -> SEXPTYPE {
-    if values
+fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
+    if entries
         .iter()
-        .any(|value| matches!(value, UnlistValue::String(_)))
+        .any(|entry| matches!(entry.value, UnlistValue::String(_)))
     {
         SEXPTYPE::STRSXP
-    } else if values
+    } else if entries
         .iter()
-        .any(|value| matches!(value, UnlistValue::Complex(_)))
+        .any(|entry| matches!(entry.value, UnlistValue::Complex(_)))
     {
         SEXPTYPE::CPLXSXP
-    } else if values
+    } else if entries
         .iter()
-        .any(|value| matches!(value, UnlistValue::Real(_)))
+        .any(|entry| matches!(entry.value, UnlistValue::Real(_)))
     {
         SEXPTYPE::REALSXP
     } else {
@@ -14197,51 +14220,83 @@ fn unlist_result_type(values: &[UnlistValue]) -> SEXPTYPE {
     }
 }
 
-unsafe fn collect_unlist_values(x: SEXP, out: &mut Vec<UnlistValue>) {
+unsafe fn collect_unlist_entries(
+    x: SEXP,
+    prefix: Option<String>,
+    use_names: bool,
+    out: &mut Vec<UnlistEntry>,
+) {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return;
         }
         if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
+            let names =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             for i in 0..XLENGTH(x) {
-                collect_unlist_values(VECTOR_ELT(x, i), out);
+                let child_name = if use_names {
+                    unlist_element_name(prefix.as_deref(), names, i, XLENGTH(x))
+                } else {
+                    None
+                };
+                collect_unlist_entries(VECTOR_ELT(x, i), child_name, use_names, out);
             }
             return;
         }
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
         for i in 0..XLENGTH(x) {
-            match TYPEOF(x) {
-                t if t == SEXPTYPE::LGLSXP => {
-                    out.push(UnlistValue::Logical(*LOGICAL(x).add(i as usize)))
-                }
-                t if t == SEXPTYPE::INTSXP => {
-                    out.push(UnlistValue::Integer(*INTEGER(x).add(i as usize)))
-                }
-                t if t == SEXPTYPE::REALSXP => {
-                    out.push(UnlistValue::Real(*REAL(x).add(i as usize)))
-                }
-                t if t == SEXPTYPE::CPLXSXP => {
-                    out.push(UnlistValue::Complex(*COMPLEX(x).add(i as usize)))
-                }
+            let name = if use_names {
+                unlist_element_name(prefix.as_deref(), names, i, XLENGTH(x))
+            } else {
+                None
+            };
+            let value = match TYPEOF(x) {
+                t if t == SEXPTYPE::LGLSXP => UnlistValue::Logical(*LOGICAL(x).add(i as usize)),
+                t if t == SEXPTYPE::INTSXP => UnlistValue::Integer(*INTEGER(x).add(i as usize)),
+                t if t == SEXPTYPE::REALSXP => UnlistValue::Real(*REAL(x).add(i as usize)),
+                t if t == SEXPTYPE::CPLXSXP => UnlistValue::Complex(*COMPLEX(x).add(i as usize)),
                 t if t == SEXPTYPE::STRSXP => {
-                    let value = STRING_ELT(x, i);
-                    if value.is_null() || value == crate::sexp::globals::R_NaString() {
-                        out.push(UnlistValue::String("NA".to_string()));
+                    let string = STRING_ELT(x, i);
+                    if string.is_null() || string == crate::sexp::globals::R_NaString() {
+                        UnlistValue::String("NA".to_string())
                     } else {
-                        out.push(UnlistValue::String(
-                            CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned(),
-                        ));
+                        UnlistValue::String(
+                            CStr::from_ptr(CHAR(string)).to_string_lossy().into_owned(),
+                        )
                     }
                 }
-                _ => {
-                    let text = elt_to_string(x, i);
-                    let cstr = CString::new(text.as_str()).unwrap_or_default();
-                    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                    if !charsxp.is_null() {
-                        let value = CStr::from_ptr(CHAR(charsxp)).to_string_lossy().into_owned();
-                        out.push(UnlistValue::String(value));
-                    }
-                }
-            }
+                _ => UnlistValue::String(elt_to_string(x, i)),
+            };
+            out.push(UnlistEntry { value, name });
+        }
+    }
+}
+
+unsafe fn unlist_element_name(
+    prefix: Option<&str>,
+    names: SEXP,
+    index: R_xlen_t,
+    len: R_xlen_t,
+) -> Option<String> {
+    unsafe {
+        let own = if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && index < XLENGTH(names)
+        {
+            let value = string_at_or_empty(names, index);
+            (!value.is_empty()).then_some(value)
+        } else {
+            None
+        };
+
+        match (prefix, own) {
+            (Some(prefix), Some(own)) => Some(format!("{prefix}.{own}")),
+            (None, Some(own)) => Some(own),
+            (Some(prefix), None) if len > 1 => Some(format!("{}{}", prefix, index + 1)),
+            (Some(prefix), None) => Some(prefix.to_string()),
+            (None, None) => None,
         }
     }
 }
@@ -18207,7 +18262,7 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `rle(x)` — run-length encoding.
 pub unsafe fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
@@ -18220,42 +18275,26 @@ pub unsafe fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
             let _p = protect(result);
             SET_VECTOR_ELT(result, 0, Rf_allocVector3(SEXPTYPE::INTSXP, 0));
-            SET_VECTOR_ELT(result, 1, Rf_allocVector3(SEXPTYPE::REALSXP, 0));
-            let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-            if !names.is_null() {
-                let _p2 = protect(names);
-                for (i, nm) in ["lengths", "values"].iter().enumerate() {
-                    let cs = CString::new(*nm).unwrap_or_default();
-                    let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
-                    if !charsxp.is_null() {
-                        let data = (*names).gengc_next_node as *mut SEXP;
-                        *data.add(i) = charsxp;
-                    }
-                }
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                    names,
-                );
-            }
+            SET_VECTOR_ELT(result, 1, Rf_allocVector3(TYPEOF(x), 0));
+            set_rle_attrs(result);
             return result;
         }
 
-        // Collect run lengths and values
+        // Collect run lengths and starting indices. Missing values are never
+        // equal to the previous value in GNU R's rle().
         let mut lengths: Vec<i32> = Vec::new();
-        let mut values: Vec<f64> = Vec::new();
+        let mut value_indices: Vec<R_xlen_t> = Vec::new();
 
-        let first_val = real_or_default(elt_to_sexp(x, 0), NA_REAL);
-        values.push(first_val);
+        value_indices.push(0);
         lengths.push(1);
 
         for i in 1..n {
-            let v = real_or_default(elt_to_sexp(x, i), NA_REAL);
-            let last_idx = values.len() - 1;
-            if v == values[last_idx] {
+            let last_start = *value_indices.last().unwrap_or(&0);
+            if rle_values_equal(x, i, last_start) {
+                let last_idx = lengths.len() - 1;
                 lengths[last_idx] += 1;
             } else {
-                values.push(v);
+                value_indices.push(i);
                 lengths.push(1);
             }
         }
@@ -18268,45 +18307,68 @@ pub unsafe fn do_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _p = protect(result);
 
         let lengths_sexp = Rf_allocVector3(SEXPTYPE::INTSXP, n_runs);
-        let values_sexp = Rf_allocVector3(SEXPTYPE::REALSXP, n_runs);
+        let values_sexp = Rf_allocVector3(TYPEOF(x), n_runs);
         let _p2 = protect(lengths_sexp);
         let _p3 = protect(values_sexp);
 
         let dst_l = INTEGER(lengths_sexp);
-        let dst_v = REAL(values_sexp);
         for i in 0..n_runs {
             *dst_l.add(i as usize) = lengths[i as usize];
-            *dst_v.add(i as usize) = values[i as usize];
+            copy_vector_elt(values_sexp, i, x, value_indices[i as usize]);
         }
 
         SET_VECTOR_ELT(result, 0, lengths_sexp);
         SET_VECTOR_ELT(result, 1, values_sexp);
+        set_rle_attrs(result);
+        result
+    }
+}
 
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
-        if !names.is_null() {
-            let _p4 = protect(names);
-            for (i, nm) in ["lengths", "values"].iter().enumerate() {
-                let cs = CString::new(*nm).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cs.as_ptr());
-                if !charsxp.is_null() {
-                    let data = (*names).gengc_next_node as *mut SEXP;
-                    *data.add(i) = charsxp;
-                }
-            }
+unsafe fn set_rle_attrs(x: SEXP) {
+    unsafe {
+        set_string_names(x, &["lengths".to_string(), "values".to_string()]);
+        let class = Rf_mkString(c"rle".as_ptr());
+        if !class.is_null() {
+            let _class_guard = protect(class);
             crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                names,
+                x,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
             );
         }
-        result
+    }
+}
+
+unsafe fn rle_values_equal(x: SEXP, lhs: R_xlen_t, rhs: R_xlen_t) -> bool {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
+                let a = *INTEGER(x).add(lhs as usize);
+                let b = *INTEGER(x).add(rhs as usize);
+                a != NA_INTEGER && b != NA_INTEGER && a == b
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let a = *REAL(x).add(lhs as usize);
+                let b = *REAL(x).add(rhs as usize);
+                !ISNAN(a) && !ISNAN(b) && a == b
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                let a = STRING_ELT(x, lhs);
+                let b = STRING_ELT(x, rhs);
+                a != crate::sexp::globals::R_NaString()
+                    && b != crate::sexp::globals::R_NaString()
+                    && elt_to_string(x, lhs) == elt_to_string(x, rhs)
+            }
+            t if t == SEXPTYPE::RAWSXP => *RAW(x).add(lhs as usize) == *RAW(x).add(rhs as usize),
+            _ => false,
+        }
     }
 }
 
 /// R's `inverse.rle(x)` — inverse of run-length encoding.
 pub unsafe fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::VECSXP {
             return R_NilValue();
         }
@@ -18319,7 +18381,7 @@ pub unsafe fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
         let n_runs = XLENGTH(lengths_sexp);
         if n_runs == 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            return Rf_allocVector3(TYPEOF(values_sexp), 0);
         }
 
         // Compute total length
@@ -18328,19 +18390,17 @@ pub unsafe fn do_inverse_rle(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             total += (*INTEGER(lengths_sexp).add(i as usize)) as R_xlen_t;
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, total);
+        let result = Rf_allocVector3(TYPEOF(values_sexp), total);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
 
         let mut offset: R_xlen_t = 0;
         for i in 0..n_runs {
             let len = *INTEGER(lengths_sexp).add(i as usize);
-            let val = real_or_default(elt_to_sexp(values_sexp, i), NA_REAL);
             for j in 0..len {
-                *dst.add((offset + j as R_xlen_t) as usize) = val;
+                copy_vector_elt(result, offset + j as R_xlen_t, values_sexp, i);
             }
             offset += len as R_xlen_t;
         }

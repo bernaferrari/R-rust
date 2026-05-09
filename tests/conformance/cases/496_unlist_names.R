@@ -1,0 +1,7 @@
+print(unlist(list(a = 1, b = 2)))
+print(names(unlist(list(a = c(x = 1, y = 2), b = 3))))
+print(names(unlist(list(a = c(1, 2), b = 3))))
+print(names(unlist(list(a = 1, b = 2), use.names = FALSE)))
+nested <- unlist(list(a = list(x = 1, y = 2), b = 3))
+cat(paste(names(nested), collapse = "|"), "\n", sep = "")
+cat(paste(nested, collapse = "|"), "\n", sep = "")

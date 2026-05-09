@@ -1,0 +1,12 @@
+2|1|1|1|1
+a|b|NA|NA|b
+character
+rle
+2|1|1|1|1
+TRUE|FALSE|NA|NA|FALSE
+logical
+rle
+a|a|b
+character
+TRUE|NA|NA
+logical
