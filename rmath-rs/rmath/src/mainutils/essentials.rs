@@ -22507,11 +22507,146 @@ pub unsafe fn do_by(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `interaction(...)` — factor interaction (simplified).
 pub unsafe fn do_interaction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
+        let mut inputs = Vec::new();
+        let mut cursor = args;
+        while !cursor.is_null() && cursor != R_NilValue() {
+            let arg = CAR(cursor);
+            if arg.is_null() || arg == R_NilValue() {
+                return R_NilValue();
+            }
+            let arg_type = TYPEOF(arg);
+            if arg_type != SEXPTYPE::STRSXP
+                && arg_type != SEXPTYPE::INTSXP
+                && arg_type != SEXPTYPE::REALSXP
+                && arg_type != SEXPTYPE::LGLSXP
+            {
+                return R_NilValue();
+            }
+            inputs.push(arg);
+            cursor = CDR(cursor);
+        }
+        if inputs.is_empty() {
             return R_NilValue();
         }
-        x
+        interaction_factor(&inputs, ".")
+    }
+}
+
+unsafe fn interaction_factor(inputs: &[SEXP], sep: &str) -> SEXP {
+    unsafe {
+        let n = inputs.iter().map(|arg| XLENGTH(*arg)).max().unwrap_or(0);
+        if n == 0 {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+        }
+        let input_levels = inputs
+            .iter()
+            .map(|arg| interaction_levels_for_arg(*arg))
+            .collect::<Vec<_>>();
+        if input_levels.iter().any(|levels| levels.is_empty()) {
+            return R_NilValue();
+        }
+        let levels = interaction_cartesian_levels(&input_levels, sep);
+        let level_positions = levels
+            .iter()
+            .enumerate()
+            .map(|(i, level)| (level.clone(), i as i32 + 1))
+            .collect::<BTreeMap<_, _>>();
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        for row in 0..n {
+            let mut parts = Vec::with_capacity(inputs.len());
+            let mut has_na = false;
+            for input in inputs {
+                let input_len = XLENGTH(*input);
+                if input_len == 0 {
+                    has_na = true;
+                    break;
+                }
+                let value = interaction_value_at(*input, row % input_len);
+                if value.is_none() {
+                    has_na = true;
+                    break;
+                }
+                parts.push(value.unwrap_or_default());
+            }
+            *INTEGER(result).add(row as usize) = if has_na {
+                NA_INTEGER
+            } else {
+                let label = parts.join(sep);
+                *level_positions.get(&label).unwrap_or(&NA_INTEGER)
+            };
+        }
+        set_factor_attrs(result, &levels);
+        result
+    }
+}
+
+unsafe fn interaction_levels_for_arg(arg: SEXP) -> Vec<String> {
+    unsafe {
+        if let Some(levels) = aggregate_factor_levels(arg) {
+            return levels;
+        }
+        let mut levels = BTreeSet::new();
+        for i in 0..XLENGTH(arg) {
+            if let Some(value) = interaction_value_at(arg, i) {
+                levels.insert(value);
+            }
+        }
+        levels.into_iter().collect()
+    }
+}
+
+fn interaction_cartesian_levels(levels: &[Vec<String>], sep: &str) -> Vec<String> {
+    let mut labels = vec![String::new()];
+    for level in levels {
+        let mut next = Vec::with_capacity(labels.len() * level.len());
+        for suffix in level {
+            for prefix in &labels {
+                if prefix.is_empty() {
+                    next.push(suffix.clone());
+                } else {
+                    next.push(format!("{prefix}{sep}{suffix}"));
+                }
+            }
+        }
+        labels = next;
+    }
+    labels
+}
+
+unsafe fn interaction_value_at(arg: SEXP, i: R_xlen_t) -> Option<String> {
+    unsafe {
+        let arg_type = TYPEOF(arg);
+        if arg_type == SEXPTYPE::STRSXP {
+            let elt = STRING_ELT(arg, i);
+            if elt.is_null() || elt == crate::sexp::globals::R_NaString() {
+                None
+            } else {
+                Some(CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned())
+            }
+        } else if arg_type == SEXPTYPE::INTSXP || arg_type == SEXPTYPE::LGLSXP {
+            let value = *INTEGER(arg).add(i as usize);
+            if value == NA_INTEGER {
+                None
+            } else if let Some(label) = factor_label_at(arg, value) {
+                Some(label)
+            } else {
+                Some(value.to_string())
+            }
+        } else if arg_type == SEXPTYPE::REALSXP {
+            let value = *REAL(arg).add(i as usize);
+            if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        } else {
+            None
+        }
     }
 }
 
