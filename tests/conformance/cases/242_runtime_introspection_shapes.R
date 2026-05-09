@@ -10,5 +10,5 @@ print(length(cs))
 
 ev <- extSoftVersion()
 print(is.character(ev))
-print(paste(names(ev), collapse = ","))
-print(length(ev))
+print(all(c("zlib", "bzlib", "xz", "PCRE", "ICU", "TRE", "iconv", "readline", "BLAS") %in% names(ev)))
+print(length(ev) >= 10)

@@ -1947,8 +1947,8 @@ pub unsafe fn do_subset(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// R's `setdiff(x, y)` — elements in x but not in y.
 pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let y = arg_by_name_or_position(args, &["y"], 1);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(TYPEOF(x), 0);
         }
@@ -1959,38 +1959,28 @@ pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             XLENGTH(y)
         };
         let t = TYPEOF(x);
-        let mut y_keys: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+        let sexptype = SEXPTYPE(t);
+        let mut y_keys: std::collections::BTreeSet<AtomicUniqueKey> =
+            std::collections::BTreeSet::new();
         for i in 0..yn {
-            let key = if t == SEXPTYPE::REALSXP {
-                (*REAL(y).add(i as usize)).to_bits() as i64
-            } else {
-                *INTEGER(y).add(i as usize) as i64
-            };
-            y_keys.insert(key);
+            y_keys.insert(atomic_unique_key(y, i, sexptype));
         }
-        let mut result_keys: Vec<i64> = Vec::new();
-        let mut seen: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+        let mut result_indices: Vec<R_xlen_t> = Vec::new();
+        let mut seen: std::collections::BTreeSet<AtomicUniqueKey> =
+            std::collections::BTreeSet::new();
         for i in 0..xn {
-            let key = if t == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).to_bits() as i64
-            } else {
-                *INTEGER(x).add(i as usize) as i64
-            };
+            let key = atomic_unique_key(x, i, sexptype);
             if !y_keys.contains(&key) && seen.insert(key) {
-                result_keys.push(key);
+                result_indices.push(i);
             }
         }
-        let result = Rf_allocVector3(t, result_keys.len() as R_xlen_t);
+        let result = Rf_allocVector3(t, result_indices.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        for (i, &key) in result_keys.iter().enumerate() {
-            if t == SEXPTYPE::REALSXP {
-                *REAL(result).add(i) = f64::from_bits(key as u64);
-            } else {
-                *INTEGER(result).add(i) = key as c_int;
-            }
+        for (out, &src) in result_indices.iter().enumerate() {
+            copy_atomic_element(result, out as R_xlen_t, x, src, sexptype);
         }
         result
     }
@@ -1999,8 +1989,8 @@ pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// R's `union(x, y)` — unique elements from both vectors.
 pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let y = arg_by_name_or_position(args, &["y"], 1);
         let t = if !x.is_null() && x != R_NilValue() {
             TYPEOF(x)
         } else if !y.is_null() && y != R_NilValue() {
@@ -2008,36 +1998,30 @@ pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             SEXPTYPE::INTSXP.as_c_int()
         };
-        let mut seen: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
-        let mut result_keys: Vec<i64> = Vec::new();
+        let sexptype = SEXPTYPE(t);
+        let mut seen: std::collections::BTreeSet<AtomicUniqueKey> =
+            std::collections::BTreeSet::new();
+        let mut result_sources: Vec<(SEXP, R_xlen_t)> = Vec::new();
         let mut add_from = |src: SEXP| {
             if !src.is_null() && src != R_NilValue() {
                 let n = XLENGTH(src);
                 for i in 0..n {
-                    let key = if t == SEXPTYPE::REALSXP {
-                        (*REAL(src).add(i as usize)).to_bits() as i64
-                    } else {
-                        *INTEGER(src).add(i as usize) as i64
-                    };
+                    let key = atomic_unique_key(src, i, sexptype);
                     if seen.insert(key) {
-                        result_keys.push(key);
+                        result_sources.push((src, i));
                     }
                 }
             }
         };
         add_from(x);
         add_from(y);
-        let result = Rf_allocVector3(t, result_keys.len() as R_xlen_t);
+        let result = Rf_allocVector3(t, result_sources.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        for (i, &key) in result_keys.iter().enumerate() {
-            if t == SEXPTYPE::REALSXP {
-                *REAL(result).add(i) = f64::from_bits(key as u64);
-            } else {
-                *INTEGER(result).add(i) = key as c_int;
-            }
+        for (out, &(src, src_index)) in result_sources.iter().enumerate() {
+            copy_atomic_element(result, out as R_xlen_t, src, src_index, sexptype);
         }
         result
     }
@@ -2046,46 +2030,36 @@ pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `intersect(x, y)` — elements common to both vectors.
 pub unsafe fn do_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let y = arg_by_name_or_position(args, &["y"], 1);
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
             return Rf_allocVector3(TYPEOF(x), 0);
         }
         let t = TYPEOF(x);
+        let sexptype = SEXPTYPE(t);
         let xn = XLENGTH(x);
         let yn = XLENGTH(y);
-        let mut x_keys: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
-        for i in 0..xn {
-            let key = if t == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).to_bits() as i64
-            } else {
-                *INTEGER(x).add(i as usize) as i64
-            };
-            x_keys.insert(key);
-        }
-        let mut seen: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
-        let mut result_keys: Vec<i64> = Vec::new();
+        let mut y_keys: std::collections::BTreeSet<AtomicUniqueKey> =
+            std::collections::BTreeSet::new();
         for i in 0..yn {
-            let key = if t == SEXPTYPE::REALSXP {
-                (*REAL(y).add(i as usize)).to_bits() as i64
-            } else {
-                *INTEGER(y).add(i as usize) as i64
-            };
-            if x_keys.contains(&key) && seen.insert(key) {
-                result_keys.push(key);
+            y_keys.insert(atomic_unique_key(y, i, sexptype));
+        }
+        let mut seen: std::collections::BTreeSet<AtomicUniqueKey> =
+            std::collections::BTreeSet::new();
+        let mut result_indices: Vec<R_xlen_t> = Vec::new();
+        for i in 0..xn {
+            let key = atomic_unique_key(x, i, sexptype);
+            if y_keys.contains(&key) && seen.insert(key) {
+                result_indices.push(i);
             }
         }
-        let result = Rf_allocVector3(t, result_keys.len() as R_xlen_t);
+        let result = Rf_allocVector3(t, result_indices.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        for (i, &key) in result_keys.iter().enumerate() {
-            if t == SEXPTYPE::REALSXP {
-                *REAL(result).add(i) = f64::from_bits(key as u64);
-            } else {
-                *INTEGER(result).add(i) = key as c_int;
-            }
+        for (out, &src) in result_indices.iter().enumerate() {
+            copy_atomic_element(result, out as R_xlen_t, x, src, sexptype);
         }
         result
     }
@@ -2094,8 +2068,8 @@ pub unsafe fn do_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// R's `setequal(x, y)` — TRUE if x and y contain the same unique values.
 pub unsafe fn do_setequal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let y = CAR(CDR(args));
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let y = arg_by_name_or_position(args, &["y"], 1);
         if (x.is_null() || x == R_NilValue()) && (y.is_null() || y == R_NilValue()) {
             return Rf_ScalarLogical(TRUE);
         }
@@ -2105,24 +2079,16 @@ pub unsafe fn do_setequal(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let xn = XLENGTH(x);
         let yn = XLENGTH(y);
         let tx = TYPEOF(x);
-        let ty = TYPEOF(y);
-        let mut x_set: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
-        let mut y_set: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+        let sexptype = SEXPTYPE(tx);
+        let mut x_set: std::collections::BTreeSet<AtomicUniqueKey> =
+            std::collections::BTreeSet::new();
+        let mut y_set: std::collections::BTreeSet<AtomicUniqueKey> =
+            std::collections::BTreeSet::new();
         for i in 0..xn {
-            let key = if tx == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).to_bits() as i64
-            } else {
-                *INTEGER(x).add(i as usize) as i64
-            };
-            x_set.insert(key);
+            x_set.insert(atomic_unique_key(x, i, sexptype));
         }
         for i in 0..yn {
-            let key = if ty == SEXPTYPE::REALSXP {
-                (*REAL(y).add(i as usize)).to_bits() as i64
-            } else {
-                *INTEGER(y).add(i as usize) as i64
-            };
-            y_set.insert(key);
+            y_set.insert(atomic_unique_key(y, i, sexptype));
         }
         Rf_ScalarLogical(if x_set == y_set { TRUE } else { FALSE })
     }
@@ -10496,6 +10462,58 @@ fn atomic_value_is_missing(x: SEXP, index: R_xlen_t) -> bool {
                 *INTEGER(x).add(index as usize) == NA_INTEGER
             }
             _ => false,
+        }
+    }
+}
+
+fn copy_atomic_element(
+    dst: SEXP,
+    dst_index: R_xlen_t,
+    src: SEXP,
+    src_index: R_xlen_t,
+    target_type: SEXPTYPE,
+) {
+    unsafe {
+        match target_type {
+            t if t == SEXPTYPE::STRSXP => {
+                if TYPEOF(src) == SEXPTYPE::STRSXP {
+                    SET_STRING_ELT(dst, dst_index, STRING_ELT(src, src_index));
+                } else {
+                    let text = elt_to_string(src, src_index);
+                    let cstr = CString::new(text).unwrap_or_default();
+                    SET_STRING_ELT(
+                        dst,
+                        dst_index,
+                        crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
+                    );
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let value = if TYPEOF(src) == SEXPTYPE::REALSXP {
+                    *REAL(src).add(src_index as usize)
+                } else {
+                    let raw = *INTEGER(src).add(src_index as usize);
+                    if raw == NA_INTEGER {
+                        NA_REAL
+                    } else {
+                        raw as f64
+                    }
+                };
+                *REAL(dst).add(dst_index as usize) = value;
+            }
+            _ => {
+                let value = if TYPEOF(src) == SEXPTYPE::REALSXP {
+                    let value = *REAL(src).add(src_index as usize);
+                    if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        NA_INTEGER
+                    } else {
+                        value as c_int
+                    }
+                } else {
+                    *INTEGER(src).add(src_index as usize)
+                };
+                *INTEGER(dst).add(dst_index as usize) = value;
+            }
         }
     }
 }
