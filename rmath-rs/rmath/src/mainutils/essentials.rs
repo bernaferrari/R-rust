@@ -3976,8 +3976,12 @@ unsafe fn match_arg(args: SEXP, position: usize, name: &str, default: SEXP) -> S
 /// R's `findInterval(x, vec)` — for each x, find j such that vec[j] <= x < vec[j+1].
 pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        let vec = CAR(CDR(args));
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let vec = arg_by_name_or_position(args, &["vec"], 1);
+        let rightmost_closed =
+            logical_arg_by_name_or_position(args, "rightmost.closed", 2).unwrap_or(false);
+        let all_inside = logical_arg_by_name_or_position(args, "all.inside", 3).unwrap_or(false);
+        let left_open = logical_arg_by_name_or_position(args, "left.open", 4).unwrap_or(false);
         if x.is_null() || x == R_NilValue() || vec.is_null() || vec == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
@@ -3999,17 +4003,37 @@ pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 *dst.add(i as usize) = NA_INTEGER;
                 continue;
             }
-            let mut lo = 0i32;
-            let mut hi = vn as i32;
+            if vn == 0 {
+                *dst.add(i as usize) = 0;
+                continue;
+            }
+            let mut lo = 0usize;
+            let mut hi = vvals.len();
             while lo < hi {
                 let mid = (lo + hi) / 2;
-                if vvals[mid as usize] <= xi {
+                let before_or_at = if left_open {
+                    vvals[mid] < xi
+                } else {
+                    vvals[mid] <= xi
+                };
+                if before_or_at {
                     lo = mid + 1;
                 } else {
                     hi = mid;
                 }
             }
-            *dst.add(i as usize) = lo;
+            let mut interval = lo as c_int;
+            if rightmost_closed {
+                if !left_open && xi == vvals[vvals.len() - 1] {
+                    interval = (vn - 1) as c_int;
+                } else if left_open && xi == vvals[0] {
+                    interval = 1;
+                }
+            }
+            if all_inside && vn > 1 {
+                interval = interval.clamp(1, (vn - 1) as c_int);
+            }
+            *dst.add(i as usize) = interval;
         }
         result
     }
@@ -12102,16 +12126,60 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
         let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let t = TYPEOF(x);
+        let result_type = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            SEXPTYPE::INTSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        let result = Rf_allocVector3(result_type, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
+
+        if result_type == SEXPTYPE::INTSXP {
+            let dst = INTEGER(result);
+            let mut sum = 0_i64;
+            let mut poisoned = false;
+            let mut warned = false;
+            for i in 0..n {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER {
+                    poisoned = true;
+                }
+                if poisoned {
+                    *dst.add(i as usize) = NA_INTEGER;
+                } else {
+                    sum += v as i64;
+                    if sum > i32::MAX as i64 || sum < i32::MIN as i64 {
+                        poisoned = true;
+                        *dst.add(i as usize) = NA_INTEGER;
+                        if !warned {
+                            warned = true;
+                            let msg = CString::new(
+                                "integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'",
+                            )
+                            .unwrap_or_default();
+                            crate::mainutils::errors::Rf_warning(msg.as_ptr());
+                        }
+                    } else {
+                        *dst.add(i as usize) = sum as c_int;
+                    }
+                }
+            }
+            return result;
+        }
+
         let dst = REAL(result);
         let mut sum = 0.0f64;
+        let mut poisoned = false;
         for i in 0..n {
             let v = elt_real_safe(x, i);
             if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                poisoned = true;
+            }
+            if poisoned {
                 *dst.add(i as usize) = NA_REAL;
             } else {
                 sum += v;
@@ -12137,9 +12205,13 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let _result_guard = protect(result);
         let dst = REAL(result);
         let mut prod = 1.0f64;
+        let mut poisoned = false;
         for i in 0..n {
             let v = elt_real_safe(x, i);
             if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                poisoned = true;
+            }
+            if poisoned {
                 *dst.add(i as usize) = NA_REAL;
             } else {
                 prod *= v;
