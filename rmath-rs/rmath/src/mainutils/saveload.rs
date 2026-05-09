@@ -15,8 +15,8 @@
 //!   defaultSaveVersion
 
 use crate::sexp::accessors::{
-    CAD5R, CADDR, CADR, CAR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT,
-    TYPEOF, XLENGTH,
+    CAD5R, CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, SET_STRING_ELT,
+    STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
@@ -448,26 +448,44 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// SEXP-dependent stubs
-// ---------------------------------------------------------------------------
-
-/// Write R objects to a file in ASCII format.
-///
-/// Port of `do_save` from saveload.c. Serializes named objects from an environment
-/// to a file using R's ASCII save format (version 3).
-///
-/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP.
-/// Complex types (closures, environments, etc.) return an error gracefully.
-pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+unsafe fn tag_name(cell: SEXP) -> Option<String> {
     unsafe {
-        crate::mainutils::relop::checkArity(_op, args);
+        let tag = TAG(cell);
+        if tag.is_null() || TYPEOF(tag) != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let printname = PRINTNAME(tag);
+        if printname.is_null() {
+            return None;
+        }
+        let ptr = CHAR(printname);
+        if ptr.is_null() {
+            return None;
+        }
+        Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
+    }
+}
 
-        let list = CAR(args);
-        let file_sexp = CADR(args);
-        let ascii_flag = CADDR(args);
-        let envir = CAD5R(args);
+unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SEXP {
+    unsafe {
+        let mut current = args;
+        let mut index = 0;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some(name) {
+                return CAR(current);
+            }
+            if index == position && tag_name(current).is_none() {
+                return CAR(current);
+            }
+            current = CDR(current);
+            index += 1;
+        }
+        R_NilValue()
+    }
+}
 
+unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envir: SEXP) -> SEXP {
+    unsafe {
         if file_sexp.is_null() {
             error("'file' must be non-empty string");
         }
@@ -488,7 +506,6 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if !use_ascii {
             error("only ASCII save files are supported by this Rust runtime");
         }
-        let _version = defaultSaveVersion();
 
         let file = match std::fs::File::create(&file_path) {
             Ok(f) => f,
@@ -538,21 +555,8 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 }
 
-/// Read R objects from a file.
-///
-/// Port of `do_load` from saveload.c. Deserializes objects from a file
-/// using R's ASCII save format.
-///
-/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP.
-/// Returns a character vector of loaded object names.
-pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+unsafe fn load_ascii_objects(file_sexp: SEXP, envir: SEXP) -> SEXP {
     unsafe {
-        crate::mainutils::relop::checkArity(_op, args);
-
-        let file_sexp = CAR(args);
-        let envir = CADR(args);
-        let _verbose = CADDR(args);
-
         if file_sexp.is_null() {
             error("first argument must be a file name");
         }
@@ -611,6 +615,90 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         names
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SEXP-dependent stubs
+// ---------------------------------------------------------------------------
+
+/// Write R objects to a file in ASCII format.
+///
+/// Port of `do_save` from saveload.c. Serializes named objects from an environment
+/// to a file using R's ASCII save format (version 3).
+///
+/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP.
+/// Complex types (closures, environments, etc.) return an error gracefully.
+pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::relop::checkArity(_op, args);
+
+        let list = CAR(args);
+        let file_sexp = CADR(args);
+        let ascii_flag = CADDR(args);
+        let envir = CAD5R(args);
+
+        save_ascii_objects(list, file_sexp, ascii_flag, envir)
+    }
+}
+
+/// User-facing `save()` wrapper for the evaluated `list=`, `file=`,
+/// `ascii=`, and `envir=` path used by pure-R Android sessions.
+pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let list = arg_by_name_or_position(args, "list", 0);
+        let file = arg_by_name_or_position(args, "file", 1);
+        let ascii = arg_by_name_or_position(args, "ascii", 2);
+        let envir = {
+            let candidate = arg_by_name_or_position(args, "envir", 3);
+            if candidate.is_null() || candidate == R_NilValue() {
+                rho
+            } else {
+                candidate
+            }
+        };
+        if list.is_null() || list == R_NilValue() {
+            error("save() requires an explicit character 'list' argument in this runtime");
+        }
+        if ascii.is_null() || ascii == R_NilValue() {
+            error("save() requires ascii = TRUE in this runtime");
+        }
+        save_ascii_objects(list, file, ascii, envir)
+    }
+}
+
+/// Read R objects from a file.
+///
+/// Port of `do_load` from saveload.c. Deserializes objects from a file
+/// using R's ASCII save format.
+///
+/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP.
+/// Returns a character vector of loaded object names.
+pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::relop::checkArity(_op, args);
+
+        let file_sexp = CAR(args);
+        let envir = CADR(args);
+        let _verbose = CADDR(args);
+
+        load_ascii_objects(file_sexp, envir)
+    }
+}
+
+/// User-facing `load()` wrapper.
+pub unsafe fn do_load_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let file = arg_by_name_or_position(args, "file", 0);
+        let envir = {
+            let candidate = arg_by_name_or_position(args, "envir", 1);
+            if candidate.is_null() || candidate == R_NilValue() {
+                rho
+            } else {
+                candidate
+            }
+        };
+        load_ascii_objects(file, envir)
     }
 }
 

@@ -5742,6 +5742,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // Complete R runtime — serialization
             "readRDS",
             "saveRDS",
+            "save",
+            "load",
             // Complete error handling — calling handlers and restarts
             "withCallingHandlers",
             "computeRestarts",

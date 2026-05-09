@@ -2180,6 +2180,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_saveRDS,
     },
     EvaluatedBuiltin {
+        name: "save",
+        handler: crate::mainutils::saveload::do_save_user,
+    },
+    EvaluatedBuiltin {
+        name: "load",
+        handler: crate::mainutils::saveload::do_load_user,
+    },
+    EvaluatedBuiltin {
         name: "computeRestarts",
         handler: crate::mainutils::essentials::do_computeRestarts,
     },
