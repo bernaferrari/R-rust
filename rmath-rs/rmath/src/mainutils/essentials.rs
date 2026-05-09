@@ -7838,7 +7838,7 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() || fun.is_null() {
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
-        let n = XLENGTH(x);
+        let n = list_apply_len(x);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -7848,6 +7848,14 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let elem = extract_element(x, i);
             let val = apply_unary_value(fun, elem, rho);
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
+        }
+        let names = list_apply_names(x, n);
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
         }
         result
     }
@@ -8043,6 +8051,19 @@ fn fun_value_type(template_expr: SEXP, rho: SEXP) -> SEXPTYPE {
 
 fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if value == R_MissingArg()
+            && TYPEOF(fun) == SEXPTYPE::SYMSXP
+            && symbol_name(fun).as_deref() == Some("typeof")
+        {
+            let args = Rf_cons(value, R_NilValue());
+            let _args_guard = protect(args);
+            return crate::mainutils::essentials_basic::do_typeof(
+                R_NilValue(),
+                R_NilValue(),
+                args,
+                rho,
+            );
+        }
         let arg_sym = Rf_install(c"..rport_apply_value".as_ptr());
         let call_env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
         crate::sexp::envir::defineVar(arg_sym, value, call_env);
@@ -8106,6 +8127,19 @@ fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
                 SET_STRING_ELT(result, i, STRING_ELT(elem, 0));
             }
         }
+        let names =
+            crate::sexp::attrib_core::getAttrib(list, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null()
+            && names != R_NilValue()
+            && TYPEOF(names) == SEXPTYPE::STRSXP
+            && XLENGTH(names) == n
+        {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
         result
     }
 }
@@ -8115,6 +8149,18 @@ fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
         let t = TYPEOF(x);
         if t == SEXPTYPE::VECSXP {
             return crate::sexp::accessors::VECTOR_ELT(x, i as i64);
+        }
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+            let mut current = x;
+            let mut index = 0;
+            while !current.is_null() && current != R_NilValue() {
+                if index == i {
+                    return CAR(current);
+                }
+                index += 1;
+                current = CDR(current);
+            }
+            return R_NilValue();
         }
         let elem = Rf_allocVector3(t, 1);
         if elem.is_null() {
@@ -8128,6 +8174,76 @@ fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
             *LOGICAL(elem) = *LOGICAL(x).add(i as usize);
         }
         elem
+    }
+}
+
+fn list_apply_len(x: SEXP) -> R_xlen_t {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
+                let mut len = 0;
+                let mut current = x;
+                while !current.is_null() && current != R_NilValue() {
+                    len += 1;
+                    current = CDR(current);
+                }
+                len
+            }
+            _ => XLENGTH(x),
+        }
+    }
+}
+
+fn list_apply_names(x: SEXP, n: R_xlen_t) -> SEXP {
+    unsafe {
+        if n <= 0 {
+            return R_NilValue();
+        }
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::VECSXP => {
+                let names = crate::sexp::attrib_core::getAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                if !names.is_null()
+                    && names != R_NilValue()
+                    && TYPEOF(names) == SEXPTYPE::STRSXP
+                    && XLENGTH(names) == n
+                {
+                    names
+                } else {
+                    R_NilValue()
+                }
+            }
+            t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
+                let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+                if names.is_null() {
+                    return R_NilValue();
+                }
+                let _names_guard = protect(names);
+                let mut current = x;
+                let mut i = 0;
+                let mut any_name = false;
+                while !current.is_null() && current != R_NilValue() && i < n {
+                    let tag = TAG(current);
+                    if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                        let printname = PRINTNAME(tag);
+                        if !printname.is_null() && printname != R_NilValue() {
+                            SET_STRING_ELT(names, i, printname);
+                            any_name = true;
+                        } else {
+                            SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
+                        }
+                    } else {
+                        SET_STRING_ELT(names, i, Rf_mkChar(c"".as_ptr()));
+                    }
+                    i += 1;
+                    current = CDR(current);
+                }
+                if any_name { names } else { R_NilValue() }
+            }
+            _ => R_NilValue(),
+        }
     }
 }
 
