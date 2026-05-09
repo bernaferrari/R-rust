@@ -21870,6 +21870,9 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `gcinfo(on)` — set session-local GC reporting verbosity.
 pub unsafe fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+            base_error("argument \"verbose\" is missing, with no default");
+        }
         let old = crate::mainutils::memory_main::do_gcinfo(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
         old
