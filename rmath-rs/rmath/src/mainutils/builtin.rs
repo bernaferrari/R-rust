@@ -368,8 +368,13 @@ pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        let x = CADR(args);
-        let val = CAR(args);
+        let first = CAR(args);
+        let second = CADR(args);
+        let (x, val) = if Rf_isEnvironment(second) != 0 {
+            (first, second)
+        } else {
+            (second, first)
+        };
         if TYPEOF(x) == SEXPTYPE::CLOSXP {
             if Rf_isEnvironment(val) == 0 {
                 errorcall(call, "invalid replacement for 'environment'");

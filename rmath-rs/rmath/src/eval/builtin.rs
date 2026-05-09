@@ -130,6 +130,16 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "forceAndCall",
+        handler: crate::eval::missing::do_forceAndCall,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "declare",
+        handler: crate::eval::jit::do_declare,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "on.exit",
         handler: crate::mainutils::builtin::do_onexit,
         restore_visibility_always: false,
@@ -269,8 +279,24 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::eval::missing::do_dots_names,
     },
     EvaluatedBuiltin {
+        name: ".primTrace",
+        handler: crate::mainutils::debug::do_trace,
+    },
+    EvaluatedBuiltin {
+        name: ".primUntrace",
+        handler: crate::mainutils::debug::do_trace,
+    },
+    EvaluatedBuiltin {
         name: ".Primitive",
         handler: crate::mainutils::names::do_primitive,
+    },
+    EvaluatedBuiltin {
+        name: "environment<-",
+        handler: crate::mainutils::builtin::do_envirgets,
+    },
+    EvaluatedBuiltin {
+        name: "standardGeneric",
+        handler: crate::mainutils::objects::do_standardGeneric,
     },
     EvaluatedBuiltin {
         name: "+",

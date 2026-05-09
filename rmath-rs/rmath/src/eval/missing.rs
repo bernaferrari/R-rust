@@ -43,7 +43,7 @@ use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
 
 use super::builtin::PRIMNAME;
 use super::closure::applyClosure;
-use super::dispatch::{DispatchOrEval, evalList, promiseArgs};
+use super::dispatch::{DispatchOrEval, promiseArgs};
 use super::eval::Rf_eval;
 
 // ---------------------------------------------------------------------------
@@ -110,6 +110,32 @@ unsafe fn dots_cell_at(dots: SEXP, index: c_int) -> SEXP {
         }
 
         dots_context_error("indexing '...' with an invalid index");
+    }
+}
+
+unsafe fn call_from_head_and_args(head: SEXP, args: SEXP) -> SEXP {
+    unsafe {
+        let mut nargs = 0;
+        let mut arg = args;
+        while !arg.is_null() && arg != R_NilValue() {
+            nargs += 1;
+            arg = CDR(arg);
+        }
+
+        let call = allocLang(nargs + 1);
+        let mut out = call;
+        SETCAR(out, head);
+        out = CDR(out);
+
+        arg = args;
+        while !arg.is_null() && arg != R_NilValue() {
+            SETCAR(out, CAR(arg));
+            SETTAG(out, TAG(arg));
+            out = CDR(out);
+            arg = CDR(arg);
+        }
+
+        call
     }
 }
 
@@ -850,19 +876,9 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
         let _fun_guard = protect(fun);
 
         let result = if TYPEOF(fun) == SEXPTYPE::BUILTINSXP {
-            let evaled_args = evalList(rest, rho, call, 0);
-            let _evaled_args_guard = protect(evaled_args);
-            let flag = super::eval::PRIMPRINT(fun);
-            super::runtime::set_visible_for_print_flag(flag);
-            if let Some(primfun) = super::eval::get_primfun(fun) {
-                let tmp = primfun(call, fun, evaled_args, rho);
-                if flag < 2 {
-                    super::runtime::set_visible_for_print_flag(flag);
-                }
-                tmp
-            } else {
-                R_NilValue()
-            }
+            let delegated_call = call_from_head_and_args(fun_expr, rest);
+            let _delegated_call_guard = protect(delegated_call);
+            Rf_eval(delegated_call, rho)
         } else if TYPEOF(fun) == SEXPTYPE::CLOSXP {
             let pargs = promiseArgs(rest, rho);
             let _pargs_guard = protect(pargs);

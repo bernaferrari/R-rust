@@ -1,0 +1,6 @@
+[1] 3
+NULL
+[1] TRUE
+NULL
+NULL
+[1] "call to standardGeneric(\"foo\") apparently not from the body of that generic function"
