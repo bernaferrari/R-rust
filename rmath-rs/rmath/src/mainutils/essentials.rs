@@ -5090,8 +5090,10 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "qnorm",
             "dpois",
             "ppois",
+            "qpois",
             "dbinom",
             "pbinom",
+            "qbinom",
             "dgamma",
             "pgamma",
             "qgamma",
@@ -5100,6 +5102,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "qcauchy",
             "dexp",
             "pexp",
+            "qexp",
             "dbeta",
             "pbeta",
             "qbeta",
@@ -5118,6 +5121,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "dnbinom",
             "pnbinom",
             "qnbinom",
+            "dunif",
+            "punif",
+            "qunif",
             "dgeom",
             "pgeom",
             "qgeom",
@@ -8966,6 +8972,19 @@ pub unsafe fn do_ppois(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     })
 }
 
+/// R's `qpois(p, lambda)` — Poisson quantile.
+pub unsafe fn do_qpois(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let p = arg_by_name_or_position(args, &["p"], 0);
+        let lambda = real_or_default(arg_by_name_or_position(args, &["lambda"], 1), 1.0);
+        let lower_tail = logical_arg(arg_by_name_or_position(args, &["lower.tail"], 2), true);
+        let log_p = logical_arg(arg_by_name_or_position(args, &["log.p"], 3), false);
+        map_real_distribution(p, |p| {
+            crate::dist::poisson::qpois_inner(p, lambda, lower_tail, log_p)
+        })
+    }
+}
+
 /// R's `dbinom(x, size, prob)` — binomial density.
 pub unsafe fn do_dbinom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     do_dist_unary(args, 1.0, 0.5, |x, n, p| {
@@ -8980,6 +8999,20 @@ pub unsafe fn do_pbinom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     })
 }
 
+/// R's `qbinom(p, size, prob)` — binomial quantile.
+pub unsafe fn do_qbinom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let p = arg_by_name_or_position(args, &["p"], 0);
+        let size = real_or_default(arg_by_name_or_position(args, &["size"], 1), 1.0);
+        let prob = real_or_default(arg_by_name_or_position(args, &["prob"], 2), 0.5);
+        let lower_tail = logical_arg(arg_by_name_or_position(args, &["lower.tail"], 3), true);
+        let log_p = logical_arg(arg_by_name_or_position(args, &["log.p"], 4), false);
+        map_real_distribution(p, |p| {
+            crate::dist::binomial::qbinom_inner(p, size, prob, lower_tail, log_p)
+        })
+    }
+}
+
 /// R's `dexp(x, rate)` — exponential density.
 pub unsafe fn do_dexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     do_dist_unary(args, 1.0, 0.0, |x, rate, _| {
@@ -8992,6 +9025,19 @@ pub unsafe fn do_pexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     do_dist_unary(args, 1.0, 0.0, |q, rate, _| {
         crate::dist::exponential::pexp_inner(q, 1.0 / rate, true, false)
     })
+}
+
+/// R's `qexp(p, rate)` — exponential quantile.
+pub unsafe fn do_qexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let p = arg_by_name_or_position(args, &["p"], 0);
+        let rate = real_or_default(arg_by_name_or_position(args, &["rate"], 1), 1.0);
+        let lower_tail = logical_arg(arg_by_name_or_position(args, &["lower.tail"], 2), true);
+        let log_p = logical_arg(arg_by_name_or_position(args, &["log.p"], 3), false);
+        map_real_distribution(p, |p| {
+            crate::dist::exponential::qexp_inner(p, 1.0 / rate, lower_tail, log_p)
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -9143,6 +9189,47 @@ pub unsafe fn do_qf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     do_dist_unary(args, 1.0, 1.0, |p, df1, df2| {
         crate::dist::f_dist::qf_inner(p, df1, df2, true, false)
     })
+}
+
+/// R's `dunif(x, min=0, max=1)` — uniform density.
+pub unsafe fn do_dunif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let min = real_or_default(arg_by_name_or_position(args, &["min"], 1), 0.0);
+        let max = real_or_default(arg_by_name_or_position(args, &["max"], 2), 1.0);
+        let give_log = logical_arg(arg_by_name_or_position(args, &["log"], 3), false);
+        map_real_distribution(x, |x| {
+            crate::dist::uniform::dunif_inner(x, min, max, give_log)
+        })
+    }
+}
+
+/// R's `punif(q, min=0, max=1)` — uniform CDF.
+pub unsafe fn do_punif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let q = arg_by_name_or_position(args, &["q"], 0);
+        let min = real_or_default(arg_by_name_or_position(args, &["min"], 1), 0.0);
+        let max = real_or_default(arg_by_name_or_position(args, &["max"], 2), 1.0);
+        let lower_tail = logical_arg(arg_by_name_or_position(args, &["lower.tail"], 3), true);
+        let log_p = logical_arg(arg_by_name_or_position(args, &["log.p"], 4), false);
+        map_real_distribution(q, |q| {
+            crate::dist::uniform::punif_inner(q, min, max, lower_tail, log_p)
+        })
+    }
+}
+
+/// R's `qunif(p, min=0, max=1)` — uniform quantile.
+pub unsafe fn do_qunif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let p = arg_by_name_or_position(args, &["p"], 0);
+        let min = real_or_default(arg_by_name_or_position(args, &["min"], 1), 0.0);
+        let max = real_or_default(arg_by_name_or_position(args, &["max"], 2), 1.0);
+        let lower_tail = logical_arg(arg_by_name_or_position(args, &["lower.tail"], 3), true);
+        let log_p = logical_arg(arg_by_name_or_position(args, &["log.p"], 4), false);
+        map_real_distribution(p, |p| {
+            crate::dist::uniform::qunif_inner(p, min, max, lower_tail, log_p)
+        })
+    }
 }
 
 /// R's `dnbinom(x, size, prob)` — negative binomial density.

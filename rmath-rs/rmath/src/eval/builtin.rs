@@ -2735,6 +2735,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_ppois,
     },
     EvaluatedBuiltin {
+        name: "qpois",
+        handler: crate::mainutils::essentials::do_qpois,
+    },
+    EvaluatedBuiltin {
         name: "dbinom",
         handler: crate::mainutils::essentials::do_dbinom,
     },
@@ -2743,12 +2747,20 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_pbinom,
     },
     EvaluatedBuiltin {
+        name: "qbinom",
+        handler: crate::mainutils::essentials::do_qbinom,
+    },
+    EvaluatedBuiltin {
         name: "dexp",
         handler: crate::mainutils::essentials::do_dexp,
     },
     EvaluatedBuiltin {
         name: "pexp",
         handler: crate::mainutils::essentials::do_pexp,
+    },
+    EvaluatedBuiltin {
+        name: "qexp",
+        handler: crate::mainutils::essentials::do_qexp,
     },
     EvaluatedBuiltin {
         name: "dgamma",
@@ -2833,6 +2845,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "qf",
         handler: crate::mainutils::essentials::do_qf,
+    },
+    EvaluatedBuiltin {
+        name: "dunif",
+        handler: crate::mainutils::essentials::do_dunif,
+    },
+    EvaluatedBuiltin {
+        name: "punif",
+        handler: crate::mainutils::essentials::do_punif,
+    },
+    EvaluatedBuiltin {
+        name: "qunif",
+        handler: crate::mainutils::essentials::do_qunif,
     },
     EvaluatedBuiltin {
         name: "dnbinom",
