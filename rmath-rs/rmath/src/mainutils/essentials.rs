@@ -1856,12 +1856,9 @@ pub unsafe fn do_head(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _result_guard = protect(result);
         let t = TYPEOF(x);
         for i in 0..n {
-            if t == SEXPTYPE::REALSXP {
-                *REAL(result).add(i as usize) = *REAL(x).add(i as usize);
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(result).add(i as usize) = *INTEGER(x).add(i as usize);
-            }
+            copy_vector_element(result, i, x, i, SEXPTYPE(t));
         }
+        slice_names_attribute(x, result, 0, n);
         result
     }
 }
@@ -1897,13 +1894,62 @@ pub unsafe fn do_tail(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _result_guard = protect(result);
         let t = TYPEOF(x);
         for i in 0..n {
-            if t == SEXPTYPE::REALSXP {
-                *REAL(result).add(i as usize) = *REAL(x).add((start + i) as usize);
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(result).add(i as usize) = *INTEGER(x).add((start + i) as usize);
-            }
+            copy_vector_element(result, i, x, start + i, SEXPTYPE(t));
         }
+        slice_names_attribute(x, result, start, n);
         result
+    }
+}
+
+fn copy_vector_element(
+    dst: SEXP,
+    dst_index: R_xlen_t,
+    src: SEXP,
+    src_index: R_xlen_t,
+    target_type: SEXPTYPE,
+) {
+    unsafe {
+        match target_type {
+            t if t == SEXPTYPE::STRSXP => {
+                SET_STRING_ELT(dst, dst_index, STRING_ELT(src, src_index));
+            }
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                SET_VECTOR_ELT(dst, dst_index, VECTOR_ELT(src, src_index));
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                *REAL(dst).add(dst_index as usize) = *REAL(src).add(src_index as usize);
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                *INTEGER(dst).add(dst_index as usize) = *INTEGER(src).add(src_index as usize);
+            }
+            t if t == SEXPTYPE::RAWSXP => {
+                *RAW(dst).add(dst_index as usize) = *RAW(src).add(src_index as usize);
+            }
+            _ => {}
+        }
+    }
+}
+
+unsafe fn slice_names_attribute(x: SEXP, result: SEXP, start: R_xlen_t, len: R_xlen_t) {
+    unsafe {
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return;
+        }
+        let sliced = Rf_allocVector3(SEXPTYPE::STRSXP, len);
+        if sliced.is_null() {
+            return;
+        }
+        let _sliced_guard = protect(sliced);
+        for i in 0..len {
+            SET_STRING_ELT(sliced, i, STRING_ELT(names, start + i));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            sliced,
+        );
     }
 }
 
