@@ -5655,6 +5655,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "droplevels",
             "factor",
             "ordered",
+            "as.factor",
+            "as.ordered",
             "gl",
             "addNA",
             "is.factor",
@@ -22874,6 +22876,84 @@ pub unsafe fn do_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let result = do_factor(call, op, args, rho);
         if !result.is_null() && result != R_NilValue() && TYPEOF(result) == SEXPTYPE::INTSXP {
             set_ordered_factor_class(result);
+        }
+        result
+    }
+}
+
+/// R's `as.factor(x)` — factors are returned unchanged; other atomic values use factor().
+pub unsafe fn do_as_factor(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if aggregate_factor_levels(x).is_some() {
+            x
+        } else {
+            do_factor(call, op, args, rho)
+        }
+    }
+}
+
+/// R's `as.ordered(x)` — coerce to an ordered factor.
+pub unsafe fn do_as_ordered(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if inherits_class(x, "ordered") {
+            return x;
+        }
+        if let Some(levels) = aggregate_factor_levels(x) {
+            return ordered_from_factor(x, &levels);
+        }
+        do_ordered(call, op, args, rho)
+    }
+}
+
+unsafe fn ordered_from_factor(x: SEXP, levels: &[String]) -> SEXP {
+    unsafe {
+        let mut used = BTreeSet::new();
+        for i in 0..XLENGTH(x) {
+            let code = *INTEGER(x).add(i as usize);
+            if code != NA_INTEGER && code > 0 {
+                let old_index = (code - 1) as usize;
+                if old_index < levels.len() {
+                    used.insert(old_index);
+                }
+            }
+        }
+        let mut new_levels = Vec::new();
+        let mut old_to_new = BTreeMap::new();
+        for (old_index, level) in levels.iter().enumerate() {
+            if used.contains(&old_index) {
+                new_levels.push(level.clone());
+                old_to_new.insert(old_index, new_levels.len() as i32);
+            }
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(x));
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        for i in 0..XLENGTH(x) {
+            let code = *INTEGER(x).add(i as usize);
+            *INTEGER(result).add(i as usize) = if code == NA_INTEGER || code <= 0 {
+                NA_INTEGER
+            } else {
+                old_to_new
+                    .get(&((code - 1) as usize))
+                    .copied()
+                    .unwrap_or(NA_INTEGER)
+            };
+        }
+        set_factor_attrs(result, &new_levels);
+        set_ordered_factor_class(result);
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
         }
         result
     }
