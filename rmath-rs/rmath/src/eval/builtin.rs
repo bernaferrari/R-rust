@@ -789,7 +789,15 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::subset::do_subset_dflt,
     },
     EvaluatedBuiltin {
+        name: ".subset",
+        handler: crate::mainutils::subset::do_subset_dflt,
+    },
+    EvaluatedBuiltin {
         name: "[[",
+        handler: crate::mainutils::subset::do_subset2_dflt,
+    },
+    EvaluatedBuiltin {
+        name: ".subset2",
         handler: crate::mainutils::subset::do_subset2_dflt,
     },
     EvaluatedBuiltin {
