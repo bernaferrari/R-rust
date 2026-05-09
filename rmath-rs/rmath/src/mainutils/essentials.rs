@@ -22790,20 +22790,22 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let file_path = elt_to_string(file_arg, 0);
 
-        // Parse widths vector
-        let nfields = XLENGTH(widths_arg).max(1) as usize;
-        let mut widths: Vec<usize> = Vec::new();
+        let nfields = XLENGTH(widths_arg);
+        if nfields == 0 {
+            base_error("invalid 'length.out' value");
+        }
+        let mut widths: Vec<i64> = Vec::new();
         for i in 0..nfields {
             let w = if TYPEOF(widths_arg) == SEXPTYPE::REALSXP {
                 let rp = REAL(widths_arg);
-                (*rp.add(i)).abs() as usize
+                *rp.add(i as usize) as i64
             } else if TYPEOF(widths_arg) == SEXPTYPE::INTSXP {
                 let ip = INTEGER(widths_arg);
-                (*ip.add(i)).unsigned_abs() as usize
+                *ip.add(i as usize) as i64
             } else {
-                1_usize
+                1_i64
             };
-            widths.push(w.max(1));
+            widths.push(w);
         }
 
         // Read file
@@ -22820,20 +22822,26 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return R_NilValue();
         }
 
-        let ncols = widths.len();
+        let ncols = widths.iter().filter(|&&width| width >= 0).count();
         let nrows = lines.len();
 
         // Parse fixed-width fields
         let mut col_data: Vec<Vec<f64>> = vec![vec![NA_REAL; nrows]; ncols];
         for (i, line) in lines.iter().enumerate() {
-            let mut pos = 0;
-            for j in 0..ncols {
-                if pos + widths[j] <= line.len() {
-                    let field = &line[pos..pos + widths[j]];
-                    let val = field.trim().parse::<f64>().unwrap_or(NA_REAL);
-                    col_data[j][i] = val;
+            let mut pos = 0usize;
+            let mut out_col = 0usize;
+            for &width in &widths {
+                let span = width.unsigned_abs() as usize;
+                if width < 0 {
+                    pos = pos.saturating_add(span);
+                    continue;
                 }
-                pos += widths[j];
+                if span > 0 && pos + span <= line.len() {
+                    let field = &line[pos..pos + span];
+                    col_data[out_col][i] = field.trim().parse::<f64>().unwrap_or(NA_REAL);
+                }
+                pos = pos.saturating_add(span);
+                out_col += 1;
             }
         }
 
