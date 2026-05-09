@@ -25207,21 +25207,23 @@ pub unsafe fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         if x.is_null() || y.is_null() {
             return R_NilValue();
         }
-        let nx = XLENGTH(x).max(1);
-        let ny = XLENGTH(y).max(1);
+        let nx = XLENGTH(x);
+        let ny = XLENGTH(y);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, nx * ny);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-        let dst = REAL(result);
 
         // Default: multiplication
-        for i in 0..nx {
-            let xi = elt_real_safe(x, i);
-            for j in 0..ny {
-                let yj = elt_real_safe(y, j);
-                *dst.add((i * ny + j) as usize) = xi * yj;
+        if nx > 0 && ny > 0 {
+            let dst = REAL(result);
+            for i in 0..nx {
+                let xi = elt_real_safe(x, i);
+                for j in 0..ny {
+                    let yj = elt_real_safe(y, j);
+                    *dst.add((i * ny + j) as usize) = xi * yj;
+                }
             }
         }
 
