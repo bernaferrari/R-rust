@@ -5411,6 +5411,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "parent.env",
             "environmentName",
             "exists",
+            "find",
             "get",
             "assign",
             "rm",
@@ -8669,6 +8670,70 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 || crate::eval::builtin::has_builtin_handler(&name)
         };
         Rf_ScalarLogical(if found { TRUE } else { FALSE })
+    }
+}
+
+/// R's `find(what, mode = "any")` — locate a name on the search path.
+pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let what_arg = arg_by_name_or_position(args, &["what"], 0);
+        if what_arg.is_null() || what_arg == R_NilValue() || XLENGTH(what_arg) == 0 {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+
+        let name = elt_to_string(what_arg, 0);
+        if name.is_empty() || crate::eval::builtin::is_hidden_builtin_name(&name) {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+
+        let mode_arg = arg_by_name_or_position(args, &["mode"], 1);
+        let mode = if mode_arg.is_null() || mode_arg == R_NilValue() || XLENGTH(mode_arg) == 0 {
+            "any".to_string()
+        } else {
+            elt_to_string(mode_arg, 0)
+        };
+        let want_function = mode == "function";
+
+        let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
+        let mut matches = Vec::new();
+        let global = crate::sexp::globals::R_GlobalEnv();
+        let base = crate::sexp::globals::R_BaseEnv();
+
+        if find_matches_mode(global, sym, &name, want_function) {
+            matches.push(".GlobalEnv");
+        }
+        if find_matches_mode(base, sym, &name, want_function) {
+            matches.push("package:base");
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
+        for (i, value) in matches.iter().enumerate() {
+            SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(*value).unwrap_or_default().as_ptr()),
+            );
+        }
+        result
+    }
+}
+
+unsafe fn find_matches_mode(env: SEXP, symbol: SEXP, name: &str, want_function: bool) -> bool {
+    unsafe {
+        if env.is_null() || env == R_NilValue() {
+            return false;
+        }
+        let value = crate::sexp::envir::R_findVarInFrame(env, symbol);
+        let is_base_builtin = env == crate::sexp::globals::R_BaseEnv()
+            && crate::eval::builtin::has_builtin_handler(name);
+        if value == R_UnboundValue() {
+            return !want_function && is_base_builtin;
+        }
+        if want_function {
+            is_function_value(value) || is_base_builtin
+        } else {
+            true
+        }
     }
 }
 
