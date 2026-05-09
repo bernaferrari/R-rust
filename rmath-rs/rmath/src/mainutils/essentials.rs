@@ -2670,59 +2670,126 @@ fn order_na_placement(args: SEXP) -> SortNaPlacement {
 /// R's `rank(x)` — returns ranks of elements (average ties method).
 pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
         let n = XLENGTH(x);
-        let mut indexed: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            indexed.push((elt_real_safe(x, i), i));
-        }
-        indexed.sort_by(|a, b| {
-            let a_na = a.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-            let b_na = b.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
-            if a_na && b_na {
-                return std::cmp::Ordering::Equal;
-            }
-            if a_na {
-                return std::cmp::Ordering::Greater;
-            }
-            if b_na {
-                return std::cmp::Ordering::Less;
-            }
-            a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let na_placement = order_na_placement(args);
+        let mut missing_indices: Vec<R_xlen_t> = Vec::new();
         let mut ranks = vec![NA_REAL; n as usize];
-        let mut i = 0usize;
-        while i < indexed.len() {
-            let val = indexed[i].0;
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                for j in i..indexed.len() {
-                    ranks[indexed[j].1 as usize] = NA_REAL;
+
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::STRSXP => {
+                let mut values: Vec<(SEXP, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let value = STRING_ELT(x, i);
+                    if charsxp_is_na(value) {
+                        missing_indices.push(i);
+                    } else {
+                        values.push((value, i));
+                    }
                 }
-                break;
+                values.sort_by(|a, b| compare_charsxp_for_sort(a.0, b.0));
+                assign_average_ranks(&mut ranks, &values, 0, |a, b| {
+                    compare_charsxp_for_sort(a.0, b.0) == std::cmp::Ordering::Equal
+                });
             }
-            let mut j = i + 1;
-            while j < indexed.len() && indexed[j].0 == val {
-                j += 1;
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                let mut values: Vec<(c_int, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let value = *INTEGER(x).add(i as usize);
+                    if value == NA_INTEGER {
+                        missing_indices.push(i);
+                    } else {
+                        values.push((value, i));
+                    }
+                }
+                values.sort_by(|a, b| a.0.cmp(&b.0));
+                assign_average_ranks(&mut ranks, &values, 0, |a, b| a.0 == b.0);
             }
-            let avg_rank = (i + j + 1) as f64 / 2.0;
-            for k in i..j {
-                ranks[indexed[k].1 as usize] = avg_rank;
+            _ => {
+                let mut values: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    let value = elt_real_safe(x, i);
+                    if ISNAN(value) {
+                        missing_indices.push(i);
+                    } else {
+                        values.push((value, i));
+                    }
+                }
+                values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                assign_average_ranks(&mut ranks, &values, 0, |a, b| a.0 == b.0);
             }
-            i = j;
         }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+
+        let nonmissing_count = n as usize - missing_indices.len();
+        let mut is_missing = vec![false; n as usize];
+        for &index in &missing_indices {
+            is_missing[index as usize] = true;
+        }
+        match na_placement {
+            SortNaPlacement::First => {
+                for (i, rank) in ranks.iter_mut().enumerate() {
+                    if !is_missing[i] {
+                        *rank += missing_indices.len() as f64;
+                    }
+                }
+                for (offset, &index) in missing_indices.iter().enumerate() {
+                    ranks[index as usize] = (offset + 1) as f64;
+                }
+            }
+            SortNaPlacement::Last => {
+                for (offset, &index) in missing_indices.iter().enumerate() {
+                    ranks[index as usize] = (nonmissing_count + offset + 1) as f64;
+                }
+            }
+            SortNaPlacement::Remove => {}
+        }
+
+        let output_len = if na_placement == SortNaPlacement::Remove {
+            nonmissing_count
+        } else {
+            n as usize
+        };
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, output_len as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
         let dst = REAL(result);
-        for i in 0..n {
-            *dst.add(i as usize) = ranks[i as usize];
+        let mut out = 0usize;
+        for i in 0..n as usize {
+            if na_placement == SortNaPlacement::Remove && is_missing[i] {
+                continue;
+            }
+            *dst.add(out) = ranks[i];
+            out += 1;
         }
         result
+    }
+}
+
+fn assign_average_ranks<T, F>(
+    ranks: &mut [f64],
+    values: &[(T, R_xlen_t)],
+    rank_offset: usize,
+    same_key: F,
+) where
+    F: Fn(&(T, R_xlen_t), &(T, R_xlen_t)) -> bool,
+{
+    let mut i = 0usize;
+    while i < values.len() {
+        let mut j = i + 1;
+        while j < values.len() && same_key(&values[i], &values[j]) {
+            j += 1;
+        }
+        let avg_rank = (rank_offset + i + rank_offset + j + 1) as f64 / 2.0;
+        for item in &values[i..j] {
+            let original_index = item.1;
+            ranks[original_index as usize] = avg_rank;
+        }
+        i = j;
     }
 }
 

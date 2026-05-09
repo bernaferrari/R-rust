@@ -1,0 +1,7 @@
+print(rank(c(3, NA, 1)))
+print(rank(c(3, NA, 1), na.last = FALSE))
+print(rank(c(3, NA, 1), na.last = NA))
+print(rank(c(3, 1, 1)))
+print(rank(c(NA, NA, 1), na.last = TRUE))
+print(rank(c(NA, NA, 1), na.last = FALSE))
+print(rank(c("b", NA, "a", "a")))
