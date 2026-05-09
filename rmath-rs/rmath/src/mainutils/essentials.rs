@@ -5207,6 +5207,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "file.rename",
             "file.copy",
             "file.access",
+            "file.choose",
             "unlink",
             "nzchar",
             "lapply",

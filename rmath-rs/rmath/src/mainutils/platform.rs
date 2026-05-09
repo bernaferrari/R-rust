@@ -1365,12 +1365,9 @@ pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `file.choose()` — interactive file chooser.
-/// Returns empty string in non-interactive mode.
+/// Raises the same cancellation error GNU R reports when no chooser supplies a path.
 pub unsafe fn do_filechoose(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        use crate::sexp::constructors::Rf_mkString;
-        Rf_mkString(b"\0".as_ptr() as *const _)
-    }
+    platform_error("file choice cancelled")
 }
 
 /// R's `file.access()` — check file access permissions.

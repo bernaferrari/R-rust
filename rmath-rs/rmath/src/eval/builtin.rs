@@ -971,6 +971,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_fileaccess,
     },
     EvaluatedBuiltin {
+        name: "file.choose",
+        handler: crate::mainutils::platform::do_filechoose,
+    },
+    EvaluatedBuiltin {
         name: "dir.create",
         handler: crate::mainutils::platform::do_dircreate,
     },
