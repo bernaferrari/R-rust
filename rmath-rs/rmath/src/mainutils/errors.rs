@@ -3106,12 +3106,44 @@ pub unsafe fn R_PrintDeferredWarnings() {
 pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        // Simplified: no i18n support, return TRUE for null args, nil otherwise
-        if isNull(CAR(args)) != 0 && isNull(CADR(args)) != 0 {
-            ScalarLogical(1)
-        } else {
-            globals::R_NilValue()
+
+        let domain = CAR(args);
+        let dirname = CADR(args);
+        if isNull(domain) != 0 && isNull(dirname) != 0 {
+            return ScalarLogical(1);
         }
+
+        let domain_cstr = sexp_string_cstr(domain);
+        let dirname_cstr = sexp_string_cstr(dirname);
+        let domain_ptr = domain_cstr
+            .as_ref()
+            .map_or(ptr::null(), |value| value.as_ptr());
+        let dirname_ptr = dirname_cstr
+            .as_ref()
+            .map_or(ptr::null(), |value| value.as_ptr());
+
+        let result = crate::intl::bindtextdom::libintl_bindtextdomain(domain_ptr, dirname_ptr);
+        if result.is_null() {
+            return globals::R_NilValue();
+        }
+
+        Rf_mkString(result)
+    }
+}
+
+unsafe fn sexp_string_cstr(value: SEXP) -> Option<std::ffi::CString> {
+    unsafe {
+        if isNull(value) != 0 {
+            return None;
+        }
+        if isString(value) == 0 || LENGTH(value) < 1 || isValidString(value) == 0 {
+            return Some(std::ffi::CString::default());
+        }
+        let ptr = CHAR(STRING_ELT(value, 0));
+        if ptr.is_null() {
+            return None;
+        }
+        Some(std::ffi::CString::new(CStr::from_ptr(ptr).to_bytes()).unwrap_or_default())
     }
 }
 

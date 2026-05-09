@@ -4945,6 +4945,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "warning" => Some(crate::mainutils::errors::do_warning),
         "gettext" => Some(crate::mainutils::errors::do_gettext),
         "ngettext" => Some(crate::mainutils::errors::do_ngettext),
+        "bindtextdomain" => Some(crate::mainutils::errors::do_bindtextdomain),
         _ => None,
     }
 }

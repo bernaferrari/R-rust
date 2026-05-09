@@ -1,0 +1,5 @@
+d <- tempdir()
+print(.Internal(bindtextdomain("RPORT_TEST", d)) == d)
+print(.Internal(bindtextdomain("RPORT_TEST", NULL)) == d)
+print(isTRUE(.Internal(bindtextdomain(NULL, NULL))))
+print(is.null(.Internal(bindtextdomain("", NULL))))
