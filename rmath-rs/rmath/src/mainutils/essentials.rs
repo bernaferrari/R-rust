@@ -147,6 +147,32 @@ pub unsafe fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+pub unsafe fn do_at(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
+            return R_NilValue();
+        }
+        let object = crate::eval::eval::Rf_eval(CAR(args), rho);
+        let _object_guard = protect(object);
+        let slot_name = CAR(CDR(args));
+        let slot_args = Rf_cons(object, Rf_cons(slot_name, R_NilValue()));
+        let _slot_args_guard = protect(slot_args);
+        do_slot(_call, op, slot_args, rho)
+    }
+}
+
+pub unsafe fn do_at_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let object = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        let _ = do_set_slot(call, op, args, rho);
+        object
+    }
+}
+
 unsafe fn datetime_c_value(source: SEXP, index: R_xlen_t, class: DatetimeVectorClass) -> f64 {
     unsafe {
         match class {
@@ -5123,6 +5149,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "unique",
             ".primTrace",
             ".primUntrace",
+            "@",
+            "@<-",
             ".cache_class",
             "...elt",
             "...length",

@@ -79,6 +79,8 @@ unsafe fn dispatch_special_by_name(
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
             "~" => crate::mainutils::names::do_tilde(call, op, args, rho),
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
+            "@" => crate::mainutils::essentials::do_at(call, op, args, rho),
+            "@<-" => crate::mainutils::essentials::do_at_set(call, op, args, rho),
             _ => unimplemented_special_form(name),
         }
     }
