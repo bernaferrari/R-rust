@@ -2528,8 +2528,29 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let n = XLENGTH(x);
         let decreasing = named_logical_arg(args, "decreasing").unwrap_or(false);
-        let na_placement = order_na_placement(args);
+        let na_placement = order_na_placement(args, 1);
+        let ordered_indices = ordered_atomic_indices(x, decreasing, na_placement);
 
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, ordered_indices.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let dst = INTEGER(result);
+        for (i, &orig_idx) in ordered_indices.iter().enumerate() {
+            *dst.add(i) = (orig_idx + 1) as c_int;
+        }
+        result
+    }
+}
+
+fn ordered_atomic_indices(
+    x: SEXP,
+    decreasing: bool,
+    na_placement: SortNaPlacement,
+) -> Vec<R_xlen_t> {
+    unsafe {
+        let n = XLENGTH(x);
         let mut missing_indices: Vec<R_xlen_t> = Vec::new();
         let mut ordered_indices: Vec<R_xlen_t> = match TYPEOF(x) {
             t if t == SEXPTYPE::STRSXP => {
@@ -2618,28 +2639,20 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             SortNaPlacement::First => {
                 let mut with_missing = missing_indices;
                 with_missing.extend(ordered_indices);
-                ordered_indices = with_missing;
+                with_missing
             }
-            SortNaPlacement::Last => ordered_indices.extend(missing_indices),
-            SortNaPlacement::Remove => {}
+            SortNaPlacement::Last => {
+                ordered_indices.extend(missing_indices);
+                ordered_indices
+            }
+            SortNaPlacement::Remove => ordered_indices,
         }
-
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, ordered_indices.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = INTEGER(result);
-        for (i, &orig_idx) in ordered_indices.iter().enumerate() {
-            *dst.add(i) = (orig_idx + 1) as c_int;
-        }
-        result
     }
 }
 
-fn order_na_placement(args: SEXP) -> SortNaPlacement {
+fn order_na_placement(args: SEXP, position: usize) -> SortNaPlacement {
     unsafe {
-        let arg = arg_by_name_or_position(args, &["na.last"], 1);
+        let arg = arg_by_name_or_position(args, &["na.last"], position);
         if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) == 0 {
             return SortNaPlacement::Last;
         }
@@ -2675,7 +2688,7 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
         let n = XLENGTH(x);
-        let na_placement = order_na_placement(args);
+        let na_placement = order_na_placement(args, 1);
         let ties_method = rank_ties_method(args);
         let mut missing_indices: Vec<R_xlen_t> = Vec::new();
         let mut ranks = vec![NA_REAL; n as usize];
@@ -24873,36 +24886,52 @@ pub unsafe fn do_as_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 /// R's `sort.list(x, partial, na.last, decreasing, method)` — indices for sorting.
 pub unsafe fn do_sort_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let t = TYPEOF(x);
-        let n = XLENGTH(x);
-
-        let mut indices: Vec<(R_xlen_t, f64)> = Vec::with_capacity(n as usize);
-        for i in 0..n {
-            let v = if t == SEXPTYPE::REALSXP.as_c_int() {
-                *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP.as_c_int() || t == SEXPTYPE::LGLSXP.as_c_int() {
-                let iv = *INTEGER(x).add(i as usize);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-            } else {
-                NA_REAL
-            };
-            indices.push((i, v));
+        let decreasing = sort_logical_arg(args, &["decreasing"], 3).unwrap_or(false);
+        let na_placement = order_na_placement(args, 2);
+        let mut indices = ordered_atomic_indices(x, decreasing, na_placement);
+        if na_placement == SortNaPlacement::Remove {
+            let compressed_positions = nonmissing_compressed_positions(x);
+            for index in &mut indices {
+                *index = compressed_positions[*index as usize];
+            }
         }
-        indices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, indices.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-        for (i, (idx, _)) in indices.iter().enumerate() {
+        for (i, idx) in indices.iter().enumerate() {
             *INTEGER(result).add(i) = (*idx + 1) as c_int; // 1-indexed
         }
         result
+    }
+}
+
+fn nonmissing_compressed_positions(x: SEXP) -> Vec<R_xlen_t> {
+    unsafe {
+        let n = XLENGTH(x);
+        let mut positions = vec![0; n as usize];
+        let mut next = 0;
+        for i in 0..n {
+            let missing = match TYPEOF(x) {
+                t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(x, i)),
+                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                    *INTEGER(x).add(i as usize) == NA_INTEGER
+                }
+                t if t == SEXPTYPE::REALSXP => ISNAN(*REAL(x).add(i as usize)),
+                _ => ISNAN(elt_real_safe(x, i)),
+            };
+            if !missing {
+                positions[i as usize] = next;
+                next += 1;
+            }
+        }
+        positions
     }
 }
 
