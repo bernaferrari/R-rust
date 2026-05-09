@@ -14552,31 +14552,27 @@ pub unsafe fn do_pmatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let x_arg = CAR(args);
         let table_arg = CAR(CDR(args));
         let nomatch_arg = CAR(CDR(CDR(args)));
+        let duplicates_arg = CAR(CDR(CDR(CDR(args))));
         let nomatch = if nomatch_arg.is_null() || nomatch_arg == R_NilValue() {
             NA_INTEGER
         } else {
             real_or_default(nomatch_arg, NA_REAL as f64) as c_int
         };
+        let duplicates_ok = if duplicates_arg.is_null() || duplicates_arg == R_NilValue() {
+            false
+        } else {
+            real_or_default(duplicates_arg, 0.0) != 0.0
+        };
 
         if x_arg.is_null() || x_arg == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        if table_arg.is_null() || table_arg == R_NilValue() {
-            let n = XLENGTH(x_arg).max(1);
-            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _result_guard = protect(result);
-            let dst = INTEGER(result);
-            for i in 0..n {
-                *dst.add(i as usize) = nomatch;
-            }
-            return result;
-        }
-
-        let nx = XLENGTH(x_arg).max(1);
-        let nt = XLENGTH(table_arg).max(1);
+        let nx = XLENGTH(x_arg);
+        let nt = if table_arg.is_null() || table_arg == R_NilValue() {
+            0
+        } else {
+            XLENGTH(table_arg)
+        };
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, nx);
         if result.is_null() {
             return R_NilValue();
@@ -14588,33 +14584,72 @@ pub unsafe fn do_pmatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let mut used = vec![false; nt as usize];
 
         for i in 0..nx {
-            let x_str = elt_to_string(x_arg, i);
+            let x_is_na = as_character_element_is_na(x_arg, i);
+            let x_str = if x_is_na {
+                String::new()
+            } else {
+                elt_to_string(x_arg, i)
+            };
             let mut best_match: c_int = nomatch;
-            // First try exact match
-            for j in 0..nt {
-                if !used[j as usize] {
-                    let t_str = elt_to_string(table_arg, j);
-                    if t_str == x_str {
+            if x_is_na {
+                for j in 0..nt {
+                    if !duplicates_ok && used[j as usize] {
+                        continue;
+                    }
+                    if as_character_element_is_na(table_arg, j) {
                         best_match = (j + 1) as c_int;
-                        used[j as usize] = true;
+                        if !duplicates_ok {
+                            used[j as usize] = true;
+                        }
                         break;
                     }
                 }
+                *dst.add(i as usize) = best_match;
+                continue;
             }
-            // Then try partial match
+
+            if x_str.is_empty() {
+                *dst.add(i as usize) = nomatch;
+                continue;
+            }
+
+            for j in 0..nt {
+                if !duplicates_ok && used[j as usize] {
+                    continue;
+                }
+                if as_character_element_is_na(table_arg, j) {
+                    continue;
+                }
+                if elt_to_string(table_arg, j) == x_str {
+                    best_match = (j + 1) as c_int;
+                    if !duplicates_ok {
+                        used[j as usize] = true;
+                    }
+                    break;
+                }
+            }
+
             if best_match == nomatch {
-                let mut partial: Vec<c_int> = Vec::new();
+                let mut partial_matches = 0usize;
+                let mut partial_index = nomatch;
                 for j in 0..nt {
-                    if !used[j as usize] {
-                        let t_str = elt_to_string(table_arg, j);
-                        if t_str.starts_with(&x_str) {
-                            partial.push(j as c_int);
-                        }
+                    if !duplicates_ok && used[j as usize] {
+                        continue;
+                    }
+                    if as_character_element_is_na(table_arg, j) {
+                        continue;
+                    }
+                    let t_str = elt_to_string(table_arg, j);
+                    if t_str.starts_with(&x_str) {
+                        partial_matches += 1;
+                        partial_index = (j + 1) as c_int;
                     }
                 }
-                if partial.len() == 1 {
-                    best_match = partial[0] + 1;
-                    used[partial[0] as usize] = true;
+                if partial_matches == 1 {
+                    best_match = partial_index;
+                    if !duplicates_ok {
+                        used[(partial_index - 1) as usize] = true;
+                    }
                 }
             }
             *dst.add(i as usize) = best_match;
