@@ -4998,6 +4998,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "integer",
             "numeric",
             "double",
+            "single",
             "complex",
             "character",
             "raw",
@@ -19233,6 +19234,22 @@ pub unsafe fn do_integer_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 /// R's `numeric(length = 0)` / `double(length = 0)` constructor.
 pub unsafe fn do_numeric_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_typed_vector_constructor(args, SEXPTYPE::REALSXP) }
+}
+
+/// R's legacy `single(length = 0)` constructor.
+pub unsafe fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let result = do_typed_vector_constructor(args, SEXPTYPE::REALSXP);
+        if result.is_null() || result == R_NilValue() {
+            return result;
+        }
+
+        let _result_guard = protect(result);
+        let marker = Rf_ScalarLogical(TRUE);
+        let _marker_guard = protect(marker);
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"Csingle".as_ptr()), marker);
+        result
+    }
 }
 
 /// R's `complex(length = 0)` constructor.

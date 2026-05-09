@@ -459,6 +459,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_numeric_constructor,
     },
     EvaluatedBuiltin {
+        name: "single",
+        handler: crate::mainutils::essentials::do_single_constructor,
+    },
+    EvaluatedBuiltin {
         name: "complex",
         handler: crate::mainutils::essentials::do_complex_constructor,
     },
