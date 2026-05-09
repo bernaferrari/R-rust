@@ -920,6 +920,27 @@ pub unsafe fn do_rep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             copy_vector_elt(result, out_idx as R_xlen_t, x, src_idx);
         }
 
+        let x_names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !x_names.is_null()
+            && x_names != R_NilValue()
+            && TYPEOF(x_names) == SEXPTYPE::STRSXP
+            && XLENGTH(x_names) >= n
+        {
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
+            if !names.is_null() {
+                let _names_guard = protect(names);
+                for (out_idx, &src_idx) in indices.iter().enumerate() {
+                    SET_STRING_ELT(names, out_idx as R_xlen_t, STRING_ELT(x_names, src_idx));
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+        }
+
         if sexp_has_class(x, "POSIXct") {
             set_datetime_class_from(result, x, DatetimeVectorClass::Posixct);
         } else if sexp_has_class(x, "Date") {
@@ -932,7 +953,17 @@ pub unsafe fn do_rep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `rep.int(x, times)` — compact repetition helper without names.
 pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { do_rep(call, op, args, rho) }
+    unsafe {
+        let result = do_rep(call, op, args, rho);
+        if !result.is_null() && result != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                R_NilValue(),
+            );
+        }
+        result
+    }
 }
 
 /// R's `rep_len(x, length.out)` — repeat or truncate to an exact length.

@@ -1,0 +1,5 @@
+print(rep(c(a = 1L, b = 2L), 2))
+print(names(rep(c(a = 1L, b = 2L), each = 2)))
+print(rep(c(a = 1L, b = 2L), length.out = 3))
+print(names(rep.int(c(a = 1L, b = 2L), 2)))
+print(names(rep_len(c(a = 1L, b = 2L), 3)))
