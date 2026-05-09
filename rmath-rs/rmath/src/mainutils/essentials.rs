@@ -23722,10 +23722,9 @@ pub unsafe fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut result_type = SEXPTYPE::LGLSXP;
-        let mut ncols: R_xlen_t = 0;
-        let mut nrows: R_xlen_t = 0;
         let mut col_names = Vec::new();
         let mut has_col_names = false;
+        let mut entries = Vec::new();
 
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -23733,27 +23732,47 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
                 let (arg_nrow, arg_ncol) = bind_dims(arg, true);
-                nrows = nrows.max(arg_nrow);
-                ncols += arg_ncol;
                 let name = tag_name(current).unwrap_or_default();
                 if !name.is_empty() {
                     has_col_names = true;
                 }
-                for j in 0..arg_ncol {
-                    if arg_ncol == 1 {
-                        col_names.push(name.clone());
-                    } else if name.is_empty() {
-                        col_names.push(String::new());
-                    } else {
-                        col_names.push(format!("{name}.{j_plus}", j_plus = j + 1));
-                    }
-                }
+                entries.push((arg, arg_nrow, arg_ncol, name));
             }
             current = CDR(current);
         }
 
+        let has_nonzero_extent = entries
+            .iter()
+            .any(|&(_, nrow, ncol, _)| nrow > 0 && ncol > 0);
+        let mut ncols: R_xlen_t = 0;
+        let mut nrows: R_xlen_t = 0;
+        for &(_, arg_nrow, arg_ncol, ref name) in &entries {
+            if has_nonzero_extent && (arg_nrow == 0 || arg_ncol == 0) {
+                continue;
+            }
+            nrows = nrows.max(arg_nrow);
+            ncols += arg_ncol;
+            for j in 0..arg_ncol {
+                if arg_ncol == 1 {
+                    col_names.push(name.clone());
+                } else if name.is_empty() {
+                    col_names.push(String::new());
+                } else {
+                    col_names.push(format!("{name}.{j_plus}", j_plus = j + 1));
+                }
+            }
+        }
+
         if nrows == 0 || ncols == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let result = Rf_allocVector3(result_type, 0);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            set_two_dim_attr(result, nrows, ncols);
+            if has_col_names {
+                set_bind_dimnames(result, R_NilValue(), string_vector(&col_names));
+            }
+            return result;
         }
 
         let total = nrows * ncols;
@@ -23764,23 +23783,23 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _p = protect(result);
 
         let mut col_offset: R_xlen_t = 0;
-        current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                let (arg_nrow, arg_ncol) = bind_dims(arg, true);
-                let arg_len = XLENGTH(arg).max(1);
-
-                for j in 0..arg_ncol {
-                    for i in 0..nrows {
-                        let src_idx = ((j * arg_nrow + (i % arg_nrow)) % arg_len) as R_xlen_t;
-                        let dst_idx = ((col_offset + j) * nrows + i) as R_xlen_t;
-                        copy_bind_value(result, dst_idx, result_type, arg, src_idx);
-                    }
-                }
-                col_offset += arg_ncol;
+        for &(arg, arg_nrow, arg_ncol, _) in &entries {
+            if has_nonzero_extent && (arg_nrow == 0 || arg_ncol == 0) {
+                continue;
             }
-            current = CDR(current);
+            let arg_len = XLENGTH(arg);
+            if arg_len == 0 {
+                continue;
+            }
+
+            for j in 0..arg_ncol {
+                for i in 0..nrows {
+                    let src_idx = ((j * arg_nrow + (i % arg_nrow)) % arg_len) as R_xlen_t;
+                    let dst_idx = ((col_offset + j) * nrows + i) as R_xlen_t;
+                    copy_bind_value(result, dst_idx, result_type, arg, src_idx);
+                }
+            }
+            col_offset += arg_ncol;
         }
 
         set_two_dim_attr(result, nrows, ncols);
@@ -23795,10 +23814,9 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut result_type = SEXPTYPE::LGLSXP;
-        let mut ncols: R_xlen_t = 0;
-        let mut nrows: R_xlen_t = 0;
         let mut row_names = Vec::new();
         let mut has_row_names = false;
+        let mut entries = Vec::new();
 
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -23806,27 +23824,47 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !arg.is_null() && arg != R_NilValue() {
                 result_type = bind_common_type(result_type, SEXPTYPE(TYPEOF(arg)));
                 let (arg_nrow, arg_ncol) = bind_dims(arg, false);
-                ncols = ncols.max(arg_ncol);
-                nrows += arg_nrow;
                 let name = tag_name(current).unwrap_or_default();
                 if !name.is_empty() {
                     has_row_names = true;
                 }
-                for i in 0..arg_nrow {
-                    if arg_nrow == 1 {
-                        row_names.push(name.clone());
-                    } else if name.is_empty() {
-                        row_names.push(String::new());
-                    } else {
-                        row_names.push(format!("{name}.{i_plus}", i_plus = i + 1));
-                    }
-                }
+                entries.push((arg, arg_nrow, arg_ncol, name));
             }
             current = CDR(current);
         }
 
+        let has_nonzero_extent = entries
+            .iter()
+            .any(|&(_, nrow, ncol, _)| nrow > 0 && ncol > 0);
+        let mut ncols: R_xlen_t = 0;
+        let mut nrows: R_xlen_t = 0;
+        for &(_, arg_nrow, arg_ncol, ref name) in &entries {
+            if has_nonzero_extent && (arg_nrow == 0 || arg_ncol == 0) {
+                continue;
+            }
+            ncols = ncols.max(arg_ncol);
+            nrows += arg_nrow;
+            for i in 0..arg_nrow {
+                if arg_nrow == 1 {
+                    row_names.push(name.clone());
+                } else if name.is_empty() {
+                    row_names.push(String::new());
+                } else {
+                    row_names.push(format!("{name}.{i_plus}", i_plus = i + 1));
+                }
+            }
+        }
+
         if nrows == 0 || ncols == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            let result = Rf_allocVector3(result_type, 0);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            set_two_dim_attr(result, nrows, ncols);
+            if has_row_names {
+                set_bind_dimnames(result, string_vector(&row_names), R_NilValue());
+            }
+            return result;
         }
 
         let total = nrows * ncols;
@@ -23837,23 +23875,23 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _p = protect(result);
 
         let mut row_offset: R_xlen_t = 0;
-        current = args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                let (arg_nrow, arg_ncol) = bind_dims(arg, false);
-                let arg_len = XLENGTH(arg).max(1);
-
-                for j in 0..ncols {
-                    for i in 0..arg_nrow {
-                        let src_idx = ((j * arg_nrow + i) % arg_len) as R_xlen_t;
-                        let dst_idx = (j * nrows + row_offset + i) as R_xlen_t;
-                        copy_bind_value(result, dst_idx, result_type, arg, src_idx);
-                    }
-                }
-                row_offset += arg_nrow;
+        for &(arg, arg_nrow, arg_ncol, _) in &entries {
+            if has_nonzero_extent && (arg_nrow == 0 || arg_ncol == 0) {
+                continue;
             }
-            current = CDR(current);
+            let arg_len = XLENGTH(arg);
+            if arg_len == 0 {
+                continue;
+            }
+
+            for j in 0..ncols {
+                for i in 0..arg_nrow {
+                    let src_idx = ((j * arg_nrow + i) % arg_len) as R_xlen_t;
+                    let dst_idx = (j * nrows + row_offset + i) as R_xlen_t;
+                    copy_bind_value(result, dst_idx, result_type, arg, src_idx);
+                }
+            }
+            row_offset += arg_nrow;
         }
 
         set_two_dim_attr(result, nrows, ncols);
