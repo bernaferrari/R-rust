@@ -1,0 +1,8 @@
+print(signif(integer(0)))
+print(typeof(signif(integer(0))))
+print(trunc(integer(0)))
+print(typeof(trunc(integer(0))))
+print(signif(numeric(0)))
+print(typeof(signif(numeric(0))))
+print(trunc(numeric(0)))
+print(typeof(trunc(numeric(0))))

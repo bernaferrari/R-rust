@@ -14753,7 +14753,7 @@ pub unsafe fn do_signif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         } else {
             real_or_default(digits_arg, 6.0).max(1.0)
         };
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -14791,7 +14791,7 @@ pub unsafe fn do_trunc(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
         }
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
