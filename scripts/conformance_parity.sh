@@ -96,6 +96,7 @@ find_rust_rlib() {
     local rust_rlibs=(
         "$ROOT_DIR"/target/debug/deps/librmath-*.rlib
         "$ROOT_DIR"/target/debug/deps/librmath.rlib
+        "$ROOT_DIR"/target/debug/librmath.rlib
     )
     shopt -u nullglob
     if (( ${#rust_rlibs[@]} > 0 )); then

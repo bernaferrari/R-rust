@@ -5251,6 +5251,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "print.table",
             "print.factor",
             "print.raw",
+            "summary.default",
             "summary.data.frame",
             "format.data.frame",
             // Matrix/linear algebra
@@ -5415,10 +5416,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "packageStartupMessage",
             // Environment completion
             "parent.env",
-            "set_parent.env",
-            "env_name",
             "environmentName",
-            "is_empty",
             "exists",
             "get",
             "assign",
@@ -5495,10 +5493,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "capabilities",
             // Complete data operations — subset
             "subset",
-            // Complete I/O — enhanced cat, message, warning
-            "cat_enhanced",
-            "message_enhanced",
-            "warning_enhanced",
             // Complete R runtime — match.call, sys.nframe, sys.function, on.exit
             "match.call",
             "sys.nframe",
@@ -5559,10 +5553,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             // Complete R runtime — serialization
             "readRDS",
             "saveRDS",
-            // Complete R runtime — parallel operations
-            "mclapply",
-            "future_lapply",
-            "foreach",
             // Complete error handling — calling handlers and restarts
             "withCallingHandlers",
             "computeRestarts",
@@ -5571,7 +5561,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "tryInvokeRestart",
             "isRestart",
             "restartDescription",
-            "restarts",
             // Complete package system
             ".libPaths",
             "library",
@@ -8675,7 +8664,9 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             elt_to_string(mode_arg, 0)
         };
-        let found = if mode == "function" {
+        let found = if crate::eval::builtin::is_hidden_builtin_name(&name) {
+            false
+        } else if mode == "function" {
             let value = if inherits {
                 crate::sexp::envir::R_findVar(sym, env)
             } else {

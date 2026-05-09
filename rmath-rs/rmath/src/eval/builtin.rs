@@ -83,6 +83,9 @@ pub(super) fn unevaluated_builtin_handler(name: &str) -> Option<UnevaluatedBuilt
 /// materialized into every session environment, so reflective helpers such as
 /// `exists()` need a shared view of this table.
 pub(crate) fn has_builtin_handler(name: &str) -> bool {
+    if is_hidden_builtin_name(name) {
+        return false;
+    }
     EVALUATED_BUILTINS
         .iter()
         .any(|builtin| builtin.name == name)
@@ -97,6 +100,27 @@ pub(crate) fn builtin_handler_names() -> impl Iterator<Item = &'static str> {
         .iter()
         .map(|builtin| builtin.name)
         .chain(UNEVALUATED_BUILTINS.iter().map(|builtin| builtin.name))
+        .filter(|name| !is_hidden_builtin_name(name))
+}
+
+pub(crate) fn is_hidden_builtin_name(name: &str) -> bool {
+    matches!(
+        name,
+        "print.integer"
+            | "print.numeric"
+            | "print.logical"
+            | "print.character"
+            | "print.complex"
+            | "print.environment"
+            | "print.formula"
+            | "print.call"
+            | "print.pairlist"
+            | "print.raw"
+            | "summary.numeric"
+            | "summary.integer"
+            | "summary.logical"
+            | "summary.character"
+    )
 }
 
 pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
@@ -1091,6 +1115,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_summary_default,
     },
     EvaluatedBuiltin {
+        name: "summary.default",
+        handler: crate::mainutils::essentials::do_summary_default,
+    },
+    EvaluatedBuiltin {
         name: "str",
         handler: crate::mainutils::essentials::do_str,
     },
@@ -1615,20 +1643,12 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_parent_env,
     },
     EvaluatedBuiltin {
-        name: "set_parent.env",
-        handler: crate::mainutils::essentials::do_set_parent_env,
-    },
-    EvaluatedBuiltin {
-        name: "env_name",
-        handler: crate::mainutils::essentials::do_env_name,
-    },
-    EvaluatedBuiltin {
         name: "environmentName",
         handler: crate::mainutils::essentials::do_environment_name,
     },
     EvaluatedBuiltin {
-        name: "is_empty",
-        handler: crate::mainutils::essentials::do_is_empty,
+        name: "print.function",
+        handler: crate::mainutils::essentials::do_print_function,
     },
     EvaluatedBuiltin {
         name: "print.integer",
@@ -1651,24 +1671,12 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_print_complex,
     },
     EvaluatedBuiltin {
-        name: "print.function",
-        handler: crate::mainutils::essentials::do_print_function,
-    },
-    EvaluatedBuiltin {
         name: "print.environment",
         handler: crate::mainutils::essentials::do_print_environment,
     },
     EvaluatedBuiltin {
         name: "print.formula",
         handler: crate::mainutils::essentials::do_print_formula,
-    },
-    EvaluatedBuiltin {
-        name: "print.call",
-        handler: crate::mainutils::essentials::do_print_call,
-    },
-    EvaluatedBuiltin {
-        name: "print.pairlist",
-        handler: crate::mainutils::essentials::do_print_pairlist,
     },
     EvaluatedBuiltin {
         name: "print.raw",
@@ -1943,18 +1951,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_subset_named,
     },
     EvaluatedBuiltin {
-        name: "cat_enhanced",
-        handler: crate::mainutils::essentials::do_cat_enhanced,
-    },
-    EvaluatedBuiltin {
-        name: "message_enhanced",
-        handler: crate::mainutils::essentials::do_message_enhanced,
-    },
-    EvaluatedBuiltin {
-        name: "warning_enhanced",
-        handler: crate::mainutils::essentials::do_warning_enhanced,
-    },
-    EvaluatedBuiltin {
         name: "match.call",
         handler: crate::mainutils::essentials::do_match_call,
     },
@@ -2087,18 +2083,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_saveRDS,
     },
     EvaluatedBuiltin {
-        name: "mclapply",
-        handler: crate::mainutils::essentials::do_mclapply,
-    },
-    EvaluatedBuiltin {
-        name: "future_lapply",
-        handler: crate::mainutils::essentials::do_future_lapply,
-    },
-    EvaluatedBuiltin {
-        name: "foreach",
-        handler: crate::mainutils::essentials::do_foreach,
-    },
-    EvaluatedBuiltin {
         name: "computeRestarts",
         handler: crate::mainutils::essentials::do_computeRestarts,
     },
@@ -2121,10 +2105,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "restartDescription",
         handler: crate::mainutils::essentials::do_restartDescription,
-    },
-    EvaluatedBuiltin {
-        name: "restarts",
-        handler: crate::mainutils::essentials::do_restarts,
     },
     EvaluatedBuiltin {
         name: ".libPaths",
@@ -2591,10 +2571,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::objects::do_inherits,
     },
     EvaluatedBuiltin {
-        name: "setattr",
-        handler: crate::mainutils::essentials::do_setattr,
-    },
-    EvaluatedBuiltin {
         name: "stop",
         handler: crate::mainutils::essentials::do_stop,
     },
@@ -2689,10 +2665,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "proc.time",
         handler: crate::mainutils::essentials::do_proc_time,
-    },
-    EvaluatedBuiltin {
-        name: "as.list.generic",
-        handler: crate::mainutils::essentials::do_as_list_generic,
     },
     EvaluatedBuiltin {
         name: "class<-",
