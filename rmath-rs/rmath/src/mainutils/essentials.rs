@@ -21581,7 +21581,7 @@ unsafe fn deparse_one_line(expr: SEXP) -> String {
     }
 }
 
-/// R's `aggregate(x, by, FUN)` — aggregate by groups (simplified).
+/// R's `aggregate(x, by, FUN)` — aggregate numeric vectors by list columns.
 pub unsafe fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -21590,7 +21590,7 @@ pub unsafe fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        if let Some(result) = aggregate_numeric_by_one_group(x, by, fun, call) {
+        if let Some(result) = aggregate_numeric_by_groups(x, by, fun, call) {
             return result;
         }
         if !fun.is_null() && fun != R_NilValue() {
@@ -21619,29 +21619,103 @@ enum AggregateSummary {
     Iqr,
 }
 
-unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
+#[derive(Clone)]
+struct AggregateGroupState {
+    sum: f64,
+    count: usize,
+    has_na: bool,
+    min: f64,
+    max: f64,
+    prod: f64,
+    values: Vec<f64>,
+}
+
+impl AggregateGroupState {
+    fn new() -> Self {
+        Self {
+            sum: 0.0,
+            count: 0,
+            has_na: false,
+            min: 0.0,
+            max: 0.0,
+            prod: 1.0,
+            values: Vec::new(),
+        }
+    }
+
+    fn record(&mut self, value: f64, summary: AggregateSummary) {
+        if matches!(summary, AggregateSummary::Length) {
+            self.count += 1;
+            return;
+        }
+        if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+            self.has_na = true;
+            return;
+        }
+        if self.count == 0 {
+            self.min = value;
+            self.max = value;
+        } else {
+            self.min = self.min.min(value);
+            self.max = self.max.max(value);
+        }
+        self.sum += value;
+        self.prod *= value;
+        self.values.push(value);
+        self.count += 1;
+    }
+
+    fn summarize(mut self, summary: AggregateSummary) -> f64 {
+        if self.has_na || self.count == 0 {
+            return NA_REAL;
+        }
+        match summary {
+            AggregateSummary::Mean => self.sum / self.count as f64,
+            AggregateSummary::Sum => self.sum,
+            AggregateSummary::Prod => self.prod,
+            AggregateSummary::Min => self.min,
+            AggregateSummary::Max => self.max,
+            AggregateSummary::Length => self.count as f64,
+            AggregateSummary::Median => median_value(&mut self.values),
+            AggregateSummary::Sd => sample_sd_value(&self.values),
+            AggregateSummary::Var => sample_variance_value(&self.values),
+            AggregateSummary::Iqr => iqr_value(&mut self.values),
+        }
+    }
+}
+
+unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
     unsafe {
         let summary = aggregate_summary_fun(fun, call)?;
         let x_type = TYPEOF(x);
         if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
             return None;
         }
-        if by.is_null() || by == R_NilValue() || TYPEOF(by) != SEXPTYPE::VECSXP || XLENGTH(by) != 1
+        if by.is_null() || by == R_NilValue() || TYPEOF(by) != SEXPTYPE::VECSXP || XLENGTH(by) == 0
         {
             return None;
         }
-        let group = VECTOR_ELT(by, 0);
-        if group.is_null() || group == R_NilValue() || XLENGTH(group) != XLENGTH(x) {
-            return None;
-        }
-        let group_type = TYPEOF(group);
-        if group_type != SEXPTYPE::STRSXP && group_type != SEXPTYPE::INTSXP {
-            return None;
+        let mut group_columns = Vec::with_capacity(XLENGTH(by) as usize);
+        for i in 0..XLENGTH(by) {
+            let group = VECTOR_ELT(by, i);
+            if group.is_null() || group == R_NilValue() || XLENGTH(group) != XLENGTH(x) {
+                return None;
+            }
+            let group_type = TYPEOF(group);
+            if group_type != SEXPTYPE::STRSXP && group_type != SEXPTYPE::INTSXP {
+                return None;
+            }
+            group_columns.push((group, group_type));
         }
 
-        let mut groups = BTreeMap::<String, (f64, usize, bool, f64, f64, f64, Vec<f64>)>::new();
+        let mut groups = BTreeMap::<Vec<String>, (Vec<String>, AggregateGroupState)>::new();
         for i in 0..XLENGTH(x) {
-            let key = aggregate_group_key(group, group_type, i)?;
+            let mut labels = Vec::with_capacity(group_columns.len());
+            for &(group, group_type) in &group_columns {
+                labels.push(aggregate_group_key(group, group_type, i)?);
+            }
+            let mut order_key = labels.clone();
+            order_key.reverse();
             let value = if x_type == SEXPTYPE::REALSXP {
                 *REAL(x).add(i as usize)
             } else {
@@ -21652,85 +21726,72 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEX
                     value as f64
                 }
             };
-            let entry = groups
-                .entry(key)
-                .or_insert((0.0, 0, false, 0.0, 0.0, 1.0, Vec::new()));
-            if matches!(summary, AggregateSummary::Length) {
-                entry.1 += 1;
-                continue;
-            }
-            if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
-                entry.2 = true;
-            } else {
-                if entry.1 == 0 {
-                    entry.3 = value;
-                    entry.4 = value;
-                } else {
-                    entry.3 = entry.3.min(value);
-                    entry.4 = entry.4.max(value);
-                }
-                entry.0 += value;
-                entry.5 *= value;
-                entry.6.push(value);
-                entry.1 += 1;
-            }
+            groups
+                .entry(order_key)
+                .or_insert_with(|| (labels, AggregateGroupState::new()))
+                .1
+                .record(value, summary);
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let group_count = group_columns.len() as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, group_count + 1);
         if result.is_null() {
             return Some(result);
         }
         let _result_guard = protect(result);
         let n = groups.len() as R_xlen_t;
-        let group_col = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         let value_col = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if group_col.is_null() || value_col.is_null() {
+        if value_col.is_null() {
             return Some(R_NilValue());
         }
-        let _group_guard = protect(group_col);
         let _value_guard = protect(value_col);
-        for (i, (key, (sum, count, has_na, min, max, prod, mut values))) in
-            groups.into_iter().enumerate()
-        {
-            let key_c = CString::new(key).unwrap_or_default();
-            SET_STRING_ELT(group_col, i as R_xlen_t, Rf_mkChar(key_c.as_ptr()));
-            *REAL(value_col).add(i) = if has_na || count == 0 {
-                NA_REAL
-            } else {
-                match summary {
-                    AggregateSummary::Mean => sum / count as f64,
-                    AggregateSummary::Sum => sum,
-                    AggregateSummary::Prod => prod,
-                    AggregateSummary::Min => min,
-                    AggregateSummary::Max => max,
-                    AggregateSummary::Length => count as f64,
-                    AggregateSummary::Median => median_value(&mut values),
-                    AggregateSummary::Sd => sample_sd_value(&values),
-                    AggregateSummary::Var => sample_variance_value(&values),
-                    AggregateSummary::Iqr => iqr_value(&mut values),
-                }
-            };
+
+        let mut group_result_cols = Vec::with_capacity(group_columns.len());
+        for j in 0..group_columns.len() {
+            let group_col = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            if group_col.is_null() {
+                return Some(R_NilValue());
+            }
+            let _group_guard = protect(group_col);
+            SET_VECTOR_ELT(result, j as R_xlen_t, group_col);
+            group_result_cols.push(group_col);
         }
-        SET_VECTOR_ELT(result, 0, group_col);
-        SET_VECTOR_ELT(result, 1, value_col);
+
+        for (i, (_order_key, (labels, state))) in groups.into_iter().enumerate() {
+            for (j, value) in labels.into_iter().enumerate() {
+                let value_c = CString::new(value).unwrap_or_default();
+                SET_STRING_ELT(
+                    group_result_cols[j],
+                    i as R_xlen_t,
+                    Rf_mkChar(value_c.as_ptr()),
+                );
+            }
+            *REAL(value_col).add(i) = state.summarize(summary);
+        }
+        SET_VECTOR_ELT(result, group_count, value_col);
 
         let by_names =
             crate::sexp::attrib_core::getAttrib(by, crate::sexp::attrib_core::R_NamesSymbol());
-        let group_name = if !by_names.is_null()
-            && by_names != R_NilValue()
-            && TYPEOF(by_names) == SEXPTYPE::STRSXP
-            && XLENGTH(by_names) > 0
-        {
-            let name = string_at_or_empty(by_names, 0);
-            if name.is_empty() {
-                "Group.1".to_string()
+        let mut names = Vec::with_capacity(group_columns.len() + 1);
+        for i in 0..group_columns.len() {
+            let group_name = if !by_names.is_null()
+                && by_names != R_NilValue()
+                && TYPEOF(by_names) == SEXPTYPE::STRSXP
+                && XLENGTH(by_names) > i as R_xlen_t
+            {
+                let name = string_at_or_empty(by_names, i as R_xlen_t);
+                if name.is_empty() {
+                    format!("Group.{}", i + 1)
+                } else {
+                    name
+                }
             } else {
-                name
-            }
-        } else {
-            "Group.1".to_string()
-        };
-        set_string_names(result, &[group_name, "x".to_string()]);
+                format!("Group.{}", i + 1)
+            };
+            names.push(group_name);
+        }
+        names.push("x".to_string());
+        set_string_names(result, &names);
         set_compact_row_names(result, n);
         set_data_frame_class(result);
         Some(result)

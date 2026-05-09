@@ -1,0 +1,7 @@
+z <- aggregate(c(1, 2, 3, 4, 5), list(g = c("b", "a", "b", "a", "b"), h = c("x", "x", "y", "y", "x")), sum)
+cat(paste(names(z), collapse = "|"), "\n", sep = "")
+cat(paste(z[[1]], collapse = "|"), "\n", sep = "")
+cat(paste(z[[2]], collapse = "|"), "\n", sep = "")
+cat(paste(sprintf("%.12g", z[[3]]), collapse = "|"), "\n", sep = "")
+cat(paste(class(z), collapse = "|"), "\n", sep = "")
+cat(paste(dim(z), collapse = "|"), "\n", sep = "")
