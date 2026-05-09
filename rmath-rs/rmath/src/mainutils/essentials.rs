@@ -23647,65 +23647,13 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's `parallel::mclapply(X, FUN, ...)` — parallel lapply (simplified serial version).
-pub unsafe fn do_mclapply(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let fun = CAR(CDR(args));
-
-        if x.is_null() || x == R_NilValue() || fun.is_null() || fun == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let n = XLENGTH(x).max(1) as usize;
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        let dst = (*result).gengc_next_node as *mut SEXP;
-        for i in 0..n {
-            let elt = if TYPEOF(x) == SEXPTYPE::VECSXP {
-                let src = (*x).gengc_next_node as *const SEXP;
-                *src.add(i)
-            } else {
-                R_NilValue()
-            };
-            *dst.add(i) = elt;
-        }
-        result
-    }
+pub unsafe fn do_mclapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_lapply(call, op, args, rho) }
 }
 
 /// R's `future.apply::future_lapply(X, FUN, ...)` — future lapply (simplified serial version).
-pub unsafe fn do_future_lapply(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let fun = CAR(CDR(args));
-
-        if x.is_null() || x == R_NilValue() || fun.is_null() || fun == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let n = XLENGTH(x).max(1) as usize;
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-
-        let dst = (*result).gengc_next_node as *mut SEXP;
-        for i in 0..n {
-            let elt = if TYPEOF(x) == SEXPTYPE::VECSXP {
-                let src = (*x).gengc_next_node as *const SEXP;
-                *src.add(i)
-            } else {
-                R_NilValue()
-            };
-            *dst.add(i) = elt;
-        }
-        result
-    }
+pub unsafe fn do_future_lapply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { do_lapply(call, op, args, rho) }
 }
 
 /// R's `doParallel::foreach(...)` — parallel foreach (simplified serial version).
