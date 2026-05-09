@@ -21684,13 +21684,17 @@ impl AggregateGroupState {
     }
 }
 
+struct AggregateInputColumn {
+    name: String,
+    data: SEXP,
+    data_type: c_int,
+}
+
 unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
     unsafe {
         let summary = aggregate_summary_fun(fun, call)?;
-        let x_type = TYPEOF(x);
-        if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
-            return None;
-        }
+        let input_columns = aggregate_input_columns(x)?;
+        let row_count = aggregate_input_row_count(&input_columns)?;
         if by.is_null() || by == R_NilValue() || TYPEOF(by) != SEXPTYPE::VECSXP || XLENGTH(by) == 0
         {
             return None;
@@ -21698,7 +21702,7 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
         let mut group_columns = Vec::with_capacity(XLENGTH(by) as usize);
         for i in 0..XLENGTH(by) {
             let group = VECTOR_ELT(by, i);
-            if group.is_null() || group == R_NilValue() || XLENGTH(group) != XLENGTH(x) {
+            if group.is_null() || group == R_NilValue() || XLENGTH(group) != row_count {
                 return None;
             }
             let group_type = TYPEOF(group);
@@ -21708,43 +21712,38 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
             group_columns.push((group, group_type));
         }
 
-        let mut groups = BTreeMap::<Vec<String>, (Vec<String>, AggregateGroupState)>::new();
-        for i in 0..XLENGTH(x) {
+        let mut groups = BTreeMap::<Vec<String>, (Vec<String>, Vec<AggregateGroupState>)>::new();
+        for i in 0..row_count {
             let mut labels = Vec::with_capacity(group_columns.len());
             for &(group, group_type) in &group_columns {
                 labels.push(aggregate_group_key(group, group_type, i)?);
             }
             let mut order_key = labels.clone();
             order_key.reverse();
-            let value = if x_type == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else {
-                let value = *INTEGER(x).add(i as usize);
-                if value == NA_INTEGER {
-                    NA_REAL
-                } else {
-                    value as f64
-                }
-            };
-            groups
+            let states = &mut groups
                 .entry(order_key)
-                .or_insert_with(|| (labels, AggregateGroupState::new()))
-                .1
-                .record(value, summary);
+                .or_insert_with(|| {
+                    (
+                        labels,
+                        vec![AggregateGroupState::new(); input_columns.len()],
+                    )
+                })
+                .1;
+            for (column, state) in input_columns.iter().zip(states.iter_mut()) {
+                state.record(aggregate_column_value(column, i), summary);
+            }
         }
 
         let group_count = group_columns.len() as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, group_count + 1);
+        let result = Rf_allocVector3(
+            SEXPTYPE::VECSXP,
+            group_count + input_columns.len() as R_xlen_t,
+        );
         if result.is_null() {
             return Some(result);
         }
         let _result_guard = protect(result);
         let n = groups.len() as R_xlen_t;
-        let value_col = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if value_col.is_null() {
-            return Some(R_NilValue());
-        }
-        let _value_guard = protect(value_col);
 
         let mut group_result_cols = Vec::with_capacity(group_columns.len());
         for j in 0..group_columns.len() {
@@ -21757,7 +21756,18 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
             group_result_cols.push(group_col);
         }
 
-        for (i, (_order_key, (labels, state))) in groups.into_iter().enumerate() {
+        let mut value_cols = Vec::with_capacity(input_columns.len());
+        for j in 0..input_columns.len() {
+            let value_col = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+            if value_col.is_null() {
+                return Some(R_NilValue());
+            }
+            let _value_guard = protect(value_col);
+            SET_VECTOR_ELT(result, group_count + j as R_xlen_t, value_col);
+            value_cols.push(value_col);
+        }
+
+        for (i, (_order_key, (labels, states))) in groups.into_iter().enumerate() {
             for (j, value) in labels.into_iter().enumerate() {
                 let value_c = CString::new(value).unwrap_or_default();
                 SET_STRING_ELT(
@@ -21766,13 +21776,14 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
                     Rf_mkChar(value_c.as_ptr()),
                 );
             }
-            *REAL(value_col).add(i) = state.summarize(summary);
+            for (value_col, state) in value_cols.iter().zip(states.into_iter()) {
+                *REAL(*value_col).add(i) = state.summarize(summary);
+            }
         }
-        SET_VECTOR_ELT(result, group_count, value_col);
 
         let by_names =
             crate::sexp::attrib_core::getAttrib(by, crate::sexp::attrib_core::R_NamesSymbol());
-        let mut names = Vec::with_capacity(group_columns.len() + 1);
+        let mut names = Vec::with_capacity(group_columns.len() + input_columns.len());
         for i in 0..group_columns.len() {
             let group_name = if !by_names.is_null()
                 && by_names != R_NilValue()
@@ -21790,11 +21801,95 @@ unsafe fn aggregate_numeric_by_groups(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) 
             };
             names.push(group_name);
         }
-        names.push("x".to_string());
+        names.extend(input_columns.into_iter().map(|column| column.name));
         set_string_names(result, &names);
         set_compact_row_names(result, n);
         set_data_frame_class(result);
         Some(result)
+    }
+}
+
+unsafe fn aggregate_input_columns(x: SEXP) -> Option<Vec<AggregateInputColumn>> {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => {
+                Some(vec![AggregateInputColumn {
+                    name: "x".to_string(),
+                    data: x,
+                    data_type: t,
+                }])
+            }
+            t if t == SEXPTYPE::VECSXP => {
+                let names = crate::sexp::attrib_core::getAttrib(
+                    x,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                let mut columns = Vec::with_capacity(XLENGTH(x) as usize);
+                for i in 0..XLENGTH(x) {
+                    let column = VECTOR_ELT(x, i);
+                    if column.is_null() || column == R_NilValue() {
+                        return None;
+                    }
+                    let data_type = TYPEOF(column);
+                    if data_type != SEXPTYPE::INTSXP && data_type != SEXPTYPE::REALSXP {
+                        return None;
+                    }
+                    let name = if !names.is_null()
+                        && names != R_NilValue()
+                        && TYPEOF(names) == SEXPTYPE::STRSXP
+                        && XLENGTH(names) > i
+                    {
+                        let candidate = string_at_or_empty(names, i);
+                        if candidate.is_empty() {
+                            format!("x.{}", i + 1)
+                        } else {
+                            candidate
+                        }
+                    } else {
+                        format!("x.{}", i + 1)
+                    };
+                    columns.push(AggregateInputColumn {
+                        name,
+                        data: column,
+                        data_type,
+                    });
+                }
+                if columns.is_empty() {
+                    None
+                } else {
+                    Some(columns)
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+fn aggregate_input_row_count(columns: &[AggregateInputColumn]) -> Option<R_xlen_t> {
+    let first = columns.first()?;
+    let row_count = unsafe { XLENGTH(first.data) };
+    if columns
+        .iter()
+        .all(|column| unsafe { XLENGTH(column.data) } == row_count)
+    {
+        Some(row_count)
+    } else {
+        None
+    }
+}
+
+unsafe fn aggregate_column_value(column: &AggregateInputColumn, i: R_xlen_t) -> f64 {
+    unsafe {
+        if column.data_type == SEXPTYPE::REALSXP {
+            *REAL(column.data).add(i as usize)
+        } else {
+            let value = *INTEGER(column.data).add(i as usize);
+            if value == NA_INTEGER {
+                NA_REAL
+            } else {
+                value as f64
+            }
+        }
     }
 }
 
