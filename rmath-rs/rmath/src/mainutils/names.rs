@@ -4956,6 +4956,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "interruptsSuspended" => Some(crate::mainutils::errors::do_interruptsSuspended),
         "debug" | "undebug" | "isdebugged" | "debugonce" => Some(crate::mainutils::debug::do_debug),
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
+        "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
         _ => None,
     }
 }

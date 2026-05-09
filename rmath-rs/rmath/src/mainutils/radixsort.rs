@@ -10,6 +10,7 @@
 //! This module ports the core integer radix sort algorithm as standalone
 //! Rust functions, plus the full do_radixsort SEXP wrapper.
 
+use std::ffi::CStr;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
@@ -17,7 +18,7 @@ use crate::eval::attrib_core::setAttrib;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::protect::{ProtectGuard, protect};
 use crate::sexp::symbol::Rf_install;
 
@@ -1018,8 +1019,7 @@ pub unsafe fn get_newo() -> *mut c_int {
 /// Argument order (from the R side): `nalast, decreasing, retGrp, sortStr, ...`
 /// where `...` are the vectors to sort.
 ///
-/// Currently supports INTSXP and LGLSXP vectors.
-/// REALSXP and STRSXP are not yet implemented.
+/// Currently supports INTSXP, LGLSXP, REALSXP, and STRSXP vectors.
 pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n: c_int = -1;
@@ -1135,7 +1135,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                 tmp = dsorted(xd, n);
             }
             t if t == SEXPTYPE::STRSXP => {
-                tmp = csorted(xd, n);
+                tmp = csorted(x as *mut c_void, n);
             }
             _ => {
                 error(&format!("First arg is type '{}', not yet supported", xtype));
@@ -1175,7 +1175,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                     dsort(xd, o, n);
                 }
                 t if t == SEXPTYPE::STRSXP => {
-                    csort(xd, o, n);
+                    csort(x as *mut c_void, o, n);
                 }
                 _ => {
                     error(&format!("unsupported type in sort: {}", xtype));
@@ -1723,43 +1723,149 @@ pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
 }
 
 /// Recursive radix sort for character strings (STRSXP vectors).
-///
-/// Requires CHARSXP access infrastructure to read string data.
-/// Currently returns null — needs full CHARSXP/STRING_ELT support.
 pub unsafe fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
-    unsafe { error("Not yet used, still using iradix instead") }
+    _xsub
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CharacterSortKey<'a> {
+    Missing,
+    Value(&'a [u8]),
+}
+
+unsafe fn character_sort_key<'a>(x: SEXP, index: usize) -> CharacterSortKey<'a> {
+    unsafe {
+        let charsxp = STRING_ELT(x, index as R_xlen_t);
+        if charsxp.is_null() || charsxp == R_NaString() {
+            CharacterSortKey::Missing
+        } else {
+            CharacterSortKey::Value(CStr::from_ptr(CHAR(charsxp)).to_bytes())
+        }
+    }
+}
+
+fn compare_character_keys(a: CharacterSortKey<'_>, b: CharacterSortKey<'_>) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    let nalast = unsafe { with_radix_state(|s| s.nalast) };
+    let order = unsafe { with_radix_state(|s| s.order) };
+    let ord = match (a, b) {
+        (CharacterSortKey::Missing, CharacterSortKey::Missing) => Ordering::Equal,
+        (CharacterSortKey::Missing, CharacterSortKey::Value(_)) => {
+            if nalast == 1 {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        }
+        (CharacterSortKey::Value(_), CharacterSortKey::Missing) => {
+            if nalast == 1 {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }
+        (CharacterSortKey::Value(left), CharacterSortKey::Value(right)) => left.cmp(right),
+    };
+
+    if order < 0
+        && !matches!(
+            (a, b),
+            (CharacterSortKey::Missing, _) | (_, CharacterSortKey::Missing)
+        )
+    {
+        ord.reverse()
+    } else {
+        ord
+    }
+}
+
+fn same_character_group(a: CharacterSortKey<'_>, b: CharacterSortKey<'_>) -> bool {
+    match (a, b) {
+        (CharacterSortKey::Missing, CharacterSortKey::Missing) => true,
+        (CharacterSortKey::Value(left), CharacterSortKey::Value(right)) => left == right,
+        _ => false,
+    }
 }
 
 /// Sort dispatcher for character data (STRSXP vectors).
-///
-/// Requires CHARSXP access infrastructure.
-/// Currently returns null — needs full CHARSXP/STRING_ELT support.
-pub unsafe fn csort(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
-    unsafe { error("Not yet used, still using iradix instead") }
+pub unsafe fn csort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+    unsafe {
+        let x = x as SEXP;
+        let nalast = with_radix_state(|s| s.nalast);
+        let mut indices: Vec<usize> = (0..n as usize).collect();
+        indices.sort_by(|&left, &right| {
+            let left_key = character_sort_key(x, left);
+            let right_key = character_sort_key(x, right);
+            compare_character_keys(left_key, right_key).then_with(|| left.cmp(&right))
+        });
+
+        for (out_index, &source_index) in indices.iter().enumerate() {
+            let key = character_sort_key(x, source_index);
+            *o.add(out_index) = if nalast == 0 && matches!(key, CharacterSortKey::Missing) {
+                0
+            } else {
+                source_index as c_int + 1
+            };
+        }
+
+        cgroup(x as *mut c_void, o, n)
+    }
 }
 
-/// Pre-processing for character sort — translate CHARSXP to byte offsets.
-///
-/// Requires CHARSXP access infrastructure.
-/// Currently returns null.
-pub unsafe fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
-    unsafe { error("character sort not yet implemented") }
+/// Pre-processing for character sort. The Rust implementation sorts directly
+/// from STRSXP values, so no byte-offset side table is required.
+pub unsafe fn csort_pre(x: *mut c_void, _n: c_int) -> *mut c_void {
+    x
 }
 
-/// Grouping for character data — find group boundaries after sorting.
-///
-/// Requires CHARSXP access infrastructure.
-/// Currently returns null.
-pub unsafe fn cgroup(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
-    unsafe { error("character grouping not yet implemented") }
+/// Grouping for character data after sorting.
+pub unsafe fn cgroup(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+    unsafe {
+        if !with_radix_state(|s| s.stackgrps) || n <= 0 {
+            return x;
+        }
+
+        let x = x as SEXP;
+        let mut current_group = 0;
+        let mut previous: Option<CharacterSortKey<'_>> = None;
+        for i in 0..n as usize {
+            let oi = *o.add(i);
+            if oi == 0 {
+                if current_group > 0 {
+                    push(current_group);
+                    current_group = 0;
+                }
+                push(1);
+                previous = Some(CharacterSortKey::Missing);
+                continue;
+            }
+
+            let key = character_sort_key(x, oi as usize - 1);
+            if let Some(prev) = previous {
+                if same_character_group(prev, key) {
+                    current_group += 1;
+                } else {
+                    if current_group > 0 {
+                        push(current_group);
+                    }
+                    current_group = 1;
+                }
+            } else {
+                current_group = 1;
+            }
+            previous = Some(key);
+        }
+        if current_group > 0 {
+            push(current_group);
+        }
+        x as *mut c_void
+    }
 }
 
 /// Sortedness test for character data (STRSXP vectors).
-///
-/// Requires CHARSXP access infrastructure.
-/// Currently returns 0 (unsorted).
-pub unsafe fn csorted(_x: *mut c_void, _n: c_int) -> c_int {
-    0
+pub unsafe fn csorted(x: *mut c_void, n: c_int) -> c_int {
+    if n <= 1 { 1 } else { 0 }
 }
 
 // ---------------------------------------------------------------------------
