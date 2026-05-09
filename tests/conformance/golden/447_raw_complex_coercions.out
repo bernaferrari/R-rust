@@ -1,0 +1,10 @@
+0|15|255
+0|15|255
+FALSE|TRUE|TRUE
+00|0f|ff
+[1]   0+0i  15+0i 255+0i
+1|NA|3|4
+1|NA|3|4
+TRUE|NA|TRUE|TRUE
+1+2i|NA|Inf-3i|4+0i
+[1] 00 0f ff

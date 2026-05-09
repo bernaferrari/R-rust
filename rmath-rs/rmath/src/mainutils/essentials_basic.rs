@@ -1070,6 +1070,8 @@ pub unsafe fn do_as_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             Some("integer") => coerce_to_type(args, SEXPTYPE::INTSXP.as_c_int()),
             Some("logical") => coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int()),
             Some("character") => coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int()),
+            Some("complex") => coerce_to_type(args, SEXPTYPE::CPLXSXP.as_c_int()),
+            Some("raw") => coerce_to_type(args, SEXPTYPE::RAWSXP.as_c_int()),
             Some("list") => do_as_list(_call, _op, args, _rho),
             _ => duplicate_without_attributes(x),
         }
@@ -1187,118 +1189,25 @@ unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let src_t = TYPEOF(x);
-        let n = XLENGTH(x);
 
-        if src_t == target {
+        if TYPEOF(x) == target {
             return duplicate_without_attributes(x);
         }
 
-        if target == SEXPTYPE::REALSXP {
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            let dst = REAL(result);
-            for i in 0..n {
-                if src_t == SEXPTYPE::INTSXP || src_t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(x).add(i as usize);
-                    *dst.add(i as usize) = if v == NA_INTEGER { NA_REAL } else { v as f64 };
-                } else {
-                    *dst.add(i as usize) = NA_REAL;
+        match SEXPTYPE(target) {
+            SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::RAWSXP => {
+                let result = crate::mainutils::coerce::coerceVector(x, target);
+                if !result.is_null() && result != R_NilValue() {
+                    SET_ATTRIB(result, R_NilValue());
                 }
+                result
             }
-            result
-        } else if target == SEXPTYPE::INTSXP {
-            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            let dst = INTEGER(result);
-            for i in 0..n {
-                if src_t == SEXPTYPE::REALSXP {
-                    let v = *REAL(x).add(i as usize);
-                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || !v.is_finite() {
-                        *dst.add(i as usize) = NA_INTEGER;
-                    } else {
-                        *dst.add(i as usize) = v as c_int;
-                    }
-                } else if src_t == SEXPTYPE::LGLSXP {
-                    let v = *LOGICAL(x).add(i as usize);
-                    *dst.add(i as usize) = if v == NA_INTEGER { NA_INTEGER } else { v };
-                } else {
-                    *dst.add(i as usize) = NA_INTEGER;
-                }
-            }
-            result
-        } else if target == SEXPTYPE::LGLSXP {
-            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            let dst = LOGICAL(result);
-            for i in 0..n {
-                if src_t == SEXPTYPE::INTSXP {
-                    let v = *INTEGER(x).add(i as usize);
-                    *dst.add(i as usize) = if v == NA_INTEGER {
-                        NA_INTEGER
-                    } else if v != 0 {
-                        TRUE
-                    } else {
-                        FALSE
-                    };
-                } else if src_t == SEXPTYPE::REALSXP {
-                    let v = *REAL(x).add(i as usize);
-                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                        *dst.add(i as usize) = NA_INTEGER;
-                    } else {
-                        *dst.add(i as usize) = if v != 0.0 { TRUE } else { FALSE };
-                    }
-                } else {
-                    *dst.add(i as usize) = NA_INTEGER;
-                }
-            }
-            result
-        } else if target == SEXPTYPE::STRSXP {
-            let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = protect(result);
-            for i in 0..n {
-                let value = if src_t == SEXPTYPE::INTSXP || src_t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(x).add(i as usize);
-                    if v == NA_INTEGER {
-                        crate::sexp::globals::R_NaString()
-                    } else if src_t == SEXPTYPE::LGLSXP {
-                        let text = if v == TRUE { "TRUE" } else { "FALSE" };
-                        Rf_mkChar(CString::new(text).unwrap_or_default().as_ptr())
-                    } else {
-                        Rf_mkChar(CString::new(v.to_string()).unwrap_or_default().as_ptr())
-                    }
-                } else if src_t == SEXPTYPE::REALSXP {
-                    let v = *REAL(x).add(i as usize);
-                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                        crate::sexp::globals::R_NaString()
-                    } else if v.is_nan() {
-                        Rf_mkChar(c"NaN".as_ptr())
-                    } else if v.is_infinite() {
-                        let text = if v.is_sign_negative() { "-Inf" } else { "Inf" };
-                        Rf_mkChar(CString::new(text).unwrap_or_default().as_ptr())
-                    } else {
-                        Rf_mkChar(CString::new(v.to_string()).unwrap_or_default().as_ptr())
-                    }
-                } else {
-                    crate::sexp::globals::R_NaString()
-                };
-                SET_STRING_ELT(result, i, value);
-            }
-            result
-        } else {
-            duplicate_without_attributes(x)
+            _ => duplicate_without_attributes(x),
         }
     }
 }

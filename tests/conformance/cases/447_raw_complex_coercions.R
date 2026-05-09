@@ -1,0 +1,15 @@
+rawv <- as.raw(c(0, 15, 255))
+z <- c(1+0i, NA_complex_, 3+0i, 4+0i)
+zc <- c(1+2i, NA_complex_, Inf-3i, 4+0i)
+
+cat(paste(as.integer(rawv), collapse = "|"), "\n", sep = "")
+cat(paste(as.double(rawv), collapse = "|"), "\n", sep = "")
+cat(paste(as.logical(rawv), collapse = "|"), "\n", sep = "")
+cat(paste(as.character(rawv), collapse = "|"), "\n", sep = "")
+print(as.complex(rawv))
+
+cat(paste(as.integer(z), collapse = "|"), "\n", sep = "")
+cat(paste(as.double(z), collapse = "|"), "\n", sep = "")
+cat(paste(as.logical(z), collapse = "|"), "\n", sep = "")
+cat(paste(as.character(zc), collapse = "|"), "\n", sep = "")
+print(as.raw(c(0+0i, 15+0i, 255+0i)))

@@ -20093,34 +20093,7 @@ pub unsafe fn do_as_raw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
         }
-        let src_t = TYPEOF(x);
-        if src_t == SEXPTYPE::RAWSXP {
-            return x;
-        }
-        let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = crate::sexp::accessors::RAW(result);
-        for i in 0..n {
-            let val = if src_t == SEXPTYPE::INTSXP || src_t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { 0 } else { (v & 0xff) as u8 }
-            } else if src_t == SEXPTYPE::REALSXP {
-                let v = *REAL(x).add(i as usize);
-                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    0
-                } else {
-                    (v as i32 & 0xff) as u8
-                }
-            } else {
-                0
-            };
-            *dst.add(i as usize) = val;
-        }
-        result
+        crate::mainutils::coerce::coerceVector(x, SEXPTYPE::RAWSXP.as_c_int())
     }
 }
 

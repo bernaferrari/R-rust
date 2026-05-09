@@ -925,6 +925,31 @@ pub(crate) unsafe fn StringFromReal_impl(x: c_double, _warn: *mut c_int) -> SEXP
     }
 }
 
+fn string_from_real_for_complex(x: c_double) -> String {
+    if R_IsNA(x) {
+        "NA".to_string()
+    } else if R_IsNaN(x) {
+        "NaN".to_string()
+    } else if x.is_infinite() {
+        if x.is_sign_negative() {
+            "-Inf".to_string()
+        } else {
+            "Inf".to_string()
+        }
+    } else if x.fract() == 0.0 {
+        format!("{x:.0}")
+    } else {
+        let mut s = format!("{x:.15}");
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+        s
+    }
+}
+
 /// Convert complex to string (CHARSXP).
 ///
 /// Returns NA_STRING if either part is R's NA. Otherwise formats as "r+i" or "r-i".
@@ -933,10 +958,12 @@ pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
         if R_IsNA(x.r) || R_IsNA(x.i) {
             return R_NaString();
         }
-        let s = if x.i >= 0.0 {
-            format!("{:.17e}+{:.17e}i", x.r, x.i)
+        let real = string_from_real_for_complex(x.r);
+        let imaginary = string_from_real_for_complex(x.i.abs());
+        let s = if x.i.is_sign_negative() {
+            format!("{real}-{imaginary}i")
         } else {
-            format!("{:.17e}{:.17e}i", x.r, x.i)
+            format!("{real}+{imaginary}i")
         };
         let cstr = std::ffi::CString::new(s).unwrap_or_default();
         Rf_mkChar(cstr.as_ptr())
