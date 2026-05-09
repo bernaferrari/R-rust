@@ -461,6 +461,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: super::arithmetic::do_is_type,
     },
     EvaluatedBuiltin {
+        name: "is.complex",
+        handler: super::arithmetic::do_is_type,
+    },
+    EvaluatedBuiltin {
         name: "is.logical",
         handler: super::arithmetic::do_is_type,
     },
@@ -470,6 +474,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "is.null",
+        handler: super::arithmetic::do_is_type,
+    },
+    EvaluatedBuiltin {
+        name: "is.raw",
         handler: super::arithmetic::do_is_type,
     },
     EvaluatedBuiltin {
@@ -518,6 +526,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "seq",
+        handler: crate::mainutils::essentials::do_seq,
+    },
+    EvaluatedBuiltin {
+        name: "seq.int",
         handler: crate::mainutils::essentials::do_seq,
     },
     EvaluatedBuiltin {

@@ -1621,7 +1621,7 @@ pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// Handle type-checking functions: is.numeric, is.integer, is.double,
-/// is.logical, is.character, is.null.
+/// is.complex, is.logical, is.character, is.null, is.raw.
 pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let op_name = get_op_name(call);
@@ -1640,9 +1640,11 @@ pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             "is.numeric" => t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP,
             "is.integer" => t == SEXPTYPE::INTSXP,
             "is.double" => t == SEXPTYPE::REALSXP,
+            "is.complex" => t == SEXPTYPE::CPLXSXP,
             "is.logical" => t == SEXPTYPE::LGLSXP,
             "is.character" => t == SEXPTYPE::STRSXP,
             "is.null" => false,
+            "is.raw" => t == SEXPTYPE::RAWSXP,
             _ => false,
         };
         Rf_ScalarLogical(if result { TRUE } else { FALSE })
@@ -1711,9 +1713,11 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
                 "is.numeric" => "is.numeric",
                 "is.integer" => "is.integer",
                 "is.double" => "is.double",
+                "is.complex" => "is.complex",
                 "is.logical" => "is.logical",
                 "is.character" => "is.character",
                 "is.null" => "is.null",
+                "is.raw" => "is.raw",
                 _ => "",
             },
             Err(_) => "",

@@ -1,0 +1,6 @@
+print(is.complex(1 + 2i))
+print(is.complex(1))
+print(is.raw(as.raw(1)))
+print(is.raw(1L))
+print(seq.int(1, 5, 2))
+print(seq.int(3))
