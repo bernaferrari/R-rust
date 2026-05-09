@@ -1,0 +1,11 @@
+f <- tempfile()
+fun <- function(x, y = 2L) x + y
+save(fun, file = f, ascii = TRUE)
+rm(fun)
+cat(paste(load(f, envir = .GlobalEnv), collapse = "|"), "\n", sep = "")
+cat(typeof(fun), "\n", sep = "")
+cat(paste(names(formals(fun)), collapse = "|"), "\n", sep = "")
+cat(typeof(formals(fun)[[1]]), "|", typeof(formals(fun)[[2]]), "\n", sep = "")
+cat(paste(deparse(body(fun)), collapse = " "), "\n", sep = "")
+cat(fun(3L), "\n", sep = "")
+invisible(unlink(f))

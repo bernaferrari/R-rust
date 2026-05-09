@@ -15,9 +15,9 @@
 //!   defaultSaveVersion
 
 use crate::sexp::accessors::{
-    ATTRIB, CAD5R, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW,
-    REAL, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
-    VECTOR_ELT, XLENGTH,
+    ATTRIB, BODY, CAD5R, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, INTEGER, LENGTH, LOGICAL,
+    PRINTNAME, RAW, REAL, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT,
+    TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
@@ -26,7 +26,7 @@ use crate::sexp::attrib_core::{
 use crate::sexp::constructors::{Rf_allocList, Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_NaString, R_NilValue, R_UnboundValue};
+use crate::sexp::globals::{R_MissingArg, R_NaString, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -377,6 +377,13 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
             OutNewlineAscii(writer)?;
             return write_attribute_list(writer, R_NilValue());
         }
+        if value == R_MissingArg() {
+            OutIntegerAscii(writer, SEXPTYPE::ANYSXP.as_c_int())?;
+            OutNewlineAscii(writer)?;
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
         let sexptype = TYPEOF(value);
         OutIntegerAscii(writer, sexptype)?;
         OutNewlineAscii(writer)?;
@@ -397,6 +404,12 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutStringAscii(writer, text)?;
                 }
                 OutNewlineAscii(writer)?;
+                write_attribute_list(writer, value)?;
+                Ok(())
+            }
+            SEXPTYPE::CLOSXP => {
+                write_saved_object(writer, FORMALS(value))?;
+                write_saved_object(writer, BODY(value))?;
                 write_attribute_list(writer, value)?;
                 Ok(())
             }
@@ -567,6 +580,8 @@ unsafe fn is_serializable_saved_object(value: SEXP) -> bool {
         match SEXPTYPE::from(TYPEOF(value)) {
             SEXPTYPE::NILSXP
             | SEXPTYPE::SYMSXP
+            | SEXPTYPE::CLOSXP
+            | SEXPTYPE::ANYSXP
             | SEXPTYPE::LGLSXP
             | SEXPTYPE::INTSXP
             | SEXPTYPE::REALSXP
@@ -778,10 +793,22 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
         let sexptype = InIntegerAscii(reader)?;
         let value = match SEXPTYPE::from(sexptype) {
             SEXPTYPE::NILSXP => Ok(R_NilValue()),
+            SEXPTYPE::ANYSXP => Ok(R_MissingArg()),
             SEXPTYPE::SYMSXP => {
                 let name = InStringAscii(reader)?.unwrap_or_default();
                 let cstr = std::ffi::CString::new(name).map_err(io::Error::other)?;
                 Ok(Rf_install(cstr.as_ptr()))
+            }
+            SEXPTYPE::CLOSXP => {
+                let formals = read_saved_object(reader)?;
+                let _formals_guard = protect(formals);
+                let body = read_saved_object(reader)?;
+                let _body_guard = protect(body);
+                Ok(crate::mainutils::dstruct::mkCLOSXP(
+                    formals,
+                    body,
+                    crate::sexp::globals::R_GlobalEnv(),
+                ))
             }
             SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
                 let len = InIntegerAscii(reader)?;
