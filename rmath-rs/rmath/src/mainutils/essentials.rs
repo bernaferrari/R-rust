@@ -24475,7 +24475,7 @@ pub unsafe fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `abs(x)` — absolute value of numeric vector.
 ///
-/// Returns REALSXP. Preserves NA and NaN.
+/// Preserves integer/logical inputs as integer vectors and real inputs as real vectors.
 pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = CAR(args);
@@ -24490,6 +24490,24 @@ pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let n = XLENGTH(x_arg).max(1);
+        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _result_guard = protect(result);
+            let dst = INTEGER(result);
+            for i in 0..n {
+                let value = *INTEGER(x_arg).add(i as usize);
+                *dst.add(i as usize) = if value == NA_INTEGER || value == c_int::MIN {
+                    NA_INTEGER
+                } else {
+                    value.abs()
+                };
+            }
+            return result;
+        }
+
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -24497,12 +24515,7 @@ pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let _p = protect(result);
         let dst = REAL(result);
         for i in 0..n {
-            let v = if t == SEXPTYPE::REALSXP {
-                *REAL(x_arg).add(i as usize)
-            } else {
-                let iv = *INTEGER(x_arg).add(i as usize);
-                if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
-            };
+            let v = *REAL(x_arg).add(i as usize);
             *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 v
             } else {
