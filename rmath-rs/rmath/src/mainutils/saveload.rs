@@ -15,8 +15,9 @@
 //!   defaultSaveVersion
 
 use crate::sexp::accessors::{
-    CAD5R, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
-    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, CAD5R, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW,
+    REAL, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
@@ -374,7 +375,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
         if value.is_null() {
             OutIntegerAscii(writer, SEXPTYPE::NILSXP.as_c_int())?;
             OutNewlineAscii(writer)?;
-            return write_standard_attrs(writer, R_NilValue());
+            return write_attribute_list(writer, R_NilValue());
         }
         let sexptype = TYPEOF(value);
         OutIntegerAscii(writer, sexptype)?;
@@ -382,7 +383,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
 
         match SEXPTYPE::from(sexptype) {
             SEXPTYPE::NILSXP => {
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::SYMSXP => {
@@ -396,7 +397,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutStringAscii(writer, text)?;
                 }
                 OutNewlineAscii(writer)?;
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
@@ -409,7 +410,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     write_saved_object(writer, CAR(current))?;
                     current = CDR(current);
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::LGLSXP => {
@@ -420,7 +421,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutIntegerAscii(writer, *LOGICAL(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::INTSXP => {
@@ -431,7 +432,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutIntegerAscii(writer, *INTEGER(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::REALSXP => {
@@ -442,7 +443,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutDoubleAscii(writer, *REAL(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::CPLXSXP => {
@@ -454,7 +455,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutComplexAscii(writer, element.r, element.i)?;
                     OutNewlineAscii(writer)?;
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::STRSXP => {
@@ -473,7 +474,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                         OutNewlineAscii(writer)?;
                     }
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::RAWSXP => {
@@ -484,7 +485,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutIntegerAscii(writer, *RAW(value).add(i) as c_int)?;
                     OutNewlineAscii(writer)?;
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
@@ -494,7 +495,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 for i in 0..len {
                     write_saved_object(writer, VECTOR_ELT(value, i))?;
                 }
-                write_standard_attrs(writer, value)?;
+                write_attribute_list(writer, value)?;
                 Ok(())
             }
             _ => Err(io::Error::new(
@@ -517,15 +518,79 @@ unsafe fn pairlist_length(value: SEXP) -> c_int {
     }
 }
 
-unsafe fn write_standard_attrs(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+unsafe fn write_attribute_list(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
     unsafe {
-        write_names_attr(writer, value)?;
-        write_dim_attr(writer, value)?;
-        write_dimnames_attr(writer, value)?;
-        write_real_attr(writer, value, R_TspSymbol())?;
-        write_string_attr(writer, value, R_ClassSymbol())?;
-        write_string_attr(writer, value, R_LevelsSymbol())?;
-        write_row_names_attr(writer, value)
+        let attrs = ATTRIB(value);
+        if attrs.is_null() || attrs == R_NilValue() {
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
+
+        let mut entries = Vec::new();
+        let mut current = attrs;
+        while !current.is_null() && current != R_NilValue() {
+            let tag = TAG(current);
+            let car = CAR(current);
+            if is_serializable_saved_object(tag) && is_serializable_saved_object(car) {
+                entries.push((tag, car));
+            }
+            current = CDR(current);
+        }
+
+        if entries.is_empty() {
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
+
+        OutIntegerAscii(writer, 1)?;
+        OutNewlineAscii(writer)?;
+        OutIntegerAscii(writer, SEXPTYPE::LISTSXP.as_c_int())?;
+        OutNewlineAscii(writer)?;
+        OutIntegerAscii(writer, entries.len() as c_int)?;
+        OutNewlineAscii(writer)?;
+        for (tag, car) in entries.into_iter().rev() {
+            write_saved_object(writer, tag)?;
+            write_saved_object(writer, car)?;
+        }
+        OutIntegerAscii(writer, 0)?;
+        OutNewlineAscii(writer)
+    }
+}
+
+unsafe fn is_serializable_saved_object(value: SEXP) -> bool {
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return true;
+        }
+        match SEXPTYPE::from(TYPEOF(value)) {
+            SEXPTYPE::NILSXP
+            | SEXPTYPE::SYMSXP
+            | SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::RAWSXP => true,
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
+                let len = XLENGTH(value);
+                (0..len).all(|i| is_serializable_saved_object(VECTOR_ELT(value, i)))
+            }
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
+                let mut current = value;
+                while !current.is_null() && current != R_NilValue() {
+                    if !is_serializable_saved_object(TAG(current))
+                        || !is_serializable_saved_object(CAR(current))
+                    {
+                        return false;
+                    }
+                    current = CDR(current);
+                }
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -811,20 +876,29 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                 format!("unsupported saved object type {sexptype}"),
             )),
         }?;
-        read_standard_attrs(reader, value)?;
+        read_attribute_list(reader, value)?;
         Ok(value)
     }
 }
 
-unsafe fn read_standard_attrs(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
+unsafe fn read_attribute_list(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
     unsafe {
-        read_names_attr(reader, value)?;
-        read_dim_attr(reader, value)?;
-        read_dimnames_attr(reader, value)?;
-        read_real_attr(reader, value, R_TspSymbol())?;
-        read_string_attr(reader, value, R_ClassSymbol())?;
-        read_string_attr(reader, value, R_LevelsSymbol())?;
-        read_row_names_attr(reader, value)
+        let has_attrs = InIntegerAscii(reader)?;
+        if has_attrs == 0 {
+            return Ok(());
+        }
+        let attrs = read_saved_object(reader)?;
+        if attrs.is_null() || attrs == R_NilValue() {
+            SET_ATTRIB(value, R_NilValue());
+        } else if TYPEOF(attrs) == SEXPTYPE::LISTSXP {
+            SET_ATTRIB(value, attrs);
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "saved attribute payload is not a pairlist",
+            ));
+        }
+        Ok(())
     }
 }
 
