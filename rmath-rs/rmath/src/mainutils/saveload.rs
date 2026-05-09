@@ -953,12 +953,12 @@ unsafe fn eval_named_arg(args: SEXP, rho: SEXP, name: &str) -> SEXP {
 
 unsafe fn collect_save_object_names(args: SEXP, rho: SEXP) -> Vec<String> {
     unsafe {
+        let mut names = Vec::new();
         let explicit_list = eval_named_arg(args, rho, "list");
         if !explicit_list.is_null() && explicit_list != R_NilValue() {
-            return names_from_save_list(explicit_list);
+            names.extend(names_from_save_list(explicit_list));
         }
 
-        let mut names = Vec::new();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if tag_name(current).is_none() {
