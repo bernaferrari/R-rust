@@ -27883,20 +27883,42 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let result_type = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            SEXPTYPE::INTSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        let result = Rf_allocVector3(result_type, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
+
+        if result_type == SEXPTYPE::INTSXP {
+            let dst = INTEGER(result);
+            let mut min_so_far = i32::MAX;
+            let mut poisoned = false;
+            for i in 0..n {
+                let val = *INTEGER(x).add(i as usize);
+                if val == NA_INTEGER {
+                    poisoned = true;
+                }
+                if poisoned {
+                    *dst.add(i as usize) = NA_INTEGER;
+                } else {
+                    min_so_far = min_so_far.min(val);
+                    *dst.add(i as usize) = min_so_far;
+                }
+            }
+            return result;
+        }
+
         let dst = REAL(result);
 
         let mut min_so_far = f64::INFINITY;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
                 *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
             };
@@ -27922,20 +27944,42 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
         let n = XLENGTH(x);
         let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let result_type = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            SEXPTYPE::INTSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        let result = Rf_allocVector3(result_type, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
+
+        if result_type == SEXPTYPE::INTSXP {
+            let dst = INTEGER(result);
+            let mut max_so_far = i32::MIN;
+            let mut poisoned = false;
+            for i in 0..n {
+                let val = *INTEGER(x).add(i as usize);
+                if val == NA_INTEGER {
+                    poisoned = true;
+                }
+                if poisoned {
+                    *dst.add(i as usize) = NA_INTEGER;
+                } else {
+                    max_so_far = max_so_far.max(val);
+                    *dst.add(i as usize) = max_so_far;
+                }
+            }
+            return result;
+        }
+
         let dst = REAL(result);
 
         let mut max_so_far = f64::NEG_INFINITY;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
                 *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
             } else {
                 NA_REAL
             };

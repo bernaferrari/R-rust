@@ -1,0 +1,8 @@
+cat(typeof(cummin(c(3L, 2L, NA, 1L))), "\n", sep = "")
+cat(paste(ifelse(is.na(cummin(c(3L, 2L, NA, 1L))), "NA", cummin(c(3L, 2L, NA, 1L))), collapse = "|"), "\n", sep = "")
+cat(typeof(cummax(c(TRUE, FALSE, NA, TRUE))), "\n", sep = "")
+cat(paste(ifelse(is.na(cummax(c(TRUE, FALSE, NA, TRUE))), "NA", cummax(c(TRUE, FALSE, NA, TRUE))), collapse = "|"), "\n", sep = "")
+cat(typeof(cummin(c(3, NA, 2, 1))), "\n", sep = "")
+cat(paste(ifelse(is.na(cummin(c(3, NA, 2, 1))), "NA", cummin(c(3, NA, 2, 1))), collapse = "|"), "\n", sep = "")
+cat(typeof(cummax(c(1, NA, 3, 2))), "\n", sep = "")
+cat(paste(ifelse(is.na(cummax(c(1, NA, 3, 2))), "NA", cummax(c(1, NA, 3, 2))), collapse = "|"), "\n", sep = "")

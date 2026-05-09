@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 555 |
-| Passing | 555 |
+| Total parity cases | 556 |
+| Passing | 556 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -108,7 +108,7 @@ Current domain coverage:
 | Evaluator, closures, and control flow | 11 | Closures, lexical scope, lazy/default args, missing args, loops, and evaluator visibility/control-flow checks |
 | Vectors, lists, attributes, and objects | 88 | Vectors, typed vector constructors, lists, names, name-preserving repetition, list/complex repetition, named and ordered mixed-list unlisting, recursive unlist control, typed rle/inverse.rle, subsetting, factors, explicit missing factor levels, generated factors, factor coercion, factor summaries, interval cutting, ordered factors, ordered comparisons, interaction factors, releveling, droplevels, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
 | Base functions, conditions, and platform helpers | 139 | Sorting/set helpers, output capture, conditions, search-path/environment helpers, options, file/temp/path helpers, connections, platform state, `.Internal` dispatch, and non-GNU alias absence semantics |
-| Stats, math, and RNG | 71 | Numeric summaries, distributions, tail/log flags, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int`, pmin/pmax missing-value semantics, array margin summaries, aggregate/tapply/by grouped summaries, and summary-vector parity |
+| Stats, math, and RNG | 72 | Numeric summaries, distributions, tail/log flags, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int`, pmin/pmax missing-value semantics, typed cumulative extrema, array margin summaries, aggregate/tapply/by grouped summaries, and summary-vector parity |
 | Packages, namespaces, and S3 | 5 | Package namespace and S3 fixtures, `system.file()`, S3 method-export absence, and the pure-R package corpus gate |
 | Graphics and Android embedding | 2 | Base graphics layout state and external graphics dispatch smoke; broader graphics parity remains tracked separately |
 | Error semantics | 58 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, internal dispatch errors, `relevel()` validation, and selected platform expected errors |
