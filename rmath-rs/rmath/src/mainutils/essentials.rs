@@ -14050,59 +14050,10 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             return x;
         }
-        let n = XLENGTH(x);
-        // Collect all elements and determine output type
-        let mut all_values: Vec<f64> = Vec::new();
-        let mut all_ints: Vec<i32> = Vec::new();
-        let mut all_strs: Vec<String> = Vec::new();
-        let mut result_type: u32;
-        let mut saw_str = false;
-
-        for i in 0..n {
-            let elem = VECTOR_ELT(x, i as i64);
-            if elem.is_null() {
-                continue;
-            }
-            let t = TYPEOF(elem);
-            let m = XLENGTH(elem);
-            for j in 0..m {
-                if t == SEXPTYPE::REALSXP {
-                    all_values.push(*REAL(elem).add(j as usize));
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(elem).add(j as usize);
-                    all_ints.push(v);
-                } else if t == SEXPTYPE::STRSXP {
-                    all_strs.push(elt_to_string(elem, j));
-                    saw_str = true;
-                } else if t == SEXPTYPE::VECSXP {
-                    // Nested list — recurse via extraction
-                    let inner = VECTOR_ELT(elem, j as i64);
-                    if !inner.is_null() && TYPEOF(inner) == SEXPTYPE::REALSXP {
-                        all_values.push(*REAL(inner));
-                    } else {
-                        saw_str = true;
-                        all_strs.push(elt_to_string(inner, 0));
-                    }
-                } else {
-                    all_values.push(NA_REAL);
-                }
-            }
-        }
-        let result_type = if saw_str {
-            SEXPTYPE::STRSXP.as_c_int()
-        } else if !all_values.is_empty() {
-            SEXPTYPE::REALSXP.as_c_int()
-        } else {
-            SEXPTYPE::INTSXP.as_c_int()
-        };
-
-        let total: R_xlen_t = if result_type == SEXPTYPE::STRSXP {
-            all_strs.len() as R_xlen_t
-        } else if result_type == SEXPTYPE::REALSXP {
-            (all_values.len() + all_ints.len()) as R_xlen_t
-        } else {
-            all_ints.len() as R_xlen_t
-        };
+        let mut values = Vec::new();
+        collect_unlist_values(x, &mut values);
+        let result_type = unlist_result_type(&values);
+        let total = values.len() as R_xlen_t;
 
         let result = Rf_allocVector3(result_type, total);
         if result.is_null() {
@@ -14110,34 +14061,188 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let _result_guard = protect(result);
 
-        if result_type == SEXPTYPE::REALSXP {
-            let dst = REAL(result);
-            let mut idx = 0usize;
-            for &v in &all_values {
-                *dst.add(idx) = v;
-                idx += 1;
-            }
-            for &v in &all_ints {
-                *dst.add(idx) = if v == NA_INTEGER { NA_REAL } else { v as f64 };
-                idx += 1;
-            }
-        } else if result_type == SEXPTYPE::INTSXP {
-            let dst = INTEGER(result);
-            for (idx, &v) in all_ints.iter().enumerate() {
-                *dst.add(idx) = v;
-            }
-        } else if result_type == SEXPTYPE::STRSXP {
-            for (idx, s) in all_strs.iter().enumerate() {
-                let cstr = CString::new(s.as_str()).unwrap_or_default();
-                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
-                if !charsxp.is_null() {
-                    let data = (*result).gengc_next_node as *mut SEXP;
-                    *data.add(idx) = charsxp;
+        for (idx, value) in values.iter().enumerate() {
+            match result_type {
+                t if t == SEXPTYPE::STRSXP => {
+                    let cstr = CString::new(value.as_string()).unwrap_or_default();
+                    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                    if !charsxp.is_null() {
+                        let data = (*result).gengc_next_node as *mut SEXP;
+                        *data.add(idx) = charsxp;
+                    }
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    *COMPLEX(result).add(idx) = value.as_complex();
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    *REAL(result).add(idx) = value.as_real();
+                }
+                _ => {
+                    *INTEGER(result).add(idx) = value.as_integer();
                 }
             }
         }
 
         result
+    }
+}
+
+enum UnlistValue {
+    Logical(i32),
+    Integer(i32),
+    Real(f64),
+    Complex(Rcomplex),
+    String(String),
+}
+
+impl UnlistValue {
+    fn as_integer(&self) -> i32 {
+        match self {
+            Self::Logical(value) | Self::Integer(value) => *value,
+            Self::Real(value) => {
+                if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+                    NA_INTEGER
+                } else {
+                    *value as i32
+                }
+            }
+            Self::Complex(_) | Self::String(_) => NA_INTEGER,
+        }
+    }
+
+    fn as_real(&self) -> f64 {
+        match self {
+            Self::Logical(value) | Self::Integer(value) => {
+                if *value == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    *value as f64
+                }
+            }
+            Self::Real(value) => *value,
+            Self::Complex(value) => value.r,
+            Self::String(_) => NA_REAL,
+        }
+    }
+
+    fn as_complex(&self) -> Rcomplex {
+        match self {
+            Self::Logical(value) | Self::Integer(value) => Rcomplex {
+                r: if *value == NA_INTEGER {
+                    NA_REAL
+                } else {
+                    *value as f64
+                },
+                i: 0.0,
+            },
+            Self::Real(value) => Rcomplex { r: *value, i: 0.0 },
+            Self::Complex(value) => *value,
+            Self::String(_) => Rcomplex {
+                r: NA_REAL,
+                i: NA_REAL,
+            },
+        }
+    }
+
+    fn as_string(&self) -> String {
+        match self {
+            Self::Logical(value) => match *value {
+                TRUE => "TRUE".to_string(),
+                FALSE => "FALSE".to_string(),
+                _ => "NA".to_string(),
+            },
+            Self::Integer(value) => {
+                if *value == NA_INTEGER {
+                    "NA".to_string()
+                } else {
+                    value.to_string()
+                }
+            }
+            Self::Real(value) => {
+                if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+                    "NA".to_string()
+                } else {
+                    value.to_string()
+                }
+            }
+            Self::Complex(value) => format!(
+                "{}{}{}i",
+                value.r,
+                if value.i < 0.0 { "" } else { "+" },
+                value.i
+            ),
+            Self::String(value) => value.clone(),
+        }
+    }
+}
+
+fn unlist_result_type(values: &[UnlistValue]) -> SEXPTYPE {
+    if values
+        .iter()
+        .any(|value| matches!(value, UnlistValue::String(_)))
+    {
+        SEXPTYPE::STRSXP
+    } else if values
+        .iter()
+        .any(|value| matches!(value, UnlistValue::Complex(_)))
+    {
+        SEXPTYPE::CPLXSXP
+    } else if values
+        .iter()
+        .any(|value| matches!(value, UnlistValue::Real(_)))
+    {
+        SEXPTYPE::REALSXP
+    } else {
+        SEXPTYPE::INTSXP
+    }
+}
+
+unsafe fn collect_unlist_values(x: SEXP, out: &mut Vec<UnlistValue>) {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return;
+        }
+        if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
+            for i in 0..XLENGTH(x) {
+                collect_unlist_values(VECTOR_ELT(x, i), out);
+            }
+            return;
+        }
+        for i in 0..XLENGTH(x) {
+            match TYPEOF(x) {
+                t if t == SEXPTYPE::LGLSXP => {
+                    out.push(UnlistValue::Logical(*LOGICAL(x).add(i as usize)))
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    out.push(UnlistValue::Integer(*INTEGER(x).add(i as usize)))
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    out.push(UnlistValue::Real(*REAL(x).add(i as usize)))
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    out.push(UnlistValue::Complex(*COMPLEX(x).add(i as usize)))
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    let value = STRING_ELT(x, i);
+                    if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                        out.push(UnlistValue::String("NA".to_string()));
+                    } else {
+                        out.push(UnlistValue::String(
+                            CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned(),
+                        ));
+                    }
+                }
+                _ => {
+                    let text = elt_to_string(x, i);
+                    let cstr = CString::new(text.as_str()).unwrap_or_default();
+                    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                    if !charsxp.is_null() {
+                        let value = CStr::from_ptr(CHAR(charsxp)).to_string_lossy().into_owned();
+                        out.push(UnlistValue::String(value));
+                    }
+                }
+            }
+        }
     }
 }
 

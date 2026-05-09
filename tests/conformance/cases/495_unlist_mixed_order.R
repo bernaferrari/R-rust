@@ -1,0 +1,5 @@
+cat(paste(unlist(list(1, "x"), use.names = FALSE), collapse = "|"), "\n", sep = "")
+cat(typeof(unlist(list(1, "x"), use.names = FALSE)), "\n", sep = "")
+cat(paste(as.character(unlist(list(1L, TRUE, 2 + 3i), use.names = FALSE)), collapse = "|"), "\n", sep = "")
+cat(typeof(unlist(list(1L, TRUE, 2 + 3i), use.names = FALSE)), "\n", sep = "")
+cat(paste(unlist(list(c(1, 2), list(3L, 4L)), use.names = FALSE), collapse = "|"), "\n", sep = "")
