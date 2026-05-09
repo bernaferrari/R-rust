@@ -610,6 +610,16 @@ fn vector_print_names(x: Sexp<'_>) -> Option<Vec<String>> {
     }
 }
 
+fn has_names_attribute(x: Sexp<'_>) -> bool {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        Sexp::from_raw(names).is_some_and(|names| names.typeof_() == SEXPTYPE::STRSXP)
+    }
+}
+
 fn format_named_atomic_vector(x: Sexp<'_>, values: Vec<String>) -> Option<String> {
     let mut names = vector_print_names(x)?;
     let limit = values.len();
@@ -1066,9 +1076,14 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::INTSXP => {
             if x.len() == 0 {
+                let empty = if has_names_attribute(x) {
+                    "named integer(0)"
+                } else {
+                    "integer(0)"
+                };
                 emit(&format!(
                     "{}\n",
-                    format_with_printable_attributes("integer(0)".to_string(), x)
+                    format_with_printable_attributes(empty.to_string(), x)
                 ));
                 return;
             }
@@ -1088,17 +1103,19 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = if x.len() == 1 {
-                format!("[1] {}", format_integer_element(x, 0))
-            } else {
-                let vals: Vec<String> = (0..x.len().min(10))
-                    .map(|i| format_integer_element(x, i))
-                    .collect();
-                let suffix = if x.len() > 10 { " ..." } else { "" };
-                format_named_atomic_vector(x, vals.clone())
-                    .map(|output| format!("{output}{suffix}"))
-                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
-            };
+            let vals: Vec<String> = (0..x.len().min(10))
+                .map(|i| format_integer_element(x, i))
+                .collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            let base = format_named_atomic_vector(x, vals.clone())
+                .map(|output| format!("{output}{suffix}"))
+                .unwrap_or_else(|| {
+                    if x.len() == 1 {
+                        format!("[1] {}", vals[0])
+                    } else {
+                        format!("[1] {}{}", format_aligned_values(vals), suffix)
+                    }
+                });
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::REALSXP => {
@@ -1274,7 +1291,12 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
             if x.len() == 0 {
-                return format_with_printable_attributes("integer(0)".to_string(), x);
+                let empty = if has_names_attribute(x) {
+                    "named integer(0)"
+                } else {
+                    "integer(0)"
+                };
+                return format_with_printable_attributes(empty.to_string(), x);
             }
             if let Some(output) = format_matrix(x) {
                 return output;
@@ -1282,17 +1304,19 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_factor(x) {
                 return output;
             }
-            let base = if x.len() == 1 {
-                format!("[1] {}", format_integer_element(x, 0))
-            } else {
-                let vals: Vec<String> = (0..x.len().min(10))
-                    .map(|i| format_integer_element(x, i))
-                    .collect();
-                let suffix = if x.len() > 10 { " ..." } else { "" };
-                format_named_atomic_vector(x, vals.clone())
-                    .map(|output| format!("{output}{suffix}"))
-                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
-            };
+            let vals: Vec<String> = (0..x.len().min(10))
+                .map(|i| format_integer_element(x, i))
+                .collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            let base = format_named_atomic_vector(x, vals.clone())
+                .map(|output| format!("{output}{suffix}"))
+                .unwrap_or_else(|| {
+                    if x.len() == 1 {
+                        format!("[1] {}", vals[0])
+                    } else {
+                        format!("[1] {}{}", format_aligned_values(vals), suffix)
+                    }
+                });
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::REALSXP => {

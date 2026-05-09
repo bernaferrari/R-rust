@@ -8693,6 +8693,7 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             elt_to_string(mode_arg, 0)
         };
         let want_function = mode == "function";
+        let numeric = logical_arg_by_name_or_position(args, "numeric", 2).unwrap_or(false);
 
         let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
         let mut matches = Vec::new();
@@ -8706,6 +8707,10 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             matches.push("package:base");
         }
 
+        if numeric {
+            return find_numeric_result(&matches);
+        }
+
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
         for (i, value) in matches.iter().enumerate() {
             SET_STRING_ELT(
@@ -8714,6 +8719,27 @@ pub unsafe fn do_find(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 Rf_mkChar(CString::new(*value).unwrap_or_default().as_ptr()),
             );
         }
+        result
+    }
+}
+
+unsafe fn find_numeric_result(matches: &[&str]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, matches.len() as R_xlen_t);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
+        for (i, value) in matches.iter().enumerate() {
+            *INTEGER(result).add(i) = (i + 1) as c_int;
+            SET_STRING_ELT(
+                names,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(*value).unwrap_or_default().as_ptr()),
+            );
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
         result
     }
 }
