@@ -1599,34 +1599,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_R_Version,
     },
     EvaluatedBuiltin {
-        name: "list.append",
-        handler: crate::mainutils::essentials::do_list_append,
-    },
-    EvaluatedBuiltin {
-        name: "list.prepend",
-        handler: crate::mainutils::essentials::do_list_prepend,
-    },
-    EvaluatedBuiltin {
-        name: "compact",
-        handler: crate::mainutils::essentials::do_compact,
-    },
-    EvaluatedBuiltin {
-        name: "keep",
-        handler: crate::mainutils::essentials::do_keep,
-    },
-    EvaluatedBuiltin {
-        name: "discard",
-        handler: crate::mainutils::essentials::do_discard,
-    },
-    EvaluatedBuiltin {
-        name: "str_detect",
-        handler: crate::mainutils::essentials::do_str_detect,
-    },
-    EvaluatedBuiltin {
-        name: "str_extract",
-        handler: crate::mainutils::essentials::do_str_extract,
-    },
-    EvaluatedBuiltin {
         name: "reshape",
         handler: crate::mainutils::essentials::do_reshape,
     },
@@ -1643,32 +1615,12 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_na_exclude,
     },
     EvaluatedBuiltin {
-        name: "is_complete",
-        handler: crate::mainutils::essentials::do_is_complete,
-    },
-    EvaluatedBuiltin {
-        name: "str_interp",
-        handler: crate::mainutils::essentials::do_str_interp,
-    },
-    EvaluatedBuiltin {
         name: "strwrap",
         handler: crate::mainutils::essentials::do_str_wrap,
     },
     EvaluatedBuiltin {
-        name: "str_wrap",
-        handler: crate::mainutils::essentials::do_str_wrap,
-    },
-    EvaluatedBuiltin {
-        name: "path_package",
-        handler: crate::mainutils::essentials::do_path_package,
-    },
-    EvaluatedBuiltin {
         name: "system.file",
         handler: crate::mainutils::essentials::do_system_file,
-    },
-    EvaluatedBuiltin {
-        name: "ls_args",
-        handler: crate::mainutils::essentials::do_ls_args,
     },
     EvaluatedBuiltin {
         name: "deparse1",

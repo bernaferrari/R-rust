@@ -5402,36 +5402,22 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "interactive",
             "getRversion",
             "R.Version",
-            // List operations
-            "list.append",
-            "list.prepend",
-            "compact",
-            "keep",
-            "discard",
-            // String operations
-            "str_detect",
-            "str_extract",
             // Complete data operations
             "reshape",
             "complete.cases",
             "na.omit",
             "na.exclude",
-            "is_complete",
             // Complete string/vector
-            "str_interp",
             "strwrap",
-            "str_wrap",
-            "path_package",
             "system.file",
             "system",
             "system2",
             // Complete R runtime
-            "ls_args",
             "deparse1",
             "dput",
             "dget",
             "bquote",
-            // Complete S3
+            // Data-frame helpers used by the current release subset.
             "rownames_to_column",
             "column_to_rownames",
             "relocate",
