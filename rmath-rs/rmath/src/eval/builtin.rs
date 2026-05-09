@@ -2343,6 +2343,38 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_atan2,
     },
     EvaluatedBuiltin {
+        name: "expm1",
+        handler: crate::mainutils::essentials::do_expm1,
+    },
+    EvaluatedBuiltin {
+        name: "log1p",
+        handler: crate::mainutils::essentials::do_log1p,
+    },
+    EvaluatedBuiltin {
+        name: "acosh",
+        handler: crate::mainutils::essentials::do_acosh,
+    },
+    EvaluatedBuiltin {
+        name: "asinh",
+        handler: crate::mainutils::essentials::do_asinh,
+    },
+    EvaluatedBuiltin {
+        name: "atanh",
+        handler: crate::mainutils::essentials::do_atanh,
+    },
+    EvaluatedBuiltin {
+        name: "cospi",
+        handler: crate::mainutils::essentials::do_cospi,
+    },
+    EvaluatedBuiltin {
+        name: "sinpi",
+        handler: crate::mainutils::essentials::do_sinpi,
+    },
+    EvaluatedBuiltin {
+        name: "tanpi",
+        handler: crate::mainutils::essentials::do_tanpi,
+    },
+    EvaluatedBuiltin {
         name: "lgamma",
         handler: crate::mainutils::essentials::do_lgamma,
     },

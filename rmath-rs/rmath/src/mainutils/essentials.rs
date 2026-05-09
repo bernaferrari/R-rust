@@ -5610,6 +5610,14 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "acos",
             "atan",
             "atan2",
+            "expm1",
+            "log1p",
+            "acosh",
+            "asinh",
+            "atanh",
+            "cospi",
+            "sinpi",
+            "tanpi",
             // Core arithmetic — dispatched via do_summary/do_math1 in eval.rs
             "sum",
             "min",
@@ -24838,6 +24846,125 @@ pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             *dst.add(i as usize) = if found { TRUE } else { FALSE };
         }
         result
+    }
+}
+
+unsafe fn real_math1(args: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+        let dst = REAL(result);
+
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+
+            *dst.add(i as usize) = if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                NA_REAL
+            } else {
+                f(val)
+            };
+        }
+        result
+    }
+}
+
+fn sinpi_value(x: f64) -> f64 {
+    if x.is_finite() && x.fract() == 0.0 {
+        0.0
+    } else {
+        (std::f64::consts::PI * x).sin()
+    }
+}
+
+fn cospi_value(x: f64) -> f64 {
+    if x.is_finite() && x.fract() == 0.0 {
+        if (x as i64).rem_euclid(2) == 0 {
+            1.0
+        } else {
+            -1.0
+        }
+    } else if x.is_finite() && (x - 0.5).fract() == 0.0 {
+        0.0
+    } else {
+        (std::f64::consts::PI * x).cos()
+    }
+}
+
+/// R's `expm1(x)` — accurate exp(x)-1.
+pub unsafe fn do_expm1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { real_math1(args, f64::exp_m1) }
+}
+
+/// R's `log1p(x)` — accurate log(1+x).
+pub unsafe fn do_log1p(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { real_math1(args, f64::ln_1p) }
+}
+
+/// R's `acosh(x)` — inverse hyperbolic cosine.
+pub unsafe fn do_acosh(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { real_math1(args, f64::acosh) }
+}
+
+/// R's `asinh(x)` — inverse hyperbolic sine.
+pub unsafe fn do_asinh(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { real_math1(args, f64::asinh) }
+}
+
+/// R's `atanh(x)` — inverse hyperbolic tangent.
+pub unsafe fn do_atanh(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { real_math1(args, f64::atanh) }
+}
+
+/// R's `sinpi(x)` — sin(pi*x), exact at integer arguments.
+pub unsafe fn do_sinpi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { real_math1(args, sinpi_value) }
+}
+
+/// R's `cospi(x)` — cos(pi*x), exact at integer and half-integer arguments.
+pub unsafe fn do_cospi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { real_math1(args, cospi_value) }
+}
+
+/// R's `tanpi(x)` — tan(pi*x), based on the exact sinpi/cospi helpers.
+pub unsafe fn do_tanpi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        real_math1(args, |x| {
+            if x.is_finite() && x.fract() == 0.0 {
+                return 0.0;
+            }
+            if x.is_finite() {
+                let cycle = x.rem_euclid(1.0);
+                if cycle == 0.25 {
+                    return 1.0;
+                }
+                if cycle == 0.75 {
+                    return -1.0;
+                }
+            }
+            let cos = cospi_value(x);
+            if cos == 0.0 {
+                f64::NAN
+            } else {
+                sinpi_value(x) / cos
+            }
+        })
     }
 }
 

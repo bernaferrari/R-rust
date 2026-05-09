@@ -1,0 +1,5 @@
+print(round(c(expm1(1), log1p(1), acosh(2), asinh(1), atanh(0.5)), 6))
+print(cospi(c(0, 0.5, 1)))
+print(sinpi(c(0, 0.5, 1)))
+print(tanpi(c(0, 0.25, 1)) == c(0, 1, 0))
+print(is.na(expm1(NA_real_)))
