@@ -4950,6 +4950,7 @@ type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
 fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
     match name {
         "builtins" => Some(do_builtins),
+        "file.show" => Some(crate::mainutils::platform::do_fileshow),
         "stop" => Some(crate::mainutils::errors::do_stop_internal),
         "warning" => Some(crate::mainutils::errors::do_warning),
         "gettext" => Some(crate::mainutils::errors::do_gettext),

@@ -5188,6 +5188,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "basename",
             "dirname",
             "file.path",
+            "file.show",
             "file.exists",
             "file.info",
             "file.size",

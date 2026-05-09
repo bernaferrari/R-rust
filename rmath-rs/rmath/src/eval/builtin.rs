@@ -935,6 +935,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_file_path,
     },
     EvaluatedBuiltin {
+        name: "file.show",
+        handler: crate::mainutils::platform::do_fileshow,
+    },
+    EvaluatedBuiltin {
         name: "dir.exists",
         handler: crate::mainutils::platform::do_direxists,
     },

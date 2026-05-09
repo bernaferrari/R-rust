@@ -253,43 +253,94 @@ pub unsafe fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `file.show()` — display file(s) to the user.
 pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADDR, CADR, CAR, CDR, LENGTH, LOGICAL, STRING_ELT};
+        use crate::sexp::accessors::{
+            CADDDR, CADDR, CADR, CAR, CDR, INTEGER, LENGTH, STRING_ELT, TYPEOF,
+        };
+        use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXPTYPE};
         use crate::sexp::globals::R_NilValue;
-        use std::fs;
 
         let files = CAR(args);
-        let header = CADR(args);
-        let sep = CADDR(args);
-        let _pager = CAR(CDR(CDR(CDR(args))));
+        let headers = CADR(args);
+        let title = CADDR(args);
+        let delete_file = CADDDR(args);
+        let pager = CAR(CDR(CDR(CDR(CDR(args)))));
 
-        let n = LENGTH(files);
-        let mut show_header = true;
-        if !header.is_null() && header != R_NilValue() {
-            let v = *LOGICAL(header);
-            show_header = v != 0 && v != crate::sexp::ffi::NA_INTEGER;
+        if files.is_null()
+            || files == R_NilValue()
+            || TYPEOF(files) != SEXPTYPE::STRSXP
+            || LENGTH(files) < 1
+        {
+            platform_error("invalid filename specification");
         }
 
-        for i in 0..n as usize {
-            let elt = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
-            if elt.is_null() || elt == R_NilValue() {
-                continue;
+        let n = LENGTH(files);
+        if headers.is_null()
+            || headers == R_NilValue()
+            || TYPEOF(headers) != SEXPTYPE::STRSXP
+            || LENGTH(headers) != n
+        {
+            platform_error("invalid 'headers' argument");
+        }
+        if title.is_null() || title == R_NilValue() || TYPEOF(title) != SEXPTYPE::STRSXP {
+            platform_error("invalid 'title' argument");
+        }
+        if pager.is_null() || pager == R_NilValue() || TYPEOF(pager) != SEXPTYPE::STRSXP {
+            platform_error("invalid 'pager' argument");
+        }
+
+        let delete_file = if !delete_file.is_null()
+            && delete_file != R_NilValue()
+            && LENGTH(delete_file) > 0
+            && (TYPEOF(delete_file) == SEXPTYPE::LGLSXP || TYPEOF(delete_file) == SEXPTYPE::INTSXP)
+        {
+            let value = *INTEGER(delete_file);
+            value != FALSE && value != NA_INTEGER
+        } else {
+            false
+        };
+
+        for i in 0..n {
+            let file = STRING_ELT(files, i as crate::sexp::ffi::R_xlen_t);
+            if is_na_charsxp(file) {
+                platform_error("invalid filename specification");
             }
-            let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
-            let path = c.to_str().unwrap_or("");
-            if show_header {
-                eprintln!("\n{}", path);
+            let header = STRING_ELT(headers, i as crate::sexp::ffi::R_xlen_t);
+            if is_na_charsxp(header) {
+                platform_error("invalid 'headers' argument");
             }
-            if let Ok(contents) = fs::read_to_string(path) {
-                // Simple output: first 9999 chars like R
-                let max_chars = 9999;
-                let display = if contents.len() > max_chars {
-                    &contents[..max_chars]
-                } else {
-                    &contents
-                };
-                eprint!("{}", display);
-                if contents.len() > max_chars {
-                    eprintln!("\n[...truncated]");
+        }
+        if LENGTH(title) > 0 && is_na_charsxp(STRING_ELT(title, 0)) {
+            platform_error("invalid 'title' argument");
+        }
+        if LENGTH(pager) > 0 && is_na_charsxp(STRING_ELT(pager, 0)) {
+            platform_error("invalid 'pager' argument");
+        }
+
+        for i in 0..n {
+            let header = path_at(headers, i as usize).unwrap_or_default();
+            if !header.is_empty() {
+                println!("{header}\n");
+            }
+            if let Some(path) = path_at(files, i as usize) {
+                match std::fs::read_to_string(&path) {
+                    Ok(contents) => {
+                        print!("{contents}");
+                        if !contents.ends_with('\n') {
+                            println!();
+                        }
+                        println!();
+                    }
+                    Err(err) => {
+                        println!("Cannot open file '{path}': {err}\n");
+                    }
+                }
+            }
+        }
+
+        if delete_file {
+            for i in 0..n {
+                if let Some(path) = path_at(files, i as usize) {
+                    let _ = std::fs::remove_file(path);
                 }
             }
         }
