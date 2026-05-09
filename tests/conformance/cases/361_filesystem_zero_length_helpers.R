@@ -1,0 +1,7 @@
+print(basename(character(0)))
+print(dirname(character(0)))
+print(file.exists(character(0)))
+print(dir.exists(character(0)))
+print(file.create(character(0)))
+print(unlink(character(0)))
+print(nzchar(character(0)))

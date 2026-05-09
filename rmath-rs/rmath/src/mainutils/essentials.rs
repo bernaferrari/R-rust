@@ -7354,7 +7354,7 @@ fn map_path_strings(x: SEXP, f: fn(&str) -> String) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -11203,7 +11203,7 @@ pub unsafe fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -11599,7 +11599,7 @@ pub unsafe fn do_dir_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -11625,7 +11625,7 @@ pub unsafe fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -11651,7 +11651,7 @@ pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let mut count = 0;
         for i in 0..n {
             let path = elt_to_string(x, i);
@@ -11678,7 +11678,7 @@ pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
