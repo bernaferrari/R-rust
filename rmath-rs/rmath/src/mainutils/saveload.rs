@@ -14,11 +14,16 @@
 //!   OutSpaceAscii, OutNewlineAscii,
 //!   defaultSaveVersion
 
-use crate::sexp::accessors::{CADDR, CADR, CAR, CHAR, LENGTH, SET_STRING_ELT, STRING_ELT};
-use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
-use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::accessors::{
+    CAD5R, CADDR, CADR, CAR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT,
+    TYPEOF, XLENGTH,
+};
+use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
+use crate::sexp::envir::{R_findVarInFrame, defineVar};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::globals::{R_NaString, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
+use crate::sexp::symbol::Rf_install;
 
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::os::raw::c_int;
@@ -256,6 +261,193 @@ pub fn InDoubleAscii(reader: &mut impl BufRead) -> io::Result<f64> {
     }
 }
 
+fn read_ascii_token(reader: &mut impl BufRead) -> io::Result<String> {
+    let mut buf = String::new();
+    reader.read_line(&mut buf)?;
+    Ok(buf.trim().to_string())
+}
+
+fn InStringAscii(reader: &mut impl BufRead) -> io::Result<Option<String>> {
+    let line = read_ascii_token(reader)?;
+    if line == "NA" {
+        return Ok(None);
+    }
+    let Some((len, encoded)) = line.split_once(' ') else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "malformed ASCII string",
+        ));
+    };
+    let expected_len = len
+        .parse::<usize>()
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    let mut bytes = Vec::with_capacity(expected_len);
+    let mut chars = encoded.bytes();
+    while let Some(byte) = chars.next() {
+        if byte != b'\\' {
+            bytes.push(byte);
+            continue;
+        }
+        match chars.next() {
+            Some(b'n') => bytes.push(b'\n'),
+            Some(b't') => bytes.push(b'\t'),
+            Some(b'r') => bytes.push(b'\r'),
+            Some(b'v') => bytes.push(b'\x0B'),
+            Some(b'b') => bytes.push(b'\x08'),
+            Some(b'f') => bytes.push(b'\x0C'),
+            Some(b'a') => bytes.push(b'\x07'),
+            Some(b'\\') => bytes.push(b'\\'),
+            Some(b'\'') => bytes.push(b'\''),
+            Some(b'"') => bytes.push(b'"'),
+            Some(first @ b'0'..=b'7') => {
+                let second = chars.next().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "truncated octal escape")
+                })?;
+                let third = chars.next().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "truncated octal escape")
+                })?;
+                let oct = [first, second, third];
+                let text = std::str::from_utf8(&oct)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+                let value = u8::from_str_radix(text, 8)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+                bytes.push(value);
+            }
+            Some(other) => bytes.push(other),
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "trailing string escape",
+                ));
+            }
+        }
+    }
+    if bytes.len() != expected_len {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "ASCII string length mismatch",
+        ));
+    }
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+}
+
+unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let sexptype = TYPEOF(value);
+        OutIntegerAscii(writer, sexptype)?;
+        OutNewlineAscii(writer)?;
+
+        match SEXPTYPE::from(sexptype) {
+            SEXPTYPE::NILSXP => Ok(()),
+            SEXPTYPE::LGLSXP => {
+                let len = XLENGTH(value);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len as usize {
+                    OutIntegerAscii(writer, *LOGICAL(value).add(i))?;
+                    OutNewlineAscii(writer)?;
+                }
+                Ok(())
+            }
+            SEXPTYPE::INTSXP => {
+                let len = XLENGTH(value);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len as usize {
+                    OutIntegerAscii(writer, *INTEGER(value).add(i))?;
+                    OutNewlineAscii(writer)?;
+                }
+                Ok(())
+            }
+            SEXPTYPE::REALSXP => {
+                let len = XLENGTH(value);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len as usize {
+                    OutDoubleAscii(writer, *REAL(value).add(i))?;
+                    OutNewlineAscii(writer)?;
+                }
+                Ok(())
+            }
+            SEXPTYPE::STRSXP => {
+                let len = XLENGTH(value);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len {
+                    let charsxp = STRING_ELT(value, i);
+                    if charsxp.is_null() || charsxp == R_NaString() {
+                        writer.write_all(b"NA\n")?;
+                    } else {
+                        let text = std::ffi::CStr::from_ptr(CHAR(charsxp))
+                            .to_str()
+                            .map_err(io::Error::other)?;
+                        OutStringAscii(writer, text)?;
+                        OutNewlineAscii(writer)?;
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unsupported saved object type {sexptype}"),
+            )),
+        }
+    }
+}
+
+unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
+    unsafe {
+        let sexptype = InIntegerAscii(reader)?;
+        match SEXPTYPE::from(sexptype) {
+            SEXPTYPE::NILSXP => Ok(R_NilValue()),
+            SEXPTYPE::LGLSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocVector3(SEXPTYPE::LGLSXP, len as R_xlen_t);
+                for i in 0..len as usize {
+                    *LOGICAL(value).add(i) = InIntegerAscii(reader)?;
+                }
+                Ok(value)
+            }
+            SEXPTYPE::INTSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocVector3(SEXPTYPE::INTSXP, len as R_xlen_t);
+                for i in 0..len as usize {
+                    *INTEGER(value).add(i) = InIntegerAscii(reader)?;
+                }
+                Ok(value)
+            }
+            SEXPTYPE::REALSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocVector3(SEXPTYPE::REALSXP, len as R_xlen_t);
+                for i in 0..len as usize {
+                    *REAL(value).add(i) = InDoubleAscii(reader)?;
+                }
+                Ok(value)
+            }
+            SEXPTYPE::STRSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+                for i in 0..len as R_xlen_t {
+                    match InStringAscii(reader)? {
+                        Some(text) => {
+                            let cstr = std::ffi::CString::new(text).map_err(io::Error::other)?;
+                            SET_STRING_ELT(value, i, Rf_mkChar(cstr.as_ptr()));
+                        }
+                        None => SET_STRING_ELT(value, i, R_NaString()),
+                    }
+                }
+                Ok(value)
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unsupported saved object type {sexptype}"),
+            )),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SEXP-dependent stubs
 // ---------------------------------------------------------------------------
@@ -274,6 +466,7 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let list = CAR(args);
         let file_sexp = CADR(args);
         let ascii_flag = CADDR(args);
+        let envir = CAD5R(args);
 
         if file_sexp.is_null() {
             error("'file' must be non-empty string");
@@ -292,6 +485,9 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         };
 
         let use_ascii = crate::mainutils::coerce::asInteger(ascii_flag) != 0;
+        if !use_ascii {
+            error("only ASCII save files are supported by this Rust runtime");
+        }
         let _version = defaultSaveVersion();
 
         let file = match std::fs::File::create(&file_path) {
@@ -300,11 +496,7 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         };
         let mut writer = BufWriter::new(file);
 
-        if use_ascii {
-            let _ = R_WriteMagic(&mut writer, R_MAGIC_ASCII_V3);
-        } else {
-            let _ = R_WriteMagic(&mut writer, R_MAGIC_BINARY_V3);
-        }
+        let _ = R_WriteMagic(&mut writer, R_MAGIC_ASCII_V3);
 
         let n = if list.is_null() {
             0
@@ -331,8 +523,14 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let _ = OutStringAscii(&mut writer, name_str);
             let _ = OutNewlineAscii(&mut writer);
 
-            let _ = OutIntegerAscii(&mut writer, 0);
-            let _ = OutNewlineAscii(&mut writer);
+            let sym = Rf_install(name);
+            let value = R_findVarInFrame(envir, sym);
+            if value == R_UnboundValue() {
+                error(&format!("object '{}' not found", name_str));
+            }
+            if write_saved_object(&mut writer, value).is_err() {
+                error("save failed to serialize object");
+            }
         }
 
         let _ = writer.flush();
@@ -352,7 +550,7 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         crate::mainutils::relop::checkArity(_op, args);
 
         let file_sexp = CAR(args);
-        let _envir = CADR(args);
+        let envir = CADR(args);
         let _verbose = CADDR(args);
 
         if file_sexp.is_null() {
@@ -395,11 +593,21 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let _names_guard = protect(names);
 
         for i in 0..n as i64 {
-            let _name_res = InIntegerAscii(&mut reader);
-            let _type_res = InIntegerAscii(&mut reader);
+            let name = match InStringAscii(&mut reader) {
+                Ok(Some(name)) => name,
+                _ => error("a read error occurred"),
+            };
+            let value = match read_saved_object(&mut reader) {
+                Ok(value) => value,
+                Err(_) => error("a read error occurred"),
+            };
+            let c_name = match std::ffi::CString::new(name.as_str()) {
+                Ok(name) => name,
+                Err(_) => error("a read error occurred"),
+            };
+            defineVar(Rf_install(c_name.as_ptr()), value, envir);
 
-            let placeholder = Rf_mkChar(b"(loaded)\0".as_ptr() as *const std::os::raw::c_char);
-            SET_STRING_ELT(names, i, placeholder);
+            SET_STRING_ELT(names, i, Rf_mkChar(c_name.as_ptr()));
         }
 
         names

@@ -4957,6 +4957,8 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "debug" | "undebug" | "isdebugged" | "debugonce" => Some(crate::mainutils::debug::do_debug),
         "delayedAssign" => Some(crate::mainutils::builtin::do_delayed),
         "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
+        "save" => Some(crate::mainutils::saveload::do_save),
+        "load" => Some(crate::mainutils::saveload::do_load),
         _ => None,
     }
 }
