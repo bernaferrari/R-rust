@@ -1714,7 +1714,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
 
         let mut reader = BinaryReader::new(data);
 
-        // Read format header: two bytes (`A\n` or `B\n`).
+        // Read format header: two bytes (`A\n`, `B\n`, or `X\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);
         let fmt2 = reader.read_byte().unwrap_or(0);
         if (fmt1 != b'A' && fmt1 != b'B' && fmt1 != b'X') || fmt2 != b'\n' {
@@ -1792,14 +1792,6 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             version = ascii;
             ascii = R_NilValue();
         }
-
-        // Use R_serialize to get a RAWSXP
-        let _ascii_flag =
-            if !ascii.is_null() && TYPEOF(ascii) == SEXPTYPE::LGLSXP && LENGTH(ascii) >= 1 {
-                *LOGICAL(ascii) != 0
-            } else {
-                false
-            };
 
         let xdr = arg_by_name_or_position(args, "xdr", 3);
         R_serialize_with_xdr(object, R_NilValue(), ascii, xdr, version, R_NilValue())
