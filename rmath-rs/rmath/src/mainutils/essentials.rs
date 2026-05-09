@@ -2153,9 +2153,6 @@ pub unsafe fn do_is_finite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
-        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP {
-            return Rf_ScalarLogical(TRUE);
-        }
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -2166,8 +2163,10 @@ pub unsafe fn do_is_finite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             let is_fin = if t == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
                 v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && v.is_finite()
-            } else {
+            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 *INTEGER(x).add(i as usize) != NA_INTEGER
+            } else {
+                false
             };
             *dst.add(i as usize) = if is_fin { TRUE } else { FALSE };
         }
@@ -2184,9 +2183,6 @@ pub unsafe fn do_is_infinite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
-        if t != SEXPTYPE::REALSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -2194,8 +2190,12 @@ pub unsafe fn do_is_infinite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
-            let v = *REAL(x).add(i as usize);
-            *dst.add(i as usize) = if v.is_infinite() { TRUE } else { FALSE };
+            let is_infinite = if t == SEXPTYPE::REALSXP {
+                (*REAL(x).add(i as usize)).is_infinite()
+            } else {
+                false
+            };
+            *dst.add(i as usize) = if is_infinite { TRUE } else { FALSE };
         }
         result
     }
@@ -2210,9 +2210,6 @@ pub unsafe fn do_is_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
-        if t != SEXPTYPE::REALSXP {
-            return Rf_ScalarLogical(FALSE);
-        }
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -2220,8 +2217,12 @@ pub unsafe fn do_is_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
-            let v = *REAL(x).add(i as usize);
-            let is_nan = v.is_nan() && v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN;
+            let is_nan = if t == SEXPTYPE::REALSXP {
+                let v = *REAL(x).add(i as usize);
+                v.is_nan() && v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN
+            } else {
+                false
+            };
             *dst.add(i as usize) = if is_nan { TRUE } else { FALSE };
         }
         result

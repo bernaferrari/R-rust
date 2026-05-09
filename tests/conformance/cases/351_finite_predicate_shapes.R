@@ -1,0 +1,6 @@
+print(is.finite(c("a", NA)))
+print(is.infinite(c("a", NA)))
+print(is.nan(c("a", NA)))
+print(is.finite(c(TRUE, NA)))
+print(is.infinite(c(1L, NA_integer_)))
+print(is.nan(c(1L, NA_integer_)))
