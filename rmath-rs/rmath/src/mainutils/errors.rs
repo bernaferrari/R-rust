@@ -1649,7 +1649,8 @@ pub unsafe fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> S
     unsafe {
         checkArity(op, args);
         let msg = R_GetErrorBuf();
-        Rf_mkString(msg.as_ptr() as *const c_char)
+        let msg = std::ffi::CString::new(msg).unwrap_or_default();
+        Rf_mkString(msg.as_ptr())
     }
 }
 
@@ -1683,10 +1684,6 @@ pub unsafe fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SE
 pub unsafe fn do_interruptsSuspended(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let orig = interrupts_suspended();
-        if !args.is_null() && isNull(args) == 0 {
-            let val = asLogical(CAR(args));
-            set_interrupts_suspended(val != 0);
-        }
         ScalarLogical(orig as c_int)
     }
 }

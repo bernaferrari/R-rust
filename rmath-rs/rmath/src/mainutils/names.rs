@@ -4946,6 +4946,10 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "gettext" => Some(crate::mainutils::errors::do_gettext),
         "ngettext" => Some(crate::mainutils::errors::do_ngettext),
         "bindtextdomain" => Some(crate::mainutils::errors::do_bindtextdomain),
+        "geterrmessage" => Some(crate::mainutils::errors::do_geterrmessage),
+        "seterrmessage" => Some(crate::mainutils::errors::do_seterrmessage),
+        "printDeferredWarnings" => Some(crate::mainutils::errors::do_printDeferredWarnings),
+        "interruptsSuspended" => Some(crate::mainutils::errors::do_interruptsSuspended),
         _ => None,
     }
 }

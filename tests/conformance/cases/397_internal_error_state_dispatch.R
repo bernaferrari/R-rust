@@ -1,0 +1,7 @@
+print(.Internal(geterrmessage()))
+print(.Internal(seterrmessage("abc")))
+print(.Internal(geterrmessage()))
+print(.Internal(interruptsSuspended()))
+print(.Internal(interruptsSuspended(TRUE)))
+print(.Internal(interruptsSuspended(FALSE)))
+print(.Internal(printDeferredWarnings()))
