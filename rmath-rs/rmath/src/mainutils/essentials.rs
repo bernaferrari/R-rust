@@ -10000,13 +10000,14 @@ unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
     }
 }
 
-/// R's `matrix(data, nrow, ncol, byrow)` — create a matrix.
+/// R's `matrix(data, nrow, ncol, byrow, dimnames)` — create a matrix.
 pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let data = CAR(args);
-        let nrow_arg = CAR(CDR(args));
-        let ncol_arg = CAR(CDR(CDR(args)));
-        let byrow_arg = CAR(CDR(CDR(CDR(args))));
+        let data = arg_by_name_or_position(args, &["data"], 0);
+        let nrow_arg = arg_by_name_or_position(args, &["nrow"], 1);
+        let ncol_arg = arg_by_name_or_position(args, &["ncol"], 2);
+        let byrow_arg = arg_by_name_or_position(args, &["byrow"], 3);
+        let dimnames = arg_by_name_or_position(args, &["dimnames"], 4);
 
         if data.is_null() || data == R_NilValue() {
             return R_NilValue();
@@ -10069,6 +10070,19 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 result,
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
                 dim,
+            );
+        }
+
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            if !valid_array_dimnames(dimnames, dim) {
+                std::panic::panic_any(RError {
+                    message: "length of 'dimnames' not equal to array extent".to_string(),
+                });
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
             );
         }
 
