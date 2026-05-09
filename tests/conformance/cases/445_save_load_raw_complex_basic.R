@@ -1,5 +1,5 @@
 f <- tempfile()
-z <- as.complex(c(1, NA, Inf))
+z <- c(1+2i, NA_complex_, Inf-3i)
 rawv <- as.raw(c(0, 15, 255))
 names(z) <- c("a", "b", "c")
 names(rawv) <- c("zero", "mid", "max")

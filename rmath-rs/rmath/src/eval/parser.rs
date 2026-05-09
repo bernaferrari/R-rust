@@ -5,7 +5,7 @@
 //!
 //! Supports:
 //! - Numbers (integer and real), strings, identifiers
-//! - All R keywords: TRUE, FALSE, NULL, NA, Inf, NaN, NA_real_, NA_integer_, NA_character_
+//! - All R keywords: TRUE, FALSE, NULL, NA, Inf, NaN, NA_real_, NA_integer_, NA_character_, NA_complex_
 //! - Binary operators: +, -, *, /, ^, <, >, <=, >=, ==, !=, &, &&, |, ||, %%, %/%
 //! - Custom infix operators: %in%, %o%, %*%, any %xxx% sequence
 //! - Unary minus/plus
@@ -575,6 +575,10 @@ impl<'arena> Parser<'arena> {
 
     fn scalar_complex(&mut self, imaginary: f64) -> SEXP {
         scalar_complex_in(self.arena, 0.0, imaginary).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    }
+
+    fn scalar_complex_parts(&mut self, real: f64, imaginary: f64) -> SEXP {
+        scalar_complex_in(self.arena, real, imaginary).map_or(std::ptr::null_mut(), |s| s.as_raw())
     }
 
     fn scalar_integer(&mut self, value: i32) -> SEXP {
@@ -1427,6 +1431,10 @@ impl<'arena> Parser<'arena> {
                     "NaN" => Ok(self.scalar_real(f64::NAN)),
                     "NA_real_" => Ok(self.scalar_real(crate::sexp::ffi::NA_REAL)),
                     "NA_integer_" => Ok(self.scalar_integer(crate::sexp::ffi::NA_INTEGER)),
+                    "NA_complex_" => Ok(self.scalar_complex_parts(
+                        crate::sexp::ffi::NA_REAL,
+                        crate::sexp::ffi::NA_REAL,
+                    )),
                     "NA_character_" => Ok(self.scalar_na_string()),
                     _ => self.install_symbol(&name),
                 }
@@ -1653,6 +1661,18 @@ mod tests {
             let data = COMPLEX(result);
             assert_eq!((*data).r, 0.0);
             assert_eq!((*data).i, 2.0);
+        }
+    }
+
+    #[test]
+    fn test_na_complex_literal() {
+        unsafe {
+            let result = must(parse_str("NA_complex_"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::CPLXSXP);
+            assert_eq!(XLENGTH(result), 1);
+            let data = COMPLEX(result);
+            assert_eq!((*data).r.to_bits(), crate::sexp::ffi::R_NA_BIT_PATTERN);
+            assert_eq!((*data).i.to_bits(), crate::sexp::ffi::R_NA_BIT_PATTERN);
         }
     }
 
