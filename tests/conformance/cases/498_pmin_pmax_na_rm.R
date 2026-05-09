@@ -1,0 +1,7 @@
+cat(paste(pmin(c(1, NA, 4), c(2, 3, NA)), collapse = "|"), "\n", sep = "")
+cat(paste(pmin(c(1, NA, 4), c(2, 3, NA), na.rm = TRUE), collapse = "|"), "\n", sep = "")
+cat(paste(pmax(c(1, NA, 4), c(2, 3, NA)), collapse = "|"), "\n", sep = "")
+cat(paste(pmax(c(1, NA, 4), c(2, 3, NA), na.rm = TRUE), collapse = "|"), "\n", sep = "")
+cat(typeof(pmin(1L:3L, 3L:1L)), "\n", sep = "")
+cat(paste(pmin(1L:3L, 3L:1L), collapse = "|"), "\n", sep = "")
+cat(typeof(pmin(1L:3L, c(3, 2, 1))), "\n", sep = "")

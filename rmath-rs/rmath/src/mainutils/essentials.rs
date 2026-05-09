@@ -1968,13 +1968,21 @@ pub unsafe fn do_pmax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
     unsafe {
+        let na_rm = named_logical_arg(args, "na.rm").unwrap_or(false);
         let mut arg_vecs: Vec<SEXP> = Vec::new();
         let mut max_len: R_xlen_t = 0;
+        let mut result_type = SEXPTYPE::INTSXP;
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
+            if tag_name(current).as_deref() != Some("na.rm")
+                && !arg.is_null()
+                && arg != R_NilValue()
+            {
                 arg_vecs.push(arg);
+                if TYPEOF(arg) == SEXPTYPE::REALSXP {
+                    result_type = SEXPTYPE::REALSXP;
+                }
                 let n = XLENGTH(arg);
                 if n > max_len {
                     max_len = n;
@@ -1985,14 +1993,15 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
         if arg_vecs.is_empty() || max_len == 0 {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, max_len);
+        let result = Rf_allocVector3(result_type, max_len);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
-        let dst = REAL(result);
         for i in 0..max_len {
-            let mut best = NA_REAL;
+            let mut best = 0.0;
+            let mut seen_value = false;
+            let mut seen_missing = false;
             for &arg in &arg_vecs {
                 let n = XLENGTH(arg);
                 if n == 0 {
@@ -2000,11 +2009,13 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                 }
                 let idx = i % n;
                 let v = elt_real_safe(arg, idx);
-                if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                if v.to_bits() == R_NA_BIT_PATTERN || v.is_nan() {
+                    seen_missing = true;
                     continue;
                 }
-                if best.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                if !seen_value {
                     best = v;
+                    seen_value = true;
                 } else if is_min {
                     if v < best {
                         best = v;
@@ -2015,7 +2026,19 @@ unsafe fn do_pminmax(args: SEXP, is_min: bool) -> SEXP {
                     }
                 }
             }
-            *dst.add(i as usize) = best;
+            if result_type == SEXPTYPE::REALSXP {
+                *REAL(result).add(i as usize) = if seen_missing && !na_rm || !seen_value {
+                    NA_REAL
+                } else {
+                    best
+                };
+            } else {
+                *INTEGER(result).add(i as usize) = if seen_missing && !na_rm || !seen_value {
+                    NA_INTEGER
+                } else {
+                    best as c_int
+                };
+            }
         }
         result
     }
@@ -14050,9 +14073,14 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if TYPEOF(x) != SEXPTYPE::VECSXP {
             return x;
         }
-        let use_names = logical_arg_by_name_or_position(args, "use.names", 2).unwrap_or(true);
+        let recursive = logical_arg_by_name_or_position(args, "recursive", 1)
+            .or_else(|| logical_from_raw_arg(args, 1))
+            .unwrap_or(true);
+        let use_names = logical_arg_by_name_or_position(args, "use.names", 2)
+            .or_else(|| logical_from_raw_arg(args, 2))
+            .unwrap_or(true);
         let mut entries = Vec::new();
-        collect_unlist_entries(x, None, use_names, &mut entries);
+        collect_unlist_entries(x, None, recursive, use_names, &mut entries);
         let result_type = unlist_result_type(&entries);
         let total = entries.len() as R_xlen_t;
 
@@ -14077,6 +14105,9 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 }
                 t if t == SEXPTYPE::REALSXP => {
                     *REAL(result).add(idx) = entry.value.as_real();
+                }
+                t if t == SEXPTYPE::VECSXP => {
+                    SET_VECTOR_ELT(result, idx as R_xlen_t, entry.value.as_sexp());
                 }
                 _ => {
                     *INTEGER(result).add(idx) = entry.value.as_integer();
@@ -14105,6 +14136,38 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+unsafe fn logical_from_raw_arg(args: SEXP, position: usize) -> Option<bool> {
+    unsafe {
+        let mut current = args;
+        for _ in 0..position {
+            if current.is_null() || current == R_NilValue() {
+                return None;
+            }
+            current = CDR(current);
+        }
+        if current.is_null() || current == R_NilValue() {
+            return None;
+        }
+        let value = CAR(current);
+        if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+            return None;
+        }
+        let raw = if TYPEOF(value) == SEXPTYPE::LGLSXP || TYPEOF(value) == SEXPTYPE::INTSXP {
+            *INTEGER(value)
+        } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+            let value = *REAL(value);
+            if ISNAN(value) {
+                NA_LOGICAL
+            } else {
+                value as c_int
+            }
+        } else {
+            return None;
+        };
+        (raw != NA_INTEGER).then_some(raw != 0)
+    }
+}
+
 struct UnlistEntry {
     value: UnlistValue,
     name: Option<String>,
@@ -14116,6 +14179,7 @@ enum UnlistValue {
     Real(f64),
     Complex(Rcomplex),
     String(String),
+    Object(SEXP),
 }
 
 impl UnlistValue {
@@ -14129,7 +14193,7 @@ impl UnlistValue {
                     *value as i32
                 }
             }
-            Self::Complex(_) | Self::String(_) => NA_INTEGER,
+            Self::Complex(_) | Self::String(_) | Self::Object(_) => NA_INTEGER,
         }
     }
 
@@ -14144,7 +14208,7 @@ impl UnlistValue {
             }
             Self::Real(value) => *value,
             Self::Complex(value) => value.r,
-            Self::String(_) => NA_REAL,
+            Self::String(_) | Self::Object(_) => NA_REAL,
         }
     }
 
@@ -14160,7 +14224,7 @@ impl UnlistValue {
             },
             Self::Real(value) => Rcomplex { r: *value, i: 0.0 },
             Self::Complex(value) => *value,
-            Self::String(_) => Rcomplex {
+            Self::String(_) | Self::Object(_) => Rcomplex {
                 r: NA_REAL,
                 i: NA_REAL,
             },
@@ -14195,12 +14259,25 @@ impl UnlistValue {
                 value.i
             ),
             Self::String(value) => value.clone(),
+            Self::Object(value) => elt_to_string(*value, 0),
+        }
+    }
+
+    fn as_sexp(&self) -> SEXP {
+        match self {
+            Self::Object(value) => *value,
+            _ => unsafe { R_NilValue() },
         }
     }
 }
 
 fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
     if entries
+        .iter()
+        .any(|entry| matches!(entry.value, UnlistValue::Object(_)))
+    {
+        SEXPTYPE::VECSXP
+    } else if entries
         .iter()
         .any(|entry| matches!(entry.value, UnlistValue::String(_)))
     {
@@ -14223,6 +14300,7 @@ fn unlist_result_type(entries: &[UnlistEntry]) -> SEXPTYPE {
 unsafe fn collect_unlist_entries(
     x: SEXP,
     prefix: Option<String>,
+    recursive: bool,
     use_names: bool,
     out: &mut Vec<UnlistEntry>,
 ) {
@@ -14233,13 +14311,27 @@ unsafe fn collect_unlist_entries(
         if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::EXPRSXP {
             let names =
                 crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            if !recursive && prefix.is_some() {
+                for i in 0..XLENGTH(x) {
+                    let child_name = if use_names {
+                        unlist_element_name(prefix.as_deref(), names, i, XLENGTH(x))
+                    } else {
+                        None
+                    };
+                    out.push(UnlistEntry {
+                        value: UnlistValue::Object(VECTOR_ELT(x, i)),
+                        name: child_name,
+                    });
+                }
+                return;
+            }
             for i in 0..XLENGTH(x) {
                 let child_name = if use_names {
                     unlist_element_name(prefix.as_deref(), names, i, XLENGTH(x))
                 } else {
                     None
                 };
-                collect_unlist_entries(VECTOR_ELT(x, i), child_name, use_names, out);
+                collect_unlist_entries(VECTOR_ELT(x, i), child_name, recursive, use_names, out);
             }
             return;
         }
