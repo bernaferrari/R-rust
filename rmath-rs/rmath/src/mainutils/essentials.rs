@@ -5583,6 +5583,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Rprofmem",
             "gc",
             "gcinfo",
+            "gctorture",
+            "gctorture2",
             "memory.size",
             "memory.profile",
             "object.size",
@@ -21874,6 +21876,48 @@ pub unsafe fn do_gcinfo(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             base_error("argument \"verbose\" is missing, with no default");
         }
         let old = crate::mainutils::memory_main::do_gcinfo(call, op, args, rho);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        old
+    }
+}
+
+/// R's `gctorture(on = TRUE)` — set session-local GC torture mode.
+pub unsafe fn do_gctorture(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let on = if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+            Rf_ScalarLogical(TRUE)
+        } else {
+            CAR(args)
+        };
+        let normalized = Rf_cons(on, R_NilValue());
+        let _args_guard = protect(normalized);
+        let old = crate::mainutils::memory_main::do_gctorture(call, op, normalized, rho);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        old
+    }
+}
+
+/// R's `gctorture2(step, wait = 0, inhibit_release = FALSE)` session state.
+pub unsafe fn do_gctorture2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+            base_error("argument \"step\" is missing, with no default");
+        }
+
+        let step = CAR(args);
+        let wait =
+            if CDR(args).is_null() || CDR(args) == R_NilValue() || CAR(CDR(args)) == R_MissingArg()
+            {
+                Rf_ScalarInteger(0)
+            } else {
+                CAR(CDR(args))
+            };
+        let _wait_guard = protect(wait);
+        let tail = Rf_cons(wait, R_NilValue());
+        let _tail_guard = protect(tail);
+        let normalized = Rf_cons(step, tail);
+        let _args_guard = protect(normalized);
+        let old = crate::mainutils::memory_main::do_gctorture2(call, op, normalized, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
         old
     }

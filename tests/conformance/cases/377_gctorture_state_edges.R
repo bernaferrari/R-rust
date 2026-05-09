@@ -1,0 +1,5 @@
+print(gctorture(FALSE))
+print(gctorture())
+print(gctorture(FALSE))
+print(gctorture2(3))
+print(gctorture2(0, 0))

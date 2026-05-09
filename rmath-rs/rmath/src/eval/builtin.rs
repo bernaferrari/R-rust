@@ -2183,6 +2183,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_gcinfo,
     },
     EvaluatedBuiltin {
+        name: "gctorture",
+        handler: crate::mainutils::essentials::do_gctorture,
+    },
+    EvaluatedBuiltin {
+        name: "gctorture2",
+        handler: crate::mainutils::essentials::do_gctorture2,
+    },
+    EvaluatedBuiltin {
         name: "memory.size",
         handler: crate::mainutils::essentials::do_memory_size,
     },
