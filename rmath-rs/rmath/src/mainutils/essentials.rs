@@ -25053,18 +25053,27 @@ pub unsafe fn do_match_arg(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let arg = CAR(args);
         let choices = CAR(CDR(args));
-        if arg.is_null() || choices.is_null() {
+        if arg.is_null() || choices.is_null() || arg == R_NilValue() || choices == R_NilValue() {
             return arg;
         }
         let arg_str = elt_to_string(arg, 0);
-        let n = XLENGTH(choices).max(1);
+        let n = XLENGTH(choices);
+        let mut matches = Vec::new();
         for i in 0..n {
             let choice = elt_to_string(choices, i);
             if choice.starts_with(&arg_str) {
-                return Rf_mkString(CString::new(choice).unwrap_or_default().as_ptr());
+                matches.push(choice);
             }
         }
-        arg // No match, return as-is
+        if matches.len() == 1 {
+            Rf_mkString(
+                CString::new(matches[0].as_str())
+                    .unwrap_or_default()
+                    .as_ptr(),
+            )
+        } else {
+            base_error("'arg' should be one of ");
+        }
     }
 }
 
@@ -25073,11 +25082,16 @@ pub unsafe fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     unsafe {
         let input = CAR(args);
         let target = CAR(CDR(args));
+        let nomatch = CAR(CDR(CDR(args)));
         if input.is_null() || target.is_null() {
             return input;
         }
         let input_str = elt_to_string(input, 0);
-        let n = XLENGTH(target).max(1);
+        let n = if target == R_NilValue() {
+            0
+        } else {
+            XLENGTH(target)
+        };
         let mut matches: Vec<String> = Vec::new();
         for i in 0..n {
             let t = elt_to_string(target, i);
@@ -25087,8 +25101,17 @@ pub unsafe fn do_char_expand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         if matches.len() == 1 {
             Rf_mkString(CString::new(&matches[0][..]).unwrap_or_default().as_ptr())
+        } else if matches.len() > 1 {
+            Rf_allocVector3(SEXPTYPE::STRSXP, 0)
+        } else if !nomatch.is_null() && nomatch != R_NilValue() && nomatch != R_MissingArg() {
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            if out.is_null() {
+                return R_NilValue();
+            }
+            SET_STRING_ELT(out, 0, crate::sexp::globals::R_NaString());
+            out
         } else {
-            input
+            base_error("no match");
         }
     }
 }

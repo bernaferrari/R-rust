@@ -1,0 +1,5 @@
+print(match.arg("a", "abc"))
+print(char.expand("a", "abc", nomatch = NA_character_))
+print(char.expand("a", c("abc", "abd"), nomatch = NA_character_))
+print(char.expand("a", character(0), nomatch = NA_character_))
+print(char.expand("z", c("abc"), nomatch = "NO"))
