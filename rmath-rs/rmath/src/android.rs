@@ -408,7 +408,12 @@ impl Default for RResourceLimits {
 impl RResult {
     fn with_error_output(mut self) -> Self {
         if let RValue::Error(message) = &self.typed {
-            self.output = format!("Error: {message}");
+            let message = message.trim_end();
+            self.output = if message.starts_with("Error:") {
+                message.to_string()
+            } else {
+                format!("Error: {message}")
+            };
         }
         self
     }

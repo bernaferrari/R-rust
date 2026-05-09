@@ -1567,6 +1567,31 @@ pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// Direct .Internal(stop(...)) handler for structured embedding boundaries.
+pub unsafe fn do_stop_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        checkArity(op, args);
+
+        let args = CDR(args);
+        if isNull(CAR(args)) != 0 {
+            std::panic::panic_any(RError {
+                message: String::new(),
+            });
+        }
+
+        SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
+        if isValidString(CAR(args)) == 0 {
+            std::panic::panic_any(RError {
+                message: " [invalid string in stop(.)]".to_string(),
+            });
+        }
+
+        let msg = translateChar(STRING_ELT(CAR(args), 0));
+        let message = CStr::from_ptr(msg).to_str().unwrap_or("").to_string();
+        std::panic::panic_any(RError { message });
+    }
+}
+
 /// do_warning — R's warning() function.
 /// Ported from errors.c do_warning().
 pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -1593,15 +1618,17 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         args = CDR(args);
 
-        if !isNull(CAR(args)) != 0 {
-            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
-            if isValidString(CAR(args)) == 0 {
+        let message = CAR(args);
+        if !isNull(message) != 0 {
+            SETCAR(args, coerceVector(message, SEXPTYPE::STRSXP.as_c_int()));
+            let message = CAR(args);
+            if isValidString(message) == 0 {
                 let c_msg =
                     std::ffi::CString::new(" [invalid string in warning(.)]").unwrap_or_default();
                 warningcall(c_call, c_msg.as_ptr());
             } else {
                 // Pre-format: in C this is warningcall(c_call, "%s", translateChar(...))
-                let msg = translateChar(STRING_ELT(CAR(args), 0));
+                let msg = translateChar(STRING_ELT(message, 0));
                 let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
                 let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
                 warningcall(c_call, c_msg.as_ptr());
@@ -1613,7 +1640,7 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         set_immediate_warning(false);
         set_no_break_warning(false);
 
-        globals::R_NilValue()
+        CAR(args)
     }
 }
 

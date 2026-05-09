@@ -4,7 +4,7 @@
 //!
 //! Implements the R_FunTab dispatch table (~940 entries), R_Primitive,
 //! do_primitive, StrToInternal, installFunTab, SymbolShortcuts,
-//! InitNames, installS3Signature, do_internal (stub), do_tilde (stub),
+//! InitNames, installS3Signature, do_internal, do_tilde (stub),
 //! DDVALSymbols, installDDVAL, mkSymMarker, getPRIMNAME.
 
 use std::os::raw::{c_char, c_int};
@@ -4901,6 +4901,14 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
         let name = std::str::from_utf8(&entry.name[..end]).unwrap_or("<invalid>");
 
+        if let Some(handler) = internal_builtin_handler(name) {
+            let ans = handler(s, internal_val, evaluated_args, env);
+            if flag < 2 {
+                crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
+            }
+            return ans;
+        }
+
         if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name) {
             let ans = handler(s, internal_val, evaluated_args, env);
             if flag < 2 {
@@ -4926,6 +4934,18 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         ans
+    }
+}
+
+type InternalBuiltinHandler = unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP;
+
+fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
+    match name {
+        "stop" => Some(crate::mainutils::errors::do_stop_internal),
+        "warning" => Some(crate::mainutils::errors::do_warning),
+        "gettext" => Some(crate::mainutils::errors::do_gettext),
+        "ngettext" => Some(crate::mainutils::errors::do_ngettext),
+        _ => None,
     }
 }
 
