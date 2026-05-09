@@ -18,6 +18,7 @@ use crate::sexp::accessors::{
     CAD5R, CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, SET_STRING_ELT,
     SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
+use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -340,7 +341,10 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
         OutNewlineAscii(writer)?;
 
         match SEXPTYPE::from(sexptype) {
-            SEXPTYPE::NILSXP => Ok(()),
+            SEXPTYPE::NILSXP => {
+                write_names_attr(writer, value)?;
+                Ok(())
+            }
             SEXPTYPE::LGLSXP => {
                 let len = XLENGTH(value);
                 OutIntegerAscii(writer, len as c_int)?;
@@ -349,6 +353,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutIntegerAscii(writer, *LOGICAL(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
+                write_names_attr(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::INTSXP => {
@@ -359,6 +364,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutIntegerAscii(writer, *INTEGER(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
+                write_names_attr(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::REALSXP => {
@@ -369,6 +375,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                     OutDoubleAscii(writer, *REAL(value).add(i))?;
                     OutNewlineAscii(writer)?;
                 }
+                write_names_attr(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::STRSXP => {
@@ -387,6 +394,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                         OutNewlineAscii(writer)?;
                     }
                 }
+                write_names_attr(writer, value)?;
                 Ok(())
             }
             SEXPTYPE::VECSXP => {
@@ -396,6 +404,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 for i in 0..len {
                     write_saved_object(writer, VECTOR_ELT(value, i))?;
                 }
+                write_names_attr(writer, value)?;
                 Ok(())
             }
             _ => Err(io::Error::new(
@@ -406,10 +415,40 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
     }
 }
 
+unsafe fn write_names_attr(writer: &mut impl Write, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let names = getAttrib(value, R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            OutIntegerAscii(writer, 0)?;
+            OutNewlineAscii(writer)?;
+            return Ok(());
+        }
+
+        OutIntegerAscii(writer, 1)?;
+        OutNewlineAscii(writer)?;
+        let len = XLENGTH(names);
+        OutIntegerAscii(writer, len as c_int)?;
+        OutNewlineAscii(writer)?;
+        for i in 0..len {
+            let charsxp = STRING_ELT(names, i);
+            if charsxp.is_null() || charsxp == R_NaString() {
+                writer.write_all(b"NA\n")?;
+            } else {
+                let text = std::ffi::CStr::from_ptr(CHAR(charsxp))
+                    .to_str()
+                    .map_err(io::Error::other)?;
+                OutStringAscii(writer, text)?;
+                OutNewlineAscii(writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
     unsafe {
         let sexptype = InIntegerAscii(reader)?;
-        match SEXPTYPE::from(sexptype) {
+        let value = match SEXPTYPE::from(sexptype) {
             SEXPTYPE::NILSXP => Ok(R_NilValue()),
             SEXPTYPE::LGLSXP => {
                 let len = InIntegerAscii(reader)?;
@@ -463,7 +502,32 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                 io::ErrorKind::InvalidData,
                 format!("unsupported saved object type {sexptype}"),
             )),
+        }?;
+        read_names_attr(reader, value)?;
+        Ok(value)
+    }
+}
+
+unsafe fn read_names_attr(reader: &mut impl BufRead, value: SEXP) -> io::Result<()> {
+    unsafe {
+        let has_names = InIntegerAscii(reader)?;
+        if has_names == 0 {
+            return Ok(());
         }
+        let len = InIntegerAscii(reader)?;
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        let _guard = protect(names);
+        for i in 0..len as R_xlen_t {
+            match InStringAscii(reader)? {
+                Some(text) => {
+                    let cstr = std::ffi::CString::new(text).map_err(io::Error::other)?;
+                    SET_STRING_ELT(names, i, Rf_mkChar(cstr.as_ptr()));
+                }
+                None => SET_STRING_ELT(names, i, R_NaString()),
+            }
+        }
+        setAttrib(value, R_NamesSymbol(), names);
+        Ok(())
     }
 }
 
