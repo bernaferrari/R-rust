@@ -14465,43 +14465,83 @@ pub unsafe fn do_charmatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let x_arg = CAR(args);
         let table_arg = CAR(CDR(args));
-        if x_arg.is_null()
-            || x_arg == R_NilValue()
-            || table_arg.is_null()
-            || table_arg == R_NilValue()
-        {
-            return Rf_ScalarInteger(0);
+        let nomatch_arg = CAR(CDR(CDR(args)));
+        let nomatch = if nomatch_arg.is_null() || nomatch_arg == R_NilValue() {
+            NA_INTEGER
+        } else {
+            real_or_default(nomatch_arg, NA_REAL) as c_int
+        };
+
+        if x_arg.is_null() || x_arg == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let x_str = elt_to_string(x_arg, 0);
-        let n = XLENGTH(table_arg).max(1);
-        let mut matches: Vec<c_int> = Vec::new();
-        for i in 0..n {
-            let t_str = elt_to_string(table_arg, i);
-            if t_str == x_str {
-                matches.push((i + 1) as c_int);
-            }
+        let nx = XLENGTH(x_arg);
+        let nt = if table_arg.is_null() || table_arg == R_NilValue() {
+            0
+        } else {
+            XLENGTH(table_arg)
+        };
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, nx);
+        if result.is_null() {
+            return R_NilValue();
         }
-        if matches.len() == 1 {
-            return Rf_ScalarInteger(matches[0]);
-        } else if matches.is_empty() {
-            // Check for partial match
-            let mut partial: Vec<c_int> = Vec::new();
-            for i in 0..n {
-                let t_str = elt_to_string(table_arg, i);
-                if t_str.starts_with(&x_str) {
-                    partial.push((i + 1) as c_int);
+        let _result_guard = protect(result);
+        let dst = INTEGER(result);
+
+        for i in 0..nx {
+            let x_is_na = as_character_element_is_na(x_arg, i);
+            let x_str = if x_is_na {
+                String::new()
+            } else {
+                elt_to_string(x_arg, i)
+            };
+            let mut exact_matches = 0usize;
+            let mut exact_index = nomatch;
+            for j in 0..nt {
+                let table_is_na = as_character_element_is_na(table_arg, j);
+                let exact = if x_is_na || table_is_na {
+                    x_is_na && table_is_na
+                } else {
+                    elt_to_string(table_arg, j) == x_str
+                };
+                if exact {
+                    exact_matches += 1;
+                    exact_index = (j + 1) as c_int;
                 }
             }
-            if partial.len() == 1 {
-                return Rf_ScalarInteger(partial[0]);
-            } else if partial.is_empty() {
-                return Rf_ScalarInteger(0);
-            } else {
-                return Rf_ScalarInteger(NA_INTEGER);
+
+            if exact_matches == 1 {
+                *dst.add(i as usize) = exact_index;
+                continue;
             }
-        } else {
-            return Rf_ScalarInteger(NA_INTEGER);
+            if exact_matches > 1 {
+                *dst.add(i as usize) = 0;
+                continue;
+            }
+
+            let mut partial_matches = 0usize;
+            let mut partial_index = nomatch;
+            if !x_is_na {
+                for j in 0..nt {
+                    if as_character_element_is_na(table_arg, j) {
+                        continue;
+                    }
+                    let table_str = elt_to_string(table_arg, j);
+                    if table_str.starts_with(&x_str) {
+                        partial_matches += 1;
+                        partial_index = (j + 1) as c_int;
+                    }
+                }
+            }
+            *dst.add(i as usize) = if partial_matches == 1 {
+                partial_index
+            } else if partial_matches > 1 {
+                0
+            } else {
+                nomatch
+            };
         }
+        result
     }
 }
 
