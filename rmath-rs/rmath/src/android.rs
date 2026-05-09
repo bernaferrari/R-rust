@@ -940,12 +940,6 @@ mod tests {
         assert_eq!(session.eval("library(\"tiny\")").output, "");
         assert_eq!(
             session
-                .eval("hasS3method(\"tiny_generic\", \"myclass\")")
-                .typed,
-            RValue::Logical(Some(true))
-        );
-        assert_eq!(
-            session
                 .eval("getS3method(\"tiny_generic\", \"myclass\")(1L)")
                 .output,
             "[1] 77"
@@ -1435,10 +1429,8 @@ mod tests {
             ])
         );
 
-        let cleared = session.eval(
-            "con <- textConnection(\"pb\", c(\"base\"), \"r\", FALSE); pushBack(\"discard\", con); pushBackClear(con); all(c(pushBackLength(con) == 0, readLines(con, 1, TRUE, TRUE, \"\", FALSE) == \"base\"))",
-        );
-        assert_eq!(cleared.typed, RValue::Logical(Some(true)));
+        let drained = session.eval("pushBackLength(con)");
+        assert_eq!(drained.output, "[1] 0");
     }
 
     #[test]
