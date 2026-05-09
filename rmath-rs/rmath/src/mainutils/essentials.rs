@@ -19399,21 +19399,9 @@ pub unsafe fn do_any_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let t = TYPEOF(x);
         let n = XLENGTH(x);
         for i in 0..n {
-            let is_na = if t == SEXPTYPE::REALSXP {
-                let v = *REAL(x).add(i as usize);
-                v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(x).add(i as usize) == NA_INTEGER
-            } else if t == SEXPTYPE::STRSXP {
-                let charsxp = STRING_ELT(x, i);
-                charsxp.is_null()
-            } else {
-                false
-            };
-            if is_na {
+            if atomic_value_is_missing(x, i) {
                 return Rf_ScalarLogical(TRUE);
             }
         }
@@ -19428,24 +19416,12 @@ pub unsafe fn do_all_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let t = TYPEOF(x);
         let n = XLENGTH(x);
         if n == 0 {
             return Rf_ScalarLogical(FALSE);
         }
         for i in 0..n {
-            let is_na = if t == SEXPTYPE::REALSXP {
-                let v = *REAL(x).add(i as usize);
-                v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(x).add(i as usize) == NA_INTEGER
-            } else if t == SEXPTYPE::STRSXP {
-                let charsxp = STRING_ELT(x, i);
-                charsxp.is_null()
-            } else {
-                false
-            };
-            if !is_na {
+            if !atomic_value_is_missing(x, i) {
                 return Rf_ScalarLogical(FALSE);
             }
         }
