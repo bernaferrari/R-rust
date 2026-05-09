@@ -4228,14 +4228,6 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         0,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
-    FunTabEntry::new(
-        b"mkjunction\0",
-        None,
-        0,
-        11,
-        2,
-        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
-    ),
     // Unimplemented entries for remaining functions
     FunTabEntry::new(
         b"gctorture\0",
