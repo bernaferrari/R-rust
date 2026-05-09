@@ -3121,12 +3121,32 @@ pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             .as_ref()
             .map_or(ptr::null(), |value| value.as_ptr());
 
-        let result = crate::intl::bindtextdom::libintl_bindtextdomain(domain_ptr, dirname_ptr);
+        let result = bindtextdomain_impl(domain_ptr, dirname_ptr);
         if result.is_null() {
             return globals::R_NilValue();
         }
 
         Rf_mkString(result)
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+unsafe fn bindtextdomain_impl(
+    domain_ptr: *const std::os::raw::c_char,
+    dirname_ptr: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    unsafe { crate::intl::bindtextdom::libintl_bindtextdomain(domain_ptr, dirname_ptr) }
+}
+
+#[cfg(target_os = "android")]
+unsafe fn bindtextdomain_impl(
+    domain_ptr: *const std::os::raw::c_char,
+    dirname_ptr: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    if domain_ptr.is_null() || dirname_ptr.is_null() {
+        ptr::null_mut()
+    } else {
+        dirname_ptr as *mut std::os::raw::c_char
     }
 }
 
