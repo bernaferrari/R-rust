@@ -21246,10 +21246,100 @@ pub unsafe fn do_xtabs(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let formula = CAR(args);
         let data = CAR(CDR(args));
+        if let Some(result) = xtabs_two_way_data_frame(formula, data) {
+            return result;
+        }
         if let Some(result) = xtabs_one_sided_vector(formula, data, rho) {
             return result;
         }
         Rf_allocVector3(SEXPTYPE::INTSXP, 0)
+    }
+}
+
+unsafe fn xtabs_two_way_data_frame(formula: SEXP, data: SEXP) -> Option<SEXP> {
+    unsafe {
+        if formula.is_null() || formula == R_NilValue() || TYPEOF(formula) != SEXPTYPE::LANGSXP {
+            return None;
+        }
+        if data.is_null() || data == R_NilValue() || TYPEOF(data) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        if pairlist_apply_len(formula) != 2 {
+            return None;
+        }
+        let rhs = CADR(formula);
+        if rhs.is_null() || rhs == R_NilValue() || TYPEOF(rhs) != SEXPTYPE::LANGSXP {
+            return None;
+        }
+        if symbol_name(CAR(rhs)).as_deref() != Some("+") || pairlist_apply_len(rhs) != 3 {
+            return None;
+        }
+        let row_expr = CADR(rhs);
+        let col_expr = CAR(CDR(CDR(rhs)));
+        let row_name = symbol_name(row_expr)?;
+        let col_name = symbol_name(col_expr)?;
+        let rows = list_element_by_name(data, &row_name)?;
+        let cols = list_element_by_name(data, &col_name)?;
+        if !xtabs_supported_atomic(rows) || !xtabs_supported_atomic(cols) {
+            return None;
+        }
+        let n_obs = XLENGTH(rows);
+        if XLENGTH(cols) != n_obs {
+            return None;
+        }
+
+        let mut row_labels = BTreeSet::<String>::new();
+        let mut col_labels = BTreeSet::<String>::new();
+        for i in 0..n_obs {
+            if atomic_value_is_missing(rows, i) || atomic_value_is_missing(cols, i) {
+                continue;
+            }
+            row_labels.insert(elt_to_string(rows, i));
+            col_labels.insert(elt_to_string(cols, i));
+        }
+        let row_labels: Vec<String> = row_labels.into_iter().collect();
+        let col_labels: Vec<String> = col_labels.into_iter().collect();
+        let nrow = row_labels.len() as R_xlen_t;
+        let ncol = col_labels.len() as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, nrow * ncol);
+        if result.is_null() {
+            return Some(result);
+        }
+        let _result_guard = protect(result);
+        for i in 0..(nrow * ncol) as usize {
+            *INTEGER(result).add(i) = 0;
+        }
+
+        let row_index: BTreeMap<String, R_xlen_t> = row_labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| (label.clone(), i as R_xlen_t))
+            .collect();
+        let col_index: BTreeMap<String, R_xlen_t> = col_labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| (label.clone(), i as R_xlen_t))
+            .collect();
+        for i in 0..n_obs {
+            if atomic_value_is_missing(rows, i) || atomic_value_is_missing(cols, i) {
+                continue;
+            }
+            let row = row_index.get(&elt_to_string(rows, i)).copied()?;
+            let col = col_index.get(&elt_to_string(cols, i)).copied()?;
+            let offset = (row + col * nrow) as usize;
+            *INTEGER(result).add(offset) += 1;
+        }
+
+        set_xtabs_two_dim_metadata(
+            result,
+            nrow,
+            ncol,
+            &row_name,
+            &col_name,
+            &row_labels,
+            &col_labels,
+        );
+        Some(result)
     }
 }
 
@@ -21369,6 +21459,79 @@ unsafe fn xtabs_resolve_rhs(rhs: SEXP, data: SEXP, rho: SEXP) -> SEXP {
         }
         crate::eval::eval::Rf_eval(rhs, rho)
     }
+}
+
+unsafe fn set_xtabs_two_dim_metadata(
+    result: SEXP,
+    nrow: R_xlen_t,
+    ncol: R_xlen_t,
+    row_name: &str,
+    col_name: &str,
+    row_labels: &[String],
+    col_labels: &[String],
+) {
+    unsafe {
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if !dim.is_null() {
+            let _dim_guard = protect(dim);
+            *INTEGER(dim) = nrow as c_int;
+            *INTEGER(dim).add(1) = ncol as c_int;
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                dim,
+            );
+        }
+
+        let row_dimnames = string_vector(row_labels);
+        let _row_dimnames_guard = protect(row_dimnames);
+        let col_dimnames = string_vector(col_labels);
+        let _col_dimnames_guard = protect(col_dimnames);
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if !dimnames.is_null() {
+            let _dimnames_guard = protect(dimnames);
+            SET_VECTOR_ELT(dimnames, 0, row_dimnames);
+            SET_VECTOR_ELT(dimnames, 1, col_dimnames);
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+            if !names.is_null() {
+                let _names_guard = protect(names);
+                let c_row_name = CString::new(row_name).unwrap_or_default();
+                let c_col_name = CString::new(col_name).unwrap_or_default();
+                SET_STRING_ELT(names, 0, Rf_mkChar(c_row_name.as_ptr()));
+                SET_STRING_ELT(names, 1, Rf_mkChar(c_col_name.as_ptr()));
+                crate::sexp::attrib_core::setAttrib(
+                    dimnames,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
+        }
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if !class.is_null() {
+            let _class_guard = protect(class);
+            SET_STRING_ELT(class, 0, Rf_mkChar(c"xtabs".as_ptr()));
+            SET_STRING_ELT(class, 1, Rf_mkChar(c"table".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+    }
+}
+
+fn xtabs_supported_atomic(x: SEXP) -> bool {
+    let value_type = unsafe { TYPEOF(x) };
+    value_type == SEXPTYPE::STRSXP
+        || value_type == SEXPTYPE::INTSXP
+        || value_type == SEXPTYPE::REALSXP
+        || value_type == SEXPTYPE::LGLSXP
 }
 
 unsafe fn list_element_by_name(list: SEXP, name: &str) -> Option<SEXP> {

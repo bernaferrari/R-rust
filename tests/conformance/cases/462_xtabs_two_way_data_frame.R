@@ -1,0 +1,8 @@
+d <- data.frame(a = c("x", "y", "x"), b = c("m", "m", "n"))
+z <- xtabs(~ a + b, data = d)
+cat(paste(class(z), collapse = "|"), "\n", sep = "")
+cat(paste(dim(z), collapse = "|"), "\n", sep = "")
+cat(paste(as.vector(z), collapse = "|"), "\n", sep = "")
+cat(paste(names(dimnames(z)), collapse = "|"), "\n", sep = "")
+cat(paste(dimnames(z)[[1]], collapse = "|"), "\n", sep = "")
+cat(paste(dimnames(z)[[2]], collapse = "|"), "\n", sep = "")
