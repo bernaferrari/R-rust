@@ -20,8 +20,7 @@ use crate::sexp::accessors::{
     TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
-    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
-    R_TspSymbol, getAttrib, setAttrib,
+    R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, R_RowNamesSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::constructors::{Rf_allocList, Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};

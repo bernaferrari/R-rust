@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 441 |
-| Passing | 441 |
+| Total parity cases | 535 |
+| Passing | 535 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -104,14 +104,14 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 121 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, shape-helper, array-creation, and `drop()` dimension-reduction cases, `substitute()` promise lookup, named-argument IO smoke including readLines/writeLines, locale/capability/runtime-introspection/platform/date/umask/Sys.info shape smoke, zero-length paste/bind/read.fwf shape cases, early object smoke cases |
-| Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
-| Vectors, lists, attributes, and objects | 53 | Vectors, typed vector constructors including legacy `single()` marker attributes, lists, names, subsetting, factors, class replacement/unclass/oldClass behavior, date/time class attributes, data-frame helper transforms, directory and file listing shape cases, row/col matrix-shape helpers, arithmetic attributes |
-| Base functions, conditions, and platform helpers | 143 | Sorting/set helpers, output capture, conditions, `ls`, `system`/`system2`, `Sys.getenv`/`Sys.setenv`, `Sys.getpid`, `gcinfo()`/`gctorture()` session-state behavior, reflective builtin absence checks, `pi` and version constant binding semantics, non-GNU helper/tidy/object/string-reshape/capitalized-names/runtime/print-summary/reflection-helper/data-frame-helper/internal-S3-method alias absence semantics, options/getOption including defaults, broader `sprintf` integer/float formats and recycling errors, `proc.time`, file/temp helpers including `file.info`, `file.size`, `file.mtime`, `cat(file=...)`, path-string `readLines`, `file.access`/append/copy/link/symlink/rename/remove`, `normalizePath`, `Sys.readlink`, unique per-session `tempfile()`, wrapping helpers, language-call `deparse()` parity, character transform NA/zero-length parity, message/warning concatenation, match.arg/char.expand edge behavior, zero-length `format.data.frame`, and factor `levels<-` remapping |
-| Stats, math, and RNG | 58 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int` invariants |
-| Packages, namespaces, and S3 | 4 | Package namespace and S3 fixtures plus `system.file()` and the pure-R package corpus gate |
-| Graphics and Android embedding | 1 | Base graphics layout state parity plus renderer/unit tests; broader graphics parity remains tracked by `rport-pluy` |
-| Error semantics | 51 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, and selected expected errors |
+| Parser and scalar basics | 178 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, shape-helper, array-creation, and broad parser/runtime smoke cases |
+| Evaluator, closures, and control flow | 11 | Closures, lexical scope, lazy/default args, missing args, loops, and evaluator visibility/control-flow checks |
+| Vectors, lists, attributes, and objects | 75 | Vectors, typed vector constructors, lists, names, subsetting, factors, interaction factors, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
+| Base functions, conditions, and platform helpers | 139 | Sorting/set helpers, output capture, conditions, search-path/environment helpers, options, file/temp/path helpers, connections, platform state, `.Internal` dispatch, and non-GNU alias absence semantics |
+| Stats, math, and RNG | 68 | Numeric summaries, distributions, tail/log flags, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int`, aggregate/tapply/by grouped summaries, and summary-vector parity |
+| Packages, namespaces, and S3 | 5 | Package namespace and S3 fixtures, `system.file()`, S3 method-export absence, and the pure-R package corpus gate |
+| Graphics and Android embedding | 2 | Base graphics layout state and external graphics dispatch smoke; broader graphics parity remains tracked separately |
+| Error semantics | 57 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, internal dispatch errors, and selected platform expected errors |
 
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
