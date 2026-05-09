@@ -22078,9 +22078,9 @@ pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(CString::new("NULL").unwrap_or_default().as_ptr());
+            return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let mut parts: Vec<String> = Vec::new();
         for i in 0..n.min(999) {
             parts.push(elt_to_string(x, i));

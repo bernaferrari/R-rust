@@ -1,0 +1,6 @@
+print(toString(NULL))
+print(toString(numeric(0)))
+print(toString(character(0)))
+print(paste0("<", toString(NULL), ">"))
+print(paste0("<", toString(numeric(0)), ">"))
+print(paste0("<", toString(character(0)), ">"))
