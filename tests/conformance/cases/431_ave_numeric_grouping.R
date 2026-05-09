@@ -1,0 +1,6 @@
+v <- ave(1:4, c("a", "b", "a", "b"))
+print(v)
+print(typeof(v))
+print(ave(1:4, c("a", "b")))
+print(ave(1:4, c("a", "a", "b", "b"), c("x", "y", "x", "y")))
+print(ave(c(1, NA, 3), c("a", "a", "a")))

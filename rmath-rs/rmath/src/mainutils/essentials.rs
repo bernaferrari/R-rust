@@ -20986,15 +20986,83 @@ pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     }
 }
 
-/// R's `ave(x, ...)` — group averages (simplified).
+/// R's `ave(x, ...)` — group averages for numeric vectors using the default mean.
 pub unsafe fn do_ave(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        // Simplified: return input
-        x
+        let t = TYPEOF(x);
+        if t != SEXPTYPE::INTSXP && t != SEXPTYPE::REALSXP {
+            return x;
+        }
+        let n = XLENGTH(x);
+        let mut group_args = Vec::new();
+        let mut cursor = CDR(args);
+        while !cursor.is_null() && cursor != R_NilValue() {
+            let group = CAR(cursor);
+            if !group.is_null() && group != R_NilValue() && XLENGTH(group) > 0 {
+                group_args.push(group);
+            }
+            cursor = CDR(cursor);
+        }
+        if group_args.is_empty() {
+            return x;
+        }
+
+        #[derive(Clone, Copy, Default)]
+        struct AveGroup {
+            sum: f64,
+            count: R_xlen_t,
+            has_missing: bool,
+        }
+
+        let mut groups: BTreeMap<String, AveGroup> = BTreeMap::new();
+        let mut keys = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let key = group_args
+                .iter()
+                .map(|&group| elt_to_string(group, i))
+                .collect::<Vec<_>>()
+                .join("\r");
+            let value = if t == SEXPTYPE::INTSXP {
+                let raw = *INTEGER(x).add(i as usize);
+                if raw == NA_INTEGER {
+                    None
+                } else {
+                    Some(raw as f64)
+                }
+            } else {
+                let raw = *REAL(x).add(i as usize);
+                if raw.to_bits() == R_NA_BIT_PATTERN || raw.is_nan() {
+                    None
+                } else {
+                    Some(raw)
+                }
+            };
+            let entry = groups.entry(key.clone()).or_default();
+            match value {
+                Some(value) => {
+                    entry.sum += value;
+                    entry.count += 1;
+                }
+                None => entry.has_missing = true,
+            }
+            keys.push(key);
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _result_guard = protect(result);
+        for (i, key) in keys.iter().enumerate() {
+            let group = groups.get(key).copied().unwrap_or_default();
+            *REAL(result).add(i) = if group.has_missing || group.count == 0 {
+                NA_REAL
+            } else {
+                group.sum / group.count as f64
+            };
+        }
+        result
     }
 }
 
