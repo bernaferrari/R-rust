@@ -784,7 +784,7 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -820,7 +820,7 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -936,7 +936,7 @@ pub unsafe fn do_trimws(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return x;
         }
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -3756,7 +3756,7 @@ pub unsafe fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let prefix = elt_to_string(prefix_arg, 0);
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -3780,7 +3780,7 @@ pub unsafe fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let suffix = elt_to_string(suffix_arg, 0);
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
