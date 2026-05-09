@@ -1546,7 +1546,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         }
         let pattern = elt_to_string(pattern_arg, 0);
         let replacement = elt_to_string(replacement_arg, 0);
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -1585,7 +1585,7 @@ pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
         let split = elt_to_string(split_arg, 0);
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -14597,7 +14597,7 @@ pub unsafe fn do_strtoi(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x_arg.is_null() || x_arg == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -14632,7 +14632,7 @@ pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             real_or_default(width_arg, f64::MAX) as usize
         };
 
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -14670,7 +14670,7 @@ pub unsafe fn do_log2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(base_arg, std::f64::consts::E)
         };
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -14712,7 +14712,7 @@ pub unsafe fn do_round(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(digits_arg, 0.0)
         };
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
@@ -24489,7 +24489,7 @@ pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
             return R_NilValue();
         }
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
             if result.is_null() {
@@ -24543,7 +24543,7 @@ pub unsafe fn do_sign(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
             return R_NilValue();
         }
-        let n = XLENGTH(x_arg).max(1);
+        let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
