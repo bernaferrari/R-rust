@@ -17112,15 +17112,7 @@ pub unsafe fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             for &arg in &arg_vecs {
                 let n = XLENGTH(arg);
                 let idx = if n == 0 { 0 } else { i % n };
-                let t = TYPEOF(arg);
-                let na = if t == SEXPTYPE::REALSXP {
-                    (*REAL(arg).add(idx as usize)).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    *INTEGER(arg).add(idx as usize) == NA_INTEGER
-                } else {
-                    false
-                };
-                if na {
+                if atomic_value_is_missing(arg, idx) {
                     complete = FALSE;
                     break;
                 }
@@ -17264,7 +17256,6 @@ pub unsafe fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if x.is_null() || x == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
-        let t = TYPEOF(x);
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
@@ -17273,13 +17264,7 @@ pub unsafe fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let _p = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
-            let na = if t == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                *INTEGER(x).add(i as usize) == NA_INTEGER
-            } else {
-                false
-            };
+            let na = atomic_value_is_missing(x, i);
             *dst.add(i as usize) = if na { FALSE } else { TRUE };
         }
         result
