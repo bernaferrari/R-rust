@@ -58,8 +58,8 @@ You can also choose explicit output paths:
 
 `scripts/upstream_core_slices.sh` runs curated excerpts adapted from GNU R's
 `r-source/tests/arith.R`, `arith-true.R`, `eval-etc.R`, `conditions.R`,
-`any-all.R`, `structure.R`, `complex.R`, `primitives.R`, `eval-fns.R`, and
-`simple-true.R`.
+`any-all.R`, `structure.R`, `complex.R`, `primitives.R`, `eval-fns.R`,
+`simple-true.R`, `print-tests.R`, `reg-IO2.R`, and `reg-tests-1b.R`.
 Unlike the numbered conformance fixtures, these cases compare live stock
 `Rscript --vanilla` output directly against the Rust runtime. They are intended
 for evaluator/arithmetic regression work and the release gate:
@@ -116,7 +116,7 @@ Current domain coverage:
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
 
-The curated upstream slice gate currently passes 14/14 live stock-R comparison
+The curated upstream slice gate currently passes 15/15 live stock-R comparison
 cases with zero expected failures, including the `any-all.R` helper path through
 `deparse(substitute(.))`, `do.call()`, list concatenation, named `na.rm`, and
 `identical()`. The complex slice now covers parsed imaginary literals, complex
@@ -129,7 +129,9 @@ The primitive slice includes base namespace-qualified primitive lookup through
 `base::`, primitive classification, callable builtin resolution, per-session
 `.ArgsEnv`/`.GenericArgsEnv` prototype metadata for `args()`, and the
 `tools::langElts` language-element registry used by GNU R's primitive
-accounting checks.
+accounting checks. The empty-vector formatting/IO slice covers zero-length
+`format`, `format.info`, `noquote`, `nchar`, `nzchar`, path mapping, and
+filesystem predicate/create behavior against live stock R.
 
 ## Status Policy
 
