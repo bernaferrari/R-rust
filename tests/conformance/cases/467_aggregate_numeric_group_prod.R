@@ -1,0 +1,6 @@
+z <- aggregate(c(2, 4, 8), list(g = c("a", "a", "b")), prod)
+cat(paste(names(z), collapse = "|"), "\n", sep = "")
+cat(paste(z[[1]], collapse = "|"), "\n", sep = "")
+cat(paste(z[[2]], collapse = "|"), "\n", sep = "")
+cat(paste(class(z), collapse = "|"), "\n", sep = "")
+cat(paste(dim(z), collapse = "|"), "\n", sep = "")
