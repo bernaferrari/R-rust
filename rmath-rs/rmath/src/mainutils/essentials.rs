@@ -5653,6 +5653,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "interaction",
             "relevel",
             "factor",
+            "addNA",
             "is.factor",
             "is.ordered",
             "levels",
@@ -22805,6 +22806,105 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// R's `addNA(x, ifany = FALSE)` — turn missing values into an explicit factor level.
+pub unsafe fn do_addNA(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let ifany = named_logical_arg(args, "ifany").unwrap_or(false);
+        let n = XLENGTH(x);
+        let is_factor = aggregate_factor_levels(x).is_some();
+        let mut levels = if let Some(levels) = aggregate_factor_levels(x) {
+            levels.into_iter().map(Some).collect::<Vec<_>>()
+        } else {
+            let mut level_set = BTreeSet::new();
+            for i in 0..n {
+                if !factor_element_is_na(x, i) {
+                    level_set.insert(elt_to_string(x, i));
+                }
+            }
+            level_set.into_iter().map(Some).collect::<Vec<_>>()
+        };
+        let has_missing = (0..n).any(|i| factor_element_is_na(x, i));
+        let add_missing_level = !ifany || has_missing;
+        let missing_code = if add_missing_level {
+            levels.push(None);
+            levels.len() as i32
+        } else {
+            NA_INTEGER
+        };
+
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        for i in 0..n {
+            *INTEGER(result).add(i as usize) = if factor_element_is_na(x, i) {
+                missing_code
+            } else if is_factor {
+                *INTEGER(x).add(i as usize)
+            } else {
+                let value = elt_to_string(x, i);
+                levels
+                    .iter()
+                    .position(|level| level.as_deref() == Some(value.as_str()))
+                    .map(|idx| idx as i32 + 1)
+                    .unwrap_or(NA_INTEGER)
+            };
+        }
+        set_factor_attrs_with_optional_levels(result, &levels);
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        result
+    }
+}
+
+unsafe fn set_factor_attrs_with_optional_levels(column: SEXP, levels: &[Option<String>]) {
+    unsafe {
+        let levels_sexp = Rf_allocVector3(SEXPTYPE::STRSXP, levels.len() as R_xlen_t);
+        if levels_sexp.is_null() {
+            return;
+        }
+        let _levels_guard = protect(levels_sexp);
+        for (i, level) in levels.iter().enumerate() {
+            let charsxp = if let Some(level) = level {
+                let level_c = CString::new(level.as_str()).unwrap_or_default();
+                Rf_mkChar(level_c.as_ptr())
+            } else {
+                crate::sexp::globals::R_NaString()
+            };
+            SET_STRING_ELT(levels_sexp, i as R_xlen_t, charsxp);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            column,
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+            levels_sexp,
+        );
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if class.is_null() {
+            return;
+        }
+        let _class_guard = protect(class);
+        SET_STRING_ELT(class, 0, Rf_mkChar(c"factor".as_ptr()));
+        crate::sexp::attrib_core::setAttrib(
+            column,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+    }
+}
+
 fn factor_element_is_na(x: SEXP, i: R_xlen_t) -> bool {
     unsafe {
         let ty = TYPEOF(x);
@@ -26126,284 +26226,243 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// R's `colSums(x, na.rm = FALSE, dims = 1)` — column sums of a matrix or array.
 pub unsafe fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let na_rm_arg = CAR(CDR(args));
-        let na_rm = !na_rm_arg.is_null()
-            && na_rm_arg != R_NilValue()
-            && real_or_default(na_rm_arg, 0.0) != 0.0;
-
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-        let (nrow, ncol) =
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-            {
-                (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
-                )
-            } else {
-                let n = XLENGTH(x);
-                (n, 1)
-            };
-
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, ncol);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-
-        for j in 0..ncol {
-            let mut sum = 0.0f64;
-            let mut has_na = false;
-            for i in 0..nrow {
-                let idx = (j * nrow + i) as usize;
-                let val = if t == SEXPTYPE::REALSXP {
-                    *REAL(x).add(idx)
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(x).add(idx);
-                    if v == NA_INTEGER { NA_REAL } else { v as f64 }
-                } else {
-                    NA_REAL
-                };
-                if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    has_na = true;
-                    if !na_rm {
-                        sum = NA_REAL;
-                        break;
-                    }
-                } else {
-                    sum += val;
-                }
-            }
-            *dst.add(j as usize) =
-                if has_na && na_rm && sum.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    sum
-                } else if has_na && !na_rm {
-                    NA_REAL
-                } else {
-                    sum
-                };
-        }
-        result
-    }
+    unsafe { do_array_margin_summary(args, false, false) }
 }
 
 /// R's `rowSums(x, na.rm = FALSE, dims = 1)` — row sums of a matrix or array.
 pub unsafe fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let na_rm_arg = CAR(CDR(args));
-        let na_rm = !na_rm_arg.is_null()
-            && na_rm_arg != R_NilValue()
-            && real_or_default(na_rm_arg, 0.0) != 0.0;
-
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-        let (nrow, ncol) =
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-            {
-                (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
-                )
-            } else {
-                let n = XLENGTH(x);
-                (n, 1)
-            };
-
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nrow);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-
-        for i in 0..nrow {
-            let mut sum = 0.0f64;
-            let mut has_na = false;
-            for j in 0..ncol {
-                let idx = (j * nrow + i) as usize;
-                let val = if t == SEXPTYPE::REALSXP {
-                    *REAL(x).add(idx)
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(x).add(idx);
-                    if v == NA_INTEGER { NA_REAL } else { v as f64 }
-                } else {
-                    NA_REAL
-                };
-                if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    has_na = true;
-                    if !na_rm {
-                        sum = NA_REAL;
-                        break;
-                    }
-                } else {
-                    sum += val;
-                }
-            }
-            *dst.add(i as usize) = if has_na && !na_rm { NA_REAL } else { sum };
-        }
-        result
-    }
+    unsafe { do_array_margin_summary(args, true, false) }
 }
 
 /// R's `colMeans(x, na.rm = FALSE, dims = 1)` — column means of a matrix or array.
 pub unsafe fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        let na_rm_arg = CAR(CDR(args));
-        let na_rm = !na_rm_arg.is_null()
-            && na_rm_arg != R_NilValue()
-            && real_or_default(na_rm_arg, 0.0) != 0.0;
-
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-        let (nrow, ncol) =
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-            {
-                (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
-                )
-            } else {
-                let n = XLENGTH(x);
-                (n, 1)
-            };
-
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, ncol);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-
-        for j in 0..ncol {
-            let mut sum = 0.0f64;
-            let mut count = 0i64;
-            let mut has_na = false;
-            for i in 0..nrow {
-                let idx = (j * nrow + i) as usize;
-                let val = if t == SEXPTYPE::REALSXP {
-                    *REAL(x).add(idx)
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(x).add(idx);
-                    if v == NA_INTEGER { NA_REAL } else { v as f64 }
-                } else {
-                    NA_REAL
-                };
-                if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    has_na = true;
-                    if !na_rm {
-                        sum = NA_REAL;
-                        break;
-                    }
-                } else {
-                    sum += val;
-                    count += 1;
-                }
-            }
-            *dst.add(j as usize) = if has_na && !na_rm {
-                NA_REAL
-            } else if count > 0 {
-                sum / count as f64
-            } else {
-                NA_REAL
-            };
-        }
-        result
-    }
+    unsafe { do_array_margin_summary(args, false, true) }
 }
 
 /// R's `rowMeans(x, na.rm = FALSE, dims = 1)` — row means of a matrix or array.
 pub unsafe fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { do_array_margin_summary(args, true, true) }
+}
+
+unsafe fn do_array_margin_summary(args: SEXP, rows: bool, mean: bool) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let na_rm_arg = CAR(CDR(args));
-        let na_rm = !na_rm_arg.is_null()
-            && na_rm_arg != R_NilValue()
-            && real_or_default(na_rm_arg, 0.0) != 0.0;
-
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-        let (nrow, ncol) =
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-            {
-                (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
-                )
+        let na_rm = named_logical_arg(args, "na.rm").unwrap_or_else(|| {
+            let arg = arg_by_name_or_position(args, &[], 1);
+            !arg.is_null() && arg != R_NilValue() && real_or_default(arg, 0.0) != 0.0
+        });
+        let dims_arg = {
+            let named = arg_by_name_or_position(args, &["dims"], 2);
+            if !named.is_null() && named != R_NilValue() {
+                named
             } else {
-                let n = XLENGTH(x);
-                (n, 1)
-            };
+                R_NilValue()
+            }
+        };
 
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, nrow);
+        let dim_attr =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        let dim_len = if !dim_attr.is_null()
+            && dim_attr != R_NilValue()
+            && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
+        {
+            XLENGTH(dim_attr)
+        } else {
+            0
+        };
+
+        let dims = margin_summary_dims(dims_arg, dim_len, rows);
+        let mut leading = 1 as R_xlen_t;
+        let mut trailing = 1 as R_xlen_t;
+        let mut result_axes = Vec::new();
+
+        if dim_len == 0 {
+            leading = XLENGTH(x);
+        } else {
+            for axis in 0..dim_len {
+                let extent = *INTEGER(dim_attr).add(axis as usize) as R_xlen_t;
+                if axis < dims {
+                    leading = leading.saturating_mul(extent);
+                } else {
+                    trailing = trailing.saturating_mul(extent);
+                }
+            }
+            let axis_range: Box<dyn Iterator<Item = R_xlen_t>> = if rows {
+                Box::new(0..dims)
+            } else {
+                Box::new(dims..dim_len)
+            };
+            result_axes.extend(axis_range);
+        }
+
+        let result_len = if rows { leading } else { trailing };
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = protect(result);
-        let dst = REAL(result);
+        let _result_guard = protect(result);
 
-        for i in 0..nrow {
-            let mut sum = 0.0f64;
-            let mut count = 0i64;
-            let mut has_na = false;
-            for j in 0..ncol {
-                let idx = (j * nrow + i) as usize;
-                let val = if t == SEXPTYPE::REALSXP {
-                    *REAL(x).add(idx)
-                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let v = *INTEGER(x).add(idx);
-                    if v == NA_INTEGER { NA_REAL } else { v as f64 }
-                } else {
-                    NA_REAL
-                };
-                if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                    has_na = true;
-                    if !na_rm {
-                        sum = NA_REAL;
-                        break;
-                    }
-                } else {
-                    sum += val;
+        if rows {
+            for row in 0..leading {
+                let value = summarize_margin_cells(x, row, leading, trailing, na_rm, mean);
+                *REAL(result).add(row as usize) = value;
+            }
+        } else {
+            for col in 0..trailing {
+                let value = summarize_contiguous_cells(x, col * leading, leading, na_rm, mean);
+                *REAL(result).add(col as usize) = value;
+            }
+        }
+
+        set_margin_summary_attrs(result, dim_attr, &result_axes, x);
+        result
+    }
+}
+
+unsafe fn margin_summary_dims(dims_arg: SEXP, dim_len: R_xlen_t, rows: bool) -> R_xlen_t {
+    unsafe {
+        let default = if rows && dim_len > 0 { dim_len - 1 } else { 1 };
+        if dims_arg.is_null() || dims_arg == R_NilValue() {
+            return default;
+        }
+        let value = real_or_default(dims_arg, default as f64);
+        if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
+            base_error("invalid 'dims'");
+        }
+        let dims = value as R_xlen_t;
+        if dim_len > 0 && dims > dim_len {
+            base_error("invalid 'dims'");
+        }
+        dims
+    }
+}
+
+unsafe fn summarize_contiguous_cells(
+    x: SEXP,
+    start: R_xlen_t,
+    len: R_xlen_t,
+    na_rm: bool,
+    mean: bool,
+) -> f64 {
+    unsafe {
+        let mut sum = 0.0;
+        let mut count = 0i64;
+        for offset in 0..len {
+            match numeric_margin_value(x, start + offset) {
+                Some(value) => {
+                    sum += value;
                     count += 1;
                 }
+                None if !na_rm => return NA_REAL,
+                None => {}
             }
-            *dst.add(i as usize) = if has_na && !na_rm {
-                NA_REAL
-            } else if count > 0 {
+        }
+        if mean {
+            if count > 0 {
                 sum / count as f64
             } else {
                 NA_REAL
-            };
+            }
+        } else {
+            sum
         }
-        result
+    }
+}
+
+unsafe fn summarize_margin_cells(
+    x: SEXP,
+    offset: R_xlen_t,
+    stride: R_xlen_t,
+    reps: R_xlen_t,
+    na_rm: bool,
+    mean: bool,
+) -> f64 {
+    unsafe {
+        let mut sum = 0.0;
+        let mut count = 0i64;
+        for rep in 0..reps {
+            match numeric_margin_value(x, rep * stride + offset) {
+                Some(value) => {
+                    sum += value;
+                    count += 1;
+                }
+                None if !na_rm => return NA_REAL,
+                None => {}
+            }
+        }
+        if mean {
+            if count > 0 {
+                sum / count as f64
+            } else {
+                NA_REAL
+            }
+        } else {
+            sum
+        }
+    }
+}
+
+unsafe fn numeric_margin_value(x: SEXP, index: R_xlen_t) -> Option<f64> {
+    unsafe {
+        let x_type = TYPEOF(x);
+        let value = if x_type == SEXPTYPE::REALSXP {
+            *REAL(x).add(index as usize)
+        } else if x_type == SEXPTYPE::INTSXP || x_type == SEXPTYPE::LGLSXP {
+            let value = *INTEGER(x).add(index as usize);
+            if value == NA_INTEGER {
+                return None;
+            }
+            value as f64
+        } else {
+            return None;
+        };
+        if value.is_nan() || value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            None
+        } else {
+            Some(value)
+        }
+    }
+}
+
+unsafe fn set_margin_summary_attrs(result: SEXP, dim: SEXP, axes: &[R_xlen_t], source: SEXP) {
+    unsafe {
+        if dim.is_null() || dim == R_NilValue() || axes.is_empty() {
+            return;
+        }
+        let dimnames = crate::sexp::attrib_core::getAttrib(
+            source,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+        );
+        if axes.len() == 1 {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                retained_dimname(dimnames, axes[0]),
+            );
+            return;
+        }
+
+        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, axes.len() as R_xlen_t);
+        if out_dim.is_null() {
+            return;
+        }
+        let _dim_guard = protect(out_dim);
+        for (out_i, axis) in axes.iter().enumerate() {
+            *INTEGER(out_dim).add(out_i) = *INTEGER(dim).add(*axis as usize);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimSymbol(),
+            out_dim,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            retained_dimnames(dimnames, axes),
+        );
     }
 }
 

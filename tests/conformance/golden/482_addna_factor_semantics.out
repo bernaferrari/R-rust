@@ -1,0 +1,7 @@
+a|NA|b
+a|b|NA
+FALSE|FALSE|FALSE
+factor
+a|b
+b|NA|a
+a|b|NA
