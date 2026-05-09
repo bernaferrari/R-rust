@@ -1015,6 +1015,13 @@ pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             }
             return result;
         }
+        if TYPEOF(x) == SEXPTYPE::SYMSXP {
+            let name = PRINTNAME(x);
+            if name.is_null() || name == R_NilValue() {
+                return Rf_mkString(c"".as_ptr());
+            }
+            return Rf_mkString(CHAR(name));
+        }
         coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int())
     }
 }

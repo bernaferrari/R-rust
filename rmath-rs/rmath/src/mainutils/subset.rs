@@ -289,7 +289,13 @@ unsafe fn ncols(x: SEXP) -> c_int {
 /// Get extended length of x.
 #[inline]
 unsafe fn xlength(x: SEXP) -> R_xlen_t {
-    unsafe { XLENGTH(x) }
+    unsafe {
+        if isPairList(x) || isLanguage(x) {
+            crate::sexp::constructors::Rf_length(x) as R_xlen_t
+        } else {
+            XLENGTH(x)
+        }
+    }
 }
 
 /// Get the length as c_int.

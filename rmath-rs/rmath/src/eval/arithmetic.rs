@@ -1043,7 +1043,7 @@ pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
-        Rf_ScalarInteger(LENGTH(x))
+        Rf_ScalarInteger(crate::sexp::constructors::Rf_length(x))
     }
 }
 
