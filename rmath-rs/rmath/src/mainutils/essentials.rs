@@ -10340,29 +10340,48 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // Set operations: unique, sort, order, rev, match, %in%, setequal, union, intersect, setdiff
 // ---------------------------------------------------------------------------
 
-/// R's `unique(x)` — return unique elements (preserving first occurrence order).
+/// R's `unique(x)` — return unique atomic elements in R's retained-index order.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
         let t = TYPEOF(x);
-        if t != SEXPTYPE::INTSXP && t != SEXPTYPE::REALSXP {
-            return x; // Simplified: non-numeric returns as-is
+        let sexptype = SEXPTYPE(t);
+        if t != SEXPTYPE::LGLSXP
+            && t != SEXPTYPE::INTSXP
+            && t != SEXPTYPE::REALSXP
+            && t != SEXPTYPE::STRSXP
+        {
+            return x;
         }
         let n = XLENGTH(x);
-        let mut seen: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
-        let mut unique_indices: Vec<R_xlen_t> = Vec::new();
+        let from_last = logical_arg_by_name_or_position(args, "fromLast", 2).unwrap_or(false);
+        let incomparables = arg_by_name_or_position(args, &["incomparables"], 1);
+        let incomparable_keys = atomic_incomparable_keys(incomparables, sexptype);
 
-        for i in 0..n {
-            let key = if t == SEXPTYPE::REALSXP {
-                (*REAL(x).add(i as usize)).to_bits() as i64
-            } else {
-                *INTEGER(x).add(i as usize) as i64
-            };
-            if seen.insert(key) {
-                unique_indices.push(i);
+        let mut unique_indices: Vec<R_xlen_t> = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        if from_last {
+            let mut keep = vec![false; n as usize];
+            for i in (0..n).rev() {
+                let key = atomic_unique_key(x, i, sexptype);
+                if incomparable_keys.contains(&key) || seen.insert(key) {
+                    keep[i as usize] = true;
+                }
+            }
+            for i in 0..n {
+                if keep[i as usize] {
+                    unique_indices.push(i);
+                }
+            }
+        } else {
+            for i in 0..n {
+                let key = atomic_unique_key(x, i, sexptype);
+                if incomparable_keys.contains(&key) || seen.insert(key) {
+                    unique_indices.push(i);
+                }
             }
         }
 
@@ -10372,13 +10391,112 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let _result_guard = protect(result);
         for (new_i, &old_i) in unique_indices.iter().enumerate() {
-            if t == SEXPTYPE::REALSXP {
-                *REAL(result).add(new_i) = *REAL(x).add(old_i as usize);
-            } else {
-                *INTEGER(result).add(new_i) = *INTEGER(x).add(old_i as usize);
+            match t {
+                tt if tt == SEXPTYPE::REALSXP => {
+                    *REAL(result).add(new_i) = *REAL(x).add(old_i as usize);
+                }
+                tt if tt == SEXPTYPE::STRSXP => {
+                    SET_STRING_ELT(result, new_i as R_xlen_t, STRING_ELT(x, old_i));
+                }
+                _ => {
+                    *INTEGER(result).add(new_i) = *INTEGER(x).add(old_i as usize);
+                }
             }
         }
         result
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+enum AtomicUniqueKey {
+    Integer(c_int),
+    Real(u64),
+    String(String),
+}
+
+fn atomic_incomparable_keys(
+    incomparables: SEXP,
+    target_type: SEXPTYPE,
+) -> std::collections::BTreeSet<AtomicUniqueKey> {
+    unsafe {
+        let mut keys = std::collections::BTreeSet::new();
+        if incomparables.is_null() || incomparables == R_NilValue() {
+            return keys;
+        }
+        let n = XLENGTH(incomparables);
+        for i in 0..n {
+            keys.insert(atomic_unique_key(incomparables, i, target_type));
+        }
+        keys
+    }
+}
+
+fn atomic_unique_key(x: SEXP, index: R_xlen_t, target_type: SEXPTYPE) -> AtomicUniqueKey {
+    unsafe {
+        match target_type {
+            t if t == SEXPTYPE::STRSXP => {
+                if TYPEOF(x) == SEXPTYPE::STRSXP {
+                    let value = STRING_ELT(x, index);
+                    if charsxp_is_na(value) {
+                        AtomicUniqueKey::String("<NA>".to_string())
+                    } else {
+                        AtomicUniqueKey::String(elt_to_string(x, index))
+                    }
+                } else if atomic_value_is_missing(x, index) {
+                    AtomicUniqueKey::String("<NA>".to_string())
+                } else {
+                    AtomicUniqueKey::String(elt_to_string(x, index))
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let value = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    *REAL(x).add(index as usize)
+                } else {
+                    let raw = *INTEGER(x).add(index as usize);
+                    if raw == NA_INTEGER {
+                        NA_REAL
+                    } else {
+                        raw as f64
+                    }
+                };
+                if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    AtomicUniqueKey::Real(crate::sexp::ffi::R_NA_BIT_PATTERN)
+                } else if value.is_nan() {
+                    AtomicUniqueKey::Real(f64::NAN.to_bits())
+                } else {
+                    AtomicUniqueKey::Real(value.to_bits())
+                }
+            }
+            _ => {
+                let value = if TYPEOF(x) == SEXPTYPE::REALSXP {
+                    let value = *REAL(x).add(index as usize);
+                    if value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        NA_INTEGER
+                    } else {
+                        value as c_int
+                    }
+                } else {
+                    *INTEGER(x).add(index as usize)
+                };
+                AtomicUniqueKey::Integer(value)
+            }
+        }
+    }
+}
+
+fn atomic_value_is_missing(x: SEXP, index: R_xlen_t) -> bool {
+    unsafe {
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::STRSXP => charsxp_is_na(STRING_ELT(x, index)),
+            t if t == SEXPTYPE::REALSXP => {
+                let value = *REAL(x).add(index as usize);
+                value.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || value.is_nan()
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                *INTEGER(x).add(index as usize) == NA_INTEGER
+            }
+            _ => false,
+        }
     }
 }
 
