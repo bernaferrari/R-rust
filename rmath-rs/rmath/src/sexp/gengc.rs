@@ -993,6 +993,7 @@ fn do_minor_gc() -> (usize, usize) {
 
     let mut freed_count = 0;
     let mut promoted_count = 0;
+    let mut to_free = Vec::new();
 
     with_arena_for_gc(|arena| {
         let nodes: Vec<SEXP> = arena.active_nodes().collect();
@@ -1011,8 +1012,7 @@ fn do_minor_gc() -> (usize, usize) {
                         (*obj).sxpinfo.set_mark(false);
                         promoted_count += 1;
                     } else {
-                        arena.free_node(obj);
-                        freed_count += 1;
+                        to_free.push(obj);
                     }
                 } else {
                     if marked {
@@ -1022,6 +1022,20 @@ fn do_minor_gc() -> (usize, usize) {
             }
         }
     });
+
+    if !to_free.is_empty() {
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        let old_to_nil: HashMap<usize, SEXP> =
+            to_free.iter().map(|&obj| (obj as usize, nil)).collect();
+        update_all_references(&old_to_nil);
+
+        with_arena_for_gc(|arena| {
+            for obj in to_free {
+                arena.free_node(obj);
+                freed_count += 1;
+            }
+        });
+    }
 
     with_gc_state(|state| {
         state.remembered_set.clear();
