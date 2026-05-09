@@ -21114,14 +21114,130 @@ pub unsafe fn do_addmargins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// R's `ftable(x)` — flat table (simplified: returns input).
+/// R's `ftable(x)` — flat table.
 pub unsafe fn do_ftable(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        if let Some(result) = ftable_one_dim_table(x) {
+            return result;
+        }
         x
+    }
+}
+
+unsafe fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if dim.is_null()
+            || dim == R_NilValue()
+            || TYPEOF(dim) != SEXPTYPE::INTSXP
+            || LENGTH(dim) != 1
+        {
+            return None;
+        }
+        let n = *INTEGER(dim);
+        if n < 0 || XLENGTH(x) != n as R_xlen_t {
+            return None;
+        }
+
+        let value_type = TYPEOF(x);
+        let result = if value_type == SEXPTYPE::INTSXP {
+            let out = Rf_allocVector3(SEXPTYPE::INTSXP, n as R_xlen_t);
+            if out.is_null() {
+                return Some(out);
+            }
+            for i in 0..n as usize {
+                *INTEGER(out).add(i) = 1;
+            }
+            out
+        } else if value_type == SEXPTYPE::REALSXP {
+            let out = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
+            if out.is_null() {
+                return Some(out);
+            }
+            for i in 0..n as usize {
+                *REAL(out).add(i) = 1.0;
+            }
+            out
+        } else {
+            return None;
+        };
+        let _result_guard = protect(result);
+
+        let col_vars = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        if !col_vars.is_null() {
+            let _col_guard = protect(col_vars);
+            let labels = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+            if !labels.is_null() {
+                let _labels_guard = protect(labels);
+                for i in 0..n {
+                    let label = CString::new((i + 1).to_string()).unwrap_or_default();
+                    SET_STRING_ELT(labels, i as R_xlen_t, Rf_mkChar(label.as_ptr()));
+                }
+                SET_VECTOR_ELT(col_vars, 0, labels);
+            }
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            if !names.is_null() {
+                let _names_guard = protect(names);
+                SET_STRING_ELT(names, 0, Rf_mkChar(c"x".as_ptr()));
+                crate::sexp::attrib_core::setAttrib(
+                    col_vars,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"col.vars".as_ptr()), col_vars);
+        }
+
+        let row_vars = named_empty_list();
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.vars".as_ptr()), row_vars);
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if !class.is_null() {
+            let _class_guard = protect(class);
+            SET_STRING_ELT(class, 0, Rf_mkChar(c"ftable".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+
+        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if !out_dim.is_null() {
+            let _dim_guard = protect(out_dim);
+            *INTEGER(out_dim) = 1;
+            *INTEGER(out_dim).add(1) = n;
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                out_dim,
+            );
+        }
+        Some(result)
+    }
+}
+
+unsafe fn named_empty_list() -> SEXP {
+    unsafe {
+        let list = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        if list.is_null() {
+            return R_NilValue();
+        }
+        let _list_guard = protect(list);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        if !names.is_null() {
+            let _names_guard = protect(names);
+            crate::sexp::attrib_core::setAttrib(
+                list,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+        }
+        list
     }
 }
 
