@@ -21581,7 +21581,7 @@ unsafe fn deparse_one_line(expr: SEXP) -> String {
 }
 
 /// R's `aggregate(x, by, FUN)` — aggregate by groups (simplified).
-pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_aggregate(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let by = CAR(CDR(args));
@@ -21589,7 +21589,7 @@ pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        if let Some(result) = aggregate_numeric_by_one_group(x, by, fun) {
+        if let Some(result) = aggregate_numeric_by_one_group(x, by, fun, call) {
             return result;
         }
         if !fun.is_null() && fun != R_NilValue() {
@@ -21612,11 +21612,12 @@ enum AggregateSummary {
     Min,
     Max,
     Length,
+    Median,
 }
 
-unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option<SEXP> {
+unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP, call: SEXP) -> Option<SEXP> {
     unsafe {
-        let summary = aggregate_summary_fun(fun)?;
+        let summary = aggregate_summary_fun(fun, call)?;
         let x_type = TYPEOF(x);
         if x_type != SEXPTYPE::INTSXP && x_type != SEXPTYPE::REALSXP {
             return None;
@@ -21634,7 +21635,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
             return None;
         }
 
-        let mut groups = BTreeMap::<String, (f64, usize, bool, f64, f64, f64)>::new();
+        let mut groups = BTreeMap::<String, (f64, usize, bool, f64, f64, f64, Vec<f64>)>::new();
         for i in 0..XLENGTH(x) {
             let key = aggregate_group_key(group, group_type, i)?;
             let value = if x_type == SEXPTYPE::REALSXP {
@@ -21647,7 +21648,9 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
                     value as f64
                 }
             };
-            let entry = groups.entry(key).or_insert((0.0, 0, false, 0.0, 0.0, 1.0));
+            let entry = groups
+                .entry(key)
+                .or_insert((0.0, 0, false, 0.0, 0.0, 1.0, Vec::new()));
             if matches!(summary, AggregateSummary::Length) {
                 entry.1 += 1;
                 continue;
@@ -21664,6 +21667,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
                 }
                 entry.0 += value;
                 entry.5 *= value;
+                entry.6.push(value);
                 entry.1 += 1;
             }
         }
@@ -21681,7 +21685,9 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
         }
         let _group_guard = protect(group_col);
         let _value_guard = protect(value_col);
-        for (i, (key, (sum, count, has_na, min, max, prod))) in groups.into_iter().enumerate() {
+        for (i, (key, (sum, count, has_na, min, max, prod, mut values))) in
+            groups.into_iter().enumerate()
+        {
             let key_c = CString::new(key).unwrap_or_default();
             SET_STRING_ELT(group_col, i as R_xlen_t, Rf_mkChar(key_c.as_ptr()));
             *REAL(value_col).add(i) = if has_na || count == 0 {
@@ -21694,6 +21700,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
                     AggregateSummary::Min => min,
                     AggregateSummary::Max => max,
                     AggregateSummary::Length => count as f64,
+                    AggregateSummary::Median => median_value(&mut values),
                 }
             };
         }
@@ -21723,8 +21730,11 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
     }
 }
 
-unsafe fn aggregate_summary_fun(fun: SEXP) -> Option<AggregateSummary> {
+unsafe fn aggregate_summary_fun(fun: SEXP, call: SEXP) -> Option<AggregateSummary> {
     unsafe {
+        if call_fun_name(call).as_deref() == Some("median") {
+            return Some(AggregateSummary::Median);
+        }
         if fun.is_null() || fun == R_NilValue() {
             return Some(AggregateSummary::Mean);
         }
@@ -21736,6 +21746,7 @@ unsafe fn aggregate_summary_fun(fun: SEXP) -> Option<AggregateSummary> {
                 "min" => Some(AggregateSummary::Min),
                 "max" => Some(AggregateSummary::Max),
                 "length" => Some(AggregateSummary::Length),
+                "median" => Some(AggregateSummary::Median),
                 _ => Some(AggregateSummary::Mean),
             }
         } else if fun_type == SEXPTYPE::SYMSXP {
@@ -21745,11 +21756,35 @@ unsafe fn aggregate_summary_fun(fun: SEXP) -> Option<AggregateSummary> {
                 Some("min") => Some(AggregateSummary::Min),
                 Some("max") => Some(AggregateSummary::Max),
                 Some("length") => Some(AggregateSummary::Length),
+                Some("median") => Some(AggregateSummary::Median),
                 _ => Some(AggregateSummary::Mean),
             }
         } else {
             Some(AggregateSummary::Mean)
         }
+    }
+}
+
+fn median_value(values: &mut [f64]) -> f64 {
+    if values.is_empty() {
+        return NA_REAL;
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = values.len() / 2;
+    if values.len() % 2 == 0 {
+        (values[mid - 1] + values[mid]) / 2.0
+    } else {
+        values[mid]
+    }
+}
+
+unsafe fn call_fun_name(call: SEXP) -> Option<String> {
+    unsafe {
+        if call.is_null() || call == R_NilValue() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+            return None;
+        }
+        let fun_expr = CAR(CDR(CDR(CDR(call))));
+        symbol_name(fun_expr)
     }
 }
 
