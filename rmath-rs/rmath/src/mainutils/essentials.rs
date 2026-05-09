@@ -5481,6 +5481,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "Sys.readlink",
             "Sys.chmod",
             "Sys.umask",
+            "path.expand",
             "l10n_info",
             "Cstack_info",
             "extSoftVersion",

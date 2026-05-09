@@ -1895,6 +1895,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::platform::do_sysumask,
     },
     EvaluatedBuiltin {
+        name: "path.expand",
+        handler: crate::mainutils::platform::do_pathexpand,
+    },
+    EvaluatedBuiltin {
         name: "l10n_info",
         handler: crate::mainutils::platform::do_l10n_info,
     },
