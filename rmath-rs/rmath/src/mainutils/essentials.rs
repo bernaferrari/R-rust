@@ -20511,7 +20511,7 @@ pub unsafe fn do_flatten(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
-/// R's `split(x, f)` — split vector x by factor f (simplified).
+/// R's `split(x, f)` — split vector `x` into groups defined by `f`.
 pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -20519,15 +20519,186 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() || f.is_null() || f == R_NilValue() {
             return R_NilValue();
         }
-        // Simplified: return as a list of the original vector
-        // A full implementation would group by factor levels
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+
+        let n = XLENGTH(x);
+        let nf = XLENGTH(f);
+        if nf == 0 && n > 0 {
+            base_error("group length is 0 but data length > 0");
+        }
+
+        let factor_levels = split_factor_levels(f);
+        let mut labels = factor_levels.clone().unwrap_or_default();
+        let mut groups: Vec<Vec<R_xlen_t>> = vec![Vec::new(); labels.len()];
+        let mut label_index: BTreeMap<String, usize> = labels
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, label)| (label, index))
+            .collect();
+
+        for i in 0..n {
+            let f_index = i % nf;
+            let Some(label) = split_group_label(f, f_index) else {
+                continue;
+            };
+            let group_index = if let Some(index) = label_index.get(&label).copied() {
+                index
+            } else {
+                let index = labels.len();
+                label_index.insert(label.clone(), index);
+                labels.push(label);
+                groups.push(Vec::new());
+                index
+            };
+            groups[group_index].push(i);
+        }
+
+        if factor_levels.is_none() {
+            let mut ordered: Vec<(String, Vec<R_xlen_t>)> = labels
+                .iter()
+                .filter_map(|label| {
+                    label_index
+                        .get(label)
+                        .map(|&index| (label.clone(), groups[index].clone()))
+                })
+                .collect();
+            ordered.sort_by(|left, right| split_label_cmp(TYPEOF(f), &left.0, &right.0));
+            labels = ordered.iter().map(|(label, _)| label.clone()).collect();
+            groups = ordered.into_iter().map(|(_, group)| group).collect();
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, labels.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
-        crate::sexp::accessors::SET_VECTOR_ELT(result, 0, x);
+        let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, labels.len() as R_xlen_t);
+        let _names_guard = protect(result_names);
+        let x_names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let have_x_names = !x_names.is_null()
+            && x_names != R_NilValue()
+            && TYPEOF(x_names) == SEXPTYPE::STRSXP
+            && XLENGTH(x_names) >= n;
+
+        for (group_index, (label, indices)) in labels.iter().zip(groups.iter()).enumerate() {
+            let sub = Rf_allocVector3(TYPEOF(x), indices.len() as R_xlen_t);
+            let _sub_guard = protect(sub);
+            for (dst, &src) in indices.iter().enumerate() {
+                copy_matrix_element(sub, dst as R_xlen_t, x, src);
+            }
+            if have_x_names {
+                let names = Rf_allocVector3(SEXPTYPE::STRSXP, indices.len() as R_xlen_t);
+                let _group_names_guard = protect(names);
+                for (dst, &src) in indices.iter().enumerate() {
+                    SET_STRING_ELT(names, dst as R_xlen_t, STRING_ELT(x_names, src));
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    sub,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            SET_VECTOR_ELT(result, group_index as R_xlen_t, sub);
+            let label_c = CString::new(label.as_str()).unwrap_or_default();
+            SET_STRING_ELT(
+                result_names,
+                group_index as R_xlen_t,
+                Rf_mkChar(label_c.as_ptr()),
+            );
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            result_names,
+        );
         result
+    }
+}
+
+unsafe fn split_factor_levels(f: SEXP) -> Option<Vec<String>> {
+    unsafe {
+        let levels =
+            crate::sexp::attrib_core::getAttrib(f, crate::sexp::attrib_core::R_LevelsSymbol());
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let mut out = Vec::with_capacity(XLENGTH(levels) as usize);
+        for i in 0..XLENGTH(levels) {
+            out.push(elt_to_string(levels, i));
+        }
+        Some(out)
+    }
+}
+
+unsafe fn split_group_label(f: SEXP, index: R_xlen_t) -> Option<String> {
+    unsafe {
+        if let Some(levels) = split_factor_levels(f) {
+            if TYPEOF(f) != SEXPTYPE::INTSXP {
+                return None;
+            }
+            let raw = *INTEGER(f).add(index as usize);
+            if raw == NA_INTEGER || raw < 1 || raw as usize > levels.len() {
+                return None;
+            }
+            return Some(levels[(raw - 1) as usize].clone());
+        }
+
+        match TYPEOF(f) {
+            t if t == SEXPTYPE::INTSXP => {
+                let value = *INTEGER(f).add(index as usize);
+                (value != NA_INTEGER).then(|| value.to_string())
+            }
+            t if t == SEXPTYPE::LGLSXP => {
+                let value = *LOGICAL(f).add(index as usize);
+                match value {
+                    TRUE => Some("TRUE".to_string()),
+                    FALSE => Some("FALSE".to_string()),
+                    _ => None,
+                }
+            }
+            t if t == SEXPTYPE::REALSXP => {
+                let value = *REAL(f).add(index as usize);
+                if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
+                    None
+                } else {
+                    Some(format!("{value}"))
+                }
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                let value = STRING_ELT(f, index);
+                if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                    None
+                } else {
+                    Some(elt_to_string(f, index))
+                }
+            }
+            _ => Some(elt_to_string(f, index)),
+        }
+    }
+}
+
+fn split_label_cmp(t: c_int, left: &str, right: &str) -> std::cmp::Ordering {
+    if t == SEXPTYPE::LGLSXP {
+        return split_logical_rank(left).cmp(&split_logical_rank(right));
+    }
+    if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP {
+        let left_num = left.parse::<f64>().ok();
+        let right_num = right.parse::<f64>().ok();
+        if let (Some(left_num), Some(right_num)) = (left_num, right_num)
+            && let Some(ordering) = left_num.partial_cmp(&right_num)
+        {
+            return ordering;
+        }
+    }
+    left.cmp(right)
+}
+
+fn split_logical_rank(value: &str) -> u8 {
+    match value {
+        "FALSE" => 0,
+        "TRUE" => 1,
+        _ => 2,
     }
 }
 
