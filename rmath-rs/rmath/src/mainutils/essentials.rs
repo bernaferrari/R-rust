@@ -21610,6 +21610,7 @@ enum AggregateSummary {
     Sum,
     Min,
     Max,
+    Length,
 }
 
 unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option<SEXP> {
@@ -21685,6 +21686,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
                     AggregateSummary::Sum => sum,
                     AggregateSummary::Min => min,
                     AggregateSummary::Max => max,
+                    AggregateSummary::Length => count as f64,
                 }
             };
         }
@@ -21725,6 +21727,7 @@ unsafe fn aggregate_summary_fun(fun: SEXP) -> Option<AggregateSummary> {
                 "sum" => Some(AggregateSummary::Sum),
                 "min" => Some(AggregateSummary::Min),
                 "max" => Some(AggregateSummary::Max),
+                "length" => Some(AggregateSummary::Length),
                 _ => Some(AggregateSummary::Mean),
             }
         } else if fun_type == SEXPTYPE::SYMSXP {
@@ -21732,6 +21735,7 @@ unsafe fn aggregate_summary_fun(fun: SEXP) -> Option<AggregateSummary> {
                 Some("sum") => Some(AggregateSummary::Sum),
                 Some("min") => Some(AggregateSummary::Min),
                 Some("max") => Some(AggregateSummary::Max),
+                Some("length") => Some(AggregateSummary::Length),
                 _ => Some(AggregateSummary::Mean),
             }
         } else {
