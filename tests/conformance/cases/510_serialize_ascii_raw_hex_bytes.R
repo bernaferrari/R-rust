@@ -1,0 +1,5 @@
+r <- serialize(as.raw(c(10, 255)), NULL, ascii = TRUE)
+s <- rawToChar(r)
+cat(grepl("\n0a\n", s, fixed = TRUE), "\n", sep = "")
+cat(grepl("\nff\n", s, fixed = TRUE), "\n", sep = "")
+cat(identical(unserialize(r), as.raw(c(10, 255))), "\n", sep = "")

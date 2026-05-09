@@ -511,7 +511,7 @@ impl BinaryWriter {
 
     fn write_byte(&mut self, val: u8) {
         if self.ascii_body {
-            self.buf.extend_from_slice(val.to_string().as_bytes());
+            self.buf.extend_from_slice(format!("{val:02x}").as_bytes());
             self.buf.push(b'\n');
         } else {
             self.buf.push(val);
@@ -613,8 +613,7 @@ impl<'a> BinaryReader<'a> {
     fn read_byte(&mut self) -> Result<u8, String> {
         if self.ascii_body {
             let token = self.read_ascii_token()?;
-            return token
-                .parse::<u8>()
+            return u8::from_str_radix(&token, 16)
                 .map_err(|_| format!("read error: invalid byte token '{token}'"));
         }
         if self.remaining() < 1 {
