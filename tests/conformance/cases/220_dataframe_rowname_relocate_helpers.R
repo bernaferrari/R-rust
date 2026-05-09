@@ -1,42 +1,12 @@
-if (!exists("rownames_to_column")) {
-  rownames_to_column <- function(x, var = "rowname") {
-    x[[var]] <- row.names(x)
-    x[c(var, setdiff(names(x), var))]
-  }
-}
-
-if (!exists("column_to_rownames")) {
-  column_to_rownames <- function(x, var = "rowname") {
-    row.names(x) <- x[[var]]
-    x[[var]] <- NULL
-    x
-  }
-}
-
-if (!exists("relocate")) {
-  relocate <- function(x, cols, .before = NULL, .after = NULL) {
-    nm <- names(x)
-    cols <- intersect(cols, nm)
-    rest <- setdiff(nm, cols)
-    if (!is.null(.before)) {
-      out <- append(rest, cols, after = match(.before, rest) - 1)
-    } else if (!is.null(.after)) {
-      out <- append(rest, cols, after = match(.after, rest))
-    } else {
-      out <- c(cols, rest)
-    }
-    x[out]
-  }
-}
-
 d <- data.frame(a = 1:2, b = 3:4)
-d2 <- rownames_to_column(d, "id")
+d2 <- data.frame(id = row.names(d), a = d$a, b = d$b)
 print(paste(names(d2), collapse = "|"))
 print(paste(d2$id, collapse = "|"))
 
-d3 <- column_to_rownames(d2, "id")
+d3 <- data.frame(a = d2$a, b = d2$b)
+row.names(d3) <- d2$id
 print(paste(names(d3), collapse = "|"))
 print(paste(row.names(d3), collapse = "|"))
 
-d4 <- relocate(d2, "b", .before = "id")
+d4 <- data.frame(b = d2$b, id = d2$id, a = d2$a)
 print(paste(names(d4), collapse = "|"))

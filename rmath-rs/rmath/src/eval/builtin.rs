@@ -1619,18 +1619,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_dget,
     },
     EvaluatedBuiltin {
-        name: "rownames_to_column",
-        handler: crate::mainutils::essentials::do_rownames_to_column,
-    },
-    EvaluatedBuiltin {
-        name: "column_to_rownames",
-        handler: crate::mainutils::essentials::do_column_to_rownames,
-    },
-    EvaluatedBuiltin {
-        name: "relocate",
-        handler: crate::mainutils::essentials::do_relocate,
-    },
-    EvaluatedBuiltin {
         name: "packageStartupMessage",
         handler: crate::mainutils::essentials::do_package_startup_message,
     },

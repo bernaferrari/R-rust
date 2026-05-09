@@ -1,0 +1,6 @@
+print(exists("rownames_to_column"))
+print(exists("column_to_rownames"))
+print(exists("relocate"))
+print(exists("row.names", mode = "function"))
+print(exists("row.names<-", mode = "function"))
+print(exists("names", mode = "function"))

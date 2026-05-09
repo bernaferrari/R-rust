@@ -5408,10 +5408,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "dput",
             "dget",
             "bquote",
-            // Data-frame helpers used by the current release subset.
-            "rownames_to_column",
-            "column_to_rownames",
-            "relocate",
             // Complete I/O
             "packageStartupMessage",
             // Environment completion
