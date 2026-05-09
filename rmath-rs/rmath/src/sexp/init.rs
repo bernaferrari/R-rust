@@ -88,7 +88,18 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env:
         crate::eval::arithmetic::register_special_forms(base_env);
         crate::mainutils::essentials::register_essentials_builtins(base_env);
         crate::mainutils::rng_dispatch::register_rng_builtins(base_env);
+        initialize_special_environment_bindings_in(inst, base_env);
         initialize_primitive_metadata_in(base_env);
+    }
+}
+
+unsafe fn initialize_special_environment_bindings_in(inst: &mut RInstance, base_env: SEXP) {
+    unsafe {
+        defineVar(
+            Rf_install_in_current(".GlobalEnv"),
+            inst.global_env,
+            base_env,
+        );
     }
 }
 

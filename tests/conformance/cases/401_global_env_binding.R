@@ -1,0 +1,5 @@
+print(.GlobalEnv)
+print(identical(.GlobalEnv, globalenv()))
+print(exists(".GlobalEnv", envir = baseenv(), inherits = FALSE))
+print(exists(".GlobalEnv", envir = .GlobalEnv, inherits = FALSE))
+print(environmentName(.GlobalEnv))

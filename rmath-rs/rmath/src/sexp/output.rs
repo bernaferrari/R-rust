@@ -1233,13 +1233,15 @@ pub fn print_value(x: Sexp<'_>) {
         SEXPTYPE::EXPRSXP => {
             emit(&format!("{}\n", format_expression_vector(x)));
         }
+        SEXPTYPE::ENVSXP => {
+            emit(&format!("{}\n", format_environment(x)));
+        }
         tp => {
             let type_name = match tp {
                 SEXPTYPE::RAWSXP => "raw",
                 SEXPTYPE::CPLXSXP => "complex",
                 SEXPTYPE::SYMSXP => "symbol",
                 SEXPTYPE::CLOSXP => "closure",
-                SEXPTYPE::ENVSXP => "environment",
                 SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => "pairlist",
                 SEXPTYPE::CHARSXP => "charsxp",
                 SEXPTYPE::PROMSXP => "promise",
@@ -1365,12 +1367,12 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         SEXPTYPE::VECSXP => format_list(x),
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP => deparse_expression_one(x.as_raw()),
+        SEXPTYPE::ENVSXP => format_environment(x),
         tp => {
             let type_name = match tp {
                 SEXPTYPE::RAWSXP => "raw",
                 SEXPTYPE::CPLXSXP => "complex",
                 SEXPTYPE::CLOSXP => "closure",
-                SEXPTYPE::ENVSXP => "environment",
                 SEXPTYPE::LISTSXP => "pairlist",
                 SEXPTYPE::CHARSXP => "charsxp",
                 _ => "unknown",
@@ -1378,6 +1380,22 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format!("[{}; length={}]", type_name, x.len())
         }
     }
+}
+
+fn format_environment(x: Sexp<'_>) -> String {
+    let raw = x.as_raw();
+    let name = unsafe {
+        if raw == crate::sexp::globals::R_GlobalEnv() {
+            "R_GlobalEnv".to_string()
+        } else if raw == crate::sexp::globals::R_BaseEnv() {
+            "base".to_string()
+        } else if raw == crate::sexp::globals::R_EmptyEnv() {
+            "R_EmptyEnv".to_string()
+        } else {
+            format!("{raw:p}")
+        }
+    };
+    format!("<environment: {name}>")
 }
 
 /// Print an R object's structure (like str()).
