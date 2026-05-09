@@ -16,7 +16,7 @@
 
 use crate::sexp::accessors::{
     CAD5R, CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, SET_STRING_ELT,
-    STRING_ELT, TAG, TYPEOF, XLENGTH,
+    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
@@ -389,6 +389,15 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 }
                 Ok(())
             }
+            SEXPTYPE::VECSXP => {
+                let len = XLENGTH(value);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len {
+                    write_saved_object(writer, VECTOR_ELT(value, i))?;
+                }
+                Ok(())
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unsupported saved object type {sexptype}"),
@@ -437,6 +446,16 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                         }
                         None => SET_STRING_ELT(value, i, R_NaString()),
                     }
+                }
+                Ok(value)
+            }
+            SEXPTYPE::VECSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
+                let _guard = protect(value);
+                for i in 0..len as R_xlen_t {
+                    let element = read_saved_object(reader)?;
+                    SET_VECTOR_ELT(value, i, element);
                 }
                 Ok(value)
             }
