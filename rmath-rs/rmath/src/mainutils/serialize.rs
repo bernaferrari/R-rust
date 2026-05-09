@@ -1513,10 +1513,11 @@ pub unsafe fn R_serialize(
             version
         };
 
+        let ascii_format = !ascii.is_null() && ascii != R_NilValue() && asLogical(ascii) != 0;
+
         // Build the header
         let mut writer = BinaryWriter::new();
-        // Format: 'B' + '\n' for binary
-        writer.write_byte(b'B');
+        writer.write_byte(if ascii_format { b'A' } else { b'B' });
         writer.write_byte(b'\n');
 
         // Version info
@@ -1565,10 +1566,10 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
 
         let mut reader = BinaryReader::new(data);
 
-        // Read format header: 2 bytes ('B' + '\n')
+        // Read format header: two bytes (`A\n` or `B\n`).
         let fmt1 = reader.read_byte().unwrap_or(0);
         let fmt2 = reader.read_byte().unwrap_or(0);
-        if fmt1 != b'B' || fmt2 != b'\n' {
+        if (fmt1 != b'A' && fmt1 != b'B') || fmt2 != b'\n' {
             error("unknown input format");
         }
 

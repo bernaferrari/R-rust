@@ -1,0 +1,7 @@
+binary <- serialize(1:2, NULL, ascii = FALSE, xdr = FALSE)
+ascii <- serialize(1:2, NULL, ascii = TRUE)
+cat(identical(binary, ascii), "\n", sep = "")
+cat(rawToChar(binary[1:2]), "\n", sep = "")
+cat(rawToChar(ascii[1:2]), "\n", sep = "")
+cat(identical(unserialize(binary), 1:2), "\n", sep = "")
+cat(identical(unserialize(ascii), 1:2), "\n", sep = "")
