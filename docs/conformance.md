@@ -94,8 +94,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 407 |
-| Passing | 407 |
+| Total parity cases | 408 |
+| Passing | 408 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -111,7 +111,7 @@ Current domain coverage:
 | Stats, math, and RNG | 58 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int` invariants |
 | Packages, namespaces, and S3 | 4 | Package namespace and S3 fixtures plus `system.file()` and the pure-R package corpus gate |
 | Graphics and Android embedding | 1 | Base graphics layout state parity plus renderer/unit tests; broader graphics parity remains tracked by `rport-pluy` |
-| Error semantics | 26 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, and selected expected errors |
+| Error semantics | 27 | Missing argument, `stop`, `stopifnot`, sampling errors, matrix-helper validation, dmultinom validation, match/char-expand/sprintf/read.fwf/gcinfo/gctorture2/function-lookup expected errors, and selected expected errors |
 
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
