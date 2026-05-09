@@ -1471,6 +1471,43 @@ mod tests {
     fn reset_gc_test_arena(arena: &mut RArena) {
         *arena = RArena::new();
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        instance::with_required_current_instance(|instance| {
+            instance.protect_stack.borrow_mut().clear();
+            instance.preserve_stack.borrow_mut().clear();
+            instance.context_stack.clear();
+            instance.gc_state.remembered_set.clear();
+            instance.gc_state.card_table.clear_dirty();
+            instance.error_state.warnings = nil;
+            instance.error_state.handler_stack = nil;
+            instance.error_state.restart_stack = nil;
+            instance.eval_state.current_expr = nil;
+            instance.eval_state.parse_error_file = nil;
+            instance.eval_state.exec_token = nil;
+            instance.eval_state.profiling.sref = nil;
+            instance.eval_state.profiling.srcfiles_buffer = nil;
+            instance.eval_state.printvector.na_string = nil;
+            instance.eval_state.printvector.na_string_noquote = nil;
+            instance.eval_state.print.data.na_string = nil;
+            instance.eval_state.print.data.na_string_noquote = nil;
+            instance.eval_state.print.data.env = nil;
+            instance.eval_state.print.data.callArgs = nil;
+            instance.symbols.clear();
+            instance.symbol_nodes.clear();
+            instance.names_state.ddval_symbols.clear();
+            instance.bind_state.blank_string = nil;
+            instance.options.clear();
+            instance.main_state.task_callbacks.clear();
+            instance.objects_state.prim_generics.clear();
+            instance.objects_state.prim_mlist.clear();
+            instance.env_hash_tables.clear();
+            instance.memory_state.pending_finalizers.clear();
+            instance.dynload_state.dll_info_eptrs = nil;
+            instance.dynload_state.symbol_eptrs = nil;
+            instance.dynload_state.c_entry_table = nil;
+            instance.grid_runtime_state.current_grid_state = nil;
+            instance.grid_runtime_state.eval_env = nil;
+            instance.raw_cons.clear();
+        });
         for env in [
             unsafe { crate::sexp::globals::R_EmptyEnv() },
             unsafe { crate::sexp::globals::R_BaseEnv() },

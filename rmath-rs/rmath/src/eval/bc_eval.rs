@@ -708,9 +708,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_SWLOAD => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "SWLOAD");
                     let _switch_val = stack_pop_checked(&mut stack, "SWLOAD");
-                    bc_error(format!(
-                        "SWLOAD bytecode switch table load at index {idx} is not implemented"
-                    ));
+                    let val = constant_at(consts, idx, "SWLOAD");
+                    stack.push(val);
                 }
 
                 opcodes::OP_PUTBASE => {
@@ -1041,10 +1040,15 @@ mod tests {
     }
 
     #[test]
-    fn test_bc_eval_rejects_unimplemented_swload() {
+    fn test_bc_eval_swload_loads_constant_table_entry() {
         let _session = crate::sexp::session::RSession::new();
         let mut arena = crate::sexp::memory::RArena::new();
-        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+        let value = unsafe { Rf_ScalarInteger(42) };
+        unsafe {
+            let data = (*consts).gengc_next_node as *mut SEXP;
+            *data = value;
+        }
         let bcode = bcode_with(
             &mut arena,
             &[
@@ -1057,9 +1061,9 @@ mod tests {
         );
         let env = empty_env(&mut arena);
 
-        let err = assert_r_error(|| unsafe {
-            bcEval(bcode, env);
-        });
-        assert!(err.message.contains("SWLOAD bytecode switch table load"));
+        let result = unsafe { bcEval(bcode, env) };
+        unsafe {
+            assert_eq!(*INTEGER(result), 42);
+        }
     }
 }
