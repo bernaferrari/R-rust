@@ -21608,6 +21608,8 @@ pub unsafe fn do_aggregate(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 enum AggregateSummary {
     Mean,
     Sum,
+    Min,
+    Max,
 }
 
 unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option<SEXP> {
@@ -21630,7 +21632,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
             return None;
         }
 
-        let mut groups = BTreeMap::<String, (f64, usize, bool)>::new();
+        let mut groups = BTreeMap::<String, (f64, usize, bool, f64, f64)>::new();
         for i in 0..XLENGTH(x) {
             let key = aggregate_group_key(group, group_type, i)?;
             let value = if x_type == SEXPTYPE::REALSXP {
@@ -21643,10 +21645,17 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
                     value as f64
                 }
             };
-            let entry = groups.entry(key).or_insert((0.0, 0, false));
+            let entry = groups.entry(key).or_insert((0.0, 0, false, 0.0, 0.0));
             if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
                 entry.2 = true;
             } else {
+                if entry.1 == 0 {
+                    entry.3 = value;
+                    entry.4 = value;
+                } else {
+                    entry.3 = entry.3.min(value);
+                    entry.4 = entry.4.max(value);
+                }
                 entry.0 += value;
                 entry.1 += 1;
             }
@@ -21665,7 +21674,7 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
         }
         let _group_guard = protect(group_col);
         let _value_guard = protect(value_col);
-        for (i, (key, (sum, count, has_na))) in groups.into_iter().enumerate() {
+        for (i, (key, (sum, count, has_na, min, max))) in groups.into_iter().enumerate() {
             let key_c = CString::new(key).unwrap_or_default();
             SET_STRING_ELT(group_col, i as R_xlen_t, Rf_mkChar(key_c.as_ptr()));
             *REAL(value_col).add(i) = if has_na || count == 0 {
@@ -21674,6 +21683,8 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
                 match summary {
                     AggregateSummary::Mean => sum / count as f64,
                     AggregateSummary::Sum => sum,
+                    AggregateSummary::Min => min,
+                    AggregateSummary::Max => max,
                 }
             };
         }
@@ -21712,11 +21723,15 @@ unsafe fn aggregate_summary_fun(fun: SEXP) -> Option<AggregateSummary> {
         if fun_type == SEXPTYPE::BUILTINSXP || fun_type == SEXPTYPE::SPECIALSXP {
             match crate::eval::primitive::PRIMNAME(fun) {
                 "sum" => Some(AggregateSummary::Sum),
+                "min" => Some(AggregateSummary::Min),
+                "max" => Some(AggregateSummary::Max),
                 _ => Some(AggregateSummary::Mean),
             }
         } else if fun_type == SEXPTYPE::SYMSXP {
             match symbol_name(fun).as_deref() {
                 Some("sum") => Some(AggregateSummary::Sum),
+                Some("min") => Some(AggregateSummary::Min),
+                Some("max") => Some(AggregateSummary::Max),
                 _ => Some(AggregateSummary::Mean),
             }
         } else {
