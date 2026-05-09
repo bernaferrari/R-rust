@@ -2676,6 +2676,7 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let n = XLENGTH(x);
         let na_placement = order_na_placement(args);
+        let ties_method = rank_ties_method(args);
         let mut missing_indices: Vec<R_xlen_t> = Vec::new();
         let mut ranks = vec![NA_REAL; n as usize];
 
@@ -2691,7 +2692,7 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 }
                 values.sort_by(|a, b| compare_charsxp_for_sort(a.0, b.0));
-                assign_average_ranks(&mut ranks, &values, 0, |a, b| {
+                assign_tied_ranks(&mut ranks, &values, ties_method, 0, |a, b| {
                     compare_charsxp_for_sort(a.0, b.0) == std::cmp::Ordering::Equal
                 });
             }
@@ -2706,7 +2707,7 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 }
                 values.sort_by(|a, b| a.0.cmp(&b.0));
-                assign_average_ranks(&mut ranks, &values, 0, |a, b| a.0 == b.0);
+                assign_tied_ranks(&mut ranks, &values, ties_method, 0, |a, b| a.0 == b.0);
             }
             _ => {
                 let mut values: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
@@ -2719,7 +2720,7 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 }
                 values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-                assign_average_ranks(&mut ranks, &values, 0, |a, b| a.0 == b.0);
+                assign_tied_ranks(&mut ranks, &values, ties_method, 0, |a, b| a.0 == b.0);
             }
         }
 
@@ -2770,9 +2771,39 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-fn assign_average_ranks<T, F>(
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum RankTiesMethod {
+    Average,
+    First,
+    Last,
+    Min,
+    Max,
+}
+
+fn rank_ties_method(args: SEXP) -> RankTiesMethod {
+    unsafe {
+        let arg = arg_by_name_or_position(args, &["ties.method"], 2);
+        if arg.is_null()
+            || arg == R_NilValue()
+            || TYPEOF(arg) != SEXPTYPE::STRSXP
+            || XLENGTH(arg) == 0
+        {
+            return RankTiesMethod::Average;
+        }
+        match elt_to_string(arg, 0).as_str() {
+            "first" => RankTiesMethod::First,
+            "last" => RankTiesMethod::Last,
+            "min" => RankTiesMethod::Min,
+            "max" => RankTiesMethod::Max,
+            _ => RankTiesMethod::Average,
+        }
+    }
+}
+
+fn assign_tied_ranks<T, F>(
     ranks: &mut [f64],
     values: &[(T, R_xlen_t)],
+    ties_method: RankTiesMethod,
     rank_offset: usize,
     same_key: F,
 ) where
@@ -2784,10 +2815,35 @@ fn assign_average_ranks<T, F>(
         while j < values.len() && same_key(&values[i], &values[j]) {
             j += 1;
         }
-        let avg_rank = (rank_offset + i + rank_offset + j + 1) as f64 / 2.0;
-        for item in &values[i..j] {
-            let original_index = item.1;
-            ranks[original_index as usize] = avg_rank;
+        match ties_method {
+            RankTiesMethod::Average => {
+                let avg_rank = (rank_offset + i + rank_offset + j + 1) as f64 / 2.0;
+                for item in &values[i..j] {
+                    ranks[item.1 as usize] = avg_rank;
+                }
+            }
+            RankTiesMethod::First => {
+                for (offset, item) in values[i..j].iter().enumerate() {
+                    ranks[item.1 as usize] = (rank_offset + i + offset + 1) as f64;
+                }
+            }
+            RankTiesMethod::Last => {
+                for (offset, item) in values[i..j].iter().enumerate() {
+                    ranks[item.1 as usize] = (rank_offset + j - offset) as f64;
+                }
+            }
+            RankTiesMethod::Min => {
+                let rank = (rank_offset + i + 1) as f64;
+                for item in &values[i..j] {
+                    ranks[item.1 as usize] = rank;
+                }
+            }
+            RankTiesMethod::Max => {
+                let rank = (rank_offset + j) as f64;
+                for item in &values[i..j] {
+                    ranks[item.1 as usize] = rank;
+                }
+            }
         }
         i = j;
     }

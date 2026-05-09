@@ -1,0 +1,6 @@
+print(rank(c(3, 1, 1), ties.method = "average"))
+print(rank(c(3, 1, 1), ties.method = "first"))
+print(rank(c(3, 1, 1), ties.method = "last"))
+print(rank(c(3, 1, 1), ties.method = "min"))
+print(rank(c(3, 1, 1), ties.method = "max"))
+print(rank(c("b", "a", "a"), ties.method = "last"))
