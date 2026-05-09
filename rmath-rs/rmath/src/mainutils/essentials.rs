@@ -21647,6 +21647,10 @@ unsafe fn aggregate_numeric_by_one_group(x: SEXP, by: SEXP, fun: SEXP) -> Option
                 }
             };
             let entry = groups.entry(key).or_insert((0.0, 0, false, 0.0, 0.0));
+            if matches!(summary, AggregateSummary::Length) {
+                entry.1 += 1;
+                continue;
+            }
             if value.to_bits() == R_NA_BIT_PATTERN || value.is_nan() {
                 entry.2 = true;
             } else {
