@@ -15,8 +15,8 @@
 //!   defaultSaveVersion
 
 use crate::sexp::accessors::{
-    CAD5R, CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAD5R, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL,
+    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
@@ -24,7 +24,7 @@ use crate::sexp::attrib_core::{
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_allocVector3, Rf_mkChar};
 use crate::sexp::envir::{R_findVarInFrame, defineVar};
-use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -256,12 +256,44 @@ pub fn InDoubleAscii(reader: &mut impl BufRead) -> io::Result<f64> {
     reader.read_line(&mut buf)?;
     let buf = buf.trim();
     match buf {
-        "NA" => Ok(f64::NAN),
+        "NA" => Ok(f64::from_bits(R_NA_BIT_PATTERN)),
         "Inf" => Ok(f64::INFINITY),
         "-Inf" => Ok(f64::NEG_INFINITY),
         _ => buf
             .parse::<f64>()
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+    }
+}
+
+fn InComplexAscii(reader: &mut impl BufRead) -> io::Result<Rcomplex> {
+    let line = read_ascii_token(reader)?;
+    let mut parts = line.split_whitespace();
+    let re = parts
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing complex real part"))?;
+    let im = parts.next().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, "missing complex imaginary part")
+    })?;
+    if parts.next().is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "malformed complex value",
+        ));
+    }
+    Ok(Rcomplex {
+        r: parse_ascii_double_token(re)?,
+        i: parse_ascii_double_token(im)?,
+    })
+}
+
+fn parse_ascii_double_token(token: &str) -> io::Result<f64> {
+    match token {
+        "NA" => Ok(f64::from_bits(R_NA_BIT_PATTERN)),
+        "Inf" => Ok(f64::INFINITY),
+        "-Inf" => Ok(f64::NEG_INFINITY),
+        _ => token
+            .parse::<f64>()
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err)),
     }
 }
 
@@ -381,6 +413,18 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 write_standard_attrs(writer, value)?;
                 Ok(())
             }
+            SEXPTYPE::CPLXSXP => {
+                let len = XLENGTH(value);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len as usize {
+                    let element = *COMPLEX(value).add(i);
+                    OutComplexAscii(writer, element.r, element.i)?;
+                    OutNewlineAscii(writer)?;
+                }
+                write_standard_attrs(writer, value)?;
+                Ok(())
+            }
             SEXPTYPE::STRSXP => {
                 let len = XLENGTH(value);
                 OutIntegerAscii(writer, len as c_int)?;
@@ -396,6 +440,17 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                         OutStringAscii(writer, text)?;
                         OutNewlineAscii(writer)?;
                     }
+                }
+                write_standard_attrs(writer, value)?;
+                Ok(())
+            }
+            SEXPTYPE::RAWSXP => {
+                let len = XLENGTH(value);
+                OutIntegerAscii(writer, len as c_int)?;
+                OutNewlineAscii(writer)?;
+                for i in 0..len as usize {
+                    OutIntegerAscii(writer, *RAW(value).add(i) as c_int)?;
+                    OutNewlineAscii(writer)?;
                 }
                 write_standard_attrs(writer, value)?;
                 Ok(())
@@ -638,6 +693,14 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                 }
                 Ok(value)
             }
+            SEXPTYPE::CPLXSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocVector3(SEXPTYPE::CPLXSXP, len as R_xlen_t);
+                for i in 0..len as usize {
+                    *COMPLEX(value).add(i) = InComplexAscii(reader)?;
+                }
+                Ok(value)
+            }
             SEXPTYPE::STRSXP => {
                 let len = InIntegerAscii(reader)?;
                 let value = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
@@ -649,6 +712,21 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                         }
                         None => SET_STRING_ELT(value, i, R_NaString()),
                     }
+                }
+                Ok(value)
+            }
+            SEXPTYPE::RAWSXP => {
+                let len = InIntegerAscii(reader)?;
+                let value = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
+                for i in 0..len as usize {
+                    let byte = InIntegerAscii(reader)?;
+                    if !(0..=u8::MAX as c_int).contains(&byte) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "raw byte out of range",
+                        ));
+                    }
+                    *RAW(value).add(i) = byte as u8;
                 }
                 Ok(value)
             }
@@ -875,6 +953,11 @@ unsafe fn eval_named_arg(args: SEXP, rho: SEXP, name: &str) -> SEXP {
 
 unsafe fn collect_save_object_names(args: SEXP, rho: SEXP) -> Vec<String> {
     unsafe {
+        let explicit_list = eval_named_arg(args, rho, "list");
+        if !explicit_list.is_null() && explicit_list != R_NilValue() {
+            return names_from_save_list(explicit_list);
+        }
+
         let mut names = Vec::new();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -896,24 +979,27 @@ unsafe fn collect_save_object_names(args: SEXP, rho: SEXP) -> Vec<String> {
             current = CDR(current);
         }
 
-        let explicit_list = eval_named_arg(args, rho, "list");
-        if !explicit_list.is_null() && explicit_list != R_NilValue() {
-            if TYPEOF(explicit_list) != SEXPTYPE::STRSXP {
-                error("'list' must be a character vector");
-            }
-            for i in 0..XLENGTH(explicit_list) {
-                let charsxp = STRING_ELT(explicit_list, i);
-                if charsxp.is_null() || charsxp == R_NaString() {
-                    error("'list' contains missing object names");
-                }
-                names.push(
-                    std::ffi::CStr::from_ptr(CHAR(charsxp))
-                        .to_string_lossy()
-                        .into_owned(),
-                );
-            }
-        }
+        names
+    }
+}
 
+unsafe fn names_from_save_list(list: SEXP) -> Vec<String> {
+    unsafe {
+        if TYPEOF(list) != SEXPTYPE::STRSXP {
+            error("'list' must be a character vector");
+        }
+        let mut names = Vec::new();
+        for i in 0..XLENGTH(list) {
+            let charsxp = STRING_ELT(list, i);
+            if charsxp.is_null() || charsxp == R_NaString() {
+                error("'list' contains missing object names");
+            }
+            names.push(
+                std::ffi::CStr::from_ptr(CHAR(charsxp))
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
         names
     }
 }
