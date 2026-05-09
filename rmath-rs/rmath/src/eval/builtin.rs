@@ -1087,10 +1087,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_pushBack,
     },
     EvaluatedBuiltin {
-        name: "pushBackClear",
-        handler: crate::mainutils::essentials::do_pushBackClear,
-    },
-    EvaluatedBuiltin {
         name: "pushBackLength",
         handler: crate::mainutils::essentials::do_pushBackLength,
     },
@@ -1707,10 +1703,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_is_vector,
     },
     EvaluatedBuiltin {
-        name: "is.named",
-        handler: crate::mainutils::essentials::do_is_named,
-    },
-    EvaluatedBuiltin {
         name: "is.unsorted",
         handler: crate::mainutils::essentials::do_is_unsorted,
     },
@@ -1721,10 +1713,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "is.primitive",
         handler: crate::mainutils::essentials::do_is_primitive,
-    },
-    EvaluatedBuiltin {
-        name: "is.generic",
-        handler: crate::mainutils::essentials::do_is_generic,
     },
     EvaluatedBuiltin {
         name: "is.data.frame",
@@ -2057,10 +2045,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "getS3method",
         handler: crate::mainutils::essentials::do_getS3method,
-    },
-    EvaluatedBuiltin {
-        name: "hasS3method",
-        handler: crate::mainutils::essentials::do_hasS3method,
     },
     EvaluatedBuiltin {
         name: "registerS3method",

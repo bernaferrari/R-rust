@@ -5514,7 +5514,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "isSeekable",
             "seek",
             "pushBack",
-            "pushBackClear",
             "pushBackLength",
             "readBin",
             "writeBin",
@@ -5546,7 +5545,6 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "writeChar",
             // Complete S3 — method dispatch
             "getS3method",
-            "hasS3method",
             "registerS3method",
             "setGeneric",
             "setMethod",

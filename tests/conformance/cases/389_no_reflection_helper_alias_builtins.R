@@ -1,0 +1,8 @@
+print(exists("pushBackClear"))
+print(exists("hasS3method"))
+print(exists("is.named"))
+print(exists("is.generic"))
+print(exists("pushBackLength", mode = "function"))
+print(exists("getS3method", mode = "function"))
+print(exists("isGeneric", mode = "function"))
+print(exists("is.unsorted", mode = "function"))
