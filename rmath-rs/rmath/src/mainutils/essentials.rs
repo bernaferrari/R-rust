@@ -22293,7 +22293,7 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
-        let n = XLENGTH(CAR(CDR(args))).max(1);
+        let n = XLENGTH(CAR(CDR(args)));
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -22343,7 +22343,7 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
-        let n = XLENGTH(text).max(1);
+        let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -22404,7 +22404,7 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
-        let n = XLENGTH(text).max(1);
+        let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
             return R_NilValue();

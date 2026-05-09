@@ -965,7 +965,10 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::INTSXP => {
             if x.len() == 0 {
-                emit("integer(0)\n");
+                emit(&format!(
+                    "{}\n",
+                    format_with_printable_attributes("integer(0)".to_string(), x)
+                ));
                 return;
             }
             if let Some(output) = format_matrix(x) {
@@ -999,7 +1002,10 @@ pub fn print_value(x: Sexp<'_>) {
                 && !has_class(x, "POSIXct")
                 && !has_class(x, "Date")
             {
-                emit("numeric(0)\n");
+                emit(&format!(
+                    "{}\n",
+                    format_with_printable_attributes("numeric(0)".to_string(), x)
+                ));
                 return;
             }
             if let Some(output) = format_matrix(x) {
@@ -1035,7 +1041,10 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::LGLSXP => {
             if x.len() == 0 {
-                emit("logical(0)\n");
+                emit(&format!(
+                    "{}\n",
+                    format_with_printable_attributes("logical(0)".to_string(), x)
+                ));
                 return;
             }
             if let Some(output) = format_matrix(x) {
@@ -1053,7 +1062,10 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::CPLXSXP => {
             if x.len() == 0 {
-                emit("complex(0)\n");
+                emit(&format!(
+                    "{}\n",
+                    format_with_printable_attributes("complex(0)".to_string(), x)
+                ));
                 return;
             }
             if let Some(output) = format_matrix(x) {
@@ -1087,7 +1099,10 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::RAWSXP => {
             if x.len() == 0 {
-                emit("raw(0)\n");
+                emit(&format!(
+                    "{}\n",
+                    format_with_printable_attributes("raw(0)".to_string(), x)
+                ));
                 return;
             }
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
@@ -1144,7 +1159,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
             if x.len() == 0 {
-                return "integer(0)".to_string();
+                return format_with_printable_attributes("integer(0)".to_string(), x);
             }
             if let Some(output) = format_matrix(x) {
                 return output;
@@ -1176,7 +1191,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 return format_date_vector(x);
             }
             if x.len() == 0 {
-                return "numeric(0)".to_string();
+                return format_with_printable_attributes("numeric(0)".to_string(), x);
             }
             if let Some(output) = format_matrix(x) {
                 return output;
@@ -1194,7 +1209,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         }
         SEXPTYPE::LGLSXP => {
             if x.len() == 0 {
-                return "logical(0)".to_string();
+                return format_with_printable_attributes("logical(0)".to_string(), x);
             }
             if let Some(output) = format_matrix(x) {
                 return output;
@@ -1210,7 +1225,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         }
         SEXPTYPE::CPLXSXP => {
             if x.len() == 0 {
-                return "complex(0)".to_string();
+                return format_with_printable_attributes("complex(0)".to_string(), x);
             }
             if let Some(output) = format_matrix(x) {
                 return output;
@@ -1227,7 +1242,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         SEXPTYPE::STRSXP => format_with_printable_attributes(format_string_vector(x), x),
         SEXPTYPE::RAWSXP => {
             if x.len() == 0 {
-                return "raw(0)".to_string();
+                return format_with_printable_attributes("raw(0)".to_string(), x);
             }
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
