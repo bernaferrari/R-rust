@@ -4952,6 +4952,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "seterrmessage" => Some(crate::mainutils::errors::do_seterrmessage),
         "printDeferredWarnings" => Some(crate::mainutils::errors::do_printDeferredWarnings),
         "interruptsSuspended" => Some(crate::mainutils::errors::do_interruptsSuspended),
+        "debug" | "undebug" | "isdebugged" | "debugonce" => Some(crate::mainutils::debug::do_debug),
         _ => None,
     }
 }
