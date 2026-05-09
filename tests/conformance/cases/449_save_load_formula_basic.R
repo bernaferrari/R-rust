@@ -1,0 +1,10 @@
+f <- tempfile()
+form <- y ~ x + z
+save(form, file = f, ascii = TRUE)
+rm(form)
+cat(paste(load(f, envir = .GlobalEnv), collapse = "|"), "\n", sep = "")
+cat(typeof(form), "\n", sep = "")
+cat(paste(class(form), collapse = "|"), "\n", sep = "")
+cat(paste(deparse(form), collapse = " "), "\n", sep = "")
+cat(length(form), "\n", sep = "")
+invisible(unlink(f))
