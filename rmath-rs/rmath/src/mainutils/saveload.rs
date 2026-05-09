@@ -484,6 +484,78 @@ unsafe fn arg_by_name_or_position(args: SEXP, name: &str, position: usize) -> SE
     }
 }
 
+unsafe fn eval_named_arg(args: SEXP, rho: SEXP, name: &str) -> SEXP {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some(name) {
+                return crate::eval::eval::Rf_eval(CAR(current), rho);
+            }
+            current = CDR(current);
+        }
+        R_NilValue()
+    }
+}
+
+unsafe fn collect_save_object_names(args: SEXP, rho: SEXP) -> Vec<String> {
+    unsafe {
+        let mut names = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).is_none() {
+                let expr = CAR(current);
+                if !expr.is_null() && TYPEOF(expr) == SEXPTYPE::SYMSXP {
+                    let printname = PRINTNAME(expr);
+                    if !printname.is_null() {
+                        let ptr = CHAR(printname);
+                        if !ptr.is_null() {
+                            names
+                                .push(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned());
+                        }
+                    }
+                } else {
+                    error("save() only supports named objects in this runtime");
+                }
+            }
+            current = CDR(current);
+        }
+
+        let explicit_list = eval_named_arg(args, rho, "list");
+        if !explicit_list.is_null() && explicit_list != R_NilValue() {
+            if TYPEOF(explicit_list) != SEXPTYPE::STRSXP {
+                error("'list' must be a character vector");
+            }
+            for i in 0..XLENGTH(explicit_list) {
+                let charsxp = STRING_ELT(explicit_list, i);
+                if charsxp.is_null() || charsxp == R_NaString() {
+                    error("'list' contains missing object names");
+                }
+                names.push(
+                    std::ffi::CStr::from_ptr(CHAR(charsxp))
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+
+        names
+    }
+}
+
+unsafe fn string_vector_from_names(names: &[String]) -> SEXP {
+    unsafe {
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+        for (i, name) in names.iter().enumerate() {
+            let c_name = match std::ffi::CString::new(name.as_str()) {
+                Ok(name) => name,
+                Err(_) => error("invalid object name"),
+            };
+            SET_STRING_ELT(out, i as R_xlen_t, Rf_mkChar(c_name.as_ptr()));
+        }
+        out
+    }
+}
+
 unsafe fn save_ascii_objects(list: SEXP, file_sexp: SEXP, ascii_flag: SEXP, envir: SEXP) -> SEXP {
     unsafe {
         if file_sexp.is_null() {
@@ -646,20 +718,23 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// `ascii=`, and `envir=` path used by pure-R Android sessions.
 pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let list = arg_by_name_or_position(args, "list", 0);
-        let file = arg_by_name_or_position(args, "file", 1);
-        let ascii = arg_by_name_or_position(args, "ascii", 2);
+        let names = collect_save_object_names(args, rho);
+        if names.is_empty() {
+            error("nothing specified to be save()d");
+        }
+        let list = string_vector_from_names(&names);
+        let _list_guard = protect(list);
+
+        let file = eval_named_arg(args, rho, "file");
+        let ascii = eval_named_arg(args, rho, "ascii");
         let envir = {
-            let candidate = arg_by_name_or_position(args, "envir", 3);
+            let candidate = eval_named_arg(args, rho, "envir");
             if candidate.is_null() || candidate == R_NilValue() {
                 rho
             } else {
                 candidate
             }
         };
-        if list.is_null() || list == R_NilValue() {
-            error("save() requires an explicit character 'list' argument in this runtime");
-        }
         if ascii.is_null() || ascii == R_NilValue() {
             error("save() requires ascii = TRUE in this runtime");
         }

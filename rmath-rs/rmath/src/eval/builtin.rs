@@ -185,6 +185,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "save",
+        handler: crate::mainutils::saveload::do_save_user,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "apply",
         handler: crate::mainutils::essentials::do_apply,
         restore_visibility_always: false,
@@ -2178,10 +2183,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "saveRDS",
         handler: crate::mainutils::essentials::do_saveRDS,
-    },
-    EvaluatedBuiltin {
-        name: "save",
-        handler: crate::mainutils::saveload::do_save_user,
     },
     EvaluatedBuiltin {
         name: "load",
