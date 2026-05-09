@@ -681,6 +681,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_table,
     },
     EvaluatedBuiltin {
+        name: "pairlist",
+        handler: crate::mainutils::essentials::do_pairlist,
+    },
+    EvaluatedBuiltin {
         name: "as.integer",
         handler: crate::mainutils::essentials::do_as_integer,
     },
@@ -703,6 +707,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "as.logical",
         handler: crate::mainutils::essentials::do_as_logical,
+    },
+    EvaluatedBuiltin {
+        name: "as.pairlist",
+        handler: crate::mainutils::essentials::do_as_pairlist,
     },
     EvaluatedBuiltin {
         name: "as.vector",

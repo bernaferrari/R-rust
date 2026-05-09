@@ -270,6 +270,7 @@ const NON_GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("is.symbol", X, false),
     proto("isS4", &[arg("object")], false),
     proto("list", DOTS, false),
+    proto("pairlist", DOTS, false),
     proto(
         "lazyLoadDBfetch",
         &[arg("key"), arg("file"), arg("compressed"), arg("hook")],
@@ -327,6 +328,7 @@ const GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("as.environment", X, true),
     proto("as.integer", &[arg("x"), arg("...")], true),
     proto("as.logical", &[arg("x"), arg("...")], true),
+    proto("as.pairlist", &[arg("x"), arg("...")], true),
     proto("as.call", X, true),
     proto("as.numeric", &[arg("x"), arg("...")], true),
     proto("as.raw", X, true),

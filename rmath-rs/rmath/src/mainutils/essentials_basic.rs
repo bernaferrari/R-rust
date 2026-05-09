@@ -5,12 +5,12 @@ use std::os::raw::c_int;
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_ATTRIB,
-    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocList, Rf_allocVector3, Rf_cons,
+    Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{
     FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE,
@@ -1056,6 +1056,32 @@ pub unsafe fn do_as_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     unsafe { coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int()) }
 }
 
+/// R's `as.pairlist(x)` — coerce to LISTSXP.
+pub unsafe fn do_as_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { coerce_to_type(args, SEXPTYPE::LISTSXP.as_c_int()) }
+}
+
+/// R's `pairlist(...)` — build a LISTSXP preserving argument tags.
+pub unsafe fn do_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = pairlist_len(args);
+        let result = Rf_allocList(n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let mut src = args;
+        let mut dst = result;
+        while !src.is_null() && src != R_NilValue() && !dst.is_null() && dst != R_NilValue() {
+            SETCAR(dst, CAR(src));
+            SETTAG(dst, TAG(src));
+            src = CDR(src);
+            dst = CDR(dst);
+        }
+        result
+    }
+}
+
 /// R's `as.vector(x)` — strips attributes, returns simple vector.
 pub unsafe fn do_as_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1074,6 +1100,7 @@ pub unsafe fn do_as_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             Some("complex") => coerce_to_type(args, SEXPTYPE::CPLXSXP.as_c_int()),
             Some("raw") => coerce_to_type(args, SEXPTYPE::RAWSXP.as_c_int()),
             Some("list") => do_as_list(_call, _op, args, _rho),
+            Some("pairlist") => do_as_pairlist(_call, _op, args, _rho),
             _ => duplicate_without_attributes(x),
         }
     }
@@ -1109,6 +1136,9 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let t = TYPEOF(x);
         if t == SEXPTYPE::VECSXP {
             return x;
+        }
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+            return pairlist_as_list(x);
         }
         if t == SEXPTYPE::EXPRSXP {
             let n = XLENGTH(x);
@@ -1180,6 +1210,50 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     }
 }
 
+unsafe fn pairlist_len(mut list: SEXP) -> c_int {
+    unsafe {
+        let mut n = 0;
+        while !list.is_null() && list != R_NilValue() {
+            n += 1;
+            list = CDR(list);
+        }
+        n
+    }
+}
+
+unsafe fn pairlist_as_list(list: SEXP) -> SEXP {
+    unsafe {
+        let n = pairlist_len(list) as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let mut current = list;
+        let mut names = Vec::new();
+        let mut has_names = false;
+        for i in 0..n {
+            SET_VECTOR_ELT(result, i, CAR(current));
+            if let Some(name) = tag_name(TAG(current)) {
+                has_names = true;
+                names.push(name);
+            } else {
+                names.push(String::new());
+            }
+            current = CDR(current);
+        }
+        if has_names {
+            let names_vec = string_vector(&names);
+            crate::eval::attrib_core::setAttrib(
+                result,
+                crate::eval::attrib_core::R_NamesSymbol(),
+                names_vec,
+            );
+        }
+        result
+    }
+}
+
 unsafe fn environment_as_list(env: SEXP) -> SEXP {
     unsafe {
         let mut entries = Vec::new();
@@ -1229,10 +1303,13 @@ unsafe fn coerce_to_type(args: SEXP, target: c_int) -> SEXP {
             | SEXPTYPE::REALSXP
             | SEXPTYPE::CPLXSXP
             | SEXPTYPE::STRSXP
-            | SEXPTYPE::RAWSXP => {
+            | SEXPTYPE::RAWSXP
+            | SEXPTYPE::LISTSXP => {
                 let result = crate::mainutils::coerce::coerceVector(x, target);
                 if !result.is_null() && result != R_NilValue() {
-                    SET_ATTRIB(result, R_NilValue());
+                    if SEXPTYPE(target) != SEXPTYPE::LISTSXP {
+                        SET_ATTRIB(result, R_NilValue());
+                    }
                 }
                 result
             }

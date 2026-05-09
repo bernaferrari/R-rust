@@ -1,4 +1,7 @@
+pairlist
+one|two
 pl
 pairlist
 alpha|beta|gamma|delta
 4
+integer|character|logical|double
