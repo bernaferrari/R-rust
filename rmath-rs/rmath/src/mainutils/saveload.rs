@@ -455,7 +455,7 @@ unsafe fn write_saved_object(writer: &mut impl Write, value: SEXP) -> io::Result
                 write_standard_attrs(writer, value)?;
                 Ok(())
             }
-            SEXPTYPE::VECSXP => {
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
                 let len = XLENGTH(value);
                 OutIntegerAscii(writer, len as c_int)?;
                 OutNewlineAscii(writer)?;
@@ -730,9 +730,9 @@ unsafe fn read_saved_object(reader: &mut impl BufRead) -> io::Result<SEXP> {
                 }
                 Ok(value)
             }
-            SEXPTYPE::VECSXP => {
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
                 let len = InIntegerAscii(reader)?;
-                let value = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
+                let value = Rf_allocVector3(SEXPTYPE(sexptype), len as R_xlen_t);
                 let _guard = protect(value);
                 for i in 0..len as R_xlen_t {
                     let element = read_saved_object(reader)?;
@@ -1161,7 +1161,8 @@ unsafe fn load_ascii_objects(file_sexp: SEXP, envir: SEXP) -> SEXP {
 /// Port of `do_save` from saveload.c. Serializes named objects from an environment
 /// to a file using R's ASCII save format (version 3).
 ///
-/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP.
+/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP,
+/// EXPRSXP.
 /// Complex types (closures, environments, etc.) return an error gracefully.
 pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
@@ -1209,7 +1210,8 @@ pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 /// Port of `do_load` from saveload.c. Deserializes objects from a file
 /// using R's ASCII save format.
 ///
-/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP.
+/// Supports basic types: NILSXP, LGLSXP, INTSXP, REALSXP, STRSXP, VECSXP,
+/// EXPRSXP.
 /// Returns a character vector of loaded object names.
 pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {

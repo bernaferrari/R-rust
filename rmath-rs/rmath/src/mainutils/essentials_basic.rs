@@ -216,6 +216,7 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             t if t == SEXPTYPE::STRSXP => "character",
             t if t == SEXPTYPE::RAWSXP => "raw",
             t if t == SEXPTYPE::VECSXP => "list",
+            t if t == SEXPTYPE::EXPRSXP => "expression",
             t if t == SEXPTYPE::LISTSXP => "pairlist",
             t if t == SEXPTYPE::LANGSXP => "language",
             t if t == SEXPTYPE::SYMSXP => "symbol",
@@ -1108,6 +1109,34 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let t = TYPEOF(x);
         if t == SEXPTYPE::VECSXP {
             return x;
+        }
+        if t == SEXPTYPE::EXPRSXP {
+            let n = XLENGTH(x);
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = protect(result);
+            for i in 0..n {
+                crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, VECTOR_ELT(x, i));
+            }
+            let names =
+                crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
+            if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == n
+            {
+                let names = crate::mainutils::duplicate::duplicate(names);
+                if !names.is_null() {
+                    crate::eval::attrib_core::setAttrib(
+                        result,
+                        crate::eval::attrib_core::R_NamesSymbol(),
+                        names,
+                    );
+                }
+            }
+            return result;
         }
         if t == SEXPTYPE::ENVSXP {
             return environment_as_list(x);
