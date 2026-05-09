@@ -963,22 +963,35 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if fmt_arg.is_null() || fmt_arg == R_NilValue() {
             return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
         }
-        let fmt = elt_to_string(fmt_arg, 0);
+        let fmt_len = XLENGTH(fmt_arg);
+        if fmt_len == 0 {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
         let mut values: Vec<SEXP> = Vec::new();
-        let mut max_len: R_xlen_t = 1;
+        let mut lengths: Vec<R_xlen_t> = vec![fmt_len];
+        let mut max_len: R_xlen_t = fmt_len;
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
-                max_len = max_len.max(XLENGTH(arg).max(1));
+                let len = XLENGTH(arg);
+                if len == 0 {
+                    return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+                }
+                max_len = max_len.max(len);
+                lengths.push(len);
                 values.push(arg);
             }
             current = CDR(current);
+        }
+        if lengths.iter().any(|&len| max_len % len != 0) {
+            base_error("arguments cannot be recycled to the same length");
         }
 
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, max_len);
         let _result_guard = protect(result);
         for row in 0..max_len {
+            let fmt = elt_to_string(fmt_arg, row);
             let mut value_idx = 0usize;
             let mut out = String::new();
             let fmt_chars: Vec<char> = fmt.chars().collect();

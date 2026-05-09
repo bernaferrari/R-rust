@@ -1,0 +1,8 @@
+print(sprintf("%s", character(0)))
+print(sprintf("%s", character(0), "x"))
+print(sprintf("%s", "x", character(0)))
+print(sprintf(character(0), "x"))
+print(sprintf(c("a", "b")))
+print(sprintf(c("%s", "%s"), "x"))
+print(sprintf(c("%s", "%s", "%s", "%s"), c("x", "y")))
+print(sprintf(c("%s", "%s"), c("x", "y")))
