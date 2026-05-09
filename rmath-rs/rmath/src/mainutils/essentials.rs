@@ -10758,9 +10758,40 @@ pub unsafe fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *REAL(result).add(dst) = *REAL(x).add(src);
             } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 *INTEGER(result).add(dst) = *INTEGER(x).add(src);
+            } else if t == SEXPTYPE::STRSXP {
+                SET_STRING_ELT(result, i, STRING_ELT(x, src as R_xlen_t));
+            } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+                SET_VECTOR_ELT(result, i, VECTOR_ELT(x, src as R_xlen_t));
+            } else if t == SEXPTYPE::RAWSXP {
+                *RAW(result).add(dst) = *RAW(x).add(src);
             }
         }
+        reverse_names_attribute(x, result, n);
         result
+    }
+}
+
+unsafe fn reverse_names_attribute(x: SEXP, result: SEXP, len: R_xlen_t) {
+    unsafe {
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return;
+        }
+        let reversed = Rf_allocVector3(SEXPTYPE::STRSXP, len);
+        if reversed.is_null() {
+            return;
+        }
+        let _reversed_guard = protect(reversed);
+        for i in 0..len {
+            let src = len - 1 - i;
+            SET_STRING_ELT(reversed, i, STRING_ELT(names, src));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            reversed,
+        );
     }
 }
 

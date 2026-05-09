@@ -1,0 +1,8 @@
+rv <- rev(c("a", "b", NA))
+print(is.na(rv[1]))
+print(rv[2:3])
+rl <- rev(list(a = 1, b = "x", c = TRUE))
+print(names(rl))
+print(rl[[1]])
+print(rl[[2]])
+print(rl[[3]])
