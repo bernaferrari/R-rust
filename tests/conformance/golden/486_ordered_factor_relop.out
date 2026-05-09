@@ -1,0 +1,5 @@
+TRUE|FALSE|TRUE|NA
+FALSE|TRUE|TRUE|NA
+FALSE|FALSE|FALSE|NA
+TRUE|FALSE|FALSE|NA
+level sets of factors are different

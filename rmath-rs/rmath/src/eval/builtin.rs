@@ -1937,6 +1937,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_relevel,
     },
     EvaluatedBuiltin {
+        name: "droplevels",
+        handler: crate::mainutils::essentials::do_droplevels,
+    },
+    EvaluatedBuiltin {
         name: "factor",
         handler: crate::mainutils::essentials::do_factor,
     },

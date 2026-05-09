@@ -1,0 +1,11 @@
+f <- factor(c("b", "a", "b"), levels = c("a", "b", "c"))
+names(f) <- c("x", "y", "z")
+z <- droplevels(f)
+cat(paste(as.character(z), collapse = "|"), "\n", sep = "")
+cat(paste(levels(z), collapse = "|"), "\n", sep = "")
+cat(paste(names(z), collapse = "|"), "\n", sep = "")
+
+o <- ordered(c("b", "a"), levels = c("a", "b", "c"))
+w <- droplevels(o)
+cat(paste(class(w), collapse = "|"), "\n", sep = "")
+cat(paste(levels(w), collapse = "|"), "\n", sep = "")

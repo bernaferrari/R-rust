@@ -13,7 +13,7 @@
 use std::ffi::{CStr, CString};
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, LENGTH, PRINTNAME, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF,
+    CAR, CDR, CHAR, INTEGER_ELT, LENGTH, PRINTNAME, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF,
 };
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
@@ -818,6 +818,9 @@ pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if let Some(result) = difftime_binary_comparison(op_name, a, b) {
                     return result;
                 }
+                if let Some(result) = ordered_factor_compare(op_name, a, b) {
+                    return result;
+                }
                 if TYPEOF(a) == SEXPTYPE::STRSXP && TYPEOF(b) == SEXPTYPE::STRSXP {
                     return character_compare(op_name, a, b);
                 }
@@ -864,6 +867,143 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
 
         propagate_unary_vector_attributes(result_raw, x, n);
         result_raw
+    }
+}
+
+unsafe fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_ordered = has_class(sa, "ordered");
+        let b_ordered = has_class(sb, "ordered");
+        if !a_ordered && !b_ordered {
+            return None;
+        }
+
+        let levels_owner = if a_ordered { sa } else { sb };
+        let levels = factor_levels(levels_owner)?;
+        if (a_ordered && !factor_levels_match(sa, &levels))
+            || (b_ordered && !factor_levels_match(sb, &levels))
+        {
+            std::panic::panic_any(RError {
+                message: "level sets of factors are different".to_string(),
+            });
+        }
+
+        let Some(a) = Sexp::from_raw(sa) else {
+            return Some(R_NilValue());
+        };
+        let Some(b) = Sexp::from_raw(sb) else {
+            return Some(R_NilValue());
+        };
+        let a_len = a.len();
+        let b_len = b.len();
+        let n = match (a_len, b_len) {
+            (0, _) | (_, 0) => 0,
+            _ => a_len.max(b_len),
+        };
+        let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return Some(R_NilValue());
+        };
+        let _result_guard = protect(result_raw);
+        warn_if_non_multiple_recycling(a_len, b_len);
+
+        for i in 0..n {
+            let lhs = ordered_operand_code(sa, i % a_len, &levels);
+            let rhs = ordered_operand_code(sb, i % b_len, &levels);
+            result.set_logical_elt(i, ordered_code_compare(op, lhs, rhs));
+        }
+
+        Some(result_raw)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum OrderedOperand {
+    Code(i32),
+    Missing,
+    UnknownLevel,
+}
+
+fn ordered_code_compare(op: &str, lhs: OrderedOperand, rhs: OrderedOperand) -> i32 {
+    match (lhs, rhs) {
+        (OrderedOperand::Missing, _) | (_, OrderedOperand::Missing) => NA_LOGICAL,
+        (OrderedOperand::UnknownLevel, _) | (_, OrderedOperand::UnknownLevel) => match op {
+            "==" => FALSE,
+            "!=" => TRUE,
+            _ => NA_LOGICAL,
+        },
+        (OrderedOperand::Code(lhs), OrderedOperand::Code(rhs)) => match op {
+            "<" if lhs < rhs => TRUE,
+            ">" if lhs > rhs => TRUE,
+            "<=" if lhs <= rhs => TRUE,
+            ">=" if lhs >= rhs => TRUE,
+            "==" if lhs == rhs => TRUE,
+            "!=" if lhs != rhs => TRUE,
+            _ => FALSE,
+        },
+    }
+}
+
+unsafe fn ordered_operand_code(value: SEXP, index: R_xlen_t, levels: &[String]) -> OrderedOperand {
+    unsafe {
+        if has_class(value, "ordered") {
+            let code = INTEGER_ELT(value, index as i32);
+            if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
+                OrderedOperand::Missing
+            } else {
+                OrderedOperand::Code(code)
+            }
+        } else if TYPEOF(value) == SEXPTYPE::STRSXP {
+            let charsxp = STRING_ELT(value, index);
+            let Some(label) = charsxp_to_string(charsxp) else {
+                return OrderedOperand::Missing;
+            };
+            levels
+                .iter()
+                .position(|level| level == &label)
+                .map(|position| OrderedOperand::Code(position as i32 + 1))
+                .unwrap_or(OrderedOperand::UnknownLevel)
+        } else {
+            OrderedOperand::UnknownLevel
+        }
+    }
+}
+
+unsafe fn factor_levels_match(value: SEXP, expected: &[String]) -> bool {
+    unsafe { factor_levels(value).is_some_and(|levels| levels == expected) }
+}
+
+unsafe fn factor_levels(value: SEXP) -> Option<Vec<String>> {
+    unsafe {
+        let levels = getAttrib(value, Rf_install(c"levels".as_ptr()));
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let mut out = Vec::with_capacity(LENGTH(levels) as usize);
+        for i in 0..LENGTH(levels) as R_xlen_t {
+            out.push(charsxp_to_string(STRING_ELT(levels, i))?);
+        }
+        Some(out)
+    }
+}
+
+unsafe fn has_class(value: SEXP, class_name: &str) -> bool {
+    unsafe {
+        let class = getAttrib(value, Rf_install(c"class".as_ptr()));
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        (0..LENGTH(class) as R_xlen_t)
+            .any(|i| charsxp_to_string(STRING_ELT(class, i)).as_deref() == Some(class_name))
+    }
+}
+
+unsafe fn charsxp_to_string(charsxp: SEXP) -> Option<String> {
+    unsafe {
+        if charsxp.is_null() || charsxp == R_NaString() {
+            return None;
+        }
+        Sexp::from_raw(charsxp).and_then(|s| s.try_as_str().ok().map(str::to_string))
     }
 }
 
