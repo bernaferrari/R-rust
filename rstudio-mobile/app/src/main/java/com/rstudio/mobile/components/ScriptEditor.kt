@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -43,6 +45,9 @@ fun ScriptEditor(
     onRun: () -> Unit,
     onRenderPlot: () -> Unit,
     onImportCsv: () -> Unit,
+    onOpenScript: () -> Unit,
+    onSaveScript: () -> Unit,
+    onExportScript: () -> Unit,
 ) {
     val lineCount = code.split('\n').size
     val listState = rememberLazyListState()
@@ -58,9 +63,21 @@ fun ScriptEditor(
                 Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onOpenScript, enabled = !isRunning) {
+                    Icon(Icons.Default.UploadFile, contentDescription = "Open")
+                    Text("Open")
+                }
+                OutlinedButton(onClick = onSaveScript, enabled = !isRunning) {
+                    Icon(Icons.Default.Save, contentDescription = "Save")
+                    Text("Save")
+                }
                 OutlinedButton(onClick = onImportCsv, enabled = !isRunning) {
                     Icon(Icons.Default.FileOpen, contentDescription = "Import CSV")
                     Text("CSV")
+                }
+                OutlinedButton(onClick = onExportScript, enabled = !isRunning) {
+                    Icon(Icons.Default.Save, contentDescription = "Export")
+                    Text("Export")
                 }
                 OutlinedButton(onClick = onRenderPlot, enabled = !isRunning) {
                     Icon(Icons.Default.Image, contentDescription = "Plot")

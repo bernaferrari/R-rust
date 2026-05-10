@@ -32,16 +32,32 @@ data class EnvEntry(
     val summary: String,
 )
 
+data class DataTable(
+    val title: String,
+    val columns: List<String>,
+    val rows: List<List<String>>,
+    val totalRows: Int,
+)
+
+data class ScriptFile(
+    val name: String,
+    val path: String,
+)
+
 data class RStudioUiState(
     val code: String = DEFAULT_CODE,
     val console: String = R_BANNER,
     val isRunning: Boolean = false,
     val status: String = "Ready",
+    val errorMessage: String? = null,
     val lastValue: RValue? = null,
     val lastValueSummary: String = "No result yet",
+    val dataTable: DataTable? = null,
     val environment: List<EnvEntry> = emptyList(),
     val lastPlot: PlotImage? = null,
     val currentFileName: String = "untitled.R",
+    val currentScriptPath: String? = null,
+    val recentScripts: List<ScriptFile> = emptyList(),
     val importedPath: String? = null,
 )
 
@@ -60,6 +76,7 @@ class RStudioRuntime(private val context: Context) {
             bundledLibraryDir = bundledLibrary.absolutePath,
         )
         refreshEnvironment()
+        refreshRecentScripts()
     }
 
     fun updateCode(code: String) {
@@ -68,6 +85,84 @@ class RStudioRuntime(private val context: Context) {
 
     fun runCurrentCode() {
         evaluate(_state.value.code)
+    }
+
+    fun newScript() {
+        _state.update {
+            it.copy(
+                code = "",
+                currentFileName = "untitled.R",
+                currentScriptPath = null,
+                status = "New script",
+                errorMessage = null,
+            )
+        }
+    }
+
+    fun openScript(uri: Uri) {
+        runTask("Opening script...") {
+            val opened = withContext(Dispatchers.IO) { readTextUri(uri) }
+            val name = displayName(uri, "script.R").sanitizeFileName()
+            _state.update {
+                it.copy(
+                    code = opened,
+                    currentFileName = name,
+                    currentScriptPath = null,
+                    status = "Opened $name",
+                    errorMessage = null,
+                )
+            }
+            appendConsole("Opened script $name")
+        }
+    }
+
+    fun saveScriptLocal() {
+        runTask("Saving script...") {
+            val saved = withContext(Dispatchers.IO) {
+                saveScriptToWorkspace(_state.value.currentFileName, _state.value.code)
+            }
+            refreshRecentScriptsNow()
+            _state.update {
+                it.copy(
+                    currentFileName = saved.name,
+                    currentScriptPath = saved.absolutePath,
+                    status = "Saved ${saved.name}",
+                    errorMessage = null,
+                )
+            }
+            appendConsole("Saved script ${saved.name}")
+        }
+    }
+
+    fun saveScriptTo(uri: Uri) {
+        runTask("Exporting script...") {
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openOutputStream(uri, "wt").use { output ->
+                    requireNotNull(output) { "Could not open destination file" }
+                    output.write(_state.value.code.toByteArray(Charsets.UTF_8))
+                }
+            }
+            val name = displayName(uri, _state.value.currentFileName).sanitizeFileName()
+            _state.update { it.copy(currentFileName = name, status = "Exported $name", errorMessage = null) }
+            appendConsole("Exported script $name")
+        }
+    }
+
+    fun openRecentScript(path: String) {
+        runTask("Opening script...") {
+            val file = File(path)
+            val code = withContext(Dispatchers.IO) { file.readText() }
+            _state.update {
+                it.copy(
+                    code = code,
+                    currentFileName = file.name,
+                    currentScriptPath = file.absolutePath,
+                    status = "Opened ${file.name}",
+                    errorMessage = null,
+                )
+            }
+            appendConsole("Opened script ${file.name}")
+        }
     }
 
     fun renderCurrentCode() {
@@ -131,7 +226,7 @@ class RStudioRuntime(private val context: Context) {
 
     private fun runTask(status: String, block: suspend () -> Unit) {
         if (_state.value.isRunning) return
-        _state.update { it.copy(isRunning = true, status = status) }
+        _state.update { it.copy(isRunning = true, status = status, errorMessage = null) }
         scope.launch {
             try {
                 block()
@@ -152,7 +247,9 @@ class RStudioRuntime(private val context: Context) {
             it.copy(
                 lastValue = result.value,
                 lastValueSummary = result.value.summary(),
+                dataTable = result.value.toDataTable(),
                 status = "Ready",
+                errorMessage = null,
             )
         }
     }
@@ -190,17 +287,21 @@ class RStudioRuntime(private val context: Context) {
     }
 
     private fun markError(message: String) {
-        _state.update { it.copy(isRunning = false, status = "Error", lastValueSummary = message) }
+        _state.update {
+            it.copy(
+                isRunning = false,
+                status = "Error",
+                errorMessage = message,
+                lastValueSummary = message,
+            )
+        }
         appendConsole("Error: $message")
     }
 
     private fun copyUriToWorkspace(uri: Uri): File {
-        val displayName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
-        } ?: "import.csv"
+        val displayName = displayName(uri, "import.csv")
 
-        val safeDisplayName = displayName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val safeDisplayName = displayName.sanitizeFileName()
         val importsDir = File(context.filesDir, "imports").also { it.mkdirs() }
         val destination = File(importsDir, safeDisplayName)
 
@@ -210,6 +311,44 @@ class RStudioRuntime(private val context: Context) {
         }
         return destination
     }
+
+    private fun readTextUri(uri: Uri): String {
+        context.contentResolver.openInputStream(uri).use { input ->
+            requireNotNull(input) { "Could not open selected script" }
+            return input.bufferedReader(Charsets.UTF_8).readText()
+        }
+    }
+
+    private fun saveScriptToWorkspace(name: String, code: String): File {
+        val scriptsDir = File(context.filesDir, "scripts").also { it.mkdirs() }
+        val safeName = name.sanitizeFileName().let { if (it.endsWith(".R")) it else "$it.R" }
+        val destination = File(scriptsDir, safeName)
+        destination.writeText(code, Charsets.UTF_8)
+        return destination
+    }
+
+    private fun refreshRecentScripts() {
+        scope.launch { refreshRecentScriptsNow() }
+    }
+
+    private suspend fun refreshRecentScriptsNow() {
+        val scripts = withContext(Dispatchers.IO) {
+            File(context.filesDir, "scripts")
+                .also { it.mkdirs() }
+                .listFiles { file -> file.isFile && file.extension.equals("R", ignoreCase = true) }
+                .orEmpty()
+                .sortedByDescending { it.lastModified() }
+                .take(20)
+                .map { ScriptFile(it.name, it.absolutePath) }
+        }
+        _state.update { it.copy(recentScripts = scripts) }
+    }
+
+    private fun displayName(uri: Uri, fallback: String): String =
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        } ?: fallback
 }
 
 val RValueKind.displayName: String
@@ -244,6 +383,70 @@ fun RValue.summary(maxItems: Int = 6): String {
     }
 }
 
+fun RValue.toDataTable(maxRows: Int = 200): DataTable? {
+    val classes = metadata.`class`?.filterNotNull().orEmpty()
+    val isDataFrame = "data.frame" in classes
+    val isMatrixLike = metadata.dim.orEmpty().size == 2 && kind != RValueKind.LIST
+
+    if (isDataFrame && kind == RValueKind.LIST && listValues.isNotEmpty()) {
+        val columns = metadata.names.orEmpty()
+            .mapIndexed { index, name -> name?.takeIf { it.isNotBlank() } ?: "V${index + 1}" }
+        val rowCount = listValues.maxOf { it.vectorLength() }
+        val rows = (0 until minOf(rowCount, maxRows)).map { row ->
+            listValues.map { column -> column.valueAt(row) }
+        }
+        return DataTable(
+            title = "data.frame ${rowCount}x${listValues.size}",
+            columns = columns,
+            rows = rows,
+            totalRows = rowCount,
+        )
+    }
+
+    if (isMatrixLike) {
+        val dims = metadata.dim.orEmpty()
+        val rowCount = dims[0]
+        val colCount = dims[1]
+        val columns = metadata.names.orEmpty().takeIf { it.size == colCount }
+            ?.mapIndexed { index, name -> name?.takeIf { it.isNotBlank() } ?: "V${index + 1}" }
+            ?: (1..colCount).map { "V$it" }
+        val rows = (0 until minOf(rowCount, maxRows)).map { row ->
+            (0 until colCount).map { col -> valueAt(row + col * rowCount) }
+        }
+        return DataTable("matrix ${rowCount}x$colCount", columns, rows, rowCount)
+    }
+
+    return null
+}
+
+private fun RValue.vectorLength(): Int = when (kind) {
+    RValueKind.LOGICAL -> 1
+    RValueKind.INTEGER -> 1
+    RValueKind.REAL -> 1
+    RValueKind.LOGICAL_VECTOR -> logicalValues.size
+    RValueKind.INTEGER_VECTOR -> integerValues.size
+    RValueKind.REAL_VECTOR -> realValues.size
+    RValueKind.STRING_VECTOR -> stringValues.size
+    RValueKind.RAW_VECTOR -> rawValues.size
+    RValueKind.COMPLEX_VECTOR -> complexValues.size
+    RValueKind.LIST -> listValues.size
+    else -> 0
+}
+
+private fun RValue.valueAt(index: Int): String = when (kind) {
+    RValueKind.LOGICAL -> if (index == 0) logicalScalar?.toString() ?: "NA" else ""
+    RValueKind.INTEGER -> if (index == 0) integerScalar?.toString() ?: "NA" else ""
+    RValueKind.REAL -> if (index == 0) realScalar?.toString() ?: "NA" else ""
+    RValueKind.LOGICAL_VECTOR -> logicalValues.getOrNull(index)?.toString() ?: "NA"
+    RValueKind.INTEGER_VECTOR -> integerValues.getOrNull(index)?.toString() ?: "NA"
+    RValueKind.REAL_VECTOR -> realValues.getOrNull(index)?.toString() ?: "NA"
+    RValueKind.STRING_VECTOR -> stringValues.getOrNull(index) ?: "NA"
+    RValueKind.RAW_VECTOR -> rawValues.getOrNull(index)?.toUByte()?.toString(16)?.padStart(2, '0') ?: ""
+    RValueKind.COMPLEX_VECTOR -> complexValues.getOrNull(index)?.let { "${it.real}+${it.imaginary}i" } ?: "NA"
+    RValueKind.LIST -> listValues.getOrNull(index)?.summary(maxItems = 2).orEmpty()
+    else -> ""
+}
+
 private fun safeName(name: String): String {
     val cleaned = name.replace(Regex("[^A-Za-z0-9_.]"), "_")
     val prefixed = if (cleaned.firstOrNull()?.isLetter() == true || cleaned.startsWith(".")) cleaned else "data_$cleaned"
@@ -252,6 +455,9 @@ private fun safeName(name: String): String {
 
 private fun escapeRString(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+private fun String.sanitizeFileName(): String =
+    replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "untitled.R" }
 
 private const val DEFAULT_CODE = """# Try real R code
 x <- c(1, 2, 3, 4)

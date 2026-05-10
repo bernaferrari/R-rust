@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import com.rstudio.mobile.components.ConsoleView
+import com.rstudio.mobile.components.DataTableView
 import com.rstudio.mobile.components.EnvironmentBrowser
 import com.rstudio.mobile.components.FileBrowser
 import com.rstudio.mobile.components.HelpViewer
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.InsertChart
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.TableRows
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
@@ -59,6 +61,12 @@ fun RStudioApp() {
     val state by runtime.state.collectAsState()
     val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) runtime.importCsv(uri)
+    }
+    val scriptPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) runtime.openScript(uri)
+    }
+    val scriptExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/x-r-source")) { uri: Uri? ->
+        if (uri != null) runtime.saveScriptTo(uri)
     }
 
     DisposableEffect(runtime) {
@@ -73,12 +81,16 @@ fun RStudioApp() {
             state = state,
             runtime = runtime,
             onImportCsv = { csvPicker.launch(arrayOf("text/*", "text/csv", "application/csv")) },
+            onOpenScript = { scriptPicker.launch(arrayOf("text/*", "application/octet-stream")) },
+            onExportScript = { scriptExporter.launch(state.currentFileName) },
         )
     } else {
         PhoneLayout(
             state = state,
             runtime = runtime,
             onImportCsv = { csvPicker.launch(arrayOf("text/*", "text/csv", "application/csv")) },
+            onOpenScript = { scriptPicker.launch(arrayOf("text/*", "application/octet-stream")) },
+            onExportScript = { scriptExporter.launch(state.currentFileName) },
         )
     }
 }
@@ -88,12 +100,15 @@ private fun PhoneLayout(
     state: RStudioUiState,
     runtime: RStudioRuntime,
     onImportCsv: () -> Unit,
+    onOpenScript: () -> Unit,
+    onExportScript: () -> Unit,
 ) {
-    val pagerState = rememberPagerState(pageCount = { 6 })
+    val pagerState = rememberPagerState(pageCount = { 7 })
     val scope = rememberCoroutineScope()
     val tabs = listOf(
         "Script" to Icons.Default.Code,
         "Console" to Icons.Default.Terminal,
+        "Data" to Icons.Default.TableRows,
         "Plots" to Icons.Default.InsertChart,
         "Env" to Icons.AutoMirrored.Filled.ListAlt,
         "Files" to Icons.Default.Folder,
@@ -123,19 +138,31 @@ private fun PhoneLayout(
                     onRun = runtime::runCurrentCode,
                     onRenderPlot = runtime::renderCurrentCode,
                     onImportCsv = onImportCsv,
+                    onOpenScript = onOpenScript,
+                    onSaveScript = runtime::saveScriptLocal,
+                    onExportScript = onExportScript,
                 )
                 1 -> ConsoleView(
                     console = state.console,
                     lastValueSummary = state.lastValueSummary,
+                    errorMessage = state.errorMessage,
                     isRunning = state.isRunning,
                     status = state.status,
                     onClear = runtime::clearConsole,
                     onCancel = runtime::cancel,
                 )
-                2 -> PlotView(plot = state.lastPlot, isRunning = state.isRunning, onRender = runtime::renderCurrentCode)
-                3 -> EnvironmentBrowser(entries = state.environment, onRefresh = runtime::refreshEnvironment)
-                4 -> FileBrowser(importedPath = state.importedPath, onImportCsv = onImportCsv)
-                5 -> HelpViewer()
+                2 -> DataTableView(table = state.dataTable)
+                3 -> PlotView(plot = state.lastPlot, isRunning = state.isRunning, onRender = runtime::renderCurrentCode)
+                4 -> EnvironmentBrowser(entries = state.environment, onRefresh = runtime::refreshEnvironment)
+                5 -> FileBrowser(
+                    importedPath = state.importedPath,
+                    recentScripts = state.recentScripts,
+                    onImportCsv = onImportCsv,
+                    onOpenScript = onOpenScript,
+                    onNewScript = runtime::newScript,
+                    onOpenRecent = runtime::openRecentScript,
+                )
+                6 -> HelpViewer()
             }
         }
     }
@@ -146,6 +173,8 @@ private fun TabletLayout(
     state: RStudioUiState,
     runtime: RStudioRuntime,
     onImportCsv: () -> Unit,
+    onOpenScript: () -> Unit,
+    onExportScript: () -> Unit,
 ) {
     Row(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f)) {
@@ -159,6 +188,9 @@ private fun TabletLayout(
                     onRun = runtime::runCurrentCode,
                     onRenderPlot = runtime::renderCurrentCode,
                     onImportCsv = onImportCsv,
+                    onOpenScript = onOpenScript,
+                    onSaveScript = runtime::saveScriptLocal,
+                    onExportScript = onExportScript,
                 )
             }
             HorizontalDivider()
@@ -166,6 +198,7 @@ private fun TabletLayout(
                 ConsoleView(
                     console = state.console,
                     lastValueSummary = state.lastValueSummary,
+                    errorMessage = state.errorMessage,
                     isRunning = state.isRunning,
                     status = state.status,
                     onClear = runtime::clearConsole,
@@ -177,9 +210,10 @@ private fun TabletLayout(
         VerticalDivider()
 
         Column(Modifier.width(320.dp).fillMaxHeight()) {
-            val rightPagerState = rememberPagerState(pageCount = { 4 })
+            val rightPagerState = rememberPagerState(pageCount = { 5 })
             val scope = rememberCoroutineScope()
             val tabs = listOf(
+                "Data" to Icons.Default.TableRows,
                 "Plots" to Icons.Default.InsertChart,
                 "Env" to Icons.AutoMirrored.Filled.ListAlt,
                 "Files" to Icons.Default.Folder,
@@ -198,10 +232,18 @@ private fun TabletLayout(
 
             HorizontalPager(state = rightPagerState, Modifier.fillMaxSize()) { page ->
                 when (page) {
-                    0 -> PlotView(plot = state.lastPlot, isRunning = state.isRunning, onRender = runtime::renderCurrentCode)
-                    1 -> EnvironmentBrowser(entries = state.environment, onRefresh = runtime::refreshEnvironment)
-                    2 -> FileBrowser(importedPath = state.importedPath, onImportCsv = onImportCsv)
-                    3 -> HelpViewer()
+                    0 -> DataTableView(table = state.dataTable)
+                    1 -> PlotView(plot = state.lastPlot, isRunning = state.isRunning, onRender = runtime::renderCurrentCode)
+                    2 -> EnvironmentBrowser(entries = state.environment, onRefresh = runtime::refreshEnvironment)
+                    3 -> FileBrowser(
+                        importedPath = state.importedPath,
+                        recentScripts = state.recentScripts,
+                        onImportCsv = onImportCsv,
+                        onOpenScript = onOpenScript,
+                        onNewScript = runtime::newScript,
+                        onOpenRecent = runtime::openRecentScript,
+                    )
+                    4 -> HelpViewer()
                 }
             }
         }

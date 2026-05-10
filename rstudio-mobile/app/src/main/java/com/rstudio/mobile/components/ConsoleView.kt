@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
@@ -28,6 +29,7 @@ import com.rstudio.mobile.util.AnsiParser
 fun ConsoleView(
     console: String,
     lastValueSummary: String,
+    errorMessage: String?,
     isRunning: Boolean,
     status: String,
     onClear: () -> Unit,
@@ -53,11 +55,25 @@ fun ConsoleView(
                 TextButton(onClick = onClear) { Text("Clear") }
             }
         }
-        Card(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+        Card(
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (errorMessage == null) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.errorContainer
+                },
+            ),
+        ) {
             Text(
-                text = lastValueSummary,
+                text = errorMessage ?: lastValueSummary,
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodyMedium,
+                color = if (errorMessage == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onErrorContainer
+                },
             )
         }
         HorizontalDivider()

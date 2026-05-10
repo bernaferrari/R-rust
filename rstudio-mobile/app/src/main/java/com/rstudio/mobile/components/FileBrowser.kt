@@ -9,11 +9,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.rstudio.mobile.runtime.ScriptFile
 
 private data class FileEntry(
     val path: String,
@@ -21,7 +23,14 @@ private data class FileEntry(
 )
 
 @Composable
-fun FileBrowser(importedPath: String?, onImportCsv: () -> Unit) {
+fun FileBrowser(
+    importedPath: String?,
+    recentScripts: List<ScriptFile>,
+    onImportCsv: () -> Unit,
+    onOpenScript: () -> Unit,
+    onNewScript: () -> Unit,
+    onOpenRecent: (String) -> Unit,
+) {
     val entries = listOf(
         FileEntry("App files", "R sees copied/imported files through the app-private workspace."),
         FileEntry("CSV import", importedPath ?: "Choose a CSV from Android files to import it into R."),
@@ -39,13 +48,30 @@ fun FileBrowser(importedPath: String?, onImportCsv: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Files", style = MaterialTheme.typography.titleMedium)
-            FilledTonalButton(onClick = onImportCsv) { Text("Import CSV") }
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onNewScript) { Text("New") }
+                OutlinedButton(onClick = onOpenScript) { Text("Open") }
+                FilledTonalButton(onClick = onImportCsv) { Text("CSV") }
+            }
         }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (recentScripts.isNotEmpty()) {
+                item {
+                    Text("Recent scripts", style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            items(recentScripts) { script ->
+                ElevatedCard(modifier = Modifier.fillMaxWidth(), onClick = { onOpenRecent(script.path) }) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(script.name, style = MaterialTheme.typography.titleSmall)
+                        Text(script.path, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
             items(entries) { entry ->
                 ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
