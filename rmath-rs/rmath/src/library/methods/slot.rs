@@ -15,8 +15,26 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::Rf_install;
 
+unsafe fn slot_name_charsxp(name: SEXP) -> SEXP {
+    unsafe {
+        if name.is_null() || name == R_NilValue() {
+            return R_NilValue();
+        }
+        match TYPEOF(name) {
+            kind if kind == SEXPTYPE::CHARSXP.as_c_int() => name,
+            kind if kind == SEXPTYPE::STRSXP.as_c_int() && LENGTH(name) > 0 => STRING_ELT(name, 0),
+            kind if kind == SEXPTYPE::SYMSXP.as_c_int() => PRINTNAME(name),
+            _ => R_NilValue(),
+        }
+    }
+}
+
 unsafe fn slot_name_matches(names: SEXP, index: c_int, name: SEXP) -> bool {
     unsafe {
+        let name = slot_name_charsxp(name);
+        if name.is_null() || name == R_NilValue() {
+            return false;
+        }
         let wanted = CHAR(name);
         if wanted.is_null() {
             return false;
@@ -109,5 +127,63 @@ pub unsafe fn R_hasSlot(obj: SEXP, name: SEXP) -> SEXP {
             };
         let res = Rf_ScalarLogical(has_slot);
         res
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::attrib_core::setAttrib;
+    use crate::sexp::accessors::{INTEGER, LOGICAL};
+    use crate::sexp::session::RSession;
+    use std::ffi::CStr;
+
+    unsafe fn named_object(slot_name: &CStr, value: SEXP) -> SEXP {
+        unsafe {
+            let obj = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            let _obj_guard = protect(obj);
+            SET_VECTOR_ELT(obj, 0, value);
+
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let _names_guard = protect(names);
+            SET_STRING_ELT(names, 0, Rf_mkChar(slot_name.as_ptr()));
+            setAttrib(obj, Rf_install(c"names".as_ptr()), names);
+            obj
+        }
+    }
+
+    #[test]
+    fn get_slot_accepts_character_vector_name() {
+        let _session = RSession::new();
+        unsafe {
+            let obj = named_object(c"slot", Rf_ScalarInteger(42));
+            let result = R_get_slot(obj, Rf_mkString(c"slot".as_ptr()));
+
+            assert_eq!(*INTEGER(result), 42);
+        }
+    }
+
+    #[test]
+    fn set_slot_accepts_symbol_name() {
+        let _session = RSession::new();
+        unsafe {
+            let obj = named_object(c"slot", Rf_ScalarInteger(1));
+            let replacement = Rf_ScalarInteger(7);
+            let result = R_set_slot(obj, Rf_install(c"slot".as_ptr()), replacement);
+
+            assert_eq!(result, replacement);
+            assert_eq!(*INTEGER(R_get_slot(obj, Rf_mkChar(c"slot".as_ptr()))), 7);
+        }
+    }
+
+    #[test]
+    fn has_slot_accepts_symbol_name() {
+        let _session = RSession::new();
+        unsafe {
+            let obj = named_object(c"slot", Rf_ScalarInteger(1));
+            let result = R_hasSlot(obj, Rf_install(c"slot".as_ptr()));
+
+            assert_eq!(*LOGICAL(result), 1);
+        }
     }
 }

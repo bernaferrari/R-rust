@@ -1068,7 +1068,7 @@ pub fn full_gc() -> (usize, usize, usize) {
     verify_gc_invariants();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (promoted, freed) = do_minor_gc();
+        let (promoted, freed) = do_full_mark_sweep();
         let compacted = compact_all_objects_safe();
         (promoted, freed, compacted)
     }));
@@ -1085,6 +1085,67 @@ pub fn full_gc() -> (usize, usize, usize) {
             (0, 0, 0)
         }
     }
+}
+
+fn mark_from_all_roots() {
+    instance::with_required_current_instance(|instance| {
+        let traceable = traceable_instance_objects(instance);
+        let mut visited = HashSet::new();
+        mark_instance_roots(instance, &traceable, &mut visited);
+        for &obj in &instance.gc_state.remembered_set.entries {
+            mark_reachable(obj, &traceable, &mut visited);
+        }
+    });
+}
+
+fn do_full_mark_sweep() -> (usize, usize) {
+    mark_from_all_roots();
+
+    let mut freed_count = 0;
+    let mut promoted_count = 0;
+    let mut to_free = Vec::new();
+
+    with_arena_for_gc(|arena| {
+        let nodes: Vec<SEXP> = arena.active_nodes().collect();
+
+        for &obj in &nodes {
+            if obj.is_null() {
+                continue;
+            }
+            unsafe {
+                if (*obj).sxpinfo.mark() {
+                    if (*obj).sxpinfo.gcgen() == Generation::Young as u8 {
+                        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                        promoted_count += 1;
+                    }
+                    (*obj).sxpinfo.set_mark(false);
+                } else {
+                    to_free.push(obj);
+                }
+            }
+        }
+    });
+
+    if !to_free.is_empty() {
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        let old_to_nil: HashMap<usize, SEXP> =
+            to_free.iter().map(|&obj| (obj as usize, nil)).collect();
+        update_all_references(&old_to_nil);
+
+        with_arena_for_gc(|arena| {
+            for obj in to_free {
+                arena.free_node(obj);
+                freed_count += 1;
+            }
+        });
+    }
+
+    with_gc_state(|state| {
+        state.remembered_set.clear();
+        state.card_table.clear_dirty();
+    });
+
+    (promoted_count, freed_count)
 }
 
 struct LiveObject {
@@ -1788,6 +1849,60 @@ mod tests {
         assert_eq!(promoted, 0);
         assert_eq!(freed, 0);
         assert_eq!(compacted, 0);
+    }
+
+    #[test]
+    fn test_full_gc_collects_unreachable_old_objects() {
+        let _session = RSession::new();
+
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+            let obj = arena.alloc_node(SEXPTYPE::INTSXP);
+            unsafe {
+                (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+            }
+        });
+
+        let (promoted, freed, compacted) = full_gc();
+        assert_eq!(promoted, 0);
+        assert_eq!(freed, 1);
+        assert_eq!(compacted, 0);
+        with_arena(|arena| {
+            assert_eq!(arena.node_count(), 0);
+            assert_eq!(arena.free_count(), 1);
+        });
+    }
+
+    #[test]
+    fn test_full_gc_preserves_protected_old_objects() {
+        let _session = RSession::new();
+
+        use super::super::protect::protect;
+
+        let mut obj = ptr::null_mut();
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+            obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+            unsafe {
+                (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                *(crate::sexp::accessors::INTEGER(obj)) = 42;
+            }
+            std::mem::forget(protect(obj));
+        });
+
+        let (promoted, freed, compacted) = full_gc();
+        assert_eq!(promoted, 0);
+        assert_eq!(freed, 0);
+        assert_eq!(compacted, 1);
+
+        let protected_obj = with_protected_objects(|objects| objects[0]);
+        unsafe {
+            assert_eq!((*protected_obj).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            assert_eq!((*protected_obj).vecsxp_length(), 1);
+            assert_eq!(*(crate::sexp::accessors::INTEGER(protected_obj)), 42);
+        }
+
+        drop(super::super::protect::protect_n(1));
     }
 
     #[test]

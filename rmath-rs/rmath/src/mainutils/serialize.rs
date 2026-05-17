@@ -1731,7 +1731,7 @@ unsafe fn R_serialize_with_xdr(
         };
 
         let ascii_format = !ascii.is_null() && ascii != R_NilValue() && asLogical(ascii) != 0;
-        let xdr_format = !ascii_format && (xdr == R_NilValue() || asLogical(xdr) != 0);
+        let xdr_format = !ascii_format && xdr != R_NilValue() && asLogical(xdr) != 0;
 
         // Build the header
         let mut writer = BinaryWriter::new();
@@ -2104,11 +2104,15 @@ unsafe fn InInteger(stream: R_inpstream_t) -> c_int {
         if stream.is_null() {
             return 0;
         }
-        let mut val: c_int = 0;
+        let mut bytes = [0u8; 4];
         if let Some(in_bytes) = (*stream).InBytes {
-            in_bytes(stream, &mut val as *mut c_int as *mut c_void, 4);
+            in_bytes(stream, bytes.as_mut_ptr() as *mut c_void, 4);
         }
-        val
+        if (*stream).type_ == R_pstream_format_t::R_pstream_xdr_format {
+            c_int::from_be_bytes(bytes)
+        } else {
+            c_int::from_ne_bytes(bytes)
+        }
     }
 }
 
@@ -2117,11 +2121,15 @@ unsafe fn InReal(stream: R_inpstream_t) -> c_double {
         if stream.is_null() {
             return 0.0;
         }
-        let mut val: c_double = 0.0;
+        let mut bytes = [0u8; 8];
         if let Some(in_bytes) = (*stream).InBytes {
-            in_bytes(stream, &mut val as *mut c_double as *mut c_void, 8);
+            in_bytes(stream, bytes.as_mut_ptr() as *mut c_void, 8);
         }
-        val
+        if (*stream).type_ == R_pstream_format_t::R_pstream_xdr_format {
+            c_double::from_be_bytes(bytes)
+        } else {
+            c_double::from_ne_bytes(bytes)
+        }
     }
 }
 

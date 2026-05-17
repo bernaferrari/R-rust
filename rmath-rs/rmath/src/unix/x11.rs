@@ -9,10 +9,10 @@
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::main::errors::Rf_error_unimplemented;
 use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Stub functions
@@ -25,7 +25,11 @@ unsafe fn setAttrib(_x: SEXP, _what: SEXP, _val: SEXP) {}
 unsafe fn R_NamesSymbol() -> SEXP {
     ptr::null_mut()
 }
-unsafe fn error(_msg: *const c_char) {}
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
+}
 
 // ---------------------------------------------------------------------------
 // Stub implementations (no HAVE_X11 path)
@@ -38,16 +42,12 @@ pub fn R_access_X11() -> c_int {
 
 /// .Internal(X11(...)) -- dispatch to X11 module.
 pub unsafe fn do_X11(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        // In the full implementation, this loads the X11 module and dispatches.
-        // Without X11, return nil.
-        R_NilValue()
-    }
+    unsupported("X11")
 }
 
 /// .Internal(saveplot(...)) -- dispatch to X11 module.
 pub unsafe fn do_saveplot(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsupported("savePlot")
 }
 
 /// Get X11 image data.
@@ -109,17 +109,47 @@ mod tests {
     }
 
     #[test]
-    fn test_do_x11_returns_nil() {
+    fn test_do_x11_reports_unsupported() {
         let _session = crate::sexp::session::RSession::new();
-        unsafe {
-            let result = do_X11(
+        let err = std::panic::catch_unwind(|| unsafe {
+            do_X11(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert!(result.is_null() || result == R_NilValue());
-        }
+        })
+        .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'X11' is not yet implemented")
+        );
+    }
+
+    #[test]
+    fn test_do_saveplot_reports_unsupported() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = std::panic::catch_unwind(|| unsafe {
+            do_saveplot(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+        })
+        .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'savePlot' is not yet implemented")
+        );
     }
 
     #[test]

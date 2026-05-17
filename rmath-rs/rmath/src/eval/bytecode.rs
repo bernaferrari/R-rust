@@ -84,6 +84,36 @@ pub const BCneg: c_int = 41;
 pub const BCmod: c_int = 42;
 pub const BCpow: c_int = 43;
 
+fn read_operand(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<c_int, String> {
+    let value = bytecode
+        .get(*pc)
+        .copied()
+        .ok_or_else(|| format!("{opname} bytecode operand is truncated"))?;
+    *pc += 1;
+    Ok(value)
+}
+
+fn read_operand_index(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<usize, String> {
+    let value = read_operand(bytecode, pc, opname)?;
+    if value < 0 {
+        return Err(format!(
+            "{opname} bytecode operand index {value} is negative"
+        ));
+    }
+    Ok(value as usize)
+}
+
+fn read_jump_target(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<usize, String> {
+    let target = read_operand_index(bytecode, pc, opname)?;
+    if target > bytecode.len() {
+        return Err(format!(
+            "{opname} bytecode jump target {target} is outside instruction stream length {}",
+            bytecode.len()
+        ));
+    }
+    Ok(target)
+}
+
 fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
     let lgl = with_arena(|arena| arena.alloc_vector(SEXPTYPE::LGLSXP, 1));
     if lgl.is_null() {
@@ -234,16 +264,14 @@ fn eval_bytecode_loop<'a>(
                 return Ok((val, ControlFlow::Normal));
             }
             BCgvar | BCsvar => {
-                let idx = bytecode[*pc] as usize;
-                *pc += 1;
+                let idx = read_operand_index(bytecode, pc, "variable")?;
                 let sym = get_constant(constants, idx)?;
                 let val = crate::eval::eval::find_var_result(sym, env)?
                     .ok_or_else(|| "variable not found".to_string())?;
                 stack.push(val);
             }
             BCint | BCreal | BCstring => {
-                let idx = bytecode[*pc] as usize;
-                *pc += 1;
+                let idx = read_operand_index(bytecode, pc, "constant")?;
                 let val = get_constant(constants, idx)?;
                 stack.push(val);
             }
@@ -422,10 +450,8 @@ fn eval_bytecode_loop<'a>(
                 )?);
             }
             BCcall => {
-                let idx = bytecode[*pc] as usize;
-                *pc += 1;
-                let nargs = bytecode[*pc] as usize;
-                *pc += 1;
+                let idx = read_operand_index(bytecode, pc, "call function")?;
+                let nargs = read_operand_index(bytecode, pc, "call argument count")?;
 
                 let mut args_vec = Vec::with_capacity(nargs);
                 for _ in 0..nargs {
@@ -453,8 +479,7 @@ fn eval_bytecode_loop<'a>(
                 }
             }
             BCpush => {
-                let idx = bytecode[*pc] as usize;
-                *pc += 1;
+                let idx = read_operand_index(bytecode, pc, "push")?;
                 stack.push(get_constant(constants, idx)?);
             }
             BCpop => {
@@ -507,10 +532,8 @@ fn eval_bytecode_loop<'a>(
             BCbegin => {}
             BCif => {
                 let cond = stack.pop().ok_or_else(|| "empty stack on if".to_string())?;
-                let true_offset = bytecode[*pc] as usize;
-                *pc += 1;
-                let false_offset = bytecode[*pc] as usize;
-                *pc += 1;
+                let true_offset = read_jump_target(bytecode, pc, "if true")?;
+                let false_offset = read_jump_target(bytecode, pc, "if false")?;
                 if scalar_bool_or_false(cond, "if condition")? {
                     *pc = true_offset;
                 } else {
@@ -518,15 +541,14 @@ fn eval_bytecode_loop<'a>(
                 }
             }
             BCjump => {
-                let offset = bytecode[*pc] as usize;
+                let offset = read_jump_target(bytecode, pc, "jump")?;
                 *pc = offset;
             }
             BCfjmp => {
                 let cond = stack
                     .pop()
                     .ok_or_else(|| "empty stack on fjmp".to_string())?;
-                let offset = bytecode[*pc] as usize;
-                *pc += 1;
+                let offset = read_jump_target(bytecode, pc, "false jump")?;
                 if !scalar_bool_or_false(cond, "false jump condition")? {
                     *pc = offset;
                 }
@@ -535,21 +557,16 @@ fn eval_bytecode_loop<'a>(
                 let cond = stack
                     .pop()
                     .ok_or_else(|| "empty stack on tjmp".to_string())?;
-                let offset = bytecode[*pc] as usize;
-                *pc += 1;
+                let offset = read_jump_target(bytecode, pc, "true jump")?;
                 if scalar_bool_or_false(cond, "true jump condition")? {
                     *pc = offset;
                 }
             }
             BCfor => {
-                let var_idx = bytecode[*pc] as usize;
-                *pc += 1;
-                let seq_idx = bytecode[*pc] as usize;
-                *pc += 1;
-                let body_offset = bytecode[*pc] as usize;
-                *pc += 1;
-                let end_offset = bytecode[*pc] as usize;
-                *pc += 1;
+                let var_idx = read_operand_index(bytecode, pc, "for variable")?;
+                let seq_idx = read_operand_index(bytecode, pc, "for sequence")?;
+                let body_offset = read_jump_target(bytecode, pc, "for body")?;
+                let end_offset = read_jump_target(bytecode, pc, "for end")?;
 
                 let var_sym = get_constant(constants, var_idx)?;
                 let seq_val = get_constant(constants, seq_idx)?;
@@ -593,12 +610,9 @@ fn eval_bytecode_loop<'a>(
                 *pc = end_offset;
             }
             BCwhile => {
-                let cond_offset = bytecode[*pc] as usize;
-                *pc += 1;
-                let body_offset = bytecode[*pc] as usize;
-                *pc += 1;
-                let end_offset = bytecode[*pc] as usize;
-                *pc += 1;
+                let cond_offset = read_jump_target(bytecode, pc, "while condition")?;
+                let body_offset = read_jump_target(bytecode, pc, "while body")?;
+                let end_offset = read_jump_target(bytecode, pc, "while end")?;
 
                 loop {
                     let mut cond_pc = cond_offset;
@@ -624,10 +638,8 @@ fn eval_bytecode_loop<'a>(
                 }
             }
             BCrepeat => {
-                let body_offset = bytecode[*pc] as usize;
-                *pc += 1;
-                let end_offset = bytecode[*pc] as usize;
-                *pc += 1;
+                let body_offset = read_jump_target(bytecode, pc, "repeat body")?;
+                let end_offset = read_jump_target(bytecode, pc, "repeat end")?;
 
                 loop {
                     let mut body_pc = body_offset;
@@ -647,10 +659,8 @@ fn eval_bytecode_loop<'a>(
                 return Ok((make_lgl(0)?, ControlFlow::Next));
             }
             BCspecial => {
-                let idx = bytecode[*pc] as usize;
-                *pc += 1;
-                let nargs = bytecode[*pc] as usize;
-                *pc += 1;
+                let idx = read_operand_index(bytecode, pc, "special function")?;
+                let nargs = read_operand_index(bytecode, pc, "special argument count")?;
 
                 let mut args_vec = Vec::with_capacity(nargs);
                 for _ in 0..nargs {
@@ -684,10 +694,8 @@ fn eval_bytecode_loop<'a>(
                 }
             }
             BCbuiltin => {
-                let idx = bytecode[*pc] as usize;
-                *pc += 1;
-                let nargs = bytecode[*pc] as usize;
-                *pc += 1;
+                let idx = read_operand_index(bytecode, pc, "builtin function")?;
+                let nargs = read_operand_index(bytecode, pc, "builtin argument count")?;
 
                 let mut args_vec = Vec::with_capacity(nargs);
                 for _ in 0..nargs {
@@ -733,8 +741,7 @@ fn eval_bytecode_loop<'a>(
                 }
             }
             BCclosure => {
-                let idx = bytecode[*pc] as usize;
-                *pc += 1;
+                let idx = read_operand_index(bytecode, pc, "closure")?;
                 stack.push(get_constant(constants, idx)?);
             }
             _ => {
@@ -755,5 +762,45 @@ fn get_constant(constants: Option<Sexp<'_>>, idx: usize) -> Result<Sexp<'_>, Str
             .try_vector_elt(idx as i64)
             .map_err(|err| sexp_err(&format!("constant index {idx}"), err)),
         None => Err("no constants available".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    fn nil_sexp<'a>() -> Sexp<'a> {
+        unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) }
+    }
+
+    #[test]
+    fn eval_bytecode_rejects_truncated_operands() {
+        let _session = RSession::new();
+        let mut pc = 0;
+        let mut stack = Vec::new();
+        let err = eval_bytecode_loop(&[BCpush], &mut pc, &mut stack, None, nil_sexp())
+            .expect_err("truncated operand should return an error");
+        assert!(err.contains("push bytecode operand is truncated"));
+    }
+
+    #[test]
+    fn eval_bytecode_rejects_negative_constant_indices() {
+        let _session = RSession::new();
+        let mut pc = 0;
+        let mut stack = Vec::new();
+        let err = eval_bytecode_loop(&[BCpush, -1], &mut pc, &mut stack, None, nil_sexp())
+            .expect_err("negative operand should return an error");
+        assert!(err.contains("push bytecode operand index -1 is negative"));
+    }
+
+    #[test]
+    fn eval_bytecode_rejects_out_of_range_jump_targets() {
+        let _session = RSession::new();
+        let mut pc = 0;
+        let mut stack = Vec::new();
+        let err = eval_bytecode_loop(&[BCjump, 99], &mut pc, &mut stack, None, nil_sexp())
+            .expect_err("invalid jump should return an error");
+        assert!(err.contains("jump bytecode jump target 99 is outside"));
     }
 }

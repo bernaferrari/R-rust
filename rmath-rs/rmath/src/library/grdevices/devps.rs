@@ -19,7 +19,7 @@ use std::ptr;
 
 use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_unimplemented};
 use crate::main::relop::NA_STRING;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -40,6 +40,11 @@ const DEFBUFSIZE: usize = 8192;
 const R_PATH_MAX: usize = 4096;
 const FILESEP: &[u8] = b"/";
 const MB_LEN_MAX: usize = 6;
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
+}
 
 // Color type and macros
 type rcolor = u32;
@@ -2050,22 +2055,18 @@ pub unsafe fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 
 /// Create a PostScript graphics device (postscript() function in R).
 ///
-/// Stub: returns R_NilValue (device creation not implemented).
+/// Stub reports unsupported explicitly until device creation is implemented.
 pub unsafe fn PostScript(args: SEXP) -> SEXP {
-    unsafe {
-        let _ = args;
-        R_NilValue()
-    }
+    let _ = args;
+    unsupported("grDevices::postscript")
 }
 
 /// Create a PDF graphics device (pdf() function in R).
 ///
-/// Stub: returns R_NilValue (device creation not implemented).
+/// Stub reports unsupported explicitly until device creation is implemented.
 pub unsafe fn PDF(args: SEXP) -> SEXP {
-    unsafe {
-        let _ = args;
-        R_NilValue()
-    }
+    let _ = args;
+    unsupported("grDevices::pdf")
 }
 
 #[cfg(test)]
@@ -2114,5 +2115,35 @@ mod tests {
                 );
             });
         });
+    }
+
+    #[test]
+    fn postscript_device_reports_unsupported() {
+        let _session = RSession::new();
+        let err = std::panic::catch_unwind(|| unsafe { PostScript(R_NilValue()) })
+            .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'grDevices::postscript' is not yet implemented")
+        );
+    }
+
+    #[test]
+    fn pdf_device_reports_unsupported() {
+        let _session = RSession::new();
+        let err =
+            std::panic::catch_unwind(|| unsafe { PDF(R_NilValue()) }).expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'grDevices::pdf' is not yet implemented")
+        );
     }
 }

@@ -11,6 +11,7 @@
 //!
 //! Ported from r-source/src/modules/X11/devX11.c and devX11.h
 
+use crate::main::errors::Rf_error_unimplemented;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::instance::with_required_current_instance;
 use core::ffi::{c_char, c_double, c_int, c_uint, c_void};
@@ -90,6 +91,11 @@ pub(crate) enum RGELineJoin {
 
 /// Opaque pointer used where pDevDesc / pGEDevDesc appear.
 pub(crate) type pDevDesc = *mut c_void;
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
+}
 
 // ── X11Desc structure ────────────────────────────────────────────────
 //
@@ -578,17 +584,17 @@ pub unsafe fn in_R_GetX11Image(
 ///
 /// In a real implementation, this opens a spreadsheet-style
 /// data editor window using X11/Xt widgets.
-/// Stub returns R_NilValue.
+/// Stub reports unsupported explicitly.
 pub unsafe fn in_RX11_dataentry(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_NilValue() }
+    unsupported("X11 dataentry")
 }
 
 /// in_R_X11_dataviewer - X11 data viewer entry point.
 ///
 /// In a real implementation, this opens a read-only data viewer.
-/// Stub returns R_NilValue.
+/// Stub reports unsupported explicitly.
 pub unsafe fn in_R_X11_dataviewer(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { crate::sexp::globals::R_NilValue() }
+    unsupported("X11 dataviewer")
 }
 
 // ── Module-private stubs (symbols already exported elsewhere) ─────────
@@ -700,5 +706,49 @@ mod tests {
         );
         assert_eq!(second.x11_state.max_cube_size, 32);
         assert_eq!(second.x11_state.red_gamma, 3.0);
+    }
+
+    #[test]
+    fn dataentry_reports_unsupported() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = std::panic::catch_unwind(|| unsafe {
+            in_RX11_dataentry(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+        })
+        .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'X11 dataentry' is not yet implemented")
+        );
+    }
+
+    #[test]
+    fn dataviewer_reports_unsupported() {
+        let _session = crate::sexp::session::RSession::new();
+        let err = std::panic::catch_unwind(|| unsafe {
+            in_R_X11_dataviewer(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+        })
+        .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'X11 dataviewer' is not yet implemented")
+        );
     }
 }

@@ -16,7 +16,7 @@ use std::os::raw::{c_char, c_double, c_int, c_uchar, c_uint, c_void};
 use std::ptr;
 
 use crate::attrib_core::R_NamesSymbol;
-use crate::main::errors::Rf_error;
+use crate::main::errors::{Rf_error, Rf_error_unimplemented};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
@@ -45,6 +45,11 @@ const PNG: c_int = 3;
 const JPEG: c_int = 4;
 const BMP_KIND: c_int = 5;
 const TIFF: c_int = 6;
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
+}
 
 // Font styles
 const Plain: c_int = 0;
@@ -498,23 +503,19 @@ unsafe fn translateFontFamily(_family: *const c_char) -> *mut c_char {
 // ===========================================================================
 
 /// savePlot -- save the current Windows device plot to a file.
-/// Stub: returns R_NilValue (no-op on non-Windows).
+/// Stub reports unsupported explicitly on non-Windows.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn savePlot(args: SEXP) -> SEXP {
-    unsafe {
-        let _ = args;
-        R_NilValue()
-    }
+    let _ = args;
+    unsupported("grDevices::savePlot")
 }
 
 /// devga -- create a Windows GDI graphics device (windows() function).
-/// Stub: returns R_NilValue (no-op on non-Windows).
+/// Stub reports unsupported explicitly on non-Windows.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn devga(args: SEXP) -> SEXP {
-    unsafe {
-        let _ = args;
-        R_NilValue()
-    }
+    let _ = args;
+    unsupported("grDevices::windows")
 }
 
 /// bmVersion -- return bitmap library version info (libpng, jpeg, libtiff).
@@ -602,26 +603,14 @@ pub unsafe fn bmVersion() -> SEXP {
 
 #[cfg(target_os = "windows")]
 pub unsafe fn savePlot(args: SEXP) -> SEXP {
-    unsafe {
-        // Full implementation would parse args and call SaveAsPng/SaveAsBmp/etc.
-        // For now, stub on Windows too since we lack full GDI support
-        let _ = args;
-        R_NilValue()
-    }
+    let _ = args;
+    unsupported("grDevices::savePlot")
 }
 
 #[cfg(target_os = "windows")]
 pub unsafe fn devga(args: SEXP) -> SEXP {
-    unsafe {
-        // Full implementation would:
-        // 1. Parse all arguments from args (display, width, height, ps, etc.)
-        // 2. Allocate a gadesc
-        // 3. Call GADeviceDriver
-        // 4. Create the device
-        // For now, stub since we lack full GDI
-        let _ = args;
-        R_NilValue()
-    }
+    let _ = args;
+    unsupported("grDevices::windows")
 }
 
 // ===========================================================================
@@ -1931,5 +1920,35 @@ mod tests {
                 assert_eq!(symbol.to_bytes(), b"Symbol");
             });
         });
+    }
+
+    #[test]
+    fn saveplot_reports_unsupported() {
+        let _session = RSession::new();
+        let err = std::panic::catch_unwind(|| unsafe { savePlot(R_NilValue()) })
+            .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'grDevices::savePlot' is not yet implemented")
+        );
+    }
+
+    #[test]
+    fn windows_device_reports_unsupported() {
+        let _session = RSession::new();
+        let err = std::panic::catch_unwind(|| unsafe { devga(R_NilValue()) })
+            .expect_err("expected RError");
+        let r_error = err
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("expected RError");
+        assert!(
+            r_error
+                .message
+                .contains("function 'grDevices::windows' is not yet implemented")
+        );
     }
 }
