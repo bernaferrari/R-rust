@@ -356,14 +356,11 @@ fn mark_instance_roots(
     }
 
     for finalizer in &instance.memory_state.pending_finalizers {
-        match finalizer {
-            crate::mainutils::memory_main::PendingFinalizer::C { obj, .. } => {
-                mark_reachable(*obj, traceable, visited);
-            }
-            crate::mainutils::memory_main::PendingFinalizer::R { obj, fun } => {
-                mark_reachable(*obj, traceable, visited);
-                mark_reachable(*fun, traceable, visited);
-            }
+        if finalizer.is_ready() {
+            mark_reachable(finalizer.obj(), traceable, visited);
+        }
+        if let crate::mainutils::memory_main::PendingFinalizer::R { fun, .. } = finalizer {
+            mark_reachable(*fun, traceable, visited);
         }
     }
     mark_reachable(instance.dynload_state.dll_info_eptrs, traceable, visited);
@@ -905,14 +902,9 @@ fn update_instance_roots(old_to_new: &HashMap<usize, SEXP>) {
             .collect();
 
         for finalizer in &mut instance.memory_state.pending_finalizers {
-            match finalizer {
-                crate::mainutils::memory_main::PendingFinalizer::C { obj, .. } => {
-                    update_field(obj, old_to_new);
-                }
-                crate::mainutils::memory_main::PendingFinalizer::R { obj, fun } => {
-                    update_field(obj, old_to_new);
-                    update_field(fun, old_to_new);
-                }
+            update_field(finalizer.obj_mut(), old_to_new);
+            if let Some(fun) = finalizer.fun_mut() {
+                update_field(fun, old_to_new);
             }
         }
         update_field(&mut instance.dynload_state.dll_info_eptrs, old_to_new);
@@ -1024,6 +1016,15 @@ fn do_minor_gc() -> (usize, usize) {
     });
 
     if !to_free.is_empty() {
+        let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
+        let keep_alive =
+            crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable(&unreachable);
+        if !keep_alive.is_empty() {
+            to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+        }
+    }
+
+    if !to_free.is_empty() {
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         let old_to_nil: HashMap<usize, SEXP> =
             to_free.iter().map(|&obj| (obj as usize, nil)).collect();
@@ -1125,6 +1126,15 @@ fn do_full_mark_sweep() -> (usize, usize) {
             }
         }
     });
+
+    if !to_free.is_empty() {
+        let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
+        let keep_alive =
+            crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable(&unreachable);
+        if !keep_alive.is_empty() {
+            to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+        }
+    }
 
     if !to_free.is_empty() {
         let nil = unsafe { crate::sexp::globals::R_NilValue() };

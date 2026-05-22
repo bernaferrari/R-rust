@@ -43,8 +43,59 @@ unsafe fn error(msg: &str) -> ! {
 pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
 
 pub(crate) enum PendingFinalizer {
-    C { obj: SEXP, fun: R_CFinalizer_t },
-    R { obj: SEXP, fun: SEXP },
+    C {
+        obj: SEXP,
+        fun: R_CFinalizer_t,
+        ready: bool,
+        onexit: bool,
+    },
+    R {
+        obj: SEXP,
+        fun: SEXP,
+        ready: bool,
+        onexit: bool,
+    },
+}
+
+impl PendingFinalizer {
+    pub(crate) fn obj(&self) -> SEXP {
+        match *self {
+            PendingFinalizer::C { obj, .. } | PendingFinalizer::R { obj, .. } => obj,
+        }
+    }
+
+    pub(crate) fn obj_mut(&mut self) -> &mut SEXP {
+        match self {
+            PendingFinalizer::C { obj, .. } | PendingFinalizer::R { obj, .. } => obj,
+        }
+    }
+
+    pub(crate) fn fun_mut(&mut self) -> Option<&mut SEXP> {
+        match self {
+            PendingFinalizer::C { .. } => None,
+            PendingFinalizer::R { fun, .. } => Some(fun),
+        }
+    }
+
+    pub(crate) fn is_ready(&self) -> bool {
+        match *self {
+            PendingFinalizer::C { ready, .. } | PendingFinalizer::R { ready, .. } => ready,
+        }
+    }
+
+    fn set_ready(&mut self) {
+        match self {
+            PendingFinalizer::C { ready, .. } | PendingFinalizer::R { ready, .. } => {
+                *ready = true;
+            }
+        }
+    }
+
+    fn is_onexit(&self) -> bool {
+        match *self {
+            PendingFinalizer::C { onexit, .. } | PendingFinalizer::R { onexit, .. } => onexit,
+        }
+    }
 }
 
 pub(crate) struct MemoryRuntimeState {
@@ -99,6 +150,9 @@ pub unsafe fn R_gc() {
     });
     crate::sexp::gengc::full_gc();
     with_memory_state(|state| state.in_gc = 0);
+    unsafe {
+        R_RunPendingFinalizers();
+    }
 }
 
 /// Trigger a lightweight garbage collection.
@@ -107,6 +161,9 @@ pub unsafe fn R_gc() {
 pub unsafe fn R_gc_lite() {
     with_memory_state(|state| state.gc_count += 1);
     crate::sexp::gengc::minor_gc();
+    unsafe {
+        R_RunPendingFinalizers();
+    }
 }
 
 /// GC torture settings.
@@ -493,6 +550,7 @@ pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) {
 
 pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> SEXP {
     unsafe {
+        validate_weak_reference_key(key);
         if !is_valid_r_finalizer(fin) {
             error("finalizer must be a function or NULL");
         }
@@ -507,15 +565,11 @@ pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> 
     }
 }
 
-pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, _onexit: c_int) -> SEXP {
+pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: c_int) -> SEXP {
     unsafe {
         let s = R_MakeWeakRef(key, val, R_NilValue(), 0);
         if !s.is_null() {
-            with_memory_state(|state| {
-                state
-                    .pending_finalizers
-                    .push(PendingFinalizer::C { obj: key, fun: fin });
-            });
+            register_c_finalizer(key, fin, onexit != 0);
         }
         s
     }
@@ -526,6 +580,7 @@ pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
         if w.is_null() {
             return R_NilValue();
         }
+        validate_weak_ref_object(w);
         (*w).data.listsxp.carval
     }
 }
@@ -535,6 +590,7 @@ pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
         if w.is_null() {
             return R_NilValue();
         }
+        validate_weak_ref_object(w);
         (*w).data.listsxp.cdrval
     }
 }
@@ -545,19 +601,16 @@ pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
     }
 }
 
-pub unsafe fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, _onexit: c_int) {
+pub unsafe fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: c_int) {
     unsafe {
         if s.is_null() || fun.is_null() || fun == R_NilValue() {
             return;
         }
+        validate_weak_reference_key(s);
         if !is_valid_r_finalizer(fun) {
             error("finalizer must be a function or NULL");
         }
-        with_memory_state(|state| {
-            state
-                .pending_finalizers
-                .push(PendingFinalizer::R { obj: s, fun });
-        });
+        register_r_finalizer(s, fun, onexit != 0);
     }
 }
 
@@ -568,14 +621,13 @@ pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
 }
 
 pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_int) {
-    if s.is_null() {
-        return;
+    unsafe {
+        if s.is_null() {
+            return;
+        }
+        validate_weak_reference_key(s);
+        register_c_finalizer(s, fun, _onexit != 0);
     }
-    with_memory_state(|state| {
-        state
-            .pending_finalizers
-            .push(PendingFinalizer::C { obj: s, fun });
-    });
 }
 
 pub unsafe fn R_RunPendingFinalizers() {
@@ -584,12 +636,19 @@ pub unsafe fn R_RunPendingFinalizers() {
             Vec::new()
         } else {
             state.running_finalizers = true;
-            std::mem::take(&mut state.pending_finalizers)
+            let mut ready = Vec::new();
+            let mut waiting = Vec::new();
+            for finalizer in std::mem::take(&mut state.pending_finalizers) {
+                if finalizer.is_ready() {
+                    ready.push(finalizer);
+                } else {
+                    waiting.push(finalizer);
+                }
+            }
+            state.pending_finalizers = waiting;
+            ready
         }
     });
-    if finalizers.is_empty() {
-        return;
-    }
 
     for finalizer in finalizers {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
@@ -605,17 +664,59 @@ pub unsafe fn R_RunPendingFinalizers() {
 unsafe fn run_pending_finalizer(finalizer: PendingFinalizer) {
     unsafe {
         match finalizer {
-            PendingFinalizer::C { obj, fun } => {
+            PendingFinalizer::C { obj, fun, .. } => {
                 if !obj.is_null() {
                     fun(obj as *mut c_void);
                 }
             }
-            PendingFinalizer::R { obj, fun } => {
+            PendingFinalizer::R { obj, fun, .. } => {
                 if !obj.is_null() && !fun.is_null() && fun != R_NilValue() {
                     let call = Rf_lang2(fun, obj);
                     let _ = crate::eval::eval::Rf_eval(call, R_GlobalEnv());
                 }
             }
+        }
+    }
+}
+
+fn register_c_finalizer(obj: SEXP, fun: R_CFinalizer_t, onexit: bool) {
+    with_memory_state(|state| {
+        state.pending_finalizers.push(PendingFinalizer::C {
+            obj,
+            fun,
+            ready: false,
+            onexit,
+        });
+    });
+}
+
+fn register_r_finalizer(obj: SEXP, fun: SEXP, onexit: bool) {
+    with_memory_state(|state| {
+        state.pending_finalizers.push(PendingFinalizer::R {
+            obj,
+            fun,
+            ready: false,
+            onexit,
+        });
+    });
+}
+
+unsafe fn validate_weak_reference_key(key: SEXP) {
+    unsafe {
+        if key.is_null() {
+            return;
+        }
+        match SEXPTYPE(TYPEOF(key)) {
+            SEXPTYPE::NILSXP | SEXPTYPE::ENVSXP | SEXPTYPE::EXTPTRSXP | SEXPTYPE::BCODESXP => {}
+            _ => error("can only weakly reference/finalize reference objects"),
+        }
+    }
+}
+
+unsafe fn validate_weak_ref_object(w: SEXP) {
+    unsafe {
+        if SEXPTYPE(TYPEOF(w)) != SEXPTYPE::WEAKREFSXP {
+            error("not a weak reference");
         }
     }
 }
@@ -638,10 +739,39 @@ pub unsafe fn R_RunFinalizers() {
     }
 }
 
+pub(crate) fn mark_finalizers_ready_for_unreachable(
+    unreachable: &std::collections::HashSet<usize>,
+) -> std::collections::HashSet<usize> {
+    with_memory_state(|state| {
+        let mut keep_alive = std::collections::HashSet::new();
+        for finalizer in &mut state.pending_finalizers {
+            let obj = finalizer.obj();
+            if !obj.is_null() && unreachable.contains(&(obj as usize)) {
+                finalizer.set_ready();
+            }
+            if finalizer.is_ready() && !obj.is_null() {
+                keep_alive.insert(obj as usize);
+            }
+        }
+        keep_alive
+    })
+}
+
 pub(crate) unsafe fn R_RunExitFinalizers_memory() {
     unsafe {
-        R_RunFinalizers();
+        mark_exit_finalizers_ready();
+        R_RunPendingFinalizers();
     }
+}
+
+fn mark_exit_finalizers_ready() {
+    with_memory_state(|state| {
+        for finalizer in &mut state.pending_finalizers {
+            if finalizer.is_onexit() {
+                finalizer.set_ready();
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1376,6 +1506,9 @@ pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
 mod tests {
     use super::*;
     use crate::sexp::session::RSession;
+    use std::sync::atomic::{AtomicI32, Ordering};
+
+    static FINALIZER_RUNS: AtomicI32 = AtomicI32::new(0);
 
     #[test]
     fn test_sexptype2char_basic() {
@@ -1489,7 +1622,7 @@ mod tests {
     fn test_weak_ref_roundtrip() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let key = crate::sexp::constructors::Rf_ScalarInteger(42);
+            let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
             let val = crate::sexp::constructors::Rf_ScalarInteger(99);
             let w = R_MakeWeakRef(key, val, R_NilValue(), 0);
             assert!(!w.is_null());
@@ -1503,6 +1636,35 @@ mod tests {
             // null weak ref returns nil
             assert_eq!(R_WeakRefKey(ptr::null_mut()), R_NilValue());
             assert_eq!(R_WeakRefValue(ptr::null_mut()), R_NilValue());
+        }
+    }
+
+    #[test]
+    fn test_weak_ref_rejects_non_reference_key_like_gnu_r() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let key = crate::sexp::constructors::Rf_ScalarInteger(42);
+            let val = crate::sexp::constructors::Rf_ScalarInteger(99);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _ = R_MakeWeakRef(key, val, R_NilValue(), 0);
+            }));
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn test_weak_ref_accessors_reject_non_weak_ref_like_gnu_r() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let not_weak_ref = crate::sexp::constructors::Rf_ScalarInteger(42);
+            let key_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _ = R_WeakRefKey(not_weak_ref);
+            }));
+            let value_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _ = R_WeakRefValue(not_weak_ref);
+            }));
+            assert!(key_result.is_err());
+            assert!(value_result.is_err());
         }
     }
 
@@ -1719,7 +1881,52 @@ mod tests {
             R_RegisterCFinalizer(extptr, increment_external_i32_finalizer);
             assert_eq!(value, 41);
             R_RunPendingFinalizers();
-            assert_eq!(value, 42);
+            assert_eq!(value, 41);
+            assert_eq!(with_memory_state(|state| state.pending_finalizers.len()), 1);
+        });
+    }
+
+    #[test]
+    fn test_c_finalizer_runs_once_after_target_becomes_unreachable() {
+        let _session = crate::sexp::session::RSession::new();
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            with_memory_state(|state| state.pending_finalizers.clear());
+            FINALIZER_RUNS.store(0, Ordering::SeqCst);
+
+            let extptr = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
+            R_RegisterCFinalizer(extptr, count_c_finalizer);
+
+            R_RunPendingFinalizers();
+            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 0);
+
+            R_gc();
+            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 1);
+            assert!(with_memory_state(|state| state
+                .pending_finalizers
+                .is_empty()));
+
+            R_gc();
+            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    #[test]
+    fn test_onexit_c_finalizer_runs_at_exit_even_when_target_is_reachable() {
+        let _session = crate::sexp::session::RSession::new();
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            with_memory_state(|state| state.pending_finalizers.clear());
+            FINALIZER_RUNS.store(0, Ordering::SeqCst);
+
+            let extptr = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
+            R_RegisterCFinalizerEx(extptr, count_c_finalizer, 1);
+
+            R_RunPendingFinalizers();
+            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 0);
+
+            R_RunExitFinalizers_memory();
+            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 1);
             assert!(with_memory_state(|state| state
                 .pending_finalizers
                 .is_empty()));
@@ -1743,18 +1950,20 @@ mod tests {
                     PendingFinalizer::R {
                         obj: stored_obj,
                         fun: stored_fun,
+                        ready,
+                        onexit,
                     } => {
                         assert_eq!(stored_obj, obj);
                         assert_eq!(stored_fun, fun);
+                        assert!(!ready);
+                        assert!(!onexit);
                     }
                     _ => panic!("expected R finalizer"),
                 }
             });
 
             R_RunPendingFinalizers();
-            assert!(with_memory_state(|state| state
-                .pending_finalizers
-                .is_empty()));
+            assert_eq!(with_memory_state(|state| state.pending_finalizers.len()), 1);
         });
     }
 
@@ -1769,6 +1978,10 @@ mod tests {
                 *addr += 1;
             }
         }
+    }
+
+    unsafe extern "C" fn count_c_finalizer(_ptr: *mut c_void) {
+        FINALIZER_RUNS.fetch_add(1, Ordering::SeqCst);
     }
 
     #[test]
