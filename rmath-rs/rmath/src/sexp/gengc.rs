@@ -1,15 +1,10 @@
 //! Generational garbage collector with card marking write barriers.
 //!
-//! # Safety Guarantees
-//!
-//! This GC is designed for hospital-grade use with the following guarantees:
-//! - Zero panics during GC — all operations are infallible or handle errors gracefully
-//! - Zero memory leaks — every allocated object is tracked and freed
-//! - Zero dangling pointers — all references are updated after compaction
-//! - Zero use-after-free — freed objects are never accessed
-//! - OOM safety — graceful handling when allocation fails
-//! - Thread safety — no data races, proper synchronization
-//! - Deterministic behavior — same input always produces same output
+//! The collector is intentionally defensive: it scopes state to the active
+//! `RInstance`, catches panics at public GC entry points, updates known roots
+//! during compaction, and treats compaction as an all-or-nothing operation.
+//! Raw `SEXP` internals still require careful auditing; do not document new
+//! invariants here unless they are enforced by code and regression tests.
 
 use std::alloc::{Layout, alloc, dealloc};
 use std::collections::{HashMap, HashSet};
@@ -947,6 +942,11 @@ fn update_all_references(old_to_new: &HashMap<usize, SEXP>) {
     update_object_references(old_to_new);
 }
 
+fn update_roots_and_non_arena_references(old_to_new: &HashMap<usize, SEXP>) {
+    update_instance_roots(old_to_new);
+    update_remembered_set(old_to_new);
+}
+
 // ---------------------------------------------------------------------------
 // Minor GC
 // ---------------------------------------------------------------------------
@@ -1160,6 +1160,7 @@ struct LiveObject {
     closxp_fields: Option<(SEXP, SEXP, SEXP)>,
     envsxp_fields: Option<(SEXP, SEXP, SEXP)>,
     promsxp_fields: Option<(SEXP, SEXP, SEXP)>,
+    extptr_fields: Option<[*mut std::ffi::c_void; 3]>,
     vector_data: Option<Vec<u8>>,
 }
 
@@ -1190,6 +1191,7 @@ fn snapshot_live_objects() -> CompactionSnapshot {
                 let mut closxp_fields = None;
                 let mut envsxp_fields = None;
                 let mut promsxp_fields = None;
+                let mut extptr_fields = None;
 
                 match t {
                     SEXPTYPE::SYMSXP => {
@@ -1226,6 +1228,9 @@ fn snapshot_live_objects() -> CompactionSnapshot {
                             (*obj).data.promsxp.expr,
                             (*obj).data.promsxp.env,
                         ));
+                    }
+                    SEXPTYPE::EXTPTRSXP => {
+                        extptr_fields = Some((*obj).data.extptr);
                     }
                     _ => {} // intentionally unhandled: SEXPTYPE has no pointers to forward in GC
                 }
@@ -1272,6 +1277,7 @@ fn snapshot_live_objects() -> CompactionSnapshot {
                     closxp_fields,
                     envsxp_fields,
                     promsxp_fields,
+                    extptr_fields,
                     vector_data,
                 });
             }
@@ -1311,45 +1317,37 @@ fn do_compact(snapshot: &CompactionSnapshot) -> usize {
     let live_objects = &snapshot.live_objects;
     let object_count = live_objects.len();
 
-    // Phase 1: Clear the arena (drops all old objects)
-    with_arena_for_gc(|arena| {
-        *arena = RArena::new();
-    });
+    let budget = with_arena_for_gc(|arena| arena.budget());
+    let mut new_arena = RArena::with_budget(budget);
 
-    // Phase 2: Re-allocate all objects and build old->new mapping
     let mut old_to_new: HashMap<usize, SEXP> = HashMap::with_capacity(object_count);
     let mut new_objects: Vec<(SEXP, &LiveObject)> = Vec::with_capacity(object_count);
 
-    with_arena_for_gc(|arena| {
-        for live in live_objects {
-            let new_obj = if live.sexptype.is_vector_type() {
-                arena.alloc_vector(live.sexptype, live.length)
-            } else if live.sexptype == SEXPTYPE::CHARSXP {
-                if let Some(ref data) = live.vector_data {
-                    let s = &data[..data.len().saturating_sub(1)];
-                    arena.alloc_charsxp(s)
-                } else {
-                    arena.alloc_charsxp(b"")
-                }
+    // Phase 1: re-allocate into a temporary arena. The active arena is left
+    // untouched until every live object has a replacement.
+    for live in live_objects {
+        let new_obj = if live.sexptype.is_vector_type() {
+            new_arena.alloc_vector(live.sexptype, live.length)
+        } else if live.sexptype == SEXPTYPE::CHARSXP {
+            if let Some(ref data) = live.vector_data {
+                let s = &data[..data.len().saturating_sub(1)];
+                new_arena.alloc_charsxp(s)
             } else {
-                arena.alloc_node(live.sexptype)
-            };
-
-            if new_obj.is_null() {
-                continue;
+                new_arena.alloc_charsxp(b"")
             }
+        } else {
+            new_arena.alloc_node(live.sexptype)
+        };
 
-            old_to_new.insert(live.old_addr, new_obj);
-            new_objects.push((new_obj, live));
+        if new_obj.is_null() {
+            return 0;
         }
-    });
 
-    // If no objects were allocated (OOM), return 0
-    if new_objects.is_empty() {
-        return 0;
+        old_to_new.insert(live.old_addr, new_obj);
+        new_objects.push((new_obj, live));
     }
 
-    // Phase 3: Copy vector data to new objects
+    // Phase 2: Copy vector data to new objects.
     for &(new_obj, live) in &new_objects {
         if let Some(ref data) = live.vector_data {
             unsafe {
@@ -1361,13 +1359,15 @@ fn do_compact(snapshot: &CompactionSnapshot) -> usize {
         }
     }
 
-    // Phase 4: Restore type-specific fields and update references
+    // Phase 3: Restore type-specific fields and update internal references.
     for &(new_obj, live) in &new_objects {
         unsafe {
             (*new_obj).sxpinfo.set_gcgen(live.gcgen);
             (*new_obj).sxpinfo.set_mark(live.mark);
-
-            update_field(&mut (*new_obj).attrib, &old_to_new);
+            (*new_obj).attrib = old_to_new
+                .get(&(live.attrib as usize))
+                .copied()
+                .unwrap_or(live.attrib);
 
             if let Some((pname, value, internal)) = live.symsxp_fields {
                 (*new_obj).data.symsxp.pname =
@@ -1428,6 +1428,16 @@ fn do_compact(snapshot: &CompactionSnapshot) -> usize {
                     old_to_new.get(&(env as usize)).copied().unwrap_or(env);
             }
 
+            if let Some(mut extptr) = live.extptr_fields {
+                let tag = extptr[1] as SEXP;
+                let prot = extptr[2] as SEXP;
+                extptr[1] = old_to_new.get(&(tag as usize)).copied().unwrap_or(tag)
+                    as *mut std::ffi::c_void;
+                extptr[2] = old_to_new.get(&(prot as usize)).copied().unwrap_or(prot)
+                    as *mut std::ffi::c_void;
+                (*new_obj).data.extptr = extptr;
+            }
+
             if vector_payload_has_sexp_refs(live.sexptype) {
                 let len = (*new_obj).vecsxp_length();
                 let data = (*new_obj).gengc_next_node as *mut SEXP;
@@ -1441,8 +1451,12 @@ fn do_compact(snapshot: &CompactionSnapshot) -> usize {
         }
     }
 
-    // Phase 5: Update all root references
-    update_all_references(&old_to_new);
+    // Phase 4: Commit. Only after the replacement arena is complete do we
+    // rewrite roots and drop the old arena.
+    update_roots_and_non_arena_references(&old_to_new);
+    instance::with_required_current_instance(|instance| {
+        instance.arena = new_arena;
+    });
 
     object_count
 }
@@ -1524,7 +1538,7 @@ impl<'a> VectorSlot<'a> {
 mod tests {
     use std::collections::HashMap;
 
-    use super::super::memory::with_arena;
+    use super::super::memory::{ArenaBudget, with_arena};
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -1900,6 +1914,88 @@ mod tests {
             assert_eq!((*protected_obj).sxpinfo.type_of(), SEXPTYPE::INTSXP);
             assert_eq!((*protected_obj).vecsxp_length(), 1);
             assert_eq!(*(crate::sexp::accessors::INTEGER(protected_obj)), 42);
+        }
+
+        drop(super::super::protect::protect_n(1));
+    }
+
+    #[test]
+    fn test_full_gc_compaction_failure_leaves_arena_and_roots_unchanged() {
+        let _session = RSession::new();
+
+        use super::super::protect::protect;
+
+        let mut obj = ptr::null_mut();
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+            obj = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+            unsafe {
+                (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                *(crate::sexp::accessors::INTEGER(obj)) = 99;
+            }
+            std::mem::forget(protect(obj));
+            arena.set_budget(ArenaBudget::new(1, 0));
+        });
+
+        let (promoted, freed, compacted) = full_gc();
+        assert_eq!((promoted, freed, compacted), (0, 0, 0));
+
+        let protected_obj = with_protected_objects(|objects| objects[0]);
+        assert_eq!(protected_obj, obj);
+        unsafe {
+            assert_eq!((*protected_obj).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            assert_eq!(*(crate::sexp::accessors::INTEGER(protected_obj)), 99);
+        }
+        with_arena(|arena| {
+            assert!(arena.contains(obj));
+        });
+
+        drop(super::super::protect::protect_n(1));
+    }
+
+    #[test]
+    fn test_full_gc_compaction_preserves_external_pointer_edges() {
+        let _session = RSession::new();
+
+        use super::super::protect::protect;
+
+        let payload = 0x1234usize as *mut std::ffi::c_void;
+        let mut ext = ptr::null_mut();
+        let mut tag = ptr::null_mut();
+        let mut prot = ptr::null_mut();
+
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+            tag = arena.alloc_node(SEXPTYPE::INTSXP);
+            prot = arena.alloc_node(SEXPTYPE::REALSXP);
+            ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+            unsafe {
+                (*ext).sxpinfo.set_gcgen(Generation::Old as u8);
+                (*ext).data.extptr = [payload, prot as *mut _, tag as *mut _];
+            }
+            std::mem::forget(protect(ext));
+        });
+
+        let (_, freed, compacted) = full_gc();
+        assert_eq!(freed, 0);
+        assert_eq!(compacted, 3);
+
+        let moved_ext = with_protected_objects(|objects| objects[0]);
+        unsafe {
+            assert_eq!((*moved_ext).sxpinfo.type_of(), SEXPTYPE::EXTPTRSXP);
+            assert_eq!((*moved_ext).data.extptr[0], payload);
+            let moved_prot = (*moved_ext).data.extptr[1] as SEXP;
+            let moved_tag = (*moved_ext).data.extptr[2] as SEXP;
+            assert_eq!((*moved_prot).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+            assert_eq!((*moved_tag).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            with_arena(|arena| {
+                assert!(arena.contains(moved_ext));
+                assert!(arena.contains(moved_prot));
+                assert!(arena.contains(moved_tag));
+                assert!(!arena.contains(ext));
+                assert!(!arena.contains(prot));
+                assert!(!arena.contains(tag));
+            });
         }
 
         drop(super::super::protect::protect_n(1));
