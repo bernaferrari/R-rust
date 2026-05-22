@@ -30,6 +30,7 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
     }
 
     let mut p_tot: f64 = 0.0;
+    let mut p_comp: f64 = 0.0;
 
     // Validate probabilities and accumulate total
     for i in 0..k {
@@ -41,7 +42,10 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
             }
             return;
         }
-        p_tot += pp;
+        let y = pp - p_comp;
+        let t = p_tot + y;
+        p_comp = (t - p_tot) - y;
+        p_tot = t;
         if i < rn.len() {
             rn[i] = 0.0;
         }
@@ -86,7 +90,10 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
         if n_remaining <= 0 {
             return;
         } /* we have all */
-        p_remaining -= prob[i]; /* i.e. = sum(prob[(i+1):K]) */
+        let y = -prob[i] - p_comp;
+        let t = p_remaining + y;
+        p_comp = (t - p_remaining) - y;
+        p_remaining = t; /* i.e. = sum(prob[(i+1):K]) */
     }
 
     // Last category gets the remainder

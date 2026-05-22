@@ -401,6 +401,7 @@ const GENERIC_PROTOTYPES: &[PrimitivePrototype] = &[
     proto("cumprod", X, true),
     proto("cummax", X, true),
     proto("cummin", X, true),
+    proto("cumvar", X, true),
     proto("+", E1_E2, true),
     proto("-", E1_E2, true),
     proto("*", E1_E2, true),

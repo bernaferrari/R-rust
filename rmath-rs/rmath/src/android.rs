@@ -2002,6 +2002,9 @@ mod tests {
         let dcauchy = session.eval("dcauchy(0)");
         let cumsum = session.eval("cumsum(c(1, 2, 3))");
         let cumprod = session.eval("cumprod(c(1, 2, 3))");
+        let cumvar_first = session.eval("is.na(cumvar(c(1, 2, 3))[1])");
+        let cumvar_second = session.eval("cumvar(c(1, 2, 3))[2]");
+        let cumvar_third = session.eval("cumvar(c(1, 2, 3))[3]");
 
         assert!((dnorm.value - 0.3989422804014327).abs() < 1e-12);
         assert_eq!(pnorm.output, "[1] 0.5");
@@ -2012,6 +2015,9 @@ mod tests {
         assert!((dcauchy.value - 0.3183098861837907).abs() < 1e-12);
         assert_eq!(cumsum.output, "[1] 1 3 6");
         assert_eq!(cumprod.output, "[1] 1 2 6");
+        assert_eq!(cumvar_first.output, "[1] TRUE");
+        assert_eq!(cumvar_second.output, "[1] 0.5");
+        assert_eq!(cumvar_third.output, "[1] 1");
     }
 
     #[test]

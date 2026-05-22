@@ -2619,6 +2619,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"cumvar\0",
+        None,
+        5,
+        1,
+        1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
     // Type coercion
     FunTabEntry::new(
         b"as.character\0",

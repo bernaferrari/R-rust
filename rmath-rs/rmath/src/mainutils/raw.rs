@@ -91,6 +91,13 @@ pub unsafe fn mbrtoint(w: *mut c_int, s: *const c_char) -> c_int {
 /// Returns the number of bytes written (1-4), or 0 for a null codepoint.
 pub unsafe fn inttomb(s: *mut c_char, wc: c_int) -> usize {
     unsafe {
+        if wc < 0 || wc > 0x10ffff || (0xd800..=0xdfff).contains(&wc) {
+            if !s.is_null() {
+                *s = 0;
+            }
+            return 0;
+        }
+
         let mut cvalue: u32 = wc as u32;
         let mut buf: [c_char; 10] = [0; 10];
         let b = if !s.is_null() { s } else { buf.as_mut_ptr() };
@@ -115,5 +122,32 @@ pub unsafe fn inttomb(s: *mut c_char, wc: c_int) -> usize {
         }
         *bp = (utf8_table2[i] as u32 | cvalue) as c_char;
         i + 1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inttomb_rejects_invalid_codepoints() {
+        unsafe {
+            let mut buf = [1 as c_char; 8];
+            assert_eq!(inttomb(buf.as_mut_ptr(), -1), 0);
+            assert_eq!(buf[0], 0);
+            assert_eq!(inttomb(buf.as_mut_ptr(), 0xd800), 0);
+            assert_eq!(inttomb(buf.as_mut_ptr(), 0x110000), 0);
+        }
+    }
+
+    #[test]
+    fn inttomb_encodes_valid_codepoint() {
+        unsafe {
+            let mut buf = [0 as c_char; 8];
+            assert_eq!(inttomb(buf.as_mut_ptr(), 0x20ac), 3);
+            assert_eq!(buf[0] as u8, 0xe2);
+            assert_eq!(buf[1] as u8, 0x82);
+            assert_eq!(buf[2] as u8, 0xac);
+        }
     }
 }

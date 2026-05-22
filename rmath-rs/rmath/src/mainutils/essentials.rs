@@ -5566,6 +5566,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "pmax",
             "cumsum",
             "cumprod",
+            "cumvar",
             "which.min",
             "which.max",
             "append",
@@ -6157,6 +6158,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
             "IQR",
             "cummin",
             "cummax",
+            "cumvar",
             "dimnames",
             "Re",
             "Im",
@@ -12297,6 +12299,43 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 prod *= v;
                 *dst.add(i as usize) = prod;
             }
+        }
+        result
+    }
+}
+
+/// R's `cumvar(x)` — cumulative sample variance by Youngs-Cramer algorithm.
+pub unsafe fn do_cumvar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(x) == SEXPTYPE::CPLXSXP {
+            base_error("'cumvar' not defined for complex numbers");
+        }
+
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let dst = REAL(result);
+        if n == 0 {
+            return result;
+        }
+
+        *dst = NA_REAL;
+        let mut var = 0.0f64;
+        let mut sum = elt_real_safe(x, 0);
+        for i in 1..n {
+            let value = elt_real_safe(x, i);
+            sum += value;
+            let count = (i + 1) as f64;
+            let numerator = count * value - sum;
+            var += numerator.powi(2) / (i as f64 * count);
+            *dst.add(i as usize) = var / i as f64;
         }
         result
     }

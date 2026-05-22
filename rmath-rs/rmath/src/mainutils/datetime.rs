@@ -308,7 +308,7 @@ pub fn mkdate00(tm: &mut stm) -> c_double {
     }
 
     let mut day = tm.tm_mday - 1;
-    let mut year0 = 1900 + tm.tm_year;
+    let mut year0 = tm.tm_year;
     let mut excess: c_double = 0.0;
 
     if year0 >= 400 {
@@ -318,6 +318,7 @@ pub fn mkdate00(tm: &mut stm) -> c_double {
         excess = -1.0 - (-year0 / 400) as c_double;
         year0 -= (excess as c_int) * 400;
     }
+    year0 += 1900;
 
     // Add days for preceding months in the current year
     for i in 0..tm.tm_mon {
@@ -1833,6 +1834,16 @@ mod tests {
         assert!(day.is_nan());
         assert_eq!(tm.tm_yday, NA_INTEGER);
         assert_eq!(tm.tm_wday, NA_INTEGER);
+    }
+
+    #[test]
+    fn test_mkdate00_extreme_year_avoids_1900_overflow() {
+        let mut tm = stm::new();
+        tm.tm_mday = 1;
+        tm.tm_mon = 0;
+        tm.tm_year = c_int::MAX;
+        let day = mkdate00(&mut tm);
+        assert!(day.is_finite());
     }
 
     #[test]

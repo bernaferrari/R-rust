@@ -36,6 +36,7 @@ use crate::eval::attrib_core::{
 };
 use crate::mainutils::relop::PRIMVAL;
 use crate::mainutils::subset::installTrChar;
+use crate::mainutils::util_main::type2char;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -1589,8 +1590,13 @@ unsafe fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
             rval = PRINTNAME(v);
         } else if type_ == SEXPTYPE::STRSXP {
             rval = Rf_ScalarString(PRINTNAME(v));
+        } else {
+            let target_name = CStr::from_ptr(type2char(type_.0)).to_string_lossy();
+            error(&format!(
+                "'symbol' object cannot be coerced to type '{}'",
+                target_name
+            ));
         }
-        // else: warning, return R_NilValue
         rval
     }
 }
@@ -4197,5 +4203,15 @@ mod tests {
         // but we can test the null case
         let result = unsafe { coerceVector(std::ptr::null_mut(), SEXPTYPE::LGLSXP.into()) };
         assert!(result.is_null());
+    }
+
+    #[test]
+    fn test_coerce_symbol_to_unsupported_type_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        let sym = unsafe { Rf_install(b"x\0".as_ptr() as *const c_char) };
+        let err = std::panic::catch_unwind(|| unsafe {
+            coerceVector(sym, SEXPTYPE::INTSXP.into());
+        });
+        assert!(err.is_err());
     }
 }

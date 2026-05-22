@@ -371,6 +371,7 @@ const HAS_ATTR_BIT_MASK: c_int = 1 << 9;
 const HAS_TAG_BIT_MASK: c_int = 1 << 10;
 const ENCODE_LEVELS: c_int = 1 << 12;
 const DECODE_TYPE_MASK: c_int = 0xFF;
+const GROWABLE_MASK: c_int = 1 << 5;
 
 /// Maximum packed reference index.
 const MAX_PACKED_INDEX: c_int = c_int::MAX >> 8;
@@ -818,6 +819,21 @@ unsafe fn PackFlags(
     hasattr: c_int,
     hastag: c_int,
 ) -> c_int {
+    let mut levs = levs;
+    match type_ {
+        kind if kind == SEXPTYPE::LGLSXP.as_c_int()
+            || kind == SEXPTYPE::INTSXP.as_c_int()
+            || kind == SEXPTYPE::REALSXP.as_c_int()
+            || kind == SEXPTYPE::CPLXSXP.as_c_int()
+            || kind == SEXPTYPE::STRSXP.as_c_int()
+            || kind == SEXPTYPE::VECSXP.as_c_int()
+            || kind == SEXPTYPE::EXPRSXP.as_c_int()
+            || kind == SEXPTYPE::RAWSXP.as_c_int() =>
+        {
+            levs &= !GROWABLE_MASK;
+        }
+        _ => {}
+    }
     let mut val = type_ | (levs << 12);
     if isobj != 0 {
         val |= IS_OBJECT_BIT_MASK;
@@ -3494,6 +3510,21 @@ mod tests {
             // Type with levels
             let flags = PackFlags(10, 3, 0, 0, 0);
             assert_eq!(flags, 0b1010 | (3 << 12));
+        }
+    }
+
+    #[test]
+    fn test_pack_flags_strips_growable_bit_from_vectors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let flags = PackFlags(SEXPTYPE::VECSXP.as_c_int(), GROWABLE_MASK, 0, 0, 0);
+            assert_eq!(flags, SEXPTYPE::VECSXP.as_c_int());
+
+            let closure_flags = PackFlags(SEXPTYPE::CLOSXP.as_c_int(), GROWABLE_MASK, 0, 0, 0);
+            assert_eq!(
+                closure_flags,
+                SEXPTYPE::CLOSXP.as_c_int() | (GROWABLE_MASK << 12)
+            );
         }
     }
 

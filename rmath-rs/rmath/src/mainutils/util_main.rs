@@ -14,6 +14,7 @@ use std::ptr;
 
 use crate::eval::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib};
 use crate::sexp::accessors::*;
+use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
@@ -38,6 +39,12 @@ pub type Rboolean = c_int;
 
 pub const TRUE: Rboolean = 1;
 pub const FALSE: Rboolean = 0;
+
+fn r_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: message.into(),
+    });
+}
 
 /// R_wchar_t: unsigned 32-bit for UCS-4
 pub type R_wchar_t = u32;
@@ -1196,14 +1203,17 @@ pub unsafe fn bincode_impl(
     include_border: c_int,
 ) {
     unsafe {
+        if nb < 2 || nb == NA_INTEGER {
+            r_error("invalid 'breaks' argument");
+        }
+
         let nb1 = nb - 1;
         let lft = if right != 0 { 0 } else { 1 };
 
         // Verify breaks are sorted
         for i in 1..nb {
             if *breaks.add((i - 1) as usize) > *breaks.add(i as usize) {
-                eprintln!("'breaks' is not sorted");
-                return;
+                r_error("'breaks' is not sorted");
             }
         }
 
@@ -1786,5 +1796,16 @@ mod tests {
             assert_eq!(code[3], 3); // 3.5 in [3,4)
             assert_eq!(code[4], 4); // 4.5 in [4,5)
         }
+    }
+
+    #[test]
+    fn test_bincode_rejects_too_few_breaks() {
+        let err = std::panic::catch_unwind(|| unsafe {
+            let x = [1.0];
+            let breaks = [1.0];
+            let mut code = [0i32; 1];
+            bincode_impl(x.as_ptr(), 1, breaks.as_ptr(), 1, code.as_mut_ptr(), 1, 0);
+        });
+        assert!(err.is_err());
     }
 }

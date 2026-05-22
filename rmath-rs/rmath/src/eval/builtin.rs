@@ -2665,6 +2665,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_cumprod,
     },
     EvaluatedBuiltin {
+        name: "cumvar",
+        handler: crate::mainutils::essentials::do_cumvar,
+    },
+    EvaluatedBuiltin {
         name: "seq_len",
         handler: crate::mainutils::essentials::do_seq_len,
     },
