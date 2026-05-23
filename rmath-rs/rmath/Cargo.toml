@@ -31,8 +31,10 @@ bzip2 = "0.6"
 lzma-rs = "0.3"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
-# Pure Rust linear algebra backend (enabled via rust-backend feature)
-faer = { version = "0.24", optional = true }
+# Pure Rust linear algebra backend (enabled via rust-backend feature).
+# Keep default features off so wasm builds do not pull faer's rayon/spindle
+# parallel backend, which depends on native-style atomic waits.
+faer = { version = "0.24", default-features = false, features = ["std", "linalg"], optional = true }
 
 uniffi = { version = "0.28" }
 
