@@ -561,6 +561,9 @@ pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> 
         (*s).data.listsxp.carval = key;
         (*s).data.listsxp.cdrval = val;
         (*s).data.listsxp.tagval = fin;
+        if key != R_NilValue() && !fin.is_null() && fin != R_NilValue() {
+            register_r_finalizer(key, fin, _onexit != 0);
+        }
         s
     }
 }
@@ -1964,6 +1967,38 @@ mod tests {
 
             R_RunPendingFinalizers();
             assert_eq!(with_memory_state(|state| state.pending_finalizers.len()), 1);
+        });
+    }
+
+    #[test]
+    fn test_make_weak_ref_with_r_finalizer_registers_deferred_finalizer() {
+        let _session = crate::sexp::session::RSession::new();
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            with_memory_state(|state| state.pending_finalizers.clear());
+            let key = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
+            let body = Rf_ScalarInteger(123);
+            let fun = crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), body, R_GlobalEnv());
+
+            let weak = R_MakeWeakRef(key, R_NilValue(), fun, 1);
+            assert_eq!(TYPEOF(weak), SEXPTYPE::WEAKREFSXP);
+            with_memory_state(|state| {
+                assert_eq!(state.pending_finalizers.len(), 1);
+                match state.pending_finalizers[0] {
+                    PendingFinalizer::R {
+                        obj,
+                        fun: stored_fun,
+                        ready,
+                        onexit,
+                    } => {
+                        assert_eq!(obj, key);
+                        assert_eq!(stored_fun, fun);
+                        assert!(!ready);
+                        assert!(onexit);
+                    }
+                    _ => panic!("expected R finalizer"),
+                }
+            });
         });
     }
 

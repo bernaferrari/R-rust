@@ -207,6 +207,10 @@ fn mark_reachable(obj: SEXP, traceable: &HashSet<usize>, visited: &mut HashSet<u
                 mark_reachable(extptr[1] as SEXP, traceable, visited);
                 mark_reachable(extptr[2] as SEXP, traceable, visited);
             }
+            SEXPTYPE::WEAKREFSXP => {
+                mark_reachable((*obj).data.listsxp.cdrval, traceable, visited);
+                mark_reachable((*obj).data.listsxp.tagval, traceable, visited);
+            }
             _ => {}
         }
 
@@ -762,6 +766,11 @@ fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
                 (*obj).data.extptr[2] = old_to_new.get(&(prot as usize)).copied().unwrap_or(prot)
                     as *mut std::ffi::c_void;
             }
+            SEXPTYPE::WEAKREFSXP => {
+                update_field(&mut (*obj).data.listsxp.carval, old_to_new);
+                update_field(&mut (*obj).data.listsxp.cdrval, old_to_new);
+                update_field(&mut (*obj).data.listsxp.tagval, old_to_new);
+            }
             _ => {}
         }
 
@@ -1211,7 +1220,7 @@ fn snapshot_live_objects() -> CompactionSnapshot {
                             (*obj).data.symsxp.internal,
                         ));
                     }
-                    SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
+                    SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::WEAKREFSXP => {
                         listsxp_fields = Some((
                             (*obj).data.listsxp.carval,
                             (*obj).data.listsxp.cdrval,
@@ -2009,6 +2018,117 @@ mod tests {
         }
 
         drop(super::super::protect::protect_n(1));
+    }
+
+    #[test]
+    fn test_full_gc_weakref_traces_value_and_finalizer_but_not_key() {
+        let _session = RSession::new();
+
+        use super::super::protect::protect;
+
+        let mut weak = ptr::null_mut();
+        let mut key = ptr::null_mut();
+        let mut value = ptr::null_mut();
+        let mut finalizer = ptr::null_mut();
+
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+            key = arena.alloc_node(SEXPTYPE::INTSXP);
+            value = arena.alloc_node(SEXPTYPE::REALSXP);
+            finalizer = arena.alloc_node(SEXPTYPE::LISTSXP);
+            weak = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+            unsafe {
+                for obj in [key, value, finalizer, weak] {
+                    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                }
+                (*weak).data.listsxp.carval = key;
+                (*weak).data.listsxp.cdrval = value;
+                (*weak).data.listsxp.tagval = finalizer;
+            }
+            std::mem::forget(protect(weak));
+        });
+
+        let (_, freed, compacted) = full_gc();
+        assert_eq!(freed, 1);
+        assert_eq!(compacted, 3);
+
+        let moved_weak = with_protected_objects(|objects| objects[0]);
+        unsafe {
+            assert_eq!((*moved_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
+            assert_eq!(
+                (*moved_weak).data.listsxp.carval,
+                crate::sexp::globals::R_NilValue()
+            );
+            let moved_value = (*moved_weak).data.listsxp.cdrval;
+            let moved_finalizer = (*moved_weak).data.listsxp.tagval;
+            assert_eq!((*moved_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+            assert_eq!((*moved_finalizer).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
+            with_arena(|arena| {
+                assert!(arena.contains(moved_weak));
+                assert!(arena.contains(moved_value));
+                assert!(arena.contains(moved_finalizer));
+                assert!(!arena.contains(weak));
+                assert!(!arena.contains(key));
+                assert!(!arena.contains(value));
+                assert!(!arena.contains(finalizer));
+            });
+        }
+
+        drop(super::super::protect::protect_n(1));
+    }
+
+    #[test]
+    fn test_full_gc_weakref_forwards_live_key_without_marking_it() {
+        let _session = RSession::new();
+
+        use super::super::protect::protect;
+
+        let mut weak = ptr::null_mut();
+        let mut key = ptr::null_mut();
+        let mut value = ptr::null_mut();
+
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+            key = arena.alloc_node(SEXPTYPE::INTSXP);
+            value = arena.alloc_node(SEXPTYPE::REALSXP);
+            weak = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+            unsafe {
+                for obj in [key, value, weak] {
+                    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                }
+                (*weak).data.listsxp.carval = key;
+                (*weak).data.listsxp.cdrval = value;
+                (*weak).data.listsxp.tagval = crate::sexp::globals::R_NilValue();
+            }
+            std::mem::forget(protect(weak));
+            std::mem::forget(protect(key));
+        });
+
+        let (_, freed, compacted) = full_gc();
+        assert_eq!(freed, 0);
+        assert_eq!(compacted, 3);
+
+        let (moved_weak, moved_key_root) =
+            with_protected_objects(|objects| (objects[0], objects[1]));
+        unsafe {
+            assert_eq!((*moved_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
+            let moved_key = (*moved_weak).data.listsxp.carval;
+            let moved_value = (*moved_weak).data.listsxp.cdrval;
+            assert_eq!(moved_key, moved_key_root);
+            assert_ne!(moved_key, key);
+            assert_eq!((*moved_key).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            assert_eq!((*moved_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+            with_arena(|arena| {
+                assert!(arena.contains(moved_weak));
+                assert!(arena.contains(moved_key));
+                assert!(arena.contains(moved_value));
+                assert!(!arena.contains(weak));
+                assert!(!arena.contains(key));
+                assert!(!arena.contains(value));
+            });
+        }
+
+        drop(super::super::protect::protect_n(2));
     }
 
     #[test]
