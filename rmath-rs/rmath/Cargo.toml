@@ -29,6 +29,7 @@ hashbrown.workspace = true
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6"
 lzma-rs = "0.3"
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 # Pure Rust linear algebra backend (enabled via rust-backend feature)
 faer = { version = "0.24", optional = true }
