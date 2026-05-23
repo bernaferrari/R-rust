@@ -16,14 +16,18 @@
 use std::os::raw::{c_char, c_int};
 
 use crate::eval::attrib_core::{R_SrcRefSymbol, getAttrib};
-use crate::sexp::accessors::{BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TYPEOF};
+use crate::sexp::accessors::{
+    BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
 use crate::sexp::memory::with_arena_in;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install_in;
+
+use super::eval::Rf_eval;
 
 const BYTECODE_COMPILER_AVAILABLE: bool = false;
 
@@ -630,6 +634,85 @@ pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
     }
 }
 
+unsafe fn tailcall_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    })
+}
+
+unsafe fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+            tailcall_error("argument \"expr\" is missing, with no default");
+        }
+
+        let mut expr = Rf_eval(CAR(args), rho);
+        if TYPEOF(expr) == SEXPTYPE::EXPRSXP && XLENGTH(expr) == 1 {
+            expr = VECTOR_ELT(expr, 0);
+        }
+        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            tailcall_error("\"expr\" must be a call expression");
+        }
+
+        let env_arg = CDR(args);
+        let env = if env_arg.is_null() || env_arg == R_NilValue() || CAR(env_arg) == R_MissingArg()
+        {
+            rho
+        } else {
+            Rf_eval(CAR(env_arg), rho)
+        };
+        if TYPEOF(env) != SEXPTYPE::ENVSXP {
+            tailcall_error("\"envir\" must be an environment");
+        }
+
+        Rf_eval(expr, env)
+    }
+}
+
+unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
+            tailcall_error("argument \"FUN\" is missing, with no default");
+        }
+
+        let expr = Rf_cons(CAR(args), CDR(args));
+        if expr.is_null() {
+            return R_NilValue();
+        }
+        (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        Rf_eval(expr, rho)
+    }
+}
+
+/// `Exec()` and `Tailcall()` special forms.
+///
+/// GNU R can turn these calls into an exec continuation when they are in a
+/// proven tail position. The Rust evaluator does not yet have the same
+/// non-local jump contract, so this preserves user-visible semantics by
+/// evaluating the target call directly.
+pub unsafe fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let is_exec = !op.is_null()
+            && crate::eval::primitive::PrimitiveDescriptor::from_raw(op)
+                .map(|primitive| primitive.operation_code == 0)
+                .unwrap_or_else(|| {
+                    let head = CAR(call);
+                    !head.is_null()
+                        && TYPEOF(head) == SEXPTYPE::SYMSXP
+                        && crate::sexp::symbol::symbol_name_bytes_equal(head, {
+                            static EXEC: &[u8] = b"Exec\0";
+                            crate::sexp::symbol::Rf_install(EXEC.as_ptr() as *const c_char)
+                        })
+                });
+
+        if is_exec {
+            eval_exec_call(args, rho)
+        } else {
+            eval_tailcall_call(args, rho)
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // do_declare -- declare() special form (no-op)
 // ---------------------------------------------------------------------------
@@ -816,5 +899,27 @@ mod tests {
             assert_eq!(is_exec_continuation_in(&mut left, continuation), TRUE);
             assert_eq!(is_exec_continuation_in(&mut right, continuation), FALSE);
         }
+    }
+
+    #[test]
+    fn exec_and_tailcall_special_forms_evaluate_target_calls() {
+        let mut session = crate::android::RSession::new();
+
+        let exec = session.eval("x <- 6\nExec(quote(identity(x)))");
+        assert_eq!(exec.output, "[1] 6");
+
+        let tailcall = session.eval("f <- function(x) Tailcall(identity, x + 1)\nf(5)");
+        assert_eq!(tailcall.output, "[1] 6");
+    }
+
+    #[test]
+    fn exec_and_tailcall_are_registered_as_primitives() {
+        let mut session = crate::android::RSession::new();
+
+        let exec = session.eval("is.primitive(Exec)");
+        assert_eq!(exec.output, "[1] TRUE");
+
+        let tailcall = session.eval("is.primitive(Tailcall)");
+        assert_eq!(tailcall.output, "[1] TRUE");
     }
 }

@@ -75,6 +75,7 @@ unsafe fn dispatch_special_by_name(
             "expression" => do_expression(CDR(call)),
             "substitute" => crate::mainutils::coerce::do_substitute(call, op, args, rho),
             "invisible" => do_invisible(CDR(call), rho),
+            "Exec" | "Tailcall" => crate::eval::jit::do_tailcall(call, op, args, rho),
             "on.exit" => do_on_exit_from_args(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
             "~" => crate::mainutils::names::do_tilde(call, op, args, rho),

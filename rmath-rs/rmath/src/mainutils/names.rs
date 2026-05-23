@@ -429,6 +429,22 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         -1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
+    FunTabEntry::new(
+        b"Exec\0",
+        None,
+        0,
+        200,
+        -1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    FunTabEntry::new(
+        b"Tailcall\0",
+        None,
+        1,
+        200,
+        -1,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
     // .Internals (error handling, conditions, etc.)
     FunTabEntry::new(
         b"stop\0",

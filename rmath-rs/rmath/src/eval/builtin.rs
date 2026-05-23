@@ -140,6 +140,16 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "Exec",
+        handler: crate::eval::jit::do_tailcall,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "Tailcall",
+        handler: crate::eval::jit::do_tailcall,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "@",
         handler: crate::mainutils::essentials::do_at,
         restore_visibility_always: false,
