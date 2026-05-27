@@ -5,7 +5,7 @@ import subprocess
 import re
 import os
 
-BASE_DIR = "/Users/bernardoferrari/Downloads/rport/rmath-rs"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def get_clippy_warnings():
