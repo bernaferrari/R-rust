@@ -582,3 +582,490 @@ pub fn Rf_rnorm(mu: f64, sigma: f64) -> f64 {
 pub fn rnorm(mu: f64, sigma: f64) -> f64 {
     rnorm_inner(mu, sigma)
 }
+
+// ===========================================================================
+// Tests — property-based invariant checks for distribution functions
+// ===========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TOL: f64 = 1e-10;
+
+    fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+        (a - b).abs() < tol
+    }
+
+    // -----------------------------------------------------------------------
+    // Normal distribution invariants
+    // -----------------------------------------------------------------------
+
+    /// pnorm(qnorm(p)) ≈ p  — CDF/quantile round-trip
+    #[test]
+    fn normal_pq_roundtrip() {
+        let probs = [0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999];
+        for &p in &probs {
+            let q = qnorm5_inner(p, 0.0, 1.0, true, false);
+            let p_back = pnorm5_inner(q, 0.0, 1.0, true, false);
+            assert!(
+                approx_eq(p, p_back, TOL),
+                "pnorm(qnorm({p})) = {p_back}, expected {p}"
+            );
+        }
+    }
+
+    /// qnorm(pnorm(x)) ≈ x  — quantile/CDF round-trip
+    #[test]
+    fn normal_qp_roundtrip() {
+        let xs = [-3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 3.0];
+        for &x in &xs {
+            let p = pnorm5_inner(x, 0.0, 1.0, true, false);
+            let x_back = qnorm5_inner(p, 0.0, 1.0, true, false);
+            assert!(
+                approx_eq(x, x_back, 1e-8),
+                "qnorm(pnorm({x})) = {x_back}, expected {x}"
+            );
+        }
+    }
+
+    /// dnorm(x) ≥ 0 for all x — density is non-negative
+    #[test]
+    fn normal_density_non_negative() {
+        let xs = [
+            -1e10, -100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0, 1e10,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+        ];
+        for &x in &xs {
+            let d = dnorm4_inner(x, 0.0, 1.0, false);
+            assert!(d >= 0.0, "dnorm({x}) = {d}, expected non-negative");
+        }
+    }
+
+    /// pnorm(-Inf) = 0, pnorm(Inf) = 1
+    #[test]
+    fn normal_cdf_boundary() {
+        let p_neg_inf = pnorm5_inner(f64::NEG_INFINITY, 0.0, 1.0, true, false);
+        let p_pos_inf = pnorm5_inner(f64::INFINITY, 0.0, 1.0, true, false);
+        assert_eq!(p_neg_inf, 0.0, "pnorm(-Inf) should be 0");
+        assert_eq!(p_pos_inf, 1.0, "pnorm(Inf) should be 1");
+    }
+
+    /// pnorm(0, 0, 1) = 0.5 — standard normal median
+    #[test]
+    fn normal_cdf_at_zero() {
+        let p = pnorm5_inner(0.0, 0.0, 1.0, true, false);
+        assert!(
+            approx_eq(p, 0.5, TOL),
+            "pnorm(0) should be 0.5, got {p}"
+        );
+    }
+
+    /// dnorm(x, mu, sigma) with negative sigma returns NaN
+    #[test]
+    fn normal_negative_sigma_is_nan() {
+        let d = dnorm4_inner(0.0, 0.0, -1.0, false);
+        assert!(d.is_nan(), "dnorm with sigma<0 should be NaN, got {d}");
+    }
+
+    /// Upper-tail: pnorm(x, lower_tail=false) = 1 - pnorm(x, lower_tail=true)
+    #[test]
+    fn normal_upper_tail_complement() {
+        let xs = [-2.0, -1.0, 0.0, 1.0, 2.0];
+        for &x in &xs {
+            let lower = pnorm5_inner(x, 0.0, 1.0, true, false);
+            let upper = pnorm5_inner(x, 0.0, 1.0, false, false);
+            assert!(
+                approx_eq(lower + upper, 1.0, TOL),
+                "pnorm({x},lower) + pnorm({x},upper) = {}, expected 1.0",
+                lower + upper
+            );
+        }
+    }
+
+    /// Shifted normal: pnorm(mu, mu, sigma) = 0.5
+    #[test]
+    fn normal_shifted_cdf_at_mean() {
+        let params = [(5.0, 2.0), (-3.0, 0.5), (0.0, 10.0), (100.0, 0.01)];
+        for &(mu, sigma) in &params {
+            let p = pnorm5_inner(mu, mu, sigma, true, false);
+            assert!(
+                approx_eq(p, 0.5, TOL),
+                "pnorm({mu}, {mu}, {sigma}) = {p}, expected 0.5"
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Exponential distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn exponential_pq_roundtrip() {
+        use crate::dist::exponential::{pexp_inner, qexp_inner};
+        let probs = [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99];
+        for &p in &probs {
+            let q = qexp_inner(p, 1.0, true, false);
+            let p_back = pexp_inner(q, 1.0, true, false);
+            assert!(
+                approx_eq(p, p_back, TOL),
+                "pexp(qexp({p})) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn exponential_density_non_negative() {
+        use crate::dist::exponential::dexp_inner;
+        let xs = [-1.0, 0.0, 0.001, 1.0, 10.0, 100.0];
+        for &x in &xs {
+            let d = dexp_inner(x, 1.0, false);
+            assert!(d >= 0.0, "dexp({x}) = {d}");
+        }
+    }
+
+    #[test]
+    fn exponential_cdf_boundary() {
+        use crate::dist::exponential::pexp_inner;
+        let p0 = pexp_inner(0.0, 1.0, true, false);
+        let pinf = pexp_inner(f64::INFINITY, 1.0, true, false);
+        assert_eq!(p0, 0.0);
+        assert_eq!(pinf, 1.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Uniform distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn uniform_pq_roundtrip() {
+        use crate::dist::uniform::{punif_inner, qunif_inner};
+        let probs = [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0];
+        for &p in &probs {
+            let q = qunif_inner(p, 0.0, 1.0, true, false);
+            let p_back = punif_inner(q, 0.0, 1.0, true, false);
+            assert!(
+                approx_eq(p, p_back, TOL),
+                "punif(qunif({p})) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn uniform_density_constant_inside() {
+        use crate::dist::uniform::dunif_inner;
+        let d1 = dunif_inner(0.2, 0.0, 1.0, false);
+        let d2 = dunif_inner(0.8, 0.0, 1.0, false);
+        assert_eq!(d1, d2, "uniform density should be constant");
+        assert_eq!(d1, 1.0, "U(0,1) density should be 1.0");
+    }
+
+    #[test]
+    fn uniform_density_zero_outside() {
+        use crate::dist::uniform::dunif_inner;
+        assert_eq!(dunif_inner(-0.1, 0.0, 1.0, false), 0.0);
+        assert_eq!(dunif_inner(1.1, 0.0, 1.0, false), 0.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Cauchy distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn cauchy_pq_roundtrip() {
+        use crate::dist::cauchy::{pcauchy_inner, qcauchy_inner};
+        let probs = [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99];
+        for &p in &probs {
+            let q = qcauchy_inner(p, 0.0, 1.0, true, false);
+            let p_back = pcauchy_inner(q, 0.0, 1.0, true, false);
+            assert!(
+                approx_eq(p, p_back, 1e-8),
+                "pcauchy(qcauchy({p})) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn cauchy_density_non_negative() {
+        use crate::dist::cauchy::dcauchy_inner;
+        let xs = [-1e10, -1.0, 0.0, 1.0, 1e10];
+        for &x in &xs {
+            let d = dcauchy_inner(x, 0.0, 1.0, false);
+            assert!(d >= 0.0, "dcauchy({x}) = {d}");
+        }
+    }
+
+    #[test]
+    fn cauchy_cdf_at_location() {
+        use crate::dist::cauchy::pcauchy_inner;
+        let p = pcauchy_inner(0.0, 0.0, 1.0, true, false);
+        assert!(approx_eq(p, 0.5, TOL), "pcauchy(0,0,1) = {p}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Gamma distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn gamma_pq_roundtrip() {
+        use crate::dist::gamma::{pgamma_inner, qgamma_inner};
+        let probs = [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99];
+        for &p in &probs {
+            let q = qgamma_inner(p, 2.0, 1.0, true, false);
+            let p_back = pgamma_inner(q, 2.0, 1.0, true, false);
+            assert!(
+                approx_eq(p, p_back, 1e-6),
+                "pgamma(qgamma({p}, shape=2)) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn gamma_density_non_negative() {
+        use crate::dist::gamma::dgamma_inner;
+        let xs = [-1.0, 0.0, 0.001, 1.0, 5.0, 100.0];
+        for &x in &xs {
+            let d = dgamma_inner(x, 2.0, 1.0, false);
+            assert!(d >= 0.0, "dgamma({x}) = {d}");
+        }
+    }
+
+    #[test]
+    fn gamma_cdf_boundary() {
+        use crate::dist::gamma::pgamma_inner;
+        let p0 = pgamma_inner(0.0, 2.0, 1.0, true, false);
+        let pinf = pgamma_inner(f64::INFINITY, 2.0, 1.0, true, false);
+        assert_eq!(p0, 0.0);
+        assert_eq!(pinf, 1.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Binomial distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn binomial_density_sums_to_one() {
+        use crate::dist::binomial::dbinom_inner;
+        // Sum dbinom(k, n, p) for k = 0..n should be approximately 1.0
+        let cases = [(10, 0.5), (20, 0.3), (5, 0.9), (30, 0.1)];
+        for &(n, p) in &cases {
+            let sum: f64 = (0..=n)
+                .map(|k| dbinom_inner(k as f64, n as f64, p, false))
+                .sum();
+            assert!(
+                approx_eq(sum, 1.0, 1e-8),
+                "sum(dbinom(0..{n}, {n}, {p})) = {sum}, expected ~1.0"
+            );
+        }
+    }
+
+    #[test]
+    fn binomial_density_non_negative() {
+        use crate::dist::binomial::dbinom_inner;
+        for k in 0..=10 {
+            let d = dbinom_inner(k as f64, 10.0, 0.5, false);
+            assert!(d >= 0.0, "dbinom({k}, 10, 0.5) = {d}");
+        }
+    }
+
+    #[test]
+    fn binomial_pq_roundtrip_at_median() {
+        use crate::dist::binomial::{pbinom_inner, qbinom_inner};
+        // For n=20, p=0.5: the CDF/quantile should round-trip for non-boundary probs
+        let probs = [0.1, 0.25, 0.5, 0.75, 0.9];
+        for &p in &probs {
+            let q = qbinom_inner(p, 20.0, 0.5, true, false);
+            let p_back = pbinom_inner(q, 20.0, 0.5, true, false);
+            // For discrete distributions: p_back >= p is the quantile contract
+            assert!(
+                p_back >= p - 1e-10,
+                "pbinom(qbinom({p})) = {p_back}, should be >= {p}"
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Poisson distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn poisson_density_sums_to_one() {
+        use crate::dist::poisson::dpois_inner;
+        // Sum for large enough range should approximate 1.0
+        let lambdas = [0.5, 1.0, 5.0, 10.0];
+        for &lam in &lambdas {
+            let upper = (lam + 10.0 * libm::sqrt(lam)).ceil() as usize;
+            let upper = upper.max(50);
+            let sum: f64 = (0..=upper)
+                .map(|k| dpois_inner(k as f64, lam, false))
+                .sum();
+            assert!(
+                approx_eq(sum, 1.0, 1e-6),
+                "sum(dpois(0..{upper}, {lam})) = {sum}"
+            );
+        }
+    }
+
+    #[test]
+    fn poisson_density_non_negative() {
+        use crate::dist::poisson::dpois_inner;
+        for k in 0..20 {
+            let d = dpois_inner(k as f64, 5.0, false);
+            assert!(d >= 0.0, "dpois({k}, 5) = {d}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Chi-squared distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn chisq_pq_roundtrip() {
+        use crate::dist::chisq::{pchisq_inner, qchisq_inner};
+        let probs = [0.01, 0.1, 0.5, 0.9, 0.99];
+        for &p in &probs {
+            let q = qchisq_inner(p, 5.0, true, false);
+            let p_back = pchisq_inner(q, 5.0, true, false);
+            assert!(
+                approx_eq(p, p_back, 1e-6),
+                "pchisq(qchisq({p}, df=5)) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn chisq_density_non_negative() {
+        use crate::dist::chisq::dchisq_inner;
+        let xs = [-1.0, 0.0, 1.0, 5.0, 20.0];
+        for &x in &xs {
+            let d = dchisq_inner(x, 5.0, false);
+            assert!(d >= 0.0, "dchisq({x}, df=5) = {d}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Weibull distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn weibull_pq_roundtrip() {
+        use crate::dist::weibull::{pweibull_inner, qweibull_inner};
+        let probs = [0.01, 0.1, 0.5, 0.9, 0.99];
+        for &p in &probs {
+            let q = qweibull_inner(p, 2.0, 1.0, true, false);
+            let p_back = pweibull_inner(q, 2.0, 1.0, true, false);
+            assert!(
+                approx_eq(p, p_back, TOL),
+                "pweibull(qweibull({p})) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn weibull_density_non_negative() {
+        use crate::dist::weibull::dweibull_inner;
+        let xs = [-1.0, 0.0, 0.5, 1.0, 5.0];
+        for &x in &xs {
+            let d = dweibull_inner(x, 2.0, 1.0, false);
+            assert!(d >= 0.0, "dweibull({x}) = {d}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Log-normal distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn lognormal_pq_roundtrip() {
+        use crate::dist::lnorm::{plnorm_inner, qlnorm_inner};
+        let probs = [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99];
+        for &p in &probs {
+            let q = qlnorm_inner(p, 0.0, 1.0, true, false);
+            let p_back = plnorm_inner(q, 0.0, 1.0, true, false);
+            assert!(
+                approx_eq(p, p_back, 1e-8),
+                "plnorm(qlnorm({p})) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn lognormal_density_non_negative() {
+        use crate::dist::lnorm::dlnorm_inner;
+        let xs = [-1.0, 0.0, 0.001, 1.0, 10.0, 100.0];
+        for &x in &xs {
+            let d = dlnorm_inner(x, 0.0, 1.0, false);
+            assert!(d >= 0.0, "dlnorm({x}) = {d}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Beta distribution invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn beta_pq_roundtrip() {
+        use crate::dist::beta::{pbeta_inner, qbeta_inner};
+        let probs = [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99];
+        for &p in &probs {
+            let q = qbeta_inner(p, 2.0, 5.0, true, false);
+            let p_back = pbeta_inner(q, 2.0, 5.0, true, false);
+            assert!(
+                approx_eq(p, p_back, 1e-6),
+                "pbeta(qbeta({p}, 2, 5)) = {p_back}"
+            );
+        }
+    }
+
+    #[test]
+    fn beta_density_non_negative() {
+        use crate::dist::beta::dbeta_inner;
+        let xs = [-0.1, 0.0, 0.25, 0.5, 0.75, 1.0, 1.1];
+        for &x in &xs {
+            let d = dbeta_inner(x, 2.0, 5.0, false);
+            assert!(d >= 0.0, "dbeta({x}, 2, 5) = {d}");
+        }
+    }
+
+    #[test]
+    fn beta_cdf_boundary() {
+        use crate::dist::beta::pbeta_inner;
+        let p0 = pbeta_inner(0.0, 2.0, 5.0, true, false);
+        let p1 = pbeta_inner(1.0, 2.0, 5.0, true, false);
+        assert_eq!(p0, 0.0, "pbeta(0) should be 0");
+        assert_eq!(p1, 1.0, "pbeta(1) should be 1");
+    }
+
+    // -----------------------------------------------------------------------
+    // Log-space consistency: give_log flag
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn normal_log_density_consistent() {
+        let xs = [-2.0, -1.0, 0.0, 1.0, 2.0];
+        for &x in &xs {
+            let d = dnorm4_inner(x, 0.0, 1.0, false);
+            let log_d = dnorm4_inner(x, 0.0, 1.0, true);
+            assert!(
+                approx_eq(d.ln(), log_d, 1e-12),
+                "log(dnorm({x})) = {}, dnorm({x}, log=T) = {log_d}",
+                d.ln()
+            );
+        }
+    }
+
+    #[test]
+    fn normal_log_cdf_consistent() {
+        let xs = [-2.0, -1.0, 0.0, 1.0, 2.0];
+        for &x in &xs {
+            let p = pnorm5_inner(x, 0.0, 1.0, true, false);
+            let log_p = pnorm5_inner(x, 0.0, 1.0, true, true);
+            assert!(
+                approx_eq(p.ln(), log_p, 1e-12),
+                "log(pnorm({x})) = {}, pnorm({x},log_p=T) = {log_p}",
+                p.ln()
+            );
+        }
+    }
+}

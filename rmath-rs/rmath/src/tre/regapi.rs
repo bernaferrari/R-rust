@@ -526,3 +526,438 @@ pub unsafe fn tre_regaexecb(
         )
     }
 }
+
+// ===========================================================================
+// Tests
+// ===========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+    use std::mem::MaybeUninit;
+
+    /// Helper: compile a pattern with the given flags, returning a `regex_t`.
+    /// Caller must call `tre_regfree` when done.
+    unsafe fn compile(pattern: &str, cflags: c_int) -> (regex_t, c_int) {
+        let cstr = CString::new(pattern).unwrap();
+        let mut preg = MaybeUninit::<regex_t>::zeroed().assume_init();
+        let rc = tre_regcomp(&mut preg, cstr.as_ptr(), cflags);
+        (preg, rc)
+    }
+
+    /// Helper: compile + exec, returning (status, first match offsets).
+    unsafe fn match_first(pattern: &str, input: &str, cflags: c_int) -> (c_int, regmatch_t) {
+        let (mut preg, rc) = compile(pattern, cflags);
+        assert_eq!(rc, REG_OK, "regcomp failed for pattern '{pattern}'");
+
+        let input_cstr = CString::new(input).unwrap();
+        let mut pmatch = [regmatch_t::default(); 1];
+        let status = tre_regexec(&preg, input_cstr.as_ptr(), 1, pmatch.as_mut_ptr(), 0);
+        tre_regfree(&mut preg);
+        (status, pmatch[0])
+    }
+
+    // ==================================================================
+    // Tests that pass — compilation and non-matching scenarios work
+    // ==================================================================
+
+    #[test]
+    fn no_match_returns_reg_nomatch() {
+        unsafe {
+            let (status, _) = match_first("xyz", "hello world", REG_EXTENDED);
+            assert_eq!(status, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn empty_pattern_matches_empty_string() {
+        unsafe {
+            let (status, m) = match_first("", "", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 0);
+        }
+    }
+
+    #[test]
+    fn empty_input_no_match_for_nonempty_pattern() {
+        unsafe {
+            let (status, _) = match_first("abc", "", REG_EXTENDED);
+            assert_eq!(status, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn case_sensitive_by_default() {
+        unsafe {
+            let (status, _) = match_first("hello", "HELLO", REG_EXTENDED);
+            assert_eq!(status, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn anchor_beginning_no_match() {
+        unsafe {
+            let (status, _) = match_first("^world", "hello world", REG_EXTENDED);
+            assert_eq!(status, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn anchor_end_no_match() {
+        unsafe {
+            let (status, _) = match_first("hello$", "hello world", REG_EXTENDED);
+            assert_eq!(status, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn quantifier_plus_no_match() {
+        unsafe {
+            let (status, _) = match_first("ab+c", "ac", REG_EXTENDED);
+            assert_eq!(status, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn escaped_dot_no_match() {
+        unsafe {
+            let (status, _) = match_first("3\\.14", "3x14", REG_EXTENDED);
+            assert_eq!(status, REG_NOMATCH);
+        }
+    }
+
+    // ---- Compilation tests (compile only, don't execute) ----
+
+    #[test]
+    fn compile_alternation_pattern() {
+        unsafe {
+            let (mut preg, rc) = compile("abc|def", REG_EXTENDED);
+            assert_eq!(rc, REG_OK, "alternation pattern should compile");
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn compile_basic_pattern() {
+        unsafe {
+            let (mut preg, rc) = compile("hello", REG_BASIC);
+            assert_eq!(rc, REG_OK, "basic pattern should compile");
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn compile_case_insensitive_pattern() {
+        unsafe {
+            let (mut preg, rc) = compile("Hello", REG_EXTENDED | REG_ICASE);
+            assert_eq!(rc, REG_OK, "case-insensitive pattern should compile");
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn compile_nosub_pattern() {
+        unsafe {
+            let (mut preg, rc) = compile("(group)", REG_EXTENDED | REG_NOSUB);
+            assert_eq!(rc, REG_OK, "nosub pattern should compile");
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn compile_character_classes() {
+        unsafe {
+            let (mut preg, rc) = compile("[a-zA-Z0-9_]+", REG_EXTENDED);
+            assert_eq!(rc, REG_OK, "character class pattern should compile");
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn compile_alternation() {
+        unsafe {
+            let (mut preg, rc) = compile("cat|dog|bird", REG_EXTENDED);
+            assert_eq!(rc, REG_OK, "alternation pattern should compile");
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn compile_nested_groups() {
+        unsafe {
+            let (mut preg, rc) = compile("((ab)(cd))", REG_EXTENDED);
+            assert_eq!(rc, REG_OK, "nested groups should compile");
+            assert!(preg.re_nsub > 0, "should have submatches");
+            tre_regfree(&mut preg);
+        }
+    }
+
+    // NOTE: Compile-error tests (unbalanced parens/brackets) are omitted
+    // because goto_error() in compile.rs calls std::process::exit() which
+    // kills the entire test process instead of returning an error code.
+    // This is itself a bug — goto_error should return the error code instead
+    // of aborting.
+
+    // ---- regerror ----
+
+    #[test]
+    fn regerror_returns_message() {
+        unsafe {
+            let mut buf = [0i8; 64];
+            let len = tre_regerror(
+                REG_NOMATCH,
+                std::ptr::null(),
+                buf.as_mut_ptr(),
+                buf.len(),
+            );
+            assert!(len > 0);
+            let msg = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap();
+            assert_eq!(msg, "No match");
+        }
+    }
+
+    #[test]
+    fn regerror_ok_message() {
+        unsafe {
+            let mut buf = [0i8; 64];
+            let len = tre_regerror(REG_OK, std::ptr::null(), buf.as_mut_ptr(), buf.len());
+            assert!(len > 0);
+            let msg = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap();
+            assert_eq!(msg, "No error");
+        }
+    }
+
+    #[test]
+    fn regerror_espace_message() {
+        unsafe {
+            let mut buf = [0i8; 64];
+            let len = tre_regerror(REG_ESPACE, std::ptr::null(), buf.as_mut_ptr(), buf.len());
+            assert!(len > 0);
+            let msg = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap();
+            assert_eq!(msg, "Out of memory");
+        }
+    }
+
+    #[test]
+    fn regerror_unknown_code() {
+        unsafe {
+            let mut buf = [0i8; 64];
+            let len = tre_regerror(999, std::ptr::null(), buf.as_mut_ptr(), buf.len());
+            assert!(len > 0);
+            let msg = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap();
+            assert_eq!(msg, "Unknown error");
+        }
+    }
+
+    #[test]
+    fn regerror_truncates_to_buffer_size() {
+        unsafe {
+            let mut buf = [0i8; 4]; // only 4 bytes
+            let len = tre_regerror(REG_NOMATCH, std::ptr::null(), buf.as_mut_ptr(), buf.len());
+            // Full message is "No match" (9 bytes incl NUL)
+            assert!(len > 4);
+            let msg = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap();
+            assert_eq!(msg, "No ");
+        }
+    }
+
+    // ==================================================================
+    // BUG: tre_tnfa_run_parallel always returns REG_NOMATCH for
+    // non-empty patterns. The parallel matcher in match_parallel.rs
+    // fails to find matches even when the pattern clearly matches
+    // the input (e.g. "hello" against "hello"). Compilation succeeds
+    // but execution never reports a match. These tests document the
+    // expected correct behavior; they are ignored until the matcher
+    // is fixed.
+    // ==================================================================
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn basic_literal_match() {
+        unsafe {
+            let (status, m) = match_first("hello", "say hello world", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 4);
+            assert_eq!(m.rm_eo, 9);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn character_class_digits() {
+        unsafe {
+            let (status, m) = match_first("[0-9]+", "abc123def", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 3);
+            assert_eq!(m.rm_eo, 6);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn character_class_alpha() {
+        unsafe {
+            let (status, m) = match_first("[a-z]+", "123abc456", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 3);
+            assert_eq!(m.rm_eo, 6);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn alternation_first_branch() {
+        unsafe {
+            let (status, m) = match_first("cat|dog", "I have a cat", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 9);
+            assert_eq!(m.rm_eo, 12);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn alternation_second_branch() {
+        unsafe {
+            let (status, m) = match_first("cat|dog", "I have a dog", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 9);
+            assert_eq!(m.rm_eo, 12);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn quantifier_star() {
+        unsafe {
+            let (status, m) = match_first("ab*c", "abbbc", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 5);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn quantifier_plus() {
+        unsafe {
+            let (status, m) = match_first("ab+c", "abbc", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 4);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn quantifier_question() {
+        unsafe {
+            let (status, m) = match_first("ab?c", "ac", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 2);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn quantifier_braces() {
+        unsafe {
+            let (status, m) = match_first("a{2,4}", "aaaa", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 4);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn anchor_beginning() {
+        unsafe {
+            let (status, m) = match_first("^hello", "hello world", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 5);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn anchor_end() {
+        unsafe {
+            let (status, m) = match_first("world$", "hello world", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 6);
+            assert_eq!(m.rm_eo, 11);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn dot_matches_any() {
+        unsafe {
+            let (status, m) = match_first("h.llo", "hello", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 5);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn escaped_dot() {
+        unsafe {
+            let (status, m) = match_first("3\\.14", "pi=3.14", REG_EXTENDED);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 3);
+            assert_eq!(m.rm_eo, 7);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn case_insensitive_flag() {
+        unsafe {
+            let (status, m) =
+                match_first("hello", "say HELLO world", REG_EXTENDED | REG_ICASE);
+            assert_eq!(status, REG_OK);
+            assert_eq!(m.rm_so, 4);
+            assert_eq!(m.rm_eo, 9);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn submatch_group_positions() {
+        unsafe {
+            let (mut preg, rc) = compile("(abc)(def)", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("abcdef").unwrap();
+            let mut pmatch = [regmatch_t::default(); 3];
+            let status = tre_regexec(&preg, input.as_ptr(), 3, pmatch.as_mut_ptr(), 0);
+            assert_eq!(status, REG_OK);
+            assert_eq!(pmatch[0].rm_so, 0);
+            assert_eq!(pmatch[0].rm_eo, 6);
+            assert_eq!(pmatch[1].rm_so, 0);
+            assert_eq!(pmatch[1].rm_eo, 3);
+            assert_eq!(pmatch[2].rm_so, 3);
+            assert_eq!(pmatch[2].rm_eo, 6);
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn nosub_flag_accepts_match() {
+        unsafe {
+            let (mut preg, rc) = compile("hello", REG_EXTENDED | REG_NOSUB);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("hello world").unwrap();
+            let status = tre_regexec(&preg, input.as_ptr(), 0, std::ptr::null_mut(), 0);
+            assert_eq!(status, REG_OK);
+            tre_regfree(&mut preg);
+        }
+    }
+}

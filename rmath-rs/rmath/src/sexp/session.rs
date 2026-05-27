@@ -1281,4 +1281,163 @@ mod tests {
         let session = RSession::default();
         assert!(session.is_active());
     }
+
+    // -----------------------------------------------------------------------
+    // Concurrent session stress tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn concurrent_sessions_are_independent() {
+        // Spawn 4 threads, each creating their own RSession, defining a
+        // unique variable, evaluating code, and verifying isolation.
+        let handles: Vec<_> = (0..4)
+            .map(|i| {
+                std::thread::spawn(move || {
+                    let mut session = RSession::new();
+                    assert!(session.is_active());
+                    assert!(session.global_env().is_some());
+
+                    // Define a variable unique to this thread/session
+                    let var_name = format!("thread_var_{i}");
+                    let value = session
+                        .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+                        .expect("session should be active");
+                    let sexp = Sexp::from_raw(value).expect("allocation failed");
+                    assert!(sexp.set_integer_elt(0, (i + 100) as i32));
+
+                    let value = session.sexp(value).expect("value belongs to session");
+                    assert!(session.define_var(&var_name, value));
+
+                    // Verify the variable
+                    let found = session
+                        .find_var(&var_name)
+                        .expect("should find the variable we just defined");
+                    assert_eq!(
+                        found.integer_elt(0),
+                        Some((i + 100) as i32),
+                        "thread {i} got wrong value"
+                    );
+
+                    // Verify other threads' variables are NOT visible
+                    for j in 0..4 {
+                        if j != i {
+                            let other_name = format!("thread_var_{j}");
+                            assert!(
+                                session.find_var(&other_name).is_none(),
+                                "thread {i} should NOT see thread {j}'s variable"
+                            );
+                        }
+                    }
+
+                    session.close();
+                    assert!(!session.is_active());
+                    (i, true)
+                })
+            })
+            .collect();
+
+        for h in handles {
+            let (thread_id, ok) = h.join().expect("thread should not panic");
+            assert!(ok, "thread {thread_id} failed");
+        }
+    }
+
+    #[test]
+    fn concurrent_sessions_eval_code_independently() {
+        // Each thread evaluates R code and checks isolation of captured output.
+        let handles: Vec<_> = (0..4)
+            .map(|i| {
+                std::thread::spawn(move || {
+                    let mut session = RSession::new();
+
+                    let code = format!("{i} + 100");
+                    let (result, _output, _visible) =
+                        session.eval_code_with_output_capture(&code);
+                    let result = result.expect("eval should succeed");
+                    assert_eq!(
+                        result.real_elt(0),
+                        Some((i + 100) as f64),
+                        "thread {i} computed wrong result"
+                    );
+                    session.close();
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("thread should not panic");
+        }
+    }
+
+    #[test]
+    fn concurrent_sessions_output_capture_isolated() {
+        // Verify that output capture in one session doesn't leak to another
+        // session on a different thread.
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let barrier_clone = barrier.clone();
+
+        let h1 = std::thread::spawn(move || {
+            let session = RSession::new();
+            barrier_clone.wait(); // synchronize start
+            let (_, output) = session.with_output_capture(|| {
+                crate::sexp::output::capture_stdout("thread_one_output");
+            });
+            assert_eq!(output.stdout, "thread_one_output");
+            // Must NOT contain thread_two's output
+            assert!(
+                !output.stdout.contains("thread_two"),
+                "output leaked between threads"
+            );
+        });
+
+        let h2 = std::thread::spawn(move || {
+            let session = RSession::new();
+            barrier.wait(); // synchronize start
+            let (_, output) = session.with_output_capture(|| {
+                crate::sexp::output::capture_stdout("thread_two_output");
+            });
+            assert_eq!(output.stdout, "thread_two_output");
+            assert!(
+                !output.stdout.contains("thread_one"),
+                "output leaked between threads"
+            );
+        });
+
+        h1.join().expect("thread 1 panicked");
+        h2.join().expect("thread 2 panicked");
+    }
+
+    #[test]
+    fn concurrent_sessions_rng_independent() {
+        // RNG state should be per-session. Two threads with the same seed
+        // should get the same sequence, and different threads should not
+        // interfere with each other.
+        let handles: Vec<_> = (0..2)
+            .map(|i| {
+                std::thread::spawn(move || {
+                    let session = RSession::new();
+                    session.set_seed(42, 42);
+                    let r1 = session.unif_rand();
+                    let r2 = session.unif_rand();
+                    // Same seed should give same first value across sessions
+                    (i, r1, r2)
+                })
+            })
+            .collect();
+
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|h| h.join().expect("thread panicked"))
+            .collect();
+
+        // Both threads used seed (42,42), so they should get the same sequence
+        assert_eq!(
+            results[0].1, results[1].1,
+            "same seed should produce same first random number"
+        );
+        assert_eq!(
+            results[0].2, results[1].2,
+            "same seed should produce same second random number"
+        );
+    }
 }
