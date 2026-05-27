@@ -9,6 +9,8 @@ import com.rport.uniffi.RException
 import com.rport.uniffi.RSession
 import com.rport.uniffi.RValue
 import com.rport.uniffi.RValueKind
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,9 +61,11 @@ data class RStudioUiState(
     val currentScriptPath: String? = null,
     val recentScripts: List<ScriptFile> = emptyList(),
     val importedPath: String? = null,
+    val helpResult: String? = null,
+    val helpLoading: Boolean = false,
 )
 
-class RStudioRuntime(private val context: Context) {
+class RStudioRuntime(private val context: Context) : ViewModel() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val session = RSession()
 
@@ -199,6 +203,28 @@ class RStudioRuntime(private val context: Context) {
         }
     }
 
+    fun evaluateHelp(topicName: String) {
+        _state.update { it.copy(helpLoading = true, helpResult = null) }
+        scope.launch {
+            try {
+                val code = """paste(capture.output(print(help("${escapeRString(topicName)}"))), collapse = "\n")"""
+                val result = withContext(Dispatchers.IO) { session.evalResult(code) }
+                val output = result.output.ifBlank {
+                    result.value.stringValues.firstOrNull() ?: "No help available for '$topicName'"
+                }
+                _state.update { it.copy(helpResult = output, helpLoading = false) }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(helpResult = "Error loading help: ${e.message}", helpLoading = false)
+                }
+            }
+        }
+    }
+
+    fun clearHelpResult() {
+        _state.update { it.copy(helpResult = null) }
+    }
+
     fun clearConsole() {
         _state.update { it.copy(console = "") }
     }
@@ -207,6 +233,11 @@ class RStudioRuntime(private val context: Context) {
         session.cancelCurrentOperation()
         _state.update { it.copy(isRunning = false, status = "Cancelled") }
         appendConsole("Cancelled current operation")
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        close()
     }
 
     fun close() {
@@ -349,6 +380,13 @@ class RStudioRuntime(private val context: Context) {
             val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
         } ?: fallback
+}
+
+class RStudioRuntimeFactory(private val context: Context) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return RStudioRuntime(context) as T
+    }
 }
 
 val RValueKind.displayName: String

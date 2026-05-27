@@ -25,11 +25,10 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +43,7 @@ import com.rstudio.mobile.components.HelpViewer
 import com.rstudio.mobile.components.PlotView
 import com.rstudio.mobile.components.ScriptEditor
 import com.rstudio.mobile.runtime.RStudioRuntime
+import com.rstudio.mobile.runtime.RStudioRuntimeFactory
 import com.rstudio.mobile.runtime.RStudioUiState
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
@@ -57,7 +57,7 @@ import androidx.compose.material.icons.filled.TableRows
 @Composable
 fun RStudioApp() {
     val activity = LocalContext.current as Activity
-    val runtime = remember { RStudioRuntime(activity.applicationContext) }
+    val runtime: RStudioRuntime = viewModel(factory = RStudioRuntimeFactory(activity.applicationContext))
     val state by runtime.state.collectAsState()
     val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) runtime.importCsv(uri)
@@ -67,10 +67,6 @@ fun RStudioApp() {
     }
     val scriptExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/x-r-source")) { uri: Uri? ->
         if (uri != null) runtime.saveScriptTo(uri)
-    }
-
-    DisposableEffect(runtime) {
-        onDispose { runtime.close() }
     }
 
     val windowSizeClass = calculateWindowSizeClass(activity)
@@ -162,7 +158,12 @@ private fun PhoneLayout(
                     onNewScript = runtime::newScript,
                     onOpenRecent = runtime::openRecentScript,
                 )
-                6 -> HelpViewer()
+                6 -> HelpViewer(
+                    helpResult = state.helpResult,
+                    helpLoading = state.helpLoading,
+                    onLookupHelp = runtime::evaluateHelp,
+                    onClearHelp = runtime::clearHelpResult,
+                )
             }
         }
     }
@@ -243,7 +244,12 @@ private fun TabletLayout(
                         onNewScript = runtime::newScript,
                         onOpenRecent = runtime::openRecentScript,
                     )
-                    4 -> HelpViewer()
+                    4 -> HelpViewer(
+                        helpResult = state.helpResult,
+                        helpLoading = state.helpLoading,
+                        onLookupHelp = runtime::evaluateHelp,
+                        onClearHelp = runtime::clearHelpResult,
+                    )
                 }
             }
         }
