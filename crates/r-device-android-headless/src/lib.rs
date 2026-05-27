@@ -9,6 +9,7 @@ use std::vec::Vec;
 
 use r_graphics_engine::{
     Color, LineCap, LineJoin, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke,
+    TextAnchor,
 };
 
 /// System font paths to try when loading a default font.
@@ -122,6 +123,7 @@ fn path_to_skia(path: &Path) -> Option<tiny_skia::Path> {
             PathCommand::CubicTo(x1, y1, x2, y2, x3, y3) => {
                 pb.cubic_to(*x1, *y1, *x2, *y2, *x3, *y3);
             }
+            PathCommand::ArcTo { x, y, .. } => pb.line_to(*x, *y),
             PathCommand::Close => pb.close(),
         }
     }
@@ -143,7 +145,9 @@ fn stroke_to_skia(stroke: &Stroke) -> tiny_skia::Stroke {
             LineJoin::Round => tiny_skia::LineJoin::Round,
             LineJoin::Bevel => tiny_skia::LineJoin::Bevel,
         },
-        dash: None,
+        dash: stroke.dash_pattern.as_ref().and_then(|dp| {
+            tiny_skia::StrokeDash::new(dp.intervals.clone(), dp.offset)
+        }),
     }
 }
 
@@ -219,10 +223,25 @@ impl RenderPlot for AndroidHeadlessRenderer {
             Color::WHITE
         };
 
+        let text_width: f32 = text
+            .chars()
+            .filter(|ch| !ch.is_control())
+            .map(|ch| {
+                let (metrics, _) = font.rasterize(ch, font_size);
+                metrics.advance_width
+            })
+            .sum();
+
+        let start_x = match params.text_anchor {
+            TextAnchor::Start => pos.x,
+            TextAnchor::Middle => pos.x - text_width / 2.0,
+            TextAnchor::End => pos.x - text_width,
+        };
+
         let pw = pixmap.width() as usize;
         let ph = pixmap.height() as usize;
         let data = pixmap.data_mut();
-        let mut x_cursor = pos.x;
+        let mut x_cursor = start_x;
 
         for ch in text.chars() {
             if ch == ' ' {
@@ -343,6 +362,7 @@ mod tests {
                 font_size: 28.0,
                 text_color: Color::BLACK,
                 dpi: 96.0,
+                ..Default::default()
             },
         );
 

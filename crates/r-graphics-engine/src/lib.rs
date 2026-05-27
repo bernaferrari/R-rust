@@ -66,14 +66,23 @@ pub enum LineJoin {
     Bevel,
 }
 
+/// Dash pattern for stroked lines
+#[derive(Debug, Clone, PartialEq)]
+#[repr(C)]
+pub struct DashPattern {
+    pub intervals: Vec<f32>,
+    pub offset: f32,
+}
+
 /// Stroke parameters
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Stroke {
     pub width: f32,
     pub color: Color,
     pub cap: LineCap,
     pub join: LineJoin,
     pub miter_limit: f32,
+    pub dash_pattern: Option<DashPattern>,
 }
 
 impl Stroke {
@@ -94,6 +103,7 @@ pub enum PathCommand {
     LineTo(f32, f32),
     QuadTo(f32, f32, f32, f32),
     CubicTo(f32, f32, f32, f32, f32, f32),
+    ArcTo { rx: f32, ry: f32, x: f32, y: f32 },
     Close,
 }
 
@@ -122,6 +132,23 @@ impl Path {
         }
     }
 
+    pub fn circle(cx: f32, cy: f32, r: f32) -> Self {
+        // Approximate circle with 4 cubic Bézier segments
+        let k = 0.5522847498_f32 * r;
+        Self {
+            commands: vec![
+                PathCommand::MoveTo(cx + r, cy),
+                PathCommand::CubicTo(cx + r, cy + k, cx + k, cy + r, cx, cy + r),
+                PathCommand::CubicTo(cx - k, cy + r, cx - r, cy + k, cx - r, cy),
+                PathCommand::CubicTo(cx - r, cy - k, cx - k, cy - r, cx, cy - r),
+                PathCommand::CubicTo(cx + k, cy - r, cx + r, cy - k, cx + r, cy),
+                PathCommand::Close,
+            ],
+            anti_alias: true,
+            ..Default::default()
+        }
+    }
+
     pub fn with_fill(mut self, color: Color) -> Self {
         self.fill = color;
         self
@@ -133,12 +160,23 @@ impl Path {
     }
 }
 
+/// Text anchor/alignment
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextAnchor {
+    #[default]
+    Start,
+    Middle,
+    End,
+}
+
 /// Plot rendering parameters
 #[derive(Debug, Clone, Default)]
 pub struct PlotParameters {
     pub font_size: f32,
     pub text_color: Color,
     pub dpi: f32,
+    pub text_anchor: TextAnchor,
+    pub text_angle: f32,
 }
 
 /// RenderPlot interface

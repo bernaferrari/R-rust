@@ -652,24 +652,48 @@ fn string_literal(value: &str) -> Option<String> {
 }
 
 fn parse_color(value: &str) -> Option<Color> {
-    match value.to_ascii_lowercase().as_str() {
-        "black" => Some(Color::BLACK),
-        "blue" => Some(Color::BLUE),
-        "red" => Some(Color::RED),
-        "gray" | "grey" => Some(Color {
-            r: 128,
-            g: 128,
-            b: 128,
-            a: 255,
-        }),
-        "darkgreen" | "green" => Some(Color {
-            r: 0,
-            g: 128,
-            b: 0,
-            a: 255,
-        }),
+    let lower = value.to_ascii_lowercase();
+    if let Some(hex) = lower.strip_prefix('#') {
+        return parse_hex_color(hex);
+    }
+    match lower.as_str() {
+        "black" => Some(Color { r: 0, g: 0, b: 0, a: 255 }),
+        "red" => Some(Color { r: 255, g: 0, b: 0, a: 255 }),
+        "green" | "green3" => Some(Color { r: 0, g: 205, b: 0, a: 255 }),
+        "blue" => Some(Color { r: 0, g: 0, b: 255, a: 255 }),
+        "cyan" => Some(Color { r: 0, g: 255, b: 255, a: 255 }),
+        "magenta" => Some(Color { r: 255, g: 0, b: 255, a: 255 }),
+        "yellow" => Some(Color { r: 255, g: 255, b: 0, a: 255 }),
+        "gray" | "grey" => Some(Color { r: 190, g: 190, b: 190, a: 255 }),
+        "white" => Some(Color { r: 255, g: 255, b: 255, a: 255 }),
+        "orange" => Some(Color { r: 255, g: 165, b: 0, a: 255 }),
+        "purple" => Some(Color { r: 160, g: 32, b: 240, a: 255 }),
+        "brown" => Some(Color { r: 165, g: 42, b: 42, a: 255 }),
+        "pink" => Some(Color { r: 255, g: 192, b: 203, a: 255 }),
+        "darkgreen" => Some(Color { r: 0, g: 100, b: 0, a: 255 }),
+        "darkblue" | "navy" => Some(Color { r: 0, g: 0, b: 128, a: 255 }),
+        "darkred" => Some(Color { r: 139, g: 0, b: 0, a: 255 }),
+        "lightblue" => Some(Color { r: 173, g: 216, b: 230, a: 255 }),
+        "lightgreen" => Some(Color { r: 144, g: 238, b: 144, a: 255 }),
+        "gold" => Some(Color { r: 255, g: 215, b: 0, a: 255 }),
         _ => None,
     }
+}
+
+fn parse_hex_color(hex: &str) -> Option<Color> {
+    let len = hex.len();
+    if len != 6 && len != 8 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    let a = if len == 8 {
+        u8::from_str_radix(&hex[6..8], 16).ok()?
+    } else {
+        255
+    };
+    Some(Color { r, g, b, a })
 }
 
 fn parse_plot_type(value: &str) -> Option<PlotType> {
@@ -749,6 +773,7 @@ fn draw_series(
         font_size: 11.0,
         text_color: Color::BLACK,
         dpi: 96.0,
+        ..Default::default()
     };
 
     draw_line(renderer, left, bottom, right, bottom, Color::BLACK, 1.5);
@@ -853,6 +878,7 @@ fn draw_series(
                 font_size: 16.0,
                 text_color: Color::BLACK,
                 dpi: 96.0,
+                ..Default::default()
             },
         );
     }
@@ -868,6 +894,7 @@ fn draw_series(
                 font_size: 12.0,
                 text_color: Color::BLACK,
                 dpi: 96.0,
+                ..Default::default()
             },
         );
     }
@@ -883,6 +910,7 @@ fn draw_series(
                 font_size: 12.0,
                 text_color: Color::BLACK,
                 dpi: 96.0,
+                ..Default::default()
             },
         );
     }
@@ -898,6 +926,7 @@ fn draw_series(
             font_size: 12.0,
             text_color: Color::BLACK,
             dpi: 96.0,
+            ..Default::default()
         },
     );
 }
@@ -969,9 +998,7 @@ fn draw_line(
 }
 
 fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32, color: Color, radius: f32) {
-    renderer.draw_path(
-        &Path::rect(x - radius, y - radius, radius * 2.0, radius * 2.0).with_fill(color),
-    );
+    renderer.draw_path(&Path::circle(x, y, radius).with_fill(color));
 }
 
 impl Default for RSession {
@@ -1970,7 +1997,7 @@ tiny_generic.tinything <- function(x) {value}L
             styled.options.color,
             Color {
                 r: 0,
-                g: 128,
+                g: 205,
                 b: 0,
                 a: 255,
             }
