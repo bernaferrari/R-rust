@@ -14,6 +14,7 @@ pub const TRE_MEM_BLOCK_SIZE: usize = 1024;
 pub struct tre_list {
     pub data: *mut c_void,
     pub next: *mut tre_list,
+    pub data_size: usize,
 }
 
 pub type tre_list_t = tre_list;
@@ -63,8 +64,8 @@ pub unsafe fn tre_mem_destroy(mem: tre_mem_t) {
         let mut l = (*mem).blocks;
         while !l.is_null() {
             let tmp = (*l).next;
-            if !(*l).data.is_null() {
-                let layout = Layout::from_size_align_unchecked(TRE_MEM_BLOCK_SIZE, 1);
+            if !(*l).data.is_null() && (*l).data_size > 0 {
+                let layout = Layout::from_size_align_unchecked((*l).data_size, 1);
                 dealloc((*l).data as *mut u8, layout);
             }
             let list_layout = Layout::new::<tre_list_t>();
@@ -103,7 +104,9 @@ pub unsafe fn tre_mem_alloc_impl(
         }
 
         let mut size = size;
-        if (*mem).n < size {
+        /* Account for worst-case alignment padding in the space check. */
+        let align = std::mem::size_of::<usize>();
+        if (*mem).n < size + align {
             /* We need more memory than is available in the current block.
             Allocate a new block. */
             if provided != 0 {
@@ -114,8 +117,8 @@ pub unsafe fn tre_mem_alloc_impl(
                 (*mem).ptr = provided_block as *mut c_char;
                 (*mem).n = TRE_MEM_BLOCK_SIZE;
             } else {
-                let block_size = if size * 8 > TRE_MEM_BLOCK_SIZE {
-                    size * 8
+                let block_size = if (size + align) * 8 > TRE_MEM_BLOCK_SIZE {
+                    (size + align) * 8
                 } else {
                     TRE_MEM_BLOCK_SIZE
                 };
@@ -133,6 +136,7 @@ pub unsafe fn tre_mem_alloc_impl(
                     return ptr::null_mut();
                 }
                 (*l).data = data as *mut c_void;
+                (*l).data_size = block_size;
                 (*l).next = ptr::null_mut();
                 if !(*mem).current.is_null() {
                     (*(*mem).current).next = l;
@@ -148,9 +152,9 @@ pub unsafe fn tre_mem_alloc_impl(
 
         /* Make sure the next pointer will be aligned. */
         let ptr_addr = (*mem).ptr as usize;
-        let align = std::mem::size_of::<usize>();
-        let alignment = if ptr_addr + size % align != 0 {
-            align - (ptr_addr + size) % align
+        let end_addr = ptr_addr + size;
+        let alignment = if end_addr % align != 0 {
+            align - (end_addr % align)
         } else {
             0
         };
@@ -170,60 +174,45 @@ pub unsafe fn tre_mem_alloc_impl(
     }
 }
 
-/* Simple xmalloc/xrealloc/xfree replacements using std::alloc */
+/* Simple xmalloc/xrealloc/xfree replacements using libc malloc/free.
+   We use libc directly because Rust's alloc/dealloc requires knowing the
+   exact Layout at dealloc time, but the C-style API (xfree) doesn't pass
+   the size. libc's malloc/free track sizes internally. */
 
 pub unsafe fn xmalloc(size: usize) -> *mut c_void {
     unsafe {
         if size == 0 {
             return ptr::null_mut();
         }
-        let layout = Layout::from_size_align_unchecked(size, 1);
-        alloc(layout) as *mut c_void
+        libc::malloc(size)
     }
 }
 
 pub unsafe fn xcalloc(nmemb: usize, size: usize) -> *mut c_void {
     unsafe {
-        let total = nmemb * size;
-        if total == 0 {
+        if nmemb == 0 || size == 0 {
             return ptr::null_mut();
         }
-        let ptr = xmalloc(total);
-        if !ptr.is_null() {
-            ptr::write_bytes(ptr as *mut u8, 0, total);
-        }
-        ptr
+        libc::calloc(nmemb, size)
     }
 }
 
 pub unsafe fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
     unsafe {
         if new_size == 0 {
+            if !ptr.is_null() {
+                libc::free(ptr);
+            }
             return ptr::null_mut();
         }
-        if ptr.is_null() {
-            return xmalloc(new_size);
-        }
-
-        let old_layout = Layout::from_size_align_unchecked(new_size, 1);
-        let new_ptr = alloc(old_layout);
-        if new_ptr.is_null() {
-            return ptr::null_mut();
-        }
-        // Note: we can't know the old size, so we copy new_size bytes max.
-        // In practice the callers know the old size.
-        ptr::copy_nonoverlapping(ptr as *const u8, new_ptr, new_size);
-        dealloc(ptr as *mut u8, old_layout);
-        new_ptr as *mut c_void
+        libc::realloc(ptr, new_size)
     }
 }
 
 pub unsafe fn xfree(ptr: *mut c_void) {
-    if !ptr.is_null() {
-        // We don't know the exact layout used, but we use a reasonable default
-        // In practice, the original code used free() which works for any allocation
-        // Since we're using alloc() with Layout, we need to be more careful.
-        // For now, we skip deallocation of individual blocks since tre_mem_destroy
-        // handles bulk cleanup.
+    unsafe {
+        if !ptr.is_null() {
+            libc::free(ptr);
+        }
     }
 }

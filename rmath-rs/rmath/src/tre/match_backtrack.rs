@@ -197,8 +197,17 @@ pub unsafe fn tre_tnfa_run_backtrack(
             state = ptr::null_mut();
             pos = pos_start;
 
-            // GET_NEXT_WCHAR
+            // GET_NEXT_WCHAR — for NUL-terminated strings, break if we've
+            // gone past the terminator (the inner loop may break without
+            // breaking the outer loop when it hits NUL).
             prev_c = next_c;
+            if len < 0 && prev_c == 0 && pos_start >= 0 {
+                if match_eo >= 0 {
+                    break; // have a match, done
+                } else {
+                    break; // exhausted input, no match
+                }
+            }
             pos += 1;
             if len >= 0 && pos >= len {
                 next_c = 0;

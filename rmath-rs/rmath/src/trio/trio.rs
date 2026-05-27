@@ -661,8 +661,8 @@ fn trio_write_number<W: Write>(
         }
         pos -= 1;
     }
-    let number_start = pos + 1;
-    let number_len = MAX_CHARS_IN_UINTMAX - number_start - 1;
+    let number_start = pos;
+    let number_len = MAX_CHARS_IN_UINTMAX - number_start;
 
     let mut width = width as isize;
 
@@ -708,7 +708,7 @@ fn trio_write_number<W: Write>(
             }
             // Write number
             if !ignore_number {
-                let _ = out.write(&buffer[number_start..]);
+                let _ = out.write(&buffer[number_start..MAX_CHARS_IN_UINTMAX]);
             }
             // Now handle width (left or right padding)
             let sign_space =
@@ -806,7 +806,7 @@ fn trio_write_number<W: Write>(
 
     // Number
     if !ignore_number {
-        let _ = out.write(&buffer[number_start..]);
+        let _ = out.write(&buffer[number_start..MAX_CHARS_IN_UINTMAX]);
     }
 
     // Trailing spaces
@@ -1228,11 +1228,12 @@ fn trio_write_double<W: Write>(
     // Output integer part
     let mut int_num = integer_part;
     if int_num > f64::EPSILON {
-        let start_power = 10.0_f64.powi(integer_digits as i32 - 1);
+        let mut current_power = 10.0_f64.powi(integer_digits as i32 - 1);
         for _ in 0..integer_digits {
-            let digit = (int_num / start_power).floor() as c_int;
-            int_num -= digit as f64 * start_power;
+            let digit = (int_num / current_power).floor() as c_int;
+            int_num -= digit as f64 * current_power;
             let _ = out.write(&[digits[digit.min(9).max(0) as usize]]);
+            current_power /= base as f64;
         }
     } else {
         let _ = out.write(&[digits[0]]);
@@ -1304,9 +1305,6 @@ fn trio_format_process<W: Write>(
             i += 1;
         }
         if i >= parameters.len() {
-            break;
-        }
-        if parameters[i].param_type == FORMAT_SENTINEL {
             break;
         }
 
@@ -1581,9 +1579,11 @@ fn trio_parse(
     parameters[pos.min(MAX_PARAMETERS - 1)].param_type = FORMAT_SENTINEL;
     parameters[pos.min(MAX_PARAMETERS - 1)].begin_offset = offset as c_int;
 
-    for num in 0..=(max_param as usize) {
-        if num < MAX_PARAMETERS && used_entries[num] != 1 {
-            return trio_error_return(TRIO_EDBLREF, num as c_int);
+    if max_param >= 0 {
+        for num in 0..=(max_param as usize) {
+            if num < MAX_PARAMETERS && used_entries[num] != 1 {
+                return trio_error_return(TRIO_EDBLREF, num as c_int);
+            }
         }
     }
 
@@ -2598,7 +2598,7 @@ mod tests {
     // positional parameter instead of a literal percent escape.
 
     #[test]
-    #[ignore = "BUG: trio_write_number includes NUL byte in output buffer slice"]
+
     fn fmt_int_positive() {
         let mut args = FormatArgs::new();
         args.push_int(42);
@@ -2606,7 +2606,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: trio_write_number panics with subtract overflow for negative numbers"]
+
     fn fmt_int_negative() {
         let mut args = FormatArgs::new();
         args.push_int(-7);
@@ -2614,7 +2614,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: trio_write_number panics with subtract overflow for zero"]
+
     fn fmt_int_zero() {
         let mut args = FormatArgs::new();
         args.push_int(0);
@@ -2699,7 +2699,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: %g integer digit extraction produces wrong leading digits (100 instead of 123)"]
+
     fn fmt_general_float_normal() {
         let mut args = FormatArgs::new();
         args.push_double(123.456);
@@ -2713,7 +2713,6 @@ mod tests {
     // ---- Width and precision specifiers ----
 
     #[test]
-    #[ignore = "BUG: trio_write_number includes NUL byte in output, inflating width"]
     fn fmt_width_right_aligned() {
         let mut args = FormatArgs::new();
         args.push_int(42);
@@ -2729,7 +2728,6 @@ mod tests {
     // ---- Left-justify ----
 
     #[test]
-    #[ignore = "BUG: trio_write_number includes NUL byte in output, inflating width"]
     fn fmt_left_justify() {
         let mut args = FormatArgs::new();
         args.push_int(42);
@@ -2745,7 +2743,7 @@ mod tests {
     // ---- Zero-padding ----
 
     #[test]
-    #[ignore = "BUG: trio_write_number includes NUL byte in output"]
+
     fn fmt_zero_padding() {
         let mut args = FormatArgs::new();
         args.push_int(42);
@@ -2756,7 +2754,7 @@ mod tests {
     // ---- %% literal percent ----
 
     #[test]
-    #[ignore = "BUG: trio_parse treats %% as double-referenced positional parameter (returns TRIO_EDBLREF)"]
+
     fn fmt_literal_percent() {
         let mut args = FormatArgs::new();
         let result = trio_fmt("100%%\0", &mut args);
@@ -2826,7 +2824,7 @@ mod tests {
     // ---- Multiple arguments ----
 
     #[test]
-    #[ignore = "trio printf truncates multi-arg output — second %d loses high digit"]
+
     fn fmt_multiple_args() {
         let mut args = FormatArgs::new();
         args.push_int(10);
@@ -2838,7 +2836,7 @@ mod tests {
     // ---- Unsigned hex / octal ----
 
     #[test]
-    #[ignore = "trio printf truncates hex output — %x only emits first nibble"]
+
     fn fmt_hex_lower() {
         let mut args = FormatArgs::new();
         args.push_uint(255);
@@ -2847,7 +2845,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "trio printf truncates hex output — %X only emits first nibble"]
+
     fn fmt_hex_upper() {
         let mut args = FormatArgs::new();
         args.push_uint(255);
@@ -2856,7 +2854,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "trio printf truncates octal output — %o only emits first digit"]
+
     fn fmt_octal() {
         let mut args = FormatArgs::new();
         args.push_uint(8);

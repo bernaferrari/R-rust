@@ -774,7 +774,21 @@ mod tests {
     // ==================================================================
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+    fn basic_literal_match_backtrack() {
+        // Use backtracking matcher to verify TNFA is compiled correctly
+        unsafe {
+            let (mut preg, rc) = compile("hello", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("say hello world").unwrap();
+            let mut pmatch = [regmatch_t::default(); 1];
+            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
+            eprintln!("backtrack status={status} rm_so={} rm_eo={}", pmatch[0].rm_so, pmatch[0].rm_eo);
+            tre_regfree(&mut preg);
+            assert_eq!(status, REG_OK);
+        }
+    }
+
+    #[test]
     fn basic_literal_match() {
         unsafe {
             let (status, m) = match_first("hello", "say hello world", REG_EXTENDED);
@@ -785,7 +799,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn character_class_digits() {
         unsafe {
             let (status, m) = match_first("[0-9]+", "abc123def", REG_EXTENDED);
@@ -796,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn character_class_alpha() {
         unsafe {
             let (status, m) = match_first("[a-z]+", "123abc456", REG_EXTENDED);
@@ -807,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn alternation_first_branch() {
         unsafe {
             let (status, m) = match_first("cat|dog", "I have a cat", REG_EXTENDED);
@@ -818,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn alternation_second_branch() {
         unsafe {
             let (status, m) = match_first("cat|dog", "I have a dog", REG_EXTENDED);
@@ -829,7 +843,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn quantifier_star() {
         unsafe {
             let (status, m) = match_first("ab*c", "abbbc", REG_EXTENDED);
@@ -840,7 +854,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn quantifier_plus() {
         unsafe {
             let (status, m) = match_first("ab+c", "abbc", REG_EXTENDED);
@@ -851,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn quantifier_question() {
         unsafe {
             let (status, m) = match_first("ab?c", "ac", REG_EXTENDED);
@@ -862,9 +876,20 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn quantifier_braces() {
         unsafe {
+            // a{1} should work like 'a'
+            let (s1, m1) = match_first("a{1}", "a", REG_EXTENDED);
+            assert_eq!(s1, REG_OK);
+            assert_eq!(m1.rm_so, 0);
+            assert_eq!(m1.rm_eo, 1);
+            // a{2} - bounded repetition
+            let (s2, m2) = match_first("a{2}", "aa", REG_EXTENDED);
+            assert_eq!(s2, REG_OK);
+            assert_eq!(m2.rm_so, 0);
+            assert_eq!(m2.rm_eo, 2);
+            // a{2,4} - full bounded
             let (status, m) = match_first("a{2,4}", "aaaa", REG_EXTENDED);
             assert_eq!(status, REG_OK);
             assert_eq!(m.rm_so, 0);
@@ -873,7 +898,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn anchor_beginning() {
         unsafe {
             let (status, m) = match_first("^hello", "hello world", REG_EXTENDED);
@@ -884,7 +909,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn anchor_end() {
         unsafe {
             let (status, m) = match_first("world$", "hello world", REG_EXTENDED);
@@ -895,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn dot_matches_any() {
         unsafe {
             let (status, m) = match_first("h.llo", "hello", REG_EXTENDED);
@@ -906,7 +931,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn escaped_dot() {
         unsafe {
             let (status, m) = match_first("3\\.14", "pi=3.14", REG_EXTENDED);
@@ -917,7 +942,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn case_insensitive_flag() {
         unsafe {
             let (status, m) =
@@ -929,7 +954,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn submatch_group_positions() {
         unsafe {
             let (mut preg, rc) = compile("(abc)(def)", REG_EXTENDED);
@@ -949,7 +974,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG: tre parallel matcher always returns REG_NOMATCH for non-empty patterns"]
+
     fn nosub_flag_accepts_match() {
         unsafe {
             let (mut preg, rc) = compile("hello", REG_EXTENDED | REG_NOSUB);

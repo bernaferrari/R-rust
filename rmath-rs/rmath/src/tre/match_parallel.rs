@@ -119,7 +119,8 @@ pub unsafe fn tre_tnfa_run_parallel(
         let pbytes = std::mem::size_of::<tre_reach_pos_t>() * (*tnfa).num_states as usize;
         let xbytes = std::mem::size_of::<c_int>() * num_tags as usize;
 
-        let total_bytes = rbytes * 2 + xbytes * (*tnfa).num_states as usize * 2 + tbytes + pbytes;
+        let align_padding = (std::mem::size_of::<usize>() - 1) * 4;
+        let total_bytes = rbytes * 2 + xbytes * (*tnfa).num_states as usize * 2 + tbytes + pbytes + align_padding;
         let buf = mem::xmalloc(total_bytes);
         if buf.is_null() {
             return REG_ESPACE as c_int;
@@ -130,10 +131,10 @@ pub unsafe fn tre_tnfa_run_parallel(
         let mut tmp_tags = buf_offset as *mut c_int;
         buf_offset = buf_offset.add(tbytes);
         buf_offset = align_ptr(buf_offset);
-        let reach_next = buf_offset as *mut tre_tnfa_reach_t;
+        let mut reach_next = buf_offset as *mut tre_tnfa_reach_t;
         buf_offset = buf_offset.add(rbytes);
         buf_offset = align_ptr(buf_offset);
-        let reach = buf_offset as *mut tre_tnfa_reach_t;
+        let mut reach = buf_offset as *mut tre_tnfa_reach_t;
         buf_offset = buf_offset.add(rbytes);
         buf_offset = align_ptr(buf_offset);
         let reach_pos = buf_offset as *mut tre_reach_pos_t;
@@ -275,8 +276,8 @@ pub unsafe fn tre_tnfa_run_parallel(
 
             // Swap reach and reach_next
             let tmp = reach;
-            let reach = reach_next;
-            let reach_next = tmp;
+            reach = reach_next;
+            reach_next = tmp;
 
             // Weed out states that don't fulfill minimal matching conditions
             if (*tnfa).num_minimals != 0 && new_match != 0 {
@@ -315,8 +316,8 @@ pub unsafe fn tre_tnfa_run_parallel(
 
                 // Swap again
                 let tmp2 = reach;
-                let reach = reach_next;
-                let reach_next = tmp2;
+                reach = reach_next;
+                reach_next = tmp2;
             }
 
             // For each state in reach, find transitions

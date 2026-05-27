@@ -935,7 +935,6 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
             }
         }
 
-        ctx.re = r_start;
         REG_OK
     }
 }

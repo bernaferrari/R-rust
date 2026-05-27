@@ -689,8 +689,8 @@ fn trio_write_number<W: Write>(
         }
         pos -= 1;
     }
-    let number_start = pos + 1;
-    let number_len = MAX_CHARS_IN_UINTMAX - number_start - 1;
+    let number_start = pos;
+    let number_len = MAX_CHARS_IN_UINTMAX - number_start;
 
     let mut width = width as isize;
 
@@ -736,7 +736,7 @@ fn trio_write_number<W: Write>(
             }
             // Write number
             if !ignore_number {
-                let _ = out.write(&buffer[number_start..]);
+                let _ = out.write(&buffer[number_start..MAX_CHARS_IN_UINTMAX]);
             }
             // Now handle width (left or right padding)
             let sign_space =
@@ -834,7 +834,7 @@ fn trio_write_number<W: Write>(
 
     // Number
     if !ignore_number {
-        let _ = out.write(&buffer[number_start..]);
+        let _ = out.write(&buffer[number_start..MAX_CHARS_IN_UINTMAX]);
     }
 
     // Trailing spaces
@@ -1256,11 +1256,12 @@ fn trio_write_double<W: Write>(
     // Output integer part
     let mut int_num = integer_part;
     if int_num > f64::EPSILON {
-        let start_power = 10.0_f64.powi(integer_digits as i32 - 1);
+        let mut current_power = 10.0_f64.powi(integer_digits as i32 - 1);
         for _ in 0..integer_digits {
-            let digit = (int_num / start_power).floor() as c_int;
-            int_num -= digit as f64 * start_power;
+            let digit = (int_num / current_power).floor() as c_int;
+            int_num -= digit as f64 * current_power;
             let _ = out.write(&[digits[digit.min(9).max(0) as usize]]);
+            current_power /= base as f64;
         }
     } else {
         let _ = out.write(&[digits[0]]);
@@ -1332,9 +1333,6 @@ fn trio_format_process<W: Write>(
             i += 1;
         }
         if i >= parameters.len() {
-            break;
-        }
-        if parameters[i].param_type == FORMAT_SENTINEL {
             break;
         }
 
@@ -1607,9 +1605,11 @@ fn trio_parse(
     parameters[pos.min(MAX_PARAMETERS - 1)].param_type = FORMAT_SENTINEL;
     parameters[pos.min(MAX_PARAMETERS - 1)].begin_offset = offset as c_int;
 
-    for num in 0..=(max_param as usize) {
-        if num < MAX_PARAMETERS && used_entries[num] != 1 {
-            return trio_error_return(TRIO_EDBLREF, num as c_int);
+    if max_param >= 0 {
+        for num in 0..=(max_param as usize) {
+            if num < MAX_PARAMETERS && used_entries[num] != 1 {
+                return trio_error_return(TRIO_EDBLREF, num as c_int);
+            }
         }
     }
 

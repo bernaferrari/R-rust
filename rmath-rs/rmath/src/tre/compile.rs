@@ -801,7 +801,6 @@ unsafe fn tre_expand_ast(
                 x if x == tre_expand_ast_symbol_t::EXPAND_AFTER_ITER as c_int => {
                     let iter = (*node).obj as *mut tre_iteration_t;
                     let pos_add_last = stack::tre_stack_pop_int(stack);
-                    let saved_pos_add = stack::tre_stack_pop_int(stack);
 
                     if (*iter).min > 1 || (*iter).max > 1 {
                         let mut seq1: *mut tre_ast_node_t = ptr::null_mut();
@@ -1011,13 +1010,129 @@ unsafe fn tre_set_union(
             return ptr::null_mut();
         }
 
-        for i in 0..s1 {
-            *new_set.offset(i as isize) = *set1.offset(i as isize);
-            (*new_set.offset(i as isize)).assertions |= assertions;
+        // Copy set1 entries with tag and param merging
+        for idx in 0..s1 as isize {
+            (*new_set.offset(idx)).position = (*set1.offset(idx)).position;
+            (*new_set.offset(idx)).code_min = (*set1.offset(idx)).code_min;
+            (*new_set.offset(idx)).code_max = (*set1.offset(idx)).code_max;
+            (*new_set.offset(idx)).assertions = (*set1.offset(idx)).assertions | assertions;
+            (*new_set.offset(idx)).class = (*set1.offset(idx)).class;
+            (*new_set.offset(idx)).neg_classes = (*set1.offset(idx)).neg_classes;
+            (*new_set.offset(idx)).backref = (*set1.offset(idx)).backref;
+
+            // Merge tags: combine existing entry tags with the `tags` parameter
+            if (*set1.offset(idx)).tags.is_null() && tags.is_null() {
+                (*new_set.offset(idx)).tags = ptr::null_mut();
+            } else {
+                let mut existing_count: c_int = 0;
+                if !(*set1.offset(idx)).tags.is_null() {
+                    while *(*set1.offset(idx)).tags.offset(existing_count as isize) >= 0 {
+                        existing_count += 1;
+                    }
+                }
+                let new_tags = mem::tre_mem_alloc(
+                    mem,
+                    std::mem::size_of::<c_int>() * (existing_count + num_tags + 1) as usize,
+                ) as *mut c_int;
+                if new_tags.is_null() {
+                    return ptr::null_mut();
+                }
+                let mut j: c_int = 0;
+                while j < existing_count {
+                    *new_tags.offset(j as isize) = *(*set1.offset(idx)).tags.offset(j as isize);
+                    j += 1;
+                }
+                for k in 0..num_tags {
+                    *new_tags.offset((j + k) as isize) = *tags.offset(k as isize);
+                }
+                *new_tags.offset((j + num_tags) as isize) = -1;
+                (*new_set.offset(idx)).tags = new_tags;
+            }
+
+            // Handle params
+            if !(*set1.offset(idx)).params.is_null() {
+                (*new_set.offset(idx)).params = (*set1.offset(idx)).params;
+            }
+            if !params.is_null() {
+                if (*new_set.offset(idx)).params.is_null() {
+                    (*new_set.offset(idx)).params = params as *mut c_int;
+                } else {
+                    let new_params = mem::tre_mem_alloc(
+                        mem,
+                        std::mem::size_of::<c_int>() * TRE_PARAM_LAST,
+                    ) as *mut c_int;
+                    if new_params.is_null() {
+                        return ptr::null_mut();
+                    }
+                    for k in 0..TRE_PARAM_LAST {
+                        *new_params.add(k) = *(*new_set.offset(idx)).params.add(k);
+                        if *params.add(k) != TRE_PARAM_UNSET {
+                            *new_params.add(k) = *params.add(k);
+                        }
+                    }
+                    (*new_set.offset(idx)).params = new_params;
+                }
+            }
         }
-        for i in 0..s2 {
-            *new_set.offset((s1 + i) as isize) = *set2.offset(i as isize);
+
+        // Copy set2 entries with tag copying
+        for idx in 0..s2 as isize {
+            (*new_set.offset(s1 as isize + idx)).position = (*set2.offset(idx)).position;
+            (*new_set.offset(s1 as isize + idx)).code_min = (*set2.offset(idx)).code_min;
+            (*new_set.offset(s1 as isize + idx)).code_max = (*set2.offset(idx)).code_max;
+            (*new_set.offset(s1 as isize + idx)).assertions = (*set2.offset(idx)).assertions;
+            (*new_set.offset(s1 as isize + idx)).class = (*set2.offset(idx)).class;
+            (*new_set.offset(s1 as isize + idx)).neg_classes = (*set2.offset(idx)).neg_classes;
+            (*new_set.offset(s1 as isize + idx)).backref = (*set2.offset(idx)).backref;
+
+            // Deep copy tags for set2 entries
+            if (*set2.offset(idx)).tags.is_null() {
+                (*new_set.offset(s1 as isize + idx)).tags = ptr::null_mut();
+            } else {
+                let mut tag_count: c_int = 0;
+                while *(*set2.offset(idx)).tags.offset(tag_count as isize) >= 0 {
+                    tag_count += 1;
+                }
+                let new_tags = mem::tre_mem_alloc(
+                    mem,
+                    std::mem::size_of::<c_int>() * (tag_count + 1) as usize,
+                ) as *mut c_int;
+                if new_tags.is_null() {
+                    return ptr::null_mut();
+                }
+                for k in 0..tag_count as isize {
+                    *new_tags.offset(k) = *(*set2.offset(idx)).tags.offset(k);
+                }
+                *new_tags.offset(tag_count as isize) = -1;
+                (*new_set.offset(s1 as isize + idx)).tags = new_tags;
+            }
+
+            // Handle params for set2
+            if !(*set2.offset(idx)).params.is_null() {
+                (*new_set.offset(s1 as isize + idx)).params = (*set2.offset(idx)).params;
+            }
+            if !params.is_null() {
+                if (*new_set.offset(s1 as isize + idx)).params.is_null() {
+                    (*new_set.offset(s1 as isize + idx)).params = params as *mut c_int;
+                } else {
+                    let new_params = mem::tre_mem_alloc(
+                        mem,
+                        std::mem::size_of::<c_int>() * TRE_PARAM_LAST,
+                    ) as *mut c_int;
+                    if new_params.is_null() {
+                        return ptr::null_mut();
+                    }
+                    for k in 0..TRE_PARAM_LAST {
+                        *new_params.add(k) = *(*new_set.offset(s1 as isize + idx)).params.add(k);
+                        if *params.add(k) != TRE_PARAM_UNSET {
+                            *new_params.add(k) = *params.add(k);
+                        }
+                    }
+                    (*new_set.offset(s1 as isize + idx)).params = new_params;
+                }
+            }
         }
+
         (*new_set.offset((s1 + s2) as isize)).position = -1;
         new_set
     }
