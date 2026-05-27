@@ -5,7 +5,7 @@ fn main() -> Result<()> {
     println!("rport R interpreter (desktop host)");
     println!("Type R expressions. Enter 'q()' or Ctrl-D to quit.\n");
 
-    let mut session = r_embed::RSession::new().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut session = r_embed::RSession::new().map_err(|e| anyhow::anyhow!(e))?;
 
     let mut line_num = 1;
     loop {
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
 
         match session.eval(trimmed) {
             Ok(output) => {
-                if !output.is_empty() && output != "NULL" {
+                if !output.is_empty() {
                     println!("{output}");
                 }
             }

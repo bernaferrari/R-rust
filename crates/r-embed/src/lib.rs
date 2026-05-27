@@ -7,7 +7,7 @@
 
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 
 pub use rmath::android::{
@@ -252,6 +252,7 @@ impl RSession {
     pub fn installed_packages(&self) -> Vec<RPackageInfo> {
         let library_paths = self.runtime_info().library_paths;
         let mut packages: Vec<RPackageInfo> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
         for library_path in &library_paths {
             let Ok(entries) = std::fs::read_dir(library_path) else {
                 continue;
@@ -268,12 +269,13 @@ impl RSession {
                 else {
                     continue;
                 };
-                if packages.iter().any(|pkg| pkg.name == package_name) {
+                if seen.contains(&package_name) {
                     continue;
                 }
                 if let Some(info) =
                     package_info_from_path(&package_name, &package_dir, &library_paths)
                 {
+                    seen.insert(package_name);
                     packages.push(info);
                 }
             }
@@ -300,17 +302,18 @@ impl RSession {
 
         let result = self.inner.eval_with_cancellation_token(code, cancellation);
 
-        if let Some(message) = result.output.strip_prefix("Error: ") {
-            if message == "operation cancelled" {
-                Err(RSessionError::EvalError("operation cancelled".to_string()))
-            } else {
-                Err(RSessionError::EvalError(message.to_string()))
+        match result.typed {
+            RValue::Error(message) => {
+                if message == "operation cancelled" {
+                    Err(RSessionError::EvalError("operation cancelled".to_string()))
+                } else {
+                    Err(RSessionError::EvalError(message))
+                }
             }
-        } else {
-            Ok(EvalOutput {
+            value => Ok(EvalOutput {
                 output: result.output,
-                value: result.typed,
-            })
+                value,
+            }),
         }
     }
 
@@ -999,12 +1002,6 @@ fn draw_line(
 
 fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32, color: Color, radius: f32) {
     renderer.draw_path(&Path::circle(x, y, radius).with_fill(color));
-}
-
-impl Default for RSession {
-    fn default() -> Self {
-        Self::new().expect("failed to create R session")
-    }
 }
 
 impl Drop for RSession {
