@@ -3,6 +3,7 @@
 //! This crate provides high-level, safe bindings to the R interpreter
 //! for use from Kotlin (Android), Swift (iOS), and Python.
 
+use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -120,6 +121,15 @@ pub struct RMetadata {
 pub struct EvalResult {
     pub output: String,
     pub value: RValue,
+}
+
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum OperationStatus {
+    Pending,
+    Running,
+    Completed { result: EvalResult },
+    Failed { error: String },
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -397,6 +407,7 @@ pub struct RSession {
     cancelled: CancellationToken,
     callback: Arc<Mutex<Option<Arc<dyn SessionCallback>>>>,
     next_operation_id: Mutex<u64>,
+    operations: Arc<Mutex<HashMap<u64, OperationStatus>>>,
 }
 
 fn current_callback(
@@ -496,6 +507,13 @@ fn spawn_worker(
                     let _ = reply.send(result);
                 }
                 SessionCommand::Eval { code, reply } => {
+                    if let Some(cb) = current_callback(&callback) {
+                        cb.on_progress(ProgressUpdate {
+                            progress: 0.0,
+                            message: "Evaluating...".to_string(),
+                        });
+                    }
+
                     let result = session
                         .eval_result_cancellable(&code, &cancelled)
                         .map(|result| EvalResult {
@@ -512,6 +530,10 @@ fn spawn_worker(
                     cancelled.reset();
 
                     if let Some(cb) = current_callback(&callback) {
+                        cb.on_progress(ProgressUpdate {
+                            progress: 1.0,
+                            message: "Complete".to_string(),
+                        });
                         match &result {
                             Ok(result) => cb.on_eval_complete(result.clone()),
                             Err(e) => cb.on_error(e.to_string()),
@@ -526,6 +548,13 @@ fn spawn_worker(
                     height,
                     reply,
                 } => {
+                    if let Some(cb) = current_callback(&callback) {
+                        cb.on_progress(ProgressUpdate {
+                            progress: 0.0,
+                            message: "Rendering...".to_string(),
+                        });
+                    }
+
                     let result = session
                         .render_with_dimensions(&code, width, height)
                         .map(|pixels| PlotResult {
@@ -535,10 +564,14 @@ fn spawn_worker(
                         })
                         .map_err(|e| RError::RenderError(e.to_string()));
 
-                    if let Some(cb) = current_callback(&callback)
-                        && let Ok(plot) = &result
-                    {
-                        cb.on_plot_ready(plot.clone());
+                    if let Some(cb) = current_callback(&callback) {
+                        cb.on_progress(ProgressUpdate {
+                            progress: 1.0,
+                            message: "Complete".to_string(),
+                        });
+                        if let Ok(plot) = &result {
+                            cb.on_plot_ready(plot.clone());
+                        }
                     }
 
                     let _ = reply.send(result);
@@ -600,6 +633,7 @@ impl RSession {
             cancelled,
             callback,
             next_operation_id: Mutex::new(0),
+            operations: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -679,14 +713,38 @@ impl RSession {
     pub fn eval_async(&self, code: String) -> Result<u64, RError> {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, _) = channel();
+        let (reply_tx, reply_rx) = channel();
         let op_id = self.allocate_operation_id();
         self.cancelled.reset();
+
+        self.operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(op_id, OperationStatus::Pending);
+
         tx.send(SessionCommand::Eval {
             code,
             reply: reply_tx,
         })
         .map_err(|_| RError::SessionClosed)?;
+
+        let operations = self.operations.clone();
+        thread::spawn(move || {
+            let status = match reply_rx.recv() {
+                Ok(Ok(result)) => OperationStatus::Completed { result },
+                Ok(Err(e)) => OperationStatus::Failed {
+                    error: e.to_string(),
+                },
+                Err(_) => OperationStatus::Failed {
+                    error: "channel closed".to_string(),
+                },
+            };
+            operations
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(op_id, status);
+        });
+
         Ok(op_id)
     }
 
@@ -704,8 +762,14 @@ impl RSession {
         validate_plot_dimensions(width, height)?;
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, _) = channel();
+        let (reply_tx, reply_rx) = channel();
         let op_id = self.allocate_operation_id();
+
+        self.operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(op_id, OperationStatus::Pending);
+
         tx.send(SessionCommand::Render {
             code,
             width,
@@ -713,6 +777,29 @@ impl RSession {
             reply: reply_tx,
         })
         .map_err(|_| RError::SessionClosed)?;
+
+        let operations = self.operations.clone();
+        thread::spawn(move || {
+            let status = match reply_rx.recv() {
+                Ok(Ok(_plot)) => OperationStatus::Completed {
+                    result: EvalResult {
+                        output: "render complete".to_string(),
+                        value: empty_value(RValueKind::Null),
+                    },
+                },
+                Ok(Err(e)) => OperationStatus::Failed {
+                    error: e.to_string(),
+                },
+                Err(_) => OperationStatus::Failed {
+                    error: "channel closed".to_string(),
+                },
+            };
+            operations
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(op_id, status);
+        });
+
         Ok(op_id)
     }
 
@@ -722,6 +809,15 @@ impl RSession {
 
     pub fn cancel_current_operation(&self) {
         self.cancel();
+    }
+
+    pub fn operation_status(&self, op_id: u64) -> OperationStatus {
+        self.operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&op_id)
+            .cloned()
+            .unwrap_or(OperationStatus::Unknown)
     }
 }
 
