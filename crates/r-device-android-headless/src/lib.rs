@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::sync::OnceLock;
 use std::vec::Vec;
 
 use r_graphics_engine::{
@@ -36,15 +37,22 @@ impl std::fmt::Debug for TextFont {
     }
 }
 
+/// Globally cached system font so we only hit the filesystem once.
+static CACHED_FONT: OnceLock<Option<fontdue::Font>> = OnceLock::new();
+
 fn load_system_font() -> Option<TextFont> {
-    for path in SYSTEM_FONT_PATHS {
-        if let Ok(data) = std::fs::read(path)
-            && let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default())
-        {
-            return Some(TextFont(font));
+    let cached = CACHED_FONT.get_or_init(|| {
+        for path in SYSTEM_FONT_PATHS {
+            if let Ok(data) = std::fs::read(path)
+                && let Ok(font) =
+                    fontdue::Font::from_bytes(data, fontdue::FontSettings::default())
+            {
+                return Some(font);
+            }
         }
-    }
-    None
+        None
+    });
+    cached.clone().map(TextFont)
 }
 
 /// Android headless plot renderer.
@@ -80,6 +88,8 @@ impl Default for AndroidHeadlessRenderer {
 impl AndroidHeadlessRenderer {
     /// Create a new renderer with the given dimensions.
     pub fn new(width: u32, height: u32) -> Self {
+        let width = width.max(1);
+        let height = height.max(1);
         Self {
             width,
             height,
@@ -98,7 +108,11 @@ impl AndroidHeadlessRenderer {
 }
 
 /// Convert an r_graphics_engine::Path to a tiny_skia::Path.
-fn path_to_skia(path: &Path) -> tiny_skia::Path {
+/// Returns `None` when the path has no commands or is degenerate.
+fn path_to_skia(path: &Path) -> Option<tiny_skia::Path> {
+    if path.commands.is_empty() {
+        return None;
+    }
     let mut pb = tiny_skia::PathBuilder::new();
     for cmd in &path.commands {
         match cmd {
@@ -112,7 +126,6 @@ fn path_to_skia(path: &Path) -> tiny_skia::Path {
         }
     }
     pb.finish()
-        .unwrap_or_else(|| tiny_skia::PathBuilder::new().finish().unwrap())
 }
 
 /// Convert an r_graphics_engine::Stroke to a tiny_skia::Stroke.
@@ -143,21 +156,20 @@ impl RenderPlot for AndroidHeadlessRenderer {
 
     fn clear(&mut self, color: Color) {
         if let Some(pixmap) = &mut self.pixmap {
-            let pa = tiny_skia::PremultipliedColorU8::from_rgba(color.r, color.g, color.b, color.a)
-                .unwrap_or(tiny_skia::PremultipliedColorU8::from_rgba(0, 0, 0, 255).unwrap());
-            let skia_color =
-                tiny_skia::Color::from_rgba8(pa.red(), pa.green(), pa.blue(), pa.alpha());
+            let skia_color = tiny_skia::Color::from_rgba8(color.r, color.g, color.b, color.a);
             pixmap.fill(skia_color);
         }
     }
 
     fn draw_path(&mut self, path: &Path) {
         if let Some(pixmap) = &mut self.pixmap {
+            let Some(skia_path) = path_to_skia(path) else {
+                return;
+            };
+
             let mut paint = tiny_skia::Paint::default();
             paint.set_color_rgba8(path.fill.r, path.fill.g, path.fill.b, path.fill.a);
             paint.anti_alias = path.anti_alias;
-
-            let skia_path = path_to_skia(path);
             pixmap.fill_path(
                 &skia_path,
                 &paint,
