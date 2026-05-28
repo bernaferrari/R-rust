@@ -174,17 +174,26 @@ pub unsafe fn tre_mem_alloc_impl(
     }
 }
 
-/* Simple xmalloc/xrealloc/xfree replacements using libc malloc/free.
-   We use libc directly because Rust's alloc/dealloc requires knowing the
-   exact Layout at dealloc time, but the C-style API (xfree) doesn't pass
-   the size. libc's malloc/free track sizes internally. */
+/* Simple xmalloc/xrealloc/xfree replacements using std::alloc.
+   Since xfree doesn't receive the allocation size, we prepend a
+   usize header that stores it.  No libc dependency required. */
+
+/// Size of the hidden header prepended to each xmalloc allocation.
+const XALLOC_HEADER: usize = std::mem::size_of::<usize>();
 
 pub unsafe fn xmalloc(size: usize) -> *mut c_void {
     unsafe {
         if size == 0 {
             return ptr::null_mut();
         }
-        libc::malloc(size)
+        let total = XALLOC_HEADER + size;
+        let layout = Layout::from_size_align_unchecked(total, XALLOC_HEADER);
+        let raw = alloc(layout);
+        if raw.is_null() {
+            return ptr::null_mut();
+        }
+        *(raw as *mut usize) = size;
+        raw.add(XALLOC_HEADER) as *mut c_void
     }
 }
 
@@ -193,26 +202,46 @@ pub unsafe fn xcalloc(nmemb: usize, size: usize) -> *mut c_void {
         if nmemb == 0 || size == 0 {
             return ptr::null_mut();
         }
-        libc::calloc(nmemb, size)
+        let total_data = nmemb * size;
+        let p = xmalloc(total_data);
+        if !p.is_null() {
+            ptr::write_bytes(p as *mut u8, 0, total_data);
+        }
+        p
     }
 }
 
 pub unsafe fn xrealloc(ptr: *mut c_void, new_size: usize) -> *mut c_void {
     unsafe {
         if new_size == 0 {
-            if !ptr.is_null() {
-                libc::free(ptr);
-            }
+            xfree(ptr);
             return ptr::null_mut();
         }
-        libc::realloc(ptr, new_size)
+        if ptr.is_null() {
+            return xmalloc(new_size);
+        }
+        let raw = (ptr as *mut u8).sub(XALLOC_HEADER);
+        let old_size = *(raw as *mut usize);
+        let old_total = XALLOC_HEADER + old_size;
+        let old_layout = Layout::from_size_align_unchecked(old_total, XALLOC_HEADER);
+        let new_total = XALLOC_HEADER + new_size;
+        let new_raw = std::alloc::realloc(raw, old_layout, new_total);
+        if new_raw.is_null() {
+            return ptr::null_mut();
+        }
+        *(new_raw as *mut usize) = new_size;
+        new_raw.add(XALLOC_HEADER) as *mut c_void
     }
 }
 
 pub unsafe fn xfree(ptr: *mut c_void) {
     unsafe {
         if !ptr.is_null() {
-            libc::free(ptr);
+            let raw = (ptr as *mut u8).sub(XALLOC_HEADER);
+            let size = *(raw as *mut usize);
+            let total = XALLOC_HEADER + size;
+            let layout = Layout::from_size_align_unchecked(total, XALLOC_HEADER);
+            dealloc(raw, layout);
         }
     }
 }

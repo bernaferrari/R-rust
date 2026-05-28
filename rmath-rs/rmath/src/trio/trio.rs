@@ -1286,7 +1286,7 @@ fn trio_write_double<W: Write>(
 unsafe fn cstr_len(s: *const c_char) -> usize {
     unsafe {
         let mut len = 0usize;
-        while *s.add(len) != 0 as libc::c_char {
+        while *s.add(len) != 0 as c_char {
             len += 1;
         }
         len
@@ -1956,7 +1956,7 @@ fn trio_scan_process(
                             } else if flags & FLAGS_LONG != 0 {
                                 *(pointer as *mut c_long) = final_number as c_long;
                             } else if flags & FLAGS_SHORTSHORT != 0 {
-                                *(pointer as *mut libc::c_char) = final_number as libc::c_char;
+                                *(pointer as *mut c_char) = final_number as c_char;
                             } else if flags & FLAGS_SHORT != 0 {
                                 *(pointer as *mut i16) = final_number as i16;
                             } else {
@@ -2240,7 +2240,7 @@ fn trio_scan_process(
                         let ptr = unsafe { parameters[i].data.string };
                         if !ptr.is_null() {
                             unsafe {
-                                *ptr.add(cnt as usize) = ch as libc::c_char;
+                                *ptr.add(cnt as usize) = ch as c_char;
                             }
                         }
                     }

@@ -22,7 +22,7 @@ pub unsafe fn trio_length(string: *const c_char) -> usize {
             return 0;
         }
         let mut i = 0usize;
-        while *string.add(i) != 0 as libc::c_char {
+        while *string.add(i) != 0 as c_char {
             i += 1;
         }
         i
@@ -37,7 +37,7 @@ pub unsafe fn trio_length_max(string: *const c_char, max: usize) -> usize {
         }
         let mut i = 0usize;
         while i < max {
-            if *string.add(i) == 0 as libc::c_char {
+            if *string.add(i) == 0 as c_char {
                 break;
             }
             i += 1;
@@ -170,7 +170,7 @@ pub unsafe fn trio_equal(first: *const c_char, second: *const c_char) -> c_int {
         }
         let mut f = first;
         let mut s = second;
-        while *f != 0 as libc::c_char && *s != 0 as libc::c_char {
+        while *f != 0 as c_char && *s != 0 as c_char {
             let fc = trio_to_upper(*f as c_int) as u8;
             let sc = trio_to_upper(*s as c_int) as u8;
             if fc != sc {
@@ -179,7 +179,7 @@ pub unsafe fn trio_equal(first: *const c_char, second: *const c_char) -> c_int {
             f = f.add(1);
             s = s.add(1);
         }
-        if *f == 0 as libc::c_char && *s == 0 as libc::c_char {
+        if *f == 0 as c_char && *s == 0 as c_char {
             1
         } else {
             0
@@ -195,14 +195,14 @@ pub unsafe fn trio_equal_case(first: *const c_char, second: *const c_char) -> c_
         }
         let mut f = first;
         let mut s = second;
-        while *f != 0 as libc::c_char && *s != 0 as libc::c_char {
+        while *f != 0 as c_char && *s != 0 as c_char {
             if *f != *s {
                 return 0;
             }
             f = f.add(1);
             s = s.add(1);
         }
-        if *f == 0 as libc::c_char && *s == 0 as libc::c_char {
+        if *f == 0 as c_char && *s == 0 as c_char {
             1
         } else {
             0
@@ -251,7 +251,7 @@ pub unsafe fn trio_equal_max(first: *const c_char, max: usize, second: *const c_
         let mut f = first;
         let mut s = second;
         let mut cnt = 0usize;
-        while *f != 0 as libc::c_char && *s != 0 as libc::c_char && cnt <= max {
+        while *f != 0 as c_char && *s != 0 as c_char && cnt <= max {
             let fc = trio_to_upper(*f as c_int) as u8;
             let sc = trio_to_upper(*s as c_int) as u8;
             if fc != sc {
@@ -261,7 +261,7 @@ pub unsafe fn trio_equal_max(first: *const c_char, max: usize, second: *const c_
             s = s.add(1);
             cnt += 1;
         }
-        if cnt == max || (*f == 0 as libc::c_char && *s == 0 as libc::c_char) {
+        if cnt == max || (*f == 0 as c_char && *s == 0 as c_char) {
             1
         } else {
             0
@@ -283,7 +283,7 @@ pub unsafe fn trio_index(string: *const c_char, character: c_int) -> *mut c_char
             return ptr::null_mut();
         }
         let mut s = string;
-        while *s != 0 as libc::c_char {
+        while *s != 0 as c_char {
             if *s as c_int == character {
                 return s as *mut c_char;
             }
@@ -301,7 +301,7 @@ pub unsafe fn trio_index_last(string: *const c_char, character: c_int) -> *mut c
         }
         let mut last: *mut c_char = ptr::null_mut();
         let mut s = string;
-        while *s != 0 as libc::c_char {
+        while *s != 0 as c_char {
             if *s as c_int == character {
                 last = s as *mut c_char;
             }
@@ -328,10 +328,10 @@ pub unsafe fn trio_lower(target: *mut c_char) -> c_int {
             return 0;
         }
         let mut i = 0usize;
-        while *target.add(i) != 0 as libc::c_char {
+        while *target.add(i) != 0 as c_char {
             let c = *target.add(i) as u8;
             if c >= b'A' && c <= b'Z' {
-                *target.add(i) = (c + (b'a' - b'A')) as libc::c_char;
+                *target.add(i) = (c + (b'a' - b'A')) as c_char;
             }
             i += 1;
         }
@@ -346,10 +346,10 @@ pub unsafe fn trio_upper(target: *mut c_char) -> c_int {
             return 0;
         }
         let mut i = 0usize;
-        while *target.add(i) != 0 as libc::c_char {
+        while *target.add(i) != 0 as c_char {
             let c = *target.add(i) as u8;
             if c >= b'a' && c <= b'z' {
-                *target.add(i) = (c - (b'a' - b'A')) as libc::c_char;
+                *target.add(i) = (c - (b'a' - b'A')) as c_char;
             }
             i += 1;
         }
@@ -365,8 +365,8 @@ pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int
         let mut s = string;
         let mut p = pattern;
         while *p != b'*' as c_char {
-            if *s == 0 as libc::c_char {
-                return if *p == 0 as libc::c_char { 1 } else { 0 };
+            if *s == 0 as c_char {
+                return if *p == 0 as c_char { 1 } else { 0 };
             }
             let sc = trio_to_upper(*s as c_int) as u8;
             let pc = trio_to_upper(*p as c_int) as u8;
@@ -380,11 +380,11 @@ pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int
         while *p == b'*' as c_char {
             p = p.add(1);
         }
-        if *p == 0 as libc::c_char {
+        if *p == 0 as c_char {
             return 1;
         }
         // Use a recursive approach for wildcard matching
-        while *s != 0 as libc::c_char {
+        while *s != 0 as c_char {
             if trio_match(s.add(1), p) != 0 {
                 return 1;
             }
@@ -404,10 +404,10 @@ pub unsafe fn trio_tokenize(string: *mut c_char, delimiters: *const c_char) -> *
         }
         // Skip leading delimiters
         let mut s = string;
-        while *s != 0 as libc::c_char {
+        while *s != 0 as c_char {
             let mut is_delim = false;
             let mut d = delimiters;
-            while *d != 0 as libc::c_char {
+            while *d != 0 as c_char {
                 if *s == *d {
                     is_delim = true;
                     break;
@@ -419,15 +419,15 @@ pub unsafe fn trio_tokenize(string: *mut c_char, delimiters: *const c_char) -> *
             }
             s = s.add(1);
         }
-        if *s == 0 as libc::c_char {
+        if *s == 0 as c_char {
             return ptr::null_mut();
         }
         let token_start = s;
         // Find end of token
-        while *s != 0 as libc::c_char {
+        while *s != 0 as c_char {
             let mut is_delim = false;
             let mut d = delimiters;
-            while *d != 0 as libc::c_char {
+            while *d != 0 as c_char {
                 if *s == *d {
                     is_delim = true;
                     break;
@@ -435,7 +435,7 @@ pub unsafe fn trio_tokenize(string: *mut c_char, delimiters: *const c_char) -> *
                 d = d.add(1);
             }
             if is_delim {
-                *s = 0 as libc::c_char;
+                *s = 0 as c_char;
                 s = s.add(1);
                 break;
             }
@@ -530,12 +530,12 @@ pub unsafe fn trio_span_function(
     unsafe {
         let mut count = 0usize;
         let mut i = 0usize;
-        while *source.add(i) != 0 as libc::c_char {
-            *target.add(i) = function(*source.add(i) as c_int) as libc::c_char;
+        while *source.add(i) != 0 as c_char {
+            *target.add(i) = function(*source.add(i) as c_int) as c_char;
             i += 1;
             count += 1;
         }
-        *target.add(i) = 0 as libc::c_char;
+        *target.add(i) = 0 as c_char;
         count
     }
 }
@@ -608,7 +608,7 @@ pub unsafe fn trio_hash(string: *const c_char, _hash_type: c_int) -> c_ulong {
     unsafe {
         let mut value: c_ulong = 0;
         let mut p = string;
-        while *p != 0 as libc::c_char {
+        while *p != 0 as c_char {
             value = value.wrapping_mul(31);
             value += *p as c_ulong;
             p = p.add(1);
