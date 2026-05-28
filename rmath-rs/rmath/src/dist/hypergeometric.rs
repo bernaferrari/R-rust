@@ -13,7 +13,10 @@ use crate::dist::binomial::dbinom_raw;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use crate::special::gamma::lgammafn;
 use crate::utils::*;
 use libm::*;
@@ -620,7 +623,7 @@ pub fn rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
     rhyper_inner(nn1, nn2, kk)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::sexp::RSession;

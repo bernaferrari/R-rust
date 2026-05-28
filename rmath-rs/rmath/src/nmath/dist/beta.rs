@@ -11,7 +11,10 @@ use crate::nmath::dpq::*;
 use crate::nmath::error::*;
 use crate::nmath::rng::*;
 use crate::nmath::utils::{fmax2, fmin2};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use libm::{exp, expm1, fabs, log, log1p, pow, sqrt, trunc};
 
 const M_LN_2PI: f64 = 1.837877066409345483560659472811;

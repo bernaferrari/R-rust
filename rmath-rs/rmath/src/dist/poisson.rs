@@ -15,7 +15,10 @@ use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::lgammafn;
 use crate::special::stirlerr::stirlerr;
@@ -563,7 +566,7 @@ pub fn rpois(mu: f64) -> f64 {
     rpois_inner(mu)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::sexp::RSession;

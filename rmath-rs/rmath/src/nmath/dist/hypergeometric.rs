@@ -15,7 +15,10 @@ use crate::nmath::error::*;
 use crate::nmath::rng::*;
 use crate::nmath::special::gamma::lgammafn;
 use crate::nmath::utils::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use libm::*;
 
 const DBL_EPSILON: f64 = 2.220446049250313e-16;

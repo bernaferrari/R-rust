@@ -1,9 +1,14 @@
 // Standalone RNG: Marsaglia-MultiCarry
 // Ported from standalone/sunif.c, with state owned by the active RInstance.
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
+
 /// Set the RNG seed.
 pub fn set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
-    crate::sexp::instance::with_required_current_instance(|inst| {
+    with_required_current_instance(|inst| {
         inst.rng_state = (i1, i2);
     });
 }
@@ -13,7 +18,7 @@ pub fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
     if i1.is_null() || i2.is_null() {
         return;
     }
-    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+    with_required_current_instance(|inst| unsafe {
         *i1 = inst.rng_state.0;
         *i2 = inst.rng_state.1;
     });
@@ -23,7 +28,7 @@ pub fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
 #[must_use]
 /// This is a faithful port of the Marsaglia-MultiCarry generator.
 pub fn unif_rand() -> f64 {
-    crate::sexp::instance::with_required_current_instance(|inst| {
+    with_required_current_instance(|inst| {
         let (i1, i2) = inst.rng_state;
         let new_i1 = 36969u32.wrapping_mul(i1 & 0xFFFF).wrapping_add(i1 >> 16);
         let new_i2 = 18000u32.wrapping_mul(i2 & 0xFFFF).wrapping_add(i2 >> 16);

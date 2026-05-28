@@ -16,7 +16,10 @@ use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::{lgammafn, lgammafn1p, log1pmx};
 use crate::special::stirlerr::stirlerr;
@@ -1047,7 +1050,7 @@ pub fn rgamma(shape: f64, scale: f64) -> f64 {
     rgamma_inner(shape, scale)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::sexp::RSession;

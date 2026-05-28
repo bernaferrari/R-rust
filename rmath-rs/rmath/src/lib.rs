@@ -165,34 +165,52 @@ pub mod error;
 pub mod fprec;
 pub mod rng;
 pub mod special;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tzone;
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone_strftime;
 pub mod utils;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod xdr;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod android;
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod eval;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod graphapp;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 pub mod intl;
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod library;
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod mainutils;
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod modules;
+#[cfg(not(target_arch = "wasm32"))]
 pub use mainutils as main;
 #[allow(unused, dead_code, non_camel_case_types)]
 pub mod nmath;
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod sexp;
+#[cfg(not(target_arch = "wasm32"))]
 pub use sexp::attrib_core;
+
+/// Lightweight state shim for wasm — provides `with_required_current_instance`
+/// backed by a thread_local, so the pure-math crate compiles without the
+/// full sexp/eval/mainutils interpreter modules.
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_shim;
 #[allow(dead_code, non_camel_case_types)]
 pub mod tre;
 pub mod trio;
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod unix;

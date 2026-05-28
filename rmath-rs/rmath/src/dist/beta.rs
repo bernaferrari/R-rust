@@ -11,7 +11,10 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
 
@@ -1107,7 +1110,7 @@ pub fn rbeta(a: f64, b: f64) -> f64 {
     rbeta_inner(a, b)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::sexp::RSession;

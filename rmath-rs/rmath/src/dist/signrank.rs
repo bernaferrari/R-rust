@@ -7,7 +7,10 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
 use std::collections::HashMap;
@@ -308,7 +311,7 @@ pub fn rsignrank(n: c_double) -> c_double {
     rsignrank_inner(n)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::sexp::RSession;

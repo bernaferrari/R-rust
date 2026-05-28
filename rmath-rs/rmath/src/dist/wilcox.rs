@@ -7,7 +7,10 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use crate::special::gamma::lgammafn;
 use crate::utils::*;
 use libm::*;
@@ -387,7 +390,7 @@ pub fn rwilcox(m: c_double, n: c_double) -> c_double {
     rwilcox_inner(m, n)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::sexp::RSession;

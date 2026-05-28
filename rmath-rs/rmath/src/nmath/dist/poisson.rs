@@ -19,7 +19,10 @@ use crate::nmath::special::bd0::ebd0;
 use crate::nmath::special::gamma::lgammafn;
 use crate::nmath::special::stirlerr::stirlerr;
 use crate::nmath::utils::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use libm::*;
 
 const M_SQRT_2PI: f64 = 2.50662827463100050241576528481104525301; /* sqrt(2*pi) */

@@ -20,7 +20,10 @@
 use libm::*;
 use std::os::raw::{c_char, c_int};
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 
 // =====================================================================
 // Inline BLAS replacements
@@ -2870,7 +2873,7 @@ unsafe fn prn3lb(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use crate::sexp::instance::RInstance;
 

@@ -19,7 +19,10 @@ use crate::nmath::special::bd0::ebd0;
 use crate::nmath::special::gamma::{lgammafn, lgammafn1p, log1pmx, logcf};
 use crate::nmath::special::stirlerr::stirlerr;
 use crate::nmath::utils::*;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use libm::{exp, expm1, fabs, floor, log, log1p, pow, sqrt};
 
 const X_LRG: f64 = 2.86111748575702815380240589208115399625e+307; // = 2^1023 / pi
