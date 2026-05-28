@@ -207,12 +207,12 @@ fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
                     for _l in 1..=nend {
                         n -= 1;
                         en -= 2.0;
-                        let cc = bb;
+                        let mut cc = bb;
                         bb = aa;
                         // Re-normalize to avoid overflow
                         if nend > 100 && aa > 1e200 {
                             // multiply by 2^-900 = 1.18e-271
-                            let _cc = ldexp(cc, -900);
+                            cc = ldexp(cc, -900);
                             bb = ldexp(bb, -900);
                             sum = ldexp(sum, -900);
                         }

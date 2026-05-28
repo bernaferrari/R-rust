@@ -1269,25 +1269,31 @@ fn trio_write_double<W: Write>(
 
     // Output fraction
     if precision > 0 || (flags & FLAGS_ALTERNATIVE != 0) {
-        let _ = out.write(b".");
-        let mut trailing_zeros = 0;
-        for _ in 0..precision {
-            fraction_part *= 10.0;
-            let d = fraction_part.floor() as c_int;
-            fraction_part -= d as f64;
-            if d == 0 && !keep_trailing {
-                trailing_zeros += 1;
-            } else {
-                for _ in 0..trailing_zeros {
-                    let _ = out.write(&[digits[0]]);
-                }
-                trailing_zeros = 0;
+        if keep_trailing {
+            let _ = out.write(b".");
+            for _ in 0..precision {
+                fraction_part *= 10.0;
+                let d = fraction_part.floor() as c_int;
+                fraction_part -= d as f64;
                 let _ = out.write(&[digits[d.min(9).max(0) as usize]]);
             }
-        }
-        if keep_trailing {
-            for _ in 0..trailing_zeros {
-                let _ = out.write(&[digits[0]]);
+        } else {
+            // %g mode: collect digits, strip trailing zeros, skip dot if empty
+            let mut frac_digits = Vec::new();
+            for _ in 0..precision {
+                fraction_part *= 10.0;
+                let d = fraction_part.floor() as c_int;
+                fraction_part -= d as f64;
+                frac_digits.push(d.min(9).max(0) as usize);
+            }
+            while frac_digits.last() == Some(&0) {
+                frac_digits.pop();
+            }
+            if !frac_digits.is_empty() {
+                let _ = out.write(b".");
+                for &d in &frac_digits {
+                    let _ = out.write(&[digits[d]]);
+                }
             }
         }
     }

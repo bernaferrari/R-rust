@@ -973,7 +973,7 @@ pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
             let sym_val = symbol;
 
             if sym_val == tre_parse_re_stack_symbol_t::PARSE_RE as c_int {
-                if !(ctx.cflags & REG_LITERAL) != 0 && ctx.cflags & REG_EXTENDED != 0 {
+                if (ctx.cflags & REG_LITERAL) == 0 && (ctx.cflags & REG_EXTENDED) != 0 {
                     stack::tre_stack_push_int(
                         stack,
                         tre_parse_re_stack_symbol_t::PARSE_UNION as c_int,

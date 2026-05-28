@@ -1241,25 +1241,31 @@ fn trio_write_double<W: Write>(
 
     // Output fraction
     if precision > 0 || (flags & FLAGS_ALTERNATIVE != 0) {
-        let _ = out.write(b".");
-        let mut trailing_zeros = 0;
-        for _ in 0..precision {
-            fraction_part *= 10.0;
-            let d = fraction_part.floor() as c_int;
-            fraction_part -= d as f64;
-            if d == 0 && !keep_trailing {
-                trailing_zeros += 1;
-            } else {
-                for _ in 0..trailing_zeros {
-                    let _ = out.write(&[digits[0]]);
-                }
-                trailing_zeros = 0;
+        if keep_trailing {
+            let _ = out.write(b".");
+            for _ in 0..precision {
+                fraction_part *= 10.0;
+                let d = fraction_part.floor() as c_int;
+                fraction_part -= d as f64;
                 let _ = out.write(&[digits[d.min(9).max(0) as usize]]);
             }
-        }
-        if keep_trailing {
-            for _ in 0..trailing_zeros {
-                let _ = out.write(&[digits[0]]);
+        } else {
+            // %g mode: collect digits, strip trailing zeros, skip dot if empty
+            let mut frac_digits = Vec::new();
+            for _ in 0..precision {
+                fraction_part *= 10.0;
+                let d = fraction_part.floor() as c_int;
+                fraction_part -= d as f64;
+                frac_digits.push(d.min(9).max(0) as usize);
+            }
+            while frac_digits.last() == Some(&0) {
+                frac_digits.pop();
+            }
+            if !frac_digits.is_empty() {
+                let _ = out.write(b".");
+                for &d in &frac_digits {
+                    let _ = out.write(&[digits[d]]);
+                }
             }
         }
     }
@@ -2985,5 +2991,160 @@ mod tests {
     fn wildcard_match_case_insensitive() {
         assert!(trio_match_impl("Hello", "hello"));
         assert!(trio_match_impl("HELLO", "h?llo"));
+    }
+
+    // ==================================================================
+    // Extended coverage: edge cases and regression tests
+    // ==================================================================
+
+    #[test]
+    fn fmt_three_int_args() {
+        let mut args = FormatArgs::new();
+        args.push_int(1);
+        args.push_int(2);
+        args.push_int(3);
+        assert_eq!(trio_fmt("%d+%d=%d\0", &mut args), "1+2=3");
+    }
+
+    #[test]
+    fn fmt_mixed_string_int_double() {
+        let mut args = FormatArgs::new();
+        let s = std::ffi::CString::new("hello").unwrap();
+        args.push_string(s.as_ptr() as *mut c_char);
+        args.push_int(42);
+        args.push_double(3.14);
+        assert_eq!(trio_fmt("%s %d %.2f\0", &mut args), "hello 42 3.14");
+    }
+
+    #[test]
+    fn fmt_percent_literal_regression() {
+        // Regression: %% was broken because FORMAT_SENTINEL broke early
+        let mut args = FormatArgs::new();
+        assert_eq!(trio_fmt("100%%\0", &mut args), "100%");
+    }
+
+    #[test]
+    fn fmt_percent_with_int_arg() {
+        let mut args = FormatArgs::new();
+        args.push_int(50);
+        assert_eq!(trio_fmt("%d%%\0", &mut args), "50%");
+    }
+
+    #[test]
+    fn fmt_percent_between_args() {
+        let mut args = FormatArgs::new();
+        args.push_int(1);
+        args.push_int(2);
+        assert_eq!(trio_fmt("%d %% %d\0", &mut args), "1 % 2");
+    }
+
+    #[test]
+    fn fmt_g_small_value_regression() {
+        // Regression: %g digit extraction was wrong without start_power division
+        let mut args = FormatArgs::new();
+        args.push_double(0.001);
+        let result = trio_fmt("%g\0", &mut args);
+        assert_eq!(result, "0.001");
+    }
+
+    #[test]
+    fn fmt_g_medium_value() {
+        let mut args = FormatArgs::new();
+        args.push_double(123456.0);
+        let result = trio_fmt("%g\0", &mut args);
+        assert_eq!(result, "123456");
+    }
+
+    #[test]
+    fn fmt_g_scientific_threshold() {
+        // %g uses scientific notation for very large values
+        let mut args = FormatArgs::new();
+        args.push_double(1e10);
+        let result = trio_fmt("%g\0", &mut args);
+        assert!(result.contains('e') || result.contains('E'),
+                "expected scientific notation for 1e10, got '{}'", result);
+    }
+
+    #[test]
+    fn fmt_hex_upper_255() {
+        let mut args = FormatArgs::new();
+        args.push_int(255);
+        assert_eq!(trio_fmt("%X\0", &mut args), "FF");
+    }
+
+    #[test]
+    fn fmt_hex_lower_255() {
+        let mut args = FormatArgs::new();
+        args.push_int(255);
+        assert_eq!(trio_fmt("%x\0", &mut args), "ff");
+    }
+
+    #[test]
+    fn fmt_octal_eight() {
+        let mut args = FormatArgs::new();
+        args.push_int(8);
+        assert_eq!(trio_fmt("%o\0", &mut args), "10");
+    }
+
+    #[test]
+    fn fmt_unsigned_int() {
+        let mut args = FormatArgs::new();
+        args.push_int(42);
+        assert_eq!(trio_fmt("%u\0", &mut args), "42");
+    }
+
+    #[test]
+    fn fmt_string_zero_precision() {
+        // %.0s should output nothing
+        let mut args = FormatArgs::new();
+        let s = std::ffi::CString::new("hello").unwrap();
+        args.push_string(s.as_ptr() as *mut c_char);
+        assert_eq!(trio_fmt("%.0s\0", &mut args), "");
+    }
+
+    #[test]
+    fn fmt_zero_padded_width() {
+        let mut args = FormatArgs::new();
+        args.push_int(42);
+        assert_eq!(trio_fmt("%05d\0", &mut args), "00042");
+    }
+
+    #[test]
+    fn fmt_zero_padded_negative() {
+        let mut args = FormatArgs::new();
+        args.push_int(-42);
+        assert_eq!(trio_fmt("%06d\0", &mut args), "-00042");
+    }
+
+    #[test]
+    fn fmt_plus_sign_flag() {
+        let mut args = FormatArgs::new();
+        args.push_int(42);
+        assert_eq!(trio_fmt("%+d\0", &mut args), "+42");
+    }
+
+    #[test]
+    fn fmt_space_sign_flag() {
+        let mut args = FormatArgs::new();
+        args.push_int(42);
+        assert_eq!(trio_fmt("% d\0", &mut args), " 42");
+    }
+
+    #[test]
+    fn fmt_hash_hex_prefix() {
+        let mut args = FormatArgs::new();
+        args.push_int(255);
+        assert_eq!(trio_fmt("%#x\0", &mut args), "0xff");
+    }
+
+    #[test]
+    fn fmt_repeated_calls_no_corruption() {
+        // Regression: run many format calls to detect memory corruption
+        for i in 0i64..20 {
+            let mut args = FormatArgs::new();
+            args.push_int(i);
+            let result = trio_fmt("%d\0", &mut args);
+            assert_eq!(result, i.to_string());
+        }
     }
 }

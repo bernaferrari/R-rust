@@ -985,4 +985,289 @@ mod tests {
             tre_regfree(&mut preg);
         }
     }
+
+    // ==================================================================
+    // Extended coverage: brace quantifiers (regression for parse.rs fix)
+    // ==================================================================
+
+    #[test]
+    fn brace_exact_match_boundary() {
+        unsafe {
+            // a{3} should match exactly 3, not 2 or 4
+            let (s, _) = match_first("a{3}", "aa", REG_EXTENDED);
+            assert_eq!(s, REG_NOMATCH, "a{{3}} should NOT match 'aa'");
+            let (s, m) = match_first("a{3}", "aaa", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 3);
+            // In "aaaa", should still match first 3
+            let (s, m) = match_first("a{3}", "aaaa", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 3);
+        }
+    }
+
+    #[test]
+    fn brace_range_min_max() {
+        unsafe {
+            let (s, _) = match_first("a{2,4}", "a", REG_EXTENDED);
+            assert_eq!(s, REG_NOMATCH, "a{{2,4}} should NOT match single 'a'");
+            let (s, m) = match_first("a{2,4}", "aa", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_eo - m.rm_so, 2);
+            let (s, m) = match_first("a{2,4}", "aaaaaa", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_eo - m.rm_so, 4); // greedy: max 4
+        }
+    }
+
+    #[test]
+    fn brace_zero_min() {
+        unsafe {
+            // a{0,2} should match empty at position 0 when no 'a'
+            let (s, m) = match_first("a{0,2}", "bbb", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 0); // empty match
+        }
+    }
+
+    #[test]
+    fn brace_in_larger_pattern() {
+        unsafe {
+            let (s, m) = match_first("ab{2}c", "abbc", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 4);
+            let (s, _) = match_first("ab{2}c", "abc", REG_EXTENDED);
+            assert_eq!(s, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn brace_with_alternation() {
+        unsafe {
+            let (s, m) = match_first("(ab|cd){2}", "abcd", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 4);
+        }
+    }
+
+    // ==================================================================
+    // Extended coverage: backtracking matcher
+    // ==================================================================
+
+    #[test]
+    #[ignore] // backtracking matcher does not yet support alternation
+    fn backtrack_alternation() {
+        unsafe {
+            let (mut preg, rc) = compile("cat|dog", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("the dog ran").unwrap();
+            let mut pmatch = [regmatch_t::default(); 1];
+            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
+            assert_eq!(status, REG_OK);
+            assert_eq!(pmatch[0].rm_so, 4);
+            assert_eq!(pmatch[0].rm_eo, 7);
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    #[ignore] // backtracking matcher does not yet support quantifiers
+    fn backtrack_quantifiers() {
+        unsafe {
+            let (mut preg, rc) = compile("a+b", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("xaaab").unwrap();
+            let mut pmatch = [regmatch_t::default(); 1];
+            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
+            assert_eq!(status, REG_OK);
+            assert_eq!(pmatch[0].rm_so, 1);
+            assert_eq!(pmatch[0].rm_eo, 5);
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn backtrack_no_match() {
+        unsafe {
+            let (mut preg, rc) = compile("xyz", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("abc").unwrap();
+            let mut pmatch = [regmatch_t::default(); 1];
+            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
+            assert_eq!(status, REG_NOMATCH);
+            tre_regfree(&mut preg);
+        }
+    }
+
+    // ==================================================================
+    // Extended coverage: capture groups and submatches
+    // ==================================================================
+
+    #[test]
+    fn nested_capture_groups() {
+        unsafe {
+            let (mut preg, rc) = compile("((a+)(b+))", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("xaaabb").unwrap();
+            let mut pmatch = [regmatch_t::default(); 4];
+            let status = tre_regexec(&preg, input.as_ptr(), 4, pmatch.as_mut_ptr(), 0);
+            assert_eq!(status, REG_OK);
+            // group 0: whole match
+            assert_eq!(pmatch[0].rm_so, 1);
+            assert_eq!(pmatch[0].rm_eo, 6);
+            // group 1: ((a+)(b+))
+            assert_eq!(pmatch[1].rm_so, 1);
+            assert_eq!(pmatch[1].rm_eo, 6);
+            // group 2: (a+)
+            assert_eq!(pmatch[2].rm_so, 1);
+            assert_eq!(pmatch[2].rm_eo, 4);
+            // group 3: (b+)
+            assert_eq!(pmatch[3].rm_so, 4);
+            assert_eq!(pmatch[3].rm_eo, 6);
+            tre_regfree(&mut preg);
+        }
+    }
+
+    #[test]
+    fn capture_with_alternation() {
+        unsafe {
+            let (mut preg, rc) = compile("(cat|dog) food", REG_EXTENDED);
+            assert_eq!(rc, REG_OK);
+            let input = CString::new("buy dog food").unwrap();
+            let mut pmatch = [regmatch_t::default(); 2];
+            let status = tre_regexec(&preg, input.as_ptr(), 2, pmatch.as_mut_ptr(), 0);
+            assert_eq!(status, REG_OK);
+            assert_eq!(pmatch[0].rm_so, 4);
+            assert_eq!(pmatch[0].rm_eo, 12);
+            assert_eq!(pmatch[1].rm_so, 4);
+            assert_eq!(pmatch[1].rm_eo, 7);
+            tre_regfree(&mut preg);
+        }
+    }
+
+    // ==================================================================
+    // Extended coverage: special patterns and edge cases
+    // ==================================================================
+
+    #[test]
+    fn single_char_pattern() {
+        unsafe {
+            let (s, m) = match_first("x", "abxcd", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 2);
+            assert_eq!(m.rm_eo, 3);
+        }
+    }
+
+    #[test]
+    fn full_string_match() {
+        unsafe {
+            let (s, m) = match_first("^exact$", "exact", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 5);
+        }
+    }
+
+    #[test]
+    fn full_string_no_match() {
+        unsafe {
+            let (s, _) = match_first("^exact$", "not exact", REG_EXTENDED);
+            assert_eq!(s, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn repeated_matches_first() {
+        unsafe {
+            // Should find the FIRST occurrence
+            let (s, m) = match_first("ab", "ababab", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 2);
+        }
+    }
+
+    #[test]
+    fn dot_star_greedy() {
+        unsafe {
+            let (s, m) = match_first("a.*b", "axxbxxb", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 7); // greedy: matches to last 'b'
+        }
+    }
+
+    #[test]
+    fn newline_handling_default() {
+        unsafe {
+            // Without REG_NEWLINE, dot matches newline
+            let (s, m) = match_first("a.b", "a\nb", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 3);
+        }
+    }
+
+    #[test]
+    fn newline_handling_flag() {
+        unsafe {
+            // With REG_NEWLINE, dot does NOT match newline
+            let (s, _) = match_first("a.b", "a\nb", REG_EXTENDED | REG_NEWLINE);
+            assert_eq!(s, REG_NOMATCH);
+        }
+    }
+
+    #[test]
+    fn basic_mode_literal_braces() {
+        unsafe {
+            // In basic mode, { is literal unless preceded by backslash
+            let (s, m) = match_first("{1}", "{1}", REG_BASIC);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 3);
+        }
+    }
+
+    #[test]
+    fn character_class_negated() {
+        unsafe {
+            let (s, m) = match_first("[^0-9]+", "abc123", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 3);
+        }
+    }
+
+    #[test]
+    fn character_class_special_chars() {
+        unsafe {
+            // Hyphen at start of class is literal
+            let (s, m) = match_first("[-a]", "-x", REG_EXTENDED);
+            assert_eq!(s, REG_OK);
+            assert_eq!(m.rm_so, 0);
+            assert_eq!(m.rm_eo, 1);
+        }
+    }
+
+    #[test]
+    fn multiple_sequential_tests_no_corruption() {
+        // Regression: previous SIGBUS was caused by memory corruption
+        // between test runs. Run many patterns sequentially.
+        unsafe {
+            for _ in 0..10 {
+                let (s, _) = match_first("hello", "hello world", REG_EXTENDED);
+                assert_eq!(s, REG_OK);
+                let (s, _) = match_first("[0-9]+", "abc123", REG_EXTENDED);
+                assert_eq!(s, REG_OK);
+                let (s, _) = match_first("a{2,4}", "aaaa", REG_EXTENDED);
+                assert_eq!(s, REG_OK);
+            }
+        }
+    }
 }
