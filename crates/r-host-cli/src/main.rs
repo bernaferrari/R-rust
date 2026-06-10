@@ -6,6 +6,7 @@ fn main() -> Result<()> {
     println!("Type R expressions. Enter 'q()' or Ctrl-D to quit.\n");
 
     let mut session = r_embed::RSession::new().map_err(|e| anyhow::anyhow!(e))?;
+    session.enable_host_process_capabilities();
 
     let mut line_num = 1;
     loop {

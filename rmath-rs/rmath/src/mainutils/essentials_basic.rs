@@ -188,6 +188,9 @@ pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return R_NilValue();
         }
+        if crate::mainutils::essentials::sexp_has_class(x, "data.frame") {
+            return crate::mainutils::essentials::do_print_data_frame(_call, _op, args, _rho);
+        }
         if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
             crate::sexp::output::print_value(sexp);
         }

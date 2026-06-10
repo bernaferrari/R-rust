@@ -443,17 +443,10 @@ fn spawn_worker(
     cancelled: CancellationToken,
 ) {
     thread::spawn(move || {
-        let mut session = match r_embed::RSession::new() {
-            Ok(s) => s,
-            Err(e) => {
-                if let Some(cb) = current_callback(&callback) {
-                    cb.on_error(format!("init failed: {e}"));
-                }
-                return;
-            }
-        };
+        let worker_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut session = r_embed::RSession::new().expect("worker session init");
 
-        while let Ok(cmd) = cmd_rx.recv() {
+            while let Ok(cmd) = cmd_rx.recv() {
             match cmd {
                 SessionCommand::ConfigurePaths { paths, reply } => {
                     let embed_paths = r_embed::AndroidRuntimePaths::new(
@@ -580,6 +573,22 @@ fn spawn_worker(
                     session.close();
                     break;
                 }
+            }
+            }
+        }));
+
+        if let Err(payload) = worker_result {
+            let message = payload
+                .downcast_ref::<String>()
+                .map(|s| s.clone())
+                .or_else(|| {
+                    payload
+                        .downcast_ref::<&str>()
+                        .map(|s| (*s).to_string())
+                })
+                .unwrap_or_else(|| "interpreter worker panicked".to_string());
+            if let Some(cb) = current_callback(&callback) {
+                cb.on_error(message);
             }
         }
     });

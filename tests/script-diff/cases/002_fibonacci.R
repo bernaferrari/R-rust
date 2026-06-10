@@ -1,0 +1,2 @@
+f <- function(n) if (n < 2) n else f(n - 1) + f(n - 2)
+f(15)

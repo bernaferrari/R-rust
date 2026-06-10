@@ -1,0 +1,1 @@
+print(data.frame(x = 1:3, y = letters[1:3]), row.names = FALSE)

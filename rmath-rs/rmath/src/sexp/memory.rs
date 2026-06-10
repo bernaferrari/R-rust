@@ -8,6 +8,7 @@
 //! single R expression evaluation.
 
 use std::alloc::{Layout, alloc, dealloc};
+use std::collections::HashSet;
 use std::ptr::{self};
 
 use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
@@ -127,6 +128,10 @@ pub struct RArena {
     data_bufs: Vec<DataBuffer>,
     /// Free list of reclaimed SEXP pointers available for reuse.
     free_list: Vec<SEXP>,
+    /// O(1) membership for active node pointers.
+    active_addrs: HashSet<usize>,
+    /// O(1) membership for free-list pointers.
+    free_addrs: HashSet<usize>,
     /// Total bytes allocated for tracking.
     total_bytes_allocated: usize,
     /// Optional budget to limit arena growth.
@@ -140,6 +145,8 @@ impl RArena {
             nodes: Vec::new(),
             data_bufs: Vec::new(),
             free_list: Vec::new(),
+            active_addrs: HashSet::new(),
+            free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
             budget: ArenaBudget::unlimited(),
         }
@@ -151,9 +158,39 @@ impl RArena {
             nodes: Vec::new(),
             data_bufs: Vec::new(),
             free_list: Vec::new(),
+            active_addrs: HashSet::new(),
+            free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
             budget,
         }
+    }
+
+    fn track_node_active(&mut self, ptr: SEXP) {
+        if !ptr.is_null() {
+            self.active_addrs.insert(ptr as usize);
+            self.free_addrs.remove(&(ptr as usize));
+        }
+    }
+
+    fn track_node_freed(&mut self, ptr: SEXP) {
+        if !ptr.is_null() {
+            self.active_addrs.remove(&(ptr as usize));
+            self.free_addrs.insert(ptr as usize);
+        }
+    }
+
+    fn reuse_free_node(&mut self, sexptype: SEXPTYPE) -> Option<SEXP> {
+        let ptr = self.free_list.pop()?;
+        unsafe {
+            *ptr = SexprecCore::new(sexptype);
+        }
+        self.track_node_active(ptr);
+        Some(ptr)
+    }
+
+    fn register_new_node(&mut self, ptr: SEXP) -> SEXP {
+        self.track_node_active(ptr);
+        ptr
     }
 
     /// Return the current arena budget.
@@ -206,22 +243,16 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        if let Some(ptr) = self.free_list.pop() {
-            unsafe {
-                *ptr = SexprecCore::new(sexptype);
-            }
+        if let Some(ptr) = self.reuse_free_node(sexptype) {
             return ptr;
         }
 
-        let active_nodes = self.nodes.len() - self.free_list.len();
+        let active_nodes = self.active_addrs.len();
         let should_gc =
             active_nodes > GC_TRIGGER_THRESHOLD || self.total_bytes_allocated > GC_BYTE_THRESHOLD;
         if should_gc {
-            crate::sexp::gengc::minor_gc();
-            if let Some(ptr) = self.free_list.pop() {
-                unsafe {
-                    *ptr = SexprecCore::new(sexptype);
-                }
+            crate::sexp::gengc::maybe_collect_during_alloc();
+            if let Some(ptr) = self.reuse_free_node(sexptype) {
                 return ptr;
             }
         }
@@ -234,7 +265,7 @@ impl RArena {
         let ptr: SEXP = &mut *boxed as *mut _;
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
-        ptr
+        self.register_new_node(ptr)
     }
 
     /// Allocate a scalar node and return an arena-scoped safe wrapper.
@@ -256,7 +287,7 @@ impl RArena {
         }
 
         if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
-            crate::sexp::gengc::minor_gc();
+            crate::sexp::gengc::maybe_collect_during_alloc();
         }
 
         let elem_size = sexp_elem_size(sexptype);
@@ -303,7 +334,7 @@ impl RArena {
         let ptr: SEXP = &mut *boxed as *mut _;
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
-        ptr
+        self.register_new_node(ptr)
     }
 
     /// Allocate a vector node and return an arena-scoped safe wrapper.
@@ -365,7 +396,7 @@ impl RArena {
 
         // Run GC if approaching thresholds (same as alloc_vector)
         if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
-            crate::sexp::gengc::minor_gc();
+            crate::sexp::gengc::maybe_collect_during_alloc();
         }
 
         let mut boxed = Box::new(SexprecCore::new_vector(sexptype, length));
@@ -392,7 +423,7 @@ impl RArena {
         let ptr: SEXP = &mut *boxed as *mut _;
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
-        Ok(ptr)
+        Ok(self.register_new_node(ptr))
     }
 
     /// Allocate a vector node and return an arena-scoped safe wrapper with a
@@ -448,7 +479,7 @@ impl RArena {
         self.register_data_buffer(data_ptr, layout);
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
-        ptr
+        self.register_new_node(ptr)
     }
 
     /// Allocate a CHARSXP and return an arena-scoped safe wrapper.
@@ -512,12 +543,12 @@ impl RArena {
         let ptr: SEXP = &mut *node as *mut _;
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(node);
-        ptr
+        self.register_new_node(ptr)
     }
 
     /// Get the number of nodes allocated in this arena.
     pub fn node_count(&self) -> usize {
-        self.nodes.len() - self.free_list.len()
+        self.active_addrs.len()
     }
 
     /// Return true if this pointer is one of the arena's active nodes.
@@ -525,8 +556,7 @@ impl RArena {
         if ptr.is_null() {
             return false;
         }
-        self.nodes.iter().any(|b| std::ptr::eq(&**b, ptr))
-            && !self.free_list.iter().any(|free| std::ptr::eq(*free, ptr))
+        self.active_addrs.contains(&(ptr as usize))
     }
 
     /// Wrap an active arena-owned pointer in a safe `Sexp`.
@@ -550,7 +580,7 @@ impl RArena {
     /// Iterate over nodes that are currently active, excluding free-list slots.
     pub(crate) fn active_nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
         self.nodes()
-            .filter(|ptr| !self.free_list.iter().any(|free| free == ptr))
+            .filter(|ptr| self.active_addrs.contains(&(*ptr as usize)))
     }
 
     /// Free a node by adding it to the free list for reuse.
@@ -558,15 +588,10 @@ impl RArena {
         if ptr.is_null() {
             return;
         }
-        if self.free_list.contains(&ptr) {
+        if self.free_addrs.contains(&(ptr as usize)) {
             return;
         }
-        let addr = ptr as usize;
-        let found = self
-            .nodes
-            .iter()
-            .any(|b| &**b as *const _ as *const _ as usize == addr);
-        if !found {
+        if !self.active_addrs.contains(&(ptr as usize)) {
             return;
         }
 
@@ -586,6 +611,7 @@ impl RArena {
         }
 
         self.free_list.push(ptr);
+        self.track_node_freed(ptr);
     }
 
     /// Get the fragmentation ratio (freed / total capacity).

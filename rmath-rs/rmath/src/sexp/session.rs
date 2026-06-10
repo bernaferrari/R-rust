@@ -49,6 +49,7 @@ use super::instance::{
 };
 use super::memory::{ArenaBudget, RArena};
 use super::object::Sexp;
+use super::protect::protect_sexp;
 #[cfg(test)]
 use super::protect::protect;
 #[cfg(test)]
@@ -418,6 +419,80 @@ impl RSession {
     /// Embedding facades use this to convert a borrowed `Sexp` into owned
     /// values without depending on any ambient current session after the eval
     /// call has returned.
+    /// Parse and evaluate a multi-expression R script.
+    pub fn eval_script_with_output_capture<'session>(
+        &'session mut self,
+        code: &str,
+    ) -> (
+        RResult<Sexp<'session>>,
+        super::output::RCapturedOutput,
+        bool,
+    ) {
+        self.eval_script_with_output_capture_then(code, |result, output, visible| {
+            (result, output, visible)
+        })
+    }
+
+    pub(crate) fn eval_script_with_output_capture_then<'session, T, F>(
+        &'session mut self,
+        code: &str,
+        f: F,
+    ) -> T
+    where
+        F: FnOnce(RResult<Sexp<'session>>, super::output::RCapturedOutput, bool) -> T,
+    {
+        if !self.active {
+            return f(
+                Err(REvalError {
+                    message: "session is closed".to_string(),
+                }),
+                super::output::RCapturedOutput::default(),
+                false,
+            );
+        }
+
+        let expressions = {
+            let _guard = self.activate();
+            crate::eval::parser::parse_expressions(code, &mut self.instance.arena)
+        };
+        let expressions = match expressions {
+            Ok(exprs) => exprs,
+            Err(err) => {
+                return f(
+                    Err(REvalError {
+                        message: err.to_string(),
+                    }),
+                    super::output::RCapturedOutput::default(),
+                    false,
+                );
+            }
+        };
+
+        self.with_active(|| {
+            self.instance.output_capture.borrow_mut().start();
+            let mut result: RResult<Sexp<'session>> =
+                Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+            for raw_expr in expressions {
+                let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
+                    Ok(expr) => expr,
+                    Err(err) => {
+                        result = Err(err);
+                        break;
+                    }
+                };
+                result = self.eval_sexp(expr);
+            }
+            let _result_guard = result
+                .as_ref()
+                .ok()
+                .map(|value| protect_sexp(*value));
+            crate::sexp::gengc::run_pending_gc_if_quiescent();
+            let visible = self.instance.eval_state.visible != 0;
+            let output = self.instance.output_capture.borrow_mut().stop();
+            f(result, output, visible)
+        })
+    }
+
     pub(crate) fn eval_code_with_output_capture_then<'session, T, F>(
         &'session mut self,
         code: &str,
@@ -461,6 +536,11 @@ impl RSession {
         self.with_active(|| {
             self.instance.output_capture.borrow_mut().start();
             let result = self.eval_sexp(expr);
+            let _result_guard = result
+                .as_ref()
+                .ok()
+                .map(|value| protect_sexp(*value));
+            crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.instance.eval_state.visible != 0;
             let output = self.instance.output_capture.borrow_mut().stop();
             f(result, output, visible)
@@ -724,6 +804,18 @@ impl RSession {
     /// Reset this session's evaluation limits to the evaluator defaults.
     pub fn reset_eval_limits(&mut self) {
         self.set_eval_limits(crate::eval::eval::EvalLimits::default());
+    }
+
+    /// Return this session's capability flags for host-process operations.
+    pub fn capabilities(&self) -> super::instance::SessionCapabilities {
+        self.instance.eval_state.capabilities
+    }
+
+    /// Configure which host-process operations this session may invoke.
+    pub fn set_capabilities(&mut self, capabilities: super::instance::SessionCapabilities) {
+        if self.active {
+            self.instance.eval_state.capabilities = capabilities;
+        }
     }
 
     /// Generate a standard normal random number using this session's RNG state.

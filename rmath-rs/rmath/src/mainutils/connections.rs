@@ -1167,6 +1167,12 @@ fn flush_xz_conn(conn: &mut RConn) -> io::Result<()> {
 
 pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
+        if crate::mainutils::essentials::pipe_commands_disabled_by_runtime_policy() {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "pipe() is disabled by the session capability policy".to_string(),
+            });
+        }
+
         let scmd = CAR(args);
         args = CDR(args);
         let sopen = CAR(args);

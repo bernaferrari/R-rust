@@ -121,7 +121,14 @@ impl Default for ProfilingState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SessionCapabilities {
+    pub allow_system_commands: bool,
+    pub allow_pipe_commands: bool,
+}
+
 pub(crate) struct EvalControlState {
+    pub capabilities: SessionCapabilities,
     pub no_echo: c_int,
     pub quiet: c_int,
     pub interactive: c_int,
@@ -165,6 +172,7 @@ pub(crate) struct EvalControlState {
 impl Default for EvalControlState {
     fn default() -> Self {
         EvalControlState {
+            capabilities: SessionCapabilities::default(),
             no_echo: 0,
             quiet: 0,
             interactive: 1,

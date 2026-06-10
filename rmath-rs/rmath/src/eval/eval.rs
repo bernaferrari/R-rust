@@ -21,7 +21,7 @@
 use std::ffi::CString;
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
+use crate::sexp::accessors::{CHAR, PRINTNAME, TYPEOF, VECTOR_ELT, XLENGTH};
 use crate::sexp::envir::{find_fun_result, forcePromise};
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
@@ -160,6 +160,26 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
     }
 }
 
+fn symbol_name_for_error(expr: Sexp<'_>) -> String {
+    if let Some(name) = symbol_name_from_ptr(expr.as_raw()) {
+        return name;
+    }
+    unsafe {
+        if TYPEOF(expr.as_raw()) == SEXPTYPE::SYMSXP {
+            let pname = PRINTNAME(expr.as_raw());
+            if !pname.is_null() {
+                let bytes = CHAR(pname);
+                if !bytes.is_null() {
+                    return std::ffi::CStr::from_ptr(bytes)
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+    }
+    "<unknown>".to_string()
+}
+
 fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     match classify_expr(expr) {
         EvalKind::SelfEvaluating => Ok(expr),
@@ -169,7 +189,7 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
             }
             match primitive_for_symbol(expr) {
                 Some(primitive) => Ok(primitive),
-                None => Err(format!("object '{}' not found", expr)),
+                None => Err(format!("object '{}' not found", symbol_name_for_error(expr))),
             }
         }
         EvalKind::Language => eval_lang_safe(expr, env),

@@ -407,6 +407,24 @@ pub enum LoopAction {
 
 /// Try to handle a loop body panic. Returns LoopAction for break/next,
 /// re-panics for other signals.
+/// Run a loop body with a single `catch_unwind` context, matching upstream R's
+/// one `setjmp` per loop rather than one per iteration.
+pub unsafe fn run_hoisted_loop<F>(mut driver: F)
+where
+    F: FnMut() + std::panic::UnwindSafe,
+{
+    loop {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(&mut driver));
+        match result {
+            Ok(()) => break,
+            Err(payload) => match handle_loop_signal(payload) {
+                LoopAction::Break => break,
+                LoopAction::Continue => continue,
+            },
+        }
+    }
+}
+
 pub fn handle_loop_signal(payload: Box<dyn std::any::Any + Send>) -> LoopAction {
     match payload.downcast::<RSignal>() {
         Ok(signal) => match *signal {

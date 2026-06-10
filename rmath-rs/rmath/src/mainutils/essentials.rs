@@ -6242,6 +6242,24 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         (*pi_cell).data.listsxp.tagval = pi_sym;
         chain = pi_cell;
 
+        let letters_value = static_string_vector(&[
+            "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q",
+            "r", "s", "t", "u", "v", "w", "x", "y", "z",
+        ]);
+        let _letters_guard = protect(letters_value);
+        let letters_cell = Rf_cons(letters_value, chain);
+        (*letters_cell).data.listsxp.tagval = Rf_install(c"letters".as_ptr());
+        chain = letters_cell;
+
+        let letters_upper_value = static_string_vector(&[
+            "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q",
+            "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+        ]);
+        let _letters_upper_guard = protect(letters_upper_value);
+        let letters_upper_cell = Rf_cons(letters_upper_value, chain);
+        (*letters_upper_cell).data.listsxp.tagval = Rf_install(c"LETTERS".as_ptr());
+        chain = letters_upper_cell;
+
         let version_value = do_R_version(
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -6287,6 +6305,24 @@ unsafe fn string_vector(values: &[String]) -> SEXP {
                 result,
                 i as R_xlen_t,
                 Rf_mkChar(CString::new(value.as_str()).unwrap_or_default().as_ptr()),
+            );
+        }
+        result
+    }
+}
+
+unsafe fn static_string_vector(values: &[&str]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        for (i, value) in values.iter().enumerate() {
+            SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(*value).unwrap_or_default().as_ptr()),
             );
         }
         result
@@ -12691,7 +12727,17 @@ pub unsafe fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 fn system_commands_disabled_by_runtime_policy() -> bool {
-    cfg!(target_os = "android")
+    !crate::sexp::instance::with_current_instance(|inst| {
+        inst.eval_state.capabilities.allow_system_commands
+    })
+    .unwrap_or(false)
+}
+
+pub(crate) fn pipe_commands_disabled_by_runtime_policy() -> bool {
+    !crate::sexp::instance::with_current_instance(|inst| {
+        inst.eval_state.capabilities.allow_pipe_commands
+    })
+    .unwrap_or(false)
 }
 
 /// R's `stopifnot(...)` — stop if any condition is FALSE.
@@ -15381,12 +15427,72 @@ pub unsafe fn do_print_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     unsafe { do_print(_call, _op, args, _rho) }
 }
 
+fn print_data_frame_show_row_names(args: SEXP) -> bool {
+    unsafe {
+        let row_names_sym = Rf_install(c"row.names".as_ptr());
+        let mut arg = CDR(args);
+        while !arg.is_null() && arg != R_NilValue() {
+            if TAG(arg) == row_names_sym {
+                let value = CAR(arg);
+                if TYPEOF(value) == SEXPTYPE::LGLSXP {
+                    let data = LOGICAL(value);
+                    if !data.is_null() {
+                        return *data != FALSE;
+                    }
+                }
+            }
+            arg = CDR(arg);
+        }
+        true
+    }
+}
+
+fn print_data_frame_column_texts(x: SEXP, ncol: R_xlen_t, nrow: R_xlen_t) -> (Vec<String>, Vec<Vec<String>>) {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        );
+        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
+        let mut headers = Vec::with_capacity(ncol as usize);
+        let mut columns = Vec::with_capacity(ncol as usize);
+        for j in 0..ncol.min(20) {
+            let header = if has_names && j < XLENGTH(names) {
+                elt_to_string(names, j)
+            } else {
+                format!("[,{}]", j + 1)
+            };
+            headers.push(header);
+            let col = VECTOR_ELT(x, j as R_xlen_t);
+            let mut values = Vec::with_capacity(nrow.min(20) as usize);
+            for i in 0..nrow.min(20) {
+                let val = if col.is_null() {
+                    "NULL".to_string()
+                } else {
+                    elt_to_string(col, i)
+                };
+                values.push(val);
+            }
+            columns.push(values);
+        }
+        (headers, columns)
+    }
+}
+
+fn emit_print_data_frame_line(line: &str) {
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&format!("{line}\n"));
+    } else {
+        println!("{line}");
+    }
+}
+
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.
 pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            println!("NULL");
+            emit_print_data_frame_line("NULL");
             return R_NilValue();
         }
         if TYPEOF(x) != SEXPTYPE::VECSXP {
@@ -15400,47 +15506,45 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             0
         };
 
-        // Get column names
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-        );
-        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
+        let show_row_names = print_data_frame_show_row_names(args);
+        let (headers, columns) = print_data_frame_column_texts(x, ncol, nrow);
+        let widths: Vec<usize> = headers
+            .iter()
+            .zip(&columns)
+            .map(|(header, values)| {
+                values
+                    .iter()
+                    .fold(header.len(), |max, value| max.max(value.len()))
+            })
+            .collect();
 
-        // Print header row (column names)
-        if ncol > 0 {
-            let mut header = String::new();
-            for j in 0..ncol.min(20) {
-                let name = if has_names && j < XLENGTH(names) {
-                    elt_to_string(names, j)
-                } else {
-                    format!("[,{}]", j + 1)
-                };
-                let _ = std::fmt::Write::write_fmt(&mut header, format_args!("{:>12} ", name));
-            }
-            println!("{}", header);
+        if !headers.is_empty() {
+            let header = headers
+                .iter()
+                .enumerate()
+                .map(|(idx, name)| format!("{:>width$}", name, width = widths[idx]))
+                .collect::<Vec<_>>()
+                .join(" ");
+            emit_print_data_frame_line(&format!(" {header}"));
         }
 
-        // Print rows (up to 20)
-        let print_rows = nrow.min(20);
-        for i in 0..print_rows {
-            let mut row = String::new();
-            for j in 0..ncol.min(20) {
-                let col = VECTOR_ELT(x, j as R_xlen_t);
-                let val = if col.is_null() {
-                    "NULL".to_string()
-                } else {
-                    elt_to_string(col, i)
-                };
-                let _ = std::fmt::Write::write_fmt(&mut row, format_args!("{:>12} ", val));
+        let print_rows = nrow.min(20) as usize;
+        for row in 0..print_rows {
+            let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
+            if show_row_names {
+                cells.push(format!("{}", row + 1));
             }
-            println!("{}", row);
+            for (idx, values) in columns.iter().enumerate() {
+                let value = values.get(row).map(String::as_str).unwrap_or("");
+                cells.push(format!("{:>width$}", value, width = widths[idx]));
+            }
+            emit_print_data_frame_line(&format!(" {}", cells.join(" ")));
         }
         if nrow > 20 {
-            println!(
+            emit_print_data_frame_line(&format!(
                 "  [ reached 'max' / getOption(\"max.print\") -- omitted {} rows ]",
                 nrow - 20
-            );
+            ));
         }
 
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

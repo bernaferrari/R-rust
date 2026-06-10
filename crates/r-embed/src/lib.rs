@@ -163,7 +163,40 @@ impl RSession {
     /// in the global environment. The result is formatted as a string
     /// using rmath's output subsystem.
     pub fn eval(&mut self, code: &str) -> Result<String, RSessionError> {
-        self.eval_result(code).map(|result| result.output)
+        self.eval_script(code).map(|result| result.output)
+    }
+
+    /// Evaluate a multi-expression R script.
+    pub fn eval_script(&mut self, code: &str) -> Result<EvalOutput, RSessionError> {
+        self.eval_script_with_cancel(code, None)
+    }
+
+    fn eval_script_with_cancel(
+        &mut self,
+        code: &str,
+        cancellation: Option<rmath::sexp::CancellationToken>,
+    ) -> Result<EvalOutput, RSessionError> {
+        if !self.active {
+            return Err(RSessionError::EvalError("Session closed".into()));
+        }
+
+        let result = self
+            .inner
+            .eval_script_with_cancellation_token(code, cancellation);
+
+        match result.typed {
+            RValue::Error(message) => {
+                if message == "operation cancelled" {
+                    Err(RSessionError::EvalError("operation cancelled".to_string()))
+                } else {
+                    Err(RSessionError::EvalError(message))
+                }
+            }
+            value => Ok(EvalOutput {
+                output: result.output,
+                value,
+            }),
+        }
     }
 
     /// Evaluate an R expression, returning both display output and an owned
@@ -228,6 +261,13 @@ impl RSession {
         }
         self.inner.set_resource_limits(limits);
         Ok(())
+    }
+
+    /// Enable `system()` and `pipe()` for desktop-style hosts.
+    ///
+    /// Embedded mobile and WASM sessions keep these disabled by default.
+    pub fn enable_host_process_capabilities(&mut self) {
+        self.inner.enable_host_process_capabilities();
     }
 
     /// Return true when a package exists in this session's configured library paths.

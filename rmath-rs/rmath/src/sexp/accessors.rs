@@ -21,6 +21,35 @@ fn is_valid_sexp_ptr(x: SEXP) -> bool {
     (addr & (std::mem::align_of::<SexprecCore>() - 1)) == 0
 }
 
+#[inline]
+fn debug_assert_sexptype(x: SEXP, expected: &[SEXPTYPE]) {
+    debug_assert!(is_valid_sexp_ptr(x), "invalid SEXP pointer");
+    debug_assert!(
+        expected.contains(&unsafe { (*x).sxpinfo.type_of() }),
+        "SEXPTYPE mismatch: expected one of {:?}, got {:?}",
+        expected,
+        unsafe { (*x).sxpinfo.type_of() }
+    );
+}
+
+#[inline]
+fn debug_assert_list_like(x: SEXP) {
+    debug_assert_sexptype(
+        x,
+        &[
+            SEXPTYPE::LISTSXP,
+            SEXPTYPE::LANGSXP,
+            SEXPTYPE::DOTSXP,
+            SEXPTYPE::NILSXP,
+        ],
+    );
+}
+
+#[inline]
+fn debug_assert_vector_type(x: SEXP, expected: SEXPTYPE) {
+    debug_assert_sexptype(x, &[expected, SEXPTYPE::LGLSXP, SEXPTYPE::INTSXP]);
+}
+
 // ---------------------------------------------------------------------------
 // Header accessors
 // ---------------------------------------------------------------------------
@@ -230,6 +259,7 @@ pub unsafe fn CAR(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
+            debug_assert_list_like(x);
             (*x).data.listsxp.carval
         }
     }
@@ -241,6 +271,7 @@ pub unsafe fn CDR(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
+            debug_assert_list_like(x);
             (*x).data.listsxp.cdrval
         }
     }
@@ -252,6 +283,7 @@ pub unsafe fn TAG(x: SEXP) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
+            debug_assert_list_like(x);
             (*x).data.listsxp.tagval
         }
     }
@@ -650,17 +682,26 @@ pub unsafe fn ROBJ_DATAPTR(x: SEXP) -> *const c_void {
 
 /// Get a pointer to the logical vector data.
 pub unsafe fn LOGICAL(x: SEXP) -> *mut c_int {
-    unsafe { DATAPTR(x) as *mut c_int }
+    unsafe {
+        debug_assert_sexptype(x, &[SEXPTYPE::LGLSXP]);
+        DATAPTR(x) as *mut c_int
+    }
 }
 
 /// Get a pointer to the integer vector data.
 pub unsafe fn INTEGER(x: SEXP) -> *mut c_int {
-    unsafe { DATAPTR(x) as *mut c_int }
+    unsafe {
+        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
+        DATAPTR(x) as *mut c_int
+    }
 }
 
 /// Get a pointer to the real (double) vector data.
 pub unsafe fn REAL(x: SEXP) -> *mut c_double {
-    unsafe { DATAPTR(x) as *mut c_double }
+    unsafe {
+        debug_assert_sexptype(x, &[SEXPTYPE::REALSXP]);
+        DATAPTR(x) as *mut c_double
+    }
 }
 
 /// Get a pointer to the complex vector data.
@@ -714,6 +755,15 @@ pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
+        debug_assert_sexptype(
+            x,
+            &[
+                SEXPTYPE::VECSXP,
+                SEXPTYPE::EXPRSXP,
+                SEXPTYPE::STRSXP,
+                SEXPTYPE::BCODESXP,
+            ],
+        );
         let ptrs = DATAPTR(x) as *mut SEXP;
         *ptrs.add(i as usize)
     }
@@ -740,6 +790,7 @@ pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
         if !is_valid_sexp_ptr(x) || LOGICAL(x).is_null() {
             return NA_INTEGER;
         }
+        debug_assert_sexptype(x, &[SEXPTYPE::LGLSXP]);
         *LOGICAL(x).add(i as usize)
     }
 }
@@ -759,6 +810,7 @@ pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
         if !is_valid_sexp_ptr(x) || INTEGER(x).is_null() {
             return NA_INTEGER;
         }
+        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
         *INTEGER(x).add(i as usize)
     }
 }
@@ -778,6 +830,7 @@ pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
         if !is_valid_sexp_ptr(x) || REAL(x).is_null() {
             return NA_REAL;
         }
+        debug_assert_sexptype(x, &[SEXPTYPE::REALSXP]);
         *REAL(x).add(i as usize)
     }
 }

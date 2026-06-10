@@ -659,9 +659,21 @@ unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
 // ---------------------------------------------------------------------------
 
 unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
-    // Simplified: just print a message. Full S3 dispatch requires eval.
-    println!("<S3 object>");
-    let _ = (s, data);
+    unsafe {
+        if inherits_cstr(s, b"data.frame\0".as_ptr() as *const c_char) != 0 {
+            let args = Rf_cons(s, R_NilValue());
+            let _args_guard = protect(args);
+            crate::mainutils::essentials::do_print_data_frame(
+                R_NilValue(),
+                R_NilValue(),
+                args,
+                R_NilValue(),
+            );
+            return;
+        }
+        println!("<S3 object>");
+        let _ = data;
+    }
 }
 
 // ---------------------------------------------------------------------------

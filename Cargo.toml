@@ -8,6 +8,7 @@ members = [
   "crates/r-uniffi",
   "rmath-rs/rmath",
   "rmath-rs/rmath-test",
+  "tests/script-diff",
 ]
 
 [workspace.package]

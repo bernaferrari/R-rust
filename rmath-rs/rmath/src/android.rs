@@ -140,6 +140,18 @@ impl RSession {
             .unwrap_or_default()
     }
 
+    pub fn set_capabilities(&mut self, capabilities: crate::sexp::instance::SessionCapabilities) {
+        self.core.set_capabilities(capabilities);
+    }
+
+    /// Enable `system()` and `pipe()` for desktop-style hosts.
+    pub fn enable_host_process_capabilities(&mut self) {
+        self.set_capabilities(crate::sexp::instance::SessionCapabilities {
+            allow_system_commands: true,
+            allow_pipe_commands: true,
+        });
+    }
+
     pub fn set_resource_limits(&mut self, limits: RResourceLimits) {
         self.core.set_eval_limits(crate::eval::eval::EvalLimits {
             max_eval_depth: saturating_usize(limits.max_eval_depth),
@@ -317,11 +329,29 @@ impl RSession {
     /// Parses and evaluates code against this session's isolated global
     /// environment.
     pub fn eval(&mut self, code: &str) -> RResult {
-        self.core
-            .eval_code_with_output_capture_then(code, |result, captured, visible| match result {
+        self.eval_script(code)
+    }
+
+    /// Parse and evaluate a multi-expression R script.
+    pub fn eval_script(&mut self, code: &str) -> RResult {
+        self.eval_script_with_cancellation_token(code, None)
+    }
+
+    /// Evaluate a script with a cancellation token scoped to this call.
+    pub fn eval_script_with_cancellation_token(
+        &mut self,
+        code: &str,
+        token: Option<CancellationToken>,
+    ) -> RResult {
+        let previous = self.core.replace_cancellation_token(token);
+        let result = self
+            .core
+            .eval_script_with_output_capture_then(code, |result, captured, visible| match result {
                 Ok(result) => result_from_eval(result, captured, visible),
                 Err(e) => error_result(e.to_string()),
-            })
+            });
+        self.core.set_cancellation_token(previous);
+        result
     }
 }
 

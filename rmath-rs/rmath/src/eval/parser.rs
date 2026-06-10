@@ -95,6 +95,7 @@ enum Token {
     KwWhile,
     KwRepeat,
     KwFunction,
+    KwLambda,
     KwBreak,
     KwNext,
     KwReturn,
@@ -171,8 +172,20 @@ impl Lexer {
             return Token::Newline;
         }
 
+        if (ch == 'r' || ch == 'R')
+            && matches!(self.peek_char_at(1), Some('"') | Some('\''))
+        {
+            self.advance();
+            return self.read_raw_string();
+        }
+
         if ch == '"' || ch == '\'' {
             return self.read_string();
+        }
+
+        if ch == '\\' && self.peek_char_at(1) == Some('(') {
+            self.advance();
+            return Token::KwLambda;
         }
 
         // Backtick names
@@ -423,6 +436,49 @@ impl Lexer {
         }
     }
 
+    fn read_raw_string(&mut self) -> Token {
+        let quote = match self.advance() {
+            Some('"') => '"',
+            Some('\'') => '\'',
+            _ => '"',
+        };
+
+        // R's r"(...)" form: opening quote is immediately followed by '(' and
+        // the string ends at ')"' (parens are delimiters, not part of content).
+        if quote == '"' && self.peek_char() == Some('(') {
+            self.advance();
+            let mut s = String::new();
+            loop {
+                match self.advance() {
+                    Some(')') if self.peek_char() == Some('"') => {
+                        self.advance();
+                        break;
+                    }
+                    Some(c) => s.push(c),
+                    None => break,
+                }
+            }
+            return Token::Str(s);
+        }
+
+        let mut s = String::new();
+        loop {
+            match self.advance() {
+                Some(c) if c == quote => {
+                    if self.peek_char() == Some(quote) {
+                        s.push(quote);
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                Some(c) => s.push(c),
+                None => break,
+            }
+        }
+        Token::Str(s)
+    }
+
     fn read_string(&mut self) -> Token {
         let quote = self.advance().unwrap_or('"');
         let mut s = String::new();
@@ -473,6 +529,12 @@ impl Lexer {
                 break;
             }
         }
+        if (s == "r" || s == "R")
+            && matches!(self.peek_char(), Some('"') | Some('\''))
+        {
+            return self.read_raw_string();
+        }
+
         // Check keywords
         match s.as_str() {
             "if" => Token::KwIf,
@@ -1111,7 +1173,7 @@ impl<'arena> Parser<'arena> {
             Token::KwFor => self.parse_for(),
             Token::KwWhile => self.parse_while(),
             Token::KwRepeat => self.parse_repeat(),
-            Token::KwFunction => self.parse_function(),
+            Token::KwFunction | Token::KwLambda => self.parse_function(),
             Token::KwBreak => {
                 self.advance();
                 unsafe {
@@ -1271,9 +1333,14 @@ impl<'arena> Parser<'arena> {
         }
     }
 
-    /// function(args) body
+    /// function(args) body — also handles R 4.1+ `\(...)` lambda syntax.
     fn parse_function(&mut self) -> Result<SEXP, ParseError> {
-        self.advance(); // consume 'function'
+        match self.peek() {
+            Token::KwFunction | Token::KwLambda => {
+                self.advance();
+            }
+            _ => {}
+        }
         self.expect(&Token::LParen)?;
         let formals = self.parse_formals()?;
         self.expect(&Token::RParen)?;

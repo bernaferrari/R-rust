@@ -6,8 +6,8 @@
 //! This includes: if, while, for, repeat, break, next, return, function, begin, (.
 
 use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, CHAR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR, TAG,
-    TYPEOF,
+    CADDR, CADR, CAR, CDDR, CDR, CHAR, COMPLEX_ELT, INTEGER_ELT, LOGICAL_ELT, PRINTNAME, RAW_ELT,
+    REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -391,6 +391,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
         let body = CADDR(args);
 
         let seq_val = Rf_eval(seq_expr, rho);
+        let _seq_guard = protect(seq_val);
 
         if TYPEOF(seq_val) != SEXPTYPE::VECSXP
             && TYPEOF(seq_val) != SEXPTYPE::LISTSXP
@@ -408,19 +409,38 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
             });
         }
 
-        let n = crate::sexp::constructors::Rf_length(seq_val);
+        let n = crate::sexp::constructors::Rf_length(seq_val) as usize;
+        let val_type = TYPEOF(seq_val);
+        let mut i: usize = 0;
+        let mut list_cell = seq_val;
 
-        for i in 0..n {
+        while i < n {
             crate::sexp::instance::check_cancellation();
-            let val = if TYPEOF(seq_val) == SEXPTYPE::VECSXP || TYPEOF(seq_val) == SEXPTYPE::EXPRSXP
-            {
-                crate::sexp::accessors::VECTOR_ELT(seq_val, i as i64)
-            } else {
-                let mut current = seq_val;
-                for _ in 0..i {
-                    current = CDR(current);
+
+            let val = match val_type {
+                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                    VECTOR_ELT(seq_val, i as i64)
                 }
-                CAR(current)
+                t if t == SEXPTYPE::LISTSXP => {
+                    let v = CAR(list_cell);
+                    list_cell = CDR(list_cell);
+                    v
+                }
+                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(seq_val, i as i32)),
+                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(seq_val, i as i32)),
+                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(seq_val, i as i32)),
+                t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(seq_val, i as i32)),
+                t if t == SEXPTYPE::STRSXP => {
+                    let scalar = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+                    SET_STRING_ELT(scalar, 0, STRING_ELT(seq_val, i as i64));
+                    scalar
+                }
+                t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(seq_val, i as i32)),
+                _ => {
+                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                        message: "invalid for() loop sequence".to_string(),
+                    });
+                }
             };
 
             defineVar(var_sym, val, rho);
@@ -432,9 +452,14 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                 Ok(_) => {}
                 Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
                     crate::sexp::context::LoopAction::Break => break,
-                    crate::sexp::context::LoopAction::Continue => continue,
+                    crate::sexp::context::LoopAction::Continue => {
+                        i += 1;
+                        continue;
+                    }
                 },
             }
+
+            i += 1;
         }
 
         R_NilValue()
@@ -450,6 +475,10 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let body = CAR(args);
 
+        // `repeat` re-enters after each successful body evaluation, so it cannot
+        // share the single-setjmp structure used by `for`/`while`. A nested
+        // `loop {}` inside `run_hoisted_loop` would never return on success and
+        // would allocate until OOM.
         loop {
             crate::sexp::instance::check_cancellation();
             let body_result =

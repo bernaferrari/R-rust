@@ -1,0 +1,12 @@
+[package]
+name = "rport-script-diff"
+version = "0.1.0"
+edition = "2024"
+description = "Script-level differential tests comparing rport against GNU R via Rscript"
+
+[[bin]]
+name = "rport-script-diff"
+path = "src/main.rs"
+
+[dependencies]
+r-embed = { path = "../../crates/r-embed" }
