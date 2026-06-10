@@ -27203,6 +27203,63 @@ unsafe fn is_function_value(value: SEXP) -> bool {
     }
 }
 
+unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
+    unsafe {
+        if generic.is_null()
+            || generic == R_NilValue()
+            || TYPEOF(generic) != SEXPTYPE::CLOSXP
+        {
+            return;
+        }
+
+        let f_env = crate::sexp::accessors::CLOENV(generic);
+        if f_env.is_null() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
+            return;
+        }
+
+        let all_mtable_sym = Rf_install(c".AllMTable".as_ptr());
+        let existing_mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
+        if existing_mtable == R_UnboundValue() || TYPEOF(existing_mtable) != SEXPTYPE::ENVSXP {
+            let mtable =
+                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_NilValue(), f_env);
+            if !mtable.is_null() {
+                crate::sexp::envir::defineVar(all_mtable_sym, mtable, f_env);
+            }
+        }
+
+        let sig_args_sym = Rf_install(c".SigArgs".as_ptr());
+        let sig_length_sym = Rf_install(c".SigLength".as_ptr());
+        let existing_sig_args = crate::sexp::envir::R_findVarInFrame(f_env, sig_args_sym);
+        if existing_sig_args != R_UnboundValue() {
+            return;
+        }
+
+        let mut formals = FORMALS(generic);
+        let mut arg_syms = Vec::new();
+        while !formals.is_null() && formals != R_NilValue() {
+            let tag = TAG(formals);
+            if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) == SEXPTYPE::SYMSXP {
+                arg_syms.push(tag);
+            }
+            formals = CDR(formals);
+        }
+
+        let sigargs = Rf_allocVector3(SEXPTYPE::VECSXP, arg_syms.len() as R_xlen_t);
+        if sigargs.is_null() {
+            return;
+        }
+        for (index, sym) in arg_syms.iter().enumerate() {
+            SET_VECTOR_ELT(sigargs, index as R_xlen_t, *sym);
+        }
+        crate::sexp::envir::defineVar(sig_args_sym, sigargs, f_env);
+        crate::sexp::envir::defineVar(
+            sig_length_sym,
+            Rf_ScalarInteger(arg_syms.len() as c_int),
+            f_env,
+        );
+    }
+}
+
 /// R's `setGeneric(f, fdef, ...)` — set generic function.
 pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -27213,12 +27270,14 @@ pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             CAR(CDR(args))
         };
 
-        // Return the fdef or f as the generic
-        if !fdef_arg.is_null() && fdef_arg != R_NilValue() {
+        let generic = if !fdef_arg.is_null() && fdef_arg != R_NilValue() {
             fdef_arg
         } else {
             f_arg
-        }
+        };
+
+        initialize_generic_dispatch_tables(generic);
+        generic
     }
 }
 

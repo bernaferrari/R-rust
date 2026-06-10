@@ -1110,6 +1110,55 @@ mod tests {
     }
 
     #[test]
+    fn set_generic_and_method_registers_table_dispatch() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let generic = crate::mainutils::dstruct::mkCLOSXP(
+                missing_formals(&["x"]),
+                x_sym,
+                R_NilValue(),
+            );
+            let generic_env = crate::mainutils::dstruct::mkCLOSXP(
+                R_NilValue(),
+                R_NilValue(),
+                CLOENV(generic),
+            );
+            SET_ENCLOS(generic, CLOENV(generic_env));
+
+            crate::mainutils::essentials::do_setGeneric(
+                R_NilValue(),
+                R_NilValue(),
+                Rf_cons(generic, R_NilValue()),
+                R_NilValue(),
+            );
+
+            let method = crate::mainutils::dstruct::mkCLOSXP(
+                R_NilValue(),
+                Rf_ScalarInteger(99),
+                R_NilValue(),
+            );
+            let signature = Rf_mkString(c"integer".as_ptr());
+            let args = Rf_cons(
+                generic,
+                Rf_cons(signature, Rf_cons(method, R_NilValue())),
+            );
+            crate::mainutils::essentials::do_setMethod(
+                R_NilValue(),
+                R_NilValue(),
+                args,
+                R_NilValue(),
+            );
+
+            let ev = env_with(&[("x", Rf_ScalarInteger(1))]);
+            let name = Rf_mkString(c"show".as_ptr());
+            let result = R_dispatchGeneric(name, ev, generic);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(result), 99);
+        }
+    }
+
+    #[test]
     fn class_cache_reads_session_local_s4_registry() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {

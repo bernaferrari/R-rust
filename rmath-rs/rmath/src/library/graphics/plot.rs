@@ -83,15 +83,15 @@ type GUnit = c_int;
 const R_TRANSPARENT: c_uint = 0xFFFFFFFE;
 const R_TRANWHITE: c_uint = 0x00FFFFFF;
 
-/* Coordinate system constants */
-const USER: c_int = 1;
-const NFC: c_int = 7;
-const NIC: c_int = 8;
-const NPC: c_int = 2;
-const NDC: c_int = 6;
+/* Coordinate system constants (must match graphics.rs GUnit values) */
+const DEVICE: c_int = 0;
+const NDC: c_int = 1;
+const NIC: c_int = 2;
+const NFC: c_int = 3;
+const NPC: c_int = 6;
 const INCHES: c_int = 5;
-const DEVICE: c_int = 4;
-const LINES: c_int = 3;
+const USER: c_int = 10;
+const LINES: c_int = 7;
 const CHARS: c_int = 8;
 
 /* cetype_t constants */

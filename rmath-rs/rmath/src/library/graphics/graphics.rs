@@ -124,17 +124,87 @@ pub unsafe fn GMapUnits(runits: c_int) -> GUnit {
  * Coordinate unit conversions (single-value, unit-to-unit)
  * ======================================================================== */
 
+fn graphics_unit_to_engine(unit: GUnit) -> Option<c_int> {
+    match unit {
+        DEVICE => Some(engine::GE_DEVICE),
+        NDC => Some(engine::GE_NDC),
+        INCHES => Some(engine::GE_INCHES),
+        _ => None,
+    }
+}
+
+unsafe fn x_to_device_units(x: c_double, fromUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    unsafe {
+        if fromUnits == DEVICE {
+            x
+        } else if let Some(from) = graphics_unit_to_engine(fromUnits) {
+            engine::toDeviceX(x, from, dd)
+        } else {
+            graphics_error(format!(
+                "unsupported source unit {fromUnits} for x coordinate conversion"
+            ));
+        }
+    }
+}
+
+unsafe fn y_to_device_units(y: c_double, fromUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    unsafe {
+        if fromUnits == DEVICE {
+            y
+        } else if let Some(from) = graphics_unit_to_engine(fromUnits) {
+            engine::toDeviceY(y, from, dd)
+        } else {
+            graphics_error(format!(
+                "unsupported source unit {fromUnits} for y coordinate conversion"
+            ));
+        }
+    }
+}
+
+unsafe fn x_from_device_units(x: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    unsafe {
+        if toUnits == DEVICE {
+            x
+        } else if let Some(to) = graphics_unit_to_engine(toUnits) {
+            engine::fromDeviceX(x, to, dd)
+        } else {
+            graphics_error(format!(
+                "unsupported target unit {toUnits} for x coordinate conversion"
+            ));
+        }
+    }
+}
+
+unsafe fn y_from_device_units(y: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_double {
+    unsafe {
+        if toUnits == DEVICE {
+            y
+        } else if let Some(to) = graphics_unit_to_engine(toUnits) {
+            engine::fromDeviceY(y, to, dd)
+        } else {
+            graphics_error(format!(
+                "unsupported target unit {toUnits} for y coordinate conversion"
+            ));
+        }
+    }
+}
+
 /// GConvertXUnits -- convert a single x value between unit systems.
 pub unsafe fn GConvertXUnits(
     x: c_double,
     fromUnits: GUnit,
     toUnits: GUnit,
-    _dd: pGEDevDesc,
+    dd: pGEDevDesc,
 ) -> c_double {
-    if fromUnits == toUnits {
-        x
-    } else {
-        graphics_error("graphics coordinate conversion requires a graphics device backend")
+    unsafe {
+        if fromUnits == toUnits {
+            return x;
+        }
+        if dd.is_null() {
+            graphics_error("graphics coordinate conversion requires a graphics device backend");
+        }
+        let device = x_to_device_units(x, fromUnits, dd);
+        x_from_device_units(device, toUnits, dd)
     }
 }
 
@@ -143,12 +213,17 @@ pub unsafe fn GConvertYUnits(
     y: c_double,
     fromUnits: GUnit,
     toUnits: GUnit,
-    _dd: pGEDevDesc,
+    dd: pGEDevDesc,
 ) -> c_double {
-    if fromUnits == toUnits {
-        y
-    } else {
-        graphics_error("graphics coordinate conversion requires a graphics device backend")
+    unsafe {
+        if fromUnits == toUnits {
+            return y;
+        }
+        if dd.is_null() {
+            graphics_error("graphics coordinate conversion requires a graphics device backend");
+        }
+        let device = y_to_device_units(y, fromUnits, dd);
+        y_from_device_units(device, toUnits, dd)
     }
 }
 
@@ -391,6 +466,30 @@ pub unsafe fn gcontextFromGP(_gc: pGEcontext, _dd: pGEDevDesc) {
  * Graphical primitives
  * ======================================================================== */
 
+unsafe fn convert_xy_points_to_device(
+    n: c_int,
+    x: *mut c_double,
+    y: *mut c_double,
+    coords: c_int,
+    dd: pGEDevDesc,
+) -> Option<(Vec<c_double>, Vec<c_double>)> {
+    unsafe {
+        if n <= 0 || x.is_null() || y.is_null() || dd.is_null() {
+            return None;
+        }
+        let mut xs = Vec::with_capacity(n as usize);
+        let mut ys = Vec::with_capacity(n as usize);
+        for i in 0..n as isize {
+            let mut xi = *x.offset(i);
+            let mut yi = *y.offset(i);
+            GConvert(&mut xi, &mut yi, coords, DEVICE, dd);
+            xs.push(xi);
+            ys.push(yi);
+        }
+        Some((xs, ys))
+    }
+}
+
 /// GLine -- draw a line from (x1,y1) to (x2,y2).
 pub unsafe fn GLine(
     x1: c_double,
@@ -457,9 +556,13 @@ pub unsafe fn GMetricInfo(
 }
 
 /// GMode -- set graphics mode (0=off, 1=on, 2=input on).
-/// Stub: does nothing.
-pub unsafe fn GMode(_mode: c_int, _dd: pGEDevDesc) {
-    /* Stub: full implementation calls GEMode and updates devmode */
+pub unsafe fn GMode(mode: c_int, dd: pGEDevDesc) {
+    unsafe {
+        if dd.is_null() {
+            return;
+        }
+        engine::GEMode(mode, dd);
+    }
 }
 
 /// GClipPolygon -- clip a polygon to the current clip region.
@@ -480,58 +583,101 @@ pub unsafe fn GClipPolygon(
 
 /// GPolygon -- draw a filled polygon with border.
 /// Filled with color bg and outlined with color fg.
-/// Stub: does nothing.
 pub unsafe fn GPolygon(
-    _n: c_int,
-    _x: *mut c_double,
-    _y: *mut c_double,
-    _coords: c_int,
+    n: c_int,
+    x: *mut c_double,
+    y: *mut c_double,
+    coords: c_int,
     _bg: c_int,
     _fg: c_int,
-    _dd: pGEDevDesc,
+    dd: pGEDevDesc,
 ) {
-    /* Stub: full implementation converts to DEVICE, clips, calls GEPolygon */
+    unsafe {
+        let Some((xs, ys)) = convert_xy_points_to_device(n, x, y, coords, dd) else {
+            return;
+        };
+        engine::GEPolygon(
+            n,
+            xs.as_ptr(),
+            ys.as_ptr(),
+            std::ptr::null(),
+            dd,
+        );
+    }
 }
 
 /// GPolyline -- draw a series of connected line segments.
-/// Stub: does nothing.
 pub unsafe fn GPolyline(
-    _n: c_int,
-    _x: *mut c_double,
-    _y: *mut c_double,
-    _coords: c_int,
-    _dd: pGEDevDesc,
+    n: c_int,
+    x: *mut c_double,
+    y: *mut c_double,
+    coords: c_int,
+    dd: pGEDevDesc,
 ) {
-    /* Stub: full implementation converts to DEVICE, clips, calls GEPolyline */
+    unsafe {
+        let Some((xs, ys)) = convert_xy_points_to_device(n, x, y, coords, dd) else {
+            return;
+        };
+        engine::GEPolyline(
+            n,
+            xs.as_ptr(),
+            ys.as_ptr(),
+            std::ptr::null(),
+            dd,
+        );
+    }
 }
 
 /// GCircle -- draw a circle. Filled with color bg and outlined with color fg.
-/// Stub: does nothing.
 pub unsafe fn GCircle(
-    _x: c_double,
-    _y: c_double,
-    _coords: c_int,
-    _radius: c_double,
+    x: c_double,
+    y: c_double,
+    coords: c_int,
+    radius: c_double,
     _bg: c_int,
     _fg: c_int,
-    _dd: pGEDevDesc,
+    dd: pGEDevDesc,
 ) {
-    /* Stub: full implementation converts to DEVICE, clips, calls GECircle */
+    unsafe {
+        if dd.is_null() {
+            return;
+        }
+        let mut cx = x;
+        let mut cy = y;
+        GConvert(&mut cx, &mut cy, coords, DEVICE, dd);
+        let device_radius = if coords == DEVICE {
+            radius
+        } else {
+            let edge_x = x_to_device_units(x + radius, coords, dd);
+            edge_x - cx
+        };
+        engine::GECircle(cx, cy, device_radius, std::ptr::null(), dd);
+    }
 }
 
 /// GRect -- draw a rectangle. Filled with color bg and outlined with color fg.
-/// Stub: does nothing.
 pub unsafe fn GRect(
-    _x0: c_double,
-    _y0: c_double,
-    _x1: c_double,
-    _y1: c_double,
-    _coords: c_int,
+    x0: c_double,
+    y0: c_double,
+    x1: c_double,
+    y1: c_double,
+    coords: c_int,
     _bg: c_int,
     _fg: c_int,
-    _dd: pGEDevDesc,
+    dd: pGEDevDesc,
 ) {
-    /* Stub: full implementation converts to DEVICE, clips, calls GERect */
+    unsafe {
+        if dd.is_null() {
+            return;
+        }
+        let mut left = x0;
+        let mut bottom = y0;
+        let mut right = x1;
+        let mut top = y1;
+        GConvert(&mut left, &mut bottom, coords, DEVICE, dd);
+        GConvert(&mut right, &mut top, coords, DEVICE, dd);
+        engine::GERect(left, bottom, right, top, std::ptr::null(), dd);
+    }
 }
 
 /// GPath -- draw a path (possibly with holes).
@@ -792,5 +938,31 @@ mod tests {
             .downcast_ref::<crate::sexp::context::RError>()
             .expect("expected RError");
         assert!(r_error.message.contains("base graphics state"));
+    }
+
+    #[test]
+    fn gline_draws_on_headless_device_surface() {
+        let _session = crate::sexp::session::RSession::new();
+        crate::library::grdevices::device_registry::reset_registry_for_tests();
+        unsafe {
+            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            crate::mainutils::engine::GENewPage(ptr::null(), dd.cast());
+            GLine(0.0, 0.0, 10.0, 0.0, DEVICE, dd.cast());
+            let result = crate::mainutils::engine::GECap(dd.cast());
+            assert_eq!(crate::sexp::accessors::TYPEOF(result), crate::sexp::ffi::SEXPTYPE::INTSXP);
+            assert_eq!(*crate::sexp::accessors::INTEGER(result), 0x0000_0000);
+            assert_eq!(*crate::sexp::accessors::INTEGER(result).add(11), 0x00ff_ffff);
+        }
+    }
+
+    #[test]
+    fn inches_to_device_conversion_uses_headless_backend() {
+        let _session = crate::sexp::session::RSession::new();
+        crate::library::grdevices::device_registry::reset_registry_for_tests();
+        unsafe {
+            let dd = crate::library::grdevices::device_registry::GEcurrentDevice();
+            assert_eq!(GConvertXUnits(1.0, INCHES, DEVICE, dd.cast()), 72.0);
+            assert_eq!(GConvertYUnits(1.0, INCHES, DEVICE, dd.cast()), 432.0);
+        }
     }
 }
