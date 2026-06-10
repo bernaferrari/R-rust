@@ -58,7 +58,7 @@ use super::graphics::{
     GRestorePars, GSavePars, GScale, GSetState, GStrHeight, GStrWidth, GSymbol, GText, xNPCtoUsr,
     yNPCtoUsr,
 };
-use super::par::{ProcessInlinePars, dpptr, gpptr};
+use super::par::{GPar, ProcessInlinePars, dpptr, gpptr};
 
 /* ========================================================================
  * Local type and constant definitions
@@ -190,76 +190,6 @@ unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
 
 /* OutDec global */
 const OutDec: c_int = 46; /* '.' */
-
-/* GPar structure - minimal definition with fields used in this file.
- * The real GPar is defined in Graphics.h and has many more fields.
- * When the GE is fully ported, this should be replaced. */
-#[repr(C)]
-struct GPar {
-    /* General */
-    adj: c_double,
-    ann: c_int,
-    bg: c_uint,
-    bty: c_char,
-    cex: c_double,
-    lheight: c_double,
-    col: c_uint,
-    crt: c_double,
-    din: [c_double; 2],
-    err: c_int,
-    fg: c_uint,
-    family: [c_char; 201],
-    font: c_int,
-    gamma: c_double,
-    lab: [c_int; 3],
-    las: c_int,
-    lty: c_int,
-    lwd: c_double,
-    mgp: [c_double; 3],
-    mkh: c_double,
-    pch: c_int,
-    ps: c_double,
-    smo: c_int,
-    srt: c_double,
-    tck: c_double,
-    tcl: c_double,
-    xaxp: [c_double; 3],
-    xaxs: c_char,
-    xaxt: c_char,
-    xlog: c_int,
-    xpd: c_int,
-    oldxpd: c_int,
-    yaxp: [c_double; 3],
-    yaxs: c_char,
-    yaxt: c_char,
-    ylog: c_int,
-    /* Annotation */
-    cexbase: c_double,
-    cexmain: c_double,
-    cexlab: c_double,
-    cexsub: c_double,
-    cexaxis: c_double,
-    fontmain: c_int,
-    fontlab: c_int,
-    fontsub: c_int,
-    fontaxis: c_int,
-    colmain: c_uint,
-    collab: c_uint,
-    colsub: c_uint,
-    colaxis: c_uint,
-    /* Layout */
-    mar: [c_double; 4],
-    oma: [c_double; 4],
-    pin: [c_double; 2],
-    plt: [c_double; 4],
-    fig: [c_double; 4],
-    /* Coordinate system */
-    usr: [c_double; 4],
-    logusr: [c_double; 4],
-    new: c_int,
-    state: c_int,
-    valid: c_int,
-}
 
 /* GECtx (gcontext) structure stub */
 #[repr(C)]

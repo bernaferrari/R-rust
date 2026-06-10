@@ -14,6 +14,7 @@ pub(crate) mod apply;
 pub(crate) mod arithmetic;
 pub(crate) mod assignment;
 pub(crate) mod attrib_core;
+pub(crate) mod bc_compile;
 pub(crate) mod bc_eval;
 pub(crate) mod bc_stack;
 pub(crate) mod builtin;

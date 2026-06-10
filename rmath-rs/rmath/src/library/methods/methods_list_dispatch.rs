@@ -1159,6 +1159,21 @@ mod tests {
     }
 
     #[test]
+    fn extends_and_method_dispatch_integration_via_session_eval() {
+        let mut session = crate::android::RSession::new();
+
+        let extends = session.eval("extends(\"integer\", \"vector\")");
+        assert_eq!(extends.output, "[1] TRUE");
+
+        let tables = session.eval(
+            "generic <- setGeneric(\"show\", function(object) standardGeneric(\"show\"))\n\
+             setMethod(\"show\", \"numeric\", function(object) 42)\n\
+             length(ls(environment(generic))) > 0",
+        );
+        assert_eq!(tables.output, "[1] TRUE");
+    }
+
+    #[test]
     fn class_cache_reads_session_local_s4_registry() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {

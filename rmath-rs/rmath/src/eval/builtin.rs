@@ -2239,6 +2239,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_saveRDS,
     },
     EvaluatedBuiltin {
+        name: "lazyLoadDBfetch",
+        handler: crate::mainutils::serialize::do_lazyLoadDBfetch,
+    },
+    EvaluatedBuiltin {
         name: "serialize",
         handler: crate::mainutils::serialize::do_serialize,
     },

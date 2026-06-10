@@ -219,7 +219,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         }
 
         match result {
-            Ok(val) => val,
+            Ok(val) => unsafe { super::jit::handle_exec_continuation(val) },
             Err(payload) => crate::sexp::context::handle_closure_signal(payload),
         }
     }

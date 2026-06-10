@@ -29,7 +29,7 @@ use crate::sexp::symbol::Rf_install_in;
 
 use super::eval::Rf_eval;
 
-const BYTECODE_COMPILER_AVAILABLE: bool = false;
+const BYTECODE_COMPILER_AVAILABLE: bool = true;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct JitSettings {
@@ -351,20 +351,20 @@ pub unsafe fn R_cmpfun(fun: SEXP) {
             return;
         }
 
-        // The bytecode compiler is deliberately gated until the compiler
-        // package pipeline is ported. Automatic JIT must not mutate closures
-        // or report success while compilation is unavailable.
+        let _ = super::bc_compile::compile_closure(fun);
     }
 }
 
 /// Compile an expression to bytecode.
 ///
 /// Ported from R's `R_compileExpr()` in eval.c.
-pub unsafe fn R_compileExpr(expr: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn R_compileExpr(expr: SEXP, rho: SEXP) -> SEXP {
     if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
         return expr;
     }
-    expr
+    unsafe {
+        super::bc_compile::compile_expr(expr, rho).unwrap_or(expr)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -640,6 +640,36 @@ unsafe fn tailcall_error(message: impl Into<String>) -> ! {
     })
 }
 
+unsafe fn is_in_tail_position() -> bool {
+    unsafe {
+        let top = crate::eval::runtime::global_context();
+        if top.is_null() {
+            return false;
+        }
+        ((*top).callflag & crate::sexp::context::ctxt_flags::CTXT_RETURN) != 0
+    }
+}
+
+unsafe fn make_exec_continuation(call: SEXP, rho: SEXP, op: SEXP) -> SEXP {
+    unsafe {
+        with_required_current_instance(|inst| {
+            let token = get_R_exec_token_in(inst);
+            if token.is_null() {
+                init_exec_token_in(inst);
+            }
+            let token = get_R_exec_token_in(inst);
+            with_arena_in(inst, |arena| {
+                let continuation = arena.alloc_vector(SEXPTYPE::VECSXP, 4);
+                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 0, token);
+                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 1, call);
+                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 2, rho);
+                crate::sexp::accessors::SET_VECTOR_ELT(continuation, 3, op);
+                continuation
+            })
+        })
+    }
+}
+
 unsafe fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CAR(args) == R_MissingArg() {
@@ -665,6 +695,11 @@ unsafe fn eval_exec_call(args: SEXP, rho: SEXP) -> SEXP {
             tailcall_error("\"envir\" must be an environment");
         }
 
+        if is_in_tail_position() {
+            let op = CAR(expr);
+            return make_exec_continuation(expr, env, op);
+        }
+
         Rf_eval(expr, env)
     }
 }
@@ -680,16 +715,20 @@ unsafe fn eval_tailcall_call(args: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+
+        if is_in_tail_position() {
+            return make_exec_continuation(expr, rho, CAR(args));
+        }
+
         Rf_eval(expr, rho)
     }
 }
 
 /// `Exec()` and `Tailcall()` special forms.
 ///
-/// GNU R can turn these calls into an exec continuation when they are in a
-/// proven tail position. The Rust evaluator does not yet have the same
-/// non-local jump contract, so this preserves user-visible semantics by
-/// evaluating the target call directly.
+/// When these calls appear in tail position inside a closure, GNU R returns an
+/// exec continuation vector that `handle_exec_continuation()` unwinds until a
+/// concrete value is produced.
 pub unsafe fn do_tailcall(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let is_exec = !op.is_null()
@@ -735,16 +774,16 @@ mod tests {
 
     #[test]
     fn test_jit_settings_parse_and_gate_unavailable_compiler() {
-        assert!(!bytecode_compiler_available());
+        assert!(bytecode_compiler_available());
 
         let defaults = JitSettings::from_env_values(None, None, None);
-        assert_eq!(defaults.jit_enabled, 0);
+        assert_eq!(defaults.jit_enabled, 3);
         assert_eq!(defaults.compile_pkgs, FALSE);
         assert_eq!(defaults.disable_bytecode, FALSE);
-        assert_eq!(defaults.min_jit_score, c_int::MAX);
+        assert_eq!(defaults.min_jit_score, 50);
 
         let requested = JitSettings::from_env_values(Some("3"), Some("1"), Some("0"));
-        assert_eq!(requested.jit_enabled, 0);
+        assert_eq!(requested.jit_enabled, 3);
         assert_eq!(requested.compile_pkgs, TRUE);
         assert_eq!(requested.disable_bytecode, FALSE);
 
@@ -753,7 +792,7 @@ mod tests {
         assert_eq!(disabled.disable_bytecode, TRUE);
 
         let invalid = JitSettings::from_env_values(Some("not-a-number"), Some("-1"), None);
-        assert_eq!(invalid.jit_enabled, 0);
+        assert_eq!(invalid.jit_enabled, 3);
         assert_eq!(invalid.compile_pkgs, FALSE);
     }
 
@@ -768,7 +807,7 @@ mod tests {
                 Some("1"),
                 Some("0"),
             ));
-            assert_eq!(get_R_jit_enabled(), 0);
+            assert_eq!(get_R_jit_enabled(), 3);
             assert_eq!(get_R_compile_pkgs(), TRUE);
             assert_eq!(get_R_disable_bytecode(), FALSE);
         })
@@ -788,7 +827,7 @@ mod tests {
             .unwrap();
 
         left.with_arena(|_| {
-            assert_eq!(get_R_jit_enabled(), 0);
+            assert_eq!(get_R_jit_enabled(), 3);
             assert_eq!(get_R_compile_pkgs(), TRUE);
             assert_eq!(get_R_disable_bytecode(), FALSE);
         })
@@ -809,11 +848,11 @@ mod tests {
             JitSettings::from_env_values(Some("0"), Some("0"), Some("1")),
         );
 
-        assert_eq!(get_R_jit_enabled_in(&mut left), 0);
+        assert_eq!(get_R_jit_enabled_in(&mut left), 3);
         assert_eq!(get_R_compile_pkgs_in(&mut left), TRUE);
         assert_eq!(get_R_disable_bytecode_in(&mut left), FALSE);
-        assert_eq!(get_R_min_jit_score_in(&mut left), c_int::MAX);
-        assert_eq!(get_R_loop_jit_score_in(&mut left), c_int::MAX);
+        assert_eq!(get_R_min_jit_score_in(&mut left), 50);
+        assert_eq!(get_R_loop_jit_score_in(&mut left), 50);
 
         assert_eq!(get_R_jit_enabled_in(&mut right), 0);
         assert_eq!(get_R_compile_pkgs_in(&mut right), FALSE);
@@ -823,16 +862,19 @@ mod tests {
     }
 
     #[test]
-    fn test_compile_expr_returns_original_expression_without_compiler() {
+    fn test_compile_expr_compiles_simple_expressions() {
         let _session = RSession::new();
-        let expr = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let expr = with_arena(|arena| unsafe {
+            crate::sexp::constructors::Rf_ScalarInteger(7)
+        });
         unsafe {
-            assert_eq!(R_compileExpr(expr, R_NilValue()), expr);
+            let compiled = R_compileExpr(expr, R_NilValue());
+            assert_eq!(TYPEOF(compiled), SEXPTYPE::BCODESXP);
         }
     }
 
     #[test]
-    fn test_check_jit_does_not_claim_compilation_without_compiler() {
+    fn test_check_jit_compiles_simple_closure_bodies() {
         let mut session = RSession::new();
         let (result, _, _) = session.eval_code_with_output_capture("function(x) { x + 1 }");
         let fun = result.expect("closure should evaluate").as_raw();
@@ -841,8 +883,8 @@ mod tests {
             set_R_jit_enabled(3);
             with_required_current_instance(|inst| set_R_min_jit_score_in(inst, 0));
 
-            assert_eq!(R_CheckJIT(fun), FALSE);
-            assert_ne!(TYPEOF(BODY(fun)), SEXPTYPE::BCODESXP);
+            assert_eq!(R_CheckJIT(fun), TRUE);
+            assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::BCODESXP);
         }
     }
 
@@ -862,7 +904,7 @@ mod tests {
 
         right
             .with_arena(|_| unsafe {
-                assert_eq!(get_R_jit_enabled(), 0);
+                assert_eq!(get_R_jit_enabled(), 3);
                 assert!(with_required_current_instance(get_R_exec_token_in).is_null());
                 set_R_jit_enabled(1);
                 init_exec_token();
@@ -910,6 +952,15 @@ mod tests {
 
         let tailcall = session.eval("f <- function(x) Tailcall(identity, x + 1)\nf(5)");
         assert_eq!(tailcall.output, "[1] 6");
+    }
+
+    #[test]
+    fn tailcall_recursion_uses_exec_continuations_in_tail_position() {
+        let mut session = crate::android::RSession::new();
+        let result = session.eval(
+            "countdown <- function(n) if (n <= 0) 0 else Tailcall(countdown, n - 1)\ncountdown(5)",
+        );
+        assert_eq!(result.output, "[1] 0");
     }
 
     #[test]

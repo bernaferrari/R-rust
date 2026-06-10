@@ -23,9 +23,9 @@
  *  Provides the functionality of the "par" function in S.
  */
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::c_void;
-use std::os::raw::{c_char, c_double, c_int, c_uchar, c_ushort};
+use std::os::raw::{c_char, c_double, c_int, c_uint, c_uchar, c_ushort};
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -43,10 +43,176 @@ pub(crate) enum ParValue {
     String(String),
 }
 
+/// Base-graphics parameter block used by `gpptr` / `dpptr`.
+///
+/// The layout matches the subset of R's `GPar` consumed by `plot.rs`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct GPar {
+    pub adj: c_double,
+    pub ann: c_int,
+    pub bg: c_uint,
+    pub bty: c_char,
+    pub cex: c_double,
+    pub lheight: c_double,
+    pub col: c_uint,
+    pub crt: c_double,
+    pub din: [c_double; 2],
+    pub err: c_int,
+    pub fg: c_uint,
+    pub family: [c_char; 201],
+    pub font: c_int,
+    pub gamma: c_double,
+    pub lab: [c_int; 3],
+    pub las: c_int,
+    pub lty: c_int,
+    pub lwd: c_double,
+    pub mgp: [c_double; 3],
+    pub mkh: c_double,
+    pub pch: c_int,
+    pub ps: c_double,
+    pub smo: c_int,
+    pub srt: c_double,
+    pub tck: c_double,
+    pub tcl: c_double,
+    pub xaxp: [c_double; 3],
+    pub xaxs: c_char,
+    pub xaxt: c_char,
+    pub xlog: c_int,
+    pub xpd: c_int,
+    pub oldxpd: c_int,
+    pub yaxp: [c_double; 3],
+    pub yaxs: c_char,
+    pub yaxt: c_char,
+    pub ylog: c_int,
+    pub cexbase: c_double,
+    pub cexmain: c_double,
+    pub cexlab: c_double,
+    pub cexsub: c_double,
+    pub cexaxis: c_double,
+    pub fontmain: c_int,
+    pub fontlab: c_int,
+    pub fontsub: c_int,
+    pub fontaxis: c_int,
+    pub colmain: c_uint,
+    pub collab: c_uint,
+    pub colsub: c_uint,
+    pub colaxis: c_uint,
+    pub mar: [c_double; 4],
+    pub oma: [c_double; 4],
+    pub pin: [c_double; 2],
+    pub plt: [c_double; 4],
+    pub fig: [c_double; 4],
+    pub usr: [c_double; 4],
+    pub logusr: [c_double; 4],
+    pub new: c_int,
+    pub state: c_int,
+    pub valid: c_int,
+}
+
+#[derive(Clone)]
+struct DeviceGParEntry {
+    gp: GPar,
+    dp: GPar,
+    dp_saved: GPar,
+}
+
 #[derive(Default)]
 pub(crate) struct GraphicsParState {
     overrides: BTreeMap<String, ParValue>,
     base_register_index: Option<c_int>,
+    device_gpars: HashMap<usize, DeviceGParEntry>,
+}
+
+fn default_gpar() -> GPar {
+    GPar {
+        adj: 0.5,
+        ann: 1,
+        bg: 0xffffff,
+        bty: b'o' as c_char,
+        cex: 1.0,
+        lheight: 1.0,
+        col: 0x000000,
+        crt: 0.0,
+        din: [7.0, 7.0],
+        err: -1,
+        fg: 0x000000,
+        family: [0; 201],
+        font: 1,
+        gamma: 1.0,
+        lab: [5, 6, 4],
+        las: 0,
+        lty: 1,
+        lwd: 1.0,
+        mgp: [3.0, 1.0, 0.0],
+        mkh: 0.25,
+        pch: 1,
+        ps: 12.0,
+        smo: 1,
+        srt: 0.0,
+        tck: -1.0,
+        tcl: -0.5,
+        xaxp: [0.0, 1.0, 5.0],
+        xaxs: b'r' as c_char,
+        xaxt: b's' as c_char,
+        xlog: 0,
+        xpd: 0,
+        oldxpd: 0,
+        yaxp: [0.0, 1.0, 5.0],
+        yaxs: b'r' as c_char,
+        yaxt: b's' as c_char,
+        ylog: 0,
+        cexbase: 1.0,
+        cexmain: 1.2,
+        cexlab: 1.0,
+        cexsub: 1.0,
+        cexaxis: 1.0,
+        fontmain: 2,
+        fontlab: 1,
+        fontsub: 1,
+        fontaxis: 1,
+        colmain: 0x000000,
+        collab: 0x000000,
+        colsub: 0x000000,
+        colaxis: 0x000000,
+        mar: [5.1, 4.1, 4.1, 2.1],
+        oma: [0.0, 0.0, 0.0, 0.0],
+        pin: [4.5, 4.5],
+        plt: [0.1171429, 0.8838095, 0.1171429, 0.8838095],
+        fig: [0.0, 1.0, 0.0, 1.0],
+        usr: [0.0, 1.0, 0.0, 1.0],
+        logusr: [0.0, 0.0, 0.0, 0.0],
+        new: 1,
+        state: 1,
+        valid: 1,
+    }
+}
+
+fn device_key(dd: pGEDevDesc) -> usize {
+    dd as usize
+}
+
+fn with_device_gpar_entry<T>(
+    dd: pGEDevDesc,
+    f: impl FnOnce(&mut DeviceGParEntry) -> T,
+) -> Option<T> {
+    if dd.is_null() {
+        return None;
+    }
+    Some(with_par_state(|state| {
+        let entry = state
+            .device_gpars
+            .entry(device_key(dd))
+            .or_insert_with(|| {
+                let gp = default_gpar();
+                DeviceGParEntry {
+                    dp: gp,
+                    dp_saved: gp,
+                    gp,
+                }
+            });
+        f(entry)
+    }))
 }
 
 const PAR_ORDER: &[&str] = &[
@@ -1202,24 +1368,24 @@ pub unsafe fn RunregisterBase() -> SEXP {
     unsafe { R_NilValue() }
 }
 
-/* ---- Stub: gpptr / dpptr / dpSavedptr / Rf_setBaseDevice ---- */
+/* ---- gpptr / dpptr / dpSavedptr / Rf_setBaseDevice ---- */
 
 /// gpptr -- get the current GPar pointer (graphics parameters).
-/// Stub: returns null.
-pub unsafe fn gpptr(_dd: pGEDevDesc) -> *mut c_void {
-    std::ptr::null_mut()
+pub unsafe fn gpptr(dd: pGEDevDesc) -> *mut c_void {
+    with_device_gpar_entry(dd, |entry| &mut entry.gp as *mut GPar as *mut c_void)
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// dpptr -- get the display GPar pointer (display parameters).
-/// Stub: returns null.
-pub unsafe fn dpptr(_dd: pGEDevDesc) -> *mut c_void {
-    std::ptr::null_mut()
+pub unsafe fn dpptr(dd: pGEDevDesc) -> *mut c_void {
+    with_device_gpar_entry(dd, |entry| &mut entry.dp as *mut GPar as *mut c_void)
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// dpSavedptr -- get the saved display GPar pointer.
-/// Stub: returns null.
-pub unsafe fn dpSavedptr(_dd: pGEDevDesc) -> *mut c_void {
-    std::ptr::null_mut()
+pub unsafe fn dpSavedptr(dd: pGEDevDesc) -> *mut c_void {
+    with_device_gpar_entry(dd, |entry| &mut entry.dp_saved as *mut GPar as *mut c_void)
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// Rf_setBaseDevice -- mark the device as "dirty" (has received base output).

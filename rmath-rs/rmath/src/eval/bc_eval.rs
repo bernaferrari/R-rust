@@ -446,7 +446,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
-                        let call = Rf_lang2(fun, args);
+                        let call = Rf_cons(fun, args);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
                         let result = crate::eval::eval::Rf_eval(call, rho);
                         stack.push(result);
                     }
@@ -463,7 +466,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
-                        let call = Rf_lang2(fun, args);
+                        let call = Rf_cons(fun, args);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
                         let result = crate::eval::eval::Rf_eval(call, rho);
                         stack.push(result);
                     }
@@ -481,7 +487,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
-                        let call = Rf_lang2(fun, args);
+                        let call = Rf_cons(fun, args);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
                         let result = crate::eval::eval::Rf_eval(call, rho);
                         stack.push(result);
                     }

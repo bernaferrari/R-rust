@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
-    PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR, SETTAG,
+    PRINTNAME, RAW, REAL, REAL_ELT, SETCAR, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR,
+    SETTAG,
     STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
@@ -7005,6 +7006,14 @@ unsafe fn eager_lazy_load_package_db(
     envir: SEXP,
     skip: &[&str],
 ) -> Result<(), String> {
+    lazy_lazy_load_package_db(filebase, envir, skip)
+}
+
+unsafe fn lazy_lazy_load_package_db(
+    filebase: &Path,
+    envir: SEXP,
+    skip: &[&str],
+) -> Result<(), String> {
     unsafe {
         if envir.is_null() || TYPEOF(envir) != SEXPTYPE::ENVSXP {
             return Err("lazy-load requires a package environment".to_string());
@@ -7044,6 +7053,9 @@ unsafe fn eager_lazy_load_package_db(
 
         let names =
             crate::sexp::attrib_core::getAttrib(variables, crate::sexp::attrib_core::R_NamesSymbol());
+
+        let mut lazy_names = Vec::new();
+        let mut lazy_keys = Vec::new();
         for index in 0..XLENGTH(variables) {
             let name = if !names.is_null()
                 && names != R_NilValue()
@@ -7056,12 +7068,41 @@ unsafe fn eager_lazy_load_package_db(
             if name.is_empty() || skip.iter().any(|candidate| *candidate == name) {
                 continue;
             }
+            lazy_names.push(name);
+            lazy_keys.push(VECTOR_ELT(variables, index));
+        }
 
-            let key = VECTOR_ELT(variables, index);
-            let value = lazy_load_db_fetch_value(key, datafile, compressed)?;
-            let _value_guard = protect(value);
-            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-            crate::sexp::envir::defineVar(symbol, value, envir);
+        if lazy_names.is_empty() {
+            return Ok(());
+        }
+
+        let fetch_sym = Rf_install(c"lazyLoadDBfetch".as_ptr());
+        let template = Rf_cons(
+            fetch_sym,
+            Rf_cons(
+                R_NilValue(),
+                Rf_cons(
+                    datafile,
+                    Rf_cons(compressed, Rf_cons(R_NilValue(), R_NilValue())),
+                ),
+            ),
+        );
+        if !template.is_null() {
+            (*template).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        let _template_guard = protect(template);
+
+        for (index, name) in lazy_names.iter().enumerate() {
+            let key = lazy_keys[index];
+            let expr0 = crate::mainutils::duplicate::duplicate(template);
+            let _expr0_guard = protect(expr0);
+            SETCAR(CDR(expr0), key);
+            let symbol = Rf_install(CString::new(name.clone()).unwrap_or_default().as_ptr());
+            crate::sexp::envir::defineVar(
+                symbol,
+                crate::sexp::memory_ext::mkPROMISE(expr0, envir),
+                envir,
+            );
         }
 
         Ok(())
@@ -30438,8 +30479,10 @@ mod tests {
 
             let hello_sym = Rf_install(c"hello".as_ptr());
             let loaded = crate::sexp::envir::R_findVarInFrame(package_env, hello_sym);
-            assert_eq!(TYPEOF(loaded), SEXPTYPE::INTSXP);
-            assert_eq!(*INTEGER(loaded), 77);
+            assert_eq!(TYPEOF(loaded), SEXPTYPE::PROMSXP);
+            let value = crate::sexp::envir::forcePromise(loaded);
+            assert_eq!(TYPEOF(value), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(value), 77);
 
             let _ = std::fs::remove_dir_all(temp_dir);
         }

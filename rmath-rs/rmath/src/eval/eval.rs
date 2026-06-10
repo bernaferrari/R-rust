@@ -292,6 +292,13 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
 
 fn primitive_for_symbol<'a>(symbol: Sexp<'a>) -> Option<Sexp<'a>> {
     let name = unsafe { get_symbol_name(symbol.as_raw()) };
+    if crate::eval::builtin::evaluated_builtin_handler(&name).is_some() {
+        let primitive =
+            unsafe { crate::eval::primitive::make_primitive_binding(&name, SEXPTYPE::BUILTINSXP) };
+        if !primitive.is_null() && primitive != unsafe { R_NilValue() } {
+            return Some(unsafe { Sexp::from_raw_unchecked(primitive) });
+        }
+    }
     CString::new(name.as_str())
         .ok()
         .map(|name| unsafe { crate::mainutils::names::R_Primitive(name.as_ptr()) })
@@ -472,7 +479,7 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 pub(crate) unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
     match (Sexp::from_raw(e), Sexp::from_raw(rho)) {
         (Some(expr), Some(env)) => match eval_expr(expr, env) {
-            Ok(result) => result.as_raw(),
+            Ok(result) => unsafe { super::jit::handle_exec_continuation(result.as_raw()) },
             Err(msg) => {
                 std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
             }
