@@ -1004,16 +1004,39 @@ fn eval_safe_point_gc_due() -> bool {
     .unwrap_or(false)
 }
 
+fn sync_env_hash_tables_from_frames(instance: &mut instance::RInstance) {
+    let envs: Vec<usize> = instance.env_hash_tables.keys().copied().collect();
+    for env_addr in envs {
+        let env = env_addr as SEXP;
+        unsafe {
+            if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
+                continue;
+            }
+            let mut frame = (*env).data.envsxp.frame;
+            while !frame.is_null() {
+                let tag = (*frame).data.listsxp.tagval;
+                let val = (*frame).data.listsxp.carval;
+                if !tag.is_null() {
+                    super::env_hash::hash_insert_in(instance, env, tag, val);
+                }
+                frame = (*frame).data.listsxp.cdrval;
+            }
+        }
+    }
+}
+
 fn collect_environment_binding_values(instance: &instance::RInstance) -> Vec<SEXP> {
     let mut values = Vec::new();
+    let mut seen_envs = std::collections::HashSet::new();
     unsafe {
         let mut walk_env = |mut env: SEXP| {
-            while !env.is_null() {
+            while !env.is_null() && seen_envs.insert(env as usize) {
                 if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
                     break;
                 }
                 let mut frame = (*env).data.envsxp.frame;
                 while !frame.is_null() {
+                    values.push(frame);
                     let val = (*frame).data.listsxp.carval;
                     if !val.is_null() {
                         values.push(val);
@@ -1023,20 +1046,17 @@ fn collect_environment_binding_values(instance: &instance::RInstance) -> Vec<SEX
                 env = (*env).data.envsxp.enclos;
             }
         };
+        for ctxt in &instance.context_stack {
+            walk_env(ctxt.cloenv);
+        }
         walk_env(instance.global_env);
         walk_env(instance.base_env);
-        for table in instance.env_hash_tables.values() {
-            for &value in table.values() {
-                if !value.is_null() {
-                    values.push(value);
-                }
-            }
-        }
     }
     values
 }
 
 fn push_environment_binding_protects(instance: &mut instance::RInstance) {
+    sync_env_hash_tables_from_frames(instance);
     let values = collect_environment_binding_values(instance);
     for value in values {
         push_protect_in(instance, value);

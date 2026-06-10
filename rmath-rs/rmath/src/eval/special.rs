@@ -340,6 +340,8 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let cond = CAR(args);
         let body = CADR(args);
+        let _cond_guard = protect(cond);
+        let _body_guard = protect(body);
 
         loop {
             crate::sexp::instance::check_cancellation();
@@ -373,6 +375,8 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
                     crate::sexp::context::LoopAction::Continue => continue,
                 },
             }
+
+            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         }
 
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();
@@ -390,6 +394,8 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
         let var_sym = CAR(args);
         let seq_expr = CADR(args);
         let body = CADDR(args);
+        let _var_guard = protect(var_sym);
+        let _body_guard = protect(body);
 
         let seq_val = Rf_eval(seq_expr, rho);
         let _seq_guard = protect(seq_val);
@@ -444,7 +450,11 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                 }
             };
 
-            defineVar(var_sym, val, rho);
+            if !crate::sexp::envir::define_var_updates(var_sym, val, rho) {
+                std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                    message: "failed to set `for` loop variable".to_string(),
+                });
+            }
 
             let body_result =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
@@ -460,6 +470,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                 },
             }
 
+            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
             i += 1;
         }
 
@@ -476,6 +487,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
 unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let body = CAR(args);
+        let _body_guard = protect(body);
 
         // `repeat` re-enters after each successful body evaluation, so it cannot
         // share the single-setjmp structure used by `for`/`while`. A nested
@@ -493,6 +505,8 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
                     crate::sexp::context::LoopAction::Continue => continue,
                 },
             }
+
+            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         }
 
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();

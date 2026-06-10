@@ -91,8 +91,8 @@ fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
 
     if primval == 2 {
         env.set(sym, value);
-    } else {
-        let _ = env.define(sym, value);
+    } else if let Err(err) = env.define(sym, value) {
+        error(&format!("failed to assign binding: {err}"));
     }
 }
 

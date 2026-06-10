@@ -332,22 +332,8 @@ pub fn find_var_in_frame_result<'a>(
         return Ok(None);
     }
 
-    // Fast path: check hash table if one exists
-    if super::env_hash::env_has_hash_table(rho.as_raw())
-        && let Some(val) = super::env_hash::hash_get(rho.as_raw(), symbol.as_raw())
-    {
-        if val != unsafe { R_UnboundValue() }
-            && let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw())
-        {
-            return Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None))
-                .map(Some)
-                .map_err(|err| sexp_err("active binding value", err));
-        }
-        return Sexp::try_from_raw(val)
-            .map(Some)
-            .map_err(|err| sexp_err("hash binding value", err));
-    }
-
+    // The pairlist frame is authoritative. Hash tables are a write-through cache
+    // and can retain stale values across GC if frame cells were remapped first.
     let frame = rho
         .try_frame()
         .map_err(|err| sexp_err("environment frame lookup", err))?;
@@ -362,11 +348,29 @@ pub fn find_var_in_frame_result<'a>(
                     .map(Some)
                     .map_err(|err| sexp_err("active binding value", err));
             }
-            return cell
+            let val = cell
                 .try_car()
-                .map(Some)
-                .map_err(|err| sexp_err("binding value lookup", err));
+                .map_err(|err| sexp_err("binding value lookup", err))?;
+            if super::env_hash::env_has_hash_table(rho.as_raw()) {
+                super::env_hash::hash_insert(rho.as_raw(), symbol.as_raw(), val.as_raw());
+            }
+            return Ok(Some(val));
         }
+    }
+
+    if super::env_hash::env_has_hash_table(rho.as_raw())
+        && let Some(val) = super::env_hash::hash_get(rho.as_raw(), symbol.as_raw())
+    {
+        if val != unsafe { R_UnboundValue() }
+            && let Some(fun) = active_binding_fun_raw(rho.as_raw(), symbol.as_raw())
+        {
+            return Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None))
+                .map(Some)
+                .map_err(|err| sexp_err("active binding value", err));
+        }
+        return Sexp::try_from_raw(val)
+            .map(Some)
+            .map_err(|err| sexp_err("hash binding value", err));
     }
 
     Ok(None)
@@ -896,8 +900,15 @@ pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
 /// FFI wrapper around [`define_var_safe`].
 pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
     unsafe {
+        let _ = define_var_updates(symbol, value, rho);
+    }
+}
+
+/// Define or update a binding, returning whether the frame/hash were updated.
+pub(crate) unsafe fn define_var_updates(symbol: SEXP, value: SEXP, rho: SEXP) -> bool {
+    unsafe {
         if rho.is_null() || symbol.is_null() {
-            return;
+            return false;
         }
 
         if let (Some(symbol), Some(value), Some(rho)) = (
@@ -905,7 +916,9 @@ pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
             Sexp::from_raw(value),
             Sexp::from_raw(rho),
         ) {
-            define_var_safe(symbol, value, rho);
+            define_var_safe(symbol, value, rho)
+        } else {
+            false
         }
     }
 }
