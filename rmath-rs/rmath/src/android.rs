@@ -204,10 +204,7 @@ impl RSession {
         code: &str,
         token: Option<CancellationToken>,
     ) -> RResult {
-        let previous = self.core.replace_cancellation_token(token);
-        let result = self.eval(code);
-        self.core.set_cancellation_token(previous);
-        result
+        self.eval_script_with_cancellation_token(code, token)
     }
 
     /// Configure app-private runtime paths for Android embedding.

@@ -222,7 +222,8 @@ fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Str
     if super::jit::get_R_disable_bytecode() != 0 {
         return Err("bytecode evaluation is disabled for this R session".to_string());
     }
-    super::bytecode::eval_bytecode(expr, env)
+    let result = unsafe { super::bc_eval::bcEval(expr.as_raw(), env.as_raw()) };
+    Ok(unsafe { Sexp::from_raw_unchecked(result) })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

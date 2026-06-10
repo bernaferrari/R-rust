@@ -392,16 +392,26 @@ pub unsafe fn gcontextFromGP(_gc: pGEcontext, _dd: pGEDevDesc) {
  * ======================================================================== */
 
 /// GLine -- draw a line from (x1,y1) to (x2,y2).
-/// Stub: does nothing.
 pub unsafe fn GLine(
-    _x1: c_double,
-    _y1: c_double,
-    _x2: c_double,
-    _y2: c_double,
-    _coords: c_int,
-    _dd: pGEDevDesc,
+    x1: c_double,
+    y1: c_double,
+    x2: c_double,
+    y2: c_double,
+    coords: c_int,
+    dd: pGEDevDesc,
 ) {
-    /* Stub: full implementation converts to DEVICE, clips, calls GELine */
+    unsafe {
+        if dd.is_null() {
+            return;
+        }
+        let mut x1 = x1;
+        let mut y1 = y1;
+        let mut x2 = x2;
+        let mut y2 = y2;
+        GConvert(&mut x1, &mut y1, coords, DEVICE, dd);
+        GConvert(&mut x2, &mut y2, coords, DEVICE, dd);
+        engine::GELine(x1, y1, x2, y2, std::ptr::null(), dd);
+    }
 }
 
 /// GLocator -- read the current pen position interactively.

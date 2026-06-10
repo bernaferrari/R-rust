@@ -687,7 +687,14 @@ pub fn with_arena<F, R>(f: F) -> R
 where
     F: FnOnce(&mut RArena) -> R,
 {
-    super::instance::with_required_current_instance(|inst| with_arena_in(inst, f))
+    let Some(instance_ptr) = super::instance::current_instance_ptr() else {
+        return super::instance::with_required_current_instance(|inst| with_arena_in(inst, f));
+    };
+    // SAFETY: The pointer was set by `set_current_instance` and is valid as long as
+    // the owning `RSession` is alive. Borrowing the arena through the raw pointer
+    // avoids re-entering `with_required_current_instance` during nested allocation
+    // or GC paths that already hold `&mut RInstance`.
+    unsafe { f(&mut (*instance_ptr).arena) }
 }
 
 pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -> R

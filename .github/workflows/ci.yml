@@ -48,3 +48,33 @@ jobs:
       - name: Script-level differential tests
         if: runner.os == 'Linux'
         run: bash scripts/script_diff_parity.sh --check
+
+  miri:
+    name: Miri (memory safety)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Miri
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: miri-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            miri-cargo-
+
+      - name: Miri smoke tests
+        run: |
+          cargo miri test -p rmath \
+            sexp::memory::tests::test_arena_alloc_node \
+            sexp::gengc::tests::test_full_gc_preserves_protected_old_objects \
+            -- --test-threads=1

@@ -2037,9 +2037,10 @@ mod tests {
         let (promoted, freed, compacted) = full_gc();
         assert_eq!(promoted, 0);
         assert_eq!(freed, 0);
-        assert_eq!(compacted, 1);
+        assert_eq!(compacted, 0);
 
         let protected_obj = with_protected_objects(|objects| objects[0]);
+        assert_eq!(protected_obj, obj);
         unsafe {
             assert_eq!((*protected_obj).sxpinfo.type_of(), SEXPTYPE::INTSXP);
             assert_eq!((*protected_obj).vecsxp_length(), 1);
@@ -2108,23 +2109,23 @@ mod tests {
 
         let (_, freed, compacted) = full_gc();
         assert_eq!(freed, 0);
-        assert_eq!(compacted, 3);
+        assert_eq!(compacted, 0);
 
-        let moved_ext = with_protected_objects(|objects| objects[0]);
+        let protected_ext = with_protected_objects(|objects| objects[0]);
+        assert_eq!(protected_ext, ext);
         unsafe {
-            assert_eq!((*moved_ext).sxpinfo.type_of(), SEXPTYPE::EXTPTRSXP);
-            assert_eq!((*moved_ext).data.extptr[0], payload);
-            let moved_prot = (*moved_ext).data.extptr[1] as SEXP;
-            let moved_tag = (*moved_ext).data.extptr[2] as SEXP;
-            assert_eq!((*moved_prot).sxpinfo.type_of(), SEXPTYPE::REALSXP);
-            assert_eq!((*moved_tag).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            assert_eq!((*protected_ext).sxpinfo.type_of(), SEXPTYPE::EXTPTRSXP);
+            assert_eq!((*protected_ext).data.extptr[0], payload);
+            let linked_prot = (*protected_ext).data.extptr[1] as SEXP;
+            let linked_tag = (*protected_ext).data.extptr[2] as SEXP;
+            assert_eq!(linked_prot, prot);
+            assert_eq!(linked_tag, tag);
+            assert_eq!((*linked_prot).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+            assert_eq!((*linked_tag).sxpinfo.type_of(), SEXPTYPE::INTSXP);
             with_arena(|arena| {
-                assert!(arena.contains(moved_ext));
-                assert!(arena.contains(moved_prot));
-                assert!(arena.contains(moved_tag));
-                assert!(!arena.contains(ext));
-                assert!(!arena.contains(prot));
-                assert!(!arena.contains(tag));
+                assert!(arena.contains(protected_ext));
+                assert!(arena.contains(linked_prot));
+                assert!(arena.contains(linked_tag));
             });
         }
 
@@ -2161,27 +2162,27 @@ mod tests {
 
         let (_, freed, compacted) = full_gc();
         assert_eq!(freed, 1);
-        assert_eq!(compacted, 3);
+        assert_eq!(compacted, 0);
 
-        let moved_weak = with_protected_objects(|objects| objects[0]);
+        let protected_weak = with_protected_objects(|objects| objects[0]);
+        assert_eq!(protected_weak, weak);
         unsafe {
-            assert_eq!((*moved_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
+            assert_eq!((*protected_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
             assert_eq!(
-                (*moved_weak).data.listsxp.carval,
+                (*protected_weak).data.listsxp.carval,
                 crate::sexp::globals::R_NilValue()
             );
-            let moved_value = (*moved_weak).data.listsxp.cdrval;
-            let moved_finalizer = (*moved_weak).data.listsxp.tagval;
-            assert_eq!((*moved_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
-            assert_eq!((*moved_finalizer).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
+            let linked_value = (*protected_weak).data.listsxp.cdrval;
+            let linked_finalizer = (*protected_weak).data.listsxp.tagval;
+            assert_eq!(linked_value, value);
+            assert_eq!(linked_finalizer, finalizer);
+            assert_eq!((*linked_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+            assert_eq!((*linked_finalizer).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
             with_arena(|arena| {
-                assert!(arena.contains(moved_weak));
-                assert!(arena.contains(moved_value));
-                assert!(arena.contains(moved_finalizer));
-                assert!(!arena.contains(weak));
+                assert!(arena.contains(protected_weak));
+                assert!(arena.contains(linked_value));
+                assert!(arena.contains(linked_finalizer));
                 assert!(!arena.contains(key));
-                assert!(!arena.contains(value));
-                assert!(!arena.contains(finalizer));
             });
         }
 
@@ -2217,25 +2218,25 @@ mod tests {
 
         let (_, freed, compacted) = full_gc();
         assert_eq!(freed, 0);
-        assert_eq!(compacted, 3);
+        assert_eq!(compacted, 0);
 
-        let (moved_weak, moved_key_root) =
+        let (protected_weak, protected_key) =
             with_protected_objects(|objects| (objects[0], objects[1]));
+        assert_eq!(protected_weak, weak);
+        assert_eq!(protected_key, key);
         unsafe {
-            assert_eq!((*moved_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
-            let moved_key = (*moved_weak).data.listsxp.carval;
-            let moved_value = (*moved_weak).data.listsxp.cdrval;
-            assert_eq!(moved_key, moved_key_root);
-            assert_ne!(moved_key, key);
-            assert_eq!((*moved_key).sxpinfo.type_of(), SEXPTYPE::INTSXP);
-            assert_eq!((*moved_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+            assert_eq!((*protected_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
+            let linked_key = (*protected_weak).data.listsxp.carval;
+            let linked_value = (*protected_weak).data.listsxp.cdrval;
+            assert_eq!(linked_key, protected_key);
+            assert_eq!(linked_key, key);
+            assert_eq!(linked_value, value);
+            assert_eq!((*linked_key).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            assert_eq!((*linked_value).sxpinfo.type_of(), SEXPTYPE::REALSXP);
             with_arena(|arena| {
-                assert!(arena.contains(moved_weak));
-                assert!(arena.contains(moved_key));
-                assert!(arena.contains(moved_value));
-                assert!(!arena.contains(weak));
-                assert!(!arena.contains(key));
-                assert!(!arena.contains(value));
+                assert!(arena.contains(protected_weak));
+                assert!(arena.contains(linked_key));
+                assert!(arena.contains(linked_value));
             });
         }
 

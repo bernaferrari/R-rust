@@ -17848,11 +17848,12 @@ pub unsafe fn do_extends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let class1 = elt_to_string(class1_arg, 0);
         let class2 = elt_to_string(class2_arg, 0);
-        // Simple: same class always extends
         if class1 == class2 {
             return Rf_ScalarLogical(TRUE);
         }
-        // Check common inheritance
+        if crate::mainutils::objects::s4_class_extends(&class1, &class2) {
+            return Rf_ScalarLogical(TRUE);
+        }
         let extends = match class1.as_str() {
             "numeric" | "double" => class2 == "vector" || class2 == "atomic",
             "integer" => class2 == "numeric" || class2 == "vector" || class2 == "atomic",
@@ -27222,18 +27223,71 @@ pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `setMethod(f, signature, definition, ...)` — set S4 method.
-pub unsafe fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let _f = CAR(args);
-        let _signature = CAR(CDR(args));
+        let f_arg = CAR(args);
+        let signature_arg = CAR(CDR(args));
         let definition = CAR(CDR(CDR(args)));
 
-        // Return the definition
-        if !definition.is_null() && definition != R_NilValue() {
-            definition
-        } else {
-            R_NilValue()
+        if definition.is_null() || definition == R_NilValue() {
+            return R_NilValue();
         }
+
+        let generic = if TYPEOF(f_arg) == SEXPTYPE::CLOSXP {
+            f_arg
+        } else if TYPEOF(f_arg) == SEXPTYPE::STRSXP || TYPEOF(f_arg) == SEXPTYPE::SYMSXP {
+            crate::library::methods::methods_list_dispatch::R_getGeneric(
+                f_arg,
+                Rf_ScalarLogical(TRUE),
+                rho,
+                R_NilValue(),
+            )
+        } else {
+            return definition;
+        };
+
+        if generic.is_null() || generic == R_NilValue() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
+            return definition;
+        }
+
+        let f_env = crate::sexp::accessors::CLOENV(generic);
+        if f_env.is_null() || TYPEOF(f_env) != SEXPTYPE::ENVSXP {
+            return definition;
+        }
+
+        let all_mtable_sym = Rf_install(c".AllMTable".as_ptr());
+        let existing = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
+        let mtable = if !existing.is_null()
+            && existing != R_UnboundValue()
+            && TYPEOF(existing) == SEXPTYPE::ENVSXP
+        {
+            existing
+        } else {
+            let table = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_NilValue(), f_env);
+            if table.is_null() {
+                return definition;
+            }
+            let _table_guard = protect(table);
+            crate::sexp::envir::defineVar(all_mtable_sym, table, f_env);
+            table
+        };
+
+        let label = if signature_arg.is_null() || signature_arg == R_NilValue() {
+            String::new()
+        } else if TYPEOF(signature_arg) == SEXPTYPE::STRSXP {
+            let n = XLENGTH(signature_arg);
+            (0..n)
+                .map(|i| elt_to_string(signature_arg, i))
+                .collect::<Vec<_>>()
+                .join("#")
+        } else {
+            elt_to_string(signature_arg, 0)
+        };
+
+        let method_sym = Rf_install(CString::new(label).unwrap_or_default().as_ptr());
+        crate::sexp::envir::defineVar(method_sym, definition, mtable);
+
+        definition
     }
 }
 
