@@ -755,19 +755,26 @@ pub unsafe fn GStrHeight(
 }
 
 /// GText -- draw text at a location.
-/// Stub: does nothing.
 pub unsafe fn GText(
-    _x: c_double,
-    _y: c_double,
-    _coords: c_int,
-    _str: *const c_char,
-    _enc: cetype_t,
-    _xc: c_double,
-    _yc: c_double,
-    _rot: c_double,
-    _dd: pGEDevDesc,
+    x: c_double,
+    y: c_double,
+    coords: c_int,
+    str: *const c_char,
+    enc: cetype_t,
+    xc: c_double,
+    yc: c_double,
+    rot: c_double,
+    dd: pGEDevDesc,
 ) {
-    /* Stub: full implementation converts to DEVICE, clips, calls GEText */
+    unsafe {
+        if dd.is_null() {
+            return;
+        }
+        let mut px = x;
+        let mut py = y;
+        GConvert(&mut px, &mut py, coords, DEVICE, dd);
+        engine::GEText(px, py, str, enc, xc, yc, rot, std::ptr::null(), dd);
+    }
 }
 
 /// GArrow -- draw an arrow from (xfrom,yfrom) to (xto,yto).
@@ -804,9 +811,16 @@ pub unsafe fn GBox(_which: c_int, _dd: pGEDevDesc) {
  * ======================================================================== */
 
 /// GSymbol -- draw one of the R special symbols.
-/// Stub: does nothing.
-pub unsafe fn GSymbol(_x: c_double, _y: c_double, _coords: c_int, _pch: c_int, _dd: pGEDevDesc) {
-    /* Stub: full implementation converts to DEVICE, clips, calls GESymbol */
+pub unsafe fn GSymbol(x: c_double, y: c_double, coords: c_int, pch: c_int, dd: pGEDevDesc) {
+    unsafe {
+        if dd.is_null() {
+            return;
+        }
+        let mut px = x;
+        let mut py = y;
+        GConvert(&mut px, &mut py, coords, DEVICE, dd);
+        engine::GESymbol(px, py, pch, 1.0, std::ptr::null(), dd);
+    }
 }
 
 /* ========================================================================

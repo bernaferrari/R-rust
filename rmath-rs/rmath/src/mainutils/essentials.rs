@@ -6914,30 +6914,158 @@ fn reject_unsupported_internal_data(package: &str, package_dir: &Path) -> Result
     Ok(())
 }
 
+fn package_lazy_db_base(package_dir: &Path, package: &str) -> PathBuf {
+    package_dir.join("R").join(package)
+}
+
+fn package_has_lazy_db(package_dir: &Path, package: &str) -> bool {
+    let base = package_lazy_db_base(package_dir, package);
+    base.with_extension("rdx").is_file() && base.with_extension("rdb").is_file()
+}
+
 fn reject_unsupported_lazyload_code(package: &str, package_dir: &Path) -> Result<(), String> {
     let r_dir = package_dir.join("R");
     if !r_dir.is_dir() {
         return Ok(());
     }
 
+    let mut has_rdb = false;
+    let mut has_rdx = false;
     let entries = std::fs::read_dir(&r_dir)
         .map_err(|err| format!("could not read R directory for package '{package}': {err}"))?;
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
-        let unsupported = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("rdb") || ext.eq_ignore_ascii_case("rdx"));
-        if unsupported {
-            return Err(format!(
-                "package '{}' uses unsupported byte-compiled/lazyload R code {}; this pure-R Android runtime supports source R/*.R files only",
-                package,
-                path.display()
-            ));
+        let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+            continue;
+        };
+        if ext.eq_ignore_ascii_case("rdb") {
+            has_rdb = true;
+        } else if ext.eq_ignore_ascii_case("rdx") {
+            has_rdx = true;
         }
     }
 
+    if has_rdb ^ has_rdx {
+        let orphan = if has_rdb { "rdb" } else { "rdx" };
+        return Err(format!(
+            "package '{}' uses unsupported byte-compiled/lazyload R code {}; incomplete lazy-load database (missing .{orphan})",
+            package,
+            r_dir.display()
+        ));
+    }
+
     Ok(())
+}
+
+unsafe fn load_rds_file(path: &Path) -> Result<SEXP, String> {
+    unsafe {
+        let bytes = std::fs::read(path)
+            .map_err(|err| format!("cannot read RDS file '{}': {err}", path.display()))?;
+        let raw_vec = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
+        if raw_vec.is_null() {
+            return Err(format!("allocation failed while reading '{}'", path.display()));
+        }
+        let _raw_guard = protect(raw_vec);
+        if !bytes.is_empty() {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw_vec), bytes.len());
+        }
+        Ok(crate::mainutils::serialize::R_unserialize(raw_vec, R_NilValue()))
+    }
+}
+
+unsafe fn lazy_load_db_fetch_value(
+    key: SEXP,
+    datafile: SEXP,
+    compressed: SEXP,
+) -> Result<SEXP, String> {
+    unsafe {
+        let args = Rf_cons(
+            key,
+            Rf_cons(
+                datafile,
+                Rf_cons(compressed, Rf_cons(R_NilValue(), R_NilValue())),
+            ),
+        );
+        let value = crate::mainutils::serialize::do_lazyLoadDBfetch(
+            R_NilValue(),
+            R_NilValue(),
+            args,
+            R_NilValue(),
+        );
+        if value.is_null() {
+            Err("lazy-load database fetch returned NULL".to_string())
+        } else {
+            Ok(value)
+        }
+    }
+}
+
+unsafe fn eager_lazy_load_package_db(
+    filebase: &Path,
+    envir: SEXP,
+    skip: &[&str],
+) -> Result<(), String> {
+    unsafe {
+        if envir.is_null() || TYPEOF(envir) != SEXPTYPE::ENVSXP {
+            return Err("lazy-load requires a package environment".to_string());
+        }
+
+        let rdx_path = filebase.with_extension("rdx");
+        let rdb_path = filebase.with_extension("rdb");
+        let map = load_rds_file(&rdx_path)?;
+        let _map_guard = protect(map);
+
+        let variables = list_element_by_name(map, "variables").ok_or_else(|| {
+            format!(
+                "lazy-load map '{}' is missing a variables table",
+                rdx_path.display()
+            )
+        })?;
+        if TYPEOF(variables) != SEXPTYPE::VECSXP {
+            return Err(format!(
+                "lazy-load map '{}' has an invalid variables table",
+                rdx_path.display()
+            ));
+        }
+
+        let compressed = list_element_by_name(map, "compressed").unwrap_or(Rf_ScalarInteger(0));
+        let datafile = Rf_mkString(
+            CString::new(rdb_path.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .as_ptr(),
+        );
+        if datafile.is_null() {
+            return Err(format!(
+                "could not create lazy-load data path for '{}'",
+                rdb_path.display()
+            ));
+        }
+        let _datafile_guard = protect(datafile);
+
+        let names =
+            crate::sexp::attrib_core::getAttrib(variables, crate::sexp::attrib_core::R_NamesSymbol());
+        for index in 0..XLENGTH(variables) {
+            let name = if !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+            {
+                string_at_or_empty(names, index)
+            } else {
+                String::new()
+            };
+            if name.is_empty() || skip.iter().any(|candidate| *candidate == name) {
+                continue;
+            }
+
+            let key = VECTOR_ELT(variables, index);
+            let value = lazy_load_db_fetch_value(key, datafile, compressed)?;
+            let _value_guard = protect(value);
+            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            crate::sexp::envir::defineVar(symbol, value, envir);
+        }
+
+        Ok(())
+    }
 }
 
 unsafe fn source_package_r_files(
@@ -6965,6 +7093,11 @@ unsafe fn source_package_r_files(
 
         for file in files {
             source_r_file_into_env(&file, package_env)?;
+        }
+
+        if package_has_lazy_db(package_dir, package) {
+            let filebase = package_lazy_db_base(package_dir, package);
+            eager_lazy_load_package_db(&filebase, package_env, &[".__NAMESPACE__."])?;
         }
 
         Ok(())
@@ -30226,5 +30359,89 @@ mod tests {
     #[test]
     fn test_system_command_policy_defaults_to_disabled_without_session() {
         assert!(system_commands_disabled_by_runtime_policy());
+    }
+
+    #[test]
+    fn test_eager_lazy_load_package_db_populates_environment() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let temp_dir = std::env::temp_dir().join(format!(
+                "rport-lazyload-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            std::fs::create_dir_all(temp_dir.join("R")).expect("lazyload test dir");
+
+            let filebase = temp_dir.join("R").join("demo");
+            let rdb_path = filebase.with_extension("rdb");
+            let rdx_path = filebase.with_extension("rdx");
+
+            let value = Rf_ScalarInteger(77);
+            let insert_args = Rf_cons(
+                value,
+                Rf_cons(
+                    Rf_mkString(
+                        CString::new(rdb_path.to_string_lossy().into_owned())
+                            .unwrap_or_default()
+                            .as_ptr(),
+                    ),
+                    Rf_cons(
+                        Rf_ScalarLogical(0),
+                        Rf_cons(Rf_ScalarInteger(0), Rf_cons(R_NilValue(), R_NilValue())),
+                    ),
+                ),
+            );
+            let key = crate::mainutils::serialize::do_lazyLoadDBinsertValue(
+                R_NilValue(),
+                R_NilValue(),
+                insert_args,
+                R_NilValue(),
+            );
+
+            let variables = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+            SET_VECTOR_ELT(variables, 0, key);
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+            SET_STRING_ELT(names, 0, Rf_mkChar(c"hello".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                variables,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
+            );
+
+            let map = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(map, 0, variables);
+            SET_VECTOR_ELT(map, 1, Rf_ScalarInteger(0));
+            let map_names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+            SET_STRING_ELT(map_names, 0, Rf_mkChar(c"variables".as_ptr()));
+            SET_STRING_ELT(map_names, 1, Rf_mkChar(c"compressed".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(map, crate::sexp::attrib_core::R_NamesSymbol(), map_names);
+
+            let save_args = Rf_cons(
+                map,
+                Rf_cons(
+                    Rf_mkString(
+                        CString::new(rdx_path.to_string_lossy().into_owned())
+                            .unwrap_or_default()
+                            .as_ptr(),
+                    ),
+                    R_NilValue(),
+                ),
+            );
+            do_saveRDS(R_NilValue(), R_NilValue(), save_args, R_NilValue());
+
+            let package_env = crate::sexp::memory_ext::NewEnvironment(
+                R_NilValue(),
+                crate::sexp::globals::R_BaseEnv(),
+                R_NilValue(),
+            );
+            eager_lazy_load_package_db(&filebase, package_env, &[]).expect("lazy load");
+
+            let hello_sym = Rf_install(c"hello".as_ptr());
+            let loaded = crate::sexp::envir::R_findVarInFrame(package_env, hello_sym);
+            assert_eq!(TYPEOF(loaded), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(loaded), 77);
+
+            let _ = std::fs::remove_dir_all(temp_dir);
+        }
     }
 }
