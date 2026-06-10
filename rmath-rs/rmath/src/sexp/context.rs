@@ -405,13 +405,22 @@ pub enum LoopAction {
     Continue,
 }
 
-/// Try to handle a loop body panic. Returns LoopAction for break/next,
-/// re-panics for other signals.
 /// Run a loop body with a single `catch_unwind` context, matching upstream R's
 /// one `setjmp` per loop rather than one per iteration.
 pub unsafe fn run_hoisted_loop<F>(mut driver: F)
 where
-    F: FnMut() + std::panic::UnwindSafe,
+    F: FnMut(),
+{
+    run_hoisted_loop_with_continue(driver, || ());
+}
+
+/// Like [`run_hoisted_loop`], but runs `on_continue` before re-entering the
+/// driver after a `next` signal. `for` loops use this to advance the index
+/// before resuming, matching C R's jump to the increment clause.
+pub unsafe fn run_hoisted_loop_with_continue<F, C>(mut driver: F, mut on_continue: C)
+where
+    F: FnMut(),
+    C: FnMut(),
 {
     loop {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(&mut driver));
@@ -419,7 +428,10 @@ where
             Ok(()) => break,
             Err(payload) => match handle_loop_signal(payload) {
                 LoopAction::Break => break,
-                LoopAction::Continue => continue,
+                LoopAction::Continue => {
+                    on_continue();
+                    continue;
+                }
             },
         }
     }

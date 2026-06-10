@@ -1627,8 +1627,20 @@ mod tests {
     }
 
     #[test]
+    fn test_system_disabled_without_host_capabilities() {
+        let mut session = RSession::new();
+        let result = session.eval("system(\"printf hi\")");
+        assert!(
+            result.output.contains("system() is disabled by the session capability policy"),
+            "unexpected output: {}",
+            result.output
+        );
+    }
+
+    #[test]
     fn test_system_matches_r_output_and_status_shape() {
         let mut session = RSession::new();
+        session.enable_host_process_capabilities();
 
         let streamed = session.eval("system(\"printf hi\")");
         assert_eq!(streamed.output, "hi");

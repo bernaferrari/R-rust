@@ -343,41 +343,33 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
         let _cond_guard = protect(cond);
         let _body_guard = protect(body);
 
-        loop {
-            crate::sexp::instance::check_cancellation();
-            let cond_val = Rf_eval(cond, rho);
+        crate::sexp::context::run_hoisted_loop(|| {
+            loop {
+                crate::sexp::instance::check_cancellation();
+                let cond_val = Rf_eval(cond, rho);
 
-            let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
-                let data = crate::sexp::accessors::LOGICAL(cond_val);
-                *data == 1
-            } else {
-                let len = crate::sexp::constructors::Rf_length(cond_val);
-                if len > 0 {
-                    true
+                let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
+                    let data = crate::sexp::accessors::LOGICAL(cond_val);
+                    *data == 1
                 } else {
-                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                        message: "argument is not interpretable as logical".to_string(),
-                    });
+                    let len = crate::sexp::constructors::Rf_length(cond_val);
+                    if len > 0 {
+                        true
+                    } else {
+                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                            message: "argument is not interpretable as logical".to_string(),
+                        });
+                    }
+                };
+
+                if !should_continue {
+                    break;
                 }
-            };
 
-            if !should_continue {
-                break;
+                Rf_eval(body, rho);
+                crate::sexp::gengc::maybe_collect_at_eval_safe_point();
             }
-
-            let body_result =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
-
-            match body_result {
-                Ok(_) => {}
-                Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
-                    crate::sexp::context::LoopAction::Break => break,
-                    crate::sexp::context::LoopAction::Continue => continue,
-                },
-            }
-
-            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-        }
+        });
 
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         R_NilValue()
@@ -418,61 +410,65 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
 
         let n = crate::sexp::constructors::Rf_length(seq_val) as usize;
         let val_type = TYPEOF(seq_val);
-        let mut i: usize = 0;
-        let mut list_cell = seq_val;
+        let i = std::cell::Cell::new(0usize);
+        let list_cell_addr = std::cell::Cell::new(seq_val as usize);
 
-        while i < n {
-            crate::sexp::instance::check_cancellation();
+        crate::sexp::context::run_hoisted_loop_with_continue(
+            || {
+                while i.get() < n {
+                    crate::sexp::instance::check_cancellation();
+                    let idx = i.get();
 
-            let val = match val_type {
-                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                    VECTOR_ELT(seq_val, i as i64)
-                }
-                t if t == SEXPTYPE::LISTSXP => {
-                    let v = CAR(list_cell);
-                    list_cell = CDR(list_cell);
-                    v
-                }
-                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(seq_val, i as i32)),
-                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(seq_val, i as i32)),
-                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(seq_val, i as i32)),
-                t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(seq_val, i as i32)),
-                t if t == SEXPTYPE::STRSXP => {
-                    let scalar = Rf_allocVector(SEXPTYPE::STRSXP, 1);
-                    SET_STRING_ELT(scalar, 0, STRING_ELT(seq_val, i as i64));
-                    scalar
-                }
-                t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(seq_val, i as i32)),
-                _ => {
-                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                        message: "invalid for() loop sequence".to_string(),
-                    });
-                }
-            };
+                    let val = match val_type {
+                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                            VECTOR_ELT(seq_val, idx as i64)
+                        }
+                        t if t == SEXPTYPE::LISTSXP => {
+                            let list_cell = list_cell_addr.get() as SEXP;
+                            let v = CAR(list_cell);
+                            list_cell_addr.set(CDR(list_cell) as usize);
+                            v
+                        }
+                        t if t == SEXPTYPE::LGLSXP => {
+                            Rf_ScalarLogical(LOGICAL_ELT(seq_val, idx as i32))
+                        }
+                        t if t == SEXPTYPE::INTSXP => {
+                            Rf_ScalarInteger(INTEGER_ELT(seq_val, idx as i32))
+                        }
+                        t if t == SEXPTYPE::REALSXP => {
+                            Rf_ScalarReal(REAL_ELT(seq_val, idx as i32))
+                        }
+                        t if t == SEXPTYPE::CPLXSXP => {
+                            Rf_ScalarComplex(COMPLEX_ELT(seq_val, idx as i32))
+                        }
+                        t if t == SEXPTYPE::STRSXP => {
+                            let scalar = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+                            SET_STRING_ELT(scalar, 0, STRING_ELT(seq_val, idx as i64));
+                            scalar
+                        }
+                        t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(seq_val, idx as i32)),
+                        _ => {
+                            std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                                message: "invalid for() loop sequence".to_string(),
+                            });
+                        }
+                    };
 
-            if !crate::sexp::envir::define_var_updates(var_sym, val, rho) {
-                std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                    message: "failed to set `for` loop variable".to_string(),
-                });
-            }
-
-            let body_result =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
-
-            match body_result {
-                Ok(_) => {}
-                Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
-                    crate::sexp::context::LoopAction::Break => break,
-                    crate::sexp::context::LoopAction::Continue => {
-                        i += 1;
-                        continue;
+                    if !crate::sexp::envir::define_var_updates(var_sym, val, rho) {
+                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                            message: "failed to set `for` loop variable".to_string(),
+                        });
                     }
-                },
-            }
 
-            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
-            i += 1;
-        }
+                    Rf_eval(body, rho);
+                    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+                    i.set(idx + 1);
+                }
+            },
+            || {
+                i.set(i.get() + 1);
+            },
+        );
 
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         R_NilValue()

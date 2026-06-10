@@ -12635,7 +12635,7 @@ pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
         if system_commands_disabled_by_runtime_policy() {
             std::panic::panic_any(crate::sexp::context::RError {
-                message: "system() is disabled by the Android runtime policy".to_string(),
+                message: "system() is disabled by the session capability policy".to_string(),
             });
         }
 
@@ -12696,7 +12696,7 @@ pub unsafe fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         if system_commands_disabled_by_runtime_policy() {
             std::panic::panic_any(crate::sexp::context::RError {
-                message: "system2() is disabled by the Android runtime policy".to_string(),
+                message: "system2() is disabled by the session capability policy".to_string(),
             });
         }
 
@@ -30111,10 +30111,7 @@ mod tests {
     }
 
     #[test]
-    fn test_system_command_policy_is_target_gated() {
-        assert_eq!(
-            system_commands_disabled_by_runtime_policy(),
-            cfg!(target_os = "android")
-        );
+    fn test_system_command_policy_defaults_to_disabled_without_session() {
+        assert!(system_commands_disabled_by_runtime_policy());
     }
 }
