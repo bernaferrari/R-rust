@@ -126,7 +126,7 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
     }
 }
 
-fn push_protect_in(inst: &mut RInstance, s: SEXP) {
+pub(crate) fn push_protect_in(inst: &mut RInstance, s: SEXP) {
     if !s.is_null() {
         let mut stack = inst.protect_stack.borrow_mut();
         reserve_slot_or_fail(&mut stack, "protect");
@@ -221,6 +221,21 @@ pub(crate) fn protect_raw_pointer(s: SEXP) -> SEXP {
 }
 
 /// Pop the top `n` entries from the protection stack.
+/// Run `f` while temporarily protecting extra roots on the protect stack.
+pub(crate) fn with_temporary_extra_protects<F, R>(extra: impl FnOnce(&mut RInstance), f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    with_required_current_instance(|inst| {
+        let start = inst.protect_stack.borrow().len();
+        extra(inst);
+        let added = inst.protect_stack.borrow().len().saturating_sub(start);
+        let result = f();
+        unprotect_count_in(inst, added);
+        result
+    })
+}
+
 pub(crate) fn unprotect_count_in(inst: &mut RInstance, n: usize) {
     if n == 0 {
         return;

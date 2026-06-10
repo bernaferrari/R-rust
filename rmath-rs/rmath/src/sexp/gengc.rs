@@ -14,8 +14,9 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
-    update_preserve_stack_refs, update_preserve_stack_refs_in, update_protect_stack_refs,
-    update_protect_stack_refs_in, with_protected_objects,
+    push_protect_in, update_preserve_stack_refs, update_preserve_stack_refs_in,
+    update_protect_stack_refs, update_protect_stack_refs_in, with_protected_objects,
+    with_temporary_extra_protects,
 };
 
 /// Card size in bytes for the card marking table.
@@ -169,6 +170,14 @@ fn mark_reachable(obj: SEXP, traceable: &HashSet<usize>) {
         return;
     }
 
+    mark_reachable_traced(obj, traceable);
+}
+
+fn mark_reachable_traced(obj: SEXP, traceable: &HashSet<usize>) {
+    if obj.is_null() {
+        return;
+    }
+
     unsafe {
         if (*obj).sxpinfo.mark() {
             return;
@@ -271,13 +280,15 @@ fn mark_instance_roots(instance: &mut instance::RInstance, traceable: &HashSet<u
     {
         let stack = instance.protect_stack.borrow();
         for &obj in stack.iter() {
-            mark_reachable(obj, traceable);
+            // Protected roots must be marked even when the collector has already
+            // removed a reused address from the active-node set.
+            mark_reachable_traced(obj, traceable);
         }
     }
     {
         let stack = instance.preserve_stack.borrow();
         for &obj in stack.iter() {
-            mark_reachable(obj, traceable);
+            mark_reachable_traced(obj, traceable);
         }
     }
     for ctxt in &instance.context_stack {
@@ -968,8 +979,9 @@ const GC_BYTE_THRESHOLD: usize = 64 * 1024 * 1024;
 /// Request collection during allocation.
 ///
 /// Collection is deferred while `eval_depth > 0` so SEXP values that only live
-/// in Rust stack frames are not swept. Pending collections run once evaluation
-/// returns to top level via [`run_pending_gc_if_quiescent`].
+/// in Rust stack frames are not swept mid-call. Flushing happens at cooperative
+/// safe points ([`maybe_collect_at_eval_safe_point`]) and after top-level eval
+/// ([`run_pending_gc_if_quiescent`]).
 pub fn maybe_collect_during_alloc() {
     let run_now = instance::with_current_instance(|inst| inst.eval_state.eval_depth == 0)
         .unwrap_or(true);
@@ -981,6 +993,72 @@ pub fn maybe_collect_during_alloc() {
             (*ptr).gc_state.gc_pending = true;
         }
     }
+}
+
+fn eval_safe_point_gc_due() -> bool {
+    instance::with_current_instance(|inst| {
+        inst.gc_state.gc_pending
+            || inst.arena.node_count() > GC_TRIGGER_THRESHOLD
+            || inst.arena.total_bytes_allocated() > GC_BYTE_THRESHOLD
+    })
+    .unwrap_or(false)
+}
+
+fn collect_environment_binding_values(instance: &instance::RInstance) -> Vec<SEXP> {
+    let mut values = Vec::new();
+    unsafe {
+        let mut walk_env = |mut env: SEXP| {
+            while !env.is_null() {
+                if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
+                    break;
+                }
+                let mut frame = (*env).data.envsxp.frame;
+                while !frame.is_null() {
+                    let val = (*frame).data.listsxp.carval;
+                    if !val.is_null() {
+                        values.push(val);
+                    }
+                    frame = (*frame).data.listsxp.cdrval;
+                }
+                env = (*env).data.envsxp.enclos;
+            }
+        };
+        walk_env(instance.global_env);
+        walk_env(instance.base_env);
+        for table in instance.env_hash_tables.values() {
+            for &value in table.values() {
+                if !value.is_null() {
+                    values.push(value);
+                }
+            }
+        }
+    }
+    values
+}
+
+fn push_environment_binding_protects(instance: &mut instance::RInstance) {
+    let values = collect_environment_binding_values(instance);
+    for value in values {
+        push_protect_in(instance, value);
+    }
+}
+
+/// Run collection at a cooperative safe point during evaluation.
+///
+/// Call this after loop iterations and brace-block statements complete, when
+/// no SEXP values from the just-finished evaluation remain only on Rust stack.
+pub fn maybe_collect_at_eval_safe_point() {
+    if !eval_safe_point_gc_due() {
+        return;
+    }
+    with_temporary_extra_protects(push_environment_binding_protects, || {
+        if let Some(ptr) = instance::current_instance_ptr() {
+            unsafe {
+                (*ptr).gc_state.gc_pending = false;
+            }
+        }
+        minor_gc();
+    });
 }
 
 /// Flush a deferred collection after a top-level expression completes.

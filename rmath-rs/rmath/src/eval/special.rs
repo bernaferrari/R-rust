@@ -375,6 +375,7 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
+        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         R_NilValue()
     }
 }
@@ -462,6 +463,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
             i += 1;
         }
 
+        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         R_NilValue()
     }
 }
@@ -493,6 +495,7 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
+        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         R_NilValue()
     }
 }
@@ -571,6 +574,7 @@ pub unsafe fn do_begin(args: SEXP, rho: SEXP) -> SEXP {
             result = Rf_eval(CAR(current), rho);
             current = CDR(current);
         }
+        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         result
     }
 }

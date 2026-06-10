@@ -481,6 +481,11 @@ impl RSession {
                     }
                 };
                 result = self.eval_sexp(expr);
+                let _expr_guard = result
+                    .as_ref()
+                    .ok()
+                    .map(|value| protect_sexp(*value));
+                crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
             let _result_guard = result
                 .as_ref()

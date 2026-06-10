@@ -585,6 +585,13 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
                 unsafe {
                     SETCAR(cell.as_raw(), value.as_raw());
                 }
+                if super::env_hash::env_has_hash_table(current.as_raw()) {
+                    super::env_hash::hash_insert(
+                        current.as_raw(),
+                        symbol.as_raw(),
+                        value.as_raw(),
+                    );
+                }
                 return;
             }
         }
