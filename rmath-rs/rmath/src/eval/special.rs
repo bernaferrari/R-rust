@@ -568,6 +568,11 @@ unsafe fn do_function(args: SEXP, rho: SEXP) -> SEXP {
             (*clos).data.closxp.env = rho;
         }
 
+        // Auto-compile the closure body to bytecode for fast path (bcEval).
+        // This makes user functions use the VM instead of AST walker for performance.
+        // (Part of porting full bcEval support.)
+        let _ = crate::eval::bc_compile::compile_closure(clos);
+
         clos
     }
 }
