@@ -689,9 +689,10 @@ pub unsafe fn LOGICAL(x: SEXP) -> *mut c_int {
 }
 
 /// Get a pointer to the integer vector data.
+/// Requires exact INTSXP (use LOGICAL for LGLSXP).
 pub unsafe fn INTEGER(x: SEXP) -> *mut c_int {
     unsafe {
-        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
+        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP]);
         DATAPTR(x) as *mut c_int
     }
 }
@@ -706,12 +707,18 @@ pub unsafe fn REAL(x: SEXP) -> *mut c_double {
 
 /// Get a pointer to the complex vector data.
 pub unsafe fn COMPLEX(x: SEXP) -> *mut Rcomplex {
-    unsafe { DATAPTR(x) as *mut Rcomplex }
+    unsafe {
+        debug_assert_sexptype(x, &[SEXPTYPE::CPLXSXP]);
+        DATAPTR(x) as *mut Rcomplex
+    }
 }
 
 /// Get a pointer to the raw byte vector data.
 pub unsafe fn RAW(x: SEXP) -> *mut super::ffi::Rbyte {
-    unsafe { DATAPTR(x) as *mut super::ffi::Rbyte }
+    unsafe {
+        debug_assert_sexptype(x, &[SEXPTYPE::RAWSXP]);
+        DATAPTR(x) as *mut super::ffi::Rbyte
+    }
 }
 
 /// Get the character data of a CHARSXP.
@@ -734,6 +741,7 @@ pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
         if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
+        debug_assert_sexptype(x, &[SEXPTYPE::STRSXP]);
         let ptrs = DATAPTR(x) as *mut SEXP;
         *ptrs.add(i as usize)
     }
@@ -805,12 +813,13 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 }
 
 /// Get the i-th integer value.
+/// Requires exact INTSXP (LGLSXP must use LOGICAL_ELT).
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
         if !is_valid_sexp_ptr(x) || INTEGER(x).is_null() {
             return NA_INTEGER;
         }
-        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
+        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP]);
         *INTEGER(x).add(i as usize)
     }
 }

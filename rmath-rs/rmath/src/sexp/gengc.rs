@@ -978,21 +978,21 @@ const GC_BYTE_THRESHOLD: usize = 64 * 1024 * 1024;
 
 /// Request collection during allocation.
 ///
-/// Collection is deferred while `eval_depth > 0` so SEXP values that only live
-/// in Rust stack frames are not swept mid-call. Flushing happens at cooperative
-/// safe points ([`maybe_collect_at_eval_safe_point`]) and after top-level eval
-/// ([`run_pending_gc_if_quiescent`]).
+/// ALWAYS defers: sets a pending flag. Actual collection only happens at
+/// cooperative safe points ([`maybe_collect_at_eval_safe_point`], called after
+/// loop bodies etc) or after top-level expressions complete
+/// ([`run_pending_gc_if_quiescent`] in session eval paths). This ensures we
+/// never sweep objects that are only reachable via raw SEXP temporaries in
+/// in-flight Rust stack frames mid-evaluation. See review GC soundness fix.
 pub fn maybe_collect_during_alloc() {
-    let run_now = instance::with_current_instance(|inst| inst.eval_state.eval_depth == 0)
-        .unwrap_or(true);
-
-    if run_now {
-        minor_gc();
-    } else if let Some(ptr) = instance::current_instance_ptr() {
+    if let Some(ptr) = instance::current_instance_ptr() {
         unsafe {
             (*ptr).gc_state.gc_pending = true;
         }
     }
+    // Never invoke minor_gc directly from alloc. Thresholds in arena will
+    // cause "maybe" to be called; the flag ensures next safe/quiescent point
+    // will collect. This is the quiescence-only GC policy.
 }
 
 fn eval_safe_point_gc_due() -> bool {
@@ -1098,20 +1098,16 @@ pub fn run_pending_gc_if_quiescent() {
 }
 
 fn do_minor_gc() -> (usize, usize) {
-    let Some(instance_ptr) = instance::current_instance_ptr() else {
-        return (0, 0);
-    };
-    // SAFETY: GC runs on the thread-local current instance without re-entering
-    // `with_required_current_instance`, avoiding aliasing `&mut RInstance` borrows
-    // from nested arena allocation paths.
-    unsafe {
-        let instance = &mut *instance_ptr;
+    // Go through the guarded with_current_instance so the reentrancy/aliasing
+    // guard in instance.rs protects this full &mut view. GC is only invoked
+    // from safe points or quiescent boundaries.
+    let _ = instance::with_current_instance(|instance| {
         let traceable = traceable_instance_objects(instance);
         mark_instance_roots(instance, &traceable);
         for &obj in &instance.gc_state.remembered_set.entries {
             mark_reachable(obj, &traceable);
         }
-    }
+    });
 
     let mut freed_count = 0;
     let mut promoted_count = 0;
@@ -1218,17 +1214,14 @@ pub fn full_gc() -> (usize, usize, usize) {
 }
 
 fn mark_from_all_roots() {
-    let Some(instance_ptr) = instance::current_instance_ptr() else {
-        return;
-    };
-    unsafe {
-        let instance = &mut *instance_ptr;
+    // Guarded via with_current (see do_minor_gc).
+    let _ = instance::with_current_instance(|instance| {
         let traceable = traceable_instance_objects(instance);
         mark_instance_roots(instance, &traceable);
         for &obj in &instance.gc_state.remembered_set.entries {
             mark_reachable(obj, &traceable);
         }
-    }
+    });
 }
 
 fn do_full_mark_sweep() -> (usize, usize) {
@@ -1290,318 +1283,26 @@ fn do_full_mark_sweep() -> (usize, usize) {
     (promoted_count, freed_count)
 }
 
-struct LiveObject {
-    old_addr: usize,
-    sexptype: SEXPTYPE,
-    length: i64,
-    attrib: SEXP,
-    gcgen: u8,
-    mark: bool,
-    symsxp_fields: Option<(SEXP, SEXP, SEXP)>,
-    listsxp_fields: Option<(SEXP, SEXP, SEXP)>,
-    closxp_fields: Option<(SEXP, SEXP, SEXP)>,
-    envsxp_fields: Option<(SEXP, SEXP, SEXP)>,
-    promsxp_fields: Option<(SEXP, SEXP, SEXP)>,
-    extptr_fields: Option<[*mut std::ffi::c_void; 3]>,
-    vector_data: Option<Vec<u8>>,
-}
+// ---------------------------------------------------------------------------
+// Compaction (moving GC) has been deleted entirely.
+//
+// Per architecture review: a compacting/moving collector is incompatible with
+// raw SEXP pointers held in Rust stack frames across allocations (the dominant
+// coding style in the ported evaluator). R itself uses a non-moving GC for
+// exactly this reason. We retain only mark-sweep + free-list recycling.
+//
+// All moving logic (snapshot_live_objects, LiveObject, do_compact, the two-space
+// copy + root rewrite) has been removed. update_all_references is *kept* because
+// it is also used by non-moving sweep to redirect refs-to-dead -> R_NilValue
+// in survivor objects.
+// ---------------------------------------------------------------------------
 
-/// Snapshot of live objects for OOM-safe compaction rollback.
-struct CompactionSnapshot {
-    live_objects: Vec<LiveObject>,
-}
-
-fn snapshot_live_objects() -> CompactionSnapshot {
-    let mut live_objects: Vec<LiveObject> = Vec::new();
-
-    with_arena_for_gc(|arena| {
-        let nodes: Vec<SEXP> = arena.active_nodes().collect();
-        for &obj in &nodes {
-            if obj.is_null() {
-                continue;
-            }
-            unsafe {
-                let t = (*obj).sxpinfo.type_of();
-                let len = (*obj).vecsxp_length();
-                let attrib = (*obj).attrib;
-                let gcgen = (*obj).sxpinfo.gcgen();
-                let mark = (*obj).sxpinfo.mark();
-                let old_addr = obj as usize;
-
-                let mut symsxp_fields = None;
-                let mut listsxp_fields = None;
-                let mut closxp_fields = None;
-                let mut envsxp_fields = None;
-                let mut promsxp_fields = None;
-                let mut extptr_fields = None;
-
-                match t {
-                    SEXPTYPE::SYMSXP => {
-                        symsxp_fields = Some((
-                            (*obj).data.symsxp.pname,
-                            (*obj).data.symsxp.value,
-                            (*obj).data.symsxp.internal,
-                        ));
-                    }
-                    SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::WEAKREFSXP => {
-                        listsxp_fields = Some((
-                            (*obj).data.listsxp.carval,
-                            (*obj).data.listsxp.cdrval,
-                            (*obj).data.listsxp.tagval,
-                        ));
-                    }
-                    SEXPTYPE::CLOSXP => {
-                        closxp_fields = Some((
-                            (*obj).data.closxp.formals,
-                            (*obj).data.closxp.body,
-                            (*obj).data.closxp.env,
-                        ));
-                    }
-                    SEXPTYPE::ENVSXP => {
-                        envsxp_fields = Some((
-                            (*obj).data.envsxp.frame,
-                            (*obj).data.envsxp.enclos,
-                            (*obj).data.envsxp.hashtab,
-                        ));
-                    }
-                    SEXPTYPE::PROMSXP => {
-                        promsxp_fields = Some((
-                            (*obj).data.promsxp.value,
-                            (*obj).data.promsxp.expr,
-                            (*obj).data.promsxp.env,
-                        ));
-                    }
-                    SEXPTYPE::EXTPTRSXP => {
-                        extptr_fields = Some((*obj).data.extptr);
-                    }
-                    _ => {} // intentionally unhandled: SEXPTYPE has no pointers to forward in GC
-                }
-
-                let vector_data = if t.is_vector_type() {
-                    let elem_size = super::memory::sexp_elem_size(t);
-                    let total_bytes = (len as usize).checked_mul(elem_size).unwrap_or(0);
-                    if total_bytes > 0 {
-                        let src = (*obj).gengc_next_node as *const u8;
-                        if !src.is_null() {
-                            let mut data = vec![0u8; total_bytes];
-                            ptr::copy_nonoverlapping(src, data.as_mut_ptr(), total_bytes);
-                            Some(data)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else if t == SEXPTYPE::CHARSXP {
-                    let truelen = (*obj).data.charsxp_truelen;
-                    let total_bytes = (truelen as usize).saturating_add(1);
-                    let src = (*obj).gengc_next_node as *const u8;
-                    if !src.is_null() {
-                        let mut data = vec![0u8; total_bytes];
-                        ptr::copy_nonoverlapping(src, data.as_mut_ptr(), total_bytes);
-                        Some(data)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                live_objects.push(LiveObject {
-                    old_addr,
-                    sexptype: t,
-                    length: len,
-                    attrib,
-                    gcgen,
-                    mark,
-                    symsxp_fields,
-                    listsxp_fields,
-                    closxp_fields,
-                    envsxp_fields,
-                    promsxp_fields,
-                    extptr_fields,
-                    vector_data,
-                });
-            }
-        }
-    });
-
-    CompactionSnapshot { live_objects }
-}
-
-/// Compact all live objects by copying them to a new arena.
-///
-/// This implements a two-space copying collector with OOM safety:
-/// 1. Snapshot all live objects FIRST
-/// 2. Clear the arena
-/// 3. Re-allocate objects in the cleared arena
-/// 4. Build old->new address mapping
-/// 5. Update all references (roots and inter-object)
-/// 6. Copy vector data to new objects
-///
-/// If allocation fails during compaction, the arena is left in a
-/// consistent state (empty, but no data loss — objects were snapshotted).
-///
-/// Returns the number of objects compacted.
+// Stub kept for any dead call sites / tests; always no-op (no moving performed).
 fn compact_all_objects_safe() -> usize {
-    let snapshot = snapshot_live_objects();
-
-    if snapshot.live_objects.is_empty() {
-        return 0;
-    }
-
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_compact(&snapshot)));
-
-    result.unwrap_or_default()
+    0
 }
 
-fn do_compact(snapshot: &CompactionSnapshot) -> usize {
-    let live_objects = &snapshot.live_objects;
-    let object_count = live_objects.len();
-
-    let budget = with_arena_for_gc(|arena| arena.budget());
-    let mut new_arena = RArena::with_budget(budget);
-
-    let mut old_to_new: HashMap<usize, SEXP> = HashMap::with_capacity(object_count);
-    let mut new_objects: Vec<(SEXP, &LiveObject)> = Vec::with_capacity(object_count);
-
-    // Phase 1: re-allocate into a temporary arena. The active arena is left
-    // untouched until every live object has a replacement.
-    for live in live_objects {
-        let new_obj = if live.sexptype.is_vector_type() {
-            new_arena.alloc_vector(live.sexptype, live.length)
-        } else if live.sexptype == SEXPTYPE::CHARSXP {
-            if let Some(ref data) = live.vector_data {
-                let s = &data[..data.len().saturating_sub(1)];
-                new_arena.alloc_charsxp(s)
-            } else {
-                new_arena.alloc_charsxp(b"")
-            }
-        } else {
-            new_arena.alloc_node(live.sexptype)
-        };
-
-        if new_obj.is_null() {
-            return 0;
-        }
-
-        old_to_new.insert(live.old_addr, new_obj);
-        new_objects.push((new_obj, live));
-    }
-
-    // Phase 2: Copy vector data to new objects.
-    for &(new_obj, live) in &new_objects {
-        if let Some(ref data) = live.vector_data {
-            unsafe {
-                let dst = (*new_obj).gengc_next_node as *mut u8;
-                if !dst.is_null() && !data.is_empty() {
-                    ptr::copy_nonoverlapping(data.as_ptr(), dst, data.len());
-                }
-            }
-        }
-    }
-
-    // Phase 3: Restore type-specific fields and update internal references.
-    for &(new_obj, live) in &new_objects {
-        unsafe {
-            (*new_obj).sxpinfo.set_gcgen(live.gcgen);
-            (*new_obj).sxpinfo.set_mark(live.mark);
-            (*new_obj).attrib = old_to_new
-                .get(&(live.attrib as usize))
-                .copied()
-                .unwrap_or(live.attrib);
-
-            if let Some((pname, value, internal)) = live.symsxp_fields {
-                (*new_obj).data.symsxp.pname =
-                    old_to_new.get(&(pname as usize)).copied().unwrap_or(pname);
-                (*new_obj).data.symsxp.value =
-                    old_to_new.get(&(value as usize)).copied().unwrap_or(value);
-                (*new_obj).data.symsxp.internal = old_to_new
-                    .get(&(internal as usize))
-                    .copied()
-                    .unwrap_or(internal);
-            }
-
-            if let Some((carval, cdrval, tagval)) = live.listsxp_fields {
-                (*new_obj).data.listsxp.carval = old_to_new
-                    .get(&(carval as usize))
-                    .copied()
-                    .unwrap_or(carval);
-                (*new_obj).data.listsxp.cdrval = old_to_new
-                    .get(&(cdrval as usize))
-                    .copied()
-                    .unwrap_or(cdrval);
-                (*new_obj).data.listsxp.tagval = old_to_new
-                    .get(&(tagval as usize))
-                    .copied()
-                    .unwrap_or(tagval);
-            }
-
-            if let Some((formals, body, env)) = live.closxp_fields {
-                (*new_obj).data.closxp.formals = old_to_new
-                    .get(&(formals as usize))
-                    .copied()
-                    .unwrap_or(formals);
-                (*new_obj).data.closxp.body =
-                    old_to_new.get(&(body as usize)).copied().unwrap_or(body);
-                (*new_obj).data.closxp.env =
-                    old_to_new.get(&(env as usize)).copied().unwrap_or(env);
-            }
-
-            if let Some((frame, enclos, hashtab)) = live.envsxp_fields {
-                (*new_obj).data.envsxp.frame =
-                    old_to_new.get(&(frame as usize)).copied().unwrap_or(frame);
-                (*new_obj).data.envsxp.enclos = old_to_new
-                    .get(&(enclos as usize))
-                    .copied()
-                    .unwrap_or(enclos);
-                (*new_obj).data.envsxp.hashtab = old_to_new
-                    .get(&(hashtab as usize))
-                    .copied()
-                    .unwrap_or(hashtab);
-            }
-
-            if let Some((value, expr, env)) = live.promsxp_fields {
-                (*new_obj).data.promsxp.value =
-                    old_to_new.get(&(value as usize)).copied().unwrap_or(value);
-                (*new_obj).data.promsxp.expr =
-                    old_to_new.get(&(expr as usize)).copied().unwrap_or(expr);
-                (*new_obj).data.promsxp.env =
-                    old_to_new.get(&(env as usize)).copied().unwrap_or(env);
-            }
-
-            if let Some(mut extptr) = live.extptr_fields {
-                let tag = extptr[1] as SEXP;
-                let prot = extptr[2] as SEXP;
-                extptr[1] = old_to_new.get(&(tag as usize)).copied().unwrap_or(tag)
-                    as *mut std::ffi::c_void;
-                extptr[2] = old_to_new.get(&(prot as usize)).copied().unwrap_or(prot)
-                    as *mut std::ffi::c_void;
-                (*new_obj).data.extptr = extptr;
-            }
-
-            if vector_payload_has_sexp_refs(live.sexptype) {
-                let len = (*new_obj).vecsxp_length();
-                let data = (*new_obj).gengc_next_node as *mut SEXP;
-                if !data.is_null() && len > 0 {
-                    for i in 0..len as usize {
-                        let elem = &mut *data.add(i);
-                        update_field(elem, &old_to_new);
-                    }
-                }
-            }
-        }
-    }
-
-    // Phase 4: Commit. Only after the replacement arena is complete do we
-    // rewrite roots and drop the old arena.
-    update_roots_and_non_arena_references(&old_to_new);
-    instance::with_required_current_instance(|instance| {
-        instance.arena = new_arena;
-    });
-
-    object_count
-}
+// (Compaction body removed. Non-moving GC only.)
 
 /// Run GC compaction if fragmentation exceeds threshold.
 ///

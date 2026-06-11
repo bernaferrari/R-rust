@@ -690,11 +690,16 @@ where
     let Some(instance_ptr) = super::instance::current_instance_ptr() else {
         return super::instance::with_required_current_instance(|inst| with_arena_in(inst, f));
     };
-    // SAFETY: The pointer was set by `set_current_instance` and is valid as long as
-    // the owning `RSession` is alive. Borrowing the arena through the raw pointer
-    // avoids re-entering `with_required_current_instance` during nested allocation
-    // or GC paths that already hold `&mut RInstance`.
-    unsafe { f(&mut (*instance_ptr).arena) }
+    // Arena borrow tracking (depth) via the shared counter in instance.rs.
+    // We bump the depth for visibility/diagnostics around this raw .arena lend.
+    let _prev_arena = super::instance::INSTANCE_MUT_BORROW_DEPTH.with(|c| {
+        let d = c.get();
+        c.set(d + 1);
+        d
+    });
+    let r = unsafe { f(&mut (*instance_ptr).arena) };
+    super::instance::INSTANCE_MUT_BORROW_DEPTH.with(|c| c.set(c.get() - 1));
+    r
 }
 
 pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -> R

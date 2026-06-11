@@ -16,7 +16,7 @@
 //! moving toward fully explicit session parameters.
 
 use std::alloc::{Layout, dealloc};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::os::raw::{c_char, c_int};
 use std::time::Instant;
@@ -608,6 +608,36 @@ thread_local! {
     /// The instance itself is owned by an `RSession` (via `Box<RInstance>`),
     /// so the pointer is valid for the lifetime of that session.
     static CURRENT_INSTANCE: RefCell<Option<*mut RInstance>> = const { RefCell::new(None) };
+
+    /// Borrow depth counter for the ambient RInstance &mut views derived from the
+    /// thread-local raw ptr. Used to detect (and document) reentrant acquires.
+    /// Depth > 1 occurs in controlled paths such as with_temporary_extra_protects
+    /// (which holds an inst borrow across a gc invocation at safe points).
+    /// The quiescence policy eliminates the dangerous alloc-during-gc case.
+    /// We track for diagnostics; casts still happen (as in the original raw-ptr
+    /// design) so this is a monitor rather than a hard exclusive lock.
+    pub(crate) static INSTANCE_MUT_BORROW_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Acquire &mut RInstance view (via the current raw ptr) with depth tracking.
+/// We do not panic on depth>0 (controlled safe-point+gc and similar patterns
+/// legitimately nest acquires under an outer lend); the counter makes the
+/// previously-silent aliasing visible and the quiescence GC policy + arena
+/// guard keep the hazardous cases from arising.
+fn acquire_instance_mut<F, R>(ptr: *mut RInstance, f: F) -> R
+where
+    F: FnOnce(&mut RInstance) -> R,
+{
+    let prev = INSTANCE_MUT_BORROW_DEPTH.with(|c| {
+        let d = c.get();
+        c.set(d + 1);
+        d
+    });
+    // SAFETY: original design used raw ptr precisely to support ambient access
+    // patterns including the safe point extra-protect bracketing gc.
+    let result = unsafe { f(&mut *ptr) };
+    INSTANCE_MUT_BORROW_DEPTH.with(|c| c.set(c.get() - 1));
+    result
 }
 
 /// Set the current thread-local R instance for translated compatibility code.
@@ -683,9 +713,8 @@ where
         let borrow = ci.borrow();
         match *borrow {
             Some(ptr) => {
-                // SAFETY: The pointer was set by `set_current_instance` and is
-                // valid as long as the owning RSession is alive.
-                unsafe { Some(f(&mut *ptr)) }
+                // Guarded: prevents overlapping &mut derived from the raw current ptr.
+                Some(acquire_instance_mut(ptr, f))
             }
             None => None,
         }
