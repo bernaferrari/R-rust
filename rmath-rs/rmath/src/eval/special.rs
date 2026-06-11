@@ -411,6 +411,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
         let val_type = TYPEOF(seq_val);
         let i = std::cell::Cell::new(0usize);
         let list_cell_addr = std::cell::Cell::new(seq_val as usize);
+        let mut gc_counter = 0u32;
 
         crate::sexp::context::run_hoisted_loop_with_continue(
             || {
@@ -460,7 +461,10 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                     }
 
                     let _ = Rf_eval(body, rho);
-                    crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+                    gc_counter = gc_counter.wrapping_add(1);
+                    if gc_counter % 16 == 0 {
+                        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+                    }
                     i.set(idx + 1);
                 }
             },
@@ -488,6 +492,7 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
         // share the single-setjmp structure used by `for`/`while`. A nested
         // `loop {}` inside `run_hoisted_loop` would never return on success and
         // would allocate until OOM.
+        let mut gc_counter = 0u32;
         loop {
             crate::sexp::instance::check_cancellation();
             let body_result =
@@ -501,7 +506,10 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
                 },
             }
 
-            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+            gc_counter = gc_counter.wrapping_add(1);
+            if gc_counter % 16 == 0 {
+                crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+            }
         }
 
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();

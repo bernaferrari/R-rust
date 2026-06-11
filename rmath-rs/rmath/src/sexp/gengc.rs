@@ -167,6 +167,7 @@ fn verify_gc_invariants() {
 // (necessary) to find unmarked for free.
 // Protected "force" marking uses the traced path (now default behavior).
 
+#[inline(always)]
 fn mark_reachable(obj: SEXP) {
     if obj.is_null() {
         return;
@@ -174,6 +175,7 @@ fn mark_reachable(obj: SEXP) {
     mark_reachable_traced(obj);
 }
 
+#[inline(always)]
 fn mark_reachable_traced(obj: SEXP) {
     if obj.is_null() {
         return;
@@ -238,6 +240,7 @@ fn mark_reachable_traced(obj: SEXP) {
     }
 }
 
+#[inline(always)]
 fn mark_context_roots(ctxt: &super::context::RCNTXT) {
     mark_reachable(ctxt.call);
     mark_reachable(ctxt.cloenv);
@@ -254,6 +257,7 @@ fn mark_context_roots(ctxt: &super::context::RCNTXT) {
     mark_reachable(ctxt.srcref);
 }
 
+#[inline(always)]
 fn mark_instance_roots(instance: &mut instance::RInstance) {
     mark_reachable(instance.empty_env);
     mark_reachable(instance.base_env);

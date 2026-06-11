@@ -150,6 +150,7 @@ pub struct RArena {
 
 impl RArena {
     /// Allocate a new page in the slab. Reserves exactly to avoid realloc (stable ptrs inside).
+    #[inline(always)]
     fn alloc_new_page(&mut self) {
         let page = Vec::with_capacity(NODE_PAGE_SIZE);
         self.node_pages.push(page);
@@ -160,7 +161,7 @@ impl RArena {
     /// Allocate a core node into the current slab page (creating new page if needed).
     /// Returns the raw SEXP ptr. Updates accounting and active tracking.
     /// Used by scalar/vector/CHARS allocs to avoid duplication (elegance + maintainability).
-    #[inline]
+    #[inline(always)]
     fn allocate_core_in_slab<F>(&mut self, ctor: F) -> SEXP
     where
         F: FnOnce() -> SexprecCore,
@@ -224,6 +225,7 @@ impl RArena {
         }
     }
 
+    #[inline(always)]
     fn reuse_free_node(&mut self, sexptype: SEXPTYPE) -> Option<SEXP> {
         let ptr = self.free_list.pop()?;
         unsafe {
@@ -287,6 +289,7 @@ impl RArena {
     /// The pointer is valid for the lifetime of the arena.
     /// Uses page from slab (Vec with exact reserve) to avoid per-node Box overhead
     /// and improve locality (hard problem from review: one alloc per node was bad).
+    #[inline(always)]
     pub(crate) fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
         if !self.can_activate_node() {
             return ptr::null_mut();
@@ -326,6 +329,7 @@ impl RArena {
     /// For STRSXP/VECSXP with length n: allocates n * sizeof(SEXP) bytes.
     ///
     /// Returns null if allocation fails (OOM safety).
+    #[inline(always)]
     pub(crate) fn alloc_vector(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
         if length < 0 {
             return ptr::null_mut();
@@ -633,6 +637,7 @@ impl RArena {
     }
 
     /// Free a node by adding it to the free list for reuse.
+    #[inline(always)]
     pub(crate) fn free_node(&mut self, ptr: SEXP) {
         if ptr.is_null() {
             return;
