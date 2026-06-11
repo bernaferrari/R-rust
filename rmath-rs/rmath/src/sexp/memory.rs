@@ -585,7 +585,7 @@ impl RArena {
 
     /// Add an existing node (for legacy compat in some paths). Pushes into current slab page
     /// (assumes caller ensures no overflow; for hard perf problem we prefer alloc_node).
-    pub(crate) fn add_node(&mut self, mut node: Box<SexprecCore>) -> SEXP {
+    pub(crate) fn add_node(&mut self, node: Box<SexprecCore>) -> SEXP {
         if !self.can_allocate_new_node_with_payload(0) {
             return ptr::null_mut();
         }
