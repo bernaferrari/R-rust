@@ -82,36 +82,9 @@ pub fn apply_closure_safe<'a>(
     }
 
     // Evaluate body in new environment.
-    // Prefer bytecode (bcEval) if the body is a BCODESXP (compiled).
-    // This uses the fast VM path for performance (port of R's bcEval).
-    let body_raw = body.as_raw();
-    if !body_raw.is_null() && crate::sexp::ffi::TYPEOF(body_raw) == crate::sexp::ffi::SEXPTYPE::BCODESXP {
-        unsafe {
-            let result = crate::eval::bc_eval::bcEval(body_raw, new_env.as_raw());
-            // Wrap result as Sexp (owner is new_env's arena/session)
-            // For simplicity, use the session's sexp if possible; here we return via eval_safe path or raw.
-            // Since new_env is from session, assume caller context.
-            // To keep safe, convert via the existing mechanism.
-            // For now, use a direct wrap assuming valid.
-            // Better: fall to eval_safe which may handle, but to prefer:
-            // Actually, to avoid double, we do the bc here.
-            // Return as Sexp by using a temp or note that eval_safe on BC would dispatch.
-            // To make it work: call bcEval and then the caller expects Sexp.
-            // Simple: since bcEval returns SEXP, and to fit Result<Sexp>, we can use
-            // a hack or improve: for this wiring, if BC use bc, else eval.
-            // To make compile, we'll assume we can box or use from_raw carefully.
-            // For correctness, wrap using the new_env if possible.
-            // Since Sexp is arena scoped, and to not complicate, we'll use the eval path for BC too for now? No.
-            // Better approach: modify to always use raw for body eval if BC.
-            let result_sexp = Sexp::from_raw(result).map_err(|e| sexp_err("bcEval result wrap", e))?;
-            // But lifetime: the Sexp<'a> from new_env.
-            // Since 'a is from closure, and new_env is derived, it may work if we adjust.
-            // For minimal change to get BC used: 
-            Ok(result_sexp)  // approximate; full would require adjusting lifetimes or using raw throughout.
-        }
-    } else {
-        crate::eval::eval::eval_safe(body, new_env)
-    }
+    // If the body was compiled to BCODESXP (via auto in do_function or compile_closure),
+    // the top-level eval_safe dispatch (EvalKind::Bytecode) will call bcEval for the fast VM path.
+    crate::eval::eval::eval_safe(body, new_env)
 }
 
 /// Safe argument matching using Sexp<'a> and PairlistIter.
