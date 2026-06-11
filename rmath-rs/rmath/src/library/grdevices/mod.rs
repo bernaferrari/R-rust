@@ -44,6 +44,7 @@ pub(crate) mod colors;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_os = "android"))]
 mod devcairo;
 #[allow(
     dead_code,
@@ -90,6 +91,7 @@ pub(crate) mod devps;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_os = "android"))]
 mod devquartz;
 #[allow(
     dead_code,
@@ -99,6 +101,7 @@ mod devquartz;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_os = "android"))]
 pub(crate) mod devwindows;
 #[allow(
     dead_code,
@@ -144,6 +147,7 @@ mod patterns;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_os = "android"))]
 mod qdbitmap;
 #[allow(
     dead_code,
@@ -153,6 +157,7 @@ mod qdbitmap;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_os = "android"))]
 mod qdpdf;
 #[allow(
     dead_code,
@@ -171,4 +176,5 @@ mod stubs;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_os = "android"))]
 mod winbitmap;

@@ -1,6 +1,11 @@
-//! Android headless pure Rust graphics backend.
+//! Headless pure Rust graphics backend (tiny-skia + fontdue PNG).
 //!
-//! Uses tiny-skia for zero system dependencies rendering.
+//! Suitable for Android (via r-embed), WASM (wasm32-unknown-unknown), servers,
+//! and other targets without a display. Text rendering gracefully degrades if
+//! no system fonts are loadable (e.g. WASM no FS). Use set_font() to embed a TTF.
+//!
+//! The r-embed crate's render_* API uses this for simple plot PNG output.
+//! Internal R grDevices on Android uses a separate pure pixel DeviceRegistry.
 
 #![forbid(unsafe_code)]
 

@@ -3,7 +3,7 @@ name = "r-device-android-headless"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-2.0-or-later"
-description = "Pure Rust headless graphics backend for Android"
+description = "Pure Rust headless graphics backend (tiny-skia + fontdue) for Android, WASM, servers and other no-display targets"
 
 [dependencies]
 tiny-skia = "0.12.0"
