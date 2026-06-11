@@ -51,121 +51,129 @@ impl BytecodeCompiler {
     }
 
     unsafe fn compile_expr(&mut self, expr: SEXP) -> bool {
-        if expr.is_null() || expr == R_NilValue() {
-            let idx = self.add_const(R_NilValue());
-            self.emit_operand(opcodes::OP_PUSHCONST, idx);
-            return true;
-        }
+        unsafe {
+            if expr.is_null() || expr == R_NilValue() {
+                let idx = self.add_const(R_NilValue());
+                self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                return true;
+            }
 
-        match TYPEOF(expr) {
-            t if t == SEXPTYPE::LGLSXP && LENGTH(expr) == 1 => {
-                let idx = self.add_const(expr);
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                true
+            match TYPEOF(expr) {
+                t if t == SEXPTYPE::LGLSXP && LENGTH(expr) == 1 => {
+                    let idx = self.add_const(expr);
+                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                    true
+                }
+                t if t == SEXPTYPE::INTSXP && LENGTH(expr) == 1 => {
+                    let idx = self.add_const(expr);
+                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                    true
+                }
+                t if t == SEXPTYPE::REALSXP && LENGTH(expr) == 1 => {
+                    let idx = self.add_const(expr);
+                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                    true
+                }
+                t if t == SEXPTYPE::STRSXP && LENGTH(expr) == 1 => {
+                    let idx = self.add_const(expr);
+                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                    true
+                }
+                t if t == SEXPTYPE::SYMSXP => {
+                    let idx = self.add_const(expr);
+                    self.emit_operand(opcodes::OP_GETVAR, idx);
+                    true
+                }
+                t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => self.compile_call(expr),
+                _ => false,
             }
-            t if t == SEXPTYPE::INTSXP && LENGTH(expr) == 1 => {
-                let idx = self.add_const(expr);
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                true
-            }
-            t if t == SEXPTYPE::REALSXP && LENGTH(expr) == 1 => {
-                let idx = self.add_const(expr);
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                true
-            }
-            t if t == SEXPTYPE::STRSXP && LENGTH(expr) == 1 => {
-                let idx = self.add_const(expr);
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                true
-            }
-            t if t == SEXPTYPE::SYMSXP => {
-                let idx = self.add_const(expr);
-                self.emit_operand(opcodes::OP_GETVAR, idx);
-                true
-            }
-            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => self.compile_call(expr),
-            _ => false,
         }
     }
 
     unsafe fn compile_call(&mut self, expr: SEXP) -> bool {
-        let fun = CAR(expr);
-        if fun.is_null() {
-            return false;
-        }
-
-        if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-            let block = symbol_name_from_sexp(fun);
-            if block.as_deref() == Some("{") {
-                return self.compile_block(expr);
-            }
-        }
-
-        let mut arg_cells = Vec::new();
-        let mut cur = CDR(expr);
-        while !cur.is_null() && cur != R_NilValue() {
-            arg_cells.push(cur);
-            cur = CDR(cur);
-        }
-
-        for cell in &arg_cells {
-            if !self.compile_expr(CAR(*cell)) {
+        unsafe {
+            let fun = CAR(expr);
+            if fun.is_null() {
                 return false;
             }
-        }
 
-        let fun_idx = self.add_const(fun);
-        self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
-        self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
-        true
+            if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+                let block = symbol_name_from_sexp(fun);
+                if block.as_deref() == Some("{") {
+                    return self.compile_block(expr);
+                }
+            }
+
+            let mut arg_cells = Vec::new();
+            let mut cur = CDR(expr);
+            while !cur.is_null() && cur != R_NilValue() {
+                arg_cells.push(cur);
+                cur = CDR(cur);
+            }
+
+            for cell in &arg_cells {
+                if !self.compile_expr(CAR(*cell)) {
+                    return false;
+                }
+            }
+
+            let fun_idx = self.add_const(fun);
+            self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
+            self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
+            true
+        }
     }
 
     unsafe fn compile_block(&mut self, expr: SEXP) -> bool {
-        let mut last = None;
-        let mut cur = CDR(expr);
-        while !cur.is_null() && cur != R_NilValue() {
-            last = Some(CAR(cur));
-            cur = CDR(cur);
-        }
-        match last {
-            Some(body) => self.compile_expr(body),
-            None => {
-                let idx = self.add_const(R_NilValue());
-                self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                true
+        unsafe {
+            let mut last = None;
+            let mut cur = CDR(expr);
+            while !cur.is_null() && cur != R_NilValue() {
+                last = Some(CAR(cur));
+                cur = CDR(cur);
+            }
+            match last {
+                Some(body) => self.compile_expr(body),
+                None => {
+                    let idx = self.add_const(R_NilValue());
+                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                    true
+                }
             }
         }
     }
 
     unsafe fn finish(&mut self, source_expr: SEXP) -> SEXP {
-        self.emit(opcodes::OP_RETURN);
-        with_required_current_instance(|inst| unsafe {
-            with_arena_in(inst, |arena| {
-                let consts = arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
-                let consts_data = (*consts).gengc_next_node as *mut SEXP;
-                *consts_data = source_expr;
-                for (index, value) in self.consts.iter().enumerate() {
-                    *consts_data.add(index + 1) = *value;
-                }
+        unsafe {
+            self.emit(opcodes::OP_RETURN);
+            with_required_current_instance(|inst| unsafe {
+                with_arena_in(inst, |arena| {
+                    let consts = arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
+                    let consts_data = (*consts).gengc_next_node as *mut SEXP;
+                    *consts_data = source_expr;
+                    for (index, value) in self.consts.iter().enumerate() {
+                        *consts_data.add(index + 1) = *value;
+                    }
 
-                let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
-                let code_data = (*code).gengc_next_node as *mut c_int;
-                for (index, instruction) in self.code.iter().enumerate() {
-                    *code_data.add(index) = *instruction;
-                }
+                    let code = arena.alloc_vector(SEXPTYPE::INTSXP, self.code.len() as i64);
+                    let code_data = (*code).gengc_next_node as *mut c_int;
+                    for (index, instruction) in self.code.iter().enumerate() {
+                        *code_data.add(index) = *instruction;
+                    }
 
-                let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-                let stack_data = (*stack_hint).gengc_next_node as *mut c_int;
-                *stack_data = self.stack_hint.max(4);
+                    let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                    let stack_data = (*stack_hint).gengc_next_node as *mut c_int;
+                    *stack_data = self.stack_hint.max(4);
 
-                let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
-                let bcode_data = (*bcode).gengc_next_node as *mut SEXP;
-                *bcode_data = code;
-                *bcode_data.add(1) = consts;
-                *bcode_data.add(2) = stack_hint;
-                bcode
+                    let bcode = arena.alloc_vector(SEXPTYPE::BCODESXP, 3);
+                    let bcode_data = (*bcode).gengc_next_node as *mut SEXP;
+                    *bcode_data = code;
+                    *bcode_data.add(1) = consts;
+                    *bcode_data.add(2) = stack_hint;
+                    bcode
+                })
             })
-        })
+        }
     }
 }
 

@@ -15702,7 +15702,7 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             emit_print_data_frame_line(&format!(" {header}"));
         }
 
-        let print_rows = nrow.min(20) as usize;
+        let print_rows = nrow.min(100) as usize;  // increased for better visibility/polish (was 20 hard cap per review feedback on df print); R uses max.print option
         for row in 0..print_rows {
             let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
             if show_row_names {
