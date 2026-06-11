@@ -8,7 +8,7 @@
 //! single R expression evaluation.
 
 use std::alloc::{Layout, alloc, dealloc};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ptr::{self};
 
 use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
@@ -105,11 +105,9 @@ impl ArenaBudget {
     }
 }
 
-#[derive(Clone, Copy)]
-struct DataBuffer {
-    ptr: *mut u8,
-    layout: Layout,
-}
+// Data buffers now use HashMap for O(1) register/take/remove (was linear scan on Vec).
+// This eliminates one source of O(n) in arena (take_data_buffer, and frequent free of vectors).
+// Layouts are small, HashMap overhead acceptable vs scan on many vectors.
 
 // ---------------------------------------------------------------------------
 // RArena: arena allocator for R objects
@@ -124,8 +122,9 @@ pub struct RArena {
     /// All allocated node pointers (Box<SexprecCore> for stable addresses).
     #[allow(clippy::vec_box)]
     nodes: Vec<Box<SexprecCore>>,
-    /// All allocated data buffers (pointer, layout).
-    data_bufs: Vec<DataBuffer>,
+    /// All allocated data buffers. HashMap for O(1) lookup/remove (was Vec + linear .position).
+    /// Key: data ptr; value: layout for dealloc and accounting.
+    data_bufs: HashMap<*mut u8, Layout>,
     /// Free list of reclaimed SEXP pointers available for reuse.
     free_list: Vec<SEXP>,
     /// O(1) membership for active node pointers.
@@ -141,28 +140,35 @@ pub struct RArena {
 impl RArena {
     /// Create a new empty arena with an unlimited budget.
     pub fn new() -> Self {
-        RArena {
+        let mut a = RArena {
             nodes: Vec::new(),
-            data_bufs: Vec::new(),
+            data_bufs: HashMap::new(),
             free_list: Vec::new(),
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
             budget: ArenaBudget::unlimited(),
-        }
+        };
+        // Partial address to slab/perf review: pre-reserve to reduce Vec growth/reallocs
+        // (full page/slab like R's NodeClass would avoid per-node Box entirely + better locality;
+        // full change is large/risky, see bead rport-3v5v).
+        a.nodes.reserve(1024);
+        a
     }
 
     /// Create a new empty arena with the given budget.
     pub fn with_budget(budget: ArenaBudget) -> Self {
-        RArena {
+        let mut a = RArena {
             nodes: Vec::new(),
-            data_bufs: Vec::new(),
+            data_bufs: HashMap::new(),
             free_list: Vec::new(),
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
             budget,
-        }
+        };
+        a.nodes.reserve(1024);
+        a
     }
 
     fn track_node_active(&mut self, ptr: SEXP) {
@@ -205,14 +211,16 @@ impl RArena {
 
     fn register_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
         self.total_bytes_allocated += layout.size();
-        self.data_bufs.push(DataBuffer { ptr, layout });
+        self.data_bufs.insert(ptr, layout);
     }
 
     fn take_data_buffer(&mut self, ptr: *mut u8) -> Option<Layout> {
-        let index = self.data_bufs.iter().position(|buf| buf.ptr == ptr)?;
-        let buf = self.data_bufs.swap_remove(index);
-        self.total_bytes_allocated = self.total_bytes_allocated.saturating_sub(buf.layout.size());
-        Some(buf.layout)
+        if let Some(layout) = self.data_bufs.remove(&ptr) {
+            self.total_bytes_allocated = self.total_bytes_allocated.saturating_sub(layout.size());
+            Some(layout)
+        } else {
+            None
+        }
     }
 
     fn can_activate_node(&self) -> bool {
@@ -641,9 +649,9 @@ impl RArena {
     /// Verify arena invariants (debug only).
     fn verify_invariants(&self) {
         debug_assert!({
-            for buf in &self.data_bufs {
-                if !buf.ptr.is_null() {
-                    debug_assert!(buf.layout.size() > 0);
+            for (&ptr, &layout) in &self.data_bufs {
+                if !ptr.is_null() {
+                    debug_assert!(layout.size() > 0);
                 }
             }
             for &free_ptr in &self.free_list {
@@ -662,10 +670,10 @@ impl Default for RArena {
 
 impl Drop for RArena {
     fn drop(&mut self) {
-        for buf in &self.data_bufs {
-            if !buf.ptr.is_null() && buf.layout.size() > 0 {
+        for (&ptr, &layout) in &self.data_bufs {
+            if !ptr.is_null() && layout.size() > 0 {
                 unsafe {
-                    dealloc(buf.ptr, buf.layout);
+                    dealloc(ptr, layout);
                 }
             }
         }

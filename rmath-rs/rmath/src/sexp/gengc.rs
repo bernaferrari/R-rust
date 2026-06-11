@@ -160,20 +160,21 @@ fn verify_gc_invariants() {
 // Root tracing
 // ---------------------------------------------------------------------------
 
-fn mark_reachable(obj: SEXP, traceable: &HashSet<usize>) {
+// Simplified mark: no per-GC HashSet<usize> "traceable" snapshot of all actives, no hash lookup
+// on every edge. We rely on the mark bit in sxpinfo for "visited this collection" (as review
+// suggested) + null guards + reachability from roots. This eliminates two HashSet allocations
+// per GC and hashing cost on every pointer edge during marking. Sweep still walks actives
+// (necessary) to find unmarked for free.
+// Protected "force" marking uses the traced path (now default behavior).
+
+fn mark_reachable(obj: SEXP) {
     if obj.is_null() {
         return;
     }
-
-    let addr = obj as usize;
-    if !traceable.contains(&addr) {
-        return;
-    }
-
-    mark_reachable_traced(obj, traceable);
+    mark_reachable_traced(obj);
 }
 
-fn mark_reachable_traced(obj: SEXP, traceable: &HashSet<usize>) {
+fn mark_reachable_traced(obj: SEXP) {
     if obj.is_null() {
         return;
     }
@@ -187,38 +188,38 @@ fn mark_reachable_traced(obj: SEXP, traceable: &HashSet<usize>) {
         let t = (*obj).sxpinfo.type_of();
         match t {
             SEXPTYPE::SYMSXP => {
-                mark_reachable((*obj).data.symsxp.pname, traceable);
-                mark_reachable((*obj).data.symsxp.value, traceable);
-                mark_reachable((*obj).data.symsxp.internal, traceable);
+                mark_reachable((*obj).data.symsxp.pname);
+                mark_reachable((*obj).data.symsxp.value);
+                mark_reachable((*obj).data.symsxp.internal);
             }
             SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
-                mark_reachable((*obj).data.listsxp.carval, traceable);
-                mark_reachable((*obj).data.listsxp.cdrval, traceable);
-                mark_reachable((*obj).data.listsxp.tagval, traceable);
+                mark_reachable((*obj).data.listsxp.carval);
+                mark_reachable((*obj).data.listsxp.cdrval);
+                mark_reachable((*obj).data.listsxp.tagval);
             }
             SEXPTYPE::CLOSXP => {
-                mark_reachable((*obj).data.closxp.formals, traceable);
-                mark_reachable((*obj).data.closxp.body, traceable);
-                mark_reachable((*obj).data.closxp.env, traceable);
+                mark_reachable((*obj).data.closxp.formals);
+                mark_reachable((*obj).data.closxp.body);
+                mark_reachable((*obj).data.closxp.env);
             }
             SEXPTYPE::ENVSXP => {
-                mark_reachable((*obj).data.envsxp.frame, traceable);
-                mark_reachable((*obj).data.envsxp.enclos, traceable);
-                mark_reachable((*obj).data.envsxp.hashtab, traceable);
+                mark_reachable((*obj).data.envsxp.frame);
+                mark_reachable((*obj).data.envsxp.enclos);
+                mark_reachable((*obj).data.envsxp.hashtab);
             }
             SEXPTYPE::PROMSXP => {
-                mark_reachable((*obj).data.promsxp.value, traceable);
-                mark_reachable((*obj).data.promsxp.expr, traceable);
-                mark_reachable((*obj).data.promsxp.env, traceable);
+                mark_reachable((*obj).data.promsxp.value);
+                mark_reachable((*obj).data.promsxp.expr);
+                mark_reachable((*obj).data.promsxp.env);
             }
             SEXPTYPE::EXTPTRSXP => {
                 let extptr = (*obj).data.extptr;
-                mark_reachable(extptr[1] as SEXP, traceable);
-                mark_reachable(extptr[2] as SEXP, traceable);
+                mark_reachable(extptr[1] as SEXP);
+                mark_reachable(extptr[2] as SEXP);
             }
             SEXPTYPE::WEAKREFSXP => {
-                mark_reachable((*obj).data.listsxp.cdrval, traceable);
-                mark_reachable((*obj).data.listsxp.tagval, traceable);
+                mark_reachable((*obj).data.listsxp.cdrval);
+                mark_reachable((*obj).data.listsxp.tagval);
             }
             _ => {}
         }
@@ -228,147 +229,127 @@ fn mark_reachable_traced(obj: SEXP, traceable: &HashSet<usize>) {
             let data = (*obj).gengc_next_node as *mut SEXP;
             if !data.is_null() && len > 0 {
                 for i in 0..len as usize {
-                    mark_reachable(*data.add(i), traceable);
+                    mark_reachable(*data.add(i));
                 }
             }
         }
 
-        mark_reachable((*obj).attrib, traceable);
+        mark_reachable((*obj).attrib);
     }
 }
 
-fn mark_context_roots(ctxt: &super::context::RCNTXT, traceable: &HashSet<usize>) {
-    mark_reachable(ctxt.call, traceable);
-    mark_reachable(ctxt.cloenv, traceable);
-    mark_reachable(ctxt.sysparent, traceable);
-    mark_reachable(ctxt.callfun, traceable);
-    mark_reachable(ctxt.closure, traceable);
-    mark_reachable(ctxt.promiseargs, traceable);
-    mark_reachable(ctxt.savelist, traceable);
-    mark_reachable(ctxt.handlerstack, traceable);
-    mark_reachable(ctxt.restartstack, traceable);
-    mark_reachable(ctxt.rpvec, traceable);
-    mark_reachable(ctxt.returnValue, traceable);
-    mark_reachable(ctxt.conexit, traceable);
-    mark_reachable(ctxt.srcref, traceable);
+fn mark_context_roots(ctxt: &super::context::RCNTXT) {
+    mark_reachable(ctxt.call);
+    mark_reachable(ctxt.cloenv);
+    mark_reachable(ctxt.sysparent);
+    mark_reachable(ctxt.callfun);
+    mark_reachable(ctxt.closure);
+    mark_reachable(ctxt.promiseargs);
+    mark_reachable(ctxt.savelist);
+    mark_reachable(ctxt.handlerstack);
+    mark_reachable(ctxt.restartstack);
+    mark_reachable(ctxt.rpvec);
+    mark_reachable(ctxt.returnValue);
+    mark_reachable(ctxt.conexit);
+    mark_reachable(ctxt.srcref);
 }
 
-fn traceable_instance_objects(instance: &instance::RInstance) -> HashSet<usize> {
-    let mut traceable = HashSet::new();
-    traceable.extend(instance.arena.active_nodes().map(|obj| obj as usize));
-    traceable.extend(
-        instance
-            .env_nodes
-            .iter()
-            .map(|node| &**node as *const _ as usize),
-    );
-    traceable.extend(
-        instance
-            .symbol_nodes
-            .iter()
-            .map(|node| &**node as *const _ as usize),
-    );
-    traceable.extend(instance.raw_cons.iter().map(|&obj| obj as usize));
-    traceable
-}
-
-fn mark_instance_roots(instance: &mut instance::RInstance, traceable: &HashSet<usize>) {
-    mark_reachable(instance.empty_env, traceable);
-    mark_reachable(instance.base_env, traceable);
-    mark_reachable(instance.global_env, traceable);
+fn mark_instance_roots(instance: &mut instance::RInstance) {
+    mark_reachable(instance.empty_env);
+    mark_reachable(instance.base_env);
+    mark_reachable(instance.global_env);
 
     {
         let stack = instance.protect_stack.borrow();
         for &obj in stack.iter() {
             // Protected roots must be marked even when the collector has already
-            // removed a reused address from the active-node set.
-            mark_reachable_traced(obj, traceable);
+            // removed a reused address from the active-node set. (Now unconditional
+            // since no traceable set.)
+            mark_reachable_traced(obj);
         }
     }
     {
         let stack = instance.preserve_stack.borrow();
         for &obj in stack.iter() {
-            mark_reachable_traced(obj, traceable);
+            mark_reachable_traced(obj);
         }
     }
     for ctxt in &instance.context_stack {
-        mark_context_roots(ctxt, traceable);
+        mark_context_roots(ctxt);
     }
 
-    mark_reachable(instance.error_state.warnings, traceable);
-    mark_reachable(instance.error_state.handler_stack, traceable);
-    mark_reachable(instance.error_state.restart_stack, traceable);
+    mark_reachable(instance.error_state.warnings);
+    mark_reachable(instance.error_state.handler_stack);
+    mark_reachable(instance.error_state.restart_stack);
 
-    mark_reachable(instance.eval_state.current_expr, traceable);
-    mark_reachable(instance.eval_state.parse_error_file, traceable);
-    mark_reachable(instance.eval_state.exec_token, traceable);
-    mark_reachable(instance.eval_state.profiling.sref, traceable);
-    mark_reachable(instance.eval_state.profiling.srcfiles_buffer, traceable);
-    mark_reachable(instance.eval_state.printvector.na_string, traceable);
+    mark_reachable(instance.eval_state.current_expr);
+    mark_reachable(instance.eval_state.parse_error_file);
+    mark_reachable(instance.eval_state.exec_token);
+    mark_reachable(instance.eval_state.profiling.sref);
+    mark_reachable(instance.eval_state.profiling.srcfiles_buffer);
+    mark_reachable(instance.eval_state.printvector.na_string);
     mark_reachable(
         instance.eval_state.printvector.na_string_noquote,
-        traceable,
     );
-    mark_reachable(instance.eval_state.print.data.na_string, traceable);
+    mark_reachable(instance.eval_state.print.data.na_string);
     mark_reachable(
         instance.eval_state.print.data.na_string_noquote,
-        traceable,
     );
-    mark_reachable(instance.eval_state.print.data.env, traceable);
-    mark_reachable(instance.eval_state.print.data.callArgs, traceable);
+    mark_reachable(instance.eval_state.print.data.env);
+    mark_reachable(instance.eval_state.print.data.callArgs);
 
     for &obj in instance.symbols.values() {
-        mark_reachable(obj, traceable);
+        mark_reachable(obj);
     }
     for node in &instance.symbol_nodes {
-        mark_reachable(&**node as *const _ as SEXP, traceable);
+        mark_reachable(&**node as *const _ as SEXP);
     }
     for node in &instance.env_nodes {
-        mark_reachable(&**node as *const _ as SEXP, traceable);
+        mark_reachable(&**node as *const _ as SEXP);
     }
     for &obj in &instance.names_state.ddval_symbols {
-        mark_reachable(obj, traceable);
+        mark_reachable(obj);
     }
-    mark_reachable(instance.bind_state.blank_string, traceable);
+    mark_reachable(instance.bind_state.blank_string);
 
     for &obj in instance.options.values() {
-        mark_reachable(obj, traceable);
+        mark_reachable(obj);
     }
     for callback in &instance.main_state.task_callbacks {
-        mark_reachable(callback.fun, traceable);
-        mark_reachable(callback.data, traceable);
+        mark_reachable(callback.fun);
+        mark_reachable(callback.data);
     }
     for &generic in &instance.objects_state.prim_generics {
-        mark_reachable(generic, traceable);
+        mark_reachable(generic);
     }
     for &methods in &instance.objects_state.prim_mlist {
-        mark_reachable(methods, traceable);
+        mark_reachable(methods);
     }
     for (&env, table) in &instance.env_hash_tables {
-        mark_reachable(env as SEXP, traceable);
+        mark_reachable(env as SEXP);
         for (&symbol, &value) in table {
-            mark_reachable(symbol as SEXP, traceable);
-            mark_reachable(value, traceable);
+            mark_reachable(symbol as SEXP);
+            mark_reachable(value);
         }
     }
 
     for finalizer in &instance.memory_state.pending_finalizers {
         if finalizer.is_ready() {
-            mark_reachable(finalizer.obj(), traceable);
+            mark_reachable(finalizer.obj());
         }
         if let crate::mainutils::memory_main::PendingFinalizer::R { fun, .. } = finalizer {
-            mark_reachable(*fun, traceable);
+            mark_reachable(*fun);
         }
     }
-    mark_reachable(instance.dynload_state.dll_info_eptrs, traceable);
-    mark_reachable(instance.dynload_state.symbol_eptrs, traceable);
-    mark_reachable(instance.dynload_state.c_entry_table, traceable);
+    mark_reachable(instance.dynload_state.dll_info_eptrs);
+    mark_reachable(instance.dynload_state.symbol_eptrs);
+    mark_reachable(instance.dynload_state.c_entry_table);
 
-    mark_reachable(instance.grid_runtime_state.current_grid_state, traceable);
-    mark_reachable(instance.grid_runtime_state.eval_env, traceable);
+    mark_reachable(instance.grid_runtime_state.current_grid_state);
+    mark_reachable(instance.grid_runtime_state.eval_env);
 
     for &obj in &instance.raw_cons {
-        mark_reachable(obj, traceable);
+        mark_reachable(obj);
     }
 
 }
@@ -1102,10 +1083,11 @@ fn do_minor_gc() -> (usize, usize) {
     // guard in instance.rs protects this full &mut view. GC is only invoked
     // from safe points or quiescent boundaries.
     let _ = instance::with_current_instance(|instance| {
-        let traceable = traceable_instance_objects(instance);
-        mark_instance_roots(instance, &traceable);
+        // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
+        // about allocating HashSets and hashing every edge.)
+        mark_instance_roots(instance);
         for &obj in &instance.gc_state.remembered_set.entries {
-            mark_reachable(obj, &traceable);
+            mark_reachable(obj);
         }
     });
 
@@ -1216,10 +1198,11 @@ pub fn full_gc() -> (usize, usize, usize) {
 fn mark_from_all_roots() {
     // Guarded via with_current (see do_minor_gc).
     let _ = instance::with_current_instance(|instance| {
-        let traceable = traceable_instance_objects(instance);
-        mark_instance_roots(instance, &traceable);
+        // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
+        // about allocating HashSets and hashing every edge.)
+        mark_instance_roots(instance);
         for &obj in &instance.gc_state.remembered_set.entries {
-            mark_reachable(obj, &traceable);
+            mark_reachable(obj);
         }
     });
 }
