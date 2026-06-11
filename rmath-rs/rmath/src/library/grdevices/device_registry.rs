@@ -631,6 +631,48 @@ pub(crate) fn draw_circle(gdd: pGEDevDesc, x: c_double, y: c_double, radius: c_d
     .unwrap_or(false)
 }
 
+/// Basic text support for the headless device registry (used for GECap/dev.capture
+/// in real R graphics on Android and for the embed render fidelity path).
+/// Draws visible glyph blocks so that axis labels, titles, text(), mtext() etc.
+/// from plot()/grid/etc. appear in captured output. Uses simple filled rects +
+/// a few distinguishing strokes (via existing line/rect primitives) for legibility
+/// without pulling fonts into the core interpreter.
+pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, col: c_int) -> bool {
+    with_device_mut(gdd, |device| {
+        let (Some(base_x), Some(base_y)) = (round_pixel(x), round_pixel(y)) else {
+            return true;
+        };
+        let mut cx = base_x;
+        let glyph_h = 5i32;
+        let glyph_w = 3i32;
+        let advance = glyph_w + 2;
+        for ch in text.chars() {
+            if ch.is_control() {
+                continue;
+            }
+            if ch == ' ' {
+                cx += advance;
+                continue;
+            }
+            // visible body for every glyph (labels get space + ink)
+            fill_rect_pixels(device, cx, base_y - glyph_h, cx + glyph_w, base_y, col);
+            // cheap distinctions so '1'/'l'/'I', '-', 'o'/'0' etc. look different
+            match ch {
+                '1' | 'l' | 'I' | '|' => {
+                    draw_line_pixels(device, cx + 1, base_y - glyph_h, cx + 1, base_y, col);
+                }
+                '-' | '_' | '=' => {
+                    draw_line_pixels(device, cx, base_y - glyph_h / 2, cx + glyph_w, base_y - glyph_h / 2, col);
+                }
+                _ => {}
+            }
+            cx += advance;
+        }
+        true
+    })
+    .unwrap_or(false)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_raster(
     gdd: pGEDevDesc,
