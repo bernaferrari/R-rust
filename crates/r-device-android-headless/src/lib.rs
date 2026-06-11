@@ -315,6 +315,14 @@ impl RenderPlot for AndroidHeadlessRenderer {
     }
 }
 
+/// Portable alias for the headless renderer.
+///
+/// Use this (or a re-export) in cross-platform code targeting WASM, servers,
+/// or other no-display environments in addition to Android. The concrete name
+/// `AndroidHeadlessRenderer` is kept for backward compatibility with the
+/// Android embedding surface (`r_embed::RSession::render*` and UniFFI).
+pub type HeadlessRenderer = AndroidHeadlessRenderer;
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -278,6 +278,7 @@ pub struct RInstance {
     /// Per-instance embedded HTTP server socket, worker, and handler state.
     pub(crate) httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState,
     /// Per-instance X11 graphics defaults and device counters.
+    #[cfg(not(target_os = "android"))]
     pub(crate) x11_state: crate::modules::x11::dev_x11::X11RuntimeState,
     /// Per-instance Unix standard console/event callback state.
     pub(crate) sys_std_state: crate::unix::sys_std::SysStdRuntimeState,
@@ -387,6 +388,7 @@ pub struct RInstance {
     /// Per-instance grDevices PostScript/PDF font registry state.
     pub(crate) postscript_font_state: crate::library::grdevices::devps::PostScriptFontState,
     /// Per-instance grDevices Windows backend scratch state.
+    #[cfg(not(target_os = "android"))]
     pub(crate) windows_device_state: crate::library::grdevices::devwindows::WindowsDeviceState,
     /// Per-instance grid runtime state.
     pub(crate) grid_runtime_state: crate::library::grid::types::GridRuntimeState,
@@ -446,6 +448,7 @@ impl RInstance {
             internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
             libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
             httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState::default(),
+            #[cfg(not(target_os = "android"))]
             x11_state: crate::modules::x11::dev_x11::X11RuntimeState::default(),
             sys_std_state: crate::unix::sys_std::SysStdRuntimeState::default(),
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
@@ -502,6 +505,7 @@ impl RInstance {
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
+            #[cfg(not(target_os = "android"))]
             windows_device_state:
                 crate::library::grdevices::devwindows::WindowsDeviceState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
