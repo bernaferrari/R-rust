@@ -1096,9 +1096,9 @@ fn do_minor_gc() -> (usize, usize) {
     let mut to_free = Vec::new();
 
     with_arena_for_gc(|arena| {
-        let nodes: Vec<SEXP> = arena.active_nodes().collect();
-
-        for &obj in &nodes {
+        // Iterate directly; only allocate to_free vec (not full snapshot of actives).
+        // Reduces temp memory/alloc pressure during GC (perf + memory win, especially on constrained Android/WASM).
+        for obj in arena.active_nodes() {
             if obj.is_null() {
                 continue;
             }
@@ -1215,9 +1215,8 @@ fn do_full_mark_sweep() -> (usize, usize) {
     let mut to_free = Vec::new();
 
     with_arena_for_gc(|arena| {
-        let nodes: Vec<SEXP> = arena.active_nodes().collect();
-
-        for &obj in &nodes {
+        // Direct iter, only to_free alloc (less GC-time memory pressure).
+        for obj in arena.active_nodes() {
             if obj.is_null() {
                 continue;
             }

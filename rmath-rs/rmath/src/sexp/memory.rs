@@ -157,6 +157,25 @@ impl RArena {
         self.slab_offset = 0;
     }
 
+    /// Allocate a core node into the current slab page (creating new page if needed).
+    /// Returns the raw SEXP ptr. Updates accounting and active tracking.
+    /// Used by scalar/vector/CHARS allocs to avoid duplication (elegance + maintainability).
+    #[inline]
+    fn allocate_core_in_slab<F>(&mut self, ctor: F) -> SEXP
+    where
+        F: FnOnce() -> SexprecCore,
+    {
+        if self.slab_offset >= NODE_PAGE_SIZE {
+            self.alloc_new_page();
+        }
+        let page = &mut self.node_pages[self.slab_page];
+        page.push(ctor());
+        let ptr: SEXP = &mut page[self.slab_offset] as *mut _;
+        self.slab_offset += 1;
+        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
+        self.register_new_node(ptr)
+    }
+
     /// Create a new empty arena with an unlimited budget.
     pub fn new() -> Self {
         let mut a = RArena {
@@ -291,16 +310,7 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        // Slab allocation: use current page or new one. Push within reserved cap -> no realloc, ptr stable.
-        if self.slab_offset >= NODE_PAGE_SIZE {
-            self.alloc_new_page();
-        }
-        let page = &mut self.node_pages[self.slab_page];
-        page.push(SexprecCore::new(sexptype));
-        let ptr: SEXP = &mut page[self.slab_offset] as *mut _;
-        self.slab_offset += 1;
-        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
-        self.register_new_node(ptr)
+        self.allocate_core_in_slab(|| SexprecCore::new(sexptype))
     }
 
     /// Allocate a scalar node and return an arena-scoped safe wrapper.
@@ -335,14 +345,7 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        // Slab alloc for the node (hard perf opt: no per-Box)
-        if self.slab_offset >= NODE_PAGE_SIZE {
-            self.alloc_new_page();
-        }
-        let page = &mut self.node_pages[self.slab_page];
-        page.push(SexprecCore::new_vector(sexptype, length));
-        let node_ptr: SEXP = &mut page[self.slab_offset] as *mut _;
-        self.slab_offset += 1;
+        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
 
         if total_bytes > 0 {
             let layout = match Layout::from_size_align(total_bytes, std::mem::align_of::<u64>()) {
@@ -438,14 +441,7 @@ impl RArena {
             crate::sexp::gengc::maybe_collect_during_alloc();
         }
 
-        // Slab alloc for the node (hard perf opt)
-        if self.slab_offset >= NODE_PAGE_SIZE {
-            self.alloc_new_page();
-        }
-        let page = &mut self.node_pages[self.slab_page];
-        page.push(SexprecCore::new_vector(sexptype, length));
-        let node_ptr: SEXP = &mut page[self.slab_offset] as *mut _;
-        self.slab_offset += 1;
+        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
 
         if data_bytes > 0 {
             let layout = match Layout::from_size_align(data_bytes, std::mem::align_of::<u64>()) {
@@ -494,20 +490,12 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        // Slab alloc for the node (hard perf opt)
-        if self.slab_offset >= NODE_PAGE_SIZE {
-            self.alloc_new_page();
-        }
-        let page = &mut self.node_pages[self.slab_page];
-        page.push(SexprecCore::new(SEXPTYPE::CHARSXP));
-        let node_ptr: SEXP = &mut page[self.slab_offset] as *mut _;
-        self.slab_offset += 1;
+        let node_ptr = self.allocate_core_in_slab(|| {
+            let mut c = SexprecCore::new(SEXPTYPE::CHARSXP);
+            c.data = SexprecData { charsxp_truelen: len };
+            c
+        });
 
-        unsafe {
-            (*node_ptr).data = SexprecData {
-                charsxp_truelen: len,
-            };
-        }
         let layout = match Layout::from_size_align(total_bytes, 1) {
             Ok(l) => l,
             Err(_) => return ptr::null_mut(),
