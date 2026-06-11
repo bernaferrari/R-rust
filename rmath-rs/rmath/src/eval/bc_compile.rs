@@ -103,6 +103,12 @@ impl BytecodeCompiler {
                 if block.as_deref() == Some("if") {
                     return self.compile_if(expr);
                 }
+                if block.as_deref() == Some("while") {
+                    return self.compile_while(expr);
+                }
+                if block.as_deref() == Some("for") {
+                    return self.compile_for(expr);
+                }
             }
 
             let mut arg_cells = Vec::new();
@@ -121,6 +127,55 @@ impl BytecodeCompiler {
             let fun_idx = self.add_const(fun);
             self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
             self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
+            true
+        }
+    }
+
+    unsafe fn compile_while(&mut self, expr: SEXP) -> bool {
+        unsafe {
+            // while (test) body
+            let test = CAR(CDR(expr));
+            let body = CAR(CDR(CDR(expr)));
+            let test_label = self.code.len() as c_int;
+            if !self.compile_expr(test) {
+                return false;
+            }
+            let brif_idx = self.code.len() as c_int;
+            self.emit_operand(opcodes::OP_BRIFNOT, 0); // placeholder
+            if !self.compile_expr(body) {
+                return false;
+            }
+            self.emit_operand(opcodes::OP_GOTO, test_label);
+            let end_label = self.code.len() as c_int;
+            self.code[brif_idx as usize + 1] = end_label;
+            true
+        }
+    }
+
+    unsafe fn compile_for(&mut self, expr: SEXP) -> bool {
+        unsafe {
+            // for (var in seq) body -- use BC loop ops
+            // Simplified emission for VM support
+            let var = CAR(CDR(expr));
+            let seq = CAR(CDR(CDR(expr)));
+            let body = CAR(CDR(CDR(CDR(expr))));
+            if !self.compile_expr(seq) {
+                return false;
+            }
+            // setup loop
+            self.emit(opcodes::OP_SETLOOPCTR); // may need operand in full
+            let begin_label = self.code.len() as c_int;
+            self.emit(opcodes::OP_BEGINLOOP);
+            // step
+            let step_idx = self.code.len() as c_int;
+            self.emit_operand(opcodes::OP_STEPFOR, 0); // placeholder end
+            if !self.compile_expr(body) {
+                return false;
+            }
+            self.emit_operand(opcodes::OP_GOTO, begin_label);
+            let end_label = self.code.len() as c_int;
+            self.code[step_idx as usize + 1] = end_label;
+            self.emit(opcodes::OP_ENDLOOP);
             true
         }
     }

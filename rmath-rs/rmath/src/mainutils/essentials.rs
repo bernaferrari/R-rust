@@ -15630,7 +15630,7 @@ fn print_data_frame_column_texts(x: SEXP, ncol: R_xlen_t, nrow: R_xlen_t) -> (Ve
         let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
         let mut headers = Vec::with_capacity(ncol as usize);
         let mut columns = Vec::with_capacity(ncol as usize);
-        for j in 0..ncol.min(20) {
+        for j in 0..ncol {
             let header = if has_names && j < XLENGTH(names) {
                 elt_to_string(names, j)
             } else {
@@ -15638,8 +15638,8 @@ fn print_data_frame_column_texts(x: SEXP, ncol: R_xlen_t, nrow: R_xlen_t) -> (Ve
             };
             headers.push(header);
             let col = VECTOR_ELT(x, j as R_xlen_t);
-            let mut values = Vec::with_capacity(nrow.min(20) as usize);
-            for i in 0..nrow.min(20) {
+            let mut values = Vec::with_capacity(nrow as usize);
+            for i in 0..nrow {
                 let val = if col.is_null() {
                     "NULL".to_string()
                 } else {
