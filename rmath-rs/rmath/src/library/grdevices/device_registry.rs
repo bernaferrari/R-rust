@@ -9,6 +9,9 @@ use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
 
+#[cfg(feature = "renderplot-device")]
+use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, Stroke};
+
 const DEFAULT_WIDTH_INCHES: c_double = 7.0;
 const DEFAULT_HEIGHT_INCHES: c_double = 7.0;
 const DEFAULT_DPI: c_int = 72;
@@ -535,7 +538,7 @@ pub(crate) fn draw_line(
     x1: c_double,
     y1: c_double,
 ) -> bool {
-    with_device_mut(gdd, |device| {
+    let res = with_device_mut(gdd, |device| {
         let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
             round_pixel(x0),
             round_pixel(y0),
@@ -547,11 +550,33 @@ pub(crate) fn draw_line(
         draw_line_pixels(device, x0, y0, x1, y1, OPAQUE_BLACK_NATIVE);
         true
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+
+    #[cfg(feature = "renderplot-device")]
+    {
+        with_required_current_instance(|inst| {
+            if let Some(p) = inst.current_renderplot_backend {
+                if let Some(r) = unsafe { p.as_mut() } {
+                    let path = Path {
+                        commands: vec![
+                            PathCommand::MoveTo(x0 as f32, y0 as f32),
+                            PathCommand::LineTo(x1 as f32, y1 as f32),
+                        ],
+                        fill: Color { r: 0, g: 0, b: 0, a: 0 },
+                        stroke: Stroke::new(1.0, Color::BLACK),
+                        anti_alias: true,
+                    };
+                    r.draw_path(&path);
+                }
+            }
+        });
+    }
+
+    res
 }
 
 pub(crate) fn draw_polyline(gdd: pGEDevDesc, points: &[(c_double, c_double)]) -> bool {
-    with_device_mut(gdd, |device| {
+    let res = with_device_mut(gdd, |device| {
         for pair in points.windows(2) {
             let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
                 round_pixel(pair[0].0),
@@ -565,11 +590,30 @@ pub(crate) fn draw_polyline(gdd: pGEDevDesc, points: &[(c_double, c_double)]) ->
         }
         true
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+
+    #[cfg(feature = "renderplot-device")]
+    {
+        with_required_current_instance(|inst| {
+            if let Some(p) = inst.current_renderplot_backend {
+                if let Some(r) = unsafe { p.as_mut() } {
+                    if points.len() >= 2 {
+                        let mut cmds = vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
+                        for p in &points[1..] {
+                            cmds.push(PathCommand::LineTo(p.0 as f32, p.1 as f32));
+                        }
+                        let path = Path { commands: cmds, fill: Color { r: 0, g: 0, b: 0, a: 0 }, stroke: Stroke::new(1.0, Color::BLACK), anti_alias: true };
+                        r.draw_path(&path);
+                    }
+                }
+            }
+        });
+    }
+    res
 }
 
 pub(crate) fn draw_polygon(gdd: pGEDevDesc, points: &[(c_double, c_double)]) -> bool {
-    with_device_mut(gdd, |device| {
+    let res = with_device_mut(gdd, |device| {
         let points: Vec<_> = points
             .iter()
             .filter_map(|(x, y)| Some((round_pixel(*x)?, round_pixel(*y)?)))
@@ -582,7 +626,24 @@ pub(crate) fn draw_polygon(gdd: pGEDevDesc, points: &[(c_double, c_double)]) -> 
         }
         true
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+
+    #[cfg(feature = "renderplot-device")]
+    {
+        with_required_current_instance(|inst| {
+            if let Some(p) = inst.current_renderplot_backend {
+                if let Some(r) = unsafe { p.as_mut() } {
+                    if points.len() >= 2 {
+                        let mut cmds: Vec<_> = points.iter().map(|p| PathCommand::MoveTo(p.0 as f32, p.1 as f32)).collect();
+                        if !cmds.is_empty() { cmds.push(PathCommand::Close); }
+                        let path = Path { commands: cmds, fill: Color::BLACK, stroke: Stroke::new(1.0, Color::BLACK), anti_alias: true };
+                        r.draw_path(&path);
+                    }
+                }
+            }
+        });
+    }
+    res
 }
 
 pub(crate) fn draw_rect(
@@ -592,7 +653,7 @@ pub(crate) fn draw_rect(
     x1: c_double,
     y1: c_double,
 ) -> bool {
-    with_device_mut(gdd, |device| {
+    let res = with_device_mut(gdd, |device| {
         let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
             round_pixel(x0),
             round_pixel(y0),
@@ -604,11 +665,24 @@ pub(crate) fn draw_rect(
         fill_rect_pixels(device, x0, y0, x1, y1, OPAQUE_BLACK_NATIVE);
         true
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+
+    #[cfg(feature = "renderplot-device")]
+    {
+        with_required_current_instance(|inst| {
+            if let Some(p) = inst.current_renderplot_backend {
+                if let Some(r) = unsafe { p.as_mut() } {
+                    let path = Path::rect(x0 as f32, y0 as f32, (x1-x0) as f32, (y1-y0) as f32);
+                    r.draw_path(&path);
+                }
+            }
+        });
+    }
+    res
 }
 
 pub(crate) fn draw_circle(gdd: pGEDevDesc, x: c_double, y: c_double, radius: c_double) -> bool {
-    with_device_mut(gdd, |device| {
+    let res = with_device_mut(gdd, |device| {
         let (Some(cx), Some(cy)) = (round_pixel(x), round_pixel(y)) else {
             return true;
         };
@@ -628,7 +702,21 @@ pub(crate) fn draw_circle(gdd: pGEDevDesc, x: c_double, y: c_double, radius: c_d
         }
         true
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+
+    #[cfg(feature = "renderplot-device")]
+    {
+        with_required_current_instance(|inst| {
+            if let Some(p) = inst.current_renderplot_backend {
+                if let Some(r) = unsafe { p.as_mut() } {
+                    let rr = radius as f32;
+                    let path = Path::circle(x as f32, y as f32, rr);
+                    r.draw_path(&path);
+                }
+            }
+        });
+    }
+    res
 }
 
 /// Basic text support for the headless device registry (used for GECap/dev.capture
@@ -638,7 +726,7 @@ pub(crate) fn draw_circle(gdd: pGEDevDesc, x: c_double, y: c_double, radius: c_d
 /// a few distinguishing strokes (via existing line/rect primitives) for legibility
 /// without pulling fonts into the core interpreter.
 pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, col: c_int) -> bool {
-    with_device_mut(gdd, |device| {
+    let res = with_device_mut(gdd, |device| {
         let (Some(base_x), Some(base_y)) = (round_pixel(x), round_pixel(y)) else {
             return true;
         };
@@ -670,7 +758,25 @@ pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, c
         }
         true
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+
+    #[cfg(feature = "renderplot-device")]
+    {
+        with_required_current_instance(|inst| {
+            if let Some(p) = inst.current_renderplot_backend {
+                if let Some(r) = unsafe { p.as_mut() } {
+                    // forward to the high-quality renderer (fontdue text etc.)
+                    let params = PlotParameters {
+                        font_size: 12.0,
+                        text_color: Color::BLACK,
+                        ..Default::default()
+                    };
+                    r.draw_text(text, Point { x: x as f32, y: y as f32 }, &params);
+                }
+            }
+        });
+    }
+    res
 }
 
 #[allow(clippy::too_many_arguments)]

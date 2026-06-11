@@ -198,3 +198,28 @@ pub trait RenderPlot: Sized {
     /// Finalize render and return output bytes
     fn finish(self) -> Self::Output;
 }
+
+/// Object-safe subset of drawing operations.
+///
+/// This trait is dyn-compatible so it can be used as `dyn DrawTarget` for
+/// pluggable backends (e.g. when a GE device forwards R graphics drawing
+/// commands to a RenderPlot implementation).
+///
+/// `RenderPlot` types automatically implement `DrawTarget` via a blanket impl.
+pub trait DrawTarget {
+    fn clear(&mut self, background: Color);
+    fn draw_path(&mut self, path: &Path);
+    fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters);
+}
+
+impl<T: RenderPlot> DrawTarget for T {
+    fn clear(&mut self, background: Color) {
+        <Self as RenderPlot>::clear(self, background);
+    }
+    fn draw_path(&mut self, path: &Path) {
+        <Self as RenderPlot>::draw_path(self, path);
+    }
+    fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters) {
+        <Self as RenderPlot>::draw_text(self, text, position, params);
+    }
+}

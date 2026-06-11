@@ -20,6 +20,9 @@ default = ["rust-backend"]
 fortran-backend = []
 # Use pure Rust linear algebra via faer-rs (Android-compatible, no external toolchain)
 rust-backend = ["faer"]
+# Enable RenderPlot-backed GE device for high-quality skia output inside real R graphics (plot, grid, etc.)
+# Pulls r-graphics-engine (kept optional so pure-math WASM builds stay small).
+renderplot-device = ["r-graphics-engine"]
 
 [dependencies]
 libm = "0.1"
@@ -35,6 +38,8 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 # Keep default features off so wasm builds do not pull faer's rayon/spindle
 # parallel backend, which depends on native-style atomic waits.
 faer = { version = "0.24", default-features = false, features = ["std", "linalg"], optional = true }
+
+r-graphics-engine = { path = "../../crates/r-graphics-engine", optional = true }
 
 uniffi = { version = "0.28" }
 

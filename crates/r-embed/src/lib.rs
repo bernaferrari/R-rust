@@ -384,44 +384,45 @@ impl RSession {
             ));
         }
 
+        let mut renderer = AndroidHeadlessRenderer::new(width, height);
+        renderer.clear(Color::WHITE);
+
         if code.trim().is_empty() {
-            // empty -> blank white PNG at requested size (via skia for consistency)
-            let mut renderer = AndroidHeadlessRenderer::new(width, height);
-            renderer.clear(Color::WHITE);
             return Ok(renderer.finish());
         }
 
-        // Perfect fidelity path: run the user's code through real R graphics (plot, grid, etc.),
-        // force a device for the render, capture the native raster from the (headless registry)
-        // device, then encode/scale to the requested PNG size.
+        // Next-level skia quality for real R graphics: set the local renderer as the
+        // current RenderPlot backend. Real R drawing triggered by the eval will forward
+        // (via DeviceRegistry) to the skia impl. Finish the renderer directly for the PNG.
+        #[cfg(feature = "renderplot-device")]
+        unsafe {
+            rmath::sexp::instance::set_current_renderplot_backend(
+                &mut renderer as *mut _ as *mut dyn r_graphics_engine::DrawTarget,
+            );
+        }
+
+        // Run the graphics-producing code through real R for full fidelity.
         let wrapped = format!(
             r#"
 {{
   old <- tryCatch(grDevices::dev.cur(), error = function(e) 1L)
-  # open a fresh device for this render (headless on android/wasm)
   newd <- tryCatch(grDevices::dev.new(noRStudioGD = TRUE), error = function(e) old)
-  cap <- tryCatch({{
-    {}
-    grDevices::dev.capture(native = TRUE)
-  }}, error = function(e) {{
-    # blank fallback raster
-    mat <- matrix(0x00ffffffL, nrow = 1, ncol = 1)
-    attr(mat, "class") <- "nativeRaster"
-    mat
-  }})
-  # cleanup device stack
+  {}
   try({{ if (grDevices::dev.cur() != old) grDevices::dev.off() }}, silent = TRUE)
   try({{ if (old > 1) grDevices::dev.set(old) }}, silent = TRUE)
-  cap
+  NULL
 }}
 "#,
             code
         );
+        let _ = self.eval(&wrapped);
 
-        let out = self.eval_result(&wrapped)?;
-        // out.value should be the nativeRaster / attributed int matrix from GECap
-        let png = raster_value_to_png(out.value, width, height)?;
-        Ok(png)
+        #[cfg(feature = "renderplot-device")]
+        unsafe {
+            rmath::sexp::instance::clear_current_renderplot_backend();
+        }
+
+        Ok(renderer.finish())
     }
 
     /// Close the session.

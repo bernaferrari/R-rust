@@ -379,6 +379,11 @@ pub struct RInstance {
     pub(crate) graphics_device_registry: crate::library::grdevices::device_registry::DeviceRegistry,
     /// Per-instance graphics engine registration state.
     pub(crate) graphics_engine_state: crate::mainutils::engine::GraphicsEngineState,
+    /// Optional current DrawTarget (RenderPlot) backend (when the "renderplot-device" feature is enabled).
+    /// Used by the DeviceRegistry drawing fns to forward high-quality drawing (skia etc.)
+    /// for real R graphics calls on Android/WASM hosts.
+    #[cfg(feature = "renderplot-device")]
+    pub(crate) current_renderplot_backend: Option<*mut dyn r_graphics_engine::DrawTarget>,
     /// Per-instance base graphics `par()` overrides.
     pub(crate) graphics_par_state: crate::library::graphics::par::GraphicsParState,
     /// Per-instance grDevices color palette and scratch buffer state.
@@ -502,6 +507,8 @@ impl RInstance {
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
             graphics_engine_state: crate::mainutils::engine::GraphicsEngineState::default(),
             graphics_par_state: crate::library::graphics::par::GraphicsParState::default(),
+            #[cfg(feature = "renderplot-device")]
+            current_renderplot_backend: None,
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
@@ -568,6 +575,36 @@ impl RInstance {
                 .any(|node| std::ptr::eq(&**node, ptr))
             || self.raw_cons.iter().any(|raw| std::ptr::eq(*raw, ptr))
     }
+
+    /// Set a RenderPlot backend for the duration of a render / graphics operation.
+    /// The drawing fns in the device registry will forward to it (when the feature is enabled)
+    /// so that real R plot()/grid calls produce output via the skia renderer.
+    #[cfg(feature = "renderplot-device")]
+    pub unsafe fn set_current_renderplot_backend(&mut self, backend: *mut dyn r_graphics_engine::DrawTarget) {
+        self.current_renderplot_backend = Some(backend);
+    }
+
+    #[cfg(feature = "renderplot-device")]
+    pub unsafe fn clear_current_renderplot_backend(&mut self) {
+        self.current_renderplot_backend = None;
+    }
+}
+
+/// Free functions (visible to embed etc. when the feature is enabled) to set the
+/// current DrawTarget (RenderPlot) backend for the active instance (used during render to
+/// forward drawing to skia for real R graphics).
+#[cfg(feature = "renderplot-device")]
+pub unsafe fn set_current_renderplot_backend(backend: *mut dyn r_graphics_engine::DrawTarget) {
+    with_required_current_instance(|inst| {
+        inst.current_renderplot_backend = Some(backend);
+    });
+}
+
+#[cfg(feature = "renderplot-device")]
+pub unsafe fn clear_current_renderplot_backend() {
+    with_required_current_instance(|inst| {
+        inst.current_renderplot_backend = None;
+    });
 }
 
 impl Default for RInstance {
