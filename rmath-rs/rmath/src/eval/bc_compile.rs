@@ -6,12 +6,10 @@
 //! `R_compileExpr`, and JIT scoring to produce bytecode that `bcEval` can run.
 
 use std::os::raw::c_int;
-use std::ptr;
 
 use crate::sexp::accessors::{
-    BODY, CAR, CDR, INTEGER, LENGTH, PRINTNAME, SET_BODY, TYPEOF,
+    BODY, CAR, CDR, LENGTH, PRINTNAME, SET_BODY, TYPEOF,
 };
-use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;

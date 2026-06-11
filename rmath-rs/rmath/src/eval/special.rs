@@ -11,7 +11,6 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
@@ -366,7 +365,7 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
                     break;
                 }
 
-                Rf_eval(body, rho);
+                let _ = Rf_eval(body, rho);
                 crate::sexp::gengc::maybe_collect_at_eval_safe_point();
             }
         });
@@ -460,7 +459,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                         });
                     }
 
-                    Rf_eval(body, rho);
+                    let _ = Rf_eval(body, rho);
                     crate::sexp::gengc::maybe_collect_at_eval_safe_point();
                     i.set(idx + 1);
                 }

@@ -7005,9 +7005,9 @@ unsafe fn eager_lazy_load_package_db(
     filebase: &Path,
     envir: SEXP,
     skip: &[&str],
-) -> Result<(), String> {
+) -> Result<(), String> { unsafe {
     lazy_lazy_load_package_db(filebase, envir, skip)
-}
+}}
 
 unsafe fn lazy_lazy_load_package_db(
     filebase: &Path,

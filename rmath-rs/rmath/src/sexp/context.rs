@@ -407,12 +407,12 @@ pub enum LoopAction {
 
 /// Run a loop body with a single `catch_unwind` context, matching upstream R's
 /// one `setjmp` per loop rather than one per iteration.
-pub unsafe fn run_hoisted_loop<F>(mut driver: F)
+pub unsafe fn run_hoisted_loop<F>(driver: F)
 where
     F: FnMut(),
-{
+{ unsafe {
     run_hoisted_loop_with_continue(driver, || ());
-}
+}}
 
 /// Like [`run_hoisted_loop`], but runs `on_continue` before re-entering the
 /// driver after a `next` signal. `for` loops use this to advance the index
