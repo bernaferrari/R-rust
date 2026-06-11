@@ -568,6 +568,9 @@ unsafe fn do_function(args: SEXP, rho: SEXP) -> SEXP {
             (*clos).data.closxp.env = rho;
         }
 
+        // Auto compile to BC for fast path when possible. With depth guard in BC, deep recursion like f18 will still error correctly.
+        let _ = crate::eval::bc_compile::compile_closure(clos);
+
         clos
     }
 }

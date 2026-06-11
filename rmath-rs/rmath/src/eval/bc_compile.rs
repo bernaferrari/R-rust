@@ -100,6 +100,9 @@ impl BytecodeCompiler {
                 if block.as_deref() == Some("{") {
                     return self.compile_block(expr);
                 }
+                if block.as_deref() == Some("if") {
+                    return self.compile_if(expr);
+                }
             }
 
             let mut arg_cells = Vec::new();
@@ -118,6 +121,42 @@ impl BytecodeCompiler {
             let fun_idx = self.add_const(fun);
             self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
             self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);
+            true
+        }
+    }
+
+    unsafe fn compile_if(&mut self, expr: SEXP) -> bool {
+        unsafe {
+            // if (test) then else ; form is lang if test then else
+            let test = CAR(CDR(expr));
+            let then_e = CAR(CDR(CDR(expr)));
+            let else_e = if CDR(CDR(CDR(expr))).is_null() {
+                R_NilValue()
+            } else {
+                CAR(CDR(CDR(CDR(expr))))
+            };
+
+            if !self.compile_expr(test) {
+                return false;
+            }
+            let brif_idx = self.code.len() as c_int;
+            self.emit_operand(opcodes::OP_BRIFNOT, 0); // placeholder target
+
+            if !self.compile_expr(then_e) {
+                return false;
+            }
+            let goto_idx = self.code.len() as c_int;
+            self.emit_operand(opcodes::OP_GOTO, 0); // placeholder
+
+            let else_label = self.code.len() as c_int;
+            self.code[brif_idx as usize + 1] = else_label; // fix BRIFNOT target
+
+            if !self.compile_expr(else_e) {
+                return false;
+            }
+            let end_label = self.code.len() as c_int;
+            self.code[goto_idx as usize + 1] = end_label; // fix GOTO target
+
             true
         }
     }

@@ -222,6 +222,9 @@ fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Str
     if super::jit::get_R_disable_bytecode() != 0 {
         return Err("bytecode evaluation is disabled for this R session".to_string());
     }
+    // Ensure depth guard for BC recursion (e.g. deep fib), like AST path.
+    // This fixes depth limit for BC bodies.
+    let _guard = super::limits::check_eval_depth().map_err(|e| e.to_string())?;
     let result = unsafe { super::bc_eval::bcEval(expr.as_raw(), env.as_raw()) };
     Ok(unsafe { Sexp::from_raw_unchecked(result) })
 }
