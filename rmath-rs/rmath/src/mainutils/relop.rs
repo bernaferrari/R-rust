@@ -32,7 +32,7 @@ use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, NAMED, PRINTNAME,
-    REAL, REAL_ELT, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    REAL, REAL_ELT, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
     Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_length, Rf_mkChar,
@@ -224,19 +224,9 @@ pub unsafe fn PRIMVAL(op: SEXP) -> c_int {
 /// PRIMNAME -- returns the name of a builtin/special as a C string.
 pub unsafe fn PRIMNAME(op: SEXP) -> *const c_char {
     unsafe {
-        if op.is_null() {
-            static EMPTY: [c_char; 1] = [0];
-            return EMPTY.as_ptr();
-        }
-        let t = TYPEOF(op);
-        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-            // The name is stored as the TAG of the builtin/special
-            let name_sym = TAG(op);
-            if !name_sym.is_null() {
-                let pname = PRINTNAME(name_sym);
-                if !pname.is_null() {
-                    return CHAR(pname);
-                }
+        if let Some(primitive) = crate::eval::primitive::PrimitiveDescriptor::from_raw(op) {
+            if let Some(entry) = crate::eval::primitive::fun_tab_descriptor(primitive.table_index) {
+                return entry.name.as_ptr() as *const c_char;
             }
         }
         static EMPTY: [c_char; 1] = [0];
@@ -284,7 +274,51 @@ pub unsafe fn conformable(a: SEXP, b: SEXP) -> c_int {
 }
 
 /// Report an unimplemented type error.
-pub unsafe fn UNIMPLEMENTED_TYPE(_s: *const c_char, _x: SEXP) {}
+pub unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, x: SEXP) -> ! {
+    unsafe {
+        let routine = if routine.is_null() {
+            "relop"
+        } else {
+            CStr::from_ptr(routine).to_str().unwrap_or("relop")
+        };
+        let sexptype = if x.is_null() { -1 } else { TYPEOF(x) };
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
+        });
+    }
+}
+
+fn bitwise_type_mismatch() -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: "'a' and 'b' must have the same type".to_string(),
+    });
+}
+
+fn relop_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
+}
+
+unsafe fn primitive_name(op: SEXP) -> String {
+    unsafe {
+        let name = PRIMNAME(op);
+        if name.is_null() {
+            String::new()
+        } else {
+            CStr::from_ptr(name).to_string_lossy().into_owned()
+        }
+    }
+}
+
+unsafe fn language_comparison_error(op: SEXP) -> ! {
+    unsafe {
+        relop_error(format!(
+            "comparison ({}) is not possible for language types",
+            primitive_name(op)
+        ))
+    }
+}
 
 /// Returns DATAPTR as const Rcomplex pointer.
 pub unsafe fn COMPLEX_RO(x: SEXP) -> *const Rcomplex {
@@ -573,7 +607,7 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let argc = Rf_length(args);
         if argc != 2 {
-            // error("operator needs two arguments");
+            relop_error("operator needs two arguments");
         }
 
         do_relop_dflt(call, op, arg1, arg2)
@@ -634,15 +668,10 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
             inst.eval_state.relop_lang_option
         }) {
             // EQONLY
-            1 => {
-                match PRIMVAL(op) {
-                    EQOP | NEOP => return ptr::null_mut(),
-                    _ => {
-                        // errorcall for non-eq/ne
-                    }
-                }
-                ptr::null_mut()
-            }
+            1 => match PRIMVAL(op) {
+                EQOP | NEOP => return ptr::null_mut(),
+                _ => language_comparison_error(op),
+            },
             // IDENTICAL_CALLS
             2 => {
                 let eq = compute_lang_equal(x, y);
@@ -661,7 +690,7 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
                             R_TrueValue()
                         }
                     }
-                    _ => ptr::null_mut(), // errorcall
+                    _ => language_comparison_error(op),
                 }
             }
             // IDENTICAL_CALLS_ATTR
@@ -697,7 +726,7 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
                             R_TrueValue()
                         }
                     }
-                    _ => ptr::null_mut(), // errorcall
+                    _ => language_comparison_error(op),
                 }
             }
             // IDENTICAL
@@ -719,20 +748,19 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
                             R_TrueValue()
                         }
                     }
-                    _ => ptr::null_mut(), // errorcall
+                    _ => language_comparison_error(op),
                 }
             }
             // ERROR_CALLS
             5 => {
                 if TYPEOF(x) == SEXPTYPE::LANGSXP || TYPEOF(y) == SEXPTYPE::LANGSXP {
-                    // errorcall
+                    relop_error("comparison of call objects is not supported");
                 }
                 ptr::null_mut()
             }
             // ERROR
             6 => {
-                // errorcall
-                ptr::null_mut()
+                relop_error("comparison of language objects is not supported");
             }
             _ => ptr::null_mut(),
         }
@@ -855,8 +883,10 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             y = Rf_allocVector(SEXPTYPE::INTSXP, 0);
         }
         if isVector(x) == 0 || isVector(y) == 0 {
-            // errorcall
-            return ptr::null_mut();
+            relop_error(format!(
+                "comparison ({}) is possible only for atomic and list types",
+                primitive_name(op)
+            ));
         }
 
         // Array and time series handling (simplified -- stubs return 0)
@@ -885,8 +915,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             } else if TYPEOF(x) == SEXPTYPE::RAWSXP || TYPEOF(y) == SEXPTYPE::RAWSXP {
                 x = raw_relop(PRIMVAL(op), x, y);
             } else {
-                // errorcall: comparison not implemented
-                return ptr::null_mut();
+                relop_error("comparison of these types is not implemented");
             }
         } else {
             x = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
@@ -1152,8 +1181,7 @@ fn numeric_op(code: c_int, x1: c_double, x2: c_double) -> c_int {
 unsafe fn complex_relop(code: c_int, s1: SEXP, s2: SEXP, _call: SEXP) -> SEXP {
     unsafe {
         if code != EQOP && code != NEOP {
-            // errorcall: invalid comparison with complex values
-            return ptr::null_mut();
+            relop_error("invalid comparison with complex values");
         }
 
         let n1 = XLENGTH(s1);
@@ -1421,7 +1449,6 @@ unsafe fn bitwiseNot(a: SEXP) -> SEXP {
             }
             _ => {
                 UNIMPLEMENTED_TYPE(b"bitwNot\0".as_ptr() as *const c_char, a);
-                ptr::null_mut()
             }
         }
     }
@@ -1461,8 +1488,7 @@ unsafe fn bitwise_op<F: Fn(c_int, c_int) -> c_int>(
         }
 
         if TYPEOF(a) != TYPEOF(b) {
-            // error("'a' and 'b' must have the same type");
-            return ptr::null_mut();
+            bitwise_type_mismatch();
         }
 
         match TYPEOF(a) {
@@ -1494,7 +1520,6 @@ unsafe fn bitwise_op<F: Fn(c_int, c_int) -> c_int>(
             }
             _ => {
                 UNIMPLEMENTED_TYPE(name.as_ptr() as *const c_char, a);
-                ptr::null_mut()
             }
         }
     }
@@ -1516,8 +1541,7 @@ unsafe fn bitwiseShiftL(a: SEXP, b: SEXP) -> SEXP {
         }
 
         if TYPEOF(a) != TYPEOF(b) {
-            // error("'a' and 'b' must have the same type");
-            return ptr::null_mut();
+            bitwise_type_mismatch();
         }
 
         match TYPEOF(a) {
@@ -1549,7 +1573,6 @@ unsafe fn bitwiseShiftL(a: SEXP, b: SEXP) -> SEXP {
             }
             _ => {
                 UNIMPLEMENTED_TYPE(b"bitShiftL\0".as_ptr() as *const c_char, a);
-                ptr::null_mut()
             }
         }
     }
@@ -1571,8 +1594,7 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
         }
 
         if TYPEOF(a) != TYPEOF(b) {
-            // error("'a' and 'b' must have the same type");
-            return ptr::null_mut();
+            bitwise_type_mismatch();
         }
 
         match TYPEOF(a) {
@@ -1604,7 +1626,6 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
             }
             _ => {
                 UNIMPLEMENTED_TYPE(b"bitShiftR\0".as_ptr() as *const c_char, a);
-                ptr::null_mut()
             }
         }
     }
@@ -1891,6 +1912,120 @@ mod tests {
                 r_error.message,
                 "2 arguments passed to 'length' which requires 1"
             );
+        }
+    }
+
+    #[test]
+    fn test_bitwise_unsupported_type_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let string = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let err = std::panic::catch_unwind(|| {
+                let _ = bitwiseNot(string);
+            })
+            .expect_err("unsupported bitwise type should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert!(message.contains("bitwNot: unsupported SEXPTYPE"));
+        }
+    }
+
+    #[test]
+    fn test_bitwise_mismatched_types_error_instead_of_null() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let integer = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            let logical = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
+            *INTEGER(integer) = 1;
+            *LOGICAL(logical) = 1;
+
+            let err = std::panic::catch_unwind(|| {
+                let _ = bitwise_op(integer, logical, |x, y| x & y, b"bitwAnd\0");
+            })
+            .expect_err("mismatched bitwise operands should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert_eq!(message, "'a' and 'b' must have the same type");
+        }
+    }
+
+    #[test]
+    fn test_relop_wrong_argument_count_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"==".as_ptr());
+            let args = Rf_cons(Rf_ScalarLogical(1), R_NilValue());
+            let err = std::panic::catch_unwind(|| {
+                let _ = do_relop(ptr::null_mut(), op, args, R_NilValue());
+            })
+            .expect_err("relop should require two arguments");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert_eq!(message, "operator needs two arguments");
+        }
+    }
+
+    #[test]
+    fn test_relop_language_ordering_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"<".as_ptr());
+            let x = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let y = crate::sexp::symbol::Rf_install(c"y".as_ptr());
+            let err = std::panic::catch_unwind(|| {
+                let _ = do_relop_dflt(ptr::null_mut(), op, x, y);
+            })
+            .expect_err("ordering language objects should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert!(message.contains("comparison (<) is not possible for language types"));
+        }
+    }
+
+    #[test]
+    fn test_relop_non_vector_operands_error_instead_of_null() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"==".as_ptr());
+            let x = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
+            let y = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
+            let err = std::panic::catch_unwind(|| {
+                let _ = do_relop_dflt(ptr::null_mut(), op, x, y);
+            })
+            .expect_err("non-vector relop operands should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert!(message.contains("comparison (==) is possible only for atomic and list types"));
+        }
+    }
+
+    #[test]
+    fn test_complex_ordering_errors_instead_of_null() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let x = Rf_allocVector(SEXPTYPE::CPLXSXP, 1);
+            let y = Rf_allocVector(SEXPTYPE::CPLXSXP, 1);
+            *COMPLEX(x) = Rcomplex { r: 1.0, i: 0.0 };
+            *COMPLEX(y) = Rcomplex { r: 2.0, i: 0.0 };
+            let err = std::panic::catch_unwind(|| {
+                let _ = complex_relop(LTOP, x, y, ptr::null_mut());
+            })
+            .expect_err("complex ordering should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert_eq!(message, "invalid comparison with complex values");
         }
     }
 

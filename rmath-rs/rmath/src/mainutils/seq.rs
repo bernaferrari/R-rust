@@ -7,6 +7,7 @@
 //! Implements `:`, `seq.int()`, `seq_len()`, `seq_along()`, `rep()`,
 //! `rep.int()`, `rep_len()`, and `sequence()`.
 
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -104,7 +105,19 @@ unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
     unsafe { crate::mainutils::coerce::coerceVector(s, t) }
 }
 
-unsafe fn UNIMPLEMENTED_TYPE(_mesg: *const c_char, _s: SEXP) {}
+unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
+    unsafe {
+        let routine = if routine.is_null() {
+            "seq"
+        } else {
+            CStr::from_ptr(routine).to_str().unwrap_or("seq")
+        };
+        let sexptype = if s.is_null() { -1 } else { TYPEOF(s) };
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("{routine}: unsupported SEXPTYPE {sexptype}"),
+        });
+    }
+}
 
 unsafe fn R_PreserveObject(_x: SEXP) {}
 
@@ -2358,6 +2371,23 @@ mod tests {
             let ans = rep3(s, 3, 0);
             assert!(!ans.is_null());
             assert_eq!(LENGTH(ans), 0);
+        }
+    }
+
+    #[test]
+    fn test_rep3_unsupported_type_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let extptr = crate::sexp::memory_ext::allocSExp(crate::sexp::ffi::SEXPTYPE::EXTPTRSXP);
+            let err = std::panic::catch_unwind(|| {
+                let _ = rep3(extptr, 1, 1);
+            })
+            .expect_err("unsupported rep3 type should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert!(message.contains("rep3: unsupported SEXPTYPE"));
         }
     }
 

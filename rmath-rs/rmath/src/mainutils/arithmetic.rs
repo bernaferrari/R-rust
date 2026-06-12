@@ -20,9 +20,9 @@ use std::os::raw::c_int;
 
 use crate::fprec::{fprec, fround};
 use crate::sexp::accessors::{
-    CADR, CAR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH,
+    CADR, CAR, COMPLEX, INTEGER, LENGTH, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH,
 };
-use crate::sexp::constructors::Rf_allocVector3;
+use crate::sexp::constructors::{Rf_allocVector3, Rf_length};
 use crate::sexp::ffi::Rcomplex;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
@@ -309,7 +309,7 @@ pub fn Ratan(x: f64) -> f64 {
 /// Read the PRIMVAL (primitive offset) from a builtin/special SEXP.
 #[inline]
 unsafe fn primval(op: SEXP) -> c_int {
-    unsafe { (*op).data.primsxp.offset }
+    unsafe { crate::mainutils::relop::PRIMVAL(op) }
 }
 
 /// Helper: check if SEXP is numeric (INTSXP, REALSXP, CPLXSXP, or LGLSXP).
@@ -1160,23 +1160,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
 
-        // Count arguments
-        let argc = if args.is_null() {
-            0
-        } else if CDR(args).is_null() {
-            1
-        } else if CDR(CDR(args)).is_null() {
-            2
-        } else {
-            // count length of list
-            let mut count = 0i32;
-            let mut p = args;
-            while !p.is_null() {
-                count += 1;
-                p = CDR(p);
-            }
-            count
-        };
+        let argc = Rf_length(args);
 
         let arg1 = CAR(args);
 
@@ -1328,6 +1312,51 @@ unsafe fn coerce_logical_to_int(x: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    unsafe fn int_scalar(value: c_int) -> SEXP {
+        unsafe {
+            let scalar = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            *INTEGER(scalar) = value;
+            scalar
+        }
+    }
+
+    unsafe fn two_arg_call_args(left: SEXP, right: SEXP) -> SEXP {
+        unsafe {
+            crate::sexp::constructors::Rf_cons(
+                left,
+                crate::sexp::constructors::Rf_cons(right, crate::sexp::globals::R_NilValue()),
+            )
+        }
+    }
+
+    #[test]
+    fn test_do_arith_uses_primitive_operation_code() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let plus = crate::mainutils::names::R_Primitive(c"+".as_ptr());
+            let plus_args = two_arg_call_args(int_scalar(5), int_scalar(3));
+            let plus_result = do_arith(
+                std::ptr::null_mut(),
+                plus,
+                plus_args,
+                crate::sexp::globals::R_NilValue(),
+            );
+            assert_eq!(TYPEOF(plus_result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(plus_result), 8);
+
+            let minus = crate::mainutils::names::R_Primitive(c"-".as_ptr());
+            let minus_args = two_arg_call_args(int_scalar(5), int_scalar(3));
+            let minus_result = do_arith(
+                std::ptr::null_mut(),
+                minus,
+                minus_args,
+                crate::sexp::globals::R_NilValue(),
+            );
+            assert_eq!(TYPEOF(minus_result), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(minus_result), 2);
+        }
+    }
 
     #[test]
     fn test_R_integer_plus() {

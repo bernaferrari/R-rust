@@ -15,9 +15,9 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, TYPEOF, XLENGTH,
+    ATTRIB, CADR, CAR, CDR, COMPLEX, INTEGER, LOGICAL, RAW, REAL, TYPEOF, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_length};
 use crate::sexp::ffi::{FALSE, ISNAN, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
@@ -32,6 +32,16 @@ pub const NA_LOGICAL: c_int = c_int::MIN;
 /// Operation codes for checkValues.
 pub const OP_ANY: c_int = 1;
 pub const OP_ALL: c_int = 2;
+
+fn logic_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
+}
+
+fn scalar_logic_op_name(code: c_int) -> &'static str {
+    if code == 1 { "&&" } else { "||" }
+}
 
 // ---------------------------------------------------------------------------
 // Scalar logical operations
@@ -206,12 +216,7 @@ pub fn binary_logic_or(s1: &[c_int], s2: &[c_int]) -> Vec<c_int> {
 /// the operation code for built-in primitives.
 #[inline]
 unsafe fn primval(op: SEXP) -> c_int {
-    unsafe {
-        if op.is_null() {
-            return 0;
-        }
-        (*op).data.primsxp.offset
-    }
+    unsafe { crate::mainutils::relop::PRIMVAL(op) }
 }
 
 /// Check if a SEXP is of numeric type (logical, integer, real, or complex).
@@ -519,8 +524,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let x_valid = x.is_null() || is_number(x);
         let y_valid = y.is_null() || is_number(y);
         if !x_valid || !y_valid {
-            // errorcall would go here in full R
-            return R_NilValue();
+            logic_error("operations are possible only for numeric, logical or complex types");
         }
 
         let nx = XLENGTH(x);
@@ -568,9 +572,11 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let code = primval(op); // 1 = &&, 2 = ||
 
         // Require exactly 2 arguments
-        if LENGTH(args) != 2 {
-            // error would go here in full R
-            return R_NilValue();
+        if Rf_length(args) != 2 {
+            logic_error(format!(
+                "'{}' operator requires 2 arguments",
+                scalar_logic_op_name(code)
+            ));
         }
 
         let s1 = CAR(args);
@@ -578,8 +584,10 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Validate s1 is numeric
         if !is_number(s1) {
-            // errorcall would go here
-            return R_NilValue();
+            logic_error(format!(
+                "invalid 'x' type in 'x {} y'",
+                scalar_logic_op_name(code)
+            ));
         }
 
         // Convert s1 to a scalar logical value
@@ -593,8 +601,10 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 }
                 // Need to evaluate second argument
                 if !is_number(s2) {
-                    // errorcall would go here
-                    return R_NilValue();
+                    logic_error(format!(
+                        "invalid 'y' type in 'x {} y'",
+                        scalar_logic_op_name(code)
+                    ));
                 }
                 let x2 = coerce_scalar_to_logical(s2, call);
                 if x1 == NA_LOGICAL {
@@ -616,8 +626,10 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 }
                 // Need to evaluate second argument
                 if !is_number(s2) {
-                    // errorcall would go here
-                    return R_NilValue();
+                    logic_error(format!(
+                        "invalid 'y' type in 'x {} y'",
+                        scalar_logic_op_name(code)
+                    ));
                 }
                 let x2 = coerce_scalar_to_logical(s2, call);
                 if x1 == NA_LOGICAL {
@@ -847,5 +859,95 @@ mod tests {
         let b = [0, 0, 0, NA_LOGICAL];
         let result = binary_logic_or(&a, &b);
         assert_eq!(result, [1, 0, NA_LOGICAL, NA_LOGICAL]);
+    }
+
+    #[test]
+    fn test_do_logic_invalid_operand_type_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"&".as_ptr());
+            let x = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let y = Rf_ScalarLogical(TRUE);
+            let args = crate::sexp::constructors::Rf_cons(
+                x,
+                crate::sexp::constructors::Rf_cons(y, R_NilValue()),
+            );
+            let err = std::panic::catch_unwind(|| {
+                let _ = do_logic(std::ptr::null_mut(), op, args, R_NilValue());
+            })
+            .expect_err("invalid & operands should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert_eq!(
+                message,
+                "operations are possible only for numeric, logical or complex types"
+            );
+        }
+    }
+
+    #[test]
+    fn test_do_logic2_requires_two_arguments() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"&&".as_ptr());
+            let args = crate::sexp::constructors::Rf_cons(Rf_ScalarLogical(TRUE), R_NilValue());
+            let err = std::panic::catch_unwind(|| {
+                let _ = do_logic2(std::ptr::null_mut(), op, args, R_NilValue());
+            })
+            .expect_err("&& should require two arguments");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert_eq!(message, "'&&' operator requires 2 arguments");
+        }
+    }
+
+    #[test]
+    fn test_do_logic2_invalid_x_type_errors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"&&".as_ptr());
+            let x = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let y = Rf_ScalarLogical(TRUE);
+            let args = crate::sexp::constructors::Rf_cons(
+                x,
+                crate::sexp::constructors::Rf_cons(y, R_NilValue()),
+            );
+            let err = std::panic::catch_unwind(|| {
+                let _ = do_logic2(std::ptr::null_mut(), op, args, R_NilValue());
+            })
+            .expect_err("invalid x in && should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert_eq!(message, "invalid 'x' type in 'x && y'");
+        }
+    }
+
+    #[test]
+    fn test_do_logic2_invalid_y_type_errors_after_short_circuit_check() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let op = crate::mainutils::names::R_Primitive(c"&&".as_ptr());
+            let x = Rf_ScalarLogical(TRUE);
+            let y = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            let args = crate::sexp::constructors::Rf_cons(
+                x,
+                crate::sexp::constructors::Rf_cons(y, R_NilValue()),
+            );
+            let err = std::panic::catch_unwind(|| {
+                let _ = do_logic2(std::ptr::null_mut(), op, args, R_NilValue());
+            })
+            .expect_err("invalid y in && should raise an RError");
+            let message = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .map(|err| err.message.as_str())
+                .unwrap_or("");
+            assert_eq!(message, "invalid 'y' type in 'x && y'");
+        }
     }
 }
