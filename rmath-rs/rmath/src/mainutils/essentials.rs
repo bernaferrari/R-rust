@@ -308,7 +308,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let datetime_class = leading_datetime_class(args);
         // First pass: determine result type and total length
-        let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
+        let mut result_type = SEXPTYPE::NILSXP.as_c_int();
         let mut total_len: R_xlen_t = 0;
         let mut has_names = false;
         let names_symbol = crate::sexp::attrib_core::R_NamesSymbol();
@@ -359,6 +359,16 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     && result_type != SEXPTYPE::REALSXP
                 {
                     result_type = SEXPTYPE::INTSXP.as_c_int();
+                } else if t == SEXPTYPE::LGLSXP
+                    && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::STRSXP
+                    && result_type != SEXPTYPE::CPLXSXP
+                    && result_type != SEXPTYPE::REALSXP
+                    && result_type != SEXPTYPE::INTSXP
+                {
+                    result_type = SEXPTYPE::LGLSXP.as_c_int();
+                } else if t == SEXPTYPE::RAWSXP && result_type == SEXPTYPE::NILSXP.as_c_int() {
+                    result_type = SEXPTYPE::RAWSXP.as_c_int();
                 }
                 total_len += XLENGTH(arg);
             }
@@ -366,7 +376,11 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         if total_len == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+            return if result_type == SEXPTYPE::NILSXP.as_c_int() {
+                R_NilValue()
+            } else {
+                Rf_allocVector3(result_type, 0)
+            };
         }
 
         // Second pass: copy data
@@ -495,6 +509,16 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                             integer_or_logical_elt(arg, i as c_int)
                         } else {
                             NA_INTEGER
+                        };
+                        *dst.add((offset + i) as usize) = val;
+                    }
+                } else if result_type == SEXPTYPE::RAWSXP {
+                    let dst = RAW(result);
+                    for i in 0..n {
+                        let val = if t == SEXPTYPE::RAWSXP {
+                            *RAW(arg).add(i as usize)
+                        } else {
+                            0 as Rbyte
                         };
                         *dst.add((offset + i) as usize) = val;
                     }

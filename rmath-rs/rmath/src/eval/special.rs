@@ -385,10 +385,19 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
         let var_sym = CAR(args);
         let seq_expr = CADR(args);
         let body = CADDR(args);
+        if Rf_isSymbol(var_sym) == 0 {
+            std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                message: "non-symbol loop variable".to_string(),
+            });
+        }
         let _var_guard = protect(var_sym);
         let _body_guard = protect(body);
 
-        let seq_val = Rf_eval(seq_expr, rho);
+        let mut seq_val = Rf_eval(seq_expr, rho);
+        let _original_seq_guard = protect(seq_val);
+        if crate::mainutils::essentials::sexp_has_class(seq_val, "factor") {
+            seq_val = crate::mainutils::coerce::asCharacterFactor(seq_val);
+        }
         let _seq_guard = protect(seq_val);
 
         if TYPEOF(seq_val) != SEXPTYPE::VECSXP
@@ -451,6 +460,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                             });
                         }
                     };
+                    let _val_guard = protect(val);
 
                     if !crate::sexp::envir::define_var_updates(var_sym, val, rho) {
                         std::panic::panic_any(crate::sexp::context::RSignal::Error {

@@ -156,31 +156,12 @@ impl BytecodeCompiler {
     }
 
     unsafe fn compile_for(&mut self, expr: SEXP) -> bool {
-        unsafe {
-            // for (var in seq) body -- use BC loop ops
-            // Simplified emission for VM support
-            let var = CAR(CDR(expr));
-            let seq = CAR(CDR(CDR(expr)));
-            let body = CAR(CDR(CDR(CDR(expr))));
-            if !self.compile_expr(seq) {
-                return false;
-            }
-            // setup loop
-            self.emit(opcodes::OP_SETLOOPCTR); // may need operand in full
-            let begin_label = self.code.len() as c_int;
-            self.emit(opcodes::OP_BEGINLOOP);
-            // step
-            let step_idx = self.code.len() as c_int;
-            self.emit_operand(opcodes::OP_STEPFOR, 0); // placeholder end
-            if !self.compile_expr(body) {
-                return false;
-            }
-            self.emit_operand(opcodes::OP_GOTO, begin_label);
-            let end_label = self.code.len() as c_int;
-            self.code[step_idx as usize + 1] = end_label;
-            self.emit(opcodes::OP_ENDLOOP);
-            true
-        }
+        // The bytecode VM does not yet model R's full for-loop state
+        // (sequence, binding cell, reusable scalar value, break/next
+        // context). Keep for-loops on the AST evaluator rather than
+        // emitting bytecode that silently skips or mistypes iterations.
+        let _ = expr;
+        false
     }
 
     unsafe fn compile_if(&mut self, expr: SEXP) -> bool {
@@ -459,6 +440,28 @@ mod tests {
 
             assert!(compile_expr(assign, env.as_raw()).is_none());
             assert!(compile_expr(block, env.as_raw()).is_none());
+        }
+    }
+
+    #[test]
+    fn compile_for_loop_is_rejected_until_vm_loop_state_is_complete() {
+        let session = RSession::new();
+        let env = session.global_env().expect("global env");
+
+        unsafe {
+            let for_call = Rf_cons(
+                Rf_install(c"for".as_ptr()),
+                Rf_cons(
+                    Rf_install(c"i".as_ptr()),
+                    Rf_cons(
+                        Rf_ScalarInteger(1),
+                        Rf_cons(Rf_install(c"i".as_ptr()), R_NilValue()),
+                    ),
+                ),
+            );
+            (*for_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+
+            assert!(compile_expr(for_call, env.as_raw()).is_none());
         }
     }
 }

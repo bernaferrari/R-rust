@@ -2167,6 +2167,61 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_for_loop_atomic_and_factor_sequences() {
+        let mut session = RSession::new();
+        let cases = [
+            (
+                "out <- c(); for (x in c(TRUE, FALSE)) out <- c(out, x); paste(out, collapse = ',')",
+                "[1] \"TRUE,FALSE\"",
+            ),
+            (
+                "out <- c(); for (x in c(1L, 2L)) out <- c(out, x); paste(out, collapse = ',')",
+                "[1] \"1,2\"",
+            ),
+            (
+                "out <- c(); for (x in c(1.5, 2.5)) out <- c(out, x); paste(out, collapse = ',')",
+                "[1] \"1.5,2.5\"",
+            ),
+            (
+                "out <- c(); for (x in c('a', 'b')) out <- c(out, x); paste(out, collapse = ',')",
+                "[1] \"a,b\"",
+            ),
+            (
+                "out <- raw(); for (x in as.raw(c(65, 90))) out <- c(out, x); out",
+                "[1] 41 5a",
+            ),
+            (
+                "out <- c(); for (x in list(1, 2)) out <- c(out, x); paste(out, collapse = ',')",
+                "[1] \"1,2\"",
+            ),
+            (
+                "out <- c(); for (x in factor(c('b', 'a'), levels = c('a', 'b'))) out <- c(out, x); paste(out, collapse = ',')",
+                "[1] \"b,a\"",
+            ),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(session.eval(code).output, expected, "{code}");
+        }
+    }
+
+    #[test]
+    fn test_eval_c_empty_and_raw_coercion_match_r() {
+        let mut session = RSession::new();
+        let cases = [
+            ("typeof(c())", "[1] \"NULL\""),
+            ("typeof(c(raw()))", "[1] \"raw\""),
+            ("typeof(c(raw(), as.raw(1)))", "[1] \"raw\""),
+            ("typeof(c(as.raw(1), TRUE))", "[1] \"logical\""),
+            ("c(as.raw(65), as.raw(90))", "[1] 41 5a"),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(session.eval(code).output, expected, "{code}");
+        }
+    }
+
+    #[test]
     fn test_eval_lapply_prints_list() {
         let mut session = RSession::new();
         let result = session.eval("lapply(c(1, 2), function(x) x + 1)");
