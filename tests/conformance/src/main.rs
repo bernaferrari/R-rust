@@ -22,6 +22,7 @@ fn main() {
     };
 
     let mut session = rmath::android::RSession::new();
+    session.enable_host_process_capabilities();
     let result = session.eval(&code);
 
     if result.output.starts_with("Error:") {

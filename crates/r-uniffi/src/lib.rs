@@ -124,6 +124,7 @@ pub struct EvalResult {
 }
 
 #[derive(Debug, Clone, uniffi::Enum)]
+#[allow(clippy::large_enum_variant)]
 pub enum OperationStatus {
     Pending,
     Running,
@@ -581,7 +582,7 @@ fn spawn_worker(
         if let Err(payload) = worker_result {
             let message = payload
                 .downcast_ref::<String>()
-                .map(|s| s.clone())
+                .cloned()
                 .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_string()))
                 .unwrap_or_else(|| "interpreter worker panicked".to_string());
             if let Some(cb) = current_callback(&callback) {

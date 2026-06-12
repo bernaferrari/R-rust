@@ -688,8 +688,8 @@ unsafe fn needsparens(
                 }
                 _ => return false,
             }
-        } else if isUserBinop(CAR(arg))
-            && isLanguage(arg)
+        } else if isLanguage(arg)
+            && isUserBinop(CAR(arg))
             && (mainop_prec > PREC_PERCENT
                 || (mainop_prec == PREC_PERCENT && left == mainop_rightassoc))
         {
@@ -2610,8 +2610,13 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
         } else if sexp_type == SEXPTYPE::EXTPTRSXP {
             print2buff(b"<pointer: 0x0>\0".as_ptr() as *const c_char, d);
         } else if sexp_type == SEXPTYPE::BCODESXP {
-            d.sourceable = 0;
-            print2buff(b"<bytecode>\0".as_ptr() as *const c_char, d);
+            let source = crate::eval::bc_eval::BCODE_EXPR(s);
+            if !isNull(source) {
+                deparse2buff(source, d);
+            } else {
+                d.sourceable = 0;
+                print2buff(b"<bytecode>\0".as_ptr() as *const c_char, d);
+            }
         } else if sexp_type == SEXPTYPE::WEAKREFSXP {
             d.sourceable = 0;
             print2buff(b"<weak reference>\0".as_ptr() as *const c_char, d);

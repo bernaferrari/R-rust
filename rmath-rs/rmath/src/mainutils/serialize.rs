@@ -2,14 +2,14 @@
 
 //! Port of R's src/main/serialize.c -- R object serialization/unserialization.
 //!
-//! Implements a binary serialization format supporting basic atomic types
+//! Implements R serialization formats supporting basic atomic types
 //! (NILSXP, LGLSXP, INTSXP, REALSXP, CPLXSXP, STRSXP, RAWSXP),
 //! generic lists (VECSXP), dotted pairs (LISTSXP), symbols (SYMSXP),
 //! closures (CLOSXP), and attributes.
 //!
-//! The format uses native-endian encoding (no XDR) for simplicity, but
-//! follows R's serialization protocol structure: format header, version
-//! info, then recursive WriteItem/ReadItem.
+//! The format follows R's serialization protocol structure: format header,
+//! version info, then recursive WriteItem/ReadItem. ASCII, native-endian
+//! binary, and XDR binary headers/bodies are supported.
 
 use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
@@ -1020,10 +1020,9 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
             if hasattr != 0 {
                 WriteItemInternal(ATTRIB(s), ref_table, writer);
             }
-            // Write CLOENV, FORMALS, BODY
-            WriteItemInternal(CDR(s), ref_table, writer); // CLOENV stored in CDR for our simplified model
-            WriteItemInternal(TAG(s), ref_table, writer); // FORMALS stored in TAG
-            WriteItemInternal(CAR(s), ref_table, writer); // BODY stored in CAR
+            WriteItemInternal(CLOENV(s), ref_table, writer);
+            WriteItemInternal(FORMALS(s), ref_table, writer);
+            WriteItemInternal(BODY(s), ref_table, writer);
             return;
         }
 
@@ -1178,13 +1177,12 @@ unsafe fn ReadItemInternal(
                 let attr = ReadItemInternal(reader, ref_table)?;
                 SET_ATTRIB(s, attr);
             }
-            // Read CLOENV, FORMALS, BODY
             let cloenv = ReadItemInternal(reader, ref_table)?;
-            SETCDR(s, cloenv); // CLOENV in CDR
+            SET_CLOENV(s, cloenv);
             let formals = ReadItemInternal(reader, ref_table)?;
-            SETTAG(s, formals); // FORMALS in TAG
+            SET_FORMALS(s, formals);
             let body = ReadItemInternal(reader, ref_table)?;
-            SETCAR(s, body); // BODY in CAR
+            SET_BODY(s, body);
             SETLEVELS(s, levs);
             if isobj != 0 {
                 SET_OBJECT(s, 1);
@@ -1747,7 +1745,8 @@ unsafe fn R_serialize_with_xdr(
         };
 
         let ascii_format = !ascii.is_null() && ascii != R_NilValue() && asLogical(ascii) != 0;
-        let xdr_format = !ascii_format && xdr != R_NilValue() && asLogical(xdr) != 0;
+        let xdr_format =
+            !ascii_format && (xdr.is_null() || xdr == R_NilValue() || asLogical(xdr) != 0);
 
         // Build the header
         let mut writer = BinaryWriter::new();
@@ -3963,7 +3962,7 @@ mod tests {
 
             let fmt = VECTOR_ELT(info, 3);
             let fmt_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(fmt, 0)));
-            assert_eq!(fmt_s.to_bytes(), b"binary");
+            assert_eq!(fmt_s.to_bytes(), b"xdr");
 
             let enc = VECTOR_ELT(info, 4);
             let enc_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(enc, 0)));
@@ -4627,12 +4626,12 @@ mod tests {
             let raw_data = RAW(raw);
             let data = slice::from_raw_parts(raw_data, len);
 
-            // Check format header: 'B' + '\n'
-            assert_eq!(data[0], b'B');
+            // R's memory serialization defaults to XDR unless xdr = FALSE.
+            assert_eq!(data[0], b'X');
             assert_eq!(data[1], b'\n');
 
             // Check version = 3
-            let version = i32::from_ne_bytes(data[2..6].try_into().unwrap_or([0; 4]));
+            let version = i32::from_be_bytes(data[2..6].try_into().unwrap_or([0; 4]));
             assert_eq!(version, 3);
         }
     }

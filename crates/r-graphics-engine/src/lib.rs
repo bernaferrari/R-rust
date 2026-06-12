@@ -134,7 +134,7 @@ impl Path {
 
     pub fn circle(cx: f32, cy: f32, r: f32) -> Self {
         // Approximate circle with 4 cubic Bézier segments
-        let k = 0.5522847498_f32 * r;
+        let k = 0.552_284_8_f32 * r;
         Self {
             commands: vec![
                 PathCommand::MoveTo(cx + r, cy),

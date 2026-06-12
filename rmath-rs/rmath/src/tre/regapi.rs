@@ -1063,7 +1063,7 @@ mod tests {
     // ==================================================================
 
     #[test]
-    #[ignore] // backtracking matcher does not yet support alternation
+    #[ignore = "backtracking matcher does not yet support alternation"]
     fn backtrack_alternation() {
         unsafe {
             let (mut preg, rc) = compile("cat|dog", REG_EXTENDED);
@@ -1085,7 +1085,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // backtracking matcher does not yet support quantifiers
+    #[ignore = "backtracking matcher does not yet support quantifiers"]
     fn backtrack_quantifiers() {
         unsafe {
             let (mut preg, rc) = compile("a+b", REG_EXTENDED);

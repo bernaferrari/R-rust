@@ -3,3 +3,4 @@
 # Scanner intentionally skips #[cfg(test)] modules and OnceLock<usize> singleton sentinels so non-Android tests and immutable leaked-box sentinels do not create extra Android audit noise.
 rmath-rs/rmath/src/sexp/context.rs	process-panic-hook	allow-process	rport-t57	Only the Rust panic hook installation guard remains process-global; context and in-error stacks are session-owned.
 rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
+rmath-rs/rmath/src/wasm_shim.rs	wasm-thread-local	not-android-compiled	rport-mczh,rport-flq8	cfg(target_arch = "wasm32") math-only state shim; Android builds use sexp::instance session state instead.

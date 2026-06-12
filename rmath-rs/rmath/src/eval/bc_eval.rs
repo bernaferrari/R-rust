@@ -172,6 +172,20 @@ pub unsafe fn BCODE_CONSTS(x: SEXP) -> SEXP {
     }
 }
 
+/// Get the source expression stored in bytecode constant slot 0.
+pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP {
+            return R_NilValue();
+        }
+        let consts = BCODE_CONSTS(x);
+        if consts.is_null() || TYPEOF(consts) != SEXPTYPE::VECSXP || LENGTH(consts) == 0 {
+            return R_NilValue();
+        }
+        VECTOR_ELT(consts, 0)
+    }
+}
+
 /// Get the stack depth from a BCODESXP.
 pub unsafe fn BCODE_STACK(x: SEXP) -> c_int {
     unsafe {

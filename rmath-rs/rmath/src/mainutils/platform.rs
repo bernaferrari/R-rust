@@ -1437,7 +1437,7 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         // mode: 0=exists, 1=executable, 2=writable, 4=readable
         let mut mode = 0i32;
         if !mode_arg.is_null() && mode_arg != R_NilValue() {
-            mode = *INTEGER(mode_arg);
+            mode = crate::mainutils::coerce::asInteger(mode_arg);
         }
 
         let ans = Rf_allocVector3(SEXPTYPE::INTSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);

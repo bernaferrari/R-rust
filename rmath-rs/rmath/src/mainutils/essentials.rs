@@ -13396,7 +13396,14 @@ unsafe fn resize_vector(x: SEXP, new_len: R_xlen_t) -> SEXP {
         let _result_guard = protect(result);
         let copy_len = XLENGTH(x).min(new_len);
 
-        if kind == SEXPTYPE::LGLSXP.as_c_int() || kind == SEXPTYPE::INTSXP.as_c_int() {
+        if kind == SEXPTYPE::LGLSXP.as_c_int() {
+            for i in 0..copy_len {
+                *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, i as c_int);
+            }
+            for i in copy_len..new_len {
+                *LOGICAL(result).add(i as usize) = NA_INTEGER;
+            }
+        } else if kind == SEXPTYPE::INTSXP.as_c_int() {
             for i in 0..copy_len {
                 *INTEGER(result).add(i as usize) = INTEGER_ELT(x, i as c_int);
             }
@@ -13477,8 +13484,10 @@ unsafe fn length_replacement_size(value: SEXP) -> Option<R_xlen_t> {
         if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
             return None;
         }
-        let raw = if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::LGLSXP {
+        let raw = if TYPEOF(value) == SEXPTYPE::INTSXP {
             INTEGER_ELT(value, 0) as f64
+        } else if TYPEOF(value) == SEXPTYPE::LGLSXP {
+            LOGICAL_ELT(value, 0) as f64
         } else if TYPEOF(value) == SEXPTYPE::REALSXP {
             REAL_ELT(value, 0)
         } else if TYPEOF(value) == SEXPTYPE::STRSXP {
@@ -15725,6 +15734,7 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 
         let show_row_names = print_data_frame_show_row_names(args);
         let (headers, columns) = print_data_frame_column_texts(x, ncol, nrow);
+        let row_width = nrow.to_string().len().max(1);
         let widths: Vec<usize> = headers
             .iter()
             .zip(&columns)
@@ -15742,20 +15752,20 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
                 .map(|(idx, name)| format!("{:>width$}", name, width = widths[idx]))
                 .collect::<Vec<_>>()
                 .join(" ");
-            emit_print_data_frame_line(&format!(" {header}"));
+            emit_print_data_frame_line(&format!("{} {header}", " ".repeat(row_width)));
         }
 
         let print_rows = nrow.min(100) as usize; // increased for better visibility/polish (was 20 hard cap per review feedback on df print); R uses max.print option
         for row in 0..print_rows {
             let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
             if show_row_names {
-                cells.push(format!("{}", row + 1));
+                cells.push(format!("{:>row_width$}", row + 1));
             }
             for (idx, values) in columns.iter().enumerate() {
                 let value = values.get(row).map(String::as_str).unwrap_or("");
                 cells.push(format!("{:>width$}", value, width = widths[idx]));
             }
-            emit_print_data_frame_line(&format!(" {}", cells.join(" ")));
+            emit_print_data_frame_line(&cells.join(" "));
         }
         if nrow > 20 {
             emit_print_data_frame_line(&format!(
@@ -16705,7 +16715,18 @@ pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let t = TYPEOF(fn_arg);
         if t == SEXPTYPE::CLOSXP {
             let body = crate::sexp::accessors::BODY(fn_arg);
-            if body.is_null() { R_NilValue() } else { body }
+            if body.is_null() {
+                R_NilValue()
+            } else if TYPEOF(body) == SEXPTYPE::BCODESXP {
+                let source = crate::eval::bc_eval::BCODE_EXPR(body);
+                if source.is_null() || source == R_NilValue() {
+                    body
+                } else {
+                    source
+                }
+            } else {
+                body
+            }
         } else {
             R_NilValue()
         }
