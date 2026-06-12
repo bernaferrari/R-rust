@@ -10,6 +10,7 @@ ANDROID_ARTIFACT_REPORT_DIR="$ROOT_DIR/target/release-gate/android-artifacts"
 ANDROID_SHOWCASE_DIR="$ROOT_DIR/target/release-gate/android-showcase"
 FULL=0
 RUN_ANDROID=1
+RUN_WASM=1
 RUN_ANDROID_PACKAGE=0
 RUN_UNIFFI_BINDINGS=0
 RUN_DESKTOP_SMOKE=0
@@ -24,6 +25,7 @@ Runs the local release-candidate gate:
   - rustfmt check
   - targeted Rust tests for rmath, r-embed, and r-uniffi
   - Android mutable-global scan and aarch64 cargo check
+  - wasm32-unknown-unknown cargo check for supported pure Rust crates
   - Android artifact size and showcase output checks
   - C R vs Rust conformance report
   - curated upstream GNU R evaluator/arithmetic slices
@@ -36,6 +38,8 @@ Options:
                       and Android Gradle packaging smoke.
   --no-android        Skip Android SDK/NDK checks. This is for host-only
                       development and is not a release gate.
+  --no-wasm           Skip wasm32-unknown-unknown checks. This is for focused
+                      local debugging and is not a release gate.
   --android-package   Run scripts/android_package_smoke.sh --check.
   --uniffi-bindings   Run scripts/generate_uniffi_bindings.sh --check.
   --desktop-smoke     Run scripts/desktop_host_smoke.sh.
@@ -58,6 +62,10 @@ while (($# > 0)); do
             ;;
         --no-android)
             RUN_ANDROID=0
+            shift
+            ;;
+        --no-wasm)
+            RUN_WASM=0
             shift
             ;;
         --android-package)
@@ -188,6 +196,14 @@ else
 
     section "Android artifact size"
     echo "Skipped by --no-android. Do not use this mode for release signoff."
+fi
+
+if [[ "$RUN_WASM" -eq 1 ]]; then
+    section "WASM toolchain"
+    run scripts/wasm_toolchain_check.sh
+else
+    section "WASM toolchain"
+    echo "Skipped by --no-wasm. Do not use this mode for release signoff."
 fi
 
 section "Conformance report"

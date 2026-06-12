@@ -172,6 +172,20 @@ policy. New behavior should land with a stock-R fixture whenever possible. If
 exact stock-R parity is intentionally out of scope for Android, add a policy
 note and an owner bead instead of silently broadening claims.
 
+## Unsupported Surface Ledger
+
+This ledger keeps the release claim explicit. It is not a substitute for bead
+tracking; any row that moves from policy/status documentation into implementation
+work needs a scoped bead and a stock-R or target-specific gate.
+
+| Surface | Current stance | Owner bead | Proof or gate |
+| --- | --- | --- | --- |
+| Full GNU R compatibility | Not claimed by the Android release subset. The checked suite and curated upstream slices are the active proof boundary. | `rport-pcqa`, `rport-65tc` | `scripts/conformance_parity.sh --check --strict`, `scripts/upstream_core_slices.sh` |
+| WASM interpreter embedding | Not currently exposed through `r-embed` or `r-uniffi`; those crates depend on the native/Android interpreter session and UniFFI runtime surface. WASM support is the pure Rust math/headless-graphics surface. | `rport-flq8`, `rport-mczh` | `scripts/wasm_toolchain_check.sh` |
+| Native/compiled package loading | Intentionally rejected for Android-style embedding until a host-specific native extension policy is implemented. Pure-R packages are the release surface. | `rport-ku08`, `rport-rmbf` | `scripts/pure_r_package_corpus.sh --check` |
+| Exact `.Random.seed` byte-stream parity | Not claimed. Tests assert stock-R behavior contracts such as shape, replacement, validation, tail/log flags, and deterministic edge cases. | `rport-pcqa` | Conformance RNG fixtures and this RNG policy |
+| Host UI, network, and native devices | Policy constrained outside the mobile/headless release surface. Unsupported devices or host calls should fail cleanly instead of silently pretending to work. | `rport-a5w7`, `rport-h0jm` | Platform/global scans plus targeted conformance fixtures |
+
 ## RNG Policy
 
 RNG state is session-owned, reproducible within a session, and isolated across

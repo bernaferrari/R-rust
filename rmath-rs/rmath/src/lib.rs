@@ -209,8 +209,8 @@ pub mod trio;
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod unix;
-/// Lightweight state shim for wasm — provides `with_required_current_instance`
-/// backed by a thread_local, so the pure-math crate compiles without the
-/// full sexp/eval/mainutils interpreter modules.
+/// Lightweight internal state shim for wasm. It provides
+/// `with_required_current_instance` backed by a thread-local, so the pure-math
+/// crate compiles without the full sexp/eval/mainutils interpreter modules.
 #[cfg(target_arch = "wasm32")]
-pub mod wasm_shim;
+pub(crate) mod wasm_shim;

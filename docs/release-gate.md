@@ -5,7 +5,7 @@ collects the checks that matter for the Android-first Rust port into one
 repeatable gate with subsystem labels in the output.
 
 The GitHub workflows use the same policy split: formatting, strict clippy,
-focused tests, Android checks, conformance parity, artifact validation, Android
+focused tests, Android and WASM checks, conformance parity, artifact validation, Android
 showcase artifacts, and the safe API audit are the default release bar. The gate
 also checks the upstream port map so C-to-Rust traceability does not decay as
 modules are rewritten.
@@ -39,6 +39,15 @@ scripts/release_gate.sh --no-android
 Do not use `--no-android` for release signoff. The default gate includes the
 Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 
+Focused local run without the WASM build surface:
+
+```bash
+scripts/release_gate.sh --no-wasm
+```
+
+Do not use `--no-wasm` for release signoff. The default gate includes the
+`wasm32-unknown-unknown` cargo check for the pure Rust WASM crates.
+
 ## Matrix
 
 | Area | Default | Full | Command |
@@ -47,6 +56,7 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 | Rust tests | yes | yes | `cargo test -p rmath`, `cargo test -p r-embed -p r-uniffi` |
 | Android global-state scan | yes | yes | `scripts/check_android_globals.sh` through `scripts/android_toolchain_check.sh` |
 | Android aarch64 cargo check | yes | yes | `scripts/android_toolchain_check.sh` |
+| WASM cargo check | yes | yes | `scripts/wasm_toolchain_check.sh` |
 | Android shared library size | yes | yes | `scripts/android_artifact_size.sh --check` |
 | Conformance parity | yes | yes | `scripts/conformance_parity.sh --check --report target/release-gate/conformance` |
 | Upstream core slices | yes | yes | `scripts/upstream_core_slices.sh --report target/release-gate/upstream-core-slices` |
@@ -63,7 +73,7 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 
 ## Prerequisites
 
-- Rust stable toolchain with `cargo`, `rustfmt`, and the Android target
+- Rust stable toolchain with `cargo`, `rustfmt`, and the Android/WASM targets
 - Stock C R with `Rscript` for the conformance harness
 - Python 3 for conformance artifact validation
 - Android SDK/NDK for the default Android target check
@@ -113,6 +123,12 @@ The Android shared library size gate can also be run directly:
 
 ```bash
 scripts/android_artifact_size.sh --check
+```
+
+The WASM build-surface gate can also be run directly:
+
+```bash
+scripts/wasm_toolchain_check.sh
 ```
 
 Performance and memory report artifacts are separate from the default release

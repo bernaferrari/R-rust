@@ -9,22 +9,22 @@ use std::collections::HashMap;
 
 /// Minimal per-thread math state mirroring the fields of `RInstance`
 /// that the distribution / RNG / optimisation code accesses.
-pub struct WasmMathInstance {
-    pub rng_state: (u32, u32),
-    pub dist_beta_state: crate::dist::beta::BetaState,
-    pub dist_gamma_state: crate::dist::gamma::GammaState,
-    pub dist_hyper_state: crate::dist::hypergeometric::RhyperState,
-    pub dist_pois_state: crate::dist::poisson::RpoisState,
-    pub dist_binom_state: crate::dist::binomial::RbinomState,
-    pub signrank_cache: HashMap<i32, Vec<f64>>,
-    pub wilcox_cache: HashMap<(i32, i32), Vec<f64>>,
-    pub lbfgsb_state: crate::appl::lbfgsb::LbfgsbState,
+pub(crate) struct WasmMathInstance {
+    pub(crate) rng_state: (u32, u32),
+    pub(crate) dist_beta_state: crate::dist::beta::BetaState,
+    pub(crate) dist_gamma_state: crate::dist::gamma::GammaState,
+    pub(crate) dist_hyper_state: crate::dist::hypergeometric::RhyperState,
+    pub(crate) dist_pois_state: crate::dist::poisson::RpoisState,
+    pub(crate) dist_binom_state: crate::dist::binomial::RbinomState,
+    pub(crate) signrank_cache: HashMap<i32, Vec<f64>>,
+    pub(crate) wilcox_cache: HashMap<(i32, i32), Vec<f64>>,
+    pub(crate) lbfgsb_state: crate::appl::lbfgsb::LbfgsbState,
     // nmath copies use different field names
-    pub nmath_beta_state: crate::nmath::dist::beta::BetaState,
-    pub nmath_gamma_state: crate::nmath::dist::gamma::GammaState,
-    pub nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState,
-    pub nmath_pois_state: crate::nmath::dist::poisson::RpoisState,
-    pub nmath_binom_state: crate::nmath::dist::binomial::RbinomState,
+    pub(crate) nmath_beta_state: crate::nmath::dist::beta::BetaState,
+    pub(crate) nmath_gamma_state: crate::nmath::dist::gamma::GammaState,
+    pub(crate) nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState,
+    pub(crate) nmath_pois_state: crate::nmath::dist::poisson::RpoisState,
+    pub(crate) nmath_binom_state: crate::nmath::dist::binomial::RbinomState,
 }
 
 impl Default for WasmMathInstance {
@@ -58,7 +58,7 @@ thread_local! {
 /// This is API-compatible with `sexp::instance::with_required_current_instance`
 /// — callers use the same field names, so no code changes are needed in
 /// dist/rng/appl modules.
-pub fn with_required_current_instance<F, R>(f: F) -> R
+pub(crate) fn with_required_current_instance<F, R>(f: F) -> R
 where
     F: FnOnce(&mut WasmMathInstance) -> R,
 {
