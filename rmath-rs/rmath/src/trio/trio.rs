@@ -127,10 +127,10 @@ const MAX_PARAMETERS: usize = 64;
 const CHAR_IDENTIFIER: c_char = b'%' as c_char;
 const CHAR_BACKSLASH: c_char = b'\\' as c_char;
 
-const INFINITE_LOWER: &[u8] = b"inf";
-const INFINITE_UPPER: &[u8] = b"INF";
-const NAN_LOWER: &[u8] = b"nan";
-const NAN_UPPER: &[u8] = b"NAN";
+const INFINITE_LOWER: &[u8] = b"inf\0";
+const INFINITE_UPPER: &[u8] = b"INF\0";
+const NAN_LOWER: &[u8] = b"nan\0";
+const NAN_UPPER: &[u8] = b"NAN\0";
 
 const MAX_CHARS_IN_UINTMAX: usize = 64;
 
@@ -831,7 +831,7 @@ fn trio_write_string<W: Write>(
 ) {
     let null_str: &[u8] = b"(nil)";
     let (s, len): (*const c_char, usize) = if string.is_null() {
-        (null_str.as_ptr() as *const c_char, null_str.len() - 1)
+        (null_str.as_ptr() as *const c_char, null_str.len())
     } else {
         unsafe {
             let l = cstr_len(string);
@@ -856,7 +856,7 @@ fn trio_write_string<W: Write>(
 
     for i in 0..len {
         unsafe {
-            let ch = *string.add(i);
+            let ch = *s.add(i);
             trio_write_string_character(out, ch as u8, flags);
         }
     }

@@ -871,17 +871,31 @@ mod tests {
 
     #[test]
     fn test_check_jit_compiles_simple_closure_bodies() {
-        let mut session = RSession::new();
-        let (result, _, _) = session.eval_code_with_output_capture("function(x) { x + 1 }");
-        let fun = result.expect("closure should evaluate").as_raw();
+        let session = RSession::new();
 
-        unsafe {
+        session.with_active(|| unsafe {
+            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let formals = crate::sexp::constructors::Rf_allocList(1);
+            crate::sexp::accessors::SETTAG(formals, x_sym);
+            crate::sexp::accessors::SETCAR(formals, R_MissingArg());
+            let body = crate::sexp::constructors::Rf_lang3(
+                crate::sexp::symbol::Rf_install(c"+".as_ptr()),
+                x_sym,
+                crate::sexp::constructors::Rf_ScalarInteger(1),
+            );
+            let fun = crate::mainutils::dstruct::mkCLOSXP(
+                formals,
+                body,
+                crate::sexp::globals::R_GlobalEnv(),
+            );
+            assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::LANGSXP);
+
             set_R_jit_enabled(3);
             with_required_current_instance(|inst| set_R_min_jit_score_in(inst, 0));
 
             assert_eq!(R_CheckJIT(fun), TRUE);
             assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::BCODESXP);
-        }
+        });
     }
 
     #[test]

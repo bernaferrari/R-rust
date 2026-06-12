@@ -356,6 +356,12 @@ pub(crate) fn find_var_result<'a>(
                 }
                 if val.typeof_() == SEXPTYPE::PROMSXP {
                     let forced = unsafe { forcePromise(val.as_raw()) };
+                    if forced == unsafe { R_MissingArg() } {
+                        let name = unsafe { get_symbol_name(symbol.as_raw()) };
+                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                            message: format!("argument \"{}\" is missing, with no default", name),
+                        });
+                    }
                     return Sexp::try_from_raw(forced)
                         .map(Some)
                         .map_err(|err| sexp_err("forced promise value", err));
@@ -718,6 +724,14 @@ mod tests {
             .expect("self-evaluating scalar should evaluate");
 
         assert_eq!(result.integer_elt(0), Some(123));
+    }
+
+    #[test]
+    fn missing_formal_errors_when_forced_through_promise() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_script_with_output_capture("f <- function(x) x\nf()");
+        let err = result.expect_err("forcing a missing formal should fail");
+        assert_eq!(err.message, "argument \"x\" is missing, with no default");
     }
 
     #[test]

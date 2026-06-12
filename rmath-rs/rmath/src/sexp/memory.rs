@@ -349,38 +349,33 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
-
-        if total_bytes > 0 {
+        let data = if total_bytes > 0 {
             let layout = match Layout::from_size_align(total_bytes, std::mem::align_of::<u64>()) {
                 Ok(l) => l,
                 Err(_) => return ptr::null_mut(),
             };
-            let data_ptr = if layout.size() > 0 {
-                unsafe { alloc(layout) }
-            } else {
-                ptr::null_mut()
-            };
-
-            if data_ptr.is_null() && layout.size() > 0 {
+            let data_ptr = unsafe { alloc(layout) };
+            if data_ptr.is_null() {
                 return ptr::null_mut();
             }
-
-            if !data_ptr.is_null() {
-                unsafe {
-                    std::ptr::write_bytes(data_ptr, 0, total_bytes);
-                }
+            unsafe {
+                std::ptr::write_bytes(data_ptr, 0, total_bytes);
             }
+            Some((data_ptr, layout))
+        } else {
+            None
+        };
 
+        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
+
+        if let Some((data_ptr, layout)) = data {
             unsafe {
                 (*node_ptr).gengc_next_node = data_ptr as SEXP;
             }
-
             self.register_data_buffer(data_ptr, layout);
         }
 
-        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
-        self.register_new_node(node_ptr)
+        node_ptr
     }
 
     /// Allocate a vector node and return an arena-scoped safe wrapper.
@@ -445,9 +440,7 @@ impl RArena {
             crate::sexp::gengc::maybe_collect_during_alloc();
         }
 
-        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
-
-        if data_bytes > 0 {
+        let data = if data_bytes > 0 {
             let layout = match Layout::from_size_align(data_bytes, std::mem::align_of::<u64>()) {
                 Ok(l) => l,
                 Err(_) => return Err(ArenaError::OutOfMemory),
@@ -459,14 +452,21 @@ impl RArena {
             unsafe {
                 std::ptr::write_bytes(data_ptr, 0, data_bytes);
             }
+            Some((data_ptr, layout))
+        } else {
+            None
+        };
+
+        let node_ptr = self.allocate_core_in_slab(|| SexprecCore::new_vector(sexptype, length));
+
+        if let Some((data_ptr, layout)) = data {
             unsafe {
                 (*node_ptr).gengc_next_node = data_ptr as SEXP;
             }
             self.register_data_buffer(data_ptr, layout);
         }
 
-        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
-        Ok(self.register_new_node(node_ptr))
+        Ok(node_ptr)
     }
 
     /// Allocate a vector node and return an arena-scoped safe wrapper with a
@@ -494,14 +494,6 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        let node_ptr = self.allocate_core_in_slab(|| {
-            let mut c = SexprecCore::new(SEXPTYPE::CHARSXP);
-            c.data = SexprecData {
-                charsxp_truelen: len,
-            };
-            c
-        });
-
         let layout = match Layout::from_size_align(total_bytes, 1) {
             Ok(l) => l,
             Err(_) => return ptr::null_mut(),
@@ -517,13 +509,20 @@ impl RArena {
             *data_ptr.add(s.len()) = 0;
         }
 
+        let node_ptr = self.allocate_core_in_slab(|| {
+            let mut c = SexprecCore::new(SEXPTYPE::CHARSXP);
+            c.data = SexprecData {
+                charsxp_truelen: len,
+            };
+            c
+        });
+
         unsafe {
             (*node_ptr).gengc_next_node = data_ptr as SEXP;
         }
 
         self.register_data_buffer(data_ptr, layout);
-        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
-        self.register_new_node(node_ptr)
+        node_ptr
     }
 
     /// Allocate a CHARSXP and return an arena-scoped safe wrapper.
@@ -670,9 +669,9 @@ impl RArena {
         self.track_node_freed(ptr);
     }
 
-    /// Get the fragmentation ratio (freed / total capacity).
+    /// Get the fragmentation ratio among allocated node slots.
     pub fn fragmentation_ratio(&self) -> f64 {
-        let total: usize = self.node_pages.iter().map(|p| p.capacity()).sum();
+        let total = self.active_addrs.len() + self.free_list.len();
         if total == 0 {
             0.0
         } else {
@@ -680,9 +679,16 @@ impl RArena {
         }
     }
 
-    /// Get mutable access to the free list for compaction operations.
-    pub(crate) fn free_list_mut(&mut self) -> &mut Vec<SEXP> {
-        &mut self.free_list
+    /// Normalize the reusable-node list and rebuild its membership index.
+    pub(crate) fn normalize_free_list(&mut self) {
+        self.free_list.sort_by_key(|&p| p as usize);
+        self.free_list.dedup();
+        self.free_addrs.clear();
+        for &ptr in &self.free_list {
+            if !ptr.is_null() {
+                self.free_addrs.insert(ptr as usize);
+            }
+        }
     }
 
     /// Get the number of free slots available for reuse.
@@ -747,16 +753,8 @@ where
     let Some(instance_ptr) = super::instance::current_instance_ptr() else {
         return super::instance::with_required_current_instance(|inst| with_arena_in(inst, f));
     };
-    // Arena borrow tracking (depth) via the shared counter in instance.rs.
-    // We bump the depth for visibility/diagnostics around this raw .arena lend.
-    let _prev_arena = super::instance::INSTANCE_MUT_BORROW_DEPTH.with(|c| {
-        let d = c.get();
-        c.set(d + 1);
-        d
-    });
-    let r = unsafe { f(&mut (*instance_ptr).arena) };
-    super::instance::INSTANCE_MUT_BORROW_DEPTH.with(|c| c.set(c.get() - 1));
-    r
+    let _borrow = super::instance::enter_instance_borrow();
+    unsafe { f(&mut (*instance_ptr).arena) }
 }
 
 pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -> R
@@ -1016,6 +1014,21 @@ mod tests {
     }
 
     #[test]
+    fn test_arena_normalize_free_list_rebuilds_membership_index() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
+        arena.free_node(ptr);
+        arena.free_list.push(ptr);
+        arena.free_addrs.clear();
+
+        arena.normalize_free_list();
+
+        assert_eq!(arena.free_count(), 1);
+        assert!(arena.free_addrs.contains(&(ptr as usize)));
+        assert!(!arena.active_addrs.contains(&(ptr as usize)));
+    }
+
+    #[test]
     fn test_arena_free_node_null() {
         let mut arena = RArena::new();
         arena.free_node(ptr::null_mut());
@@ -1089,6 +1102,22 @@ mod tests {
         assert_eq!(arena.total_bytes_allocated(), 0);
         arena.alloc_node(SEXPTYPE::INTSXP);
         assert!(arena.total_bytes_allocated() > 0);
+    }
+
+    #[test]
+    fn test_vector_and_charsxp_account_node_once() {
+        let node_bytes = std::mem::size_of::<SexprecCore>();
+
+        let mut arena = RArena::new();
+        assert!(!arena.alloc_vector(SEXPTYPE::REALSXP, 1).is_null());
+        assert_eq!(
+            arena.total_bytes_allocated(),
+            node_bytes + std::mem::size_of::<f64>()
+        );
+
+        let mut arena = RArena::new();
+        assert!(!arena.alloc_charsxp(b"abc").is_null());
+        assert_eq!(arena.total_bytes_allocated(), node_bytes + 4);
     }
 
     #[test]
@@ -1187,5 +1216,17 @@ mod tests {
             with_arena_in(&mut right, |arena| arena.node_count()),
             right_before + 1
         );
+    }
+
+    #[test]
+    fn test_ambient_arena_borrow_depth_resets_after_panic() {
+        let _session = crate::sexp::session::RSession::new();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_arena(|_| panic!("intentional arena borrow panic"));
+        }));
+
+        assert!(result.is_err());
+        assert_eq!(super::super::instance::instance_borrow_depth(), 0);
     }
 }

@@ -688,11 +688,13 @@ pub unsafe fn LOGICAL(x: SEXP) -> *mut c_int {
     }
 }
 
-/// Get a pointer to the integer vector data.
-/// Requires exact INTSXP (use LOGICAL for LGLSXP).
+/// Get a pointer to the integer-compatible vector data.
+///
+/// R stores logical vectors as `c_int` too, and translated C code sometimes
+/// uses INTEGER on LGLSXP when it wants the raw storage representation.
 pub unsafe fn INTEGER(x: SEXP) -> *mut c_int {
     unsafe {
-        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP]);
+        debug_assert_sexptype(x, &[SEXPTYPE::INTSXP, SEXPTYPE::LGLSXP]);
         DATAPTR(x) as *mut c_int
     }
 }
@@ -1063,6 +1065,17 @@ mod tests {
             assert_eq!(LOGICAL_ELT(ptr::null_mut(), 0), NA_INTEGER);
             assert_eq!(INTEGER_ELT(ptr::null_mut(), 0), NA_INTEGER);
             assert!(REAL_ELT(ptr::null_mut(), 0).is_nan());
+        }
+    }
+
+    #[test]
+    fn test_integer_accepts_logical_storage() {
+        let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
+        let mut data = [1_i32];
+        node.gengc_next_node = data.as_mut_ptr() as SEXP;
+
+        unsafe {
+            assert_eq!(*INTEGER(&mut node as *mut _ as SEXP), 1);
         }
     }
 

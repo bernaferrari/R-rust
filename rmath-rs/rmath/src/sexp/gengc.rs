@@ -1,8 +1,8 @@
 //! Generational garbage collector with card marking write barriers.
 //!
 //! The collector is intentionally defensive: it scopes state to the active
-//! `RInstance`, catches panics at public GC entry points, updates known roots
-//! during compaction, and treats compaction as an all-or-nothing operation.
+//! `RInstance`, catches panics at public GC entry points, and uses a
+//! non-moving mark/sweep collector with free-list recycling.
 //! Raw `SEXP` internals still require careful auditing; do not document new
 //! invariants here unless they are enforced by code and regression tests.
 
@@ -14,9 +14,7 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
-    push_protect_in, update_preserve_stack_refs, update_preserve_stack_refs_in,
-    update_protect_stack_refs, update_protect_stack_refs_in, with_protected_objects,
-    with_temporary_extra_protects,
+    push_protect_in, update_preserve_stack_refs_in, update_protect_stack_refs_in,
 };
 
 /// Card size in bytes for the card marking table.
@@ -48,7 +46,6 @@ pub struct GcStats {
     pub collections: usize,
     pub promoted: usize,
     pub freed: usize,
-    pub compacted: usize,
     pub total_bytes_allocated: usize,
     pub total_bytes_freed: usize,
     pub peak_memory: usize,
@@ -64,17 +61,11 @@ pub fn reset_gc_stats() {
     with_gc_state(|state| state.stats = GcStats::default());
 }
 
-fn record_collection(promoted: usize, freed: usize) {
-    with_gc_state(|state| {
-        let stats = &mut state.stats;
-        stats.collections += 1;
-        stats.promoted += promoted;
-        stats.freed += freed;
-    });
-}
-
-fn record_compaction(count: usize) {
-    with_gc_state(|state| state.stats.compacted += count);
+fn record_collection_in(state: &mut GcState, promoted: usize, freed: usize) {
+    let stats = &mut state.stats;
+    stats.collections += 1;
+    stats.promoted += promoted;
+    stats.freed += freed;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,52 +80,14 @@ pub fn register_gc_callback(cb: GcCallback) {
     with_gc_state(|state| state.callbacks.push(cb));
 }
 
-fn notify_gc_callbacks() {
-    let stats = get_gc_stats();
-    with_gc_state(|state| {
-        for cb in &state.callbacks {
-            cb(&stats);
-        }
-    });
+fn notify_gc_callbacks_in(state: &GcState) {
+    let stats = state.stats.clone();
+    notify_gc_callbacks_with_stats(state, &stats);
 }
 
-// ---------------------------------------------------------------------------
-// GC Re-entrancy Guard
-// ---------------------------------------------------------------------------
-
-enum GcGuardState {
-    Active,
-    Skipped,
-}
-
-struct GcGuard {
-    state: GcGuardState,
-}
-
-impl GcGuard {
-    fn new() -> Self {
-        if with_gc_state(|state| state.in_progress) {
-            GcGuard {
-                state: GcGuardState::Skipped,
-            }
-        } else {
-            with_gc_state(|state| state.in_progress = true);
-            GcGuard {
-                state: GcGuardState::Active,
-            }
-        }
-    }
-
-    fn is_active(&self) -> bool {
-        matches!(self.state, GcGuardState::Active)
-    }
-}
-
-impl Drop for GcGuard {
-    fn drop(&mut self) {
-        if self.is_active() {
-            with_gc_state(|state| state.in_progress = false);
-        }
+fn notify_gc_callbacks_with_stats(state: &GcState, stats: &GcStats) {
+    for cb in &state.callbacks {
+        cb(stats);
     }
 }
 
@@ -142,18 +95,14 @@ impl Drop for GcGuard {
 // GC Invariants Checking
 // ---------------------------------------------------------------------------
 
-fn verify_gc_invariants() {
-    debug_assert!({
-        with_protected_objects(|objects| {
-            for &obj in objects {
-                if !obj.is_null() {
-                    // Debug-only: verify object is within arena bounds
-                    // Full validation would require arena access here
-                }
-            }
-        });
-        true
-    });
+fn verify_gc_invariants_in(instance: &mut instance::RInstance) {
+    let stack = instance.protect_stack.borrow();
+    for &obj in stack.iter() {
+        if !obj.is_null() {
+            // Debug-only: verify object is within arena bounds.
+            // Full validation would require classifying singleton roots too.
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -652,22 +601,8 @@ fn vector_payload_has_sexp_refs(t: SEXPTYPE) -> bool {
     matches!(t.0, 16 | 19 | 20) // STRSXP, VECSXP, EXPRSXP
 }
 
-fn update_protect_stack(old_to_new: &HashMap<usize, SEXP>) {
-    update_protect_stack_refs(|ptr| {
-        let addr = ptr as usize;
-        old_to_new.get(&addr).copied().unwrap_or(ptr)
-    });
-}
-
 fn update_protect_stack_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
     update_protect_stack_refs_in(instance, |ptr| {
-        let addr = ptr as usize;
-        old_to_new.get(&addr).copied().unwrap_or(ptr)
-    });
-}
-
-fn update_preserve_stack(old_to_new: &HashMap<usize, SEXP>) {
-    update_preserve_stack_refs(|ptr| {
         let addr = ptr as usize;
         old_to_new.get(&addr).copied().unwrap_or(ptr)
     });
@@ -768,6 +703,16 @@ fn update_object_references(old_to_new: &HashMap<usize, SEXP>) {
     });
 }
 
+fn update_object_references_in(
+    instance: &mut instance::RInstance,
+    old_to_new: &HashMap<usize, SEXP>,
+) {
+    let nodes: Vec<SEXP> = instance.arena.active_nodes().collect();
+    for &obj in &nodes {
+        update_references_in_object(obj, old_to_new);
+    }
+}
+
 fn remap_addr(addr: usize, old_to_new: &HashMap<usize, SEXP>) -> usize {
     old_to_new
         .get(&addr)
@@ -792,131 +737,112 @@ fn update_context_roots(ctxt: &mut super::context::RCNTXT, old_to_new: &HashMap<
     update_field(&mut ctxt.srcref, old_to_new);
 }
 
-fn update_instance_roots(old_to_new: &HashMap<usize, SEXP>) {
-    instance::with_required_current_instance(|instance| {
-        update_field(&mut instance.empty_env, old_to_new);
-        update_field(&mut instance.base_env, old_to_new);
-        update_field(&mut instance.global_env, old_to_new);
+fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    update_field(&mut instance.empty_env, old_to_new);
+    update_field(&mut instance.base_env, old_to_new);
+    update_field(&mut instance.global_env, old_to_new);
 
-        {
-            let mut stack = instance.protect_stack.borrow_mut();
-            for obj in stack.iter_mut() {
-                update_field(obj, old_to_new);
-            }
-        }
-        {
-            let mut stack = instance.preserve_stack.borrow_mut();
-            for obj in stack.iter_mut() {
-                update_field(obj, old_to_new);
-            }
-        }
-        for ctxt in &mut instance.context_stack {
-            update_context_roots(ctxt, old_to_new);
-        }
+    update_protect_stack_in(instance, old_to_new);
+    update_preserve_stack_in(instance, old_to_new);
+    for ctxt in &mut instance.context_stack {
+        update_context_roots(ctxt, old_to_new);
+    }
 
-        update_field(&mut instance.error_state.warnings, old_to_new);
-        update_field(&mut instance.error_state.handler_stack, old_to_new);
-        update_field(&mut instance.error_state.restart_stack, old_to_new);
+    update_field(&mut instance.error_state.warnings, old_to_new);
+    update_field(&mut instance.error_state.handler_stack, old_to_new);
+    update_field(&mut instance.error_state.restart_stack, old_to_new);
 
-        update_field(&mut instance.eval_state.current_expr, old_to_new);
-        update_field(&mut instance.eval_state.parse_error_file, old_to_new);
-        update_field(&mut instance.eval_state.exec_token, old_to_new);
-        update_field(&mut instance.eval_state.profiling.sref, old_to_new);
-        update_field(
-            &mut instance.eval_state.profiling.srcfiles_buffer,
-            old_to_new,
-        );
-        update_field(&mut instance.eval_state.printvector.na_string, old_to_new);
-        update_field(
-            &mut instance.eval_state.printvector.na_string_noquote,
-            old_to_new,
-        );
-        update_field(&mut instance.eval_state.print.data.na_string, old_to_new);
-        update_field(
-            &mut instance.eval_state.print.data.na_string_noquote,
-            old_to_new,
-        );
-        update_field(&mut instance.eval_state.print.data.env, old_to_new);
-        update_field(&mut instance.eval_state.print.data.callArgs, old_to_new);
+    update_field(&mut instance.eval_state.current_expr, old_to_new);
+    update_field(&mut instance.eval_state.parse_error_file, old_to_new);
+    update_field(&mut instance.eval_state.exec_token, old_to_new);
+    update_field(&mut instance.eval_state.profiling.sref, old_to_new);
+    update_field(
+        &mut instance.eval_state.profiling.srcfiles_buffer,
+        old_to_new,
+    );
+    update_field(&mut instance.eval_state.printvector.na_string, old_to_new);
+    update_field(
+        &mut instance.eval_state.printvector.na_string_noquote,
+        old_to_new,
+    );
+    update_field(&mut instance.eval_state.print.data.na_string, old_to_new);
+    update_field(
+        &mut instance.eval_state.print.data.na_string_noquote,
+        old_to_new,
+    );
+    update_field(&mut instance.eval_state.print.data.env, old_to_new);
+    update_field(&mut instance.eval_state.print.data.callArgs, old_to_new);
 
-        for obj in instance.symbols.values_mut() {
-            update_field(obj, old_to_new);
-        }
-        for node in &mut instance.symbol_nodes {
-            update_references_in_object(&mut **node as *mut _, old_to_new);
-        }
-        for node in &mut instance.env_nodes {
-            update_references_in_object(&mut **node as *mut _, old_to_new);
-        }
-        for obj in &mut instance.names_state.ddval_symbols {
-            update_field(obj, old_to_new);
-        }
-        update_field(&mut instance.bind_state.blank_string, old_to_new);
+    for obj in instance.symbols.values_mut() {
+        update_field(obj, old_to_new);
+    }
+    for node in &mut instance.symbol_nodes {
+        update_references_in_object(&mut **node as *mut _, old_to_new);
+    }
+    for node in &mut instance.env_nodes {
+        update_references_in_object(&mut **node as *mut _, old_to_new);
+    }
+    for obj in &mut instance.names_state.ddval_symbols {
+        update_field(obj, old_to_new);
+    }
+    update_field(&mut instance.bind_state.blank_string, old_to_new);
 
-        for obj in instance.options.values_mut() {
-            update_field(obj, old_to_new);
-        }
-        for callback in &mut instance.main_state.task_callbacks {
-            update_field(&mut callback.fun, old_to_new);
-            update_field(&mut callback.data, old_to_new);
-        }
-        for generic in &mut instance.objects_state.prim_generics {
-            update_field(generic, old_to_new);
-        }
-        for methods in &mut instance.objects_state.prim_mlist {
-            update_field(methods, old_to_new);
-        }
-        let old_hash_tables = std::mem::take(&mut instance.env_hash_tables);
-        instance.env_hash_tables = old_hash_tables
-            .into_iter()
-            .map(|(env, table)| {
-                let table = table
-                    .into_iter()
-                    .map(|(symbol, mut value)| {
-                        update_field(&mut value, old_to_new);
-                        (remap_addr(symbol, old_to_new), value)
-                    })
-                    .collect();
-                (remap_addr(env, old_to_new), table)
-            })
-            .collect();
+    for obj in instance.options.values_mut() {
+        update_field(obj, old_to_new);
+    }
+    for callback in &mut instance.main_state.task_callbacks {
+        update_field(&mut callback.fun, old_to_new);
+        update_field(&mut callback.data, old_to_new);
+    }
+    for generic in &mut instance.objects_state.prim_generics {
+        update_field(generic, old_to_new);
+    }
+    for methods in &mut instance.objects_state.prim_mlist {
+        update_field(methods, old_to_new);
+    }
+    let old_hash_tables = std::mem::take(&mut instance.env_hash_tables);
+    instance.env_hash_tables = old_hash_tables
+        .into_iter()
+        .map(|(env, table)| {
+            let table = table
+                .into_iter()
+                .map(|(symbol, mut value)| {
+                    update_field(&mut value, old_to_new);
+                    (remap_addr(symbol, old_to_new), value)
+                })
+                .collect();
+            (remap_addr(env, old_to_new), table)
+        })
+        .collect();
 
-        for finalizer in &mut instance.memory_state.pending_finalizers {
-            update_field(finalizer.obj_mut(), old_to_new);
-            if let Some(fun) = finalizer.fun_mut() {
-                update_field(fun, old_to_new);
-            }
+    for finalizer in &mut instance.memory_state.pending_finalizers {
+        update_field(finalizer.obj_mut(), old_to_new);
+        if let Some(fun) = finalizer.fun_mut() {
+            update_field(fun, old_to_new);
         }
-        update_field(&mut instance.dynload_state.dll_info_eptrs, old_to_new);
-        update_field(&mut instance.dynload_state.symbol_eptrs, old_to_new);
-        update_field(&mut instance.dynload_state.c_entry_table, old_to_new);
+    }
+    update_field(&mut instance.dynload_state.dll_info_eptrs, old_to_new);
+    update_field(&mut instance.dynload_state.symbol_eptrs, old_to_new);
+    update_field(&mut instance.dynload_state.c_entry_table, old_to_new);
 
-        update_field(
-            &mut instance.grid_runtime_state.current_grid_state,
-            old_to_new,
-        );
-        update_field(&mut instance.grid_runtime_state.eval_env, old_to_new);
+    update_field(
+        &mut instance.grid_runtime_state.current_grid_state,
+        old_to_new,
+    );
+    update_field(&mut instance.grid_runtime_state.eval_env, old_to_new);
 
-        for obj in &mut instance.raw_cons {
-            let mut sexp = *obj as SEXP;
-            update_field(&mut sexp, old_to_new);
-            *obj = sexp;
-            update_references_in_object(*obj, old_to_new);
-        }
-    });
+    for obj in &mut instance.raw_cons {
+        let mut sexp = *obj as SEXP;
+        update_field(&mut sexp, old_to_new);
+        *obj = sexp;
+        update_references_in_object(*obj, old_to_new);
+    }
 }
 
-fn update_all_references(old_to_new: &HashMap<usize, SEXP>) {
-    update_instance_roots(old_to_new);
-    update_protect_stack(old_to_new);
-    update_preserve_stack(old_to_new);
-    update_remembered_set(old_to_new);
-    update_object_references(old_to_new);
-}
-
-fn update_roots_and_non_arena_references(old_to_new: &HashMap<usize, SEXP>) {
-    update_instance_roots(old_to_new);
-    update_remembered_set(old_to_new);
+fn update_all_references_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    update_instance_roots_in(instance, old_to_new);
+    update_remembered_set_in(instance, old_to_new);
+    update_object_references_in(instance, old_to_new);
 }
 
 // ---------------------------------------------------------------------------
@@ -931,26 +857,35 @@ fn update_roots_and_non_arena_references(old_to_new: &HashMap<usize, SEXP>) {
 ///
 /// Returns (promoted_count, freed_count).
 pub fn minor_gc() -> (usize, usize) {
-    let _guard = GcGuard::new();
-    if !_guard.is_active() {
+    instance::with_required_current_instance(minor_gc_in)
+}
+
+fn run_gc_cycle_in<F>(instance: &mut instance::RInstance, collect: F) -> (usize, usize)
+where
+    F: FnOnce(&mut instance::RInstance) -> (usize, usize),
+{
+    if instance.gc_state.in_progress {
         return (0, 0);
     }
 
-    verify_gc_invariants();
+    instance.gc_state.in_progress = true;
+    verify_gc_invariants_in(instance);
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(do_minor_gc));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| collect(instance)));
+    instance.gc_state.in_progress = false;
 
     match result {
         Ok((promoted, freed)) => {
-            record_collection(promoted, freed);
-            notify_gc_callbacks();
+            record_collection_in(&mut instance.gc_state, promoted, freed);
+            notify_gc_callbacks_in(&instance.gc_state);
             (promoted, freed)
         }
-        Err(_) => {
-            with_gc_state(|state| state.in_progress = false);
-            (0, 0)
-        }
+        Err(_) => (0, 0),
     }
+}
+
+pub(crate) fn minor_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
+    run_gc_cycle_in(instance, do_minor_gc_in)
 }
 
 const GC_TRIGGER_THRESHOLD: usize = 10_000;
@@ -975,13 +910,10 @@ pub fn maybe_collect_during_alloc() {
     // will collect. This is the quiescence-only GC policy.
 }
 
-fn eval_safe_point_gc_due() -> bool {
-    instance::with_current_instance(|inst| {
-        inst.gc_state.gc_pending
-            || inst.arena.node_count() > GC_TRIGGER_THRESHOLD
-            || inst.arena.total_bytes_allocated() > GC_BYTE_THRESHOLD
-    })
-    .unwrap_or(false)
+fn eval_safe_point_gc_due_in(instance: &instance::RInstance) -> bool {
+    instance.gc_state.gc_pending
+        || instance.arena.node_count() > GC_TRIGGER_THRESHOLD
+        || instance.arena.total_bytes_allocated() > GC_BYTE_THRESHOLD
 }
 
 fn sync_env_hash_tables_from_frames(instance: &mut instance::RInstance) {
@@ -1048,53 +980,43 @@ fn push_environment_binding_protects(instance: &mut instance::RInstance) {
 /// Call this after loop iterations and brace-block statements complete, when
 /// no SEXP values from the just-finished evaluation remain only on Rust stack.
 pub fn maybe_collect_at_eval_safe_point() {
-    if !eval_safe_point_gc_due() {
-        return;
-    }
-    with_temporary_extra_protects(push_environment_binding_protects, || {
-        if let Some(ptr) = instance::current_instance_ptr() {
-            unsafe {
-                (*ptr).gc_state.gc_pending = false;
-            }
+    instance::with_required_current_instance(|instance| {
+        if !eval_safe_point_gc_due_in(instance) {
+            return;
         }
-        minor_gc();
+        let start = instance.protect_stack.borrow().len();
+        push_environment_binding_protects(instance);
+        let added = instance.protect_stack.borrow().len().saturating_sub(start);
+        instance.gc_state.gc_pending = false;
+        minor_gc_in(instance);
+        super::protect::unprotect_count_in(instance, added);
     });
 }
 
 /// Flush a deferred collection after a top-level expression completes.
 pub fn run_pending_gc_if_quiescent() {
-    let should_run = instance::with_current_instance(|inst| {
+    instance::with_current_instance(|inst| {
         if inst.eval_state.eval_depth == 0 && inst.gc_state.gc_pending {
             inst.gc_state.gc_pending = false;
-            true
-        } else {
-            false
-        }
-    })
-    .unwrap_or(false);
-    if should_run {
-        minor_gc();
-    }
-}
-
-fn do_minor_gc() -> (usize, usize) {
-    // Go through the guarded with_current_instance so the reentrancy/aliasing
-    // guard in instance.rs protects this full &mut view. GC is only invoked
-    // from safe points or quiescent boundaries.
-    let _ = instance::with_current_instance(|instance| {
-        // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
-        // about allocating HashSets and hashing every edge.)
-        mark_instance_roots(instance);
-        for &obj in &instance.gc_state.remembered_set.entries {
-            mark_reachable(obj);
+            minor_gc_in(inst);
         }
     });
+}
+
+fn do_minor_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
+    // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
+    // about allocating HashSets and hashing every edge.)
+    mark_instance_roots(instance);
+    for &obj in &instance.gc_state.remembered_set.entries {
+        mark_reachable(obj);
+    }
 
     let mut freed_count = 0;
     let mut promoted_count = 0;
     let mut to_free = Vec::new();
 
-    with_arena_for_gc(|arena| {
+    {
+        let arena = &mut instance.arena;
         // Iterate directly; only allocate to_free vec (not full snapshot of actives).
         // Reduces temp memory/alloc pressure during GC (perf + memory win, especially on constrained Android/WASM).
         for obj in arena.active_nodes() {
@@ -1120,12 +1042,14 @@ fn do_minor_gc() -> (usize, usize) {
                 }
             }
         }
-    });
+    }
 
     if !to_free.is_empty() {
         let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-        let keep_alive =
-            crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable(&unreachable);
+        let keep_alive = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
+            &mut instance.memory_state,
+            &unreachable,
+        );
         if !keep_alive.is_empty() {
             to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
         }
@@ -1135,85 +1059,57 @@ fn do_minor_gc() -> (usize, usize) {
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         let old_to_nil: HashMap<usize, SEXP> =
             to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-        update_all_references(&old_to_nil);
+        update_all_references_in(instance, &old_to_nil);
 
-        with_arena_for_gc(|arena| {
-            for obj in to_free {
-                arena.free_node(obj);
-                freed_count += 1;
-            }
-        });
+        for obj in to_free {
+            instance.arena.free_node(obj);
+            freed_count += 1;
+        }
     }
 
-    with_gc_state(|state| {
-        state.remembered_set.clear();
-        state.card_table.clear_dirty();
-    });
+    instance.gc_state.remembered_set.clear();
+    instance.gc_state.card_table.clear_dirty();
 
     (promoted_count, freed_count)
 }
 
 // ---------------------------------------------------------------------------
-// Full GC with Compaction
+// Full GC
 // ---------------------------------------------------------------------------
 
-/// Run full garbage collection with compaction.
+/// Run full garbage collection.
 ///
-/// This performs mark-sweep followed by copying compaction to eliminate
-/// fragmentation. All live objects are copied to a new arena and all
-/// references are updated.
+/// This performs non-moving mark-sweep over all generations. It deliberately
+/// does not move live objects because translated evaluator code routinely
+/// holds raw `SEXP` pointers in Rust stack locals.
 ///
-/// This function is panic-free and handles OOM gracefully by restoring
-/// from a snapshot if compaction fails.
-///
-/// Returns (promoted_count, freed_count, compacted_count).
-pub fn full_gc() -> (usize, usize, usize) {
-    let _guard = GcGuard::new();
-    if !_guard.is_active() {
-        return (0, 0, 0);
-    }
+/// Returns (promoted_count, freed_count).
+pub fn full_gc() -> (usize, usize) {
+    instance::with_required_current_instance(full_gc_in)
+}
 
-    verify_gc_invariants();
+pub(crate) fn full_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
+    run_gc_cycle_in(instance, do_full_mark_sweep_in)
+}
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let (promoted, freed) = do_full_mark_sweep();
-        (promoted, freed, 0usize)
-    }));
-
-    match result {
-        Ok((promoted, freed, compacted)) => {
-            record_collection(promoted, freed);
-            record_compaction(compacted);
-            notify_gc_callbacks();
-            (promoted, freed, compacted)
-        }
-        Err(_) => {
-            with_gc_state(|state| state.in_progress = false);
-            (0, 0, 0)
-        }
+fn mark_from_all_roots_in(instance: &mut instance::RInstance) {
+    // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
+    // about allocating HashSets and hashing every edge.)
+    mark_instance_roots(instance);
+    for &obj in &instance.gc_state.remembered_set.entries {
+        mark_reachable(obj);
     }
 }
 
-fn mark_from_all_roots() {
-    // Guarded via with_current (see do_minor_gc).
-    let _ = instance::with_current_instance(|instance| {
-        // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
-        // about allocating HashSets and hashing every edge.)
-        mark_instance_roots(instance);
-        for &obj in &instance.gc_state.remembered_set.entries {
-            mark_reachable(obj);
-        }
-    });
-}
-
-fn do_full_mark_sweep() -> (usize, usize) {
-    mark_from_all_roots();
+fn do_full_mark_sweep_in(instance: &mut instance::RInstance) -> (usize, usize) {
+    mark_from_all_roots_in(instance);
 
     let mut freed_count = 0;
     let mut promoted_count = 0;
     let mut to_free = Vec::new();
 
-    with_arena_for_gc(|arena| {
+    {
+        let arena = &mut instance.arena;
         // Direct iter, only to_free alloc (less GC-time memory pressure).
         for obj in arena.active_nodes() {
             if obj.is_null() {
@@ -1231,12 +1127,14 @@ fn do_full_mark_sweep() -> (usize, usize) {
                 }
             }
         }
-    });
+    }
 
     if !to_free.is_empty() {
         let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-        let keep_alive =
-            crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable(&unreachable);
+        let keep_alive = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
+            &mut instance.memory_state,
+            &unreachable,
+        );
         if !keep_alive.is_empty() {
             to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
         }
@@ -1246,60 +1144,47 @@ fn do_full_mark_sweep() -> (usize, usize) {
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         let old_to_nil: HashMap<usize, SEXP> =
             to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-        update_all_references(&old_to_nil);
+        update_all_references_in(instance, &old_to_nil);
 
-        with_arena_for_gc(|arena| {
-            for obj in to_free {
-                arena.free_node(obj);
-                freed_count += 1;
-            }
-        });
+        for obj in to_free {
+            instance.arena.free_node(obj);
+            freed_count += 1;
+        }
     }
 
-    with_gc_state(|state| {
-        state.remembered_set.clear();
-        state.card_table.clear_dirty();
-    });
+    instance.gc_state.remembered_set.clear();
+    instance.gc_state.card_table.clear_dirty();
 
     (promoted_count, freed_count)
 }
 
 // ---------------------------------------------------------------------------
-// Compaction (moving GC) has been deleted entirely.
+// Legacy relocation hooks.
 //
-// Per architecture review: a compacting/moving collector is incompatible with
-// raw SEXP pointers held in Rust stack frames across allocations (the dominant
-// coding style in the ported evaluator). R itself uses a non-moving GC for
-// exactly this reason. We retain only mark-sweep + free-list recycling.
+// Per architecture review, a moving collector is incompatible with raw `SEXP`
+// pointers held in Rust stack frames across allocations (the dominant coding
+// style in the ported evaluator). R itself uses a non-moving GC for exactly
+// this reason. We retain only mark-sweep + free-list recycling.
 //
-// All moving logic (snapshot_live_objects, LiveObject, do_compact, the two-space
-// copy + root rewrite) has been removed. update_all_references is *kept* because
-// it is also used by non-moving sweep to redirect refs-to-dead -> R_NilValue
-// in survivor objects.
+// All moving logic (snapshot_live_objects, LiveObject, do_relocate, the two-space
+// copy + root rewrite) has been removed. Reference rewriting is kept only for
+// non-moving sweep to redirect refs-to-dead -> R_NilValue in survivor objects.
 // ---------------------------------------------------------------------------
 
-// Stub kept for any dead call sites / tests; always no-op (no moving performed).
-fn compact_all_objects_safe() -> usize {
-    0
-}
-
-// (Compaction body removed. Non-moving GC only.)
-
-/// Run GC compaction if fragmentation exceeds threshold.
+/// Legacy hook retained for callers that used to request arena relocation.
 ///
-/// Compaction is intentionally disabled: moving collection is incompatible with
-/// raw SEXP pointers held across allocation in ported interpreter code.
+/// The current collector never relocates live `SEXP` objects. This function
+/// performs a normal minor GC and returns `false`.
 ///
-/// Returns true if compaction was performed.
+/// Returns true if live objects were relocated. Always false.
 pub fn compact_if_needed(_frag_threshold: f64) -> bool {
     let (_promoted, _freed) = minor_gc();
     false
 }
 
-/// Compact the arena by rebuilding the free list.
-fn compact_arena(arena: &mut RArena) {
-    arena.free_list_mut().sort_by_key(|&p| p as usize);
-    arena.free_list_mut().dedup();
+/// Normalize the free list without moving live objects.
+fn normalize_free_list(arena: &mut RArena) {
+    arena.normalize_free_list();
 }
 
 /// Get the current fragmentation ratio of the arena.
@@ -1307,10 +1192,12 @@ pub fn get_fragmentation_ratio() -> f64 {
     with_arena_for_gc(|arena| arena.fragmentation_ratio())
 }
 
-/// Force a full compaction of the arena.
+/// Force non-moving free-list cleanup.
+///
+/// This does not move live objects. It only normalizes the arena free list.
 pub fn force_compact() {
     with_arena_for_gc(|arena| {
-        compact_arena(arena);
+        normalize_free_list(arena);
     });
 }
 
@@ -1351,6 +1238,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::super::memory::{ArenaBudget, with_arena};
+    use super::super::protect::with_protected_objects;
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -1592,17 +1480,12 @@ mod tests {
     fn test_gc_reentrancy_guard() {
         let _session = RSession::new();
 
-        let guard1 = GcGuard::new();
-        assert!(guard1.is_active());
-
-        let guard2 = GcGuard::new();
-        assert!(!guard2.is_active());
-
-        drop(guard2);
-        assert!(guard1.is_active());
-
-        drop(guard1);
-        assert!(!with_gc_state(|state| state.in_progress));
+        instance::with_required_current_instance(|instance| {
+            instance.gc_state.in_progress = true;
+            assert_eq!(minor_gc_in(instance), (0, 0));
+            assert!(instance.gc_state.in_progress);
+            instance.gc_state.in_progress = false;
+        });
     }
 
     #[test]
@@ -1671,10 +1554,9 @@ mod tests {
         with_arena(|arena| {
             reset_gc_test_arena(arena);
         });
-        let (promoted, freed, compacted) = full_gc();
+        let (promoted, freed) = full_gc();
         assert_eq!(promoted, 0);
         assert_eq!(freed, 0);
-        assert_eq!(compacted, 0);
     }
 
     #[test]
@@ -1689,10 +1571,9 @@ mod tests {
             }
         });
 
-        let (promoted, freed, compacted) = full_gc();
+        let (promoted, freed) = full_gc();
         assert_eq!(promoted, 0);
         assert_eq!(freed, 1);
-        assert_eq!(compacted, 0);
         with_arena(|arena| {
             assert_eq!(arena.node_count(), 0);
             assert_eq!(arena.free_count(), 1);
@@ -1716,10 +1597,9 @@ mod tests {
             std::mem::forget(protect(obj));
         });
 
-        let (promoted, freed, compacted) = full_gc();
+        let (promoted, freed) = full_gc();
         assert_eq!(promoted, 0);
         assert_eq!(freed, 0);
-        assert_eq!(compacted, 0);
 
         let protected_obj = with_protected_objects(|objects| objects[0]);
         assert_eq!(protected_obj, obj);
@@ -1733,7 +1613,7 @@ mod tests {
     }
 
     #[test]
-    fn test_full_gc_compaction_failure_leaves_arena_and_roots_unchanged() {
+    fn test_full_gc_never_moves_protected_objects() {
         let _session = RSession::new();
 
         use super::super::protect::protect;
@@ -1750,8 +1630,8 @@ mod tests {
             arena.set_budget(ArenaBudget::new(1, 0));
         });
 
-        let (promoted, freed, compacted) = full_gc();
-        assert_eq!((promoted, freed, compacted), (0, 0, 0));
+        let (promoted, freed) = full_gc();
+        assert_eq!((promoted, freed), (0, 0));
 
         let protected_obj = with_protected_objects(|objects| objects[0]);
         assert_eq!(protected_obj, obj);
@@ -1767,7 +1647,7 @@ mod tests {
     }
 
     #[test]
-    fn test_full_gc_compaction_preserves_external_pointer_edges() {
+    fn test_full_gc_preserves_external_pointer_edges_without_moving() {
         let _session = RSession::new();
 
         use super::super::protect::protect;
@@ -1789,9 +1669,8 @@ mod tests {
             std::mem::forget(protect(ext));
         });
 
-        let (_, freed, compacted) = full_gc();
+        let (_, freed) = full_gc();
         assert_eq!(freed, 0);
-        assert_eq!(compacted, 0);
 
         let protected_ext = with_protected_objects(|objects| objects[0]);
         assert_eq!(protected_ext, ext);
@@ -1842,9 +1721,8 @@ mod tests {
             std::mem::forget(protect(weak));
         });
 
-        let (_, freed, compacted) = full_gc();
+        let (_, freed) = full_gc();
         assert_eq!(freed, 1);
-        assert_eq!(compacted, 0);
 
         let protected_weak = with_protected_objects(|objects| objects[0]);
         assert_eq!(protected_weak, weak);
@@ -1898,9 +1776,8 @@ mod tests {
             std::mem::forget(protect(key));
         });
 
-        let (_, freed, compacted) = full_gc();
+        let (_, freed) = full_gc();
         assert_eq!(freed, 0);
-        assert_eq!(compacted, 0);
 
         let (protected_weak, protected_key) =
             with_protected_objects(|objects| (objects[0], objects[1]));
@@ -2089,7 +1966,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compact_if_needed_low_threshold() {
+    fn test_compact_if_needed_runs_gc_but_never_moves() {
         let _session = RSession::new();
 
         with_arena(|arena| {
@@ -2111,7 +1988,7 @@ mod tests {
     }
 
     #[test]
-    fn test_force_compact_empty_arena() {
+    fn test_force_compact_only_normalizes_free_list() {
         let _session = RSession::new();
 
         with_arena(|arena| {

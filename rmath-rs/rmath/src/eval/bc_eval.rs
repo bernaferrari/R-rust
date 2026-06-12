@@ -17,12 +17,14 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, REAL, Rf_isNull, TYPEOF, VECTOR_ELT};
+use crate::sexp::accessors::{
+    CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, Rf_isNull, TYPEOF, VECTOR_ELT,
+};
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 
 use super::bc_stack::R_bcstack_t;
 
@@ -30,6 +32,31 @@ fn bc_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
         message: message.into(),
     });
+}
+
+fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
+    let message = unsafe {
+        if arg_sym.is_null() {
+            "argument is missing, with no default".to_string()
+        } else {
+            let pname = PRINTNAME(arg_sym);
+            let name = if pname.is_null() {
+                "???".to_string()
+            } else {
+                let chars = CHAR(pname);
+                if chars.is_null() {
+                    "???".to_string()
+                } else {
+                    std::ffi::CStr::from_ptr(chars)
+                        .to_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|_| "???".to_string())
+                }
+            };
+            format!("argument \"{}\" is missing, with no default", name)
+        }
+    };
+    bc_error(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -301,8 +328,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let val = R_findVar(sym, rho);
                     if val == R_UnboundValue() {
                         bc_error("object not found");
+                    } else if val == R_MissingArg() {
+                        bc_missing_arg_error(sym);
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
-                        stack.push(forcePromise(val));
+                        let forced = forcePromise(val);
+                        if forced == R_MissingArg() {
+                            bc_missing_arg_error(sym);
+                        }
+                        stack.push(forced);
                     } else {
                         stack.push(val);
                     }

@@ -300,7 +300,7 @@ where
 }
 
 /// Update all protect stack references using the given mapping function.
-/// Used by the GC compaction phase to update moved object pointers.
+/// Used by non-moving GC sweep to redirect references to freed objects.
 pub(crate) fn update_protect_stack_refs<F>(update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
@@ -319,7 +319,7 @@ where
 }
 
 /// Update all preserve stack references using the given mapping function.
-/// Used by the GC compaction phase to update moved object pointers.
+/// Used by non-moving GC sweep to redirect references to freed objects.
 pub(crate) fn update_preserve_stack_refs<F>(update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,

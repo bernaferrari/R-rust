@@ -653,14 +653,32 @@ thread_local! {
     /// so the pointer is valid for the lifetime of that session.
     static CURRENT_INSTANCE: RefCell<Option<*mut RInstance>> = const { RefCell::new(None) };
 
-    /// Borrow depth counter for the ambient RInstance &mut views derived from the
-    /// thread-local raw ptr. Used to detect (and document) reentrant acquires.
-    /// Depth > 1 occurs in controlled paths such as with_temporary_extra_protects
-    /// (which holds an inst borrow across a gc invocation at safe points).
-    /// The quiescence policy eliminates the dangerous alloc-during-gc case.
-    /// We track for diagnostics; casts still happen (as in the original raw-ptr
-    /// design) so this is a monitor rather than a hard exclusive lock.
+    /// Borrow depth counter for ambient `RInstance` views derived from the
+    /// thread-local raw pointer. This remains a diagnostic monitor while the
+    /// translated C-shaped entrypoints are being migrated to explicit
+    /// `RInstance` parameters.
     pub(crate) static INSTANCE_MUT_BORROW_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
+pub(crate) struct InstanceBorrowDepthGuard;
+
+impl Drop for InstanceBorrowDepthGuard {
+    fn drop(&mut self) {
+        INSTANCE_MUT_BORROW_DEPTH.with(|c| {
+            let depth = c.get();
+            debug_assert!(depth > 0, "ambient RInstance borrow depth underflow");
+            c.set(depth.saturating_sub(1));
+        });
+    }
+}
+
+pub(crate) fn enter_instance_borrow() -> InstanceBorrowDepthGuard {
+    INSTANCE_MUT_BORROW_DEPTH.with(|c| c.set(c.get() + 1));
+    InstanceBorrowDepthGuard
+}
+
+pub(crate) fn instance_borrow_depth() -> usize {
+    INSTANCE_MUT_BORROW_DEPTH.with(Cell::get)
 }
 
 /// Acquire &mut RInstance view (via the current raw ptr) with depth tracking.
@@ -672,16 +690,10 @@ fn acquire_instance_mut<F, R>(ptr: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&mut RInstance) -> R,
 {
-    let prev = INSTANCE_MUT_BORROW_DEPTH.with(|c| {
-        let d = c.get();
-        c.set(d + 1);
-        d
-    });
+    let _borrow = enter_instance_borrow();
     // SAFETY: original design used raw ptr precisely to support ambient access
     // patterns including the safe point extra-protect bracketing gc.
-    let result = unsafe { f(&mut *ptr) };
-    INSTANCE_MUT_BORROW_DEPTH.with(|c| c.set(c.get() - 1));
-    result
+    unsafe { f(&mut *ptr) }
 }
 
 /// Set the current thread-local R instance for translated compatibility code.
@@ -819,6 +831,22 @@ mod tests {
             assert_eq!((*instance.global_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
             assert_eq!((*instance.base_env).data.envsxp.enclos, instance.empty_env);
             assert_eq!((*instance.global_env).data.envsxp.enclos, instance.base_env);
+        }
+    }
+
+    #[test]
+    fn test_ambient_instance_borrow_depth_resets_after_panic() {
+        let mut instance = RInstance::new();
+        let previous = unsafe { replace_current_instance(Some(&mut instance as *mut _)) };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_current_instance(|_| panic!("intentional ambient borrow panic"));
+        }));
+
+        assert!(result.is_err());
+        assert_eq!(instance_borrow_depth(), 0);
+        unsafe {
+            replace_current_instance(previous);
         }
     }
 }

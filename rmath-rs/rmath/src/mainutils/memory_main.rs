@@ -745,19 +745,24 @@ pub unsafe fn R_RunFinalizers() {
 pub(crate) fn mark_finalizers_ready_for_unreachable(
     unreachable: &std::collections::HashSet<usize>,
 ) -> std::collections::HashSet<usize> {
-    with_memory_state(|state| {
-        let mut keep_alive = std::collections::HashSet::new();
-        for finalizer in &mut state.pending_finalizers {
-            let obj = finalizer.obj();
-            if !obj.is_null() && unreachable.contains(&(obj as usize)) {
-                finalizer.set_ready();
-            }
-            if finalizer.is_ready() && !obj.is_null() {
-                keep_alive.insert(obj as usize);
-            }
+    with_memory_state(|state| mark_finalizers_ready_for_unreachable_in(state, unreachable))
+}
+
+pub(crate) fn mark_finalizers_ready_for_unreachable_in(
+    state: &mut MemoryRuntimeState,
+    unreachable: &std::collections::HashSet<usize>,
+) -> std::collections::HashSet<usize> {
+    let mut keep_alive = std::collections::HashSet::new();
+    for finalizer in &mut state.pending_finalizers {
+        let obj = finalizer.obj();
+        if !obj.is_null() && unreachable.contains(&(obj as usize)) {
+            finalizer.set_ready();
         }
-        keep_alive
-    })
+        if finalizer.is_ready() && !obj.is_null() {
+            keep_alive.insert(obj as usize);
+        }
+    }
+    keep_alive
 }
 
 pub(crate) unsafe fn R_RunExitFinalizers_memory() {
