@@ -16,6 +16,7 @@
 use std::ffi::CStr;
 use std::os::raw::c_int;
 
+use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
     SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
@@ -27,6 +28,7 @@ use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_cons};
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::protect::protect;
 
 unsafe fn primitive_name(op: SEXP) -> Option<String> {
     unsafe {
@@ -377,6 +379,7 @@ unsafe fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
+        let _result_guard = protect(result);
         for (out_axis, axis) in axes.iter().enumerate() {
             let value = if *axis < XLENGTH(dimnames) as usize {
                 VECTOR_ELT(dimnames, *axis as R_xlen_t)
@@ -390,6 +393,7 @@ unsafe fn subset_dimnames(dimnames: SEXP, axes: &[usize]) -> SEXP {
         if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
             let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
             if !result_names.is_null() {
+                let _names_guard = protect(result_names);
                 for (out_axis, axis) in axes.iter().enumerate() {
                     if *axis < XLENGTH(names) as usize {
                         SET_STRING_ELT(
@@ -412,6 +416,33 @@ unsafe fn set_dimnames_from_axes(target: SEXP, source: SEXP, axes: &[usize]) {
         if !dimnames.is_null() && dimnames != R_NilValue() {
             setAttrib(target, R_DimNamesSymbol(), dimnames);
         }
+    }
+}
+
+unsafe fn set_dim_names_from_axes(target_dim: SEXP, source_dim: SEXP, axes: &[usize]) {
+    unsafe {
+        if target_dim.is_null() || source_dim.is_null() || source_dim == R_NilValue() {
+            return;
+        }
+        let names = getAttrib(source_dim, R_NamesSymbol());
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return;
+        }
+        let result_names = Rf_allocVector3(SEXPTYPE::STRSXP, axes.len() as R_xlen_t);
+        if result_names.is_null() {
+            return;
+        }
+        let _names_guard = protect(result_names);
+        for (out_axis, axis) in axes.iter().enumerate() {
+            if *axis < XLENGTH(names) as usize {
+                SET_STRING_ELT(
+                    result_names,
+                    out_axis as R_xlen_t,
+                    STRING_ELT(names, *axis as R_xlen_t),
+                );
+            }
+        }
+        setAttrib(target_dim, R_NamesSymbol(), result_names);
     }
 }
 
@@ -535,7 +566,16 @@ unsafe fn parse_bool_arg(value: SEXP, default: bool) -> bool {
 }
 
 unsafe fn parse_resize_arg(value: SEXP) -> bool {
-    unsafe { parse_bool_arg(value, true) }
+    unsafe {
+        if value.is_null() || value == R_NilValue() {
+            return true;
+        }
+        let value = asLogical(value);
+        if value == NA_LOGICAL {
+            array_error("'resize' must be TRUE or FALSE");
+        }
+        value != 0
+    }
 }
 
 unsafe fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
@@ -954,6 +994,7 @@ pub unsafe fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = first_arg(args, "aperm()");
+        let source_dim = getAttrib(x, R_DimSymbol());
         let dims = array_dimensions(x, "aperm()");
         let ndim = dims.len();
         let total = XLENGTH(x) as usize;
@@ -978,16 +1019,12 @@ pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let perm = parse_aperm_perm(perm_arg, ndim);
         let resize = parse_resize_arg(resize_arg);
         let permuted_dims: Vec<_> = perm.iter().map(|axis| dims[*axis]).collect();
-        let result_dims = if resize {
-            permuted_dims.clone()
-        } else {
-            dims.clone()
-        };
 
         let result = Rf_allocVector3(TYPEOF(x), total as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
+        let _result_guard = protect(result);
 
         let input_strides = column_major_strides(&dims);
         for output_index in 0..total {
@@ -1000,12 +1037,19 @@ pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             copy_vector_element(result, output_index, x, input_index);
         }
 
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, ndim as R_xlen_t);
-        if !dim.is_null() {
-            for (index, value) in result_dims.iter().enumerate() {
-                *INTEGER(dim).add(index) = *value as c_int;
+        if resize {
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, ndim as R_xlen_t);
+            if !dim.is_null() {
+                let _dim_guard = protect(dim);
+                for (index, value) in permuted_dims.iter().enumerate() {
+                    *INTEGER(dim).add(index) = *value as c_int;
+                }
+                set_dim_names_from_axes(dim, source_dim, &perm);
+                setAttrib(result, R_DimSymbol(), dim);
             }
-            setAttrib(result, R_DimSymbol(), dim);
+            set_dimnames_from_axes(result, x, &perm);
+        } else {
+            setAttrib(result, R_DimSymbol(), source_dim);
         }
         result
     }
@@ -1329,6 +1373,28 @@ mod tests {
             }
             setAttrib(array, R_DimSymbol(), dim);
             array
+        }
+    }
+
+    unsafe fn string_vector(values: &[&'static std::ffi::CStr]) -> SEXP {
+        unsafe {
+            let vector = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+            for (index, value) in values.iter().enumerate() {
+                SET_STRING_ELT(
+                    vector,
+                    index as R_xlen_t,
+                    crate::sexp::constructors::Rf_mkChar(value.as_ptr()),
+                );
+            }
+            vector
+        }
+    }
+
+    unsafe fn string_elt_str(vector: SEXP, index: R_xlen_t) -> String {
+        unsafe {
+            CStr::from_ptr(CHAR(STRING_ELT(vector, index)))
+                .to_string_lossy()
+                .into_owned()
         }
     }
 
@@ -1691,6 +1757,104 @@ mod tests {
             assert_eq!(*INTEGER(dim), 2);
             assert_eq!(*INTEGER(dim).add(1), 3);
             assert_eq!(*INTEGER(dim).add(2), 4);
+        }
+    }
+
+    #[test]
+    fn test_do_aperm_resize_true_permutates_dim_names_and_dimnames() {
+        let _session = RSession::new();
+        unsafe {
+            let values: Vec<c_int> = (1..=6).collect();
+            let array = int_array(&values, &[2, 3]);
+            let dim = getAttrib(array, R_DimSymbol());
+            setAttrib(dim, R_NamesSymbol(), string_vector(&[c"rows", c"cols"]));
+
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(dimnames, 0, string_vector(&[c"r1", c"r2"]));
+            SET_VECTOR_ELT(dimnames, 1, string_vector(&[c"c1", c"c2", c"c3"]));
+            setAttrib(
+                dimnames,
+                R_NamesSymbol(),
+                string_vector(&[c"rows", c"cols"]),
+            );
+            setAttrib(array, R_DimNamesSymbol(), dimnames);
+
+            let perm = int_array(&[2, 1], &[2]);
+            let args = Rf_cons(
+                array,
+                Rf_cons(perm, Rf_cons(Rf_ScalarLogical(1), R_NilValue())),
+            );
+            let result = do_aperm(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+
+            let result_dim = getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(result_dim), 3);
+            assert_eq!(*INTEGER(result_dim).add(1), 2);
+
+            let dim_names = getAttrib(result_dim, R_NamesSymbol());
+            assert_eq!(string_elt_str(dim_names, 0), "cols");
+            assert_eq!(string_elt_str(dim_names, 1), "rows");
+
+            let result_dimnames = getAttrib(result, R_DimNamesSymbol());
+            let result_dimnames_names = getAttrib(result_dimnames, R_NamesSymbol());
+            assert_eq!(string_elt_str(result_dimnames_names, 0), "cols");
+            assert_eq!(string_elt_str(result_dimnames_names, 1), "rows");
+
+            let first_axis_names = VECTOR_ELT(result_dimnames, 0);
+            let second_axis_names = VECTOR_ELT(result_dimnames, 1);
+            assert_eq!(string_elt_str(first_axis_names, 0), "c1");
+            assert_eq!(string_elt_str(first_axis_names, 2), "c3");
+            assert_eq!(string_elt_str(second_axis_names, 0), "r1");
+            assert_eq!(string_elt_str(second_axis_names, 1), "r2");
+        }
+    }
+
+    #[test]
+    fn test_do_aperm_resize_false_preserves_dim_names_only() {
+        let _session = RSession::new();
+        unsafe {
+            let values: Vec<c_int> = (1..=6).collect();
+            let array = int_array(&values, &[2, 3]);
+            let dim = getAttrib(array, R_DimSymbol());
+            setAttrib(dim, R_NamesSymbol(), string_vector(&[c"rows", c"cols"]));
+
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(dimnames, 0, string_vector(&[c"r1", c"r2"]));
+            SET_VECTOR_ELT(dimnames, 1, string_vector(&[c"c1", c"c2", c"c3"]));
+            setAttrib(array, R_DimNamesSymbol(), dimnames);
+
+            let perm = int_array(&[2, 1], &[2]);
+            let args = Rf_cons(
+                array,
+                Rf_cons(perm, Rf_cons(Rf_ScalarLogical(0), R_NilValue())),
+            );
+            let result = do_aperm(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+
+            let result_dim = getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(result_dim), 2);
+            assert_eq!(*INTEGER(result_dim).add(1), 3);
+
+            let dim_names = getAttrib(result_dim, R_NamesSymbol());
+            assert_eq!(string_elt_str(dim_names, 0), "rows");
+            assert_eq!(string_elt_str(dim_names, 1), "cols");
+            assert_eq!(getAttrib(result, R_DimNamesSymbol()), R_NilValue());
+        }
+    }
+
+    #[test]
+    fn test_do_aperm_resize_na_errors_like_r() {
+        let _session = RSession::new();
+        unsafe {
+            let values: Vec<c_int> = (1..=6).collect();
+            let array = int_array(&values, &[2, 3]);
+            let perm = int_array(&[2, 1], &[2]);
+            let args = Rf_cons(
+                array,
+                Rf_cons(perm, Rf_cons(Rf_ScalarLogical(NA_LOGICAL), R_NilValue())),
+            );
+            let err = assert_r_error(|| {
+                do_aperm(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            });
+            assert_eq!(err.message, "'resize' must be TRUE or FALSE");
         }
     }
 

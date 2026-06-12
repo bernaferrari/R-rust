@@ -438,7 +438,6 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
             return;
         }
         *fieldwidth = 1;
-        let max_fixed_width = 5; // FALSE is the widest fixed string
         for i in 0..n {
             let xi = *x.add(i as usize);
             if xi == NA_LOGICAL {
@@ -448,13 +447,10 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
             } else if xi != 0 && *fieldwidth < 4 {
                 // TRUE
                 *fieldwidth = 4;
-            } else if xi == 0 && *fieldwidth < max_fixed_width {
+            } else if xi == 0 && *fieldwidth < 5 {
                 // FALSE
                 *fieldwidth = 5;
-                // Only break early if NA can't be wider
-                if current_R_print().na_width <= max_fixed_width {
-                    break;
-                }
+                break;
             }
         }
     }
@@ -1079,10 +1075,9 @@ mod tests {
     }
 
     #[test]
-    fn test_format_logical_na_wider() {
+    fn test_format_logical_false_short_circuits_like_r() {
         unsafe {
             let _session = RSession::new();
-            // Set na_width larger than FALSE width
             let p = RPrint {
                 digits: 7,
                 scipen: 0,
@@ -1093,7 +1088,7 @@ mod tests {
             let mut fw: c_int = 0;
             let arr = [0i32, NA_LOGICAL];
             formatLogical(arr.as_ptr(), 2, &mut fw);
-            assert_eq!(fw, 10); // na_width=10 > FALSE=5
+            assert_eq!(fw, 5);
             format_set_R_print(old);
         }
     }
