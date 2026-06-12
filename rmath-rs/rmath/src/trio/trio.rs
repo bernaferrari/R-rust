@@ -2634,7 +2634,10 @@ mod tests {
         let mut args = FormatArgs::new();
         args.push_double(3.14);
         let result = trio_fmt("%f\0", &mut args);
-        assert!(result.starts_with("3.14"), "expected '3.14...' got '{result}'");
+        assert!(
+            result.starts_with("3.14"),
+            "expected '3.14...' got '{result}'"
+        );
     }
 
     #[test]
@@ -2653,7 +2656,10 @@ mod tests {
         let mut args = FormatArgs::new();
         args.push_double(0.0);
         let result = trio_fmt("%f\0", &mut args);
-        assert!(result.starts_with("0."), "expected '0.' prefix, got '{result}'");
+        assert!(
+            result.starts_with("0."),
+            "expected '0.' prefix, got '{result}'"
+        );
     }
 
     // ---- %e scientific notation ----
@@ -2724,7 +2730,10 @@ mod tests {
         args.push_int(42);
         let result = trio_fmt("%10d\0", &mut args);
         assert_eq!(result.len(), 10, "expected width 10, got '{result}'");
-        assert!(result.ends_with("42"), "expected trailing '42', got '{result}'");
+        assert!(
+            result.ends_with("42"),
+            "expected trailing '42', got '{result}'"
+        );
         assert!(
             result.starts_with(' '),
             "expected leading spaces, got '{result}'"
@@ -2739,7 +2748,10 @@ mod tests {
         args.push_int(42);
         let result = trio_fmt("%-10d\0", &mut args);
         assert_eq!(result.len(), 10, "expected width 10, got '{result}'");
-        assert!(result.starts_with("42"), "expected leading '42', got '{result}'");
+        assert!(
+            result.starts_with("42"),
+            "expected leading '42', got '{result}'"
+        );
         assert!(
             result.ends_with(' '),
             "expected trailing spaces, got '{result}'"
@@ -2906,8 +2918,7 @@ mod tests {
     #[test]
     fn trionan_classify_inf() {
         let mut neg: c_int = 0;
-        let class =
-            crate::trio::trionan::trio_fpclassify_and_signbit(f64::INFINITY, &mut neg);
+        let class = crate::trio::trionan::trio_fpclassify_and_signbit(f64::INFINITY, &mut neg);
         assert_eq!(class, crate::trio::trionan::TRIO_FP_INFINITE);
         assert_eq!(neg, 0);
     }
@@ -2915,8 +2926,7 @@ mod tests {
     #[test]
     fn trionan_classify_neg_inf() {
         let mut neg: c_int = 0;
-        let class =
-            crate::trio::trionan::trio_fpclassify_and_signbit(f64::NEG_INFINITY, &mut neg);
+        let class = crate::trio::trionan::trio_fpclassify_and_signbit(f64::NEG_INFINITY, &mut neg);
         assert_eq!(class, crate::trio::trionan::TRIO_FP_INFINITE);
         assert_eq!(neg, 1);
     }
@@ -3061,8 +3071,11 @@ mod tests {
         let mut args = FormatArgs::new();
         args.push_double(1e10);
         let result = trio_fmt("%g\0", &mut args);
-        assert!(result.contains('e') || result.contains('E'),
-                "expected scientific notation for 1e10, got '{}'", result);
+        assert!(
+            result.contains('e') || result.contains('E'),
+            "expected scientific notation for 1e10, got '{}'",
+            result
+        );
     }
 
     #[test]

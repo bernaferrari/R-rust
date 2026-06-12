@@ -172,9 +172,7 @@ impl Lexer {
             return Token::Newline;
         }
 
-        if (ch == 'r' || ch == 'R')
-            && matches!(self.peek_char_at(1), Some('"') | Some('\''))
-        {
+        if (ch == 'r' || ch == 'R') && matches!(self.peek_char_at(1), Some('"') | Some('\'')) {
             self.advance();
             return self.read_raw_string();
         }
@@ -529,9 +527,7 @@ impl Lexer {
                 break;
             }
         }
-        if (s == "r" || s == "R")
-            && matches!(self.peek_char(), Some('"') | Some('\''))
-        {
+        if (s == "r" || s == "R") && matches!(self.peek_char(), Some('"') | Some('\'')) {
             return self.read_raw_string();
         }
 

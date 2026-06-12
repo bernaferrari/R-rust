@@ -292,13 +292,9 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     mark_reachable(instance.eval_state.profiling.sref);
     mark_reachable(instance.eval_state.profiling.srcfiles_buffer);
     mark_reachable(instance.eval_state.printvector.na_string);
-    mark_reachable(
-        instance.eval_state.printvector.na_string_noquote,
-    );
+    mark_reachable(instance.eval_state.printvector.na_string_noquote);
     mark_reachable(instance.eval_state.print.data.na_string);
-    mark_reachable(
-        instance.eval_state.print.data.na_string_noquote,
-    );
+    mark_reachable(instance.eval_state.print.data.na_string_noquote);
     mark_reachable(instance.eval_state.print.data.env);
     mark_reachable(instance.eval_state.print.data.callArgs);
 
@@ -355,7 +351,6 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     for &obj in &instance.raw_cons {
         mark_reachable(obj);
     }
-
 }
 
 // ---------------------------------------------------------------------------

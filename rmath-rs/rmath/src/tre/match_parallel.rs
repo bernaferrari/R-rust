@@ -120,7 +120,8 @@ pub unsafe fn tre_tnfa_run_parallel(
         let xbytes = std::mem::size_of::<c_int>() * num_tags as usize;
 
         let align_padding = (std::mem::size_of::<usize>() - 1) * 4;
-        let total_bytes = rbytes * 2 + xbytes * (*tnfa).num_states as usize * 2 + tbytes + pbytes + align_padding;
+        let total_bytes =
+            rbytes * 2 + xbytes * (*tnfa).num_states as usize * 2 + tbytes + pbytes + align_padding;
         let buf = mem::xmalloc(total_bytes);
         if buf.is_null() {
             return REG_ESPACE as c_int;

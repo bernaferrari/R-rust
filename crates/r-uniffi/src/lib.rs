@@ -447,133 +447,134 @@ fn spawn_worker(
             let mut session = r_embed::RSession::new().expect("worker session init");
 
             while let Ok(cmd) = cmd_rx.recv() {
-            match cmd {
-                SessionCommand::ConfigurePaths { paths, reply } => {
-                    let embed_paths = r_embed::AndroidRuntimePaths::new(
-                        paths.app_files_dir,
-                        paths.cache_dir,
-                        paths.bundled_library_dir,
-                    );
-                    let result = session
-                        .configure_android_runtime(&embed_paths)
-                        .map_err(|err| RError::InitFailed(err.to_string()));
-                    let _ = reply.send(result);
-                }
-                SessionCommand::RuntimeInfo { reply } => {
-                    let info = session.runtime_info();
-                    let _ = reply.send(Ok(RuntimeInfo {
-                        is_active: info.is_active,
-                        library_paths: info.library_paths,
-                        temp_dir: info.temp_dir,
-                    }));
-                }
-                SessionCommand::ResourceLimits { reply } => {
-                    let _ = reply.send(Ok(session.resource_limits().into()));
-                }
-                SessionCommand::SetResourceLimits { limits, reply } => {
-                    let result = session
-                        .set_resource_limits(limits.into())
-                        .map_err(|err| RError::EvalError(err.to_string()));
-                    let _ = reply.send(result);
-                }
-                SessionCommand::PackageAvailable { package, reply } => {
-                    let _ = reply.send(Ok(session.package_available(&package)));
-                }
-                SessionCommand::PackagePath { package, reply } => {
-                    let _ = reply.send(Ok(session.package_path(&package)));
-                }
-                SessionCommand::PackageInfo { package, reply } => {
-                    let _ = reply.send(Ok(session.package_info(&package).map(PackageInfo::from)));
-                }
-                SessionCommand::InstalledPackages { reply } => {
-                    let packages = session
-                        .installed_packages()
-                        .into_iter()
-                        .map(PackageInfo::from)
-                        .collect();
-                    let _ = reply.send(Ok(packages));
-                }
-                SessionCommand::LoadPackage { package, reply } => {
-                    let result = session
-                        .load_package(&package)
-                        .map_err(|err| RError::EvalError(err.to_string()));
-                    let _ = reply.send(result);
-                }
-                SessionCommand::Eval { code, reply } => {
-                    if let Some(cb) = current_callback(&callback) {
-                        cb.on_progress(ProgressUpdate {
-                            progress: 0.0,
-                            message: "Evaluating...".to_string(),
-                        });
+                match cmd {
+                    SessionCommand::ConfigurePaths { paths, reply } => {
+                        let embed_paths = r_embed::AndroidRuntimePaths::new(
+                            paths.app_files_dir,
+                            paths.cache_dir,
+                            paths.bundled_library_dir,
+                        );
+                        let result = session
+                            .configure_android_runtime(&embed_paths)
+                            .map_err(|err| RError::InitFailed(err.to_string()));
+                        let _ = reply.send(result);
                     }
+                    SessionCommand::RuntimeInfo { reply } => {
+                        let info = session.runtime_info();
+                        let _ = reply.send(Ok(RuntimeInfo {
+                            is_active: info.is_active,
+                            library_paths: info.library_paths,
+                            temp_dir: info.temp_dir,
+                        }));
+                    }
+                    SessionCommand::ResourceLimits { reply } => {
+                        let _ = reply.send(Ok(session.resource_limits().into()));
+                    }
+                    SessionCommand::SetResourceLimits { limits, reply } => {
+                        let result = session
+                            .set_resource_limits(limits.into())
+                            .map_err(|err| RError::EvalError(err.to_string()));
+                        let _ = reply.send(result);
+                    }
+                    SessionCommand::PackageAvailable { package, reply } => {
+                        let _ = reply.send(Ok(session.package_available(&package)));
+                    }
+                    SessionCommand::PackagePath { package, reply } => {
+                        let _ = reply.send(Ok(session.package_path(&package)));
+                    }
+                    SessionCommand::PackageInfo { package, reply } => {
+                        let _ =
+                            reply.send(Ok(session.package_info(&package).map(PackageInfo::from)));
+                    }
+                    SessionCommand::InstalledPackages { reply } => {
+                        let packages = session
+                            .installed_packages()
+                            .into_iter()
+                            .map(PackageInfo::from)
+                            .collect();
+                        let _ = reply.send(Ok(packages));
+                    }
+                    SessionCommand::LoadPackage { package, reply } => {
+                        let result = session
+                            .load_package(&package)
+                            .map_err(|err| RError::EvalError(err.to_string()));
+                        let _ = reply.send(result);
+                    }
+                    SessionCommand::Eval { code, reply } => {
+                        if let Some(cb) = current_callback(&callback) {
+                            cb.on_progress(ProgressUpdate {
+                                progress: 0.0,
+                                message: "Evaluating...".to_string(),
+                            });
+                        }
 
-                    let result = session
-                        .eval_result_cancellable(&code, &cancelled)
-                        .map(|result| EvalResult {
-                            output: result.output,
-                            value: RValue::from(result.value),
-                        })
-                        .map_err(|e| {
-                            if e.to_string().contains("operation cancelled") {
-                                RError::Cancelled
-                            } else {
-                                RError::EvalError(e.to_string())
+                        let result = session
+                            .eval_result_cancellable(&code, &cancelled)
+                            .map(|result| EvalResult {
+                                output: result.output,
+                                value: RValue::from(result.value),
+                            })
+                            .map_err(|e| {
+                                if e.to_string().contains("operation cancelled") {
+                                    RError::Cancelled
+                                } else {
+                                    RError::EvalError(e.to_string())
+                                }
+                            });
+                        cancelled.reset();
+
+                        if let Some(cb) = current_callback(&callback) {
+                            cb.on_progress(ProgressUpdate {
+                                progress: 1.0,
+                                message: "Complete".to_string(),
+                            });
+                            match &result {
+                                Ok(result) => cb.on_eval_complete(result.clone()),
+                                Err(e) => cb.on_error(e.to_string()),
                             }
-                        });
-                    cancelled.reset();
-
-                    if let Some(cb) = current_callback(&callback) {
-                        cb.on_progress(ProgressUpdate {
-                            progress: 1.0,
-                            message: "Complete".to_string(),
-                        });
-                        match &result {
-                            Ok(result) => cb.on_eval_complete(result.clone()),
-                            Err(e) => cb.on_error(e.to_string()),
                         }
+
+                        let _ = reply.send(result);
                     }
-
-                    let _ = reply.send(result);
-                }
-                SessionCommand::Render {
-                    code,
-                    width,
-                    height,
-                    reply,
-                } => {
-                    if let Some(cb) = current_callback(&callback) {
-                        cb.on_progress(ProgressUpdate {
-                            progress: 0.0,
-                            message: "Rendering...".to_string(),
-                        });
-                    }
-
-                    let result = session
-                        .render_with_dimensions(&code, width, height)
-                        .map(|pixels| PlotResult {
-                            width,
-                            height,
-                            pixels,
-                        })
-                        .map_err(|e| RError::RenderError(e.to_string()));
-
-                    if let Some(cb) = current_callback(&callback) {
-                        cb.on_progress(ProgressUpdate {
-                            progress: 1.0,
-                            message: "Complete".to_string(),
-                        });
-                        if let Ok(plot) = &result {
-                            cb.on_plot_ready(plot.clone());
+                    SessionCommand::Render {
+                        code,
+                        width,
+                        height,
+                        reply,
+                    } => {
+                        if let Some(cb) = current_callback(&callback) {
+                            cb.on_progress(ProgressUpdate {
+                                progress: 0.0,
+                                message: "Rendering...".to_string(),
+                            });
                         }
-                    }
 
-                    let _ = reply.send(result);
+                        let result = session
+                            .render_with_dimensions(&code, width, height)
+                            .map(|pixels| PlotResult {
+                                width,
+                                height,
+                                pixels,
+                            })
+                            .map_err(|e| RError::RenderError(e.to_string()));
+
+                        if let Some(cb) = current_callback(&callback) {
+                            cb.on_progress(ProgressUpdate {
+                                progress: 1.0,
+                                message: "Complete".to_string(),
+                            });
+                            if let Ok(plot) = &result {
+                                cb.on_plot_ready(plot.clone());
+                            }
+                        }
+
+                        let _ = reply.send(result);
+                    }
+                    SessionCommand::Shutdown => {
+                        session.close();
+                        break;
+                    }
                 }
-                SessionCommand::Shutdown => {
-                    session.close();
-                    break;
-                }
-            }
             }
         }));
 
@@ -581,11 +582,7 @@ fn spawn_worker(
             let message = payload
                 .downcast_ref::<String>()
                 .map(|s| s.clone())
-                .or_else(|| {
-                    payload
-                        .downcast_ref::<&str>()
-                        .map(|s| (*s).to_string())
-                })
+                .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_string()))
                 .unwrap_or_else(|| "interpreter worker panicked".to_string());
             if let Some(cb) = current_callback(&callback) {
                 cb.on_error(message);

@@ -50,9 +50,9 @@ pub use output::{
     RCapturedOutput, capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture,
 };
 
+pub use instance::SessionCapabilities;
 pub use object::{
     PairlistIter, Sexp, SexpAttribute, SexpComplex, SexpError, SexpMetadata, SexpResult, SexpValue,
     SexpView,
 };
-pub use instance::SessionCapabilities;
 pub use session::{CancellationToken, RSession};

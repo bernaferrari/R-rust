@@ -50,8 +50,7 @@ fn load_system_font() -> Option<TextFont> {
     let cached = CACHED_FONT.get_or_init(|| {
         for path in SYSTEM_FONT_PATHS {
             if let Ok(data) = std::fs::read(path)
-                && let Ok(font) =
-                    fontdue::Font::from_bytes(data, fontdue::FontSettings::default())
+                && let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default())
             {
                 return Some(font);
             }
@@ -150,9 +149,10 @@ fn stroke_to_skia(stroke: &Stroke) -> tiny_skia::Stroke {
             LineJoin::Round => tiny_skia::LineJoin::Round,
             LineJoin::Bevel => tiny_skia::LineJoin::Bevel,
         },
-        dash: stroke.dash_pattern.as_ref().and_then(|dp| {
-            tiny_skia::StrokeDash::new(dp.intervals.clone(), dp.offset)
-        }),
+        dash: stroke
+            .dash_pattern
+            .as_ref()
+            .and_then(|dp| tiny_skia::StrokeDash::new(dp.intervals.clone(), dp.offset)),
     }
 }
 

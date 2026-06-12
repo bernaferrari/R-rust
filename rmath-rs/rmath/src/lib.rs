@@ -203,14 +203,14 @@ pub mod sexp;
 #[cfg(not(target_arch = "wasm32"))]
 pub use sexp::attrib_core;
 
-/// Lightweight state shim for wasm — provides `with_required_current_instance`
-/// backed by a thread_local, so the pure-math crate compiles without the
-/// full sexp/eval/mainutils interpreter modules.
-#[cfg(target_arch = "wasm32")]
-pub mod wasm_shim;
 #[allow(dead_code, non_camel_case_types)]
 pub mod tre;
 pub mod trio;
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod unix;
+/// Lightweight state shim for wasm — provides `with_required_current_instance`
+/// backed by a thread_local, so the pure-math crate compiles without the
+/// full sexp/eval/mainutils interpreter modules.
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_shim;

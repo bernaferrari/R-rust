@@ -1581,15 +1581,15 @@ unsafe fn coerceToSymbol(v: SEXP) -> SEXP {
 /// This matches R's coerceSymbol() from coerce.c.
 unsafe fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
     unsafe {
-        let mut rval = R_NilValue();
         if type_ == SEXPTYPE::EXPRSXP {
-            rval = Rf_allocVector3(type_.0, 1);
+            let rval = Rf_allocVector3(type_.0, 1);
             let _rval_guard = protect(rval);
             SET_VECTOR_ELT(rval, 0, v);
+            rval
         } else if type_ == SEXPTYPE::CHARSXP {
-            rval = PRINTNAME(v);
+            PRINTNAME(v)
         } else if type_ == SEXPTYPE::STRSXP {
-            rval = Rf_ScalarString(PRINTNAME(v));
+            Rf_ScalarString(PRINTNAME(v))
         } else {
             let target_name = CStr::from_ptr(type2char(type_.0)).to_string_lossy();
             error(&format!(
@@ -1597,7 +1597,6 @@ unsafe fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
                 target_name
             ));
         }
-        rval
     }
 }
 

@@ -189,7 +189,10 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
             }
             match primitive_for_symbol(expr) {
                 Some(primitive) => Ok(primitive),
-                None => Err(format!("object '{}' not found", symbol_name_for_error(expr))),
+                None => Err(format!(
+                    "object '{}' not found",
+                    symbol_name_for_error(expr)
+                )),
             }
         }
         EvalKind::Language => eval_lang_safe(expr, env),

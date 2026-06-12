@@ -391,14 +391,9 @@ impl RSession {
             return Ok(renderer.finish());
         }
 
-        // Next-level skia quality for real R graphics: set the local renderer as the
-        // current RenderPlot backend. Real R drawing triggered by the eval will forward
-        // (via DeviceRegistry) to the skia impl. Finish the renderer directly for the PNG.
-        #[cfg(feature = "renderplot-device")]
-        unsafe {
-            rmath::sexp::instance::set_current_renderplot_backend(
-                &mut renderer as *mut _ as *mut dyn r_graphics_engine::DrawTarget,
-            );
+        if let Some(series) = self.simple_plot_series(code)? {
+            draw_series(&mut renderer, width, height, &series);
+            return Ok(renderer.finish());
         }
 
         // Run the graphics-producing code through real R for full fidelity.
@@ -406,23 +401,60 @@ impl RSession {
             r#"
 {{
   old <- tryCatch(grDevices::dev.cur(), error = function(e) 1L)
-  newd <- tryCatch(grDevices::dev.new(noRStudioGD = TRUE), error = function(e) old)
-  {}
-  try({{ if (grDevices::dev.cur() != old) grDevices::dev.off() }}, silent = TRUE)
-  try({{ if (old > 1) grDevices::dev.set(old) }}, silent = TRUE)
+  result <- tryCatch({{
+    newd <- tryCatch(grDevices::dev.new(noRStudioGD = TRUE), error = function(e) old)
+    {}
+    NULL
+  }}, error = function(e) {{
+    e
+  }}, finally = {{
+    try({{ if (grDevices::dev.cur() != old) grDevices::dev.off() }}, silent = TRUE)
+    try({{ if (old > 1) grDevices::dev.set(old) }}, silent = TRUE)
+  }})
+  if (inherits(result, "error")) stop(conditionMessage(result))
   NULL
 }}
 "#,
             code
         );
-        let _ = self.eval(&wrapped);
-
-        #[cfg(feature = "renderplot-device")]
-        unsafe {
-            rmath::sexp::instance::clear_current_renderplot_backend();
+        let result = self.inner.eval_script_with_renderplot_backend(
+            &wrapped,
+            &mut renderer as *mut _ as *mut dyn r_graphics_engine::DrawTarget,
+        );
+        if let RValue::Error(message) = result.typed {
+            return Err(RSessionError::RenderError(message));
         }
 
         Ok(renderer.finish())
+    }
+
+    fn simple_plot_series(&mut self, code: &str) -> Result<Option<PlotSeries>, RSessionError> {
+        let trimmed = code.trim();
+        if !trimmed.starts_with("plot(") || !trimmed.ends_with(')') {
+            return Ok(None);
+        }
+
+        let call = parse_plot_call(trimmed);
+        if call.positional.is_empty() {
+            return Err(RSessionError::RenderError(
+                "plot requires numeric data".to_string(),
+            ));
+        }
+
+        let y_expr = if call.positional.len() >= 2 {
+            call.positional[1]
+        } else {
+            call.positional[0]
+        };
+        let y = numeric_series(self.eval_result(y_expr)?.value)?;
+        let x = if call.positional.len() >= 2 {
+            numeric_series(self.eval_result(call.positional[0])?.value)?
+        } else {
+            (1..=y.len()).map(|value| value as f64).collect()
+        };
+        let options = call.options.with_default_labels(call.positional[0], y_expr);
+
+        Ok(Some(PlotSeries { x, y, options }))
     }
 
     /// Close the session.
@@ -431,73 +463,6 @@ impl RSession {
             self.inner.close();
             self.active = false;
         }
-    }
-}
-
-/// Convert a captured nativeRaster (or integer matrix/vector from GECap/dev.capture)
-/// into a PNG at the exact requested target size (nearest-neighbor scale of the
-/// source device raster). This enables the render() path to deliver full R graphics
-/// fidelity (any plot/grid/ggplot etc. that ran during the eval) at the caller's
-/// requested dimensions.
-fn raster_value_to_png(value: RValue, target_w: u32, target_h: u32) -> Result<Vec<u8>, RSessionError> {
-    let data: Vec<u32> = match value {
-        RValue::Attributed { value, .. } => flatten_to_colors(*value),
-        other => flatten_to_colors(other),
-    };
-
-    if data.is_empty() || target_w == 0 || target_h == 0 {
-        let mut r = AndroidHeadlessRenderer::new(target_w, target_h);
-        r.clear(Color::WHITE);
-        return Ok(r.finish());
-    }
-
-    // Treat captured data as a "source image" (square-ish or row-major from device canvas).
-    // We don't need exact src dims for scaling; we just resample the color stream.
-    let src_len = data.len() as f64;
-    let mut buf = vec![0u8; (target_w as usize * target_h as usize * 4)];
-
-    for ty in 0..target_h as usize {
-        for tx in 0..target_w as usize {
-            // map target pixel to a source index (nearest in the linear/2d sense)
-            let sidx = (((ty as f64 * target_h as f64 + tx as f64) / (target_w as f64 + target_h as f64) * src_len) as usize)
-                .min(data.len() - 1);
-            let c = data[sidx];
-            let r = ((c >> 16) & 0xff) as u8;
-            let g = ((c >> 8) & 0xff) as u8;
-            let b = (c & 0xff) as u8;
-            let a = 0xffu8;
-            let didx = (ty * target_w as usize + tx) * 4;
-            buf[didx] = r;
-            buf[didx + 1] = g;
-            buf[didx + 2] = b;
-            buf[didx + 3] = a;
-        }
-    }
-
-    let mut out = Vec::new();
-    let mut encoder = png::Encoder::new(&mut out, target_w, target_h);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    if let Ok(mut writer) = encoder.write_header() {
-        let _ = writer.write_image_data(&buf);
-    }
-    Ok(out)
-}
-
-fn flatten_to_colors(v: RValue) -> Vec<u32> {
-    match v {
-        RValue::IntegerVector(vals) => vals
-            .into_iter()
-            .filter_map(|o| o.map(|i| i as u32))
-            .collect(),
-        RValue::Attributed { value, .. } => flatten_to_colors(*value),
-        RValue::Integer(Some(i)) => vec![i as u32],
-        RValue::RealVector(vals) => vals
-            .into_iter()
-            .filter_map(|o| o.map(|f| f as u32))
-            .collect(),
-        RValue::Real(Some(f)) => vec![f as u32],
-        _ => vec![0x00ff_ffffu32], // white fallback
     }
 }
 
@@ -779,25 +744,120 @@ fn parse_color(value: &str) -> Option<Color> {
         return parse_hex_color(hex);
     }
     match lower.as_str() {
-        "black" => Some(Color { r: 0, g: 0, b: 0, a: 255 }),
-        "red" => Some(Color { r: 255, g: 0, b: 0, a: 255 }),
-        "green" | "green3" => Some(Color { r: 0, g: 205, b: 0, a: 255 }),
-        "blue" => Some(Color { r: 0, g: 0, b: 255, a: 255 }),
-        "cyan" => Some(Color { r: 0, g: 255, b: 255, a: 255 }),
-        "magenta" => Some(Color { r: 255, g: 0, b: 255, a: 255 }),
-        "yellow" => Some(Color { r: 255, g: 255, b: 0, a: 255 }),
-        "gray" | "grey" => Some(Color { r: 190, g: 190, b: 190, a: 255 }),
-        "white" => Some(Color { r: 255, g: 255, b: 255, a: 255 }),
-        "orange" => Some(Color { r: 255, g: 165, b: 0, a: 255 }),
-        "purple" => Some(Color { r: 160, g: 32, b: 240, a: 255 }),
-        "brown" => Some(Color { r: 165, g: 42, b: 42, a: 255 }),
-        "pink" => Some(Color { r: 255, g: 192, b: 203, a: 255 }),
-        "darkgreen" => Some(Color { r: 0, g: 100, b: 0, a: 255 }),
-        "darkblue" | "navy" => Some(Color { r: 0, g: 0, b: 128, a: 255 }),
-        "darkred" => Some(Color { r: 139, g: 0, b: 0, a: 255 }),
-        "lightblue" => Some(Color { r: 173, g: 216, b: 230, a: 255 }),
-        "lightgreen" => Some(Color { r: 144, g: 238, b: 144, a: 255 }),
-        "gold" => Some(Color { r: 255, g: 215, b: 0, a: 255 }),
+        "black" => Some(Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 255,
+        }),
+        "red" => Some(Color {
+            r: 255,
+            g: 0,
+            b: 0,
+            a: 255,
+        }),
+        "green" | "green3" => Some(Color {
+            r: 0,
+            g: 205,
+            b: 0,
+            a: 255,
+        }),
+        "blue" => Some(Color {
+            r: 0,
+            g: 0,
+            b: 255,
+            a: 255,
+        }),
+        "cyan" => Some(Color {
+            r: 0,
+            g: 255,
+            b: 255,
+            a: 255,
+        }),
+        "magenta" => Some(Color {
+            r: 255,
+            g: 0,
+            b: 255,
+            a: 255,
+        }),
+        "yellow" => Some(Color {
+            r: 255,
+            g: 255,
+            b: 0,
+            a: 255,
+        }),
+        "gray" | "grey" => Some(Color {
+            r: 190,
+            g: 190,
+            b: 190,
+            a: 255,
+        }),
+        "white" => Some(Color {
+            r: 255,
+            g: 255,
+            b: 255,
+            a: 255,
+        }),
+        "orange" => Some(Color {
+            r: 255,
+            g: 165,
+            b: 0,
+            a: 255,
+        }),
+        "purple" => Some(Color {
+            r: 160,
+            g: 32,
+            b: 240,
+            a: 255,
+        }),
+        "brown" => Some(Color {
+            r: 165,
+            g: 42,
+            b: 42,
+            a: 255,
+        }),
+        "pink" => Some(Color {
+            r: 255,
+            g: 192,
+            b: 203,
+            a: 255,
+        }),
+        "darkgreen" => Some(Color {
+            r: 0,
+            g: 100,
+            b: 0,
+            a: 255,
+        }),
+        "darkblue" | "navy" => Some(Color {
+            r: 0,
+            g: 0,
+            b: 128,
+            a: 255,
+        }),
+        "darkred" => Some(Color {
+            r: 139,
+            g: 0,
+            b: 0,
+            a: 255,
+        }),
+        "lightblue" => Some(Color {
+            r: 173,
+            g: 216,
+            b: 230,
+            a: 255,
+        }),
+        "lightgreen" => Some(Color {
+            r: 144,
+            g: 238,
+            b: 144,
+            a: 255,
+        }),
+        "gold" => Some(Color {
+            r: 255,
+            g: 215,
+            b: 0,
+            a: 255,
+        }),
         _ => None,
     }
 }
@@ -2190,6 +2250,16 @@ tiny_generic.tinything <- function(x) {value}L
             .render_with_dimensions("plot(c(1, Inf))", 320, 240)
             .expect_err("non-finite plot should fail");
         assert!(non_finite.to_string().contains("finite"));
+    }
+
+    #[test]
+    fn render_propagates_non_plot_eval_errors() {
+        let mut session = RSession::new().expect("session");
+
+        let err = session
+            .render_with_dimensions("stop(\"render boom\")", 320, 240)
+            .expect_err("render should propagate R errors");
+        assert!(err.to_string().contains("render boom"), "{err}");
     }
 
     #[test]

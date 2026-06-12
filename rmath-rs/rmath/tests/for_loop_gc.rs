@@ -10,9 +10,5 @@ fn for_loop_sum_survives_per_iteration_gc() {
     let script = "s <- 0\nfor (i in 1:5000) s <- s + i\ns";
     let (result, _, _) = session.eval_script_with_output_capture(script);
     let sexp = result.expect("eval should succeed");
-    assert_eq!(
-        real_value(sexp.as_raw()),
-        12_502_500.0,
-        "sum 1..5000"
-    );
+    assert_eq!(real_value(sexp.as_raw()), 12_502_500.0, "sum 1..5000");
 }

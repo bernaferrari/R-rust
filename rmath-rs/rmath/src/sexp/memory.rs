@@ -496,7 +496,9 @@ impl RArena {
 
         let node_ptr = self.allocate_core_in_slab(|| {
             let mut c = SexprecCore::new(SEXPTYPE::CHARSXP);
-            c.data = SexprecData { charsxp_truelen: len };
+            c.data = SexprecData {
+                charsxp_truelen: len,
+            };
             c
         });
 
@@ -625,9 +627,9 @@ impl RArena {
 
     /// Iterate over all arena nodes (across slab pages).
     pub(crate) fn nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
-        self.node_pages.iter().flat_map(|page| {
-            page.iter().map(|n| n as *const _ as SEXP)
-        })
+        self.node_pages
+            .iter()
+            .flat_map(|page| page.iter().map(|n| n as *const _ as SEXP))
     }
 
     /// Iterate over nodes that are currently active, excluding free-list slots.

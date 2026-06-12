@@ -362,9 +362,7 @@ pub unsafe fn R_compileExpr(expr: SEXP, rho: SEXP) -> SEXP {
     if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
         return expr;
     }
-    unsafe {
-        super::bc_compile::compile_expr(expr, rho).unwrap_or(expr)
-    }
+    unsafe { super::bc_compile::compile_expr(expr, rho).unwrap_or(expr) }
 }
 
 // ---------------------------------------------------------------------------
@@ -864,9 +862,7 @@ mod tests {
     #[test]
     fn test_compile_expr_compiles_simple_expressions() {
         let _session = RSession::new();
-        let expr = with_arena(|arena| unsafe {
-            crate::sexp::constructors::Rf_ScalarInteger(7)
-        });
+        let expr = with_arena(|arena| unsafe { crate::sexp::constructors::Rf_ScalarInteger(7) });
         unsafe {
             let compiled = R_compileExpr(expr, R_NilValue());
             assert_eq!(TYPEOF(compiled), SEXPTYPE::BCODESXP);

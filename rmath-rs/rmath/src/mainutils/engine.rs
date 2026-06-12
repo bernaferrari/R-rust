@@ -54,6 +54,34 @@ fn headless_device(dd: *mut c_void) -> device_registry::pGEDevDesc {
 }
 
 #[inline]
+fn r_color_to_native(color: c_int) -> c_int {
+    let alpha = ((color as c_uint) >> 24) & 0xff;
+    if alpha == 0 {
+        return 0x7fff_ffff;
+    }
+    let red = color & 0xff;
+    let green = (color >> 8) & 0xff;
+    let blue = (color >> 16) & 0xff;
+    (red << 16) | (green << 8) | blue
+}
+
+#[inline]
+fn headless_style(gc: *const c_void) -> device_registry::DrawStyle {
+    let Some(gc) = (!gc.is_null()).then_some(ge_context(gc)) else {
+        return device_registry::DrawStyle::default();
+    };
+    unsafe {
+        device_registry::DrawStyle {
+            stroke_color: r_color_to_native((*gc).col),
+            fill_color: r_color_to_native((*gc).fill),
+            text_color: r_color_to_native((*gc).col),
+            stroke_width: (*gc).lwd.max(0.0),
+            font_size: ((*gc).ps * (*gc).cex).max(1.0),
+        }
+    }
+}
+
+#[inline]
 fn ge_set_clip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
     unsafe { rmath_ge_set_clip(x1, y1, x2, y2, ge_dev(dd)) }
 }
@@ -965,7 +993,7 @@ pub unsafe fn GELine(
     if dd.is_null() {
         return;
     }
-    if device_registry::draw_line(headless_device(dd), x1, y1, x2, y2) {
+    if device_registry::draw_line(headless_device(dd), x1, y1, x2, y2, headless_style(gc)) {
         return;
     }
     ge_line(x1, y1, x2, y2, gc, dd);
@@ -994,7 +1022,7 @@ pub unsafe fn GEPolyline(
                 .zip(std::slice::from_raw_parts(y, n as usize).iter().copied())
                 .collect()
         };
-        if device_registry::draw_polyline(headless_device(dd), &points) {
+        if device_registry::draw_polyline(headless_device(dd), &points, headless_style(gc)) {
             return;
         }
     } else if device_registry::is_registered_device(headless_device(dd)) {
@@ -1026,7 +1054,7 @@ pub unsafe fn GEPolygon(
                 .zip(std::slice::from_raw_parts(y, n as usize).iter().copied())
                 .collect()
         };
-        if device_registry::draw_polygon(headless_device(dd), &points) {
+        if device_registry::draw_polygon(headless_device(dd), &points, headless_style(gc)) {
             return;
         }
     } else if device_registry::is_registered_device(headless_device(dd)) {
@@ -1050,7 +1078,7 @@ pub unsafe fn GECircle(
     if dd.is_null() {
         return;
     }
-    if device_registry::draw_circle(headless_device(dd), x, y, radius) {
+    if device_registry::draw_circle(headless_device(dd), x, y, radius, headless_style(gc)) {
         return;
     }
     ge_circle(x, y, radius, gc, dd);
@@ -1072,7 +1100,7 @@ pub unsafe fn GERect(
     if dd.is_null() {
         return;
     }
-    if device_registry::draw_rect(headless_device(dd), x0, y0, x1, y1) {
+    if device_registry::draw_rect(headless_device(dd), x0, y0, x1, y1, headless_style(gc)) {
         return;
     }
     ge_rect(x0, y0, x1, y1, gc, dd);
@@ -1112,7 +1140,7 @@ pub unsafe fn GEPath(
                             )
                             .collect()
                     };
-                    device_registry::draw_polygon(headless_device(dd), &points);
+                    device_registry::draw_polygon(headless_device(dd), &points, headless_style(gc));
                     offset += count as usize;
                 }
             }
@@ -1187,6 +1215,20 @@ pub unsafe fn GEText(
     dd: *mut c_void,
 ) {
     if dd.is_null() {
+        return;
+    }
+    if !str.is_null() {
+        let text = unsafe { CStr::from_ptr(str) }.to_string_lossy();
+        if device_registry::draw_text(
+            headless_device(dd),
+            x,
+            y,
+            &text,
+            headless_style(gc).text_color,
+        ) {
+            return;
+        }
+    } else if device_registry::is_registered_device(headless_device(dd)) {
         return;
     }
     // GEText currently maps x-centering onto device hadj callback input.

@@ -49,9 +49,9 @@ use super::instance::{
 };
 use super::memory::{ArenaBudget, RArena};
 use super::object::Sexp;
-use super::protect::protect_sexp;
 #[cfg(test)]
 use super::protect::protect;
+use super::protect::protect_sexp;
 #[cfg(test)]
 use super::protect::{R_ProtectCount, protect_n};
 
@@ -161,6 +161,32 @@ impl Drop for CurrentInstanceGuard {
     fn drop(&mut self) {
         unsafe {
             replace_current_instance(self.previous);
+        }
+    }
+}
+
+#[cfg(feature = "renderplot-device")]
+struct RenderPlotBackendGuard {
+    instance: *mut RInstance,
+    previous: Option<*mut dyn r_graphics_engine::DrawTarget>,
+}
+
+#[cfg(feature = "renderplot-device")]
+impl RenderPlotBackendGuard {
+    fn install(instance: &mut RInstance, backend: *mut dyn r_graphics_engine::DrawTarget) -> Self {
+        let previous = instance.current_renderplot_backend.replace(backend);
+        Self {
+            instance: instance as *mut RInstance,
+            previous,
+        }
+    }
+}
+
+#[cfg(feature = "renderplot-device")]
+impl Drop for RenderPlotBackendGuard {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.instance).current_renderplot_backend = self.previous;
         }
     }
 }
@@ -481,21 +507,78 @@ impl RSession {
                     }
                 };
                 result = self.eval_sexp(expr);
-                let _expr_guard = result
-                    .as_ref()
-                    .ok()
-                    .map(|value| protect_sexp(*value));
+                let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
-            let _result_guard = result
-                .as_ref()
-                .ok()
-                .map(|value| protect_sexp(*value));
+            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.instance.eval_state.visible != 0;
             let output = self.instance.output_capture.borrow_mut().stop();
             f(result, output, visible)
         })
+    }
+
+    #[cfg(feature = "renderplot-device")]
+    pub(crate) fn eval_script_with_output_capture_then_renderplot<'session, T, F>(
+        &'session mut self,
+        code: &str,
+        backend: *mut dyn r_graphics_engine::DrawTarget,
+        f: F,
+    ) -> T
+    where
+        F: FnOnce(RResult<Sexp<'session>>, super::output::RCapturedOutput, bool) -> T,
+    {
+        if !self.active {
+            return f(
+                Err(REvalError {
+                    message: "session is closed".to_string(),
+                }),
+                super::output::RCapturedOutput::default(),
+                false,
+            );
+        }
+
+        let expressions = {
+            let _guard = self.activate();
+            crate::eval::parser::parse_expressions(code, &mut self.instance.arena)
+        };
+        let expressions = match expressions {
+            Ok(exprs) => exprs,
+            Err(err) => {
+                return f(
+                    Err(REvalError {
+                        message: err.to_string(),
+                    }),
+                    super::output::RCapturedOutput::default(),
+                    false,
+                );
+            }
+        };
+
+        {
+            let _guard = self.activate();
+            let _backend_guard = RenderPlotBackendGuard::install(&mut self.instance, backend);
+            self.instance.output_capture.borrow_mut().start();
+            let mut result: RResult<Sexp<'session>> =
+                Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+            for raw_expr in expressions {
+                let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
+                    Ok(expr) => expr,
+                    Err(err) => {
+                        result = Err(err);
+                        break;
+                    }
+                };
+                result = self.eval_sexp(expr);
+                let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+                crate::sexp::gengc::run_pending_gc_if_quiescent();
+            }
+            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+            crate::sexp::gengc::run_pending_gc_if_quiescent();
+            let visible = self.instance.eval_state.visible != 0;
+            let output = self.instance.output_capture.borrow_mut().stop();
+            f(result, output, visible)
+        }
     }
 
     pub(crate) fn eval_code_with_output_capture_then<'session, T, F>(
@@ -541,10 +624,7 @@ impl RSession {
         self.with_active(|| {
             self.instance.output_capture.borrow_mut().start();
             let result = self.eval_sexp(expr);
-            let _result_guard = result
-                .as_ref()
-                .ok()
-                .map(|value| protect_sexp(*value));
+            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.instance.eval_state.visible != 0;
             let output = self.instance.output_capture.borrow_mut().stop();
@@ -1448,8 +1528,7 @@ mod tests {
                     let mut session = RSession::new();
 
                     let code = format!("{i} + 100");
-                    let (result, _output, _visible) =
-                        session.eval_code_with_output_capture(&code);
+                    let (result, _output, _visible) = session.eval_code_with_output_capture(&code);
                     let result = result.expect("eval should succeed");
                     assert_eq!(
                         result.real_elt(0),

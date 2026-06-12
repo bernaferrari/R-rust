@@ -175,8 +175,8 @@ pub unsafe fn tre_mem_alloc_impl(
 }
 
 /* Simple xmalloc/xrealloc/xfree replacements using std::alloc.
-   Since xfree doesn't receive the allocation size, we prepend a
-   usize header that stores it.  No libc dependency required. */
+Since xfree doesn't receive the allocation size, we prepend a
+usize header that stores it.  No libc dependency required. */
 
 /// Size of the hidden header prepended to each xmalloc allocation.
 const XALLOC_HEADER: usize = std::mem::size_of::<usize>();

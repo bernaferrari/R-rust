@@ -7,15 +7,13 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{
-    BODY, CAR, CDR, LENGTH, PRINTNAME, SET_BODY, TYPEOF,
-};
+use super::bc_eval::opcodes;
+use crate::sexp::accessors::{BODY, CAR, CDR, LENGTH, PRINTNAME, SET_BODY, TYPEOF};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::with_arena_in;
 use crate::sexp::protect::protect;
-use super::bc_eval::opcodes;
 
 struct BytecodeCompiler {
     consts: Vec<SEXP>,
@@ -96,19 +94,24 @@ impl BytecodeCompiler {
             }
 
             if TYPEOF(fun) == SEXPTYPE::SYMSXP {
-                let block = symbol_name_from_sexp(fun);
-                if block.as_deref() == Some("{") {
+                let name = symbol_name_from_sexp(fun);
+                if name.as_deref() == Some("{") {
                     return self.compile_block(expr);
                 }
-                if block.as_deref() == Some("if") {
+                if name.as_deref() == Some("if") {
                     return self.compile_if(expr);
                 }
-                if block.as_deref() == Some("while") {
+                if name.as_deref() == Some("while") {
                     return self.compile_while(expr);
                 }
-                if block.as_deref() == Some("for") {
+                if name.as_deref() == Some("for") {
                     return self.compile_for(expr);
                 }
+                if !name.as_deref().is_some_and(is_eager_builtin_call) {
+                    return false;
+                }
+            } else {
+                return false;
             }
 
             let mut arg_cells = Vec::new();
@@ -218,20 +221,29 @@ impl BytecodeCompiler {
 
     unsafe fn compile_block(&mut self, expr: SEXP) -> bool {
         unsafe {
-            let mut last = None;
+            let mut exprs = Vec::new();
             let mut cur = CDR(expr);
             while !cur.is_null() && cur != R_NilValue() {
-                last = Some(CAR(cur));
+                exprs.push(CAR(cur));
                 cur = CDR(cur);
             }
-            match last {
-                Some(body) => self.compile_expr(body),
-                None => {
-                    let idx = self.add_const(R_NilValue());
-                    self.emit_operand(opcodes::OP_PUSHCONST, idx);
-                    true
+
+            if exprs.is_empty() {
+                let idx = self.add_const(R_NilValue());
+                self.emit_operand(opcodes::OP_PUSHCONST, idx);
+                return true;
+            }
+
+            let last = exprs.len().saturating_sub(1);
+            for (index, body) in exprs.into_iter().enumerate() {
+                if !self.compile_expr(body) {
+                    return false;
+                }
+                if index != last {
+                    self.emit(opcodes::OP_POP);
                 }
             }
+            true
         }
     }
 
@@ -240,7 +252,8 @@ impl BytecodeCompiler {
             self.emit(opcodes::OP_RETURN);
             with_required_current_instance(|inst| unsafe {
                 with_arena_in(inst, |arena| {
-                    let consts = arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
+                    let consts =
+                        arena.alloc_vector(SEXPTYPE::VECSXP, (self.consts.len() + 1) as i64);
                     let consts_data = (*consts).gengc_next_node as *mut SEXP;
                     *consts_data = source_expr;
                     for (index, value) in self.consts.iter().enumerate() {
@@ -267,6 +280,47 @@ impl BytecodeCompiler {
             })
         }
     }
+}
+
+fn is_eager_builtin_call(name: &str) -> bool {
+    matches!(
+        name,
+        "+" | "-"
+            | "*"
+            | "/"
+            | "^"
+            | "%%"
+            | "%/%"
+            | "%in%"
+            | "c"
+            | "list"
+            | "abs"
+            | "sqrt"
+            | "log"
+            | "exp"
+            | "sum"
+            | "prod"
+            | "min"
+            | "max"
+            | "length"
+            | "is.null"
+            | "is.na"
+            | "is.numeric"
+            | "is.integer"
+            | "is.double"
+            | "is.logical"
+            | "is.character"
+            | "as.integer"
+            | "as.numeric"
+            | "as.character"
+            | "as.logical"
+            | "match"
+            | "paste"
+            | "paste0"
+            | "seq"
+            | "seq_len"
+            | "seq_along"
+    )
 }
 
 unsafe fn symbol_name_from_sexp(sym: SEXP) -> Option<String> {
@@ -325,9 +379,9 @@ pub unsafe fn compile_closure(fun: SEXP) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_lang2};
+    use crate::sexp::accessors::INTEGER;
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_cons};
     use crate::sexp::envir::defineVar;
-    use crate::sexp::memory::with_arena;
     use crate::sexp::session::RSession;
     use crate::sexp::symbol::Rf_install;
 
@@ -349,7 +403,7 @@ mod tests {
 
     #[test]
     fn compile_getvar_round_trips_through_bc_eval() {
-        let mut session = RSession::new();
+        let session = RSession::new();
         let env = session.global_env().expect("global env");
 
         unsafe {
@@ -363,7 +417,7 @@ mod tests {
 
     #[test]
     fn compile_simple_call_round_trips_through_bc_eval() {
-        let mut session = RSession::new();
+        let session = RSession::new();
         let env = session.global_env().expect("global env");
 
         unsafe {
@@ -379,6 +433,32 @@ mod tests {
             let bcode = compile_expr(call, env.as_raw()).expect("addition should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(*INTEGER(result), 6);
+        }
+    }
+
+    #[test]
+    fn compile_assignment_block_is_rejected() {
+        let session = RSession::new();
+        let env = session.global_env().expect("global env");
+
+        unsafe {
+            let assign = Rf_cons(
+                Rf_install(c"<-".as_ptr()),
+                Rf_cons(
+                    Rf_install(c"x".as_ptr()),
+                    Rf_cons(Rf_ScalarInteger(1), R_NilValue()),
+                ),
+            );
+            (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+
+            let block = Rf_cons(
+                Rf_install(c"{".as_ptr()),
+                Rf_cons(assign, Rf_cons(Rf_install(c"x".as_ptr()), R_NilValue())),
+            );
+            (*block).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+
+            assert!(compile_expr(assign, env.as_raw()).is_none());
+            assert!(compile_expr(block, env.as_raw()).is_none());
         }
     }
 }

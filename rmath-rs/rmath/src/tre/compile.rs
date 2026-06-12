@@ -1057,10 +1057,9 @@ unsafe fn tre_set_union(
                 if (*new_set.offset(idx)).params.is_null() {
                     (*new_set.offset(idx)).params = params as *mut c_int;
                 } else {
-                    let new_params = mem::tre_mem_alloc(
-                        mem,
-                        std::mem::size_of::<c_int>() * TRE_PARAM_LAST,
-                    ) as *mut c_int;
+                    let new_params =
+                        mem::tre_mem_alloc(mem, std::mem::size_of::<c_int>() * TRE_PARAM_LAST)
+                            as *mut c_int;
                     if new_params.is_null() {
                         return ptr::null_mut();
                     }
@@ -1115,10 +1114,9 @@ unsafe fn tre_set_union(
                 if (*new_set.offset(s1 as isize + idx)).params.is_null() {
                     (*new_set.offset(s1 as isize + idx)).params = params as *mut c_int;
                 } else {
-                    let new_params = mem::tre_mem_alloc(
-                        mem,
-                        std::mem::size_of::<c_int>() * TRE_PARAM_LAST,
-                    ) as *mut c_int;
+                    let new_params =
+                        mem::tre_mem_alloc(mem, std::mem::size_of::<c_int>() * TRE_PARAM_LAST)
+                            as *mut c_int;
                     if new_params.is_null() {
                         return ptr::null_mut();
                     }

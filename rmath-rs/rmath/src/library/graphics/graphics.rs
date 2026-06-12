@@ -405,21 +405,13 @@ unsafe fn x_from_device_units(x: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_
                     0.0
                 } else {
                     let width = x_chars_to_device(1.0, gp, dd);
-                    if width == 0.0 {
-                        0.0
-                    } else {
-                        device / width
-                    }
+                    if width == 0.0 { 0.0 } else { device / width }
                 };
                 if toUnits == CHARS {
                     chars
                 } else {
                     let lheight = if gp.is_null() { 1.0 } else { (*gp).lheight };
-                    if lheight == 0.0 {
-                        0.0
-                    } else {
-                        chars / lheight
-                    }
+                    if lheight == 0.0 { 0.0 } else { chars / lheight }
                 }
             }
             _ => {
@@ -461,21 +453,13 @@ unsafe fn y_from_device_units(y: c_double, toUnits: GUnit, dd: pGEDevDesc) -> c_
                     0.0
                 } else {
                     let height = y_chars_to_device(1.0, gp, dd);
-                    if height == 0.0 {
-                        0.0
-                    } else {
-                        device / height
-                    }
+                    if height == 0.0 { 0.0 } else { device / height }
                 };
                 if toUnits == CHARS {
                     chars
                 } else {
                     let lheight = if gp.is_null() { 1.0 } else { (*gp).lheight };
-                    if lheight == 0.0 {
-                        0.0
-                    } else {
-                        chars / lheight
-                    }
+                    if lheight == 0.0 { 0.0 } else { chars / lheight }
                 }
             }
             _ => {
@@ -896,13 +880,7 @@ pub unsafe fn GPolygon(
         let Some((xs, ys)) = convert_xy_points_to_device(n, x, y, coords, dd) else {
             return;
         };
-        engine::GEPolygon(
-            n,
-            xs.as_ptr(),
-            ys.as_ptr(),
-            std::ptr::null(),
-            dd,
-        );
+        engine::GEPolygon(n, xs.as_ptr(), ys.as_ptr(), std::ptr::null(), dd);
     }
 }
 
@@ -918,13 +896,7 @@ pub unsafe fn GPolyline(
         let Some((xs, ys)) = convert_xy_points_to_device(n, x, y, coords, dd) else {
             return;
         };
-        engine::GEPolyline(
-            n,
-            xs.as_ptr(),
-            ys.as_ptr(),
-            std::ptr::null(),
-            dd,
-        );
+        engine::GEPolyline(n, xs.as_ptr(), ys.as_ptr(), std::ptr::null(), dd);
     }
 }
 
@@ -1265,9 +1237,15 @@ mod tests {
             crate::mainutils::engine::GENewPage(ptr::null(), dd.cast());
             GLine(0.0, 0.0, 10.0, 0.0, DEVICE, dd.cast());
             let result = crate::mainutils::engine::GECap(dd.cast());
-            assert_eq!(crate::sexp::accessors::TYPEOF(result), crate::sexp::ffi::SEXPTYPE::INTSXP);
+            assert_eq!(
+                crate::sexp::accessors::TYPEOF(result),
+                crate::sexp::ffi::SEXPTYPE::INTSXP
+            );
             assert_eq!(*crate::sexp::accessors::INTEGER(result), 0x0000_0000);
-            assert_eq!(*crate::sexp::accessors::INTEGER(result).add(11), 0x00ff_ffff);
+            assert_eq!(
+                *crate::sexp::accessors::INTEGER(result).add(11),
+                0x00ff_ffff
+            );
         }
     }
 

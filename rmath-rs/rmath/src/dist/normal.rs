@@ -604,7 +604,9 @@ mod tests {
     /// pnorm(qnorm(p)) ≈ p  — CDF/quantile round-trip
     #[test]
     fn normal_pq_roundtrip() {
-        let probs = [0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999];
+        let probs = [
+            0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999,
+        ];
         for &p in &probs {
             let q = qnorm5_inner(p, 0.0, 1.0, true, false);
             let p_back = pnorm5_inner(q, 0.0, 1.0, true, false);
@@ -633,7 +635,15 @@ mod tests {
     #[test]
     fn normal_density_non_negative() {
         let xs = [
-            -1e10, -100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0, 1e10,
+            -1e10,
+            -100.0,
+            -10.0,
+            -1.0,
+            0.0,
+            1.0,
+            10.0,
+            100.0,
+            1e10,
             f64::NEG_INFINITY,
             f64::INFINITY,
         ];
@@ -656,10 +666,7 @@ mod tests {
     #[test]
     fn normal_cdf_at_zero() {
         let p = pnorm5_inner(0.0, 0.0, 1.0, true, false);
-        assert!(
-            approx_eq(p, 0.5, TOL),
-            "pnorm(0) should be 0.5, got {p}"
-        );
+        assert!(approx_eq(p, 0.5, TOL), "pnorm(0) should be 0.5, got {p}");
     }
 
     /// dnorm(x, mu, sigma) with negative sigma returns NaN
@@ -708,10 +715,7 @@ mod tests {
         for &p in &probs {
             let q = qexp_inner(p, 1.0, true, false);
             let p_back = pexp_inner(q, 1.0, true, false);
-            assert!(
-                approx_eq(p, p_back, TOL),
-                "pexp(qexp({p})) = {p_back}"
-            );
+            assert!(approx_eq(p, p_back, TOL), "pexp(qexp({p})) = {p_back}");
         }
     }
 
@@ -745,10 +749,7 @@ mod tests {
         for &p in &probs {
             let q = qunif_inner(p, 0.0, 1.0, true, false);
             let p_back = punif_inner(q, 0.0, 1.0, true, false);
-            assert!(
-                approx_eq(p, p_back, TOL),
-                "punif(qunif({p})) = {p_back}"
-            );
+            assert!(approx_eq(p, p_back, TOL), "punif(qunif({p})) = {p_back}");
         }
     }
 
@@ -897,9 +898,7 @@ mod tests {
         for &lam in &lambdas {
             let upper = (lam + 10.0 * libm::sqrt(lam)).ceil() as usize;
             let upper = upper.max(50);
-            let sum: f64 = (0..=upper)
-                .map(|k| dpois_inner(k as f64, lam, false))
-                .sum();
+            let sum: f64 = (0..=upper).map(|k| dpois_inner(k as f64, lam, false)).sum();
             assert!(
                 approx_eq(sum, 1.0, 1e-6),
                 "sum(dpois(0..{upper}, {lam})) = {sum}"
@@ -983,10 +982,7 @@ mod tests {
         for &p in &probs {
             let q = qlnorm_inner(p, 0.0, 1.0, true, false);
             let p_back = plnorm_inner(q, 0.0, 1.0, true, false);
-            assert!(
-                approx_eq(p, p_back, 1e-8),
-                "plnorm(qlnorm({p})) = {p_back}"
-            );
+            assert!(approx_eq(p, p_back, 1e-8), "plnorm(qlnorm({p})) = {p_back}");
         }
     }
 

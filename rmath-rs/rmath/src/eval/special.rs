@@ -435,9 +435,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                         t if t == SEXPTYPE::INTSXP => {
                             Rf_ScalarInteger(INTEGER_ELT(seq_val, idx as i32))
                         }
-                        t if t == SEXPTYPE::REALSXP => {
-                            Rf_ScalarReal(REAL_ELT(seq_val, idx as i32))
-                        }
+                        t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(seq_val, idx as i32)),
                         t if t == SEXPTYPE::CPLXSXP => {
                             Rf_ScalarComplex(COMPLEX_ELT(seq_val, idx as i32))
                         }

@@ -14,11 +14,11 @@ use crate::error::*;
 use crate::rng::*;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
-#[cfg(target_arch = "wasm32")]
-use crate::wasm_shim::with_required_current_instance;
 use crate::special::bd0::bd0;
 use crate::special::stirlerr::stirlerr;
 use crate::utils::*;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use libm::*;
 
 const DBL_EPSILON: f64 = 2.220446049250313e-16;

@@ -541,20 +541,20 @@ mod tests {
     /// Caller must call `tre_regfree` when done.
     unsafe fn compile(pattern: &str, cflags: c_int) -> (regex_t, c_int) {
         let cstr = CString::new(pattern).unwrap();
-        let mut preg = MaybeUninit::<regex_t>::zeroed().assume_init();
-        let rc = tre_regcomp(&mut preg, cstr.as_ptr(), cflags);
+        let mut preg = unsafe { MaybeUninit::<regex_t>::zeroed().assume_init() };
+        let rc = unsafe { tre_regcomp(&mut preg, cstr.as_ptr(), cflags) };
         (preg, rc)
     }
 
     /// Helper: compile + exec, returning (status, first match offsets).
     unsafe fn match_first(pattern: &str, input: &str, cflags: c_int) -> (c_int, regmatch_t) {
-        let (mut preg, rc) = compile(pattern, cflags);
+        let (mut preg, rc) = unsafe { compile(pattern, cflags) };
         assert_eq!(rc, REG_OK, "regcomp failed for pattern '{pattern}'");
 
         let input_cstr = CString::new(input).unwrap();
         let mut pmatch = [regmatch_t::default(); 1];
-        let status = tre_regexec(&preg, input_cstr.as_ptr(), 1, pmatch.as_mut_ptr(), 0);
-        tre_regfree(&mut preg);
+        let status = unsafe { tre_regexec(&preg, input_cstr.as_ptr(), 1, pmatch.as_mut_ptr(), 0) };
+        unsafe { tre_regfree(&mut preg) };
         (status, pmatch[0])
     }
 
@@ -706,12 +706,7 @@ mod tests {
     fn regerror_returns_message() {
         unsafe {
             let mut buf = [0i8; 64];
-            let len = tre_regerror(
-                REG_NOMATCH,
-                std::ptr::null(),
-                buf.as_mut_ptr(),
-                buf.len(),
-            );
+            let len = tre_regerror(REG_NOMATCH, std::ptr::null(), buf.as_mut_ptr(), buf.len());
             assert!(len > 0);
             let msg = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap();
             assert_eq!(msg, "No match");
@@ -781,8 +776,17 @@ mod tests {
             assert_eq!(rc, REG_OK);
             let input = CString::new("say hello world").unwrap();
             let mut pmatch = [regmatch_t::default(); 1];
-            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
-            eprintln!("backtrack status={status} rm_so={} rm_eo={}", pmatch[0].rm_so, pmatch[0].rm_eo);
+            let status = tre_regexec(
+                &preg,
+                input.as_ptr(),
+                1,
+                pmatch.as_mut_ptr(),
+                REG_BACKTRACKING_MATCHER,
+            );
+            eprintln!(
+                "backtrack status={status} rm_so={} rm_eo={}",
+                pmatch[0].rm_so, pmatch[0].rm_eo
+            );
             tre_regfree(&mut preg);
             assert_eq!(status, REG_OK);
         }
@@ -945,8 +949,7 @@ mod tests {
 
     fn case_insensitive_flag() {
         unsafe {
-            let (status, m) =
-                match_first("hello", "say HELLO world", REG_EXTENDED | REG_ICASE);
+            let (status, m) = match_first("hello", "say HELLO world", REG_EXTENDED | REG_ICASE);
             assert_eq!(status, REG_OK);
             assert_eq!(m.rm_so, 4);
             assert_eq!(m.rm_eo, 9);
@@ -1067,7 +1070,13 @@ mod tests {
             assert_eq!(rc, REG_OK);
             let input = CString::new("the dog ran").unwrap();
             let mut pmatch = [regmatch_t::default(); 1];
-            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
+            let status = tre_regexec(
+                &preg,
+                input.as_ptr(),
+                1,
+                pmatch.as_mut_ptr(),
+                REG_BACKTRACKING_MATCHER,
+            );
             assert_eq!(status, REG_OK);
             assert_eq!(pmatch[0].rm_so, 4);
             assert_eq!(pmatch[0].rm_eo, 7);
@@ -1083,7 +1092,13 @@ mod tests {
             assert_eq!(rc, REG_OK);
             let input = CString::new("xaaab").unwrap();
             let mut pmatch = [regmatch_t::default(); 1];
-            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
+            let status = tre_regexec(
+                &preg,
+                input.as_ptr(),
+                1,
+                pmatch.as_mut_ptr(),
+                REG_BACKTRACKING_MATCHER,
+            );
             assert_eq!(status, REG_OK);
             assert_eq!(pmatch[0].rm_so, 1);
             assert_eq!(pmatch[0].rm_eo, 5);
@@ -1098,7 +1113,13 @@ mod tests {
             assert_eq!(rc, REG_OK);
             let input = CString::new("abc").unwrap();
             let mut pmatch = [regmatch_t::default(); 1];
-            let status = tre_regexec(&preg, input.as_ptr(), 1, pmatch.as_mut_ptr(), REG_BACKTRACKING_MATCHER);
+            let status = tre_regexec(
+                &preg,
+                input.as_ptr(),
+                1,
+                pmatch.as_mut_ptr(),
+                REG_BACKTRACKING_MATCHER,
+            );
             assert_eq!(status, REG_NOMATCH);
             tre_regfree(&mut preg);
         }

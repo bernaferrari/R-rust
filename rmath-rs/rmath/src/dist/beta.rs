@@ -13,9 +13,9 @@ use crate::error::*;
 use crate::rng::*;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
+use crate::utils::*;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm_shim::with_required_current_instance;
-use crate::utils::*;
 use libm::*;
 
 // Constants

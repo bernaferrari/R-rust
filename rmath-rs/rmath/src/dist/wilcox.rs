@@ -9,10 +9,10 @@ use crate::error::*;
 use crate::rng::*;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
-#[cfg(target_arch = "wasm32")]
-use crate::wasm_shim::with_required_current_instance;
 use crate::special::gamma::lgammafn;
 use crate::utils::*;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use libm::*;
 use std::collections::HashMap;
 use std::os::raw::{c_double, c_int};

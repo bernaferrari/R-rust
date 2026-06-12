@@ -18,12 +18,12 @@ use crate::error::*;
 use crate::rng::*;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::sexp::instance::with_required_current_instance;
-#[cfg(target_arch = "wasm32")]
-use crate::wasm_shim::with_required_current_instance;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::{lgammafn, lgammafn1p, log1pmx};
 use crate::special::stirlerr::stirlerr;
 use crate::utils::*;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm_shim::with_required_current_instance;
 use libm::*;
 
 // Constants

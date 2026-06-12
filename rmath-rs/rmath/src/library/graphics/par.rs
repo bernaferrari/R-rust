@@ -25,7 +25,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::c_void;
-use std::os::raw::{c_char, c_double, c_int, c_uint, c_uchar, c_ushort};
+use std::os::raw::{c_char, c_double, c_int, c_uchar, c_uint, c_ushort};
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -200,17 +200,14 @@ fn with_device_gpar_entry<T>(
         return None;
     }
     Some(with_par_state(|state| {
-        let entry = state
-            .device_gpars
-            .entry(device_key(dd))
-            .or_insert_with(|| {
-                let gp = default_gpar();
-                DeviceGParEntry {
-                    dp: gp,
-                    dp_saved: gp,
-                    gp,
-                }
-            });
+        let entry = state.device_gpars.entry(device_key(dd)).or_insert_with(|| {
+            let gp = default_gpar();
+            DeviceGParEntry {
+                dp: gp,
+                dp_saved: gp,
+                gp,
+            }
+        });
         f(entry)
     }))
 }

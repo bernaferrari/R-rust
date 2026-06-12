@@ -23,6 +23,27 @@ const TRANSPARENT_NATIVE: c_int = 0x7fff_ffff;
 const OPAQUE_WHITE_NATIVE: c_int = 0x00ff_ffff;
 const OPAQUE_BLACK_NATIVE: c_int = 0x0000_0000;
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct DrawStyle {
+    pub stroke_color: c_int,
+    pub fill_color: c_int,
+    pub text_color: c_int,
+    pub stroke_width: c_double,
+    pub font_size: c_double,
+}
+
+impl Default for DrawStyle {
+    fn default() -> Self {
+        Self {
+            stroke_color: OPAQUE_BLACK_NATIVE,
+            fill_color: OPAQUE_BLACK_NATIVE,
+            text_color: OPAQUE_BLACK_NATIVE,
+            stroke_width: 1.0,
+            font_size: 12.0,
+        }
+    }
+}
+
 /// Minimal graphics device descriptor used by the headless Rust registry.
 ///
 /// The layout is intentionally small but stable enough for the local grDevices
@@ -320,6 +341,29 @@ fn native_color_from_u32(color: c_uint) -> c_int {
     }
 }
 
+#[cfg(feature = "renderplot-device")]
+fn transparent_color() -> Color {
+    Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    }
+}
+
+#[cfg(feature = "renderplot-device")]
+fn render_color_from_native(color: c_int) -> Color {
+    if color == TRANSPARENT_NATIVE {
+        return transparent_color();
+    }
+    Color {
+        r: ((color >> 16) & 0xff) as u8,
+        g: ((color >> 8) & 0xff) as u8,
+        b: (color & 0xff) as u8,
+        a: 255,
+    }
+}
+
 fn set_pixel(device: &mut GEDeviceDesc, x: c_int, y: c_int, color: c_int) {
     if color == TRANSPARENT_NATIVE
         || x < 0
@@ -537,6 +581,7 @@ pub(crate) fn draw_line(
     y0: c_double,
     x1: c_double,
     y1: c_double,
+    style: DrawStyle,
 ) -> bool {
     let res = with_device_mut(gdd, |device| {
         let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
@@ -547,7 +592,7 @@ pub(crate) fn draw_line(
         ) else {
             return true;
         };
-        draw_line_pixels(device, x0, y0, x1, y1, OPAQUE_BLACK_NATIVE);
+        draw_line_pixels(device, x0, y0, x1, y1, style.stroke_color);
         true
     })
     .unwrap_or(false);
@@ -562,8 +607,11 @@ pub(crate) fn draw_line(
                             PathCommand::MoveTo(x0 as f32, y0 as f32),
                             PathCommand::LineTo(x1 as f32, y1 as f32),
                         ],
-                        fill: Color { r: 0, g: 0, b: 0, a: 0 },
-                        stroke: Stroke::new(1.0, Color::BLACK),
+                        fill: transparent_color(),
+                        stroke: Stroke::new(
+                            style.stroke_width.max(0.0) as f32,
+                            render_color_from_native(style.stroke_color),
+                        ),
                         anti_alias: true,
                     };
                     r.draw_path(&path);
@@ -575,7 +623,11 @@ pub(crate) fn draw_line(
     res
 }
 
-pub(crate) fn draw_polyline(gdd: pGEDevDesc, points: &[(c_double, c_double)]) -> bool {
+pub(crate) fn draw_polyline(
+    gdd: pGEDevDesc,
+    points: &[(c_double, c_double)],
+    style: DrawStyle,
+) -> bool {
     let res = with_device_mut(gdd, |device| {
         for pair in points.windows(2) {
             let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
@@ -586,7 +638,7 @@ pub(crate) fn draw_polyline(gdd: pGEDevDesc, points: &[(c_double, c_double)]) ->
             ) else {
                 continue;
             };
-            draw_line_pixels(device, x0, y0, x1, y1, OPAQUE_BLACK_NATIVE);
+            draw_line_pixels(device, x0, y0, x1, y1, style.stroke_color);
         }
         true
     })
@@ -598,11 +650,20 @@ pub(crate) fn draw_polyline(gdd: pGEDevDesc, points: &[(c_double, c_double)]) ->
             if let Some(p) = inst.current_renderplot_backend {
                 if let Some(r) = unsafe { p.as_mut() } {
                     if points.len() >= 2 {
-                        let mut cmds = vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
+                        let mut cmds =
+                            vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
                         for p in &points[1..] {
                             cmds.push(PathCommand::LineTo(p.0 as f32, p.1 as f32));
                         }
-                        let path = Path { commands: cmds, fill: Color { r: 0, g: 0, b: 0, a: 0 }, stroke: Stroke::new(1.0, Color::BLACK), anti_alias: true };
+                        let path = Path {
+                            commands: cmds,
+                            fill: transparent_color(),
+                            stroke: Stroke::new(
+                                style.stroke_width.max(0.0) as f32,
+                                render_color_from_native(style.stroke_color),
+                            ),
+                            anti_alias: true,
+                        };
                         r.draw_path(&path);
                     }
                 }
@@ -612,17 +673,21 @@ pub(crate) fn draw_polyline(gdd: pGEDevDesc, points: &[(c_double, c_double)]) ->
     res
 }
 
-pub(crate) fn draw_polygon(gdd: pGEDevDesc, points: &[(c_double, c_double)]) -> bool {
+pub(crate) fn draw_polygon(
+    gdd: pGEDevDesc,
+    points: &[(c_double, c_double)],
+    style: DrawStyle,
+) -> bool {
     let res = with_device_mut(gdd, |device| {
         let points: Vec<_> = points
             .iter()
             .filter_map(|(x, y)| Some((round_pixel(*x)?, round_pixel(*y)?)))
             .collect();
-        fill_polygon_pixels(device, &points, OPAQUE_BLACK_NATIVE);
+        fill_polygon_pixels(device, &points, style.fill_color);
         for idx in 0..points.len() {
             let (x0, y0) = points[idx];
             let (x1, y1) = points[(idx + 1) % points.len()];
-            draw_line_pixels(device, x0, y0, x1, y1, OPAQUE_BLACK_NATIVE);
+            draw_line_pixels(device, x0, y0, x1, y1, style.stroke_color);
         }
         true
     })
@@ -634,9 +699,25 @@ pub(crate) fn draw_polygon(gdd: pGEDevDesc, points: &[(c_double, c_double)]) -> 
             if let Some(p) = inst.current_renderplot_backend {
                 if let Some(r) = unsafe { p.as_mut() } {
                     if points.len() >= 2 {
-                        let mut cmds: Vec<_> = points.iter().map(|p| PathCommand::MoveTo(p.0 as f32, p.1 as f32)).collect();
-                        if !cmds.is_empty() { cmds.push(PathCommand::Close); }
-                        let path = Path { commands: cmds, fill: Color::BLACK, stroke: Stroke::new(1.0, Color::BLACK), anti_alias: true };
+                        let mut cmds =
+                            vec![PathCommand::MoveTo(points[0].0 as f32, points[0].1 as f32)];
+                        cmds.extend(
+                            points[1..]
+                                .iter()
+                                .map(|p| PathCommand::LineTo(p.0 as f32, p.1 as f32)),
+                        );
+                        if !cmds.is_empty() {
+                            cmds.push(PathCommand::Close);
+                        }
+                        let path = Path {
+                            commands: cmds,
+                            fill: render_color_from_native(style.fill_color),
+                            stroke: Stroke::new(
+                                style.stroke_width.max(0.0) as f32,
+                                render_color_from_native(style.stroke_color),
+                            ),
+                            anti_alias: true,
+                        };
                         r.draw_path(&path);
                     }
                 }
@@ -652,6 +733,7 @@ pub(crate) fn draw_rect(
     y0: c_double,
     x1: c_double,
     y1: c_double,
+    style: DrawStyle,
 ) -> bool {
     let res = with_device_mut(gdd, |device| {
         let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
@@ -662,7 +744,11 @@ pub(crate) fn draw_rect(
         ) else {
             return true;
         };
-        fill_rect_pixels(device, x0, y0, x1, y1, OPAQUE_BLACK_NATIVE);
+        fill_rect_pixels(device, x0, y0, x1, y1, style.fill_color);
+        draw_line_pixels(device, x0, y0, x1, y0, style.stroke_color);
+        draw_line_pixels(device, x1, y0, x1, y1, style.stroke_color);
+        draw_line_pixels(device, x1, y1, x0, y1, style.stroke_color);
+        draw_line_pixels(device, x0, y1, x0, y0, style.stroke_color);
         true
     })
     .unwrap_or(false);
@@ -672,7 +758,12 @@ pub(crate) fn draw_rect(
         with_required_current_instance(|inst| {
             if let Some(p) = inst.current_renderplot_backend {
                 if let Some(r) = unsafe { p.as_mut() } {
-                    let path = Path::rect(x0 as f32, y0 as f32, (x1-x0) as f32, (y1-y0) as f32);
+                    let path = Path::rect(x0 as f32, y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32)
+                        .with_fill(render_color_from_native(style.fill_color))
+                        .with_stroke(Stroke::new(
+                            style.stroke_width.max(0.0) as f32,
+                            render_color_from_native(style.stroke_color),
+                        ));
                     r.draw_path(&path);
                 }
             }
@@ -681,7 +772,13 @@ pub(crate) fn draw_rect(
     res
 }
 
-pub(crate) fn draw_circle(gdd: pGEDevDesc, x: c_double, y: c_double, radius: c_double) -> bool {
+pub(crate) fn draw_circle(
+    gdd: pGEDevDesc,
+    x: c_double,
+    y: c_double,
+    radius: c_double,
+    style: DrawStyle,
+) -> bool {
     let res = with_device_mut(gdd, |device| {
         let (Some(cx), Some(cy)) = (round_pixel(x), round_pixel(y)) else {
             return true;
@@ -696,7 +793,7 @@ pub(crate) fn draw_circle(gdd: pGEDevDesc, x: c_double, y: c_double, radius: c_d
                 let dx = px - cx;
                 let dy = py - cy;
                 if dx * dx + dy * dy <= r2 {
-                    set_pixel(device, px, py, OPAQUE_BLACK_NATIVE);
+                    set_pixel(device, px, py, style.fill_color);
                 }
             }
         }
@@ -710,7 +807,12 @@ pub(crate) fn draw_circle(gdd: pGEDevDesc, x: c_double, y: c_double, radius: c_d
             if let Some(p) = inst.current_renderplot_backend {
                 if let Some(r) = unsafe { p.as_mut() } {
                     let rr = radius as f32;
-                    let path = Path::circle(x as f32, y as f32, rr);
+                    let path = Path::circle(x as f32, y as f32, rr)
+                        .with_fill(render_color_from_native(style.fill_color))
+                        .with_stroke(Stroke::new(
+                            style.stroke_width.max(0.0) as f32,
+                            render_color_from_native(style.stroke_color),
+                        ));
                     r.draw_path(&path);
                 }
             }
@@ -750,7 +852,14 @@ pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, c
                     draw_line_pixels(device, cx + 1, base_y - glyph_h, cx + 1, base_y, col);
                 }
                 '-' | '_' | '=' => {
-                    draw_line_pixels(device, cx, base_y - glyph_h / 2, cx + glyph_w, base_y - glyph_h / 2, col);
+                    draw_line_pixels(
+                        device,
+                        cx,
+                        base_y - glyph_h / 2,
+                        cx + glyph_w,
+                        base_y - glyph_h / 2,
+                        col,
+                    );
                 }
                 _ => {}
             }
@@ -768,10 +877,17 @@ pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, c
                     // forward to the high-quality renderer (fontdue text etc.)
                     let params = PlotParameters {
                         font_size: 12.0,
-                        text_color: Color::BLACK,
+                        text_color: render_color_from_native(col),
                         ..Default::default()
                     };
-                    r.draw_text(text, Point { x: x as f32, y: y as f32 }, &params);
+                    r.draw_text(
+                        text,
+                        Point {
+                            x: x as f32,
+                            y: y as f32,
+                        },
+                        &params,
+                    );
                 }
             }
         });
@@ -901,6 +1017,27 @@ mod tests {
     use crate::sexp::session::RSession;
     use std::sync::{Mutex, MutexGuard};
 
+    #[cfg(feature = "renderplot-device")]
+    #[derive(Default)]
+    struct RecordingTarget {
+        paths: Vec<Path>,
+        texts: Vec<(String, Point, PlotParameters)>,
+    }
+
+    #[cfg(feature = "renderplot-device")]
+    impl r_graphics_engine::DrawTarget for RecordingTarget {
+        fn clear(&mut self, _background: Color) {}
+
+        fn draw_path(&mut self, path: &Path) {
+            self.paths.push(path.clone());
+        }
+
+        fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters) {
+            self.texts
+                .push((text.to_string(), position, params.clone()));
+        }
+    }
+
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     struct DeviceRegistryTestGuard {
@@ -1028,5 +1165,57 @@ mod tests {
             assert_eq!(NumDevices(), 3);
             assert_eq!(curDevice(), 2);
         });
+    }
+
+    #[cfg(feature = "renderplot-device")]
+    #[test]
+    fn renderplot_backend_receives_styled_connected_polygon() {
+        let _guard = reset_registry();
+        with_registry(|registry| {
+            assert_eq!(registry.open_new_device(), 2);
+        });
+
+        let mut target = RecordingTarget::default();
+        let target_ptr = &mut target as *mut _ as *mut dyn r_graphics_engine::DrawTarget;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.current_renderplot_backend = Some(target_ptr);
+        });
+
+        let style = DrawStyle {
+            stroke_color: 0x0000_cd00,
+            fill_color: 0x00ff_0000,
+            text_color: 0,
+            stroke_width: 3.0,
+            font_size: 12.0,
+        };
+        let points = [(1.0, 2.0), (5.0, 2.0), (3.0, 6.0)];
+        assert!(draw_polygon(unsafe { GEcurrentDevice() }, &points, style));
+
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.current_renderplot_backend = None;
+        });
+
+        assert_eq!(target.paths.len(), 1);
+        let path = &target.paths[0];
+        assert_eq!(
+            path.commands,
+            vec![
+                PathCommand::MoveTo(1.0, 2.0),
+                PathCommand::LineTo(5.0, 2.0),
+                PathCommand::LineTo(3.0, 6.0),
+                PathCommand::Close,
+            ]
+        );
+        assert_eq!(path.fill, Color::RED);
+        assert_eq!(
+            path.stroke.color,
+            Color {
+                r: 0,
+                g: 205,
+                b: 0,
+                a: 255,
+            }
+        );
+        assert_eq!(path.stroke.width, 3.0);
     }
 }

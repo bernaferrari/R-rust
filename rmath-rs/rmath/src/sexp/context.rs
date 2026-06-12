@@ -410,9 +410,11 @@ pub enum LoopAction {
 pub unsafe fn run_hoisted_loop<F>(driver: F)
 where
     F: FnMut(),
-{ unsafe {
-    run_hoisted_loop_with_continue(driver, || ());
-}}
+{
+    unsafe {
+        run_hoisted_loop_with_continue(driver, || ());
+    }
+}
 
 /// Like [`run_hoisted_loop`], but runs `on_continue` before re-entering the
 /// driver after a `next` signal. `for` loops use this to advance the index

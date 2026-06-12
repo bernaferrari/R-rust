@@ -10,9 +10,8 @@ use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
     ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL,
-    PRINTNAME, RAW, REAL, REAL_ELT, SETCAR, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT, SETCDR,
-    SETTAG,
-    STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_STRING_ELT, SET_VECTOR_ELT,
+    SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -77,6 +76,16 @@ unsafe fn set_datetime_class_from(result: SEXP, source: SEXP, class: DatetimeVec
             DatetimeVectorClass::Posixct => {
                 set_posixct_class(result, &posixct_tzone_string(source))
             }
+        }
+    }
+}
+
+unsafe fn integer_or_logical_elt(value: SEXP, index: c_int) -> c_int {
+    unsafe {
+        match TYPEOF(value) {
+            t if t == SEXPTYPE::INTSXP => INTEGER_ELT(value, index),
+            t if t == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, index),
+            _ => NA_INTEGER,
         }
     }
 }
@@ -462,7 +471,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         let val = if t == SEXPTYPE::REALSXP {
                             REAL_ELT(arg, i as c_int)
                         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                            let v = INTEGER_ELT(arg, i as c_int);
+                            let v = integer_or_logical_elt(arg, i as c_int);
                             if v == NA_INTEGER { NA_REAL } else { v as f64 }
                         } else {
                             NA_REAL
@@ -473,7 +482,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let dst = INTEGER(result);
                     for i in 0..n {
                         let val = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                            INTEGER_ELT(arg, i as c_int)
+                            integer_or_logical_elt(arg, i as c_int)
                         } else {
                             NA_INTEGER
                         };
@@ -483,7 +492,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let dst = LOGICAL(result);
                     for i in 0..n {
                         let val = if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
-                            *INTEGER(arg).add(i as usize)
+                            integer_or_logical_elt(arg, i as c_int)
                         } else {
                             NA_INTEGER
                         };
@@ -500,7 +509,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                                 i: 0.0,
                             }
                         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                            let v = INTEGER_ELT(arg, i as c_int);
+                            let v = integer_or_logical_elt(arg, i as c_int);
                             if v == NA_INTEGER {
                                 Rcomplex { r: NA_REAL, i: 0.0 }
                             } else {
@@ -6964,13 +6973,19 @@ unsafe fn load_rds_file(path: &Path) -> Result<SEXP, String> {
             .map_err(|err| format!("cannot read RDS file '{}': {err}", path.display()))?;
         let raw_vec = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
         if raw_vec.is_null() {
-            return Err(format!("allocation failed while reading '{}'", path.display()));
+            return Err(format!(
+                "allocation failed while reading '{}'",
+                path.display()
+            ));
         }
         let _raw_guard = protect(raw_vec);
         if !bytes.is_empty() {
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw_vec), bytes.len());
         }
-        Ok(crate::mainutils::serialize::R_unserialize(raw_vec, R_NilValue()))
+        Ok(crate::mainutils::serialize::R_unserialize(
+            raw_vec,
+            R_NilValue(),
+        ))
     }
 }
 
@@ -7005,9 +7020,9 @@ unsafe fn eager_lazy_load_package_db(
     filebase: &Path,
     envir: SEXP,
     skip: &[&str],
-) -> Result<(), String> { unsafe {
-    lazy_lazy_load_package_db(filebase, envir, skip)
-}}
+) -> Result<(), String> {
+    unsafe { lazy_lazy_load_package_db(filebase, envir, skip) }
+}
 
 unsafe fn lazy_lazy_load_package_db(
     filebase: &Path,
@@ -7051,20 +7066,20 @@ unsafe fn lazy_lazy_load_package_db(
         }
         let _datafile_guard = protect(datafile);
 
-        let names =
-            crate::sexp::attrib_core::getAttrib(variables, crate::sexp::attrib_core::R_NamesSymbol());
+        let names = crate::sexp::attrib_core::getAttrib(
+            variables,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
 
         let mut lazy_names = Vec::new();
         let mut lazy_keys = Vec::new();
         for index in 0..XLENGTH(variables) {
-            let name = if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-            {
-                string_at_or_empty(names, index)
-            } else {
-                String::new()
-            };
+            let name =
+                if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                    string_at_or_empty(names, index)
+                } else {
+                    String::new()
+                };
             if name.is_empty() || skip.iter().any(|candidate| *candidate == name) {
                 continue;
             }
@@ -12271,7 +12286,7 @@ unsafe fn logical_arg_value(x: SEXP, index: R_xlen_t) -> Option<c_int> {
     unsafe {
         match TYPEOF(x) {
             t if t == SEXPTYPE::LGLSXP.as_c_int() || t == SEXPTYPE::INTSXP.as_c_int() => {
-                Some(*INTEGER(x).add(index as usize))
+                Some(integer_or_logical_elt(x, index as c_int))
             }
             t if t == SEXPTYPE::REALSXP.as_c_int() => {
                 let value = *REAL(x).add(index as usize);
@@ -15621,7 +15636,11 @@ fn print_data_frame_show_row_names(args: SEXP) -> bool {
     }
 }
 
-fn print_data_frame_column_texts(x: SEXP, ncol: R_xlen_t, nrow: R_xlen_t) -> (Vec<String>, Vec<Vec<String>>) {
+fn print_data_frame_column_texts(
+    x: SEXP,
+    ncol: R_xlen_t,
+    nrow: R_xlen_t,
+) -> (Vec<String>, Vec<Vec<String>>) {
     unsafe {
         let names = crate::sexp::attrib_core::getAttrib(
             x,
@@ -15702,7 +15721,7 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             emit_print_data_frame_line(&format!(" {header}"));
         }
 
-        let print_rows = nrow.min(100) as usize;  // increased for better visibility/polish (was 20 hard cap per review feedback on df print); R uses max.print option
+        let print_rows = nrow.min(100) as usize; // increased for better visibility/polish (was 20 hard cap per review feedback on df print); R uses max.print option
         for row in 0..print_rows {
             let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
             if show_row_names {
@@ -27379,10 +27398,7 @@ unsafe fn is_function_value(value: SEXP) -> bool {
 
 unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
     unsafe {
-        if generic.is_null()
-            || generic == R_NilValue()
-            || TYPEOF(generic) != SEXPTYPE::CLOSXP
-        {
+        if generic.is_null() || generic == R_NilValue() || TYPEOF(generic) != SEXPTYPE::CLOSXP {
             return;
         }
 
@@ -27394,8 +27410,7 @@ unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
         let all_mtable_sym = Rf_install(c".AllMTable".as_ptr());
         let existing_mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
         if existing_mtable == R_UnboundValue() || TYPEOF(existing_mtable) != SEXPTYPE::ENVSXP {
-            let mtable =
-                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_NilValue(), f_env);
+            let mtable = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_NilValue(), f_env);
             if !mtable.is_null() {
                 crate::sexp::envir::defineVar(all_mtable_sym, mtable, f_env);
             }
@@ -30406,10 +30421,8 @@ mod tests {
     fn test_eager_lazy_load_package_db_populates_environment() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let temp_dir = std::env::temp_dir().join(format!(
-                "rport-lazyload-{}",
-                std::process::id()
-            ));
+            let temp_dir =
+                std::env::temp_dir().join(format!("rport-lazyload-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&temp_dir);
             std::fs::create_dir_all(temp_dir.join("R")).expect("lazyload test dir");
 
@@ -30455,7 +30468,11 @@ mod tests {
             let map_names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             SET_STRING_ELT(map_names, 0, Rf_mkChar(c"variables".as_ptr()));
             SET_STRING_ELT(map_names, 1, Rf_mkChar(c"compressed".as_ptr()));
-            crate::sexp::attrib_core::setAttrib(map, crate::sexp::attrib_core::R_NamesSymbol(), map_names);
+            crate::sexp::attrib_core::setAttrib(
+                map,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                map_names,
+            );
 
             let save_args = Rf_cons(
                 map,

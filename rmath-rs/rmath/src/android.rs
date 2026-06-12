@@ -341,14 +341,33 @@ impl RSession {
         token: Option<CancellationToken>,
     ) -> RResult {
         let previous = self.core.replace_cancellation_token(token);
-        let result = self
-            .core
-            .eval_script_with_output_capture_then(code, |result, captured, visible| match result {
-                Ok(result) => result_from_eval(result, captured, visible),
-                Err(e) => error_result(e.to_string()),
-            });
+        let result =
+            self.core
+                .eval_script_with_output_capture_then(
+                    code,
+                    |result, captured, visible| match result {
+                        Ok(result) => result_from_eval(result, captured, visible),
+                        Err(e) => error_result(e.to_string()),
+                    },
+                );
         self.core.set_cancellation_token(previous);
         result
+    }
+
+    #[cfg(feature = "renderplot-device")]
+    pub fn eval_script_with_renderplot_backend(
+        &mut self,
+        code: &str,
+        backend: *mut dyn r_graphics_engine::DrawTarget,
+    ) -> RResult {
+        self.core.eval_script_with_output_capture_then_renderplot(
+            code,
+            backend,
+            |result, captured, visible| match result {
+                Ok(result) => result_from_eval(result, captured, visible),
+                Err(e) => error_result(e.to_string()),
+            },
+        )
     }
 }
 
@@ -1628,7 +1647,9 @@ mod tests {
         let mut session = RSession::new();
         let result = session.eval("system(\"printf hi\")");
         assert!(
-            result.output.contains("system() is disabled by the session capability policy"),
+            result
+                .output
+                .contains("system() is disabled by the session capability policy"),
             "unexpected output: {}",
             result.output
         );

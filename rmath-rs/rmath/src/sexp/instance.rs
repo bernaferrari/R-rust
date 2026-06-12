@@ -580,7 +580,10 @@ impl RInstance {
     /// The drawing fns in the device registry will forward to it (when the feature is enabled)
     /// so that real R plot()/grid calls produce output via the skia renderer.
     #[cfg(feature = "renderplot-device")]
-    pub unsafe fn set_current_renderplot_backend(&mut self, backend: *mut dyn r_graphics_engine::DrawTarget) {
+    pub unsafe fn set_current_renderplot_backend(
+        &mut self,
+        backend: *mut dyn r_graphics_engine::DrawTarget,
+    ) {
         self.current_renderplot_backend = Some(backend);
     }
 
