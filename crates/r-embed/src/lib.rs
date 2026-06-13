@@ -1633,6 +1633,24 @@ mod tests {
         write_fixture_package(
             &bundled,
             FixturePackage {
+                name: "corpexamples",
+                description: concat!(
+                    "Package: corpexamples\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Examples Package\n",
+                    "Description: Exercises package resource and example file discovery.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(example_value)\n",
+                sources: &[("examples.R", "example_value <- function() 12L\n")],
+                data_sources: &[],
+                extra_files: &[("examples/example-resource.R", b"example_answer <- 42L\n")],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
                 name: "corpfrom",
                 description: concat!(
                     "Package: corpfrom\n",
@@ -1847,6 +1865,7 @@ mod tests {
                 "corpcompiled",
                 "corpdataenv",
                 "corpdepends",
+                "corpexamples",
                 "corpfrom",
                 "corpimport",
                 "corplazydata",
@@ -1945,6 +1964,13 @@ mod tests {
                 .eval("c(depends_value(), base_value())")
                 .expect("Depends package visibility"),
             "[1] 19 10"
+        );
+        session.load_package("corpexamples").expect("load examples");
+        assert_eq!(
+            session
+                .eval("source(system.file(\"examples\", \"example-resource.R\", package = \"corpexamples\", mustWork = TRUE)); c(example_value(), example_answer)")
+                .expect("package example resource"),
+            "[1] 12 42"
         );
         session
             .load_package("corppattern")

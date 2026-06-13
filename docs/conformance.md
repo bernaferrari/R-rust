@@ -83,11 +83,12 @@ runs the Android-style pure-R package corpus and writes JSON/Markdown proof.
 The corpus covers package metadata discovery, `library()` loading, namespace
 exports/imports/S3 directives, DESCRIPTION `Depends`, `packageVersion()`/
 `packageDescription()`, namespace-only loading, namespace-qualified access,
-source-form package data, explicit `envir` loading, DESCRIPTION `Collate`
-source ordering, source-form `LazyData`, serialized data policy errors,
-same-name package isolation across sessions, and explicit native-code or
-bytecode package rejection. The release gate runs this script after the stock-R
-performance comparison.
+source-form package data, explicit `envir` loading, package resource/example
+lookup through `system.file()`, DESCRIPTION `Collate` source ordering,
+source-form `LazyData`, serialized data policy errors, same-name package
+isolation across sessions, and explicit native-code or bytecode package
+rejection. The release gate runs this script after the stock-R performance
+comparison.
 
 ## Current Status
 
