@@ -1611,6 +1611,28 @@ mod tests {
         write_fixture_package(
             &bundled,
             FixturePackage {
+                name: "corpdepends",
+                description: concat!(
+                    "Package: corpdepends\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Depends Package\n",
+                    "Description: Exercises DESCRIPTION Depends loading and symbol visibility.\n",
+                    "License: MIT\n",
+                    "Depends: R (>= 4.0.0), corpbase\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(depends_value)\n",
+                sources: &[(
+                    "depends.R",
+                    "depends_value <- function() base_value() + 9L\n",
+                )],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
                 name: "corpfrom",
                 description: concat!(
                     "Package: corpfrom\n",
@@ -1824,6 +1846,7 @@ mod tests {
                 "corpcollate",
                 "corpcompiled",
                 "corpdataenv",
+                "corpdepends",
                 "corpfrom",
                 "corpimport",
                 "corplazydata",
@@ -1915,6 +1938,13 @@ mod tests {
                 .eval("collate_value")
                 .expect("Collate source ordering"),
             "[1] 42"
+        );
+        session.load_package("corpdepends").expect("load Depends");
+        assert_eq!(
+            session
+                .eval("c(depends_value(), base_value())")
+                .expect("Depends package visibility"),
+            "[1] 19 10"
         );
         session
             .load_package("corppattern")

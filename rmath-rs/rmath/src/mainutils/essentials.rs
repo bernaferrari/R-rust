@@ -6689,10 +6689,27 @@ unsafe fn package_attached(package: &str) -> bool {
 }
 
 unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
+    let mut loading = Vec::<String>::new();
+    unsafe { load_pure_r_package_recursive(package, package_dir, &mut loading) }
+}
+
+unsafe fn load_pure_r_package_recursive(
+    package: &str,
+    package_dir: &Path,
+    loading_packages: &mut Vec<String>,
+) -> Result<(), String> {
     unsafe {
         let description = package_dir.join("DESCRIPTION");
         if !description.is_file() {
             return Err(format!("package '{}' has no DESCRIPTION", package));
+        }
+        if loading_packages.iter().any(|entry| entry == package) {
+            return Err(format!(
+                "cyclic package dependency while loading '{}': {} -> {}",
+                package,
+                loading_packages.join(" -> "),
+                package
+            ));
         }
         if package_needs_compilation(&description)? {
             return Err(format!(
@@ -6701,12 +6718,47 @@ unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), S
             ));
         }
 
-        let mut loading = vec![package.to_string()];
-        let (package_env, namespace) = load_package_namespace(package, package_dir, &mut loading)?;
-        let _package_env_guard = crate::sexp::protect::protect(package_env);
+        loading_packages.push(package.to_string());
+        let result = (|| {
+            load_package_dependencies(package, package_dir, loading_packages)?;
 
-        let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
-        attach_package_env(attach_env);
+            let mut loading = vec![package.to_string()];
+            let (package_env, namespace) =
+                load_package_namespace(package, package_dir, &mut loading)?;
+            let _package_env_guard = crate::sexp::protect::protect(package_env);
+
+            let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
+            attach_package_env(attach_env);
+            Ok(())
+        })();
+        loading_packages.pop();
+        result
+    }
+}
+
+unsafe fn load_package_dependencies(
+    package: &str,
+    package_dir: &Path,
+    loading_packages: &mut Vec<String>,
+) -> Result<(), String> {
+    unsafe {
+        for dependency in package_depends_names(package_dir)? {
+            if is_builtin_package_dependency(&dependency) || package_attached(&dependency) {
+                continue;
+            }
+            let dependency_path = find_package_path(&dependency);
+            if dependency_path.is_empty() {
+                return Err(format!(
+                    "package '{}' depends on missing package '{}'",
+                    package, dependency
+                ));
+            }
+            load_pure_r_package_recursive(
+                &dependency,
+                Path::new(&dependency_path),
+                loading_packages,
+            )?;
+        }
         Ok(())
     }
 }
@@ -6813,6 +6865,53 @@ fn description_file_list(value: &str) -> Vec<String> {
     }
 
     files
+}
+
+fn description_package_list(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .filter_map(|entry| {
+            let name = entry
+                .split_once('(')
+                .map(|(name, _)| name)
+                .unwrap_or(entry)
+                .trim();
+            (!name.is_empty()).then(|| name.to_string())
+        })
+        .fold(Vec::<String>::new(), |mut names, name| {
+            push_unique(&mut names, name);
+            names
+        })
+}
+
+fn package_depends_names(package_dir: &Path) -> Result<Vec<String>, String> {
+    let description = package_dir.join("DESCRIPTION");
+    let content = std::fs::read_to_string(&description)
+        .map_err(|err| format!("could not read {}: {err}", description.display()))?;
+    Ok(description_fields(&content)
+        .get("Depends")
+        .map(|value| description_package_list(value))
+        .unwrap_or_default())
+}
+
+fn is_builtin_package_dependency(package: &str) -> bool {
+    matches!(
+        package,
+        "R" | "base"
+            | "compiler"
+            | "datasets"
+            | "grDevices"
+            | "graphics"
+            | "grid"
+            | "methods"
+            | "parallel"
+            | "splines"
+            | "stats"
+            | "stats4"
+            | "tcltk"
+            | "tools"
+            | "utils"
+    )
 }
 
 unsafe fn load_package_namespace(
@@ -7381,6 +7480,7 @@ unsafe fn populate_package_namespace(
 ) -> Result<Option<NamespaceDirectives>, String> {
     unsafe {
         let namespace = read_namespace_directives(package_dir)?;
+        apply_description_depends(package, package_dir, package_env, loading)?;
         if let Some(directives) = namespace.as_ref() {
             reject_native_namespace_directives(package, directives)?;
             apply_namespace_imports(package, package_env, directives, loading)?;
@@ -7392,6 +7492,50 @@ unsafe fn populate_package_namespace(
             register_namespace_s3_methods(package, package_env, directives)?;
         }
         Ok(namespace)
+    }
+}
+
+unsafe fn apply_description_depends(
+    package: &str,
+    package_dir: &Path,
+    package_env: SEXP,
+    loading: &mut Vec<String>,
+) -> Result<(), String> {
+    unsafe {
+        for dependency in package_depends_names(package_dir)? {
+            if is_builtin_package_dependency(&dependency) {
+                continue;
+            }
+            if loading.iter().any(|entry| entry == &dependency) {
+                return Err(format!(
+                    "package '{}' has cyclic Depends dependency involving '{}'",
+                    package, dependency
+                ));
+            }
+
+            let dependency_dir = find_package_path(&dependency);
+            if dependency_dir.is_empty() {
+                return Err(format!(
+                    "package '{}' depends on missing package '{}'",
+                    package, dependency
+                ));
+            }
+
+            loading.push(dependency.clone());
+            let import = NamespaceImport::All {
+                package: dependency.clone(),
+            };
+            let result = import_namespace_bindings(
+                package,
+                package_env,
+                Path::new(&dependency_dir),
+                &import,
+                loading,
+            );
+            loading.pop();
+            result?;
+        }
+        Ok(())
     }
 }
 
@@ -30257,6 +30401,18 @@ mod tests {
         assert_eq!(
             description_file_list("'one.R' 'one.R'"),
             vec!["one.R".to_string()]
+        );
+    }
+
+    #[test]
+    fn description_package_list_parses_depends_entries() {
+        assert_eq!(
+            description_package_list("R (>= 4.0.0), methods, corpbase (>= 0.1.0), corpbase"),
+            vec![
+                "R".to_string(),
+                "methods".to_string(),
+                "corpbase".to_string()
+            ]
         );
     }
 
