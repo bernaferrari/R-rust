@@ -13,9 +13,10 @@ Runs the release-facing pure-R package compatibility corpus. The corpus covers
 Android-style library paths, package metadata discovery, DESCRIPTION metadata
 readers, namespace-only loading, namespace-qualified access,
 imports/importFrom/exportPattern, source-form package data, explicit data
-environments, source-form LazyData, serialized data policy errors, same-name
-package isolation across sessions, S4 package code, package-visible library
-paths, and explicit rejection of native/compiled/bytecode packages.
+environments, DESCRIPTION Collate source ordering, source-form LazyData,
+serialized data policy errors, same-name package isolation across sessions, S4
+package code, package-visible library paths, and explicit rejection of
+native/compiled/bytecode packages.
 
 Options:
   --check          Fail when any corpus test fails.
@@ -85,6 +86,7 @@ scenarios = [
     "export, S3 method, import, importFrom, and exportPattern directives",
     "source-form package data listing and loading",
     "source-form package data loading into an explicit environment",
+    "DESCRIPTION Collate source ordering for source-form package code",
     "source-form LazyData exposure through library()",
     "S4 class creation and slot access from package code",
     "package-visible Android library paths",

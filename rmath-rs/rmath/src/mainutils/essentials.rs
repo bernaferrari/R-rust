@@ -6770,6 +6770,51 @@ fn description_fields(description: &str) -> BTreeMap<String, String> {
     fields
 }
 
+fn description_file_list(value: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    let mut chars = value.char_indices().peekable();
+
+    while let Some((_, ch)) = chars.peek().copied() {
+        if ch.is_whitespace() {
+            chars.next();
+            continue;
+        }
+
+        let mut file = String::new();
+        if ch == '\'' || ch == '"' {
+            let quote = ch;
+            chars.next();
+            let mut escaped = false;
+            for (_, next) in chars.by_ref() {
+                if escaped {
+                    file.push(next);
+                    escaped = false;
+                } else if next == '\\' {
+                    escaped = true;
+                } else if next == quote {
+                    break;
+                } else {
+                    file.push(next);
+                }
+            }
+        } else {
+            while let Some((_, next)) = chars.peek().copied() {
+                if next.is_whitespace() {
+                    break;
+                }
+                file.push(next);
+                chars.next();
+            }
+        }
+
+        if !file.trim().is_empty() {
+            push_unique(&mut files, file.trim().to_string());
+        }
+    }
+
+    files
+}
+
 unsafe fn load_package_namespace(
     package: &str,
     package_dir: &Path,
@@ -7171,6 +7216,14 @@ unsafe fn source_package_r_files(
             return Ok(());
         }
 
+        let description = std::fs::read_to_string(package_dir.join("DESCRIPTION"))
+            .map(|content| description_fields(&content))
+            .unwrap_or_default();
+        let collate_files = description
+            .get("Collate")
+            .map(|value| description_file_list(value))
+            .unwrap_or_default();
+
         let mut files = std::fs::read_dir(&r_dir)
             .map_err(|err| format!("could not read R directory for package '{package}': {err}"))?
             .filter_map(Result::ok)
@@ -7182,6 +7235,37 @@ unsafe fn source_package_r_files(
             })
             .collect::<Vec<_>>();
         files.sort();
+
+        if !collate_files.is_empty() {
+            let mut ordered = Vec::with_capacity(files.len());
+            let mut collated_names = BTreeSet::<String>::new();
+            for file_name in collate_files {
+                if file_name.contains('/') || file_name.contains('\\') {
+                    return Err(format!(
+                        "package '{}' has unsupported Collate entry '{}'",
+                        package, file_name
+                    ));
+                }
+                let file = r_dir.join(&file_name);
+                if !file.is_file() {
+                    return Err(format!(
+                        "package '{}' Collate entry '{}' does not exist",
+                        package, file_name
+                    ));
+                }
+                collated_names.insert(file_name);
+                ordered.push(file);
+            }
+            for file in files {
+                let Some(name) = file.file_name().and_then(|name| name.to_str()) else {
+                    continue;
+                };
+                if !collated_names.contains(name) {
+                    ordered.push(file);
+                }
+            }
+            files = ordered;
+        }
 
         for file in files {
             source_r_file_into_env(&file, package_env)?;
@@ -30150,6 +30234,30 @@ mod tests {
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(default)
+    }
+
+    #[test]
+    fn description_file_list_parses_collate_entries() {
+        assert_eq!(
+            description_file_list("'z-producer.R' \"a consumer.R\" helper.R"),
+            vec![
+                "z-producer.R".to_string(),
+                "a consumer.R".to_string(),
+                "helper.R".to_string()
+            ]
+        );
+        assert_eq!(
+            description_file_list("'one.R'\n  'two.R'\tthree.R"),
+            vec![
+                "one.R".to_string(),
+                "two.R".to_string(),
+                "three.R".to_string()
+            ]
+        );
+        assert_eq!(
+            description_file_list("'one.R' 'one.R'"),
+            vec!["one.R".to_string()]
+        );
     }
 
     #[test]

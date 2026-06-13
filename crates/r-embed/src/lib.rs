@@ -1589,6 +1589,28 @@ mod tests {
         write_fixture_package(
             &bundled,
             FixturePackage {
+                name: "corpcollate",
+                description: concat!(
+                    "Package: corpcollate\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Collate Package\n",
+                    "Description: Exercises DESCRIPTION Collate source ordering.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                    "Collate: 'z-producer.R' 'a-consumer.R'\n",
+                ),
+                namespace: "export(collate_value)\n",
+                sources: &[
+                    ("a-consumer.R", "collate_value <- collate_seed + 2L\n"),
+                    ("z-producer.R", "collate_seed <- 40L\n"),
+                ],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
                 name: "corpfrom",
                 description: concat!(
                     "Package: corpfrom\n",
@@ -1799,6 +1821,7 @@ mod tests {
             vec![
                 "corpbase",
                 "corpbytecode",
+                "corpcollate",
                 "corpcompiled",
                 "corpdataenv",
                 "corpfrom",
@@ -1886,6 +1909,13 @@ mod tests {
         );
         session.load_package("corpfrom").expect("load importFrom");
         assert_eq!(session.eval("from_value()").expect("from value"), "[1] 17");
+        session.load_package("corpcollate").expect("load collate");
+        assert_eq!(
+            session
+                .eval("collate_value")
+                .expect("Collate source ordering"),
+            "[1] 42"
+        );
         session
             .load_package("corppattern")
             .expect("load exportPattern");
