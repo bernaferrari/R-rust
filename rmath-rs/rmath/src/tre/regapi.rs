@@ -789,6 +789,8 @@ mod tests {
             );
             tre_regfree(&mut preg);
             assert_eq!(status, REG_OK);
+            assert_eq!(pmatch[0].rm_so, 4);
+            assert_eq!(pmatch[0].rm_eo, 9);
         }
     }
 
@@ -1063,7 +1065,6 @@ mod tests {
     // ==================================================================
 
     #[test]
-    #[ignore = "backtracking matcher does not yet support alternation"]
     fn backtrack_alternation() {
         unsafe {
             let (mut preg, rc) = compile("cat|dog", REG_EXTENDED);
@@ -1085,7 +1086,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "backtracking matcher does not yet support quantifiers"]
     fn backtrack_quantifiers() {
         unsafe {
             let (mut preg, rc) = compile("a+b", REG_EXTENDED);

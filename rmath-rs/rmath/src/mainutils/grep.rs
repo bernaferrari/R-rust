@@ -7,9 +7,9 @@
 //! Implements R's grep(), grepl(), sub(), gsub(), regexpr(), regexec(),
 //! and related pattern matching functions.
 //!
-//! Since this port does not link against PCRE2 or TRE, the implementation uses:
+//! Since this port does not link against PCRE2, the implementation uses:
 //! - Rust's standard library for fixed-string matching (fixed = TRUE)
-//! - A simplified extended regex engine (ERE) for non-perl, non-fixed mode
+//! - The ported TRE engine for non-perl, non-fixed ERE mode
 //! - Backreference-free Perl-like regex is not supported; perl=TRUE falls back
 //!   to the ERE engine with a warning
 //!
@@ -22,6 +22,7 @@
 //!   R_pcre_exec (requires PCRE library)
 
 use std::ffi::CStr;
+use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int};
 
 use crate::sexp::accessors::*;
@@ -30,6 +31,8 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::protect;
+use crate::tre::ast::{REG_EXTENDED, REG_ICASE, REG_OK, regex_t, regmatch_t};
+use crate::tre::regapi::{tre_regfree, tre_regncomp, tre_regnexec};
 
 // ---------------------------------------------------------------------------
 // Local helper functions (matching patterns from match_mod.rs etc.)
@@ -306,6 +309,85 @@ fn R_gsub_fixed_inner(
 // ---------------------------------------------------------------------------
 // Simple Extended Regular Expression (ERE) engine
 // ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RegexMatch {
+    pub start: usize,
+    pub end: usize,
+}
+
+struct TreRegex {
+    preg: regex_t,
+}
+
+impl TreRegex {
+    fn compile(pattern: &str, ignore_case: bool) -> Result<Self, String> {
+        unsafe {
+            let mut preg = MaybeUninit::<regex_t>::zeroed().assume_init();
+            let mut cflags = REG_EXTENDED;
+            if ignore_case {
+                cflags |= REG_ICASE;
+            }
+            let rc = tre_regncomp(
+                &mut preg,
+                pattern.as_bytes().as_ptr() as *const c_char,
+                pattern.len(),
+                cflags,
+            );
+            if rc == REG_OK {
+                Ok(Self { preg })
+            } else {
+                Err(format!("TRE compilation failed with code {rc}"))
+            }
+        }
+    }
+
+    fn captures(&self, text: &str) -> Option<Vec<Option<RegexMatch>>> {
+        unsafe {
+            let nmatch = self.preg.re_nsub.saturating_add(1).max(1);
+            let mut pmatch = vec![regmatch_t::default(); nmatch];
+            let status = tre_regnexec(
+                &self.preg,
+                text.as_bytes().as_ptr() as *const c_char,
+                text.len(),
+                nmatch,
+                pmatch.as_mut_ptr(),
+                0,
+            );
+            if status != REG_OK {
+                return None;
+            }
+            Some(
+                pmatch
+                    .into_iter()
+                    .map(|m| {
+                        if m.rm_so >= 0 && m.rm_eo >= m.rm_so {
+                            Some(RegexMatch {
+                                start: m.rm_so as usize,
+                                end: m.rm_eo as usize,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+            )
+        }
+    }
+
+    fn find(&self, text: &str) -> Option<RegexMatch> {
+        self.captures(text)
+            .and_then(|mut captures| captures.get_mut(0).and_then(|whole| whole.take()))
+    }
+}
+
+impl Drop for TreRegex {
+    fn drop(&mut self) {
+        unsafe {
+            tre_regfree(&mut self.preg);
+        }
+    }
+}
 
 /// A compiled simplified ERE pattern.
 ///
@@ -714,15 +796,54 @@ pub(crate) fn ere_replace(
     global: bool,
     ignore_case: bool,
 ) -> Option<String> {
-    let nodes = compile_ere(pattern).ok()?;
-    let bytes = ere_gsub(
-        &nodes,
-        text.as_bytes(),
-        replacement.as_bytes(),
-        global,
-        ignore_case,
-    );
-    Some(String::from_utf8_lossy(&bytes).into_owned())
+    let regex = TreRegex::compile(pattern, ignore_case).ok()?;
+    let mut result = String::with_capacity(text.len());
+    let mut search_from = 0usize;
+
+    loop {
+        let remaining = &text[search_from..];
+        let Some(m) = regex.find(remaining) else {
+            result.push_str(remaining);
+            break;
+        };
+        result.push_str(&remaining[..m.start]);
+        result.push_str(replacement);
+        search_from += m.end;
+
+        if !global {
+            result.push_str(&text[search_from..]);
+            break;
+        }
+
+        if m.start == m.end {
+            let Some(ch) = text[search_from..].chars().next() else {
+                break;
+            };
+            result.push(ch);
+            search_from += ch.len_utf8();
+        }
+        if search_from >= text.len() {
+            break;
+        }
+    }
+
+    Some(result)
+}
+
+pub(crate) fn ere_find(pattern: &str, text: &str, ignore_case: bool) -> Option<RegexMatch> {
+    TreRegex::compile(pattern, ignore_case)
+        .ok()
+        .and_then(|regex| regex.find(text))
+}
+
+pub(crate) fn ere_captures(
+    pattern: &str,
+    text: &str,
+    ignore_case: bool,
+) -> Option<Vec<Option<RegexMatch>>> {
+    TreRegex::compile(pattern, ignore_case)
+        .ok()
+        .and_then(|regex| regex.captures(text))
 }
 
 // ---------------------------------------------------------------------------
@@ -933,10 +1054,7 @@ fn match_str(
 
 /// Shared ERE predicate for base helpers that accept R-style regex patterns.
 pub(crate) fn ere_is_match(pattern: &str, text: &str, ignore_case: bool) -> bool {
-    compile_ere(pattern)
-        .ok()
-        .and_then(|nodes| ere_search(&nodes, text.as_bytes(), ignore_case))
-        .is_some()
+    ere_find(pattern, text, ignore_case).is_some()
 }
 
 // ---------------------------------------------------------------------------

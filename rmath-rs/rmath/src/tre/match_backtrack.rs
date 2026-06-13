@@ -186,7 +186,7 @@ pub unsafe fn tre_tnfa_run_backtrack(
             // Initialize tags and states_seen
             for i in 0..(*tnfa).num_tags {
                 *tags.offset(i as isize) = -1;
-                if !match_tags.is_null() {
+                if !match_tags.is_null() && match_eo < 0 {
                     *match_tags.offset(i as isize) = -1;
                 }
             }

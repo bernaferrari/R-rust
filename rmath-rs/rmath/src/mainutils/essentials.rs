@@ -8092,11 +8092,39 @@ fn element_coerces_to_character_na(x: SEXP, i: R_xlen_t) -> bool {
 }
 
 fn string_contains(text: &str, pattern: &str, ignore_case: bool) -> bool {
-    if ignore_case {
-        text.to_lowercase().contains(&pattern.to_lowercase())
-    } else {
-        text.contains(pattern)
+    fixed_find(text, pattern, ignore_case).is_some()
+}
+
+fn fixed_find(
+    text: &str,
+    pattern: &str,
+    ignore_case: bool,
+) -> Option<crate::mainutils::grep::RegexMatch> {
+    let hay = text.as_bytes();
+    let needle = pattern.as_bytes();
+    if needle.is_empty() {
+        return Some(crate::mainutils::grep::RegexMatch { start: 0, end: 0 });
     }
+    if hay.len() < needle.len() {
+        return None;
+    }
+    for start in 0..=(hay.len() - needle.len()) {
+        let matched = needle.iter().enumerate().all(|(idx, expected)| {
+            let actual = hay[start + idx];
+            if ignore_case {
+                actual.eq_ignore_ascii_case(expected)
+            } else {
+                actual == *expected
+            }
+        });
+        if matched {
+            return Some(crate::mainutils::grep::RegexMatch {
+                start,
+                end: start + needle.len(),
+            });
+        }
+    }
+    None
 }
 
 fn grep_value_matches(text: &str, pattern: &str, ignore_case: bool, fixed: bool) -> bool {
@@ -26578,7 +26606,10 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
-        let n = XLENGTH(CAR(CDR(args)));
+        let text = CAR(CDR(args));
+        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -26591,11 +26622,16 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let _mlp = protect(match_len);
 
         for i in 0..n {
-            let txt = elt_to_string(CAR(CDR(args)), i);
-            match txt.find(&pat) {
-                Some(pos) => {
-                    *INTEGER(result).add(i as usize) = (pos + 1) as c_int;
-                    *INTEGER(match_len).add(i as usize) = pat.len() as c_int;
+            let txt = elt_to_string(text, i);
+            let found = if fixed {
+                fixed_find(&txt, &pat, ignore_case)
+            } else {
+                crate::mainutils::grep::ere_find(&pat, &txt, ignore_case)
+            };
+            match found {
+                Some(m) => {
+                    *INTEGER(result).add(i as usize) = (m.start + 1) as c_int;
+                    *INTEGER(match_len).add(i as usize) = (m.end - m.start) as c_int;
                 }
                 None => {
                     *INTEGER(result).add(i as usize) = -1;
@@ -26628,6 +26664,8 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
+        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -26638,15 +26676,28 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         for i in 0..n {
             let txt = elt_to_string(text, i);
             let mut starts = Vec::new();
+            let mut lengths = Vec::new();
             if !pat.is_empty() {
                 let mut offset = 0usize;
                 while offset <= txt.len() {
-                    let Some(pos) = txt[offset..].find(&pat) else {
+                    let hay = &txt[offset..];
+                    let found = if fixed {
+                        fixed_find(hay, &pat, ignore_case)
+                    } else {
+                        crate::mainutils::grep::ere_find(&pat, hay, ignore_case)
+                    };
+                    let Some(m) = found else {
                         break;
                     };
-                    let start = offset + pos;
+                    let start = offset + m.start;
                     starts.push(start + 1);
-                    offset = start + pat.len().max(1);
+                    lengths.push(m.end - m.start);
+                    let next_offset = offset + m.end;
+                    offset = if m.start == m.end {
+                        next_offset + txt[next_offset..].chars().next().map_or(1, char::len_utf8)
+                    } else {
+                        next_offset
+                    };
                 }
             }
 
@@ -26671,7 +26722,7 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                 let _ml_guard = protect(match_lengths);
                 for (idx, start) in starts.iter().enumerate() {
                     *INTEGER(elt).add(idx) = *start as c_int;
-                    *INTEGER(match_lengths).add(idx) = pat.len() as c_int;
+                    *INTEGER(match_lengths).add(idx) = lengths[idx] as c_int;
                 }
                 (elt, match_lengths)
             };
@@ -26689,6 +26740,8 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
+        let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -26698,21 +26751,28 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         for i in 0..n {
             let txt = elt_to_string(text, i);
-            let found = if pat.is_empty() {
-                Some(0)
+            let captures = if fixed {
+                fixed_find(&txt, &pat, ignore_case).map(|m| vec![Some(m)])
             } else {
-                txt.find(&pat)
+                crate::mainutils::grep::ere_captures(&pat, &txt, ignore_case)
             };
-            let (elt, match_lengths) = if let Some(pos) = found {
-                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            let (elt, match_lengths) = if let Some(captures) = captures {
+                let elt = Rf_allocVector3(SEXPTYPE::INTSXP, captures.len() as R_xlen_t);
+                let match_lengths = Rf_allocVector3(SEXPTYPE::INTSXP, captures.len() as R_xlen_t);
                 if elt.is_null() || match_lengths.is_null() {
                     return R_NilValue();
                 }
                 let _elt_guard = protect(elt);
                 let _ml_guard = protect(match_lengths);
-                *INTEGER(elt) = (pos + 1) as c_int;
-                *INTEGER(match_lengths) = pat.len() as c_int;
+                for (idx, capture) in captures.iter().enumerate() {
+                    if let Some(m) = capture {
+                        *INTEGER(elt).add(idx) = (m.start + 1) as c_int;
+                        *INTEGER(match_lengths).add(idx) = (m.end - m.start) as c_int;
+                    } else {
+                        *INTEGER(elt).add(idx) = -1;
+                        *INTEGER(match_lengths).add(idx) = -1;
+                    }
+                }
                 (elt, match_lengths)
             } else {
                 let elt = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
