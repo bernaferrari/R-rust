@@ -1,0 +1,21 @@
+[1]  TRUE FALSE
+[1] 1
+[1] 2
+attr(,"match.length")
+[1] 1
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+[1] 1
+[1] 1 1 2
+attr(,"match.length")
+[1] 2 1 1
+attr(,"useBytes")
+[1] TRUE
+attr(,"index.type")
+[1] "chars"
+[1] 2 1 1
+[1] "b-a"
+[1] "b[a]n[a]n[a]"
+[1] "aB cb"

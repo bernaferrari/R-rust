@@ -25,6 +25,8 @@ use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int};
 
+use fancy_regex::{Regex as PerlInnerRegex, RegexBuilder as PerlRegexBuilder};
+
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
@@ -320,6 +322,10 @@ struct TreRegex {
     preg: regex_t,
 }
 
+struct PerlRegex {
+    regex: PerlInnerRegex,
+}
+
 impl TreRegex {
     fn compile(pattern: &str, ignore_case: bool) -> Result<Self, String> {
         unsafe {
@@ -386,6 +392,35 @@ impl Drop for TreRegex {
         unsafe {
             tre_regfree(&mut self.preg);
         }
+    }
+}
+
+impl PerlRegex {
+    fn compile(pattern: &str, ignore_case: bool) -> Result<Self, String> {
+        PerlRegexBuilder::new(pattern)
+            .case_insensitive(ignore_case)
+            .build()
+            .map(|regex| Self { regex })
+            .map_err(|err| err.to_string())
+    }
+
+    fn captures(&self, text: &str) -> Option<Vec<Option<RegexMatch>>> {
+        let captures = self.regex.captures(text).ok()??;
+        let mut matches = Vec::with_capacity(captures.len());
+        for idx in 0..captures.len() {
+            matches.push(captures.get(idx).map(|m| RegexMatch {
+                start: m.start(),
+                end: m.end(),
+            }));
+        }
+        Some(matches)
+    }
+
+    fn find(&self, text: &str) -> Option<RegexMatch> {
+        self.regex.find(text).ok().flatten().map(|m| RegexMatch {
+            start: m.start(),
+            end: m.end(),
+        })
     }
 }
 
@@ -797,17 +832,45 @@ pub(crate) fn ere_replace(
     ignore_case: bool,
 ) -> Option<String> {
     let regex = TreRegex::compile(pattern, ignore_case).ok()?;
+    replace_with_captures(text, replacement, global, |remaining| {
+        regex.captures(remaining)
+    })
+}
+
+pub(crate) fn perl_replace(
+    pattern: &str,
+    text: &str,
+    replacement: &str,
+    global: bool,
+    ignore_case: bool,
+) -> Option<String> {
+    let regex = PerlRegex::compile(pattern, ignore_case).ok()?;
+    replace_with_captures(text, replacement, global, |remaining| {
+        regex.captures(remaining)
+    })
+}
+
+fn replace_with_captures<F>(
+    text: &str,
+    replacement: &str,
+    global: bool,
+    mut captures_at: F,
+) -> Option<String>
+where
+    F: FnMut(&str) -> Option<Vec<Option<RegexMatch>>>,
+{
     let mut result = String::with_capacity(text.len());
     let mut search_from = 0usize;
 
     loop {
         let remaining = &text[search_from..];
-        let Some(m) = regex.find(remaining) else {
+        let Some(captures) = captures_at(remaining) else {
             result.push_str(remaining);
             break;
         };
+        let m = captures.first().and_then(|whole| *whole)?;
         result.push_str(&remaining[..m.start]);
-        result.push_str(replacement);
+        append_r_replacement(&mut result, replacement, remaining, &captures);
         search_from += m.end;
 
         if !global {
@@ -830,8 +893,47 @@ pub(crate) fn ere_replace(
     Some(result)
 }
 
+fn append_r_replacement(
+    out: &mut String,
+    replacement: &str,
+    matched_text: &str,
+    captures: &[Option<RegexMatch>],
+) {
+    let mut chars = replacement.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+
+        let Some(next) = chars.next() else {
+            out.push('\\');
+            break;
+        };
+
+        if let Some(digit) = next.to_digit(10) {
+            let idx = digit as usize;
+            if idx == 0 {
+                out.push('0');
+            } else if let Some(Some(m)) = captures.get(idx) {
+                out.push_str(&matched_text[m.start..m.end]);
+            }
+        } else if next == '\\' {
+            out.push('\\');
+        } else {
+            out.push(next);
+        }
+    }
+}
+
 pub(crate) fn ere_find(pattern: &str, text: &str, ignore_case: bool) -> Option<RegexMatch> {
     TreRegex::compile(pattern, ignore_case)
+        .ok()
+        .and_then(|regex| regex.find(text))
+}
+
+pub(crate) fn perl_find(pattern: &str, text: &str, ignore_case: bool) -> Option<RegexMatch> {
+    PerlRegex::compile(pattern, ignore_case)
         .ok()
         .and_then(|regex| regex.find(text))
 }
@@ -842,6 +944,16 @@ pub(crate) fn ere_captures(
     ignore_case: bool,
 ) -> Option<Vec<Option<RegexMatch>>> {
     TreRegex::compile(pattern, ignore_case)
+        .ok()
+        .and_then(|regex| regex.captures(text))
+}
+
+pub(crate) fn perl_captures(
+    pattern: &str,
+    text: &str,
+    ignore_case: bool,
+) -> Option<Vec<Option<RegexMatch>>> {
+    PerlRegex::compile(pattern, ignore_case)
         .ok()
         .and_then(|regex| regex.captures(text))
 }
@@ -1871,6 +1983,48 @@ mod tests {
         let nodes = test_ok(compile_ere("[aeiou]"));
         let result = ere_gsub(&nodes, b"hello world", b"_", true, false);
         assert_eq!(result, b"h_ll_ w_rld".to_vec());
+    }
+
+    #[test]
+    fn test_ere_replace_expands_r_style_backrefs() {
+        assert_eq!(
+            ere_replace("(a)(b)", "ab", r"\2-\1", false, false).as_deref(),
+            Some("b-a")
+        );
+        assert_eq!(
+            ere_replace("(a)", "banana", r"[\1]", true, false).as_deref(),
+            Some("b[a]n[a]n[a]")
+        );
+        assert_eq!(
+            ere_replace("(a)(b)", "ab", r"\3", false, false).as_deref(),
+            Some("")
+        );
+    }
+
+    #[test]
+    fn test_perl_regex_supports_lookbehind_and_captures() {
+        assert_eq!(
+            perl_find(r"(?<=a)b", "ab", false),
+            Some(RegexMatch { start: 1, end: 2 })
+        );
+        assert!(perl_find(r"(?<=a)b", "cb", false).is_none());
+
+        let captures = perl_captures("(a)(b)", "ab", false).expect("expected captures");
+        assert_eq!(captures[0], Some(RegexMatch { start: 0, end: 2 }));
+        assert_eq!(captures[1], Some(RegexMatch { start: 0, end: 1 }));
+        assert_eq!(captures[2], Some(RegexMatch { start: 1, end: 2 }));
+    }
+
+    #[test]
+    fn test_perl_replace_expands_r_style_backrefs() {
+        assert_eq!(
+            perl_replace("(a)(b)", "ab", r"\2-\1", false, false).as_deref(),
+            Some("b-a")
+        );
+        assert_eq!(
+            perl_replace(r"(?<=a)b", "ab cb", "B", true, false).as_deref(),
+            Some("aB cb")
+        );
     }
 
     // -- match_str tests --

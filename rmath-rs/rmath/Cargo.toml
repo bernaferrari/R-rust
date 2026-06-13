@@ -33,6 +33,7 @@ flate2 = { version = "1.1", default-features = false, features = ["rust_backend"
 bzip2 = "0.6"
 lzma-rs = "0.3"
 getrandom = { version = "0.3", features = ["wasm_js"] }
+fancy-regex = "0.18"
 
 # Pure Rust linear algebra backend (enabled via rust-backend feature).
 # Keep default features off so wasm builds do not pull faer's rayon/spindle

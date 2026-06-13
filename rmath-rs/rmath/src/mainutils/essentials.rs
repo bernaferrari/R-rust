@@ -1640,9 +1640,10 @@ pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let value = named_logical_arg(args, "value").unwrap_or(false);
         let invert = named_logical_arg(args, "invert").unwrap_or(false);
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
-        let matches = grep_match_indices(x_arg, &pattern, ignore_case, fixed, invert);
+        let matches = grep_match_indices(x_arg, &pattern, ignore_case, perl, fixed, invert);
 
         if value {
             let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
@@ -1690,6 +1691,7 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let pattern = elt_to_string(pattern_arg, 0);
         let n = XLENGTH(x_arg);
@@ -1705,7 +1707,7 @@ pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 continue;
             }
             let matched =
-                grep_value_matches(&elt_to_string(x_arg, i), &pattern, ignore_case, fixed);
+                grep_value_matches(&elt_to_string(x_arg, i), &pattern, ignore_case, perl, fixed);
             *dst.add(i as usize) = if matched { TRUE } else { FALSE };
         }
         result
@@ -1906,6 +1908,7 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
         let replacement_arg = CAR(CDR(args));
         let x_arg = CAR(CDR(CDR(args)));
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         if pattern_arg.is_null()
             || replacement_arg.is_null()
@@ -1928,6 +1931,15 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
                 s.replace(&pattern, &replacement)
             } else if fixed {
                 s.replacen(&pattern, &replacement, 1)
+            } else if perl {
+                crate::mainutils::grep::perl_replace(
+                    &pattern,
+                    &s,
+                    &replacement,
+                    global,
+                    ignore_case,
+                )
+                .unwrap_or(s)
             } else if let Some(replaced) =
                 crate::mainutils::grep::ere_replace(&pattern, &s, &replacement, global, ignore_case)
             {
@@ -8127,9 +8139,17 @@ fn fixed_find(
     None
 }
 
-fn grep_value_matches(text: &str, pattern: &str, ignore_case: bool, fixed: bool) -> bool {
+fn grep_value_matches(
+    text: &str,
+    pattern: &str,
+    ignore_case: bool,
+    perl: bool,
+    fixed: bool,
+) -> bool {
     if fixed {
         string_contains(text, pattern, ignore_case)
+    } else if perl {
+        crate::mainutils::grep::perl_find(pattern, text, ignore_case).is_some()
     } else {
         crate::mainutils::grep::ere_is_match(pattern, text, ignore_case)
     }
@@ -8139,6 +8159,7 @@ fn grep_match_indices(
     x: SEXP,
     pattern: &str,
     ignore_case: bool,
+    perl: bool,
     fixed: bool,
     invert: bool,
 ) -> Vec<R_xlen_t> {
@@ -8155,7 +8176,8 @@ fn grep_match_indices(
                 }
                 continue;
             }
-            let matched = grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, fixed);
+            let matched =
+                grep_value_matches(&elt_to_string(x, i), pattern, ignore_case, perl, fixed);
             if if invert { !matched } else { matched } {
                 matches.push(i);
             }
@@ -26608,6 +26630,7 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
@@ -26625,6 +26648,8 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let txt = elt_to_string(text, i);
             let found = if fixed {
                 fixed_find(&txt, &pat, ignore_case)
+            } else if perl {
+                crate::mainutils::grep::perl_find(&pat, &txt, ignore_case)
             } else {
                 crate::mainutils::grep::ere_find(&pat, &txt, ignore_case)
             };
@@ -26665,6 +26690,7 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
@@ -26683,6 +26709,8 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     let hay = &txt[offset..];
                     let found = if fixed {
                         fixed_find(hay, &pat, ignore_case)
+                    } else if perl {
+                        crate::mainutils::grep::perl_find(&pat, hay, ignore_case)
                     } else {
                         crate::mainutils::grep::ere_find(&pat, hay, ignore_case)
                     };
@@ -26741,6 +26769,7 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let pat = elt_to_string(CAR(args), 0);
         let text = CAR(CDR(args));
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+        let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
@@ -26753,6 +26782,8 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let txt = elt_to_string(text, i);
             let captures = if fixed {
                 fixed_find(&txt, &pat, ignore_case).map(|m| vec![Some(m)])
+            } else if perl {
+                crate::mainutils::grep::perl_captures(&pat, &txt, ignore_case)
             } else {
                 crate::mainutils::grep::ere_captures(&pat, &txt, ignore_case)
             };
@@ -26787,7 +26818,11 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 (elt, match_lengths)
             };
 
-            set_regexpr_attrs(elt, match_lengths);
+            if perl {
+                set_regexec_perl_attrs(elt, match_lengths);
+            } else {
+                set_regexpr_attrs(elt, match_lengths);
+            }
             SET_VECTOR_ELT(result, i, elt);
         }
 
@@ -26811,6 +26846,26 @@ unsafe fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
             x,
             Rf_install(CString::new("useBytes").unwrap_or_default().as_ptr()),
             Rf_ScalarLogical(TRUE),
+        );
+    }
+}
+
+unsafe fn set_regexec_perl_attrs(x: SEXP, match_lengths: SEXP) {
+    unsafe {
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new("match.length").unwrap_or_default().as_ptr()),
+            match_lengths,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new("useBytes").unwrap_or_default().as_ptr()),
+            Rf_ScalarLogical(TRUE),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new("index.type").unwrap_or_default().as_ptr()),
+            Rf_mkString(CString::new("chars").unwrap_or_default().as_ptr()),
         );
     }
 }
