@@ -310,3 +310,25 @@ pub fn Rf_rsignrank(n: c_double) -> c_double {
 pub fn rsignrank(n: c_double) -> c_double {
     rsignrank_inner(n)
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn signrank_cache_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_value = left.with_protected(|| csignrank(3, 4));
+        right.with_protected(|| {
+            with_signrank_cache(|cache| assert!(!cache.contains_key(&4)));
+            assert_eq!(csignrank(3, 4), left_value);
+        });
+
+        left.with_protected(|| {
+            with_signrank_cache(|cache| assert!(cache.contains_key(&4)));
+        });
+    }
+}

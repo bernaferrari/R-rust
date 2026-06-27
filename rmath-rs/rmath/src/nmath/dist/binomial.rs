@@ -678,3 +678,30 @@ pub fn Rf_rbinom(n: f64, p: f64) -> f64 {
 pub fn rbinom(n: f64, p: f64) -> f64 {
     rbinom_inner(n, p)
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rbinom_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rbinom_inner(40.0, 0.3);
+            with_rbinom_state(|state| {
+                assert_eq!(state.nsave, 40);
+                assert_eq!(state.psave, 0.3);
+            });
+        });
+
+        right.with_protected(|| {
+            with_rbinom_state(|state| {
+                assert_eq!(state.nsave, -1);
+                assert_eq!(state.psave, -1.0);
+            });
+        });
+    }
+}

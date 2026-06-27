@@ -1075,3 +1075,28 @@ pub fn Rf_rgamma(shape: f64, scale: f64) -> f64 {
 pub fn rgamma(shape: f64, scale: f64) -> f64 {
     rgamma_inner(shape, scale)
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rgamma_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rgamma_inner(2.5, 1.0);
+            with_gamma_state(|state| {
+                assert_eq!(state.aa, 2.5);
+            });
+        });
+
+        right.with_protected(|| {
+            with_gamma_state(|state| {
+                assert_eq!(state.aa, 0.0);
+            });
+        });
+    }
+}

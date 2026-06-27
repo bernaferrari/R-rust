@@ -8,7 +8,6 @@
 //   Reference: Devroye, L. (1986).
 //     Non-Uniform Random Variate Generation. New York:Springer-Verlag. Pages 488 and 543.
 
-pub use crate::dist::nbinom::qnbinom_inner;
 use crate::nmath::constants::*;
 use crate::nmath::dist::beta::pbeta_inner;
 use crate::nmath::dist::binomial::dbinom_raw;
@@ -280,6 +279,105 @@ fn do_search_nbinom(
             *z = newz;
         }
     }
+}
+
+#[must_use]
+pub fn qnbinom_inner(p: f64, size: f64, prob: f64, lower_tail: bool, log_p: bool) -> f64 {
+    // IEEE_754
+    if isnan(p) || isnan(size) || isnan(prob) {
+        return p + size + prob;
+    }
+
+    // this happens if specified via mu, size, since prob == size/(size+mu)
+    if prob == 0.0 && size == 0.0 {
+        return 0.0;
+    }
+    if prob <= 0.0 || prob > 1.0 || size < 0.0 {
+        return ml_warn_return_nan();
+    }
+    if prob == 1.0 || size == 0.0 {
+        return 0.0;
+    }
+
+    // R_Q_P01_boundaries(p, 0, ML_POSINF)
+    if log_p {
+        if p > 0.0 {
+            return ml_warn_return_nan();
+        }
+        if p == 0.0 {
+            return if lower_tail { ML_POSINF } else { 0.0 };
+        }
+        if p == ML_NEGINF {
+            return if lower_tail { 0.0 } else { ML_POSINF };
+        }
+    } else {
+        if p < 0.0 || p > 1.0 {
+            return ml_warn_return_nan();
+        }
+        if p == 0.0 {
+            return if lower_tail { 0.0 } else { ML_POSINF };
+        }
+        if p == 1.0 {
+            return if lower_tail { ML_POSINF } else { 0.0 };
+        }
+    }
+
+    let q_val = 1.0 / prob;
+    let p_val = (1.0 - prob) * q_val; // = (1 - prob) / prob = Q - 1
+    let mu = size * p_val;
+    let sigma = sqrt(size * p_val * q_val);
+    let gamma = (q_val + p_val) / sigma;
+
+    let z_val = qnorm5_inner(p, 0.0, 1.0, lower_tail, log_p);
+    let mut y = r_forceint(mu + sigma * (z_val + gamma * (z_val * z_val - 1.0) / 6.0));
+
+    // q_DISCR_CHECK_BOUNDARY (no _dist_MAX_y for nbinom, just clamp to >= 0)
+    if y < 0.0 {
+        y = 0.0;
+    }
+
+    let mut z = pnbinom_inner(y, size, prob, lower_tail, log_p);
+
+    let pf_n = 8.0;
+    let pf_l = 2.0;
+    let y_large = 4096.0;
+    let inc_f = 1.0 / 64.0;
+    let i_shrink = 8.0;
+    let rel_tol = 1e-15;
+    let xf = 4.0;
+
+    let mut p_adj = p;
+    if log_p {
+        let e = pf_l * DBL_EPSILON;
+        if lower_tail && p > -ML_POSINF {
+            p_adj = p * (1.0 + e);
+        } else {
+            p_adj = p * (1.0 - e);
+        }
+    } else {
+        let e = pf_n * DBL_EPSILON;
+        if lower_tail {
+            p_adj = p * (1.0 - e);
+        } else if 1.0 - p > xf * e {
+            p_adj = p * (1.0 + e);
+        }
+    }
+
+    if y < y_large {
+        return do_search_nbinom(y, &mut z, p_adj, size, prob, 1.0, lower_tail, log_p);
+    }
+
+    let mut oldincr;
+    let mut incr = floor(y * inc_f);
+    loop {
+        oldincr = incr;
+        y = do_search_nbinom(y, &mut z, p_adj, size, prob, incr, lower_tail, log_p);
+        incr = fmax2(1.0, floor(incr / i_shrink));
+        if !(oldincr > 1.0 && incr > y * rel_tol) {
+            break;
+        }
+    }
+    return y;
 }
 
 fn do_search_nbinom_mu(

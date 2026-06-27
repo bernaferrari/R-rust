@@ -567,3 +567,30 @@ pub fn Rf_rpois(mu: f64) -> f64 {
 pub fn rpois(mu: f64) -> f64 {
     rpois_inner(mu)
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rpois_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rpois_inner(12.0);
+            with_rpois_state(|state| {
+                assert_eq!(state.muprev, 12.0);
+                assert!(state.s > 0.0);
+            });
+        });
+
+        right.with_protected(|| {
+            with_rpois_state(|state| {
+                assert_eq!(state.muprev, 0.0);
+                assert_eq!(state.s, 0.0);
+            });
+        });
+    }
+}

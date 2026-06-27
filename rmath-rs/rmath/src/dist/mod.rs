@@ -1,25 +1,11 @@
-pub mod beta;
-pub mod binomial;
-pub mod cauchy;
-pub mod chisq;
-pub mod exponential;
-pub mod f_dist;
-pub mod gamma;
-pub mod geometric;
-pub mod hypergeometric;
-pub mod lnorm;
-pub mod logistic;
-pub mod multinom;
-pub mod nbeta;
-pub mod nbinom;
-pub mod nchisq;
-pub mod nf_dist;
-pub mod normal;
-pub mod nt_dist;
-pub mod poisson;
-pub mod signrank;
-pub mod t_dist;
-pub mod tukey;
-pub mod uniform;
-pub mod weibull;
-pub mod wilcox;
+// Re-export the canonical `nmath::dist` implementations.
+//
+// R's distribution math lives in `src/nmath/`; `crate::nmath::dist` is the
+// faithful upstream mirror and is canonical. The top-level `dist` module
+// historically held a divergent copy (it lacked qnbinom_inner, which nmath
+// imported back from here; and beta.rs had a truncated M_LN4 literal, fixed in
+// 2bd4d41c). Callers keep using `crate::dist::*`; symbols now resolve to the
+// single canonical source. The dist/*.rs bodies are no longer compiled.
+//
+// Refs rport-vy1h, rport-x89b.
+pub use crate::nmath::dist::*;

@@ -389,3 +389,25 @@ pub fn Rf_rwilcox(m: c_double, n: c_double) -> c_double {
 pub fn rwilcox(m: c_double, n: c_double) -> c_double {
     rwilcox_inner(m, n)
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn wilcox_cache_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_value = left.with_protected(|| cwilcox(6, 4, 5));
+        right.with_protected(|| {
+            with_wilcox_cache(|cache| assert!(!cache.contains_key(&(4, 5))));
+            assert_eq!(cwilcox(6, 4, 5), left_value);
+        });
+
+        left.with_protected(|| {
+            with_wilcox_cache(|cache| assert!(cache.contains_key(&(4, 5))));
+        });
+    }
+}

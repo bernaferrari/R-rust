@@ -1107,3 +1107,32 @@ pub fn Rf_rbeta(a: f64, b: f64) -> f64 {
 pub fn rbeta(a: f64, b: f64) -> f64 {
     rbeta_inner(a, b)
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rbeta_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rbeta_inner(2.0, 5.0);
+            with_beta_state(|state| {
+                assert_eq!(state.olda, 2.0);
+                assert_eq!(state.oldb, 5.0);
+                assert!(state.beta > 0.0);
+            });
+        });
+
+        right.with_protected(|| {
+            with_beta_state(|state| {
+                assert_eq!(state.olda, -1.0);
+                assert_eq!(state.oldb, -1.0);
+                assert_eq!(state.beta, 0.0);
+            });
+        });
+    }
+}

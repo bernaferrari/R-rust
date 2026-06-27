@@ -622,3 +622,32 @@ pub fn Rf_rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
 pub fn rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
     rhyper_inner(nn1, nn2, kk)
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rhyper_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rhyper_inner(30.0, 40.0, 12.0);
+            with_rhyper_state(|state| {
+                assert_eq!(state.n1s, 30);
+                assert_eq!(state.n2s, 40);
+                assert_eq!(state.ks, 12);
+            });
+        });
+
+        right.with_protected(|| {
+            with_rhyper_state(|state| {
+                assert_eq!(state.n1s, -1);
+                assert_eq!(state.n2s, -1);
+                assert_eq!(state.ks, -1);
+            });
+        });
+    }
+}
