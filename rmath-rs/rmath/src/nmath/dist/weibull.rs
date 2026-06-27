@@ -15,7 +15,7 @@ pub fn dweibull_inner(x: f64, shape: f64, scale: f64, give_log: bool) -> f64 {
     if isnan(x) || isnan(shape) || isnan(scale) {
         return x + shape + scale;
     }
-    if shape <= 0.0 || scale <= 0.0 {
+    if shape < 0.0 || scale <= 0.0 {
         return ml_warn_return_nan();
     }
 
@@ -45,12 +45,16 @@ pub fn pweibull_inner(x: f64, shape: f64, scale: f64, lower_tail: bool, log_p: b
     if isnan(x) || isnan(shape) || isnan(scale) {
         return x + shape + scale;
     }
-    if shape <= 0.0 || scale <= 0.0 {
+    if shape < 0.0 || scale <= 0.0 {
         return ml_warn_return_nan();
     }
 
+    // R_P_bounds_01(x, 0., ML_POSINF)
     if x <= 0.0 {
-        return r_dt_0(lower_tail, log_p);
+        return r_d__0(log_p);
+    }
+    if x >= ML_POSINF {
+        return r_d__1(log_p);
     }
     let x = -pow(x / scale, shape);
     if lower_tail {
@@ -66,7 +70,7 @@ pub fn qweibull_inner(p: f64, shape: f64, scale: f64, lower_tail: bool, log_p: b
     if isnan(p) || isnan(shape) || isnan(scale) {
         return p + shape + scale;
     }
-    if shape <= 0.0 || scale <= 0.0 {
+    if shape < 0.0 || scale <= 0.0 {
         return ml_warn_return_nan();
     }
 
@@ -98,12 +102,15 @@ pub fn qweibull_inner(p: f64, shape: f64, scale: f64, lower_tail: bool, log_p: b
 
 #[must_use]
 pub fn rweibull_inner(shape: f64, scale: f64) -> f64 {
-    if !r_finite(shape) || !r_finite(scale) || shape <= 0.0 || scale <= 0.0 {
+    if !r_finite(shape) || !r_finite(scale) || shape < 0.0 || scale <= 0.0 {
         if scale == 0.0 {
             return 0.0;
         }
         /* else */
         return ml_warn_return_nan();
+    }
+    if shape == 0.0 {
+        return if exp_rand() <= 1.0 { 0.0 } else { ML_POSINF };
     }
 
     scale * pow(-log(exp_rand()), 1.0 / shape)

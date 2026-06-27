@@ -498,7 +498,7 @@ unsafe fn sumDims(dims: *const f64, from: c_int, to: c_int) -> f64 {
 
 unsafe fn allocationRemaining(initial: f64, remaining: f64) -> bool {
     if initial == 0.0 {
-        true
+        false
     } else if initial > 0.0 {
         remaining > 0.0
     } else {

@@ -1018,6 +1018,12 @@ pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         let perm = parse_aperm_perm(perm_arg, ndim);
         let resize = parse_resize_arg(resize_arg);
+
+        // Short-circuit identity permutation (PR#19069): when resizing and the
+        // permutation is the identity, return the original array unchanged.
+        if resize && perm.iter().enumerate().all(|(i, &axis)| axis == i) {
+            return x;
+        }
         let permuted_dims: Vec<_> = perm.iter().map(|axis| dims[*axis]).collect();
 
         let result = Rf_allocVector3(TYPEOF(x), total as R_xlen_t);
@@ -1733,6 +1739,34 @@ mod tests {
             let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
             assert_eq!(*INTEGER(dim), 3);
             assert_eq!(*INTEGER(dim).add(1), 2);
+            assert_eq!(*INTEGER(dim).add(2), 4);
+        }
+    }
+
+    /// PR#19069: identity permutation with resize returns the original array.
+    #[test]
+    fn test_do_aperm_identity_permutation_returns_original() {
+        let _session = RSession::new();
+        unsafe {
+            let values: Vec<c_int> = (1..=24).collect();
+            let array = int_array(&values, &[2, 3, 4]);
+            // perm = c(1, 2, 3) is the identity (1-based -> 0-based [0, 1, 2]).
+            let perm = int_array(&[1, 2, 3], &[3]);
+            let args = Rf_cons(
+                array,
+                Rf_cons(perm, Rf_cons(Rf_ScalarLogical(1), R_NilValue())),
+            );
+            let result = do_aperm(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
+            assert_eq!(
+                result, array,
+                "identity aperm should return the original array"
+            );
+            // Values and dims are unchanged.
+            assert_eq!(*INTEGER(result), 1);
+            assert_eq!(*INTEGER(result).add(23), 24);
+            let dim = crate::sexp::attrib_core::getAttrib(result, R_DimSymbol());
+            assert_eq!(*INTEGER(dim), 2);
+            assert_eq!(*INTEGER(dim).add(1), 3);
             assert_eq!(*INTEGER(dim).add(2), 4);
         }
     }

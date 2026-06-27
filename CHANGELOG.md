@@ -21,6 +21,19 @@ This is the first Android-focused Rust R runtime slice.
   aarch64 checks, global-state audit, conformance parity, safe API audit,
   upstream source-map validation, Android packaging, and performance snapshots.
 
+### Upstream R Sync
+
+Applied from `r-source` trunk (synced through 2026-06-26):
+- PR#19055 — `d/p/q/rweibull` now accept `shape = 0` (degenerate Weibull),
+  matching upstream guards and `R_P_bounds_01` for `pweibull`.
+- PR#19069 — `aperm()` short-circuits identity permutations with `resize=TRUE`,
+  returning the original array without copying.
+- grid `allocationRemaining` returns `FALSE` for `initial == 0`.
+
+Reviewed but not applicable this cycle: `datetime.c` const-correctness (N/A in
+Rust), `localtime.c` `lcl_is_set` tri-state (already present in the Rust
+`tzone` port), and `portsrc.f` `nlminb` aliasing fix (subroutine not yet ported).
+
 ### Known Limits
 
 - This is not a full GNU R replacement yet; the conformance suite covers a
