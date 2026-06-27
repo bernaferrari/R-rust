@@ -880,7 +880,13 @@ where
             notify_gc_callbacks_in(&instance.gc_state);
             (promoted, freed)
         }
-        Err(_) => (0, 0),
+        // A panic mid-collection leaves the heap in an indeterminate state.
+        // Swallowing it (the old `=> (0, 0)`) risks silent memory corruption:
+        // callers would keep using a partially-marked/swept heap. Make the
+        // panic propagate (fatal to the session/eval) instead. `in_progress`
+        // was already reset above, so a panic caught higher up does not leave
+        // GC permanently disabled.
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
@@ -1644,6 +1650,62 @@ mod tests {
         });
 
         drop(super::super::protect::protect_n(1));
+    }
+
+    /// GC soundness stress: many protected real vectors must retain their
+    /// exact sentinel data across repeated full collections while unprotected
+    /// garbage is churned underneath. This exercises the invariant the
+    /// conformance suite does not cover: that GC never collects or corrupts a
+    /// live (protected) object. A failure here would indicate premature
+    /// collection or a mark/sweep bug.
+    #[test]
+    fn gc_stress_protected_vectors_retain_data_across_collections() {
+        let _session = RSession::new();
+        use super::super::protect::protect;
+
+        const N: usize = 64;
+        const LEN: usize = 8;
+        let mut keepers: Vec<SEXP> = Vec::with_capacity(N);
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+            for i in 0..N {
+                let v = arena.alloc_vector(SEXPTYPE::REALSXP, LEN as i64);
+                unsafe {
+                    let data = crate::sexp::accessors::REAL(v);
+                    for j in 0..LEN {
+                        *data.add(j) = (i as f64) * 1000.0 + j as f64;
+                    }
+                    std::mem::forget(protect(v));
+                }
+                keepers.push(v);
+            }
+        });
+
+        // Churn unprotected garbage and collect repeatedly; prove real work
+        // happens (freed > 0) and no protected vector is touched.
+        let mut any_freed = 0usize;
+        for _ in 0..20 {
+            with_arena(|arena| {
+                for _ in 0..200 {
+                    let _ = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
+                }
+            });
+            let (_promoted, freed) = full_gc();
+            any_freed |= freed;
+            for (i, v) in keepers.iter().enumerate() {
+                unsafe {
+                    assert_eq!((**v).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+                    let data = crate::sexp::accessors::REAL(*v);
+                    for j in 0..LEN {
+                        let expected = (i as f64) * 1000.0 + j as f64;
+                        assert_eq!(*data.add(j), expected, "vector {i}[{j}] corrupted after GC");
+                    }
+                }
+            }
+        }
+        assert!(any_freed > 0, "stress did not actually free any garbage");
+
+        drop(super::super::protect::protect_n(N));
     }
 
     #[test]
