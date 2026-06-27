@@ -20,6 +20,7 @@ use libm::*;
 
 // Constants
 const M_LN2: f64 = 0.693147180559945309417232121458;
+const M_LN4: f64 = 1.386294361119890618834464242916; // = log(4), matches upstream R M_LN4
 const DBL_MIN: f64 = 2.2250738585072014e-308;
 const DBL_MAX: f64 = 1.7976931348623157e+308;
 const DBL_MAX_EXP: i32 = 1024;
@@ -1034,7 +1035,7 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
             let (_, w) = v_w_from_u1_bet(u1, b);
             let v = beta * log(u1 / (1.0 - u1));
 
-            if alpha * (log(alpha / (a + w)) + v) - 1.3862944 >= log(u1 * u1 * u2) {
+            if alpha * (log(alpha / (a + w)) + v) - M_LN4 >= log(u1 * u1 * u2) {
                 return if aa == a { a / (a + w) } else { w / (a + w) };
             }
         }
@@ -1055,7 +1056,7 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
             let (_, w) = v_w_from_u1_bet(u1, a);
 
             let z = u1 * u1 * u2;
-            let r = gamma_v * beta * log(u1 / (1.0 - u1)) - 1.3862944;
+            let r = gamma_v * beta * log(u1 / (1.0 - u1)) - M_LN4;
             let s = a + r - w;
             if s + 2.609438 >= 5.0 * z {
                 break;
