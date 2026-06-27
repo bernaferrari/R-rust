@@ -1,19 +1,11 @@
-pub mod bd0;
-pub mod bessel;
-pub mod bessel_i;
-pub mod bessel_j;
-pub mod bessel_k;
-pub mod bessel_y;
-pub mod chebyshev;
-pub mod choose;
-pub mod cospi;
-pub mod gamma;
-pub mod gamma_cody;
-pub mod gammalims;
-pub mod lbeta;
-pub mod lgammacor;
-pub mod log1p;
-pub mod mlutils;
-pub mod polygamma;
-pub mod stirlerr;
-pub mod toms708;
+// Re-export the canonical `nmath::special` implementations.
+//
+// `crate::nmath::special` is the faithful upstream `src/nmath/special/` mirror
+// and is a superset of the top-level `special` copy (it additionally has
+// `beta_util.rs`). There are no cross-tree import entanglements here (each side
+// references its own tree), so callers keep using `crate::special::*` and the
+// symbols now resolve to the single canonical source. The special/*.rs bodies
+// are no longer compiled.
+//
+// Refs rport-vy1h, rport-ee8d.
+pub use crate::nmath::special::*;

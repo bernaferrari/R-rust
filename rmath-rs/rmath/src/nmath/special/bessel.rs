@@ -116,3 +116,93 @@ mod ffi {
         super::bessel_y(x, alpha)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+        if a.is_nan() && b.is_nan() {
+            return true;
+        }
+        if a.is_infinite() && b.is_infinite() {
+            return a.signum() == b.signum();
+        }
+        (a - b).abs() < tol * b.abs().max(1.0)
+    }
+
+    #[test]
+    fn test_bessel_j_basic() {
+        assert!(approx_eq(bessel_j(0.0, 0.0), 1.0, 1e-10));
+        assert!(approx_eq(bessel_j(5.0, 0.0), -0.17759677131433830, 1e-10));
+        assert!(approx_eq(bessel_j(2.0, 1.0), 0.5767248077568734, 1e-10));
+    }
+
+    #[test]
+    fn test_bessel_y_basic() {
+        assert!(bessel_y(0.0, 0.0).is_nan() || bessel_y(0.0, 0.0).is_infinite());
+        assert!(approx_eq(bessel_y(5.0, 0.0), -0.3085176254852234, 1e-8));
+    }
+
+    #[test]
+    fn test_bessel_i_basic() {
+        assert!(approx_eq(bessel_i(0.0, 0.0, false), 1.0, 1e-10));
+        assert!(approx_eq(
+            bessel_i(2.0, 1.0, false),
+            1.590636854637329,
+            1e-10
+        ));
+    }
+
+    #[test]
+    fn test_bessel_k_basic() {
+        assert!(approx_eq(
+            bessel_k(2.0, 0.0, false),
+            0.11389387274953344,
+            1e-8
+        ));
+        assert!(approx_eq(
+            bessel_k(1.0, 1.0, false),
+            0.6019072301972347,
+            1e-8
+        ));
+    }
+
+    #[test]
+    fn test_bessel_i_expo_scaled() {
+        let unscaled = bessel_i(10.0, 0.0, false);
+        let scaled = bessel_i(10.0, 0.0, true);
+        assert!(scaled.is_finite());
+        assert!(scaled < unscaled);
+    }
+
+    #[test]
+    fn test_bessel_k_expo_scaled() {
+        let unscaled = bessel_k(2.0, 1.0, false);
+        let scaled = bessel_k(2.0, 1.0, true);
+        assert!(scaled.is_finite());
+        assert!(scaled > unscaled);
+    }
+
+    #[test]
+    fn test_bessel_negative_order() {
+        assert!(bessel_j(2.0, -1.0).is_finite());
+        assert!(bessel_y(2.0, -1.0).is_finite());
+        assert!(bessel_i(2.0, -1.0, false).is_finite());
+        assert!(bessel_k(2.0, -1.0, false).is_finite());
+    }
+
+    #[test]
+    fn test_bessel_negative_x() {
+        assert!(bessel_j(-1.0, 0.0).is_nan() || bessel_j(-1.0, 0.0).is_infinite());
+    }
+
+    #[test]
+    fn test_ffi_shims() {
+        assert_eq!(ffi::Rf_bessel_i(2.0, 1.0, 0), bessel_i(2.0, 1.0, false));
+        assert_eq!(ffi::bessel_i(2.0, 1.0, 1), bessel_i(2.0, 1.0, true));
+        assert_eq!(ffi::Rf_bessel_j(2.0, 1.0), bessel_j(2.0, 1.0));
+        assert_eq!(ffi::Rf_bessel_k(2.0, 1.0, 0), bessel_k(2.0, 1.0, false));
+        assert_eq!(ffi::Rf_bessel_y(5.0, 0.0), bessel_y(5.0, 0.0));
+    }
+}

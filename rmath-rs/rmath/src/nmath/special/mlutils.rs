@@ -120,3 +120,16 @@ pub static R_PosInf: f64 = ML_POSINF;
 
 /// R_NegInf constant.
 pub static R_NegInf: f64 = ML_NEGINF;
+
+/// REprintf: print to stderr (C FFI compatibility shim).
+pub fn REprintf(format: *const std::os::raw::c_char) {
+    unsafe {
+        if format.is_null() {
+            return;
+        }
+        let c_str = std::ffi::CStr::from_ptr(format);
+        if let Ok(s) = c_str.to_str() {
+            eprint!("{}", s);
+        }
+    }
+}
