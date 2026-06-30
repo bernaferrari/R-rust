@@ -9,7 +9,9 @@ reapplied and compared.
 Current release proof: **571/571 stock C R conformance cases pass** in the local
 parity suite, plus **15/15 curated upstream GNU R core slices**, with focused unit
 coverage for packages, S3 registration, multi-session isolation, UniFFI, and
-Android plot rendering.
+Android plot rendering. The goal is **full GNU R fidelity** over time; remaining
+gaps (GC, natives, graphics/devices, compiler/lazyload, package trees) are
+tracked as `known-gap` / `policy` rows in `docs/upstream-port-map.tsv` and beads.
 
 ## Architecture
 

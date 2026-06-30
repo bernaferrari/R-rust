@@ -16,10 +16,16 @@ rmath-rs/rmath/src/dist/gamma.rs	r-source/src/nmath/dgamma.c	dgamma	faithful	Gam
 rmath-rs/rmath/src/dist/gamma.rs	r-source/src/nmath/pgamma.c	pgamma	faithful	Gamma CDF behavior.
 rmath-rs/rmath/src/dist/gamma.rs	r-source/src/nmath/qgamma.c	qgamma	faithful	Gamma quantile behavior.
 rmath-rs/rmath/src/dist/gamma.rs	r-source/src/nmath/rgamma.c	rgamma	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/rmath/src/dist/beta.rs	r-source/src/nmath/dbeta.c	dbeta	faithful	Beta density behavior.
-rmath-rs/rmath/src/dist/beta.rs	r-source/src/nmath/pbeta.c	pbeta	faithful	Beta CDF behavior.
-rmath-rs/rmath/src/dist/beta.rs	r-source/src/nmath/qbeta.c	qbeta	faithful	Beta quantile behavior.
-rmath-rs/rmath/src/dist/beta.rs	r-source/src/nmath/rbeta.c	rbeta	faithful	Session RNG replaces process-global RNG state.
+rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/dbeta.c	dbeta	faithful	Beta density (Loader); re-exported via dist/beta.
+rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/pbeta.c	pbeta, bratio	faithful	pbeta_raw delegates to nmath::special::toms708::bratio (TOMS 708).
+rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/qbeta.c	qbeta	faithful	Beta quantile behavior.
+rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/rbeta.c	rbeta	faithful	Session RNG replaces process-global RNG state.
+rmath-rs/rmath/src/nmath/special/toms708.rs	r-source/src/nmath/toms708.c	bratio	faithful	ACM TOMS 708 incomplete beta / bratio implementation.
+rmath-rs/rmath/src/mainutils/altrep.rs	r-source/src/main/altrep.c	ALTREP classes	known-gap	ALTREP bit honored in duplicate; full class method tables and R_tryWrap incomplete.
+rmath-rs/rmath/src/eval/bc_eval.rs	r-source/src/main/eval.c	bcEval	known-gap	Partial bytecode opcode set; not full GNU R bcEval.
+rmath-rs/rmath/src/eval/bc_compile.rs	r-source/src/library/compiler	R_cmpfun	known-gap	Minimal compiler subset; compiler package and full for-loop BC not ported.
+rmath-rs/rmath/src/library/grid/register.rs	r-source/src/library/grid	grid .Call register	known-gap	Grid registration currently no-op; GE integration incomplete.
+rmath-rs/rmath/src/library/graphics/base.rs	r-source/src/main/plot.c	C_* graphics	known-gap	Many base graphics C entrypoints unimplemented vs stock devices.
 rmath-rs/rmath/src/dist/cauchy.rs	r-source/src/nmath/dcauchy.c, r-source/src/nmath/pcauchy.c, r-source/src/nmath/qcauchy.c, r-source/src/nmath/rcauchy.c	dcauchy, pcauchy, qcauchy, rcauchy	faithful	Distribution family grouped in one Rust module.
 rmath-rs/rmath/src/dist/chisq.rs	r-source/src/nmath/dchisq.c, r-source/src/nmath/pchisq.c, r-source/src/nmath/qchisq.c, r-source/src/nmath/rchisq.c	dchisq, pchisq, qchisq, rchisq	faithful	Distribution family grouped in one Rust module.
 rmath-rs/rmath/src/dist/exponential.rs	r-source/src/nmath/dexp.c, r-source/src/nmath/pexp.c, r-source/src/nmath/qexp.c, r-source/src/nmath/rexp.c	dexp, pexp, qexp, rexp	faithful	Distribution family grouped in one Rust module.
@@ -44,8 +50,8 @@ rmath-rs/rmath/src/sexp/protect.rs	r-source/src/main/memory.c	PROTECT, UNPROTECT
 rmath-rs/rmath/src/sexp/gengc.rs	r-source/src/main/memory.c	R_gc_internal	known-gap	Arena ownership currently avoids full moving/mark-sweep GC parity; lifetime discipline is the safety boundary.
 rmath-rs/rmath/src/sexp/attrib_core.rs	r-source/src/main/attrib.c	setAttrib, getAttrib, namesgets	rust-shaped	Attribute manipulation is shared by typed Sexp APIs and compatibility shims.
 rmath-rs/rmath/src/mainutils/essentials.rs	r-source/src/main/builtin.c	do_c, do_list, do_seq	rust-shaped	Curated Android-essential builtin surface; C-shaped dispatch delegates to safer helpers.
-rmath-rs/rmath/src/mainutils/subset.rs	r-source/src/main/subset.c	do_subset, do_subset2, VectorSubset	faithful	Subsetting semantics should track stock R errors and recycling.
-rmath-rs/rmath/src/mainutils/subassign.rs	r-source/src/main/subassign.c	do_subassign, SubassignTypeFix	faithful	Replacement/subassignment semantics should track stock R.
+rmath-rs/rmath/src/mainutils/subset.rs	r-source/src/main/subset.c	do_subset, do_subset2, R_DispatchOrEvalSP	faithful	Subsetting with S3/S4 dispatch via DispatchOrEval on objects.
+rmath-rs/rmath/src/mainutils/subassign.rs	r-source/src/main/subassign.c	do_subassign, R_DispatchOrEvalSP	faithful	Replacement/subassignment with object method dispatch.
 rmath-rs/rmath/src/mainutils/subscript.rs	r-source/src/main/subscript.c	makeSubscript, integerSubscript	faithful	Index coercion, negative/zero/NA handling maps to upstream.
 rmath-rs/rmath/src/mainutils/coerce.rs	r-source/src/main/coerce.c	coerceVector, as* helpers	faithful	Type coercion behavior should track upstream.
 rmath-rs/rmath/src/mainutils/attrib.rs	r-source/src/main/attrib.c	do_attr, do_attributes, classgets	rust-shaped	Compatibility entrypoints delegate into shared attribute helpers.

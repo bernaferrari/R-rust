@@ -1450,40 +1450,44 @@ unsafe fn ExtractExactArg(args: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Version of DispatchOrEval for `[`, `[[`, and `$` that speeds up simple cases.
-/// Returns TRUE if dispatch succeeded (answer in *ans), FALSE if fall-through.
-///
-/// For now this always returns FALSE (no dispatch), which means we always
-/// fall through to the default implementations. Full dispatch requires
-/// eval(), DispatchOrEval(), etc.
+/// Returns TRUE if dispatch succeeded (answer in *ans), FALSE if fall-through
+/// with evaluated args in *ans. Port of R's `R_DispatchOrEvalSP` in subset.c.
 unsafe fn R_DispatchOrEvalSP(
     call: SEXP,
-    _op: SEXP,
-    _generic: *const c_char,
+    op: SEXP,
+    generic: *const c_char,
     args: SEXP,
     rho: SEXP,
     ans: *mut SEXP,
 ) -> c_int {
     unsafe {
-        /* If first arg is not an object, skip dispatch */
-        if !isNull(args) && CAR(args) != R_NilValue() {
-            /* Check if first arg is an object -- if not, just eval args and return FALSE */
-            /* For the fallback path, we need to evaluate args manually */
-            /* Since we don't have eval() yet, construct the evaluated list */
-            let x = CAR(args);
+        use crate::eval::dispatch::{DispatchOrEval, evalListKeepMissing};
+        use crate::sexp::memory_ext::{CONS_NR, R_mkEVPROMISE};
+        use crate::sexp::symbol::R_DotsSymbol;
+
+        let mut prom: SEXP = ptr::null_mut();
+        let mut args_work = args;
+
+        if args != R_NilValue() && CAR(args) != R_DotsSymbol() {
+            let x = Rf_eval(CAR(args), rho);
+            let _px = protect(x);
             if !isObject(x) {
-                /* Not an object, no dispatch needed. Build evaluated list. */
-                /* For now, just pass args through since we don't have evalListKeepMissing */
+                let rest = evalListKeepMissing(CDR(args), rho);
+                let _pr = protect(rest);
                 if !ans.is_null() {
-                    *ans = args;
+                    *ans = CONS_NR(x, rest);
                 }
-                return 0; /* FALSE */
+                return 0; // FALSE — fall through with evaluated args
             }
+            // Object: build EVPROMISE for first arg and try S3/S4 dispatch
+            prom = R_mkEVPROMISE(CAR(args), x);
+            args_work = CONS_NR(prom, CDR(args));
         }
-        /* Object path: would dispatch -- but we don't have DispatchOrEval yet */
-        if !ans.is_null() {
-            *ans = args;
-        }
-        0 /* FALSE -- fall through to default code */
+
+        let _pa = protect(args_work);
+        let disp = DispatchOrEval(call, op, generic, args_work, rho, ans, 0, 0);
+        let _ = prom;
+        disp
     }
 }
 

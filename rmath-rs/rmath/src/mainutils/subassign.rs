@@ -1994,33 +1994,44 @@ unsafe fn SubAssignArgs(args: SEXP, x: *mut SEXP, s: *mut SEXP, y: *mut SEXP) ->
 // ---------------------------------------------------------------------------
 
 /// Port of `R_DispatchOrEvalSP()` -- fast-path dispatch/eval for `[<-` and friends.
+/// Mirrors subset.c: evaluate first arg, skip dispatch when not an object,
+/// otherwise EVPROMISE + `DispatchOrEval`.
 unsafe fn R_DispatchOrEvalSP(
-    _call: SEXP,
-    _op: SEXP,
-    _generic: *const c_char,
+    call: SEXP,
+    op: SEXP,
+    generic: *const c_char,
     args: SEXP,
-    _rho: SEXP,
+    rho: SEXP,
     ans: *mut SEXP,
 ) -> c_int {
     unsafe {
-        if !isNull(args)
-            && CAR(args) != {
-                use crate::sexp::symbol::R_DotsSymbol;
-                R_DotsSymbol()
-            }
-        {
-            let x = CAR(args);
+        use crate::eval::dispatch::{DispatchOrEval, evalListKeepMissing};
+        use crate::eval::eval::Rf_eval;
+        use crate::sexp::memory_ext::{CONS_NR, R_mkEVPROMISE};
+        use crate::sexp::symbol::R_DotsSymbol;
+
+        let mut prom: SEXP = ptr::null_mut();
+        let mut args_work = args;
+
+        if args != R_NilValue() && CAR(args) != R_DotsSymbol() {
+            let x = Rf_eval(CAR(args), rho);
+            let _px = protect(x);
             if !isObject(x) {
+                let rest = evalListKeepMissing(CDR(args), rho);
+                let _pr = protect(rest);
                 if !ans.is_null() {
-                    *ans = args;
+                    *ans = CONS_NR(x, rest);
                 }
-                return 0; // FALSE
+                return 0;
             }
+            prom = R_mkEVPROMISE(CAR(args), x);
+            args_work = CONS_NR(prom, CDR(args));
         }
-        if !ans.is_null() {
-            *ans = args;
-        }
-        0 // FALSE
+
+        let _pa = protect(args_work);
+        let disp = DispatchOrEval(call, op, generic, args_work, rho, ans, 0, 0);
+        let _ = prom;
+        disp
     }
 }
 

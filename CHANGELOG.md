@@ -4,6 +4,16 @@
 
 This is the first Android-focused Rust R runtime slice.
 
+### Fidelity fixes (2026-06-30)
+
+- `pbeta` / `pbeta_raw` now call TOMS 708 `bratio` (`nmath::special::toms708`), matching stock R `pbeta.c`.
+- `R_DispatchOrEvalSP` in subset/subassign evaluates args and dispatches S3/S4 via `DispatchOrEval` (was always false).
+- `ALTREP_CHECK` honors the SEXP alt bit (was hardcoded false).
+- `is.loaded` delegates to `dotcode::do_isloaded` / `R_lookupLoadedSymbol` (was always FALSE).
+- Corrected `dbeta(0.5,2,5)` unit expectation to stock R `0.9375` and enabled the test.
+- Port map: beta/toms708 paths updated; known-gap rows for ALTREP depth, bytecode, grid, graphics.
+- CI: clippy on embed crates, strict conformance + safe API audit on Linux.
+
 ### Supported Highlights
 
 - Session-owned R runtime with isolated arenas, environments, RNG state,

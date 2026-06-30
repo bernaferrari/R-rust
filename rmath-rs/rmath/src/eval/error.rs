@@ -13,7 +13,6 @@ pub enum EvalError {
     FunctionNotFound(String),
     NonFunction,
     UnimplementedType(c_int),
-    BytecodeNotImplemented,
 }
 
 impl std::fmt::Display for EvalError {
@@ -27,9 +26,6 @@ impl std::fmt::Display for EvalError {
             EvalError::FunctionNotFound(name) => write!(f, "could not find function \"{}\"", name),
             EvalError::NonFunction => write!(f, "attempt to apply non-function"),
             EvalError::UnimplementedType(t) => write!(f, "unimplemented type in eval: {}", t),
-            EvalError::BytecodeNotImplemented => {
-                write!(f, "bytecode evaluation not yet implemented")
-            }
         }
     }
 }

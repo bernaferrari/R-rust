@@ -197,10 +197,10 @@ unsafe fn GROWABLE_BIT_SET(x: SEXP) -> c_int {
     }
 }
 
-/// Check ALTREP (always false in our implementation).
+/// Check ALTREP bit (same as R's ALTREP() macro on the sxpinfo alt flag).
 #[inline]
-unsafe fn ALTREP_CHECK(_x: SEXP) -> c_int {
-    0
+unsafe fn ALTREP_CHECK(x: SEXP) -> c_int {
+    unsafe { ALTREP(x) }
 }
 
 /// Raise a typed error for SEXPTYPEs this port cannot duplicate/copy yet.
@@ -466,7 +466,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
             return ptr::null_mut();
         }
 
-        // ALTREP check (stub: always skip)
+        // ALTREP: try class-specific duplicate when the alt bit is set
         if ALTREP_CHECK(s) != 0 {
             let ans = ALTREP_DUPLICATE_EX(s, deep);
             if !ans.is_null() {

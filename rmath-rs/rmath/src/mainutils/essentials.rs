@@ -20894,9 +20894,9 @@ fn out_of_order_complex(previous: Rcomplex, current: Rcomplex, strictly: bool) -
     }
 }
 
-/// R's `is.loaded(x)` — check if symbol is loaded (simplified: always FALSE).
-pub unsafe fn do_is_loaded(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(FALSE) }
+/// R's `is.loaded(...)` — delegates to `dotcode::do_isloaded` (R_lookupLoadedSymbol).
+pub unsafe fn do_is_loaded(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::dotcode::do_isloaded(call, op, args, rho) }
 }
 
 // ---------------------------------------------------------------------------

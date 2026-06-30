@@ -212,16 +212,13 @@ pub fn dbeta_inner(x: f64, a: f64, b: f64, give_log: bool) -> f64 {
 // pbeta
 // =====================================================================
 
-// Tracked for future implementation: full TOMS Algorithm 708 (bratio from
-// toms708.c). Current pbeta_raw uses simplified continued fraction / series
-// expansion. Ref: ACM Trans. Math. Softw. 26(2), 2000, pp. 248-253
-
-/// pbeta_raw: raw beta distribution function (incomplete beta ratio)
-/// Uses TOMS 708 bpser() power series algorithm.
+/// pbeta_raw: incomplete beta ratio I_x(a,b) via TOMS 708 `bratio`
+/// (matches R's `pbeta.c` → `toms708.c`).
 fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
     if x >= 1.0 {
         return r_dt_1(lower_tail, log_p);
     }
+    // treat limit cases correctly here (0 <= x < 1):
     if a == 0.0 || b == 0.0 || !r_finite(a) || !r_finite(b) {
         if a == 0.0 && b == 0.0 {
             return if log_p { -M_LN2 } else { 0.5 };
@@ -232,6 +229,7 @@ fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
         if b == 0.0 || b / a == 0.0 {
             return r_dt_0(lower_tail, log_p);
         }
+        // a = b = Inf : point mass 1 at 1/2
         if x < 0.5 {
             return r_dt_0(lower_tail, log_p);
         } else {
@@ -242,50 +240,16 @@ fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
         return r_dt_0(lower_tail, log_p);
     }
 
-    let x1 = 1.0 - x;
-    let use_symmetry = x > (a + 1.0) / (a + b + 2.0);
-
-    let (ra, rb, rx, flip) = if use_symmetry {
-        (b, a, x1, true)
-    } else {
-        (a, b, x, false)
-    };
-
-    let lbeta_val = lbeta_fn(ra, rb);
-    let log_front = ra * log(rx) - log(ra) - lbeta_val;
-
-    let mut c = 1.0_f64;
-    let mut sum = 0.0_f64;
-    for n in 1..1_0000_0000 {
-        let n_f = n as f64;
-        c *= (1.0 - rb / n_f) * rx;
-        let w = c / (ra + n_f);
-        sum += w;
-        if w.abs() < 1e-15 * sum.abs() {
-            break;
-        }
-    }
-
-    let w = if log_p {
-        log_front + log1p(ra * sum)
-    } else {
-        exp(log_front) * (1.0 + ra * sum)
-    };
-
-    let wc = if log_p { r_log1_exp(w) } else { 1.0 - w };
-
-    if flip {
-        if lower_tail { wc } else { w }
-    } else {
-        if lower_tail { w } else { wc }
-    }
+    // Now: 0 < a < Inf; 0 < b < Inf and 0 < x < 1
+    // Accurate complement: x1 = 0.5 - x + 0.5 (R's pbeta.c)
+    let x1 = 0.5 - x + 0.5;
+    let (w, wc, ierr) = crate::nmath::special::toms708::bratio(a, b, x, x1, log_p);
+    // ierr in {10,14} <==> bgrat() error codes; R only warns for other codes.
+    let _ = ierr;
+    if lower_tail { w } else { wc }
 }
 
-/// Simplified bratio: computes the incomplete beta ratio I_x(a,b)
-/// and its complement I_{1-x}(b,a) = 1 - I_x(a,b)
-///
-/// This is a simplified version that handles the common cases.
-/// For production use, the full TOMS 708 implementation should be ported.
+/// Incomplete beta ratio I_x(a,b) (and complement via `lower_tail` / `log_p`).
 #[must_use]
 pub fn pbeta_inner(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754

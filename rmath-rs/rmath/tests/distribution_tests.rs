@@ -155,15 +155,13 @@ fn test_pexp_rate1() {
 // Beta distribution (dbeta, pbeta)
 // =============================================================================
 
-// dbeta(0.5, 2, 5) returns 0.9375 in this port (simplified pbeta_raw series),
-// while R returns 2.5. Skipping until full TOMS 708 bratio is implemented.
+// Stock R: dbeta(0.5, 2, 5) == 0.9375  (x^(a-1)(1-x)^(b-1) / B(a,b))
 #[test]
-#[ignore]
 fn test_dbeta_half_2_5() {
     let result = beta::dbeta_inner(0.5, 2.0, 5.0, false);
     assert!(
-        approx_eq(result, 2.5, 1e-10),
-        "dbeta(0.5,2,5) = {result}, expected 2.5"
+        approx_eq(result, 0.9375, 1e-10),
+        "dbeta(0.5,2,5) = {result}, expected 0.9375"
     );
 }
 
