@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 /// Minimal per-thread math state mirroring the fields of `RInstance`
 /// that the distribution / RNG / optimisation code accesses.
+#[allow(dead_code)]
 pub(crate) struct WasmMathInstance {
     pub(crate) rng_state: (u32, u32),
     pub(crate) dist_beta_state: crate::dist::beta::BetaState,
