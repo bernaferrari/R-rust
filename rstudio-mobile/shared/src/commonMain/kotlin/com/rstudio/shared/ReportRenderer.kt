@@ -1,4 +1,4 @@
-package com.rstudio.mobile.report
+package com.rstudio.shared
 
 data class ReportChunkResult(
     val code: String,
@@ -6,15 +6,14 @@ data class ReportChunkResult(
     val error: String? = null,
 )
 
+/** Small, platform-neutral report renderer shared by Android and the browser. */
 object ReportRenderer {
     private val chunkPattern = Regex("(?s)```\\s*\\{r[^}]*}\\s*\\n(.*?)```")
 
     fun render(markdown: String, evaluate: (String) -> ReportChunkResult): String {
-        val html = StringBuilder()
-        html.append("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><style>")
-        html.append("body{font-family:system-ui,sans-serif;max-width:960px;margin:32px auto;padding:0 20px;color:#202124}pre{background:#f1f3f4;padding:12px;border-radius:8px;overflow:auto}code{font-family:ui-monospace,monospace}h1,h2,h3{margin-top:1.6em}.error{color:#a50e0e;background:#fce8e6}")
-        html.append("</style></head><body>")
-
+        val html = StringBuilder("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><style>")
+            .append("body{font-family:system-ui,sans-serif;max-width:960px;margin:32px auto;padding:0 20px;color:#202124}pre{background:#f1f3f4;padding:12px;border-radius:8px;overflow:auto}code{font-family:ui-monospace,monospace}h1,h2,h3{margin-top:1.6em}.error{color:#a50e0e;background:#fce8e6}")
+            .append("</style></head><body>")
         var cursor = 0
         chunkPattern.findAll(markdown).forEach { match ->
             html.append(markdownToHtml(markdown.substring(cursor, match.range.first)))
@@ -26,22 +25,19 @@ object ReportRenderer {
             html.append("</details>")
             cursor = match.range.last + 1
         }
-        html.append(markdownToHtml(markdown.substring(cursor)))
-        html.append("</body></html>")
+        html.append(markdownToHtml(markdown.substring(cursor))).append("</body></html>")
         return html.toString()
     }
 
-    private fun markdownToHtml(markdown: String): String = markdown
-        .split("\n")
-        .joinToString("\n") { line ->
-            when {
-                line.startsWith("### ") -> "<h3>${escape(line.removePrefix("### "))}</h3>"
-                line.startsWith("## ") -> "<h2>${escape(line.removePrefix("## "))}</h2>"
-                line.startsWith("# ") -> "<h1>${escape(line.removePrefix("# "))}</h1>"
-                line.isBlank() -> ""
-                else -> "<p>${escape(line)}</p>"
-            }
+    private fun markdownToHtml(markdown: String): String = markdown.split("\n").joinToString("\n") { line ->
+        when {
+            line.startsWith("### ") -> "<h3>${escape(line.removePrefix("### "))}</h3>"
+            line.startsWith("## ") -> "<h2>${escape(line.removePrefix("## "))}</h2>"
+            line.startsWith("# ") -> "<h1>${escape(line.removePrefix("# "))}</h1>"
+            line.isBlank() -> ""
+            else -> "<p>${escape(line)}</p>"
         }
+    }
 
     private fun escape(value: String): String = value
         .replace("&", "&amp;")

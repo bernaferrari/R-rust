@@ -1,4 +1,7 @@
 .gradle/
 .kotlin/
 app/build/
+build/
+shared/build/
+webApp/build/
 local.properties

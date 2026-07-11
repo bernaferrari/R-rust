@@ -1,5 +1,7 @@
 package com.rstudio.mobile.report
 
+import com.rstudio.shared.ReportChunkResult
+import com.rstudio.shared.ReportRenderer
 import org.junit.Assert.assertTrue
 import org.junit.Test
 

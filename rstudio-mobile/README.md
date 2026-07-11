@@ -1,7 +1,11 @@
-# R Workbench for Android
+# R Workbench for Android and Web
 
 Project-first mobile R workbench built with Jetpack Compose Material 3 and the
 Rust/UniFFI R runtime.
+
+The workbench contract and report renderer are shared through the KMP `shared`
+module. Android keeps the native Rust/UniFFI session; `webApp` is a Kotlin/Wasm
+browser target behind the same `RSessionBackend` boundary.
 
 ## Features Implemented
 
@@ -46,6 +50,15 @@ app/src/main/java/com/rstudio/mobile/
 ```bash
 cd rstudio-mobile
 ./gradlew :app:assembleDebug
+
+# Verify the shared/browser Wasm target
+../scripts/web_toolchain_check.sh
+```
+
+For a browser development server:
+
+```bash
+./gradlew :webApp:wasmJsBrowserDevelopmentRun
 ```
 
 For the release smoke path, run:
@@ -70,6 +83,11 @@ Kotlin UniFFI binding and arm64-v8a `libr_uniffi.so`. The APK smoke check fails
 if the native runtime is absent. Native CRAN extensions and arbitrary package
 installation remain outside the supported scope; the package browser describes
 the current pure-R package policy explicitly.
+
+The web target currently provides the shared workbench shell. Its
+`RSessionBackend` reports execution as unavailable until the full
+`r-embed` interpreter is ported to Wasm; this is intentional rather than a
+silent compatibility downgrade.
 
 ## License
 

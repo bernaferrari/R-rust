@@ -7,8 +7,8 @@ import android.provider.OpenableColumns
 import com.rstudio.mobile.data.ProjectFile
 import com.rstudio.mobile.data.ProjectRepository
 import com.rstudio.mobile.data.WorkspaceProject
-import com.rstudio.mobile.report.ReportChunkResult
-import com.rstudio.mobile.report.ReportRenderer
+import com.rstudio.shared.ReportChunkResult
+import com.rstudio.shared.ReportRenderer
 import com.rport.uniffi.EvalResult
 import com.rport.uniffi.PlotResult
 import com.rport.uniffi.RException

@@ -7,7 +7,9 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    // Kotlin/Wasm's Node distribution plugin adds its own pinned Node repository.
+    // Prefer the shared repositories while allowing that platform-specific source.
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         google()
         mavenCentral()
@@ -16,3 +18,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "rstudio-mobile"
 include(":app")
+include(":shared")
+include(":webApp")
