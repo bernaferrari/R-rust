@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.DropdownMenu
@@ -28,6 +29,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rstudio.mobile.util.RSyntaxHighlighter
 import com.rstudio.mobile.util.executionTarget
+import com.rstudio.mobile.runtime.Diagnostic
 
 @Composable
 fun ScriptEditor(
@@ -69,9 +73,14 @@ fun ScriptEditor(
     onOpenScript: () -> Unit,
     onSaveScript: () -> Unit,
     onExportScript: () -> Unit,
+    diagnostics: List<Diagnostic> = emptyList(),
+    onExportReport: () -> Unit = {},
 ) {
     var editor by remember { mutableStateOf(TextFieldValue(code, TextRange(code.length))) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var searchVisible by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var replacement by remember { mutableStateOf("") }
     val verticalScroll = rememberScrollState()
     val horizontalScroll = rememberScrollState()
 
@@ -84,6 +93,13 @@ fun ScriptEditor(
     fun runTarget() {
         val selection = editor.selection
         onRunCode(executionTarget(editor.text, selection.start, selection.end))
+    }
+
+    fun findNext() {
+        if (searchQuery.isBlank()) return
+        val start = editor.text.indexOf(searchQuery, (editor.selection.end + 1).coerceAtMost(editor.text.length), ignoreCase = false)
+            .let { if (it >= 0) it else editor.text.indexOf(searchQuery, ignoreCase = false) }
+        if (start >= 0) editor = editor.copy(selection = androidx.compose.ui.text.TextRange(start, start + searchQuery.length))
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -137,11 +153,65 @@ fun ScriptEditor(
                         leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
                         onClick = { menuExpanded = false; onRenderPlot() },
                     )
+                    DropdownMenuItem(
+                        text = { Text("Find and replace") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        onClick = { menuExpanded = false; searchVisible = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Export HTML report") },
+                        leadingIcon = { Icon(Icons.Default.FileOpen, contentDescription = null) },
+                        onClick = { menuExpanded = false; onExportReport() },
+                    )
                 }
             }
         }
 
         HorizontalDivider()
+
+        if (searchVisible) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Find") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = replacement,
+                    onValueChange = { replacement = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Replace with") },
+                    singleLine = true,
+                )
+                TextButton(onClick = ::findNext) { Text("Next") }
+                TextButton(onClick = {
+                    if (searchQuery.isNotEmpty()) {
+                        val replaced = editor.text.replace(searchQuery, replacement, ignoreCase = false)
+                        editor = TextFieldValue(replaced, TextRange(replaced.length))
+                        onCodeChange(replaced)
+                    }
+                }) { Text("All") }
+                TextButton(onClick = { searchVisible = false }) { Text("Close") }
+            }
+        }
+
+        if (diagnostics.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)) {
+                diagnostics.forEach { diagnostic ->
+                    Text(
+                        text = (diagnostic.line?.let { "Line $it: " } ?: "") + diagnostic.message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
 
         Row(
             Modifier

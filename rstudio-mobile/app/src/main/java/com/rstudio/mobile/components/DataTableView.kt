@@ -27,6 +27,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.rstudio.mobile.runtime.DataTable
 
 @Composable
-fun DataTableView(table: DataTable?) {
+fun DataTableView(table: DataTable?, onExport: () -> Unit = {}, onLoadMore: () -> Unit = {}) {
     if (table == null) {
         Column(
             modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -71,6 +75,7 @@ fun DataTableView(table: DataTable?) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            androidx.compose.material3.TextButton(onClick = onExport) { Text("Export CSV") }
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -92,8 +97,15 @@ fun DataTableView(table: DataTable?) {
             HorizontalDivider()
             LazyColumn(Modifier.fillMaxSize()) {
                 itemsIndexed(visibleRows) { index, row ->
-                    TableRow(cells = listOf((index + 1).toString()) + row, header = false, onCellClick = {})
+                    TableRow(cells = listOf((table.rowOffset + index + 1).toString()) + row, header = false, onCellClick = {})
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                if (table.rowOffset + table.rows.size < table.totalRows) {
+                    item {
+                        androidx.compose.material3.TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) {
+                            Text("Load more rows")
+                        }
+                    }
                 }
             }
         }
@@ -113,7 +125,16 @@ private fun TableRow(cells: List<String>, header: Boolean, onCellClick: (Int) ->
                 modifier = Modifier
                     .width(if (index == 0) 56.dp else 144.dp)
                     .padding(end = 10.dp)
-                    .let { base -> if (header && index > 0) base.clickable { onCellClick(index) } else base },
+                    .let { base ->
+                        if (header && index > 0) {
+                            base
+                                .clickable { onCellClick(index) }
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Sort by $cell"
+                                }
+                        } else base
+                    },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall.copy(

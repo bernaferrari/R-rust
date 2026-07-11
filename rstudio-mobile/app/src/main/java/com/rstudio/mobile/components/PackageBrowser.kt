@@ -28,6 +28,8 @@ fun PackageBrowser(
     loaded: Set<String>,
     onRefresh: () -> Unit,
     onLoad: (String) -> Unit,
+    onInstall: () -> Unit = {},
+    onRemove: (PackageInfo) -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     val filtered = remember(packages, query) {
@@ -39,7 +41,10 @@ fun PackageBrowser(
                 Text("Packages", style = MaterialTheme.typography.titleMedium)
                 Text("Pure-R packages supported", style = MaterialTheme.typography.bodySmall)
             }
-            FilledTonalButton(onClick = onRefresh) { Text("Refresh") }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilledTonalButton(onClick = onInstall) { Text("Install ZIP") }
+                FilledTonalButton(onClick = onRefresh) { Text("Refresh") }
+            }
         }
         OutlinedTextField(
             value = query,
@@ -60,8 +65,13 @@ fun PackageBrowser(
                                     Text(pkg.name, style = MaterialTheme.typography.titleSmall)
                                     Text(pkg.version, style = MaterialTheme.typography.labelMedium)
                                 }
-                                FilledTonalButton(onClick = { onLoad(pkg.name) }, enabled = pkg.name !in loaded) {
-                                    Text(if (pkg.name in loaded) "Loaded" else "Load")
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    FilledTonalButton(onClick = { onLoad(pkg.name) }, enabled = pkg.name !in loaded) {
+                                        Text(if (pkg.name in loaded) "Loaded" else "Load")
+                                    }
+                                    if (pkg.libraryPath.contains("/R/library")) {
+                                        FilledTonalButton(onClick = { onRemove(pkg) }) { Text("Remove") }
+                                    }
                                 }
                             }
                             if (pkg.title.isNotBlank()) Text(pkg.title, style = MaterialTheme.typography.bodySmall)

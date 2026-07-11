@@ -12,13 +12,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,7 +51,16 @@ fun FileBrowser(
     onNewScript: () -> Unit,
     onOpenRecent: (String) -> Unit,
     onOpenProjectFile: (ProjectFile) -> Unit,
+    onRename: (ProjectFile, String) -> Unit,
+    onDelete: (ProjectFile) -> Unit,
+    onCreateFolder: (String) -> Unit,
+    onExportProject: () -> Unit,
+    onSaveWorkspace: () -> Unit = {},
+    onLoadWorkspace: () -> Unit = {},
 ) {
+    var createFolderOpen by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<ProjectFile?>(null) }
+    var nameInput by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -55,7 +75,15 @@ fun FileBrowser(
             if (projectName == null) {
                 FilledTonalButton(onClick = onOpenProject) { Text("Open folder") }
             } else {
-                OutlinedButton(onClick = onCloseProject) { Text("Close") }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(onClick = onExportProject) { Text("Export") }
+                    OutlinedButton(onClick = onCloseProject) { Text("Close") }
+                }
+            }
+        }
+        if (projectName != null) {
+            OutlinedButton(onClick = { createFolderOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("New folder")
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -63,10 +91,15 @@ fun FileBrowser(
             OutlinedButton(onClick = onOpenScript, modifier = Modifier.weight(1f)) { Text("Open file") }
             FilledTonalButton(onClick = onImportCsv, modifier = Modifier.weight(1f)) { Text("Import") }
         }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onSaveWorkspace, modifier = Modifier.weight(1f)) { Text("Save workspace") }
+            OutlinedButton(onClick = onLoadWorkspace, modifier = Modifier.weight(1f)) { Text("Load workspace") }
+        }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (projectFiles.isNotEmpty()) {
                 item { Text("Project", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp)) }
                 items(projectFiles, key = { it.uri }) { file ->
+                    var menuOpen by remember(file.uri) { mutableStateOf(false) }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -83,6 +116,23 @@ fun FileBrowser(
                         Column(Modifier.weight(1f)) {
                             Text(file.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                             if (!file.isDirectory) Text(formatBytes(file.size), style = MaterialTheme.typography.labelSmall)
+                        }
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Actions for ${file.name}")
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Rename") },
+                                onClick = {
+                                    menuOpen = false
+                                    nameInput = file.name
+                                    renameTarget = file
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete") },
+                                onClick = { menuOpen = false; onDelete(file) },
+                            )
                         }
                     }
                 }
@@ -114,6 +164,29 @@ fun FileBrowser(
                 }
             }
         }
+    }
+
+    if (createFolderOpen) {
+        AlertDialog(
+            onDismissRequest = { createFolderOpen = false },
+            title = { Text("New folder") },
+            text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, label = { Text("Folder name") }, singleLine = true) },
+            confirmButton = {
+                TextButton(onClick = { if (nameInput.isNotBlank()) { onCreateFolder(nameInput); createFolderOpen = false; nameInput = "" } }) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { createFolderOpen = false }) { Text("Cancel") } },
+        )
+    }
+    renameTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Rename ${target.name}") },
+            text = { OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, label = { Text("New name") }, singleLine = true) },
+            confirmButton = {
+                TextButton(onClick = { if (nameInput.isNotBlank()) { onRename(target, nameInput); renameTarget = null } }) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } },
+        )
     }
 }
 

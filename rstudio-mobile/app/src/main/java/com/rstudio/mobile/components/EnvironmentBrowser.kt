@@ -24,7 +24,12 @@ import androidx.compose.ui.unit.dp
 import com.rstudio.mobile.runtime.EnvEntry
 
 @Composable
-fun EnvironmentBrowser(entries: List<EnvEntry>, onRefresh: () -> Unit, onOpen: (String) -> Unit) {
+fun EnvironmentBrowser(
+    entries: List<EnvEntry>,
+    onRefresh: () -> Unit,
+    onOpen: (String) -> Unit,
+    onRemove: (String) -> Unit,
+) {
     var query by remember { mutableStateOf("") }
     val filtered = remember(entries, query) {
         entries.filter { query.isBlank() || it.name.contains(query, true) || it.kind.contains(query, true) }
@@ -62,6 +67,10 @@ fun EnvironmentBrowser(entries: List<EnvEntry>, onRefresh: () -> Unit, onOpen: (
                                 Text(entry.kind, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             }
                             Text(entry.summary, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                androidx.compose.material3.TextButton(onClick = { onOpen(entry.name) }) { Text("Open") }
+                                androidx.compose.material3.TextButton(onClick = { onRemove(entry.name) }) { Text("Remove") }
+                            }
                         }
                     }
                 }

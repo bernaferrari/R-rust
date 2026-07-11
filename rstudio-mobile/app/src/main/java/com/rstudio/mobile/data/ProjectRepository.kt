@@ -87,6 +87,25 @@ class ProjectRepository(private val context: Context) {
         )
     }
 
+    fun createFolder(project: WorkspaceProject, requestedName: String) {
+        val root = requireNotNull(DocumentFile.fromTreeUri(context, Uri.parse(project.treeUri))) {
+            "The project folder is no longer available"
+        }
+        val name = requestedName.safeFileName()
+        require(root.findFile(name) == null) { "$name already exists" }
+        requireNotNull(root.createDirectory(name)) { "Could not create folder $name" }
+    }
+
+    fun rename(uri: Uri, requestedName: String) {
+        val document = requireNotNull(DocumentFile.fromSingleUri(context, uri)) { "File is no longer available" }
+        require(document.renameTo(requestedName.safeFileName())) { "Could not rename ${document.name}" }
+    }
+
+    fun delete(uri: Uri) {
+        val document = requireNotNull(DocumentFile.fromSingleUri(context, uri)) { "File is no longer available" }
+        require(document.delete()) { "Could not delete ${document.name}" }
+    }
+
     fun writeText(uri: Uri, localPath: String?, code: String) {
         retainAccess(uri, write = true)
         context.contentResolver.openOutputStream(uri, "wt").use { output ->
