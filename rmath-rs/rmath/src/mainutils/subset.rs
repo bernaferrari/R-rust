@@ -1996,7 +1996,6 @@ pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEX
     unsafe {
         let input = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         let _input_guard = protect(input);
-        let x = Rf_eval(CAR(args), env);
         let mut nlist = CADR(args);
 
         /* Evaluate if promise */
@@ -2022,7 +2021,6 @@ pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEX
 
         /* Replace the second argument with a string */
         let new_args = crate::mainutils::duplicate::shallow_duplicate(args);
-        SETCAR(new_args, x);
         SETCAR(CDR(new_args), input);
         new_args
     }
@@ -2059,9 +2057,9 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return ans;
         }
 
-        ans = R_NilValue();
-        if !isNull(fixed_args) && !isNull(CAR(fixed_args)) && !isNull(CADR(fixed_args)) {
-            ans = R_subset3_dflt(CAR(fixed_args), STRING_ELT(CADR(fixed_args), 0), call);
+        let _ans_guard = protect(ans);
+        if !isNull(ans) && !isNull(CAR(ans)) && !isNull(CADR(fixed_args)) {
+            ans = R_subset3_dflt(CAR(ans), STRING_ELT(CADR(fixed_args), 0), call);
         }
         ans
     }

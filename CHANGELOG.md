@@ -4,6 +4,21 @@
 
 This is the first Android-focused Rust R runtime slice.
 
+### Correctness and maintenance fixes (2026-07-11)
+
+- Corrected two TOMS 708 translation defects: `bup` now retains every
+  increasing-series term and `bfrac` advances its recurrence state like GNU R.
+- Beta distribution wrappers now honor `log`, `lower.tail`, and `log.p`; added
+  differential fixtures for beta/F branches, tail/log behavior, and roundtrips.
+- Restored `$` fallback evaluation to GNU R's sequencing, fixing environment
+  lookup, active bindings, locked bindings, and `sys.source(..., envir=...)`.
+- Removed the obsolete UniFFI 0.28 dependencies and generated Kotlin binding
+  from `rmath`; Android bindings are owned exclusively by `r-uniffi` 0.30.
+- Continued `essentials.rs` decomposition by extracting environment binding and
+  locking builtins behind stable re-exports.
+- Updated the upstream source map after the `dist` to `nmath::dist`
+  consolidation.
+
 ### Fidelity fixes (2026-06-30)
 
 - `pbeta` / `pbeta_raw` now call TOMS 708 `bratio` (`nmath::special::toms708`), matching stock R `pbeta.c`.

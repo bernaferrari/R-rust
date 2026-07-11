@@ -142,23 +142,43 @@ pub unsafe fn do_qgamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// R's `dbeta(x, shape1, shape2)` — beta density.
 pub unsafe fn do_dbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_dist_unary(args, 1.0, 1.0, |x, a, b| {
-        crate::dist::beta::dbeta_inner(x, a, b, false)
-    })
+    unsafe {
+        let x = arg_by_name_or_position(args, &["x"], 0);
+        let shape1 = real_or_default(arg_by_name_or_position(args, &["shape1"], 1), 1.0);
+        let shape2 = real_or_default(arg_by_name_or_position(args, &["shape2"], 2), 1.0);
+        let give_log = logical_arg(arg_by_name_or_position(args, &["log"], 3), false);
+        map_real_distribution(x, |x| {
+            crate::dist::beta::dbeta_inner(x, shape1, shape2, give_log)
+        })
+    }
 }
 
-/// R's `pbeta(q, shape1, shape2)` — beta CDF.
+/// R's `pbeta(q, shape1, shape2, lower.tail=TRUE, log.p=FALSE)` — beta CDF.
 pub unsafe fn do_pbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_dist_unary(args, 1.0, 1.0, |q, a, b| {
-        crate::dist::beta::pbeta_inner(q, a, b, true, false)
-    })
+    unsafe {
+        let q = arg_by_name_or_position(args, &["q"], 0);
+        let shape1 = real_or_default(arg_by_name_or_position(args, &["shape1"], 1), 1.0);
+        let shape2 = real_or_default(arg_by_name_or_position(args, &["shape2"], 2), 1.0);
+        let lower_tail = logical_arg(arg_by_name_or_position(args, &["lower.tail"], 3), true);
+        let log_p = logical_arg(arg_by_name_or_position(args, &["log.p"], 4), false);
+        map_real_distribution(q, |q| {
+            crate::dist::beta::pbeta_inner(q, shape1, shape2, lower_tail, log_p)
+        })
+    }
 }
 
-/// R's `qbeta(p, shape1, shape2)` — beta quantile.
+/// R's `qbeta(p, shape1, shape2, lower.tail=TRUE, log.p=FALSE)` — beta quantile.
 pub unsafe fn do_qbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_dist_unary(args, 1.0, 1.0, |p, a, b| {
-        crate::dist::beta::qbeta_inner(p, a, b, true, false)
-    })
+    unsafe {
+        let p = arg_by_name_or_position(args, &["p"], 0);
+        let shape1 = real_or_default(arg_by_name_or_position(args, &["shape1"], 1), 1.0);
+        let shape2 = real_or_default(arg_by_name_or_position(args, &["shape2"], 2), 1.0);
+        let lower_tail = logical_arg(arg_by_name_or_position(args, &["lower.tail"], 3), true);
+        let log_p = logical_arg(arg_by_name_or_position(args, &["log.p"], 4), false);
+        map_real_distribution(p, |p| {
+            crate::dist::beta::qbeta_inner(p, shape1, shape2, lower_tail, log_p)
+        })
+    }
 }
 
 /// R's `dt(x, df)` — t density.

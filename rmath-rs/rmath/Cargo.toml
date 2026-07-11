@@ -8,12 +8,6 @@ description = "Rust port of R's nmath statistical library"
 crate-type = ["rlib", "staticlib", "cdylib"]
 name = "rmath"
 
-[build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
-
-[dev-dependencies]
-uniffi = { version = "0.28", features = ["cli"] }
-
 [features]
 default = ["rust-backend"]
 # Use Fortran LAPACK/BLAS via FFI (requires Fortran toolchain, not suitable for Android)
@@ -41,8 +35,6 @@ fancy-regex = "0.18"
 faer = { version = "0.24", default-features = false, features = ["std", "linalg"], optional = true }
 
 r-graphics-engine = { path = "../../crates/r-graphics-engine", optional = true }
-
-uniffi = { version = "0.28" }
 
 [[bench]]
 name = "bench_eval"

@@ -2832,17 +2832,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_do_subassign_returns_nil() {
+    fn test_do_subassign_handles_empty_r_argument_list() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_subassign(
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                std::ptr::null_mut(),
+                R_NilValue(),
                 std::ptr::null_mut(),
             );
-            // Null args return null through dispatch path
-            assert!(result.is_null());
+            assert_eq!(result, R_NilValue());
         }
     }
 
@@ -2862,17 +2861,16 @@ mod tests {
     }
 
     #[test]
-    fn test_do_subassign2_returns_nil() {
+    fn test_do_subassign2_handles_empty_r_argument_list() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_subassign2(
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                std::ptr::null_mut(),
+                R_NilValue(),
                 std::ptr::null_mut(),
             );
-            // Null args return null through dispatch path
-            assert!(result.is_null());
+            assert_eq!(result, R_NilValue());
         }
     }
 
@@ -2944,17 +2942,16 @@ mod tests {
     }
 
     #[test]
-    fn test_var_assign_returns_nil() {
+    fn test_var_assign_handles_empty_r_argument_list() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = var_assign(
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                std::ptr::null_mut(),
+                R_NilValue(),
                 std::ptr::null_mut(),
             );
-            // var_assign delegates to do_subassign, null args return null
-            assert!(result.is_null());
+            assert_eq!(result, R_NilValue());
         }
     }
 

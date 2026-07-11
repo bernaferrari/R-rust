@@ -758,11 +758,6 @@ fn bpser(a: f64, b: f64, x: f64, eps: f64, log_p: bool) -> f64 {
 
 fn bup(a: f64, b: f64, x: f64, y: f64, n: i32, eps: f64, give_log: bool) -> f64 {
     let mut ret_val: f64;
-    let _i: i32;
-    let _k: i32;
-    let _mu: i32;
-    let _d: f64;
-    let _l: f64;
 
     // Obtain the scaling factor exp(-mu) and exp(mu)*(x^a * y^b / beta(a,b))/a
     let apb = a + b;
@@ -789,7 +784,8 @@ fn bup(a: f64, b: f64, x: f64, y: f64, n: i32, eps: f64, give_log: bool) -> f64 
     }
 
     let nm1 = n - 1;
-    let mut dd = d;
+    let mut d = d;
+    let mut w = d;
 
     // LET K BE THE INDEX OF THE MAXIMUM TERM
     let mut k = 0;
@@ -805,44 +801,28 @@ fn bup(a: f64, b: f64, x: f64, y: f64, n: i32, eps: f64, give_log: bool) -> f64 
 
         // ADD THE INCREASING TERMS OF THE SERIES - if k > 0
         // L30:
-        dd = d;
         for i in 0..k {
             let l = i as f64;
-            dd *= (apb + l) / (ap1 + l) * x;
+            d *= (apb + l) / (ap1 + l) * x;
+            w += d;
         }
-        let mut w = dd;
-        // L40: ADD THE REMAINING TERMS OF THE SERIES
-        for i in k..nm1 {
-            let l = i as f64;
-            dd *= (apb + l) / (ap1 + l) * x;
-            w += dd;
-            if dd <= eps * w {
-                break;
-            }
-        }
+    }
 
-        // L50: TERMINATE THE PROCEDURE
-        if give_log {
-            ret_val += log(w);
-        } else {
-            ret_val *= w;
+    // L40: ADD THE REMAINING TERMS OF THE SERIES
+    for i in k..nm1 {
+        let l = i as f64;
+        d *= (apb + l) / (ap1 + l) * x;
+        w += d;
+        if d <= eps * w {
+            break;
         }
+    }
+
+    // L50: TERMINATE THE PROCEDURE
+    if give_log {
+        ret_val += log(w);
     } else {
-        // b <= 1
-        let mut w = dd;
-        for i in 0..nm1 {
-            let l = i as f64;
-            dd *= (apb + l) / (ap1 + l) * x;
-            w += dd;
-            if dd <= eps * w {
-                break;
-            }
-        }
-        if give_log {
-            ret_val += log(w);
-        } else {
-            ret_val *= w;
-        }
+        ret_val *= w;
     }
 
     ret_val
@@ -867,7 +847,7 @@ fn bfrac(a: f64, b: f64, x: f64, y: f64, lambda: f64, eps: f64, log_p: bool) -> 
     let yp1 = y + 1.0;
     let mut n = 0.0_f64;
     let mut p = 1.0_f64;
-    let s = a + 1.0;
+    let mut s = a + 1.0;
     let mut an = 0.0_f64;
     let mut bn = 1.0_f64;
     let mut anp1 = 1.0_f64;
@@ -897,6 +877,7 @@ fn bfrac(a: f64, b: f64, x: f64, y: f64, lambda: f64, eps: f64, log_p: bool) -> 
                 n + e2 * (c + n * yp1)
             });
         p = t + 1.0;
+        s += 2.0;
 
         // update an, bn, anp1, and bnp1
         let tt = alpha * an + beta * anp1;
@@ -2351,6 +2332,38 @@ pub fn Rf_bratio(
     if !ierr.is_null() {
         unsafe {
             *ierr = ierr_val;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bratio;
+
+    fn assert_close(actual: f64, expected: f64, tolerance: f64) {
+        assert!(
+            (actual - expected).abs() <= tolerance,
+            "actual={actual:.17e}, expected={expected:.17e}"
+        );
+    }
+
+    #[test]
+    fn bratio_matches_gnu_r_for_beta_and_f_distribution_inputs() {
+        let cases = [
+            // pbeta(0.5, 2, 3)
+            (2.0, 3.0, 0.5, 0.6875),
+            // pf(1, 5, 10) = pbeta(1 / 3, 2.5, 5)
+            (2.5, 5.0, 1.0 / 3.0, 0.534_880_573_462_199_6),
+            // Central, larger-shape case exercises the continued fraction.
+            (40.0, 50.0, 0.45, 0.545_204_789_136_130_9),
+        ];
+
+        for (a, b, x, expected) in cases {
+            let y = 0.5 - x + 0.5;
+            let (lower, upper, ierr) = bratio(a, b, x, y, false);
+            assert_eq!(ierr, 0, "bratio({a}, {b}, {x})");
+            assert_close(lower, expected, 2e-14);
+            assert_close(lower + upper, 1.0, 2e-15);
         }
     }
 }
