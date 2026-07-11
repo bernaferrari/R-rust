@@ -530,7 +530,12 @@ fn spawn_worker(
                                 message: "Complete".to_string(),
                             });
                             match &result {
-                                Ok(result) => cb.on_eval_complete(result.clone()),
+                                Ok(result) => {
+                                    for line in result.output.lines() {
+                                        cb.on_output(line.to_string());
+                                    }
+                                    cb.on_eval_complete(result.clone());
+                                }
                                 Err(e) => cb.on_error(e.to_string()),
                             }
                         }
@@ -892,6 +897,7 @@ mod tests {
             height: u32,
             bytes: usize,
         },
+        Output(String),
         Error(String),
     }
 
@@ -922,7 +928,9 @@ mod tests {
     impl SessionCallback for RecordingCallback {
         fn on_progress(&self, _update: ProgressUpdate) {}
 
-        fn on_output(&self, _line: String) {}
+        fn on_output(&self, line: String) {
+            self.push(CallbackEvent::Output(line));
+        }
 
         fn on_plot_ready(&self, plot: PlotResult) {
             self.push(CallbackEvent::PlotReady {
@@ -1375,6 +1383,13 @@ mod tests {
             |event| matches!(event, CallbackEvent::EvalComplete { output, .. } if output == "[1] 2"),
         ) {
             CallbackEvent::EvalComplete { kind, .. } => assert_eq!(kind, RValueKind::Real),
+            event => panic!("unexpected callback event: {event:?}"),
+        }
+        match wait_for_callback(
+            &events,
+            |event| matches!(event, CallbackEvent::Output(line) if line == "[1] 2"),
+        ) {
+            CallbackEvent::Output(line) => assert_eq!(line, "[1] 2"),
             event => panic!("unexpected callback event: {event:?}"),
         }
 

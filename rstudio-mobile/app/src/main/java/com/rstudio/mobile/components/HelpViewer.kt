@@ -173,7 +173,6 @@ private val HELP_TOPICS = listOf(
     HelpTopic("help", "Display documentation for a topic", "utils"),
     HelpTopic("library", "Load and attach add-on packages", "utils"),
     HelpTopic("require", "Load a package, return FALSE on failure", "utils"),
-    HelpTopic("install.packages", "Install packages from CRAN", "utils"),
     HelpTopic("installed.packages", "List installed packages", "utils"),
     HelpTopic("read.csv", "Read a CSV file into a data frame", "utils"),
     HelpTopic("write.csv", "Write a data frame to a CSV file", "utils"),

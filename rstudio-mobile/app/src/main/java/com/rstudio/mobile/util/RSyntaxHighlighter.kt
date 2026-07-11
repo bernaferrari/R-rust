@@ -30,7 +30,7 @@ object RSyntaxHighlighter {
     private val COLOR_STRING     = Color(0xFFCE9178)  // orange
     private val COLOR_NUMBER     = Color(0xFFB5CEA8)  // green
     private val COLOR_COMMENT    = Color(0xFF6A9955)  // olive
-    private val COLOR_OPERATOR   = Color(0xFFD4D4D4)  // light grey
+    private val COLOR_OPERATOR   = Color.Unspecified   // inherit editor foreground in both themes
     private val COLOR_FUNCTION   = Color(0xFFDCDCAA)  // yellow
     // ──────────────────────────────────────────────────────────────
 

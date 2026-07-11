@@ -1,21 +1,33 @@
 package com.rstudio.mobile.runtime
 
-import android.content.Context
+import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.rstudio.mobile.data.ProjectFile
+import com.rstudio.mobile.data.ProjectRepository
+import com.rstudio.mobile.data.WorkspaceProject
 import com.rport.uniffi.EvalResult
 import com.rport.uniffi.PlotResult
 import com.rport.uniffi.RException
 import com.rport.uniffi.RSession
 import com.rport.uniffi.RValue
 import com.rport.uniffi.RValueKind
+import com.rport.uniffi.PackageInfo
+import com.rport.uniffi.ProgressUpdate
+import com.rport.uniffi.SessionCallback
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -23,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class PlotImage(
+    val id: Long = System.nanoTime(),
     val width: Int,
     val height: Int,
     val pngBytes: ByteArray,
@@ -49,7 +62,9 @@ data class ScriptFile(
 data class RStudioUiState(
     val code: String = DEFAULT_CODE,
     val console: String = R_BANNER,
+    val consoleHistory: List<String> = emptyList(),
     val isRunning: Boolean = false,
+    val progress: Double = 0.0,
     val status: String = "Ready",
     val errorMessage: String? = null,
     val lastValue: RValue? = null,
@@ -57,19 +72,42 @@ data class RStudioUiState(
     val dataTable: DataTable? = null,
     val environment: List<EnvEntry> = emptyList(),
     val lastPlot: PlotImage? = null,
+    val plots: List<PlotImage> = emptyList(),
+    val packages: List<PackageInfo> = emptyList(),
+    val loadedPackages: Set<String> = emptySet(),
     val currentFileName: String = "untitled.R",
     val currentScriptPath: String? = null,
+    val currentDocumentUri: String? = null,
+    val isDirty: Boolean = false,
     val recentScripts: List<ScriptFile> = emptyList(),
     val importedPath: String? = null,
+    val projectName: String? = null,
+    val projectTreeUri: String? = null,
+    val projectRoot: String? = null,
+    val projectFiles: List<ProjectFile> = emptyList(),
     val helpResult: String? = null,
     val helpLoading: Boolean = false,
 )
 
-class RStudioRuntime(private val context: Context) : ViewModel() {
+class RStudioRuntime(application: Application) : AndroidViewModel(application) {
+    private val context = application.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val projects = ProjectRepository(context.applicationContext)
     private val session = RSession()
+    private val awaitingAsyncEvaluation = AtomicBoolean(false)
+    private var recoveryJob: Job? = null
 
-    private val _state = MutableStateFlow(RStudioUiState())
+    private val _state = MutableStateFlow(
+        projects.restoreRecovery()?.let { recovered ->
+            RStudioUiState(
+                code = recovered.code,
+                currentFileName = recovered.name,
+                currentDocumentUri = recovered.sourceUri,
+                isDirty = true,
+                status = "Recovered unsaved work",
+            )
+        } ?: RStudioUiState()
+    )
     val state: StateFlow<RStudioUiState> = _state
 
     init {
@@ -79,16 +117,71 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
             cacheDir = context.cacheDir.absolutePath,
             bundledLibraryDir = bundledLibrary.absolutePath,
         )
+        session.setCallback(object : SessionCallback {
+            override fun onProgress(update: ProgressUpdate) {
+                if (awaitingAsyncEvaluation.get()) _state.update { it.copy(progress = update.progress) }
+            }
+
+            override fun onOutput(line: String) {
+                if (awaitingAsyncEvaluation.get() && line.isNotBlank()) appendConsole(line.trimEnd())
+            }
+
+            override fun onPlotReady(plot: PlotResult) = Unit
+
+            override fun onEvalComplete(result: EvalResult) {
+                if (!awaitingAsyncEvaluation.compareAndSet(true, false)) return
+                publishResult(result, includeOutput = false)
+                _state.update { it.copy(isRunning = false, progress = 1.0, status = "Ready") }
+                refreshEnvironment()
+            }
+
+            override fun onError(error: String) {
+                if (awaitingAsyncEvaluation.compareAndSet(true, false)) markError(error)
+            }
+        })
         refreshEnvironment()
         refreshRecentScripts()
+        refreshPackages()
+        restoreProject()
     }
 
     fun updateCode(code: String) {
-        _state.update { it.copy(code = code) }
+        _state.update { it.copy(code = code, isDirty = true) }
+        recoveryJob?.cancel()
+        recoveryJob = scope.launch {
+            delay(500)
+            val state = _state.value
+            withContext(Dispatchers.IO) {
+                projects.saveRecovery(state.currentFileName, state.currentDocumentUri, state.code)
+            }
+        }
     }
 
     fun runCurrentCode() {
-        evaluate(_state.value.code)
+        runCode(_state.value.code)
+    }
+
+    fun runCode(code: String) {
+        if (code.isBlank() || _state.value.isRunning) return
+        appendConsole("> ${code.lineSequence().firstOrNull().orEmpty()}")
+        _state.update { it.copy(isRunning = true, progress = 0.0, status = "Running…", errorMessage = null) }
+        awaitingAsyncEvaluation.set(true)
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { session.evalAsync(code) }
+            } catch (error: Exception) {
+                awaitingAsyncEvaluation.set(false)
+                markError(error.message ?: error.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun evaluateConsole(code: String) {
+        if (code.isBlank()) return
+        _state.update { state ->
+            state.copy(consoleHistory = (state.consoleHistory + code).takeLast(MAX_CONSOLE_HISTORY))
+        }
+        runCode(code)
     }
 
     fun newScript() {
@@ -97,21 +190,26 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
                 code = "",
                 currentFileName = "untitled.R",
                 currentScriptPath = null,
+                currentDocumentUri = null,
+                isDirty = false,
                 status = "New script",
                 errorMessage = null,
             )
         }
+        projects.clearRecovery()
     }
 
     fun openScript(uri: Uri) {
         runTask("Opening script...") {
-            val opened = withContext(Dispatchers.IO) { readTextUri(uri) }
+            val opened = withContext(Dispatchers.IO) { projects.readText(uri) }
             val name = displayName(uri, "script.R").sanitizeFileName()
             _state.update {
                 it.copy(
                     code = opened,
                     currentFileName = name,
                     currentScriptPath = null,
+                    currentDocumentUri = uri.toString(),
+                    isDirty = false,
                     status = "Opened $name",
                     errorMessage = null,
                 )
@@ -122,14 +220,46 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
 
     fun saveScriptLocal() {
         runTask("Saving script...") {
-            val saved = withContext(Dispatchers.IO) {
-                saveScriptToWorkspace(_state.value.currentFileName, _state.value.code)
+            val state = _state.value
+            if (state.currentDocumentUri != null) {
+                withContext(Dispatchers.IO) {
+                    projects.writeText(Uri.parse(state.currentDocumentUri), state.currentScriptPath, state.code)
+                    projects.clearRecovery()
+                }
+                _state.update { it.copy(status = "Saved ${it.currentFileName}", isDirty = false, errorMessage = null) }
+                appendConsole("Saved script ${state.currentFileName}")
+                return@runTask
             }
+            val project = state.toWorkspaceProject()
+            if (project != null) {
+                val created = withContext(Dispatchers.IO) {
+                    projects.createScript(project, state.currentFileName, state.code)
+                }
+                withContext(Dispatchers.IO) { projects.clearRecovery() }
+                _state.update {
+                    it.copy(
+                        currentFileName = created.name,
+                        currentScriptPath = created.localPath,
+                        currentDocumentUri = created.uri,
+                        projectFiles = (it.projectFiles + created).sortedBy(ProjectFile::relativePath),
+                        isDirty = false,
+                        status = "Created ${created.name}",
+                        errorMessage = null,
+                    )
+                }
+                appendConsole("Created project script ${created.name}")
+                return@runTask
+            }
+            val saved = withContext(Dispatchers.IO) {
+                saveScriptToWorkspace(state.currentFileName, state.code)
+            }
+            withContext(Dispatchers.IO) { projects.clearRecovery() }
             refreshRecentScriptsNow()
             _state.update {
                 it.copy(
                     currentFileName = saved.name,
                     currentScriptPath = saved.absolutePath,
+                    isDirty = false,
                     status = "Saved ${saved.name}",
                     errorMessage = null,
                 )
@@ -147,7 +277,17 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
                 }
             }
             val name = displayName(uri, _state.value.currentFileName).sanitizeFileName()
-            _state.update { it.copy(currentFileName = name, status = "Exported $name", errorMessage = null) }
+            withContext(Dispatchers.IO) { projects.clearRecovery() }
+            _state.update {
+                it.copy(
+                    currentFileName = name,
+                    currentScriptPath = null,
+                    currentDocumentUri = uri.toString(),
+                    isDirty = false,
+                    status = "Exported $name",
+                    errorMessage = null,
+                )
+            }
             appendConsole("Exported script $name")
         }
     }
@@ -161,11 +301,58 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
                     code = code,
                     currentFileName = file.name,
                     currentScriptPath = file.absolutePath,
+                    currentDocumentUri = null,
+                    isDirty = false,
                     status = "Opened ${file.name}",
                     errorMessage = null,
                 )
             }
             appendConsole("Opened script ${file.name}")
+        }
+    }
+
+    fun openProject(uri: Uri) {
+        runTask("Opening folder…") {
+            val project = withContext(Dispatchers.IO) { projects.openProject(uri) }
+            activateProject(project)
+            appendConsole("Opened project ${project.name}")
+        }
+    }
+
+    fun closeProject() {
+        projects.clearProject()
+        _state.update {
+            it.copy(
+                projectName = null,
+                projectTreeUri = null,
+                projectRoot = null,
+                projectFiles = emptyList(),
+                status = "Project closed",
+            )
+        }
+    }
+
+    fun openProjectFile(file: ProjectFile) {
+        if (file.isDirectory) return
+        val extension = file.name.substringAfterLast('.', "").lowercase()
+        if (extension in setOf("csv", "tsv", "txt")) {
+            importLocalData(File(file.localPath), separator = if (extension == "tsv") "\\t" else ",")
+            return
+        }
+        runTask("Opening ${file.name}…") {
+            val code = withContext(Dispatchers.IO) { projects.readText(file) }
+            _state.update {
+                it.copy(
+                    code = code,
+                    currentFileName = file.name,
+                    currentScriptPath = file.localPath,
+                    currentDocumentUri = file.uri,
+                    isDirty = false,
+                    status = "Opened ${file.name}",
+                    errorMessage = null,
+                )
+            }
+            appendConsole("Opened ${file.relativePath}")
         }
     }
 
@@ -178,11 +365,58 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
         }
     }
 
+    fun savePlotTo(uri: Uri) {
+        val plot = _state.value.lastPlot ?: return
+        runTask("Exporting plot…") {
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openOutputStream(uri, "wt").use { output ->
+                    requireNotNull(output) { "Could not open plot destination" }
+                    output.write(plot.pngBytes)
+                }
+            }
+            appendConsole("Exported plot ${plot.width}x${plot.height}")
+        }
+    }
+
+    fun sharePlot() {
+        val plot = _state.value.lastPlot ?: return
+        runTask("Preparing plot…") {
+            val file = withContext(Dispatchers.IO) {
+                File(context.cacheDir, "shared-plots/Rplot-${plot.id}.png").apply {
+                    parentFile?.mkdirs()
+                    writeBytes(plot.pngBytes)
+                }
+            }
+            val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(share, "Share R plot").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            _state.update { it.copy(status = "Plot ready to share") }
+        }
+    }
+
+    fun selectPlot(id: Long) {
+        _state.update { state -> state.copy(lastPlot = state.plots.firstOrNull { it.id == id } ?: state.lastPlot) }
+    }
+
     fun importCsv(uri: Uri) {
-        runTask("Importing CSV...") {
-            val copied = withContext(Dispatchers.IO) { copyUriToWorkspace(uri) }
+        runTask("Importing data…") {
+            val name = displayName(uri, "import.csv")
+            val copied = withContext(Dispatchers.IO) {
+                projects.importFile(uri, name, _state.value.toWorkspaceProject())
+            }
             val variable = safeName(copied.nameWithoutExtension).ifBlank { "imported_csv" }
-            val code = "$variable <- read.csv(\"${escapeRString(copied.absolutePath)}\")\n$variable"
+            val path = escapeRString(copied.absolutePath)
+            val code = when (copied.extension.lowercase()) {
+                "tsv" -> "$variable <- read.delim(\"$path\")\n$variable"
+                "txt" -> "$variable <- read.table(\"$path\", header = TRUE)\n$variable"
+                "rds" -> "$variable <- readRDS(\"$path\")\n$variable"
+                "rda", "rdata" -> "load(\"$path\")\nls(all.names = TRUE)"
+                else -> "$variable <- read.csv(\"$path\")\n$variable"
+            }
             val result = withContext(Dispatchers.IO) { session.evalResult(code) }
             appendConsole("> import CSV ${copied.name}")
             publishResult(result)
@@ -190,7 +424,6 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
             _state.update {
                 it.copy(
                     importedPath = copied.absolutePath,
-                    currentFileName = copied.name,
                     status = "Imported ${copied.name} as $variable",
                 )
             }
@@ -200,6 +433,34 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
     fun refreshEnvironment() {
         scope.launch {
             refreshEnvironmentNow()
+        }
+    }
+
+    fun inspectEnvironment(name: String) {
+        runTask("Inspecting $name…") {
+            val value = withContext(Dispatchers.IO) {
+                session.evalResult("get(\"${escapeRString(name)}\", envir = .GlobalEnv)")
+            }
+            publishResult(value)
+            _state.update { state ->
+                state.copy(dataTable = state.dataTable?.copy(title = name), status = "Inspecting $name")
+            }
+        }
+    }
+
+    fun refreshPackages() {
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { session.installedPackages() } }
+                .onSuccess { packages -> _state.update { it.copy(packages = packages) } }
+                .onFailure { error -> markError("Could not list packages: ${error.message}") }
+        }
+    }
+
+    fun loadPackage(name: String) {
+        runTask("Loading $name…") {
+            withContext(Dispatchers.IO) { session.loadPackage(name) }
+            _state.update { it.copy(loadedPackages = it.loadedPackages + name) }
+            appendConsole("Loaded package $name")
         }
     }
 
@@ -230,6 +491,7 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
     }
 
     fun cancel() {
+        awaitingAsyncEvaluation.set(false)
         session.cancelCurrentOperation()
         _state.update { it.copy(isRunning = false, status = "Cancelled") }
         appendConsole("Cancelled current operation")
@@ -255,6 +517,44 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
         }
     }
 
+    private fun importLocalData(file: File, separator: String) {
+        runTask("Importing ${file.name}…") {
+            val variable = safeName(file.nameWithoutExtension).ifBlank { "imported_data" }
+            val reader = if (separator == ",") "read.csv" else "read.table"
+            val extra = if (separator == ",") "" else ", sep = \"$separator\", header = TRUE"
+            val code = "$variable <- $reader(\"${escapeRString(file.absolutePath)}\"$extra)\n$variable"
+            val result = withContext(Dispatchers.IO) { session.evalResult(code) }
+            appendConsole("> import ${file.name}")
+            publishResult(result)
+            refreshEnvironmentNow()
+            _state.update { it.copy(importedPath = file.absolutePath, status = "Imported ${file.name} as $variable") }
+        }
+    }
+
+    private fun restoreProject() {
+        scope.launch {
+            val project = withContext(Dispatchers.IO) { projects.restoreProject() } ?: return@launch
+            runCatching { activateProject(project) }
+                .onFailure { error -> markError("Could not restore project: ${error.message}") }
+        }
+    }
+
+    private suspend fun activateProject(project: WorkspaceProject) {
+        withContext(Dispatchers.IO) {
+            session.evalResult("setwd(\"${escapeRString(project.localRoot)}\")")
+        }
+        _state.update {
+            it.copy(
+                projectName = project.name,
+                projectTreeUri = project.treeUri,
+                projectRoot = project.localRoot,
+                projectFiles = project.files,
+                status = "Project: ${project.name}",
+                errorMessage = null,
+            )
+        }
+    }
+
     private fun runTask(status: String, block: suspend () -> Unit) {
         if (_state.value.isRunning) return
         _state.update { it.copy(isRunning = true, status = status, errorMessage = null) }
@@ -270,8 +570,8 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
         }
     }
 
-    private fun publishResult(result: EvalResult) {
-        if (result.output.isNotBlank()) {
+    private fun publishResult(result: EvalResult, includeOutput: Boolean = true) {
+        if (includeOutput && result.output.isNotBlank()) {
             appendConsole(result.output.trimEnd())
         }
         _state.update {
@@ -286,9 +586,11 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
     }
 
     private fun setPlot(plot: PlotResult) {
+        val image = PlotImage(width = plot.width.toInt(), height = plot.height.toInt(), pngBytes = plot.pixels)
         _state.update {
             it.copy(
-                lastPlot = PlotImage(plot.width.toInt(), plot.height.toInt(), plot.pixels),
+                lastPlot = image,
+                plots = (it.plots + image).takeLast(MAX_PLOT_HISTORY),
                 status = "Ready",
             )
         }
@@ -313,7 +615,8 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
     private fun appendConsole(line: String) {
         _state.update { state ->
             val separator = if (state.console.isBlank()) "" else "\n"
-            state.copy(console = state.console + separator + line)
+            val next = state.console + separator + line
+            state.copy(console = if (next.length > MAX_CONSOLE_CHARS) next.takeLast(MAX_CONSOLE_CHARS) else next)
         }
     }
 
@@ -382,10 +685,10 @@ class RStudioRuntime(private val context: Context) : ViewModel() {
         } ?: fallback
 }
 
-class RStudioRuntimeFactory(private val context: Context) : ViewModelProvider.Factory {
+class RStudioRuntimeFactory(private val application: Application) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
-        return RStudioRuntime(context) as T
+        return RStudioRuntime(application) as T
     }
 }
 
@@ -497,6 +800,13 @@ private fun escapeRString(value: String): String =
 private fun String.sanitizeFileName(): String =
     replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "untitled.R" }
 
+private fun RStudioUiState.toWorkspaceProject(): WorkspaceProject? {
+    val name = projectName ?: return null
+    val treeUri = projectTreeUri ?: return null
+    val root = projectRoot ?: return null
+    return WorkspaceProject(name, treeUri, root, projectFiles)
+}
+
 private const val DEFAULT_CODE = """# Try real R code
 x <- c(1, 2, 3, 4)
 sum(x)
@@ -505,3 +815,7 @@ sum(x)
 private const val R_BANNER = """RPort Android
 Real Rust-backed R session ready.
 """
+
+private const val MAX_CONSOLE_CHARS = 250_000
+private const val MAX_CONSOLE_HISTORY = 100
+private const val MAX_PLOT_HISTORY = 20

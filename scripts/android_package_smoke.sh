@@ -103,6 +103,14 @@ if [[ ! -f "$APK" ]]; then
     exit 1
 fi
 
+apk_entries="$(unzip -Z1 "$APK")"
+for abi in arm64-v8a; do
+    if ! grep -Fxq "lib/$abi/libr_uniffi.so" <<<"$apk_entries"; then
+        echo "APK is missing the Rust runtime for $abi: $APK" >&2
+        exit 1
+    fi
+done
+
 echo "Built debug APK: $APK"
 
 if [[ "$REQUIRE_DEVICE" -eq 1 ]]; then

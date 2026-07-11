@@ -4,6 +4,58 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val repositoryRoot = rootProject.projectDir.parentFile
+val generatedDebugJni = layout.buildDirectory.dir("generated/jniLibs/debug")
+val generatedReleaseJni = layout.buildDirectory.dir("generated/jniLibs/release")
+
+fun registerRustAndroidTask(name: String, release: Boolean, outputDir: Provider<Directory>) =
+    tasks.register<Exec>(name) {
+        group = "build"
+        description = "Build the Rust R runtime for Android (${if (release) "release" else "debug"})"
+        workingDir(repositoryRoot)
+        val arguments = mutableListOf(
+            "ndk",
+            "-t", "arm64-v8a",
+            "-o", outputDir.get().asFile.absolutePath,
+            "build",
+            "-p", "r-uniffi",
+        )
+        if (release) arguments += "--release"
+        commandLine("cargo", *arguments.toTypedArray())
+        inputs.files(
+            fileTree(repositoryRoot.resolve("crates")) { include("**/*.rs", "**/Cargo.toml") },
+            fileTree(repositoryRoot.resolve("rmath-rs")) { include("**/*.rs", "**/Cargo.toml") },
+            repositoryRoot.resolve("Cargo.toml"),
+            repositoryRoot.resolve("Cargo.lock"),
+        )
+        outputs.files(
+            outputDir.map { it.file("arm64-v8a/libr_uniffi.so") },
+        )
+        doLast {
+            outputDir.get().asFile.walkTopDown()
+                .filter { it.isFile && it.extension == "so" && it.name != "libr_uniffi.so" }
+                .forEach { extraLibrary ->
+                    check(extraLibrary.delete()) { "Could not remove unrelated native library ${extraLibrary.absolutePath}" }
+                }
+            outputs.files.files.forEach { library ->
+                check(library.isFile && library.length() > 0L) {
+                    "Rust Android library was not produced: ${library.absolutePath}"
+                }
+            }
+        }
+    }
+
+val buildRustAndroidDebug = registerRustAndroidTask(
+    name = "buildRustAndroidDebug",
+    release = false,
+    outputDir = generatedDebugJni,
+)
+val buildRustAndroidRelease = registerRustAndroidTask(
+    name = "buildRustAndroidRelease",
+    release = true,
+    outputDir = generatedReleaseJni,
+)
+
 android {
     namespace = "com.rstudio.mobile"
     compileSdk = 35
@@ -14,6 +66,10 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -45,6 +101,8 @@ android {
             java.srcDirs("src/main/java", "generated/kotlin")
             jniLibs.srcDirs("src/main/jniLibs")
         }
+        getByName("debug").jniLibs.srcDir(generatedDebugJni)
+        getByName("release").jniLibs.srcDir(generatedReleaseJni)
     }
     packaging {
         jniLibs {
@@ -54,6 +112,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+tasks.matching { it.name in setOf("mergeDebugJniLibFolders", "mergeDebugNativeLibs") }.configureEach {
+    dependsOn(buildRustAndroidDebug)
+}
+tasks.matching { it.name in setOf("mergeReleaseJniLibFolders", "mergeReleaseNativeLibs") }.configureEach {
+    dependsOn(buildRustAndroidRelease)
 }
 
 dependencies {
@@ -72,16 +137,12 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material3:material3-window-size-class")
 
-    // Navigation
-    implementation("androidx.navigation:navigation-compose:2.8.3")
     implementation("androidx.annotation:annotation:1.9.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("net.java.dev.jna:jna:5.14.0@aar")
 
     // Icons
     implementation("androidx.compose.material:material-icons-extended:1.7.5")
-
-    // Accompanist
-    implementation("com.google.accompanist:accompanist-systemuicontroller:0.36.0")
 
     // Test
     testImplementation("junit:junit:4.13.2")
