@@ -18,6 +18,8 @@ cd rstudio-mobile
 
 The browser adapter uses WebR, the established R-in-WebAssembly runtime, with
 PostMessage worker communication so it does not require cross-origin-isolated
-SharedArrayBuffer headers. It evaluates scripts, inspects objects, lists and
-installs WebR packages, and renders SVG plots. The native Android session is
-unchanged; both backends remain behind `RSessionBackend`.
+SharedArrayBuffer headers. It evaluates scripts, inspects objects, pages data
+frames, searches R topics, lists/loads/installs WebR packages, and renders SVG
+plots. The web shell adds tabs, local file import, console history, report
+download, and browser persistence. The native Android session is unchanged;
+both backends remain behind `RSessionBackend`.

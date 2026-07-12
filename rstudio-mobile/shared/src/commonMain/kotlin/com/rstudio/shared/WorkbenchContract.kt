@@ -29,6 +29,14 @@ data class PackageModel(
     val needsCompilation: Boolean = false,
 )
 
+data class DataFrameModel(
+    val name: String,
+    val columns: List<String>,
+    val rows: List<List<String>>,
+    val totalRows: Int,
+    val offset: Int = 0,
+)
+
 data class WorkbenchCapabilities(
     val canExecuteR: Boolean,
     val canPersistFiles: Boolean,
@@ -52,6 +60,14 @@ interface RSessionBackend {
 
     suspend fun renderPlot(code: String): EvaluationResult =
         EvaluationResult(error = "Plot rendering is not supported by this backend")
+
+    suspend fun dataFrame(name: String, offset: Int = 0, limit: Int = 100): DataFrameModel? = null
+
+    suspend fun help(topic: String): EvaluationResult =
+        EvaluationResult(error = "Help is not supported by this backend")
+
+    suspend fun loadPackage(name: String): EvaluationResult =
+        EvaluationResult(error = "Package loading is not supported by this backend")
 
     fun cancel()
 }

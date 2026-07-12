@@ -85,9 +85,12 @@ installation remain outside the supported scope; the package browser describes
 the current pure-R package policy explicitly.
 
 The web target uses WebR in a WebAssembly worker through the shared
-`RSessionBackend`. It supports browser-local R evaluation, environment
-inspection, WebR package installation, SVG plot rendering, and local draft
-persistence. Android continues using the native Rust/UniFFI session.
+`RSessionBackend`. The workbench supports multi-document scripts, local script
+and CSV/TSV opening, browser-persisted drafts and command history, selection or
+whole-file execution, console evaluation, environment inspection, paged data
+viewing, package listing/loading/installation, topic search, SVG plot rendering,
+and HTML report/download actions. Android continues using the native
+Rust/UniFFI session.
 
 ## License
 
