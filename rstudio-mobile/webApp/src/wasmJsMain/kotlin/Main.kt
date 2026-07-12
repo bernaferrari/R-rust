@@ -102,7 +102,9 @@ private class BrowserSessionBackend : RSessionBackend {
         asPlot = true,
     )
 
-    override fun cancel() = Unit
+    override fun cancel() {
+        if (initialized) webR.interrupt()
+    }
 
     private suspend fun runR(expression: String, asPlot: Boolean = false): EvaluationResult = try {
         val value = evalString(expression)
@@ -189,10 +191,11 @@ fun main() {
         <main class="shell">
           <header class="topbar">
             <div class="brand"><strong>R Workbench</strong><span class="runtime">${backend.capabilities.runtimeLabel}</span></div>
-            <div class="toolbar"><button id="new-document">New</button><button id="open-document">Open</button><button id="save-document">Save</button><button id="run" class="primary">Run</button><button id="stop" disabled>Stop</button></div>
+            <div class="toolbar"><button id="new-document">New</button><button id="open-document">Open</button><button id="open-project">Open folder</button><button id="save-document">Save</button><button id="run" class="primary">Run</button><button id="stop" disabled>Stop</button></div>
           </header>
           <section class="notice"><strong>Browser R runtime connected.</strong> WebR runs R in a dedicated WebAssembly worker. Scripts, history, and project metadata persist in this browser.</section>
           <input id="file-input" type="file" accept=".R,.r,.Rmd,.txt,.csv,.tsv,.json" hidden>
+          <input id="project-input" type="file" multiple hidden>
           <section class="workspace-grid">
             <section class="workspace">
               <nav id="document-tabs" class="document-tabs" aria-label="Open documents"></nav>
@@ -219,6 +222,8 @@ fun main() {
     val runtimeStatus = document.getElementById("runtime-status")!!
     val tabs = document.getElementById("document-tabs")!!
     val fileInput = document.getElementById("file-input") as HTMLInputElement
+    val projectInput = document.getElementById("project-input") as HTMLInputElement
+    projectInput.setAttribute("webkitdirectory", "true")
     val run = document.getElementById("run") as HTMLButtonElement
     val stop = document.getElementById("stop") as HTMLButtonElement
     val command = document.getElementById("console-command") as HTMLInputElement
@@ -230,6 +235,7 @@ fun main() {
     val helpResult = document.getElementById("help-result")!!
     var selectedDataName: String? = null
     var dataOffset = 0
+    val plotSvgs = mutableListOf<String>()
 
     fun activeDocument(): BrowserDocument = documents.first { it.id == activeDocumentId }
     lateinit var renderTabs: () -> Unit
@@ -364,6 +370,7 @@ fun main() {
         renderTabs()
     })
     document.getElementById("open-document")?.addEventListener("click", { fileInput.click() })
+    document.getElementById("open-project")?.addEventListener("click", { projectInput.click() })
     fileInput.addEventListener("change", {
         val file = fileInput.files?.item(0) ?: return@addEventListener
         scope.launch {
@@ -381,6 +388,32 @@ fun main() {
                 persistDocuments(documents)
                 renderTabs()
                 status.textContent = "Opened $name"
+            }
+        }
+    })
+    projectInput.addEventListener("change", {
+        val files = projectInput.files ?: return@addEventListener
+        scope.launch {
+            var opened = 0
+            for (index in 0 until files.length) {
+                val file = files.item(index) ?: continue
+                val extension = file.name.substringAfterLast('.', "").lowercase()
+                if (extension !in setOf("r", "rmd", "txt", "csv", "tsv")) continue
+                val text = readFileText(file as JsAny).await<JsString>().toString()
+                if (extension in setOf("csv", "tsv")) {
+                    val variable = file.name.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9_]"), "_").ifBlank { "data$opened" }
+                    runCode("$variable <- read.csv(text = ${quoteR(text)}, stringsAsFactors = FALSE, sep = ${quoteR(if (extension == "tsv") "\\t" else ",")})\n$variable", "Importing ${file.name}…")
+                } else {
+                    documents += BrowserDocument(newDocumentId(), file.name, text)
+                }
+                opened += 1
+            }
+            if (opened > 0) {
+                activeDocumentId = documents.last().id
+                editor.value = activeDocument().code
+                persistDocuments(documents)
+                renderTabs()
+                status.textContent = "Opened $opened project files"
             }
         }
     })
@@ -422,7 +455,10 @@ fun main() {
             val result = backend.renderPlot(editor.value)
             result.plotSvg?.let { svg ->
                 lastPlotSvg = svg
-                plotGallery.innerHTML = "<img class=\"plot\" alt=\"Rendered R plot\" src=\"data:image/svg+xml;charset=utf-8,${encodeUri(svg)}\">"
+                plotSvgs += svg
+                plotGallery.innerHTML = plotSvgs.asReversed().mapIndexed { index, item ->
+                    "<figure><figcaption>Plot ${plotSvgs.size - index}</figcaption><img class=\"plot\" alt=\"Rendered R plot ${plotSvgs.size - index}\" src=\"data:image/svg+xml;charset=utf-8,${encodeUri(item)}\"></figure>"
+                }.joinToString("")
                 showPanel("plots")
             }
             if (result.error != null) appendConsole("Error: ${result.error}")
