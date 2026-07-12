@@ -84,10 +84,10 @@ if the native runtime is absent. Native CRAN extensions and arbitrary package
 installation remain outside the supported scope; the package browser describes
 the current pure-R package policy explicitly.
 
-The web target currently provides the shared workbench shell. Its
-`RSessionBackend` reports execution as unavailable until the full
-`r-embed` interpreter is ported to Wasm; this is intentional rather than a
-silent compatibility downgrade.
+The web target uses WebR in a WebAssembly worker through the shared
+`RSessionBackend`. It supports browser-local R evaluation, environment
+inspection, WebR package installation, SVG plot rendering, and local draft
+persistence. Android continues using the native Rust/UniFFI session.
 
 ## License
 

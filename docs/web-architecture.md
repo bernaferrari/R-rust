@@ -16,8 +16,8 @@ cd rstudio-mobile
 ./gradlew :webApp:wasmJsBrowserDevelopmentRun
 ```
 
-The browser shell deliberately reports `canExecuteR = false` until the
-full `r-embed` interpreter backend is made Wasm-compatible. This prevents a
-misleading partial evaluator from silently producing incorrect results. The
-next backend work is isolated behind `RSessionBackend`; it does not require
-changing the Android UI or native session.
+The browser adapter uses WebR, the established R-in-WebAssembly runtime, with
+PostMessage worker communication so it does not require cross-origin-isolated
+SharedArrayBuffer headers. It evaluates scripts, inspects objects, lists and
+installs WebR packages, and renders SVG plots. The native Android session is
+unchanged; both backends remain behind `RSessionBackend`.

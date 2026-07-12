@@ -1,5 +1,6 @@
 .gradle/
 .kotlin/
+kotlin-js-store/
 app/build/
 build/
 shared/build/

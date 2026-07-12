@@ -5,6 +5,7 @@ data class EvaluationResult(
     val output: String = "",
     val valueSummary: String = "No result yet",
     val error: String? = null,
+    val plotSvg: String? = null,
 )
 
 data class DataTableModel(
@@ -45,6 +46,12 @@ interface RSessionBackend {
     suspend fun environment(): List<EnvironmentEntryModel>
 
     suspend fun packages(): List<PackageModel>
+
+    suspend fun installPackages(names: List<String>): EvaluationResult =
+        EvaluationResult(error = "Package installation is not supported by this backend")
+
+    suspend fun renderPlot(code: String): EvaluationResult =
+        EvaluationResult(error = "Plot rendering is not supported by this backend")
 
     fun cancel()
 }
