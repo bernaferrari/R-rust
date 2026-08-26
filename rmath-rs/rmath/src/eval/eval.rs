@@ -276,13 +276,23 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
     // R uses function-position lookup for symbolic call heads: non-function
     // bindings are skipped while walking enclosing environments.
     let fun_val = if fun.typeof_() == SEXPTYPE::SYMSXP {
-        find_fun_result(fun, rho)?
-            .or_else(|| primitive_for_symbol(fun))
-            .ok_or_else(|| {
-                format!("could not find function \"{}\"", unsafe {
-                    get_symbol_name(fun.as_raw())
-                })
-            })?
+        match find_fun_result(fun, rho)? {
+            Some(value) => value,
+            None => match primitive_for_symbol(fun) {
+                Some(primitive) => primitive,
+                None => {
+                    // Upstream findFun3 raises R_FunctionNotFoundError with
+                    // the LANGSXP being evaluated, so the top-level render
+                    // attributes the error to that call: `Error in <call> :
+                    // could not find function "<name>"`.
+                    let name = unsafe { get_symbol_name(fun.as_raw()) };
+                    crate::mainutils::errors::errorcall_str(
+                        e.as_raw(),
+                        &format!("could not find function \"{name}\""),
+                    );
+                }
+            },
+        }
     } else {
         eval_safe(fun, rho)?
     };
@@ -322,6 +332,19 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
     find_var_result(symbol, rho).ok().flatten()
 }
 
+/// Raise R's missing-argument error, attributed like upstream.
+///
+/// Upstream `Rf_eval`'s SYMSXP case raises `R_MissingArgError(e,
+/// getLexicalCall(rho))` — the call of the enclosing closure context — so the
+/// top-level render shows `Error in f() : argument "x" is missing, with no
+/// default`. `R_getCurrentCall()` returns that innermost context call here.
+fn missing_arg_error(name: &str) -> ! {
+    crate::mainutils::errors::errorcall_str(
+        unsafe { crate::mainutils::errors::R_getCurrentCall() },
+        &format!("argument \"{name}\" is missing, with no default"),
+    )
+}
+
 /// Checked variable lookup using typed SEXP field access.
 ///
 /// `Ok(None)` means the binding was not found. `Err` means the environment
@@ -353,17 +376,13 @@ pub(crate) fn find_var_result<'a>(
                     .map_err(|err| sexp_err("binding value lookup", err))?;
                 if val.as_raw() == unsafe { R_MissingArg() } {
                     let name = unsafe { get_symbol_name(symbol.as_raw()) };
-                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                        message: format!("argument \"{}\" is missing, with no default", name),
-                    });
+                    missing_arg_error(&name);
                 }
                 if val.typeof_() == SEXPTYPE::PROMSXP {
                     let forced = unsafe { forcePromise(val.as_raw()) };
                     if forced == unsafe { R_MissingArg() } {
                         let name = unsafe { get_symbol_name(symbol.as_raw()) };
-                        std::panic::panic_any(crate::sexp::context::RSignal::Error {
-                            message: format!("argument \"{}\" is missing, with no default", name),
-                        });
+                        missing_arg_error(&name);
                     }
                     return Sexp::try_from_raw(forced)
                         .map(Some)

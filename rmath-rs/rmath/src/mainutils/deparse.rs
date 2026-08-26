@@ -108,8 +108,11 @@ const WARNINCOMPLETE: c_int = 1024;
 /// Simple deparse options (no quoting, no attributes, no delay).
 const SIMPLEDEPARSE: c_int = 0;
 
-/// Default deparse options (show attributes).
-const DEFAULTDEPARSE: c_int = SHOWATTRIBUTES;
+/// Default deparse options. Mirrors upstream DEFAULTDEPARSE
+/// (KEEPINTEGER | KEEPNA | NICE_NAMES) plus SHOWATTRIBUTES which the port
+/// has historically included — integer constants deparse with the trailing
+/// "L" in call attribution, matching stock R.
+const DEFAULTDEPARSE: c_int = KEEPNA | KEEPINTEGER | NICE_NAMES | SHOWATTRIBUTES;
 
 /// R's user-facing default `deparse()` control set:
 /// keepNA, keepInteger, niceNames, and showAttributes.

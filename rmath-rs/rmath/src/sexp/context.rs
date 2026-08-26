@@ -351,6 +351,19 @@ impl std::fmt::Display for RError {
 
 impl std::error::Error for RError {}
 
+/// Raise a canonical R error: panic with the [`RError`] payload.
+///
+/// This is the crate-wide entry point for raising R errors from Rust code.
+/// Handlers catch the panic via `catch_unwind` and convert it into an
+/// R-level error condition. Local `error()` helpers in other modules mirror
+/// this exact behavior; prefer calling `r_error` (or migrating local helpers
+/// to delegate to it) so there is one canonical raiser.
+pub fn r_error(msg: impl Into<String>) -> ! {
+    std::panic::panic_any(RError {
+        message: msg.into(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // RSignal — discriminated control flow signals
 // ---------------------------------------------------------------------------

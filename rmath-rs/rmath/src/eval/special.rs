@@ -599,10 +599,14 @@ pub unsafe fn do_begin(args: SEXP, rho: SEXP) -> SEXP {
         let mut result = R_NilValue();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
+            // Run the collection safe point BEFORE evaluating the next
+            // expression: `result` holds the previous statement's value and is
+            // returned unprotected, so no safe point may run once it is
+            // produced (that would be a use-after-free on collection).
+            crate::sexp::gengc::maybe_collect_at_eval_safe_point();
             result = Rf_eval(CAR(current), rho);
             current = CDR(current);
         }
-        crate::sexp::gengc::maybe_collect_at_eval_safe_point();
         result
     }
 }

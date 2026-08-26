@@ -48,6 +48,12 @@ pub(crate) struct ErrorState {
     pub error_buffer: [u8; crate::mainutils::errors::BUFSIZE + 1],
     pub expressions: c_int,
     pub expressions_keep: c_int,
+    /// Message of the most recent error rendered into `error_buffer` by
+    /// `verrorcall_dflt`, if any. The top-level renderer only trusts the
+    /// error buffer when the escaping error's message matches this, so stale
+    /// renders from previously caught errors are ignored (mirrors upstream,
+    /// where caught errors never reach `verrorcall_dflt` printing).
+    pub last_rendered_message: Option<String>,
 }
 
 impl Default for ErrorState {
@@ -72,6 +78,7 @@ impl Default for ErrorState {
             error_buffer: [0; crate::mainutils::errors::BUFSIZE + 1],
             expressions: 500,
             expressions_keep: 500,
+            last_rendered_message: None,
         }
     }
 }
@@ -306,7 +313,8 @@ pub struct RInstance {
     #[allow(clippy::vec_box)]
     pub(crate) symbol_nodes: Vec<Box<SexprecCore>>,
     /// Per-instance Marsaglia-MultiCarry RNG seed state.
-    pub(crate) rng_state: (u32, u32),
+    /// Per-instance Marsaglia-MultiCarry RNG seed state (shared with nmath samplers).
+    pub(crate) rng_state: rmath_nmath::RngState,
     /// Per-instance R-level RNG kind selected by RNGkind().
     pub(crate) rng_kind: i32,
     /// Per-instance R-level MT RNG state used by mainutils::rng.
@@ -327,10 +335,8 @@ pub struct RInstance {
     pub(crate) locked_bindings: HashSet<(usize, usize)>,
     /// Per-instance active bindings keyed by (environment address, symbol address).
     pub(crate) active_bindings: HashMap<(usize, usize), SEXP>,
-    /// Per-instance signed-rank distribution memo table.
-    pub(crate) signrank_cache: HashMap<i32, Vec<f64>>,
-    /// Per-instance Wilcoxon rank-sum distribution memo table.
-    pub(crate) wilcox_cache: HashMap<(i32, i32), Vec<f64>>,
+    /// Per-session nmath math state (sampler caches and rank memo tables).
+    pub(crate) math_state: rmath_nmath::MathState,
     /// Per-instance stats::pacf Starma external-pointer tag symbol.
     pub(crate) stats_starma_tag: SEXP,
     /// Per-instance stats::deriv operator/function symbol cache.
@@ -343,26 +349,6 @@ pub struct RInstance {
     pub(crate) fexact_state: crate::library::stats::fexact::FexactState,
     /// Per-instance stats::fft factorization plan state.
     pub(crate) fft_state: crate::library::stats::fft::FftState,
-    /// Per-instance dist::binomial sampler cache.
-    pub(crate) dist_binom_state: crate::dist::binomial::RbinomState,
-    /// Per-instance nmath::dist::binomial sampler cache.
-    pub(crate) nmath_binom_state: crate::nmath::dist::binomial::RbinomState,
-    /// Per-instance dist::poisson sampler cache.
-    pub(crate) dist_pois_state: crate::dist::poisson::RpoisState,
-    /// Per-instance nmath::dist::poisson sampler cache.
-    pub(crate) nmath_pois_state: crate::nmath::dist::poisson::RpoisState,
-    /// Per-instance dist::hypergeometric sampler cache.
-    pub(crate) dist_hyper_state: crate::dist::hypergeometric::RhyperState,
-    /// Per-instance nmath::dist::hypergeometric sampler cache.
-    pub(crate) nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState,
-    /// Per-instance dist::gamma sampler cache.
-    pub(crate) dist_gamma_state: crate::dist::gamma::GammaState,
-    /// Per-instance nmath::dist::gamma sampler cache.
-    pub(crate) nmath_gamma_state: crate::nmath::dist::gamma::GammaState,
-    /// Per-instance dist::beta sampler cache.
-    pub(crate) dist_beta_state: crate::dist::beta::BetaState,
-    /// Per-instance nmath::dist::beta sampler cache.
-    pub(crate) nmath_beta_state: crate::nmath::dist::beta::BetaState,
     /// Per-instance dynamic loader and native package registry state.
     pub(crate) dynload_state: crate::mainutils::rdynload::DynloadState,
     /// Per-instance connection table and sink state.
@@ -468,7 +454,7 @@ impl RInstance {
             lbfgsb_state: crate::appl::lbfgsb::LbfgsbState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
-            rng_state: (1234, 5678),
+            rng_state: rmath_nmath::RngState::default(),
             rng_kind: 0,
             main_rng_state: crate::mainutils::rng::MainRngState::default(),
             random_state: crate::mainutils::random::RNGState::new(),
@@ -479,24 +465,13 @@ impl RInstance {
             locked_environments: HashSet::new(),
             locked_bindings: HashSet::new(),
             active_bindings: HashMap::new(),
-            signrank_cache: HashMap::new(),
-            wilcox_cache: HashMap::new(),
+            math_state: rmath_nmath::MathState::default(),
             stats_starma_tag: std::ptr::null_mut(),
             stats_deriv_symbols: HashMap::new(),
             loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
             fexact_state: crate::library::stats::fexact::FexactState::default(),
             fft_state: crate::library::stats::fft::FftState::default(),
-            dist_binom_state: crate::dist::binomial::RbinomState::new(),
-            nmath_binom_state: crate::nmath::dist::binomial::RbinomState::new(),
-            dist_pois_state: crate::dist::poisson::RpoisState::new(),
-            nmath_pois_state: crate::nmath::dist::poisson::RpoisState::new(),
-            dist_hyper_state: crate::dist::hypergeometric::RhyperState::new(),
-            nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState::new(),
-            dist_gamma_state: crate::dist::gamma::GammaState::default(),
-            nmath_gamma_state: crate::nmath::dist::gamma::GammaState::default(),
-            dist_beta_state: crate::dist::beta::BetaState::default(),
-            nmath_beta_state: crate::nmath::dist::beta::BetaState::default(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
             path_policy: crate::mainutils::paths::RuntimePathPolicy::default(),

@@ -1,1 +1,1 @@
-Error: file choice cancelled
+Error in file.choose(FALSE) : file choice cancelled

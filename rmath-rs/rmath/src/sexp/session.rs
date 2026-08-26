@@ -54,6 +54,8 @@ use super::protect::protect;
 use super::protect::protect_sexp;
 #[cfg(test)]
 use super::protect::{R_ProtectCount, protect_n};
+use rmath_nmath::rng::{detach_rng, install_rng};
+use rmath_nmath::{MathState, RngState, detach_state, install_state};
 
 /// Error returned by safe session evaluation APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,12 +157,16 @@ fn expr_or_nil(expr: SEXP) -> SEXP {
 
 struct CurrentInstanceGuard {
     previous: Option<*mut RInstance>,
+    previous_rng: Option<*mut rmath_nmath::RngState>,
 }
 
 impl Drop for CurrentInstanceGuard {
     fn drop(&mut self) {
         unsafe {
             replace_current_instance(self.previous);
+            // Restore the RNG installation this activation replaced so two
+            // live sessions on one thread never observe each other's stream.
+            rmath_nmath::rng::swap_rng(self.previous_rng);
         }
     }
 }
@@ -173,8 +179,18 @@ struct RenderPlotBackendGuard {
 
 #[cfg(feature = "renderplot-device")]
 impl RenderPlotBackendGuard {
-    fn install(instance: &mut RInstance, backend: *mut dyn r_graphics_engine::DrawTarget) -> Self {
-        let previous = instance.current_renderplot_backend.replace(backend);
+    fn install<'a>(
+        instance: &mut RInstance,
+        backend: *mut (dyn r_graphics_engine::DrawTarget + 'a),
+    ) -> Self {
+        // SAFETY: lifetime-erasing the backend pointer to 'static for storage
+        // in the instance slot. This is sound because the guard's Drop
+        // restores the previous slot value before the caller's 'a borrow ends,
+        // so the erased pointer can never be observed after it dangles.
+        #[allow(clippy::transmute_ptr_to_ptr)] // fat-pointer lifetime erasure; `as` cannot do this
+        let erased: *mut (dyn r_graphics_engine::DrawTarget + 'static) =
+            unsafe { std::mem::transmute(backend) };
+        let previous = instance.current_renderplot_backend.replace(erased);
         Self {
             instance: instance as *mut RInstance,
             previous,
@@ -242,6 +258,8 @@ impl RSession {
         let mut instance = Box::new(RInstance::new());
         unsafe {
             set_current_instance(&mut *instance as *mut RInstance);
+            install_state(&mut instance.math_state as *mut MathState);
+            install_rng(&mut instance.rng_state as *mut RngState);
         }
         RSession {
             active: true,
@@ -260,6 +278,8 @@ impl RSession {
     pub(crate) fn new_detached() -> Self {
         let previous = unsafe { replace_current_instance(None) };
         let session = Self::new();
+        detach_state(&session.instance.math_state);
+        detach_rng(&session.instance.rng_state);
         clear_current_instance_if(&*session.instance);
         unsafe {
             replace_current_instance(previous);
@@ -273,7 +293,18 @@ impl RSession {
 
     fn activate(&self) -> CurrentInstanceGuard {
         let previous = unsafe { replace_current_instance(Some(self.instance_ptr())) };
-        CurrentInstanceGuard { previous }
+        // Scope the nmath RNG to this session for the duration of the
+        // activation, mirroring the instance swap above: session-owned
+        // streams must not leak across concurrently-live sessions.
+        let previous_rng = unsafe {
+            rmath_nmath::rng::swap_rng(Some(
+                &mut (*self.instance_ptr()).rng_state as *mut rmath_nmath::RngState,
+            ))
+        };
+        CurrentInstanceGuard {
+            previous,
+            previous_rng,
+        }
     }
 
     pub(crate) fn with_active<F, T>(&self, f: F) -> T
@@ -366,6 +397,7 @@ impl RSession {
         }
 
         self.with_active(|| {
+            crate::mainutils::errors::clear_last_rendered_message();
             let expr = self.owned_sexp(expr.as_raw(), "expression")?;
             let env = self.global_env().ok_or_else(|| REvalError {
                 message: "session has no global environment".to_string(),
@@ -496,6 +528,9 @@ impl RSession {
 
         self.with_active(|| {
             self.instance.output_capture.borrow_mut().start();
+            // Stale error-buffer renders from a previous script must not be
+            // trusted by this script's top-level error renderer.
+            crate::mainutils::errors::clear_last_rendered_message();
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             for raw_expr in expressions {
@@ -507,6 +542,15 @@ impl RSession {
                     }
                 };
                 result = self.eval_sexp(expr);
+                if result.is_err() {
+                    // An uncaught top-level error unwinds like R's error()
+                    // longjmp to the REPL top level: remaining expressions are
+                    // not evaluated and the script fails. Errors caught inside
+                    // the expression (tryCatch/withCallingHandlers) never
+                    // surface here, so local condition handling still resumes
+                    // normally.
+                    break;
+                }
                 let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
@@ -519,13 +563,14 @@ impl RSession {
     }
 
     #[cfg(feature = "renderplot-device")]
-    pub(crate) fn eval_script_with_output_capture_then_renderplot<'session, T, F>(
+    pub(crate) fn eval_script_with_output_capture_then_renderplot<'session, 'backend, T, F>(
         &'session mut self,
         code: &str,
-        backend: *mut dyn r_graphics_engine::DrawTarget,
+        backend: *mut (dyn r_graphics_engine::DrawTarget + 'backend),
         f: F,
     ) -> T
     where
+        'backend: 'session,
         F: FnOnce(RResult<Sexp<'session>>, super::output::RCapturedOutput, bool) -> T,
     {
         if !self.active {
@@ -570,6 +615,11 @@ impl RSession {
                     }
                 };
                 result = self.eval_sexp(expr);
+                if result.is_err() {
+                    // Same top-level halt semantics as the plain script loop:
+                    // an uncaught error stops remaining expressions.
+                    break;
+                }
                 let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
@@ -924,10 +974,10 @@ impl RSession {
     /// Close this session.
     ///
     /// After closing, [`is_active`](RSession::is_active) returns `false`
-    /// and evaluation methods return errors. The current thread-local
-    /// instance is cleared only if this session still owns it.
     pub fn close(&mut self) {
         self.active = false;
+        detach_state(&self.instance.math_state);
+        detach_rng(&self.instance.rng_state);
         clear_current_instance_if(&*self.instance);
     }
 }
@@ -950,11 +1000,12 @@ impl Default for RSession {
 impl Drop for RSession {
     fn drop(&mut self) {
         if self.active {
+            detach_state(&self.instance.math_state);
+            detach_rng(&self.instance.rng_state);
             clear_current_instance_if(&*self.instance);
         }
     }
 }
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

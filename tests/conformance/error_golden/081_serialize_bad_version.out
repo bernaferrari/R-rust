@@ -1,1 +1,1 @@
-Error: version 1 not supported
+Error in serialize(1, NULL, version = 1) : version 1 not supported

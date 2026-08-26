@@ -98,11 +98,23 @@ unsafe fn R_ClassSymbol() -> SEXP {
 }
 
 unsafe fn error(msg: &str) {
+    // Truncate at the first interior NUL instead of silently producing an
+    // empty message (CString::new + unwrap_or_default would drop everything
+    // after — and with it the whole error text).
+    let msg = match msg.split('\0').next() {
+        Some("") | None => "error message contained only a NUL byte",
+        Some(head) => head,
+    };
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
     crate::main::errors::Rf_error(c_msg.as_ptr());
 }
 
 unsafe fn warning(msg: &str) {
+    // Same interior-NUL handling as `error` above.
+    let msg = match msg.split('\0').next() {
+        Some("") | None => "warning message contained only a NUL byte",
+        Some(head) => head,
+    };
     let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
     crate::main::errors::Rf_warning(c_msg.as_ptr());
 }

@@ -1,1 +1,1 @@
-Error: probabilities must be finite, non-negative and not all 0
+Error in dmultinom(c(1), prob = c(NA)) : probabilities must be finite, non-negative and not all 0

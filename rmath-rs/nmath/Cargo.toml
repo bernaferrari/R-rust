@@ -1,0 +1,8 @@
+[package]
+name = "rmath-nmath"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+
+[dependencies]
+libm = "0.1"

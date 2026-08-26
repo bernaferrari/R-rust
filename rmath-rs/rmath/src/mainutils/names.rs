@@ -1370,7 +1370,7 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         None,
         0,
         11,
-        4,
+        -1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
@@ -3451,7 +3451,7 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         b"rep\0",
         None,
         0,
-        0,
+        11,
         -1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
@@ -4926,7 +4926,9 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         let name = std::str::from_utf8(&entry.name[..end]).unwrap_or("<invalid>");
 
         if let Some(handler) = internal_builtin_handler(name) {
-            let ans = handler(s, internal_val, evaluated_args, env);
+            let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
+                handler(s, internal_val, evaluated_args, env)
+            });
             if flag < 2 {
                 crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
             }
@@ -4934,7 +4936,9 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         if let Some(handler) = crate::eval::builtin::evaluated_builtin_handler(name) {
-            let ans = handler(s, internal_val, evaluated_args, env);
+            let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
+                handler(s, internal_val, evaluated_args, env)
+            });
             if flag < 2 {
                 crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
             }
@@ -4945,7 +4949,9 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         let cfun = entry.cfun;
 
         let ans = if let Some(f) = cfun {
-            f(s, internal_val, evaluated_args, env)
+            crate::mainutils::errors::attribute_handler_errors(s, || {
+                f(s, internal_val, evaluated_args, env)
+            })
         } else {
             panic_any(RError {
                 message: format!("internal function '{name}' is not implemented"),

@@ -12,13 +12,13 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL,
-    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
-    translateChar,
+    CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME,
+    RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
+    XLENGTH, translateChar,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_isInteger, Rf_isNull, Rf_isReal,
-    Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_isInteger, Rf_isNull,
+    Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -66,23 +66,46 @@ const NILSXP_VAL: c_int = 0;
 // ---------------------------------------------------------------------------
 
 unsafe fn DispatchOrEval(
-    _call: SEXP,
-    _op: SEXP,
-    _generic: *const c_char,
-    _args: SEXP,
-    _rho: SEXP,
-    _ans: *mut SEXP,
-    _narg: c_int,
-    _evalseq: c_int,
+    call: SEXP,
+    op: SEXP,
+    generic: *const c_char,
+    args: SEXP,
+    rho: SEXP,
+    ans: *mut SEXP,
+    narg: c_int,
+    evalseq: c_int,
 ) -> c_int {
-    0
+    unsafe {
+        crate::eval::dispatch::DispatchOrEval(call, op, generic, args, rho, ans, narg, evalseq)
+    }
 }
 
 unsafe fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
-
-unsafe fn check1arg(_args: SEXP, _call: SEXP, _name: *const c_char) {}
+unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
+    unsafe {
+        // R's check1arg: error if the first argument is supplied by name.
+        if args.is_null() || args == crate::sexp::globals::R_NilValue() {
+            return;
+        }
+        let tag = TAG(args);
+        if !tag.is_null() && tag != crate::sexp::globals::R_NilValue() {
+            let tag_name = CHAR(PRINTNAME(tag));
+            if !tag_name.is_null() {
+                let given = CStr::from_ptr(tag_name).to_str().unwrap_or("");
+                let formal = CStr::from_ptr(name).to_str().unwrap_or("");
+                // Partial match against the formal name, like R's pmatch
+                if !formal.is_empty() && (formal == given || formal.starts_with(given)) {
+                    let msg = format!(
+                        "the first argument should not be named - using it positionally anyway\0"
+                    );
+                    errorcall(call, msg.as_ptr() as *const c_char);
+                }
+            }
+        }
+    }
+}
 
 unsafe fn errorcall(call: SEXP, format: *const c_char) {
     crate::mainutils::errors::errorcall(call, format);
@@ -97,8 +120,28 @@ unsafe fn error(msg: &str) {
     crate::mainutils::errors::errorcall(std::ptr::null_mut(), c_msg.as_ptr() as *const c_char);
 }
 
-unsafe fn R_typeToChar(_s: SEXP) -> *const c_char {
-    ptr::null()
+unsafe fn R_typeToChar(s: SEXP) -> *const c_char {
+    // Return the static SEXPTYPE name for this SEXP (only used in errors).
+    unsafe {
+        if s.is_null() {
+            return b"NULL\0".as_ptr() as *const c_char;
+        }
+        let t = TYPEOF(s);
+        let name: &[u8] = match t {
+            NILSXP_VAL => b"NULL\0",
+            LGLSXP_VAL => b"logical\0",
+            INTSXP_VAL => b"integer\0",
+            REALSXP_VAL => b"double\0",
+            CPLXSXP_VAL => b"complex\0",
+            STRSXP_VAL => b"character\0",
+            VECSXP_VAL => b"list\0",
+            EXPRSXP_VAL => b"expression\0",
+            RAWSXP_VAL => b"raw\0",
+            LISTSXP_VAL => b"pairlist\0",
+            _ => b"unknown\0",
+        };
+        name.as_ptr() as *const c_char
+    }
 }
 
 unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
@@ -119,29 +162,52 @@ unsafe fn UNIMPLEMENTED_TYPE(routine: *const c_char, s: SEXP) -> ! {
     }
 }
 
-unsafe fn R_PreserveObject(_x: SEXP) {}
-
-unsafe fn allocFormalsList5(_a1: SEXP, _a2: SEXP, _a3: SEXP, _a4: SEXP, _a5: SEXP) -> SEXP {
-    ptr::null_mut()
+unsafe fn R_PreserveObject(x: SEXP) {
+    unsafe { crate::sexp::protect::R_PreserveObject(x) }
 }
 
-unsafe fn allocFormalsList6(
-    _a1: SEXP,
-    _a2: SEXP,
-    _a3: SEXP,
-    _a4: SEXP,
-    _a5: SEXP,
-    _a6: SEXP,
-) -> SEXP {
-    ptr::null_mut()
+/// Build a tagged pairlist of formal symbols for matchArgs_NR.
+unsafe fn allocFormalsList5(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
+    unsafe {
+        let c5 = crate::sexp::constructors::Rf_cons(a5, crate::sexp::globals::R_NilValue());
+        SETTAG(c5, a5);
+        let c4 = crate::sexp::constructors::Rf_cons(a4, c5);
+        SETTAG(c4, a4);
+        let c3 = crate::sexp::constructors::Rf_cons(a3, c4);
+        SETTAG(c3, a3);
+        let c2 = crate::sexp::constructors::Rf_cons(a2, c3);
+        SETTAG(c2, a2);
+        let c1 = crate::sexp::constructors::Rf_cons(a1, c2);
+        SETTAG(c1, a1);
+        c1
+    }
 }
 
-unsafe fn matchArgs_NR(_formals: SEXP, _args: SEXP, _call: SEXP) -> SEXP {
-    ptr::null_mut()
+/// Build a tagged pairlist of formal symbols for matchArgs_NR.
+#[allow(clippy::too_many_arguments)]
+unsafe fn allocFormalsList6(a1: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP, a6: SEXP) -> SEXP {
+    unsafe {
+        let c6 = crate::sexp::constructors::Rf_cons(a6, crate::sexp::globals::R_NilValue());
+        SETTAG(c6, a6);
+        let c5 = crate::sexp::constructors::Rf_cons(a5, c6);
+        SETTAG(c5, a5);
+        let c4 = crate::sexp::constructors::Rf_cons(a4, c5);
+        SETTAG(c4, a4);
+        let c3 = crate::sexp::constructors::Rf_cons(a3, c4);
+        SETTAG(c3, a3);
+        let c2 = crate::sexp::constructors::Rf_cons(a2, c3);
+        SETTAG(c2, a2);
+        let c1 = crate::sexp::constructors::Rf_cons(a1, c2);
+        SETTAG(c1, a1);
+        c1
+    }
 }
 
-unsafe fn inherits(_s: SEXP, _what: *const c_char) -> c_int {
-    0
+unsafe fn matchArgs_NR(formals: SEXP, args: SEXP, call: SEXP) -> SEXP {
+    unsafe { crate::mainutils::match_mod::matchArgs_RC(formals, args, call) }
+}
+unsafe fn inherits(s: SEXP, what: *const c_char) -> c_int {
+    unsafe { crate::mainutils::objects::inherits2(s, what) }
 }
 
 unsafe fn asReal(x: SEXP) -> c_double {
@@ -181,7 +247,13 @@ unsafe fn asReal(x: SEXP) -> c_double {
                     }
                 }
             }
-            _ => 0.0,
+            SYMSXP_VAL => {
+                if x == R_MissingArg() {
+                    NA_REAL
+                } else {
+                    0.0
+                }
+            }
         }
     }
 }
@@ -218,7 +290,13 @@ unsafe fn asInteger(x: SEXP) -> c_int {
                     *LOGICAL(x)
                 }
             }
-            _ => 0,
+            SYMSXP_VAL => {
+                if x == R_MissingArg() {
+                    NA_INTEGER
+                } else {
+                    0
+                }
+            }
         }
     }
 }
@@ -248,8 +326,8 @@ unsafe fn asLogical(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn xlengthgets(_x: SEXP, _len: R_xlen_t) -> SEXP {
-    ptr::null_mut()
+unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
+    unsafe { crate::mainutils::builtin::xlengthgets(x, len) }
 }
 
 unsafe fn R_compact_intrange(from: R_xlen_t, to: R_xlen_t) -> SEXP {
@@ -306,11 +384,11 @@ unsafe fn R_LevelsSymbol() -> SEXP {
 }
 
 unsafe fn isObject(x: SEXP) -> c_int {
-    0
+    unsafe { crate::eval::attrib_core::isObject(x) }
 }
 
-unsafe fn asBool2(_x: SEXP, _call: SEXP) -> c_int {
-    0
+unsafe fn asBool2(x: SEXP, call: SEXP) -> c_int {
+    unsafe { crate::mainutils::coerce::asRbool(x, call) }
 }
 
 unsafe fn isVector(x: SEXP) -> c_int {
@@ -460,9 +538,12 @@ unsafe fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
             );
         }
 
-        // If both n1 and n2 are exact integers (as R_xlen_t), use compact intrange
-        if n1 == n1 as R_xlen_t as c_double && n2 == n2 as R_xlen_t as c_double {
-            return R_compact_intrange(n1 as R_xlen_t, n2 as R_xlen_t);
+        // If both n1 and n2 are exact integers, use compact intrange.
+        // R's colon produces a descending range when n1 > n2; the naive
+        // (n2 - n1) as unsigned cast wraps, so pass both ends through and
+        // let R_compact_intrange pick the direction.
+        if n1 == n1 as i64 as c_double && n2 == n2 as i64 as c_double {
+            return R_compact_intrange(n1 as i64 as R_xlen_t, n2 as i64 as R_xlen_t);
         }
 
         let n = (r + 1.0 + FLT_EPSILON) as R_xlen_t;
@@ -491,7 +572,7 @@ unsafe fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
                 R_compact_intrange(n1 as R_xlen_t, (n1 - n as c_double + 1.0) as R_xlen_t)
             }
         } else {
-            let ans = Rf_allocVector(REALSXP_VAL, n as c_int);
+            let ans = Rf_allocVector3(REALSXP_VAL, n);
             let ra = REAL(ans);
             if n1 <= n2 {
                 for i in 0..n {
@@ -529,15 +610,20 @@ pub unsafe fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         if n1 != 1.0 || n2 != 1.0 {
             if n1 == 0.0 || n2 == 0.0 {
-                return ptr::null_mut();
+                // C: errorcall(call, _("argument of length 0"));
+                errorcall(call, b"argument of length 0\0".as_ptr() as *const c_char);
             }
-            let _ = (n1, n2);
+            warningcall(
+                call,
+                b"numerical expression has length > 1\0".as_ptr() as *const c_char,
+            );
         }
 
         let r_n1 = asReal(s1);
         let r_n2 = asReal(s2);
         if ISNAN(r_n1) || ISNAN(r_n2) {
-            return ptr::null_mut();
+            // C: errorcall(call, _("NA/NaN argument"));
+            errorcall(call, b"NA/NaN argument\0".as_ptr() as *const c_char);
         }
         seq_colon(r_n1, r_n2, call)
     }
@@ -1186,6 +1272,269 @@ unsafe fn rep4(x: SEXP, times: SEXP, len: R_xlen_t, each: R_xlen_t, nt: R_xlen_t
 // do_rep_int: .Internal(rep.int(x, times))
 // ---------------------------------------------------------------------------
 
+// datetime_seq: Date / POSIXct support for seq(), mirroring stock R's S3
+// methods seq.Date() and seq.POSIXt() (src/library/base/R/dates.R / dateTime.R).
+// Returns Some(result) when either endpoint carries a datetime class,
+// None otherwise so the plain numeric path runs.
+// ---------------------------------------------------------------------------
+
+unsafe fn first_str_elt(x: SEXP) -> Option<String> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != STRSXP_VAL || LENGTH(x) == 0 {
+            return None;
+        }
+        let s = STRING_ELT(x, 0);
+        if s.is_null() || s == crate::sexp::globals::R_NaString() {
+            return None;
+        }
+        Some(
+            CStr::from_ptr(translateChar(s))
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+
+unsafe fn datetime_class_of(x: SEXP) -> Option<DatetimeKind> {
+    unsafe {
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
+            Some(DatetimeKind::Posixct)
+        } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
+            Some(DatetimeKind::Date)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum DatetimeKind {
+    Date,
+    Posixct,
+}
+
+/// Result of parsing an R `by` string such as "3 months" or "week".
+struct BySpec {
+    unit: &'static str,
+    mult: c_double,
+    /// Calendar-unit flag (months/quarters/years).
+    calendar: bool,
+}
+
+unsafe fn parse_by_string(s: &str, units: &[&str]) -> Option<BySpec> {
+    let parts: Vec<&str> = s.split(' ').filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() || parts.len() > 2 {
+        return None;
+    }
+    let last = parts[parts.len() - 1];
+    let candidates = [
+        "secs", "mins", "hours", "days", "weeks", "months", "quarters", "years",
+    ];
+    let list: &[&str] = if units.len() == 4 { units } else { &candidates };
+    // Stock R matches `by` strings via pmatch(): the user string is a
+    // unique prefix of the table entry ("day" -> "days", "days" -> "days").
+    let idx = list.iter().position(|u| u.starts_with(last))?;
+    let unit = match idx {
+        0 => "secs",
+        1 => "mins",
+        2 => "hours",
+        3 => "days",
+        4 => "weeks",
+        5 => "months",
+        6 => "quarters",
+        _ => "years",
+    };
+    let mult = if parts.len() == 2 {
+        parts[0].trim().parse::<c_double>().ok()? as c_double
+    } else {
+        1.0
+    };
+    let calendar = matches!(unit, "months" | "quarters" | "years");
+    Some(BySpec {
+        unit,
+        mult,
+        calendar,
+    })
+}
+
+unsafe fn attach_datetime_class(ans: SEXP, kind: DatetimeKind, tz_source: SEXP) -> SEXP {
+    unsafe {
+        match kind {
+            DatetimeKind::Date => {
+                crate::mainutils::essentials::set_single_class(ans, "Date");
+            }
+            DatetimeKind::Posixct => {
+                let tz = crate::mainutils::essentials::posixct_tzone_string(tz_source);
+                crate::mainutils::essentials::set_posixct_class(ans, &tz);
+            }
+        }
+        ans
+    }
+}
+
+unsafe fn datetime_seq(
+    call: SEXP,
+    from: SEXP,
+    to: SEXP,
+    by: SEXP,
+    lout: R_xlen_t,
+    miss_from: bool,
+    miss_to: bool,
+) -> Option<SEXP> {
+    unsafe {
+        // Classify endpoints (POSIXct wins over Date when mixed, like R's
+        // method dispatch picking seq.POSIXt for a leading POSIXt argument).
+        let kind: DatetimeKind = {
+            let kf = if miss_from {
+                None
+            } else {
+                datetime_class_of(from)
+            };
+            let kt = if miss_to { None } else { datetime_class_of(to) };
+            match (kf, kt) {
+                (Some(k), _) | (_, Some(k)) => k,
+                _ => return None,
+            }
+        };
+
+        let have_lout = lout != NA_INTEGER as R_xlen_t;
+
+        // 'by' handling -----------------------------------------------------
+        let mut rby: c_double;
+        let mut calendar = false;
+        if by != R_MissingArg() && by != R_NilValue() {
+            if LENGTH(by) != 1 {
+                errorcall(
+                    call,
+                    b"'by' must be of length 1\0".as_ptr() as *const c_char,
+                );
+            }
+            if TYPEOF(by) == STRSXP_VAL {
+                let text = first_str_elt(by)?;
+                let day_units = ["days", "weeks"];
+                let spec = if kind == DatetimeKind::Date {
+                    parse_by_string(&text, &day_units)
+                } else {
+                    parse_by_string(&text, &[])
+                }?;
+                let base: c_double = match spec.unit {
+                    "secs" => 1.0,
+                    "mins" => 60.0,
+                    "hours" => 3600.0,
+                    "days" => 86400.0,
+                    "weeks" => 7.0 * 86400.0,
+                    "months" => 30.4375 * 86400.0, // fallback only; calendar path below
+                    "quarters" => 91.3125 * 86400.0,
+                    _ => 365.25 * 86400.0,
+                };
+                calendar = spec.calendar;
+                rby = spec.mult * base;
+                if kind == DatetimeKind::Date {
+                    // Dates work in day units.
+                    rby = match spec.unit {
+                        "days" => spec.mult,
+                        "weeks" => 7.0 * spec.mult,
+                        "months" | "quarters" | "years" => spec.mult,
+                        _ => rby,
+                    };
+                    if matches!(spec.unit, "months" | "quarters" | "years") {
+                        rby *= match spec.unit {
+                            "quarters" => 3.0,
+                            "years" => 12.0,
+                            _ => 1.0,
+                        };
+                        calendar = true;
+                    }
+                }
+            } else {
+                rby = asReal(by);
+                if ISNAN(rby) {
+                    errorcall(call, b"'by' is NA\0".as_ptr() as *const c_char);
+                }
+            }
+        } else {
+            // No 'by': only from/to + length.out supported (R requires it).
+            if !have_lout || miss_from || miss_to {
+                errorcall(
+                    call,
+                    b"without 'by', when one of 'to', 'from' is missing, 'length.out' / 'along.with' must be specified\0"
+                        .as_ptr() as *const c_char,
+                );
+            }
+            rby = c_double::NAN; // computed below from span / (lout - 1)
+        }
+
+        // Endpoints as raw numbers ------------------------------------------
+        let vfrom = if miss_from {
+            c_double::NAN
+        } else {
+            asReal(from)
+        };
+        let vto = if miss_to { c_double::NAN } else { asReal(to) };
+
+        // Build the raw numeric sequence ------------------------------------
+        let build = |first: c_double, step: c_double, n: usize| -> Vec<c_double> {
+            (0..n).map(|i| first + i as c_double * step).collect()
+        };
+
+        let values: Vec<c_double> = if !miss_from && !miss_to && have_lout {
+            // from, to, length.out
+            let n = lout.max(1) as usize;
+            if n == 1 {
+                vec![vfrom]
+            } else {
+                let step = (vto - vfrom) / (n as c_double - 1.0);
+                build(vfrom, step, n)
+            }
+        } else if !miss_from && !miss_to && !have_lout {
+            if calendar && kind == DatetimeKind::Date {
+                // Month-style stepping over dates.
+                let mut out = Vec::new();
+                let mut cur = vfrom;
+                let m = rby as i64;
+                let sign: i64 = if rby < 0.0 { -1 } else { 1 };
+                while (sign > 0 && cur <= vto) || (sign < 0 && cur >= vto) {
+                    out.push(cur);
+                    cur = crate::mainutils::essentials::date_add_months(cur, m)
+                        .unwrap_or(c_double::NAN);
+                }
+                out
+            } else {
+                let del = vto - vfrom;
+                let n = (del / rby).floor() as i64;
+                if n < 0 {
+                    errorcall(
+                        call,
+                        b"wrong sign in 'by' argument\0".as_ptr() as *const c_char,
+                    );
+                }
+                build(vfrom, rby, (n + 1) as usize)
+            }
+        } else if miss_to {
+            build(vfrom, rby, lout as usize)
+        } else {
+            // miss_from: end-anchored
+            let n = lout as usize;
+            let start = vto - (n as c_double - 1.0) * rby;
+            build(start, rby, n)
+        };
+
+        // Emit the result vector --------------------------------------------
+        let ans = Rf_allocVector(REALSXP_VAL, values.len() as c_int);
+        let ra = REAL(ans);
+        for (i, v) in values.iter().enumerate() {
+            *ra.add(i) = *v;
+        }
+        Some(attach_datetime_class(
+            ans,
+            kind,
+            if miss_from { to } else { from },
+        ))
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
@@ -1431,7 +1780,6 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         {
             return ans;
         }
-
         // After DispatchOrEval, args have been evaluated
         let args = ans;
 
@@ -1612,6 +1960,16 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let xn = getAttrib(x, R_NamesSymbol());
         ans = rep4(x, times, len, each, nt);
 
+        // Date / POSIXct class restoration: rep4 replicates the raw payload,
+        // so re-attach the datetime class (and tzone) like stock R's
+        // rep.Date / rep.POSIXct S3 methods do.
+        if crate::mainutils::essentials::sexp_has_class(x, "POSIXct") {
+            let tz = crate::mainutils::essentials::posixct_tzone_string(x);
+            crate::mainutils::essentials::set_posixct_class(ans, &tz);
+        } else if crate::mainutils::essentials::sexp_has_class(x, "Date") {
+            crate::mainutils::essentials::set_single_class(ans, "Date");
+        }
+
         if XLENGTH(xn) > 0 {
             setAttrib(ans, R_NamesSymbol(), rep4(xn, times, len, each, nt));
         }
@@ -1621,7 +1979,6 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             setAttrib(ans, R_ClassSymbol(), getAttrib(x, R_ClassSymbol()));
             SET_S4_OBJECT(ans);
         }
-
         ans
     }
 }
@@ -1634,8 +1991,7 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         let mut ans: SEXP = R_NilValue();
-        let one_arg = LENGTH(args) == 1;
-
+        let one_arg = Rf_length(args) == 1;
         // DispatchOrEval internal generic: seq
         if DispatchOrEval(
             call,
@@ -1666,27 +2022,38 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let to = CADR(matched_args);
         let by = CADDR(matched_args);
         let len_arg = CADDDR(matched_args);
-        let along = CAR(CDDDR(matched_args));
+        // 5th formal (along.with): CDDDR lands on the 4th cell
+        // (length.out), so take its CDR's CAR.
+        let along = CADR(CDDDR(matched_args));
 
         let miss_from = from == R_MissingArg();
         let miss_to = to == R_MissingArg();
 
-        // Single-argument form: seq(n) or seq(scalar)
+        // Single-argument form: seq(n) or seq(scalar).  R evaluates this as
+        // `1:n` (do_colon on the evaluated first argument), so non-numeric
+        // scalars coerce via asReal (NA/NaN -> error), length > 1 warns and
+        // uses the length, and the result keeps integer type for integral n.
         if one_arg && !miss_from {
-            let lf = LENGTH(from);
-            if lf == 1 && (TYPEOF(from) == INTSXP_VAL || TYPEOF(from) == REALSXP_VAL) {
+            if from == R_NilValue() {
+                ans = Rf_allocVector(INTSXP_VAL, 0);
+            } else if LENGTH(from) == 0 {
+                errorcall(call, b"argument of length 0\0".as_ptr() as *const c_char);
+            } else if LENGTH(from) > 1 {
+                warningcall(
+                    call,
+                    b"numerical expression has length > 1\0".as_ptr() as *const c_char,
+                );
+                let n = asReal(from);
+                if ISNAN(n) {
+                    errorcall(call, b"NA/NaN argument\0".as_ptr() as *const c_char);
+                }
+                ans = seq_colon(1.0, n, call);
+            } else {
                 let rfrom = asReal(from);
-                if !R_FINITE(rfrom) {
-                    errorcall(
-                        call,
-                        b"'from' must be a finite number\0".as_ptr() as *const c_char,
-                    );
+                if ISNAN(rfrom) {
+                    errorcall(call, b"NA/NaN argument\0".as_ptr() as *const c_char);
                 }
                 ans = seq_colon(1.0, rfrom, call);
-            } else if lf > 0 {
-                ans = seq_colon(1.0, lf as c_double, call);
-            } else {
-                ans = Rf_allocVector(INTSXP_VAL, 0);
             }
             return ans;
         }
@@ -1725,6 +2092,18 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 );
             }
             lout = rout as R_xlen_t;
+        }
+
+        // ------------------------------------------------------------------
+        // Date / POSIXct sequences.  In stock R these are handled by the S3
+        // methods seq.Date / seq.POSIXt, which unclass the operands, delegate
+        // the arithmetic to seq.int and re-attach the class attribute.
+        // This runtime implements datetime classes natively (no R-level
+        // methods), so mirror that behaviour here.
+        // ------------------------------------------------------------------
+        if let Some(result) = unsafe { datetime_seq(call, from, to, by, lout, miss_from, miss_to) }
+        {
+            return result;
         }
 
         if lout == NA_INTEGER as R_xlen_t {
@@ -2083,27 +2462,64 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _ = (call, rho);
         checkArity(op, args);
 
-        let lengths = CAR(args);
-        if isInteger(lengths) == 0 {
-            error("'nvec' is not of mode integer");
-        }
-        let from = CADR(args);
-        if isInteger(from) == 0 {
-            error("'from' is not of mode integer");
-        }
-        let by = CADDR(args);
-        if isInteger(by) == 0 {
-            error("'by' is not of mode integer");
-        }
-        let recycle_1st_arg = CADDDR(args);
-        let recycle_1st = asBool2(recycle_1st_arg, call) != 0;
+        // User-facing signature: sequence(nvec, from = 1L, by = 1L,
+        // recycle = FALSE). Stock R wraps
+        // .Internal(sequence(nvec, from, by, recycle)) with as.integer()
+        // coercion of the numeric arguments; apply the same defaults and
+        // coercion here rather than exposing the raw internal signature.
+        // Match user args by tag/position so named calls like by= bind correctly.
+        let formals = allocFormalsList5(
+            Rf_install_stub(b"nvec\0".as_ptr() as *const c_char),
+            Rf_install_stub(b"from\0".as_ptr() as *const c_char),
+            Rf_install_stub(b"by\0".as_ptr() as *const c_char),
+            Rf_install_stub(b"recycle\0".as_ptr() as *const c_char),
+            R_DotsSymbol(),
+        );
+        let matched = matchArgs_NR(formals, args, call);
 
+        let lengths_arg = CAR(matched);
+        if lengths_arg.is_null() || lengths_arg == R_NilValue() || lengths_arg == R_MissingArg() {
+            error("argument \"nvec\" is missing, with no default");
+        }
+        let lengths: SEXP = if TYPEOF(lengths_arg) != INTSXP_VAL {
+            coerceVector(lengths_arg, INTSXP_VAL)
+        } else {
+            lengths_arg
+        };
+        let from_arg = CADR(matched);
+        let from: SEXP =
+            if from_arg.is_null() || from_arg == R_NilValue() || from_arg == R_MissingArg() {
+                ScalarInteger(1)
+            } else if TYPEOF(from_arg) != INTSXP_VAL {
+                coerceVector(from_arg, INTSXP_VAL)
+            } else {
+                from_arg
+            };
+        let by_arg = CADDR(matched);
+        let by: SEXP = if by_arg.is_null() || by_arg == R_NilValue() || by_arg == R_MissingArg() {
+            ScalarInteger(1)
+        } else if TYPEOF(by_arg) != INTSXP_VAL {
+            coerceVector(by_arg, INTSXP_VAL)
+        } else {
+            by_arg
+        };
+        let recycle_1st_arg = CADDDR(matched);
+        let recycle_1st = if recycle_1st_arg.is_null()
+            || recycle_1st_arg == R_NilValue()
+            || recycle_1st_arg == R_MissingArg()
+        {
+            false
+        } else {
+            asBool2(recycle_1st_arg, call) != 0
+        };
         let lengths_len = XLENGTH(lengths);
+        let from_len = XLENGTH(from);
+        let by_len = XLENGTH(by);
+
+        // sequence(integer(0)) is integer(0) regardless of the other args.
         if lengths_len == 0 {
             return Rf_allocVector(INTSXP_VAL, 0);
         }
-        let from_len = XLENGTH(from);
-        let by_len = XLENGTH(by);
 
         if !recycle_1st && lengths_len != 0 {
             if from_len == 0 {
@@ -2530,14 +2946,12 @@ mod tests {
     fn test_do_sequence_empty() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
+            // sequence() now exposes the user-facing signature
+            // sequence(nvec, from = 1L, by = 1L, recycle = FALSE): the
+            // defaults are supplied by the handler, so an empty nvec alone
+            // must yield an empty result.
             let lengths = Rf_allocVector(INTSXP_VAL, 0);
-            let from = make_int_vec(&[1]);
-            let by = make_int_vec(&[1]);
-            let recycle = make_int_vec(&[1]);
-            let a4 = Rf_cons(recycle, R_NilValue());
-            let a3 = Rf_cons(by, a4);
-            let a2 = Rf_cons(from, a3);
-            let args = Rf_cons(lengths, a2);
+            let args = Rf_cons(lengths, R_NilValue());
 
             let ans = do_sequence(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!ans.is_null());

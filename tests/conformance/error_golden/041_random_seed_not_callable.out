@@ -1,1 +1,1 @@
-Error: could not find function "Random.seed"
+Error in Random.seed() : could not find function "Random.seed"

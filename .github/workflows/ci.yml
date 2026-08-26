@@ -56,6 +56,14 @@ jobs:
         if: runner.os == 'Linux'
         run: bash scripts/conformance_parity.sh --check --strict
 
+      - name: Upstream core slices (strict)
+        if: runner.os == 'Linux'
+        run: bash scripts/upstream_core_slices.sh --report "${RUNNER_TEMP}/upstream-core-slices"
+
+      - name: Pure-R package corpus (strict)
+        if: runner.os == 'Linux'
+        run: bash scripts/pure_r_package_corpus.sh --check
+
       - name: Safe API audit
         run: bash scripts/audit_safe_api.sh
 

@@ -1,1 +1,1 @@
-Error: a matrix-like object is required as argument to 'row'
+Error in row(1:3) : a matrix-like object is required as argument to 'row'

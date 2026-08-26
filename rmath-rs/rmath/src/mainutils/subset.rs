@@ -1707,6 +1707,57 @@ pub unsafe fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// Default method for `[[`. Handles vector indexing, matrix/array indexing,
 /// pair-list indexing, and environment subsetting.
+/// Port of `vectorIndex()` from subscript.c — used by `[[` with a vector of
+/// indices of length > 1. Recursively descends into list/pairlist elements
+/// from level `start` to level `stop - 1`.
+unsafe fn vectorIndex(
+    mut x: SEXP,
+    thesub: SEXP,
+    start: c_int,
+    stop: c_int,
+    pok: c_int,
+    call: SEXP,
+) -> SEXP {
+    unsafe {
+        let mut i = start;
+        while i < stop {
+            if !isVectorList(x) && !isPairList(x) {
+                if i != 0 {
+                    errorcall(
+                        call,
+                        &format!("recursive indexing failed at level {}", i + 1),
+                    );
+                } else {
+                    errorcall(
+                        call,
+                        "attempt to select more than one element in vectorIndex",
+                    );
+                }
+            }
+            let x_guard = protect(x);
+            let names = getAttrib(x, sym_Names());
+            let names_guard = protect(names);
+            let offset = get1index(thesub, names, xlength(x), pok, i, call);
+            drop(names_guard);
+            drop(x_guard);
+            if offset < 0 || offset >= xlength(x) {
+                errorcall(call, &format!("no such index at level {}", i + 1));
+            }
+            if isPairList(x) {
+                let cx = nthcdr(x, offset as c_int);
+                RAISE_NAMED(CAR(cx), NAMED(x));
+                x = CAR(cx);
+            } else {
+                let cx = x;
+                x = VECTOR_ELT(cx, offset);
+                RAISE_NAMED(x, NAMED(cx));
+            }
+            i += 1;
+        }
+        x
+    }
+}
+
 pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let _args_guard = protect(args);
@@ -1786,8 +1837,11 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let len = length_int(thesub);
 
             if len > 1 {
-                /* Multi-element index -- use vectorIndex to recursively subset */
-                /* Simplified: just get the last element */
+                /* Multi-element index: recursively descend via vectorIndex,
+                then apply the final index to the resulting element. */
+                let x = vectorIndex(x, thesub, 0, (len - 1) as c_int, pok, call);
+                let _x_guard = protect(x);
+                let named_x = NAMED(x);
                 let xnames = getAttrib(x, sym_Names());
                 let _xnames_guard = protect(xnames);
                 let offset = get1index(thesub, xnames, xlength(x), pok, (len - 1) as c_int, call);
@@ -1800,7 +1854,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                         errorcallOutOfBoundsSEXP(x, -1, thesub, call);
                     }
                 }
-                /* For multi-index on non-lists, get the final element */
+                /* Extract the final element */
                 if isPairList(x) {
                     let ans = CAR(nthcdr(x, offset as c_int));
                     RAISE_NAMED(ans, named_x);

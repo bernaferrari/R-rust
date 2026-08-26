@@ -1,1 +1,1 @@
-Error: could not find function "R.version"
+Error in R.version() : could not find function "R.version"

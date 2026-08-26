@@ -192,7 +192,15 @@ pub unsafe fn OneIndex(
         }
 
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
+        if stype == SEXPTYPE::LGLSXP {
+            let i = LOGICAL_ELT(s, _pos);
+            if i == NA_LOGICAL {
+                // Upstream (subassign.c) raises this while processing the
+                // subscript, before any typed assignment arm.
+                error("NAs are not allowed in subscripted assignments");
+            }
+            _indx = integerOneIndex(i, nx, call);
+        } else if stype == SEXPTYPE::INTSXP {
             _indx = integerOneIndex(INTEGER_ELT(s, _pos), nx, call);
         } else if stype == SEXPTYPE::REALSXP {
             let dblind = REAL_ELT(s, _pos);
@@ -320,6 +328,10 @@ pub unsafe fn get1index(
             _pok = 1;
         }
 
+        if _pos < 0 {
+            _pos = 0;
+        }
+
         if _pos < 0 && LENGTH(s) != 1 {
             if LENGTH(s) > 1 {
                 error("attempt to select more than one element in get1index");
@@ -329,15 +341,20 @@ pub unsafe fn get1index(
         } else if _pos >= LENGTH(s) {
             error("internal error in use of recursive indexing");
         }
-
-        if _pos < 0 {
-            _pos = 0;
-        }
-
         let mut indx: R_xlen_t = -1;
 
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
+        if stype == SEXPTYPE::LGLSXP {
+            let i = LOGICAL_ELT(s, _pos);
+            if i == NA_LOGICAL {
+                // Upstream (subassign.c) raises this while processing the
+                // subscript, before any typed assignment arm.
+                error("NAs are not allowed in subscripted assignments");
+            }
+            if i != NA_INTEGER {
+                indx = integerOneIndex(i, len, call);
+            }
+        } else if stype == SEXPTYPE::INTSXP {
             let i = INTEGER_ELT(s, _pos);
             if i != NA_INTEGER {
                 indx = integerOneIndex(i, len, call);

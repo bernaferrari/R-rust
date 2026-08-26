@@ -1,1 +1,1 @@
-Error: type "single" unimplemented in R
+Error in is.single(1) : type "single" unimplemented in R

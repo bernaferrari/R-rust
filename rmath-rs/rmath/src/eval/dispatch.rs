@@ -72,14 +72,37 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
             }
 
             let expr = CAR(current);
-            if expr == R_MissingArg() {
+            if expr == R_DotsSymbol() {
+                // If we have a ... symbol, look up what it is bound to. A
+                // DOTSXP (or nil) binding is spliced cell by cell, forcing
+                // each promise and preserving tags; anything else bound to a
+                // ... symbol (other than R_MissingArg) is an error.
+                let h = R_findVar(expr, rho);
+                let _h_guard = protect(h);
+                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
+                    let mut dh = h;
+                    while !dh.is_null() && dh != R_NilValue() {
+                        if nargs >= 0 && count >= nargs {
+                            break;
+                        }
+                        let val = Rf_eval(CAR(dh), rho);
+                        push_pairlist_cell(&mut result, val, TAG(dh));
+                        dh = CDR(dh);
+                        count += 1;
+                    }
+                } else if h != R_MissingArg() {
+                    std::panic::panic_any(RError {
+                        message: "'...' used in an incorrect context".to_string(),
+                    });
+                }
+            } else if expr == R_MissingArg() {
                 std::panic::panic_any(RError {
                     message: format!("argument {} is empty", count + 1),
                 });
+            } else {
+                let val = Rf_eval(expr, rho);
+                push_pairlist_cell(&mut result, val, TAG(current));
             }
-
-            let val = Rf_eval(expr, rho);
-            push_pairlist_cell(&mut result, val, TAG(current));
 
             current = CDR(current);
             count += 1;
@@ -109,10 +132,37 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
             let arg_expr = CAR(current);
             let tag = TAG(current);
 
-            // Create a promise for each argument
-            let prom = mkPROMISE(arg_expr, rho);
-            push_pairlist_cell(&mut result, prom, tag);
-
+            if arg_expr == R_DotsSymbol() {
+                // If we have a ... symbol, look up what it is bound to. A
+                // DOTSXP (or nil) binding is spliced cell by cell, creating a
+                // fresh promise for each expression (R_MissingArg entries are
+                // carried through verbatim) and preserving tags; anything else
+                // bound to a ... symbol (other than R_MissingArg) is an error.
+                let h = R_findVar(arg_expr, rho);
+                let _h_guard = protect(h);
+                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
+                    let mut dh = h;
+                    while !dh.is_null() && dh != R_NilValue() {
+                        let cell_value = if CAR(dh) == R_MissingArg() {
+                            CAR(dh)
+                        } else {
+                            mkPROMISE(CAR(dh), rho)
+                        };
+                        push_pairlist_cell(&mut result, cell_value, TAG(dh));
+                        dh = CDR(dh);
+                    }
+                } else if h != R_MissingArg() {
+                    std::panic::panic_any(RError {
+                        message: "'...' used in an incorrect context".to_string(),
+                    });
+                }
+            } else if arg_expr == R_MissingArg() {
+                push_pairlist_cell(&mut result, R_MissingArg(), tag);
+            } else {
+                // Create a promise for each argument
+                let prom = mkPROMISE(arg_expr, rho);
+                push_pairlist_cell(&mut result, prom, tag);
+            }
             current = CDR(current);
         }
 

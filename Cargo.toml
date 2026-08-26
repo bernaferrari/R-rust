@@ -6,6 +6,7 @@ members = [
   "crates/r-graphics-engine",
   "crates/r-host-cli",
   "crates/r-uniffi",
+  "rmath-rs/nmath",
   "rmath-rs/rmath",
   "rmath-rs/rmath-test",
   "tests/script-diff",

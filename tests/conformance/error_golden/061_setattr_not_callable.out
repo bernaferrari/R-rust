@@ -1,1 +1,1 @@
-Error: could not find function "setattr"
+Error in setattr(1, "names", "x") : could not find function "setattr"

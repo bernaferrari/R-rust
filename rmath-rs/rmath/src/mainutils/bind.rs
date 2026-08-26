@@ -345,7 +345,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
         }
         // Simplified coercion: only handle the cases needed by bind.c
         let n = xlength(x);
-        let ans = Rf_allocVector3(_type.0, n);
+        let ans = checked_allocVector(_type, n);
         let _ans_guard = protect(ans);
 
         match _type.0 {
@@ -456,9 +456,10 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                 _ => {} // intentionally unhandled: incompatible source SEXPTYPE for coercion
             },
             STRSXP_I => {
-                // For non-character types, create NA_STRING entries
+                // Upstream coerceVector: non-string sources become NA_STRING
+                // entries (never a raw NULL CHARSXP slot).
                 for i in 0..n {
-                    *STRING_PTR(ans).add(i as usize) = R_NilValue();
+                    *STRING_PTR(ans).add(i as usize) = crate::sexp::globals::R_NaString();
                 }
             }
             RAWSXP_I => match t {
@@ -524,7 +525,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
 /// Allocate a matrix (2D array) of the given type and dimensions.
 unsafe fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
-        let ans = Rf_allocVector3(mode.0, (nrow as R_xlen_t) * (ncol as R_xlen_t));
+        let ans = checked_allocVector(mode, (nrow as R_xlen_t) * (ncol as R_xlen_t));
         let _ans_guard = protect(ans);
         // Set the dim attribute
         let dim_sym = crate::eval::attrib_core::R_DimSymbol();
@@ -535,6 +536,19 @@ unsafe fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
         setAttrib(ans, dim_sym, dim);
         ans
     }
+}
+
+/// Allocate a vector of the given type/length, erroring loudly on allocation
+/// failure instead of returning a null SEXP that callers would dereference.
+#[inline]
+unsafe fn checked_allocVector(mode: SEXPTYPE, n: R_xlen_t) -> SEXP {
+    let ans = unsafe { Rf_allocVector3(mode.0, n) };
+    if ans.is_null() {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("cannot allocate vector of size {}", n),
+        });
+    }
+    ans
 }
 
 /// STRING_PTR: get a mutable pointer to the data array of a STRSXP.
@@ -1765,8 +1779,7 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        // Allocate the return value
-        let ans = Rf_allocVector3(mode.0, data.ans_length);
+        let ans = checked_allocVector(mode, data.ans_length);
         let _ans_guard = protect(ans);
         data.ans_ptr = ans;
         data.ans_length = 0;
@@ -1810,7 +1823,7 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Build and attach the names attribute
         if data.ans_nnames != 0 && data.ans_length > 0 {
-            data.ans_names = Rf_allocVector3(STRSXP_I, data.ans_length);
+            data.ans_names = checked_allocVector(SEXPTYPE::STRSXP, data.ans_length as R_xlen_t);
             let _ans_names_guard = protect(data.ans_names);
             data.ans_nnames = 0;
             let mut a = args;
@@ -1939,8 +1952,7 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
         // Determine the result mode
         let mode = ans_flags_to_mode(data.ans_flags);
 
-        // Allocate the return value
-        let ans = Rf_allocVector3(mode.0, data.ans_length);
+        let ans = checked_allocVector(mode, data.ans_length);
         let _ans_guard = protect(ans);
         data.ans_ptr = ans;
         data.ans_length = 0;
@@ -1979,7 +1991,7 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
         // Build and attach names
         if data.ans_nnames != 0 && data.ans_length > 0 {
-            data.ans_names = Rf_allocVector3(STRSXP_I, data.ans_length);
+            data.ans_names = checked_allocVector(SEXPTYPE::STRSXP, data.ans_length as R_xlen_t);
             let _ans_names_guard = protect(data.ans_names);
 
             if !recurse {
@@ -2529,11 +2541,11 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
 
         // Adjustment of dimnames attributes
         if have_cnames || have_rnames {
-            let dn = Rf_allocVector3(VECSXP_I, 2);
+            let dn = checked_allocVector(SEXPTYPE::VECSXP, 2);
             let _dn_guard = protect(dn);
             let nam: SEXP;
             if have_cnames {
-                let nam_vec = Rf_allocVector3(STRSXP_I, cols as R_xlen_t);
+                let nam_vec = checked_allocVector(SEXPTYPE::STRSXP, cols as R_xlen_t);
                 SET_VECTOR_ELT(dn, 1, nam_vec);
                 nam = nam_vec;
             } else {
@@ -2910,11 +2922,11 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
 
         // Adjustment of dimnames attributes
         if have_rnames || have_cnames {
-            let dn = Rf_allocVector3(VECSXP_I, 2);
+            let dn = checked_allocVector(SEXPTYPE::VECSXP, 2);
             let _dn_guard = protect(dn);
             let nam: SEXP;
             if have_rnames {
-                let nam_vec = Rf_allocVector3(STRSXP_I, rows as R_xlen_t);
+                let nam_vec = checked_allocVector(SEXPTYPE::STRSXP, rows as R_xlen_t);
                 SET_VECTOR_ELT(dn, 0, nam_vec);
                 nam = nam_vec;
             } else {

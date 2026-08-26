@@ -72,16 +72,18 @@ pub(crate) fn apply_special_safe<'a>(
     set_visibility_for_print_flag(flag);
 
     let tmp = if let Some(primfun) = primitive.and_then(|primitive| primitive.fun) {
-        unsafe { primfun(call.as_raw(), fun.as_raw(), args.as_raw(), rho.as_raw()) }
+        crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+            primfun(call.as_raw(), fun.as_raw(), args.as_raw(), rho.as_raw())
+        })
     } else {
-        unsafe {
+        crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
             super::special::do_special_dispatch(
                 call.as_raw(),
                 fun.as_raw(),
                 args.as_raw(),
                 rho.as_raw(),
             )
-        }
+        })
     };
 
     finish_application(
@@ -180,14 +182,15 @@ fn apply_unevaluated_builtin<'a>(
     op_name: &str,
 ) -> Option<(SEXP, VisibilityRestore)> {
     let builtin = super::builtin::unevaluated_builtin_handler(op_name)?;
-    let result = unsafe {
-        (builtin.handler)(
-            frame.call.as_raw(),
-            frame.fun.as_raw(),
-            frame.args.as_raw(),
-            frame.rho.as_raw(),
-        )
-    };
+    let result =
+        crate::mainutils::errors::attribute_handler_errors(frame.call.as_raw(), || unsafe {
+            (builtin.handler)(
+                frame.call.as_raw(),
+                frame.fun.as_raw(),
+                frame.args.as_raw(),
+                frame.rho.as_raw(),
+            )
+        });
     let restore = if builtin.restore_visibility_always {
         VisibilityRestore::Always
     } else {
@@ -203,7 +206,9 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     let rho = frame.rho;
 
     if let Some(handler) = super::builtin::evaluated_builtin_handler(op_name) {
-        return unsafe { handler(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) };
+        return crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+            handler(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        });
     }
 
     // Try S3/S4 dispatch for primitive names that are not handled directly.
@@ -212,7 +217,9 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     } else if let Some(s4_result) = try_s4_dispatch(op_name, fun, call, args, rho, evaled_args) {
         s4_result
     } else if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
-        unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
+        crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+            primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        })
     } else {
         std::panic::panic_any(crate::sexp::context::RError {
             message: format!("builtin function '{op_name}' is not implemented"),

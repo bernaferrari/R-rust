@@ -1,1 +1,1 @@
-Error: there is no .Internal function 'no_such_internal'
+Error in .Internal(no_such_internal()) : there is no .Internal function 'no_such_internal'

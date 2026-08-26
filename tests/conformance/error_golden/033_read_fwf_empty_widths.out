@@ -1,1 +1,1 @@
-Error: invalid 'length.out' value
+Error in rep_len(sep, length(first) - 1L) : invalid 'length.out' value

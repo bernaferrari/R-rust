@@ -1,1 +1,1 @@
-Error: could not find function "print.matrix"
+Error in print.matrix(matrix(1)) : could not find function "print.matrix"

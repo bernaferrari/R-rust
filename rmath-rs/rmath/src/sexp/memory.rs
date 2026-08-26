@@ -746,15 +746,16 @@ impl Drop for RArena {
 /// Allocation is intentionally scoped to an `RInstance`: unscoped arena
 /// fallback would let objects escape the session that owns evaluator state,
 /// which breaks Android multi-instance isolation.
+///
+/// The arena view is derived through `with_current_instance`, which guards
+/// ambient mutable instance access with the borrow-depth monitor instead of
+/// fabricating an independent `&mut RArena` from the raw current-instance
+/// pointer (which could alias a live outer `&mut RInstance`).
 pub fn with_arena<F, R>(f: F) -> R
 where
     F: FnOnce(&mut RArena) -> R,
 {
-    let Some(instance_ptr) = super::instance::current_instance_ptr() else {
-        return super::instance::with_required_current_instance(|inst| with_arena_in(inst, f));
-    };
-    let _borrow = super::instance::enter_instance_borrow();
-    unsafe { f(&mut (*instance_ptr).arena) }
+    super::instance::with_required_current_instance(|inst| with_arena_in(inst, f))
 }
 
 pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -> R

@@ -14,6 +14,7 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::with_arena_in;
 use crate::sexp::protect::protect;
+use crate::sexp::symbol::R_DotsSymbol;
 
 struct BytecodeCompiler {
     consts: Vec<SEXP>,
@@ -76,6 +77,14 @@ impl BytecodeCompiler {
                     true
                 }
                 t if t == SEXPTYPE::SYMSXP => {
+                    // `...` must never compile to OP_GETVAR: the DOTSXP frame
+                    // binding is spliced by the AST evaluator (dispatch.rs
+                    // evalList/promiseArgs), not fetched as an ordinary value
+                    // (mirrors GNU R, where the compiler never emits GETVAR
+                    // for R_DotsSymbol). Leave the expression on the AST path.
+                    if expr == R_DotsSymbol() {
+                        return false;
+                    }
                     let idx = self.add_const(expr);
                     self.emit_operand(opcodes::OP_GETVAR, idx);
                     true

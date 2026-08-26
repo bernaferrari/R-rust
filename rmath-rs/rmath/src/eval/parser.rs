@@ -15,7 +15,7 @@
 //! - Blocks: { expr; expr; ... }
 //! - Control flow: if/else, for, while, repeat, break, next, return
 //! - Function definitions: function(args) body
-//! - Subscript: x[i], x[i, j], x[[i]]
+//! - Subscript: x[i], x[i, j], x[i, ], x[[i]], x[[i, j]] (empty slots → missing arg)
 //! - Member access: x$name, x@slot
 //! - Formula: y ~ x
 //! - Backtick names: `weird name`
@@ -380,17 +380,23 @@ impl Lexer {
                     break;
                 }
             }
+            let digits = s[2..].to_string();
+            let val = u64::from_str_radix(&digits, 16).ok();
             if self.peek_char() == Some('i') {
                 self.advance();
-                if let Ok(v) = i64::from_str_radix(&s[2..], 16) {
-                    return Token::Complex(v as f64);
-                }
-                return Token::Complex(0.0);
+                return Token::Complex(val.unwrap_or(0) as f64);
             }
-            if let Ok(v) = i64::from_str_radix(&s[2..], 16) {
-                return Token::Int(v as i32);
+            if self.peek_char() == Some('L') {
+                self.advance();
             }
-            return Token::Number(0.0);
+            // Range-check before the cast: hex values that exceed the integer
+            // range widen to a double literal, matching decimal behavior
+            // (with or without the L suffix).
+            return match val {
+                Some(v) if i32::try_from(v).is_ok() => Token::Int(v as i32),
+                Some(v) => Token::Number(v as f64),
+                None => Token::Number(digits.parse::<f64>().unwrap_or(0.0)),
+            };
         }
 
         while let Some(ch) = self.peek_char() {
@@ -413,7 +419,7 @@ impl Lexer {
                 }
             } else if ch == 'L' {
                 self.advance();
-                if let Ok(v) = s.parse::<i32>() {
+                if !has_dot && let Some(v) = Self::parse_int_literal_value(&s) {
                     return Token::Int(v);
                 }
                 break;
@@ -426,11 +432,30 @@ impl Lexer {
         if self.peek_char() == Some('i') {
             self.advance();
             Token::Complex(v)
-        } else if !has_dot && s.parse::<i32>().is_ok() {
-            let int_val: i32 = s.parse().unwrap_or(0);
-            Token::Number(int_val as f64)
+        } else if !has_dot {
+            // Leading-zero digit strings are octal (R follows C: 010 == 8).
+            // Values are range-checked; overflow keeps the double literal,
+            // matching decimal integer overflow.
+            Token::Number(Self::parse_int_literal_value(&s).map_or(v, |i| i as f64))
         } else {
             Token::Number(v)
+        }
+    }
+
+    /// Interpret a digit string as an R integer literal value: leading-zero
+    /// digit strings are octal. Returns None when the value exceeds the
+    /// integer range or the digits are invalid, so callers fall back to a
+    /// double literal (consistent with decimal overflow handling).
+    fn parse_int_literal_value(s: &str) -> Option<i32> {
+        if s.len() > 1 && s.starts_with('0') {
+            let oct = u64::from_str_radix(&s[1..], 8).ok()?;
+            if i32::try_from(oct).is_ok() {
+                Some(oct as i32)
+            } else {
+                None
+            }
+        } else {
+            s.parse::<i32>().ok()
         }
     }
 
@@ -775,14 +800,20 @@ impl<'arena> Parser<'arena> {
                 }
             }
             Token::RightAssign => {
-                let _op = self.advance();
-                self.skip_newlines();
-                let right = self.parse_assignment()?;
-                // x -> y is equivalent to y <- x
-                unsafe {
-                    let op_sym = Rf_install(c"<-".as_ptr());
-                    Ok(self.lang3(op_sym, right, left))
+                // Chained right assignment: `1 -> x -> y` assigns both x and
+                // y, folding left-associatively into nested `<-` calls.
+                let mut value = left;
+                while self.peek() == &Token::RightAssign {
+                    self.advance();
+                    self.skip_newlines();
+                    let target = self.parse_tilde()?;
+                    // x -> y is equivalent to y <- x
+                    unsafe {
+                        let op_sym = Rf_install(c"<-".as_ptr());
+                        value = self.lang3(op_sym, target, value);
+                    }
                 }
+                Ok(value)
             }
             _ => Ok(left),
         }
@@ -921,7 +952,7 @@ impl<'arena> Parser<'arena> {
     }
 
     fn parse_multiplication(&mut self) -> Result<SEXP, ParseError> {
-        let mut left = self.parse_power()?;
+        let mut left = self.parse_colon()?;
         loop {
             let op_name = match self.peek() {
                 Token::Star => "*".to_string(),
@@ -931,18 +962,21 @@ impl<'arena> Parser<'arena> {
             };
             self.advance();
             self.skip_newlines();
-            let right = self.parse_power()?;
+            let right = self.parse_colon()?;
             let op = self.install_symbol(&op_name)?;
             left = self.lang3(op, left, right);
         }
     }
 
+    /// Power operator: tightest binary operator, right-associative, and
+    /// tighter than unary sign, so `2^3^2 == 2^(3^2)` and the exponent may
+    /// carry a unary sign (`2^-1`).
     fn parse_power(&mut self) -> Result<SEXP, ParseError> {
-        let base = self.parse_colon()?;
+        let base = self.parse_postfix()?;
         if self.peek() == &Token::Caret {
             self.advance();
             self.skip_newlines();
-            let exp = self.parse_colon()?;
+            let exp = self.parse_unary()?;
             unsafe {
                 let op = Rf_install(c"^".as_ptr());
                 Ok(self.lang3(op, base, exp))
@@ -952,7 +986,9 @@ impl<'arena> Parser<'arena> {
         }
     }
 
-    /// Colon operator: x:y (used for sequences like 1:10)
+    /// Colon operator: x:y (used for sequences like 1:10). Looser than unary
+    /// sign but tighter than `*` / `/`, so `-2:3 == (-2):3` while
+    /// `2*1:3 == 2*(1:3)`.
     fn parse_colon(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_unary()?;
         loop {
@@ -993,7 +1029,7 @@ impl<'arena> Parser<'arena> {
                     Ok(self.lang2(op, operand))
                 }
             }
-            _ => self.parse_postfix(),
+            _ => self.parse_power(),
         }
     }
 
@@ -1032,56 +1068,54 @@ impl<'arena> Parser<'arena> {
                         expr = call;
                     }
                 }
-                // Subscript: x[i] or x[i, j]
+                // Subscript: x[i], x[i, j]; empty slots (leading/trailing/
+                // doubled commas) become missing arguments, like gram.y xxsub0.
                 Token::LBracket => {
                     self.advance();
-                    let mut indices = Vec::new();
-                    self.skip_newlines();
-                    if self.peek() != &Token::RBracket {
-                        loop {
-                            self.skip_newlines();
-                            if self.peek() == &Token::RBracket {
-                                break; // trailing comma
-                            }
-                            indices.push(self.parse_expr()?);
-                            self.skip_newlines();
-                            if self.peek() == &Token::Comma {
-                                self.advance();
-                            } else {
-                                break;
-                            }
-                        }
-                    }
+                    let slots = self.parse_subscript_slots(&Token::RBracket)?;
                     self.expect(&Token::RBracket)?;
 
                     unsafe {
                         let bracket_sym = Rf_install(c"[".as_ptr());
                         let nil = R_NilValue();
-                        let mut args = nil;
-                        for idx in indices.into_iter().rev() {
-                            args = self.cons(idx, args);
+                        let mut arg_list = nil;
+                        for (name, val) in slots.into_iter().rev() {
+                            let cell = self.cons(val, arg_list);
+                            if let Some(n) = name {
+                                let sym = self.install_symbol(&n)?;
+                                crate::sexp::accessors::SETTAG(cell, sym);
+                            }
+                            arg_list = cell;
                         }
-                        args = self.cons(expr, args);
-                        let call = self.cons(bracket_sym, args);
+                        arg_list = self.cons(expr, arg_list);
+                        let call = self.cons(bracket_sym, arg_list);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
                         expr = call;
                     }
                 }
-                // Double subscript: x[[i]]
+                // Double subscript: x[[i]], x[[i, j]] — multiple comma-
+                // separated slots allowed, empty slots become missing args.
                 Token::LDoubleBracket => {
                     self.advance();
-                    let idx = self.parse_expr()?;
-                    self.skip_newlines();
+                    let slots = self.parse_subscript_slots(&Token::RDoubleBracket)?;
                     self.expect(&Token::RDoubleBracket)?;
 
                     unsafe {
                         let dbracket_sym = Rf_install(c"[[".as_ptr());
                         let nil = R_NilValue();
-                        let idx_cell = self.cons(idx, nil);
-                        let args = self.cons(expr, idx_cell);
-                        let call = self.cons(dbracket_sym, args);
+                        let mut arg_list = nil;
+                        for (name, val) in slots.into_iter().rev() {
+                            let cell = self.cons(val, arg_list);
+                            if let Some(n) = name {
+                                let sym = self.install_symbol(&n)?;
+                                crate::sexp::accessors::SETTAG(cell, sym);
+                            }
+                            arg_list = cell;
+                        }
+                        arg_list = self.cons(expr, arg_list);
+                        let call = self.cons(dbracket_sym, arg_list);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -1156,6 +1190,54 @@ impl<'arena> Parser<'arena> {
                 self.peek()
             ))),
         }
+    }
+
+    /// Parse the slot list of `[` / `[[` subscripts: comma-separated
+    /// expressions where empty slots (leading/trailing/doubled commas, or
+    /// nothing before the closing bracket) become R_MissingArg, mirroring
+    /// gram.y's xxsub0. A `name = value` slot is tagged like a call argument
+    /// (subset.rs ExtractDropArg relies on tags for `drop=` / `exact=`).
+    fn parse_subscript_slots(
+        &mut self,
+        close: &Token,
+    ) -> Result<Vec<(Option<String>, SEXP)>, ParseError> {
+        let mut slots = Vec::new();
+        self.skip_newlines();
+        if self.peek() == close {
+            return Ok(slots);
+        }
+        loop {
+            self.skip_newlines();
+            if self.peek() == &Token::Comma {
+                // Empty slot before a comma
+                slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                self.advance();
+                self.skip_newlines();
+                if self.peek() == close {
+                    // Trailing comma: empty final slot
+                    slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                    break;
+                }
+                continue;
+            }
+            if self.peek() == close {
+                break;
+            }
+            let (name, val) = self.parse_arg()?;
+            slots.push((name, val));
+            self.skip_newlines();
+            if self.peek() == &Token::Comma {
+                self.advance();
+                self.skip_newlines();
+                if self.peek() == close {
+                    slots.push((None, unsafe { crate::sexp::globals::R_MissingArg() }));
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(slots)
     }
 
     // -----------------------------------------------------------------------

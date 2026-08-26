@@ -2,7 +2,7 @@
 name = "rmath"
 version = "0.1.0"
 edition = "2024"
-description = "Rust port of R's nmath statistical library"
+description = "Rust port of R's core runtime (parser, evaluator, SEXP object model, base/stats slices) built on the rmath-nmath statistical library"
 
 [lib]
 crate-type = ["rlib", "staticlib", "cdylib"]
@@ -19,6 +19,7 @@ rust-backend = ["faer"]
 renderplot-device = ["r-graphics-engine"]
 
 [dependencies]
+rmath-nmath = { path = "../nmath" }
 libm = "0.1"
 num = "0.4"
 libc = "0.2"

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 /// that the distribution / RNG / optimisation code accesses.
 #[allow(dead_code)]
 pub(crate) struct WasmMathInstance {
-    pub(crate) rng_state: (u32, u32),
+    pub(crate) rng_state: rmath_nmath::RngState,
     pub(crate) dist_beta_state: crate::dist::beta::BetaState,
     pub(crate) dist_gamma_state: crate::dist::gamma::GammaState,
     pub(crate) dist_hyper_state: crate::dist::hypergeometric::RhyperState,
@@ -20,18 +20,12 @@ pub(crate) struct WasmMathInstance {
     pub(crate) signrank_cache: HashMap<i32, Vec<f64>>,
     pub(crate) wilcox_cache: HashMap<(i32, i32), Vec<f64>>,
     pub(crate) lbfgsb_state: crate::appl::lbfgsb::LbfgsbState,
-    // nmath copies use different field names
-    pub(crate) nmath_beta_state: crate::nmath::dist::beta::BetaState,
-    pub(crate) nmath_gamma_state: crate::nmath::dist::gamma::GammaState,
-    pub(crate) nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState,
-    pub(crate) nmath_pois_state: crate::nmath::dist::poisson::RpoisState,
-    pub(crate) nmath_binom_state: crate::nmath::dist::binomial::RbinomState,
 }
 
 impl Default for WasmMathInstance {
     fn default() -> Self {
         Self {
-            rng_state: (1234, 5678),
+            rng_state: rmath_nmath::RngState::default(),
             dist_beta_state: crate::dist::beta::BetaState::default(),
             dist_gamma_state: crate::dist::gamma::GammaState::default(),
             dist_hyper_state: crate::dist::hypergeometric::RhyperState::new(),
@@ -40,11 +34,6 @@ impl Default for WasmMathInstance {
             signrank_cache: HashMap::new(),
             wilcox_cache: HashMap::new(),
             lbfgsb_state: crate::appl::lbfgsb::LbfgsbState::default(),
-            nmath_beta_state: crate::nmath::dist::beta::BetaState::default(),
-            nmath_gamma_state: crate::nmath::dist::gamma::GammaState::default(),
-            nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState::new(),
-            nmath_pois_state: crate::nmath::dist::poisson::RpoisState::new(),
-            nmath_binom_state: crate::nmath::dist::binomial::RbinomState::new(),
         }
     }
 }

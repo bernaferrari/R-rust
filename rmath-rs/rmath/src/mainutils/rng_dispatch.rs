@@ -289,19 +289,60 @@ pub unsafe fn do_sample(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
 
         if let Some(n) = sample_int_shortcut_n(parsed.x) {
-            return sample_int_values(n, parsed.size, parsed.replace, parsed.prob);
+            // Upstream base::sample's scalar branch calls
+            // sample.int(x, size, replace, prob); errors surface attributed
+            // to that call.
+            let sample_int_call = sample_int_wrapper_call("x");
+            return crate::mainutils::errors::attribute_handler_errors(sample_int_call, || {
+                sample_int_values(n, parsed.size, parsed.replace, parsed.prob)
+            });
         }
 
         let x_len = XLENGTH(parsed.x);
         let size = parse_n(parsed.size, x_len as c_int);
         let replace = parse_replace(parsed.replace);
-        let indices = if is_present(parsed.prob) {
-            let weights = parse_probability_weights(parsed.prob, x_len);
-            weighted_sample_indices(&weights, size, replace)
-        } else {
-            sample_indices(x_len, size, replace)
+        // Upstream base::sample's vector branch calls
+        // x[sample.int(length(x), size, replace, prob)]; errors surface
+        // attributed to that inner call.
+        let sample_int_call = sample_int_wrapper_call("length(x)");
+        crate::mainutils::errors::attribute_handler_errors(sample_int_call, || {
+            let indices = if is_present(parsed.prob) {
+                let weights = parse_probability_weights(parsed.prob, x_len);
+                weighted_sample_indices(&weights, size, replace)
+            } else {
+                sample_indices(x_len, size, replace)
+            };
+            sample_vector_by_indices(parsed.x, &indices)
+        })
+    }
+}
+
+/// Build `sample.int(<first-arg>, size, replace, prob)` — the wrapper call
+/// base::sample makes in its R body — for error attribution.
+unsafe fn sample_int_wrapper_call(first_arg: &str) -> SEXP {
+    unsafe {
+        let sym = |name: &str| {
+            crate::sexp::symbol::Rf_install(
+                std::ffi::CString::new(name).unwrap_or_default().as_ptr(),
+            )
         };
-        sample_vector_by_indices(parsed.x, &indices)
+        let first = if first_arg == "length(x)" {
+            crate::sexp::constructors::Rf_lang2(sym("length"), sym("x"))
+        } else {
+            sym(first_arg)
+        };
+        let nil = R_NilValue();
+        let prob = crate::sexp::constructors::Rf_cons(sym("prob"), nil);
+        let replace = crate::sexp::constructors::Rf_cons(sym("replace"), prob);
+        let size = crate::sexp::constructors::Rf_cons(sym("size"), replace);
+        let args = crate::sexp::constructors::Rf_cons(first, size);
+        let call = crate::sexp::constructors::Rf_cons(sym("sample.int"), args);
+        if !call.is_null() {
+            (*call)
+                .sxpinfo
+                .set_type(crate::sexp::ffi::SEXPTYPE::LANGSXP);
+        }
+        call
     }
 }
 

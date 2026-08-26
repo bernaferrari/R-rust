@@ -143,11 +143,20 @@ normalize_output() {
 }
 
 normalize_error_output() {
+    # NOTE: golden files under tests/conformance/error_golden/ were generated
+    # under the previous normalization, which stripped the
+    # "Error in <call> :" call-context prefix into a bare "Error:". After this
+    # change they need one-time regeneration with stock R (performed by CI);
+    # do not hand-edit them.
+    #
+    # We preserve the "Error in <call> :" attribution and normalize only
+    # volatile rendering: a message wrapped onto the line after the call is
+    # re-joined, "Calls:" traceback blocks are dropped, and the
+    # "Execution halted" footer is removed.
     normalize_output |
-        sed -E '/^Error in .* :$/ { N; s/^Error in .* :\n[[:space:]]*/Error: /; }' |
+        sed -E '/^Error in .* :$/ { N; s/\n[[:space:]]*/ /; }' |
         sed '/^Calls:/d' |
-        sed '/^Execution halted$/d' |
-        sed -E 's/^Error in .* : /Error: /'
+        sed '/^Execution halted$/d'
 }
 
 is_xfail() {
@@ -212,17 +221,9 @@ def domain_for(case: str, kind: str) -> str:
         "plot", "graphics", "android", "render",
     )):
         return "Graphics and Android embedding"
-    if number is not None:
-        if 1 <= number <= 10 or 40 <= number <= 41:
-            return "Parser and scalar basics"
-        if 11 <= number <= 20:
-            return "Evaluator, closures, and control flow"
-        if 22 <= number <= 32 or 42 <= number <= 50:
-            return "Vectors, lists, attributes, and objects"
-        if 33 <= number <= 39 or 82 <= number <= 126:
-            return "Stats, math, and RNG"
-        if 51 <= number <= 81 or 127 <= number <= 160:
-            return "Base functions, conditions, and platform helpers"
+    # Token checks keep their original priority; extended numeric ranges for
+    # cases 161-517 follow them and must stay in sync with
+    # tests/conformance/cases/ numbering.
     if any(token in name for token in (
         "dnorm", "pnorm", "qnorm", "dbinom", "pbinom", "dpois", "ppois",
         "dgamma", "pgamma", "qgamma", "dbeta", "pbeta", "qbeta", "dcauchy",
@@ -251,6 +252,51 @@ def domain_for(case: str, kind: str) -> str:
         "which_", "any", "all", "seq_",
     )):
         return "Base functions, conditions, and platform helpers"
+    # Extended numeric ranges for cases 161-517. These run after the token
+    # checks above (which keep their original priority) so that, e.g.,
+    # "factor"/"matrix" cases numbered in the 400s still land where the token
+    # rules place them. Ranges are grouped by domain and must stay in sync
+    # with tests/conformance/cases/ numbering.
+    if number is not None:
+        if (
+            200 <= number <= 205 or 201 == number or 221 == number or 327 <= number <= 333
+            or 354 <= number <= 356 or number in (360, 362, 365, 366)
+            or 379 <= number <= 380 or 413 <= number <= 414
+            or number in (418, 420, 424) or 429 <= number <= 433
+            or 455 <= number <= 517
+        ):
+            return "Stats, math, and RNG"
+        if number in (
+            263, 283, 288, 307, 308, 314, 315, 316, 317, 318, 319,
+            337, 338, 415, 416, 422,
+        ):
+            return "Evaluator, closures, and control flow"
+        if number in (
+            209, 210, 211, 212, 213, 310, 311, 312, 320, 384, 391, 393, 425,
+        ):
+            return "Packages, namespaces, and S3"
+        if number in (270, 313, 427, 428):
+            return "Graphics and Android embedding"
+        if number in (215, 216, 217, 219, 264):
+            return "Parser and scalar basics"
+        # Leftover numbered cases that matched no token rule above.
+        if number in (
+            161, 162, 163, 164, 165, 166, 167, 168, 172, 173, 174, 175,
+            176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187,
+            188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199,
+            206, 207, 208, 220, 222, 225, 226, 227, 228, 229, 230, 231,
+            233, 234, 235, 240, 241, 243, 244, 245, 246, 248, 249, 250,
+            251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262,
+            265, 266, 267, 268, 269, 271, 272, 273, 274, 275, 277, 278,
+            279, 280, 281, 282, 285, 286, 287, 298, 299, 301, 305, 306,
+            321, 322, 323, 324, 325, 326, 335, 336, 339, 340, 341, 342,
+            343, 344, 345, 346, 347, 348, 349, 350, 351, 352, 353, 357,
+            358, 359, 361, 363, 364, 367, 368, 369, 370, 371, 372, 373,
+            374, 375, 392, 442, 444, 445, 446, 447, 482,
+        ):
+            return "Vectors, lists, attributes, and objects"
+        if 161 <= number <= 517:
+            return "Base functions, conditions, and platform helpers"
     return "Parser and scalar basics"
 
 def empty_counts():

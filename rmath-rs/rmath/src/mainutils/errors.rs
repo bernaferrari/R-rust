@@ -97,6 +97,28 @@ fn set_r_show_error_calls(val: bool) {
     with_error_state(|state| state.show_error_calls = val);
 }
 
+fn last_rendered_message() -> Option<String> {
+    with_error_state(|state| state.last_rendered_message.clone())
+}
+
+fn set_last_rendered_message(message: Option<String>) {
+    with_error_state(|state| state.last_rendered_message = message);
+}
+
+/// Whether `message` is the error most recently rendered into the error
+/// buffer by `verrorcall_dflt`. Used by the top-level renderer and the
+/// builtin-dispatch attribution wrapper to trust/distrust the error buffer
+/// and avoid re-rendering already-attributed errors.
+pub fn error_was_last_rendered(message: &str) -> bool {
+    last_rendered_message().as_deref() == Some(message)
+}
+
+/// Clear the last-rendered marker at the start of a top-level evaluation so
+/// renders from a previous script are never trusted.
+pub fn clear_last_rendered_message() {
+    set_last_rendered_message(None);
+}
+
 fn r_show_warn_calls() -> bool {
     with_error_state(|state| state.show_warn_calls)
 }
@@ -553,6 +575,20 @@ macro_rules! ERRBUFCAT {
 /// In C this walks R_GlobalContext; here we use the thread-local context.
 unsafe fn getCurrentCall() -> SEXP {
     unsafe {
+        // A context counts as carrying a call only when it holds a real
+        fn usable_call(call: SEXP) -> SEXP {
+            unsafe {
+                if call.is_null()
+                    || call == globals::R_NilValue()
+                    || TYPEOF(call) == SEXPTYPE::NILSXP
+                {
+                    globals::R_NilValue()
+                } else {
+                    call
+                }
+            }
+        }
+
         let ctx = crate::sexp::context::R_GlobalContext();
         if ctx.is_null() {
             return globals::R_NilValue();
@@ -563,18 +599,18 @@ unsafe fn getCurrentCall() -> SEXP {
             && !c.nextcontext.is_null()
         {
             let next = &*c.nextcontext;
-            return if next.call.is_null() {
-                globals::R_NilValue()
-            } else {
-                next.call
-            };
+            return usable_call(next.call);
         }
-        if c.call.is_null() {
-            globals::R_NilValue()
-        } else {
-            c.call
-        }
+        usable_call(c.call)
     }
+}
+
+/// Public accessor mirroring upstream `getCurrentCall()` (errors.c): the call
+/// of the innermost context on the context stack (skipping a CTXT_BUILTIN
+/// top frame). Used by interpreter raise sites to attribute errors to the
+/// enclosing R call, like upstream `R_MissingArgError`/`error()`.
+pub unsafe fn R_getCurrentCall() -> SEXP {
+    unsafe { getCurrentCall() }
 }
 
 /// findCall: find the function context's call for error reporting.
@@ -632,6 +668,27 @@ impl Drop for RestoreInError {
     }
 }
 
+/// Strip a baked-in "Error in <call> : " / "Error: " rendering prefix from a
+/// message so condition payloads carry the bare message, as upstream does:
+/// the prefix belongs to top-level stderr rendering only.
+fn strip_call_prefix(message: &str) -> String {
+    if let Some(rest) = message.strip_prefix("Error in ") {
+        // Find the " : " separator; upstream renders "<call> : <message>".
+        if let Some(pos) = rest.find(" : ") {
+            let candidate = &rest[pos + 3..];
+            if !candidate.is_empty() {
+                return candidate.to_string();
+            }
+        }
+    }
+    if let Some(rest) = message.strip_prefix("Error: ") {
+        if !rest.is_empty() {
+            return rest.to_string();
+        }
+    }
+    message.to_string()
+}
+
 unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
         let old_in_err = in_error();
@@ -684,13 +741,36 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
         // Build the full error message and write to errbuf via R_SetErrmessage
         let mut err_msg = String::new();
 
-        if !call.is_null() && !isNull(call) != 0 {
+        if !call.is_null() && isNull(call) == 0 {
             // Error with call — "Error in <call> : <message>"
-            let dcall = "<call>"; // Simplified — full version needs deparse1s
+            // Upstream errors.c verrorcall_dflt deparses the call with
+            // deparse1s(); reuse the faithful port instead of a placeholder.
+            let dcall_sexp = crate::mainutils::deparse::deparse1s(call);
+            let dcall: String = if dcall_sexp.is_null()
+                || dcall_sexp == globals::R_NilValue()
+                || TYPEOF(dcall_sexp) != SEXPTYPE::STRSXP
+                || XLENGTH(dcall_sexp) == 0
+            {
+                "<call>".to_string()
+            } else {
+                let cs = STRING_ELT(dcall_sexp, 0);
+                if cs.is_null() {
+                    "<call>".to_string()
+                } else {
+                    let cptr = translateChar(cs);
+                    if cptr.is_null() {
+                        "<call>".to_string()
+                    } else {
+                        std::ffi::CStr::from_ptr(cptr)
+                            .to_string_lossy()
+                            .into_owned()
+                    }
+                }
+            };
 
             if 7 + dcall.len() + 3 + tmp_str.len() < BUFSIZE {
                 err_msg.push_str("Error in ");
-                err_msg.push_str(dcall);
+                err_msg.push_str(&dcall);
                 err_msg.push_str(" : ");
 
                 // Check if first line is too long
@@ -719,7 +799,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
         }
 
         // Show error call trace if configured
-        if r_show_error_calls() && !call.is_null() && !isNull(call) != 0 {
+        if r_show_error_calls() && !call.is_null() && isNull(call) == 0 {
             let tr = R_ConciseTraceback(call, 0);
             if !tr.is_empty() && err_msg.len() + tr.len() + 10 < BUFSIZE {
                 err_msg.push_str("Calls: ");
@@ -728,23 +808,49 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
             }
         }
 
+        // Payload contract: the RError message is the BARE message (what
+        // condition objects / tryCatch handlers see, matching upstream where
+        // "Error in <call> :" attribution is added only by top-level error
+        // printing). Strip any prefix that a raise site baked into its text so
+        // the payload stays clean; the rendered errbuf above keeps the full
+        // attribution for stderr.
+        let payload_message = strip_call_prefix(&tmp_str);
+
         // Write to thread-local errbuf via R_SetErrmessage
         R_SetErrmessage(&err_msg);
 
-        // Print the error message
-        if r_show_error_messages() {
+        // Record that this exact error message was rendered into the error
+        // buffer so the top-level renderer (and the builtin-dispatch
+        // attribution wrapper) trust the buffer for this error only —
+        // renders from previously caught errors must not leak into later
+        // results (upstream: caught errors never reach this printer).
+        set_last_rendered_message(Some(payload_message.clone()));
+
+        // Emission contract, exactly once:
+        // - When no output capture is active (standalone embedding), write
+        //   the rendered text to process stderr here, like Rscript.
+        // - When the session is capturing output, do NOT emit here. The
+        //   error may still be caught by tryCatch up-stack (upstream prints
+        //   nothing for caught errors); the top-level embedding layer emits
+        //   the rendered error buffer text once, and only when the error
+        //   actually escapes the script. Emitting into the captured-stderr
+        //   channel here would leak caught errors into successful results.
+        if r_show_error_messages() && !crate::sexp::output::is_capturing() {
             eprint!("{}", R_GetErrorBuf());
         }
 
-        // Print deferred warnings if any
-        if r_show_error_messages() && collect_warnings() > 0 {
+        // Deferred warnings follow the same rule (upstream prints them only
+        // for errors that reach top-level printing).
+        if r_show_error_messages() && collect_warnings() > 0 && !crate::sexp::output::is_capturing()
+        {
             eprint!("In addition: ");
             PrintWarnings();
         }
 
-        // The Drop guard (_guard) will restore IN_ERROR and R_Expressions automatically
+        // The Drop guard (_guard) will restore IN_ERROR and R_Expressions
+        // automatically.
         std::panic::panic_any(RError {
-            message: R_GetErrorBuf(),
+            message: payload_message,
         });
     }
 }
@@ -832,6 +938,51 @@ pub fn errorcall(call: SEXP, format: *const c_char) {
     unsafe {
         vsignalError(call, format);
         verrorcall_dflt(call, format, ptr::null_mut());
+    }
+}
+
+/// Report an error with a call, from a Rust `&str` message.
+///
+/// This is the Rust-native equivalent of upstream `errorcall(call, "%s", msg)`
+/// used by the interpreter and builtin handlers: it renders
+/// "Error in <call> : <message>" into the error buffer (attributing the call
+/// exactly like stock R) and panics with a bare-message `RError` payload.
+/// Pass a null call for upstream `call. = FALSE` semantics ("Error: <message>").
+pub fn errorcall_str(call: SEXP, message: &str) -> ! {
+    let c_msg = std::ffi::CString::new(message).unwrap_or_default();
+    errorcall(call, c_msg.as_ptr());
+    unreachable!("errorcall never returns: verrorcall_dflt panics with RError");
+}
+
+/// Run a builtin/special handler call, attributing unattributed errors to
+/// the R call being applied.
+///
+/// Upstream builtin handlers receive `call` and raise `errorcall(call, ...)`;
+/// most ported handlers predate that convention and panic with a bare
+/// `RError`. This wrapper mirrors the upstream convention at the dispatch
+/// boundary: if the handler panics with an error that has not already been
+/// rendered (and thus attributed) by a raise site, the error is re-raised
+/// through `errorcall_str` with the applied call, so top-level rendering
+/// shows "Error in <call> : <message>" exactly like stock R.
+pub(crate) fn attribute_handler_errors<F>(call: SEXP, f: F) -> SEXP
+where
+    F: FnOnce() -> SEXP,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(value) => value,
+        Err(payload) => {
+            if let Some(err) = payload.downcast_ref::<RError>() {
+                let message = err.message.clone();
+                if !error_was_last_rendered(&message) {
+                    // Diverges: renders "Error in <call> : <message>" and
+                    // panics with the bare-message payload.
+                    errorcall_str(call, &message);
+                }
+            }
+            // Already attributed at the raise site (or not an RError):
+            // continue unwinding with the original payload untouched.
+            std::panic::resume_unwind(payload)
+        }
     }
 }
 
@@ -988,7 +1139,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
 
         // Check for warning.expression option
         let s = GetOption1(Rf_install(b"warning.expression\0".as_ptr() as *const c_char));
-        if !s.is_null() && !isNull(s) != 0 {
+        if !s.is_null() && isNull(s) == 0 {
             if isLanguage(s) == 0 && isExpression(s) == 0 {
                 // Invalid option — fall through
             } else {
@@ -1035,7 +1186,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
             errorcall(call, c_msg.as_ptr());
         } else if w == 1 || immediate_warning() {
             // Print warnings immediately
-            let dcall = if !call.is_null() && !isNull(call) != 0 {
+            let dcall = if !call.is_null() && isNull(call) == 0 {
                 "<call>" // Simplified — full version needs deparse1s
             } else {
                 ""
@@ -1057,7 +1208,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
             }
             eprintln!(" {}", fmt_str);
 
-            if r_show_warn_calls() && !call.is_null() && !isNull(call) != 0 {
+            if r_show_warn_calls() && !call.is_null() && isNull(call) == 0 {
                 // Respect .signalSimpleWarning hook if present by filtering the traceback accordingly
                 let sigsym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
                 let tr = if SYMVALUE(sigsym) != globals::R_UnboundValue() {
@@ -1086,7 +1237,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
                         // Append traceback if requested
                         #[allow(clippy::implicit_clone)]
                         let mut msg_to_store = fmt_str.to_string();
-                        if r_show_warn_calls() && !call.is_null() && !isNull(call) != 0 {
+                        if r_show_warn_calls() && !call.is_null() && isNull(call) == 0 {
                             let tr = R_ConciseTraceback(call, 0);
                             if !tr.is_empty() && msg_to_store.len() + tr.len() + 8 < BUFSIZE {
                                 msg_to_store.push_str("\nCalls: ");
@@ -1574,21 +1725,20 @@ pub unsafe fn do_stop_internal(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 
         let args = CDR(args);
         if isNull(CAR(args)) != 0 {
-            std::panic::panic_any(RError {
-                message: String::new(),
-            });
+            errorcall_str(globals::R_NilValue(), "");
         }
 
         SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
         if isValidString(CAR(args)) == 0 {
-            std::panic::panic_any(RError {
-                message: " [invalid string in stop(.)]".to_string(),
-            });
+            errorcall_str(globals::R_NilValue(), " [invalid string in stop(.)]");
         }
 
         let msg = translateChar(STRING_ELT(CAR(args), 0));
         let message = CStr::from_ptr(msg).to_str().unwrap_or("").to_string();
-        std::panic::panic_any(RError { message });
+        // Like upstream do_stop, the call comes from the context stack, not
+        // the .Internal expression; render explicitly (bare at top level) so
+        // the .Internal-dispatch attribution wrapper does not add a call.
+        errorcall_str(R_getCurrentCall(), &message)
     }
 }
 
@@ -2327,8 +2477,7 @@ pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let msg = translateChar(STRING_ELT(CAR(args), 0));
         let message = CStr::from_ptr(msg).to_str().unwrap_or("").to_string();
-        R_SetErrmessage(&message);
-        std::panic::panic_any(RError { message })
+        errorcall_str(globals::R_NilValue(), &message)
     }
 }
 

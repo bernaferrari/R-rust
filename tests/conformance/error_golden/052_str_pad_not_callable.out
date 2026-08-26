@@ -1,1 +1,1 @@
-Error: could not find function "str_pad"
+Error in str_pad() : could not find function "str_pad"

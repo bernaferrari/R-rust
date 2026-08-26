@@ -1070,13 +1070,16 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
 
         // Quick return for simple scalar case
         if isNull(ATTRIB(s)) && TYPEOF(x) == REALSXP && IS_SCALAR(y, REALSXP) != 0 {
-            if IS_SCALAR(s, INTSXP) != 0 {
+            // Note: IS_SCALAR only inspects the scalar flag; the element type
+            // must be verified separately before using the typed accessors.
+            if TYPEOF(s) == INTSXP && IS_SCALAR(s, INTSXP) != 0 {
                 let ival = SCALAR_IVAL(s) as R_xlen_t;
-                if ival >= 1 && ival <= XLENGTH(x) {
+                let ival_ok = ival != NA_INTEGER as i64 && ival >= 1 && ival <= XLENGTH(x);
+                if ival_ok {
                     *REAL(x).add((ival - 1) as usize) = SCALAR_DVAL(y);
                     return x;
                 }
-            } else if IS_SCALAR(s, REALSXP) != 0 {
+            } else if TYPEOF(s) == REALSXP && IS_SCALAR(s, REALSXP) != 0 {
                 let dval = SCALAR_DVAL(s);
                 if R_FINITE(dval) {
                     let ival = dval as R_xlen_t;
@@ -1121,12 +1124,16 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
         let _indx_guard = protect(indx);
         let n = XLENGTH(indx);
 
-        if XLENGTH(y) > 1 {
-            for i in 0..n {
-                if gi(indx, i) == NA_INTEGER as R_xlen_t {
-                    // Error case - just skip for now
-                    break;
-                }
+        // NAs are not allowed in subscripted assignments. Upstream
+        // (subassign.c) raises this while processing the subscript, before any
+        // typed assignment arm; `gi()` maps NA indices to the NA_INTEGER
+        // sentinel for both INTSXP and expanded-logical subscripts.
+        for i in 0..n {
+            if gi(indx, i) == NA_INTEGER as R_xlen_t {
+                crate::mainutils::errors::Rf_error(
+                    b"NAs are not allowed in subscripted assignments\0".as_ptr()
+                        as *const core::ffi::c_char,
+                );
             }
         }
 
@@ -1143,11 +1150,23 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
         let nx = XLENGTH(x);
         let _x_guard = protect(x);
 
-        if (TYPEOF(x) != VECSXP && TYPEOF(x) != EXPRSXP) || !isNull(y) {
+        let is_list_target = TYPEOF(x) == VECSXP || TYPEOF(x) == EXPRSXP;
+        if !is_list_target || isNull(y) {
             // Check length compatibility
             if n > 0 && ny == 0 {
-                // Error: replacement has length zero
+                crate::mainutils::errors::Rf_error(
+                    b"replacement has length zero\0".as_ptr() as *const core::ffi::c_char
+                );
             }
+        }
+
+        // Warn about non-multiple recycling
+        if ny != 0 && n % ny != 0 {
+            crate::mainutils::errors::warningcall(
+                call,
+                b"number of items to replace is not a multiple of replacement length\0".as_ptr()
+                    as *const core::ffi::c_char,
+            );
         }
 
         // Duplicate y if x == y
@@ -2412,8 +2431,14 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                 }
                 offset += *pindx.add(0) as R_xlen_t;
             }
-
-            let old_x = x;
+            // NAs are not allowed in subscripted assignments (upstream raises
+            // this from OneIndex processing, before any typed assignment arm).
+            if offset == NA_INTEGER as R_xlen_t {
+                crate::mainutils::errors::Rf_error(
+                    b"NAs are not allowed in subscripted assignments\0".as_ptr()
+                        as *const core::ffi::c_char,
+                );
+            }
             let which = SubassignTypeFix(&mut x, &mut y, stretch, 2, call, rho);
             dynamic_guards.push(protect(x));
             dynamic_guards.push(protect(y));
@@ -2588,9 +2613,6 @@ unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return ans;
         }
         let _ans_guard = protect(ans);
-        if isNull(nlist) {
-            nlist = installTrChar(STRING_ELT(CADR(args), 0 as R_xlen_t));
-        }
         let result = R_subassign3_dflt(call, CAR(ans), nlist, CADDR(ans));
         result
     }
@@ -2603,11 +2625,8 @@ pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> 
 
         let mut x = x;
         let mut val = val;
-
-        // Handle null x
-        if isNull(x) {
-            return x;
-        }
+        // Upstream has no early NULL return: a NULL target is grown below
+        // (coerced to an empty list / new one-element pairlist as needed).
 
         let s4 = IS_S4_OBJECT(x);
         let mut xS4: SEXP = R_NilValue();
@@ -2908,8 +2927,9 @@ mod tests {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             );
-            // Null input returns null (early exit)
-            assert!(result.is_null());
+            // Upstream subassign.c has no early NULL return: assignment into
+            // NULL grows a result rather than staying nil.
+            assert!(!result.is_null());
         }
     }
 

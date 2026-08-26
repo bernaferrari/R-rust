@@ -1,1 +1,1 @@
-Error: arguments cannot be recycled to the same length
+Error in sprintf(c("%s", "%s"), c("x", "y", "z")) : arguments cannot be recycled to the same length

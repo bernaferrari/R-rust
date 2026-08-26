@@ -25,7 +25,11 @@ fn main() {
     session.enable_host_process_capabilities();
     let result = session.eval(&code);
 
-    if result.output.starts_with("Error:") {
+    // Mirror Rscript: an uncaught error prints the composed output (prior
+    // prints plus the rendered "Error in <call> : ..." text) to stderr and
+    // exits non-zero; the error text may not be the first line of the
+    // output, so key off the typed result, not the output prefix.
+    if matches!(result.typed, rmath::android::RValue::Error(_)) {
         eprintln!("{}", result.output);
         std::process::exit(1);
     }

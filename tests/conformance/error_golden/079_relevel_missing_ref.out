@@ -1,1 +1,1 @@
-Error: 'ref' must be an existing level
+Error in relevel.factor(factor(c("a", "b")), "z") : 'ref' must be an existing level

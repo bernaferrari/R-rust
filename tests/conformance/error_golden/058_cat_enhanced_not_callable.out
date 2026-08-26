@@ -1,1 +1,1 @@
-Error: could not find function "cat_enhanced"
+Error in cat_enhanced("x") : could not find function "cat_enhanced"

@@ -131,7 +131,7 @@ fn binary_arithmetic_value(op: &str, x: f64, y: f64) -> f64 {
         "-" => x - y,
         "*" => x * y,
         "/" => x / y,
-        "^" => libm::pow(x, y),
+        "^" => crate::nmath::special::mlutils::R_pow(x, y),
         "%%" => crate::mainutils::arithmetic::myfmod(x, y),
         "%/%" => crate::mainutils::arithmetic::myfloor(x, y),
         _ => NA_REAL,
@@ -267,6 +267,18 @@ unsafe fn copy_dims_if_present(result: SEXP, source: SEXP, result_len: R_xlen_t)
     }
 }
 
+/// Propagate attributes onto a binary-operation result, mirroring upstream
+/// `R_binary` (r-source/src/main/arithmetic.c, attribute preservation block).
+///
+/// Decision table:
+/// - If both operands carry `dims` they must be conformable, otherwise a
+///   'non-conformable arrays' error is raised; the result takes dims from `x`
+///   and dimnames from `x` (falling back to `y`).
+/// - If exactly one operand is an array (and the length-1 array recycling
+///   special case does not apply, nor is the partner a length-0 non-array),
+///   the result inherits that operand's dims/dimnames.
+/// - Otherwise (plain vectors) only `names` are propagated, from whichever
+///   operand matches the result length (`x` wins).
 pub(super) unsafe fn propagate_binary_vector_attributes(
     result: SEXP,
     a: SEXP,
@@ -274,11 +286,52 @@ pub(super) unsafe fn propagate_binary_vector_attributes(
     result_len: R_xlen_t,
 ) {
     unsafe {
-        if copy_dims_if_present(result, a, result_len)
-            || copy_dims_if_present(result, b, result_len)
-        {
+        let nil = R_NilValue();
+        let a_dims = getAttrib(a, R_DimSymbol());
+        let b_dims = getAttrib(b, R_DimSymbol());
+        let a_is_array = !a_dims.is_null() && a_dims != nil;
+        let b_is_array = !b_dims.is_null() && b_dims != nil;
+
+        if a_is_array || b_is_array {
+            let a_len = LENGTH(a) as R_xlen_t;
+            let b_len = LENGTH(b) as R_xlen_t;
+            // Upstream strips the dims of a length-1 array whose partner is a
+            // vector of a different length (deprecated recycling), so such a
+            // combination falls through to the plain-vector treatment below.
+            let a_counts = !(a_is_array && a_len == 1 && b_len != 1);
+            let b_counts = !(b_is_array && b_len == 1 && a_len != 1);
+            // An array paired with a length-0 non-array skips array treatment.
+            let a_applies = a_is_array && a_counts && (b_len != 0 || a_len == 0);
+            let b_applies = b_is_array && b_counts && (a_len != 0 || b_len == 0);
+
+            if a_applies && b_applies {
+                if crate::mainutils::relop::conformable(a, b) == 0 {
+                    arithmetic_error("non-conformable arrays");
+                }
+                let dims = crate::mainutils::duplicate::duplicate(a_dims);
+                setAttrib(result, R_DimSymbol(), dims);
+                if copy_attr_if_present(result, a, R_DimNamesSymbol()) {
+                    return;
+                }
+                copy_attr_if_present(result, b, R_DimNamesSymbol());
+            } else if a_applies {
+                copy_dims_if_present(result, a, result_len);
+            } else if b_applies {
+                copy_dims_if_present(result, b, result_len);
+            } else {
+                // Array treatment skipped: plain-vector names below.
+                propagate_plain_names(result, a, b, result_len);
+            }
             return;
         }
+
+        propagate_plain_names(result, a, b, result_len);
+    }
+}
+
+/// Plain-vector tail of the upstream decision table: names only, `x` wins.
+unsafe fn propagate_plain_names(result: SEXP, a: SEXP, b: SEXP, result_len: R_xlen_t) {
+    unsafe {
         if LENGTH(a) as R_xlen_t == result_len && copy_attr_if_present(result, a, R_NamesSymbol()) {
             return;
         }

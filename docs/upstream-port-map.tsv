@@ -1,41 +1,41 @@
 # Rust path	upstream path	upstream anchor	sync mode	notes
-rmath-rs/rmath/src/dpq.rs	r-source/src/nmath/dpq.h	R_D__0, R_DT_qIv, R_DT_CIv	faithful	Probability/log-tail helper macros translated into explicit Rust helpers.
-rmath-rs/rmath/src/fprec.rs	r-source/src/nmath/fprec.c	fprec	faithful	Numeric precision helper mirrors upstream control flow.
-rmath-rs/rmath/src/nmath/dist/normal.rs	r-source/src/nmath/dnorm.c	dnorm4	faithful	Normal density behavior, log flag, NA/NaN handling.
-rmath-rs/rmath/src/nmath/dist/normal.rs	r-source/src/nmath/pnorm.c	pnorm5	faithful	Normal CDF behavior and tail/log handling.
-rmath-rs/rmath/src/nmath/dist/normal.rs	r-source/src/nmath/qnorm.c	qnorm5	faithful	Normal quantile behavior and boundary handling.
-rmath-rs/rmath/src/nmath/dist/binomial.rs	r-source/src/nmath/dbinom.c	dbinom_raw, dbinom	faithful	Binomial density behavior.
-rmath-rs/rmath/src/nmath/dist/binomial.rs	r-source/src/nmath/pbinom.c	pbinom	faithful	Binomial CDF behavior.
-rmath-rs/rmath/src/nmath/dist/binomial.rs	r-source/src/nmath/qbinom.c	qbinom	faithful	Binomial quantile behavior.
-rmath-rs/rmath/src/nmath/dist/binomial.rs	r-source/src/nmath/rbinom.c	rbinom	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/rmath/src/nmath/dist/poisson.rs	r-source/src/nmath/dpois.c	dpois_raw, dpois	faithful	Poisson density behavior.
-rmath-rs/rmath/src/nmath/dist/poisson.rs	r-source/src/nmath/ppois.c	ppois	faithful	Poisson CDF behavior.
-rmath-rs/rmath/src/nmath/dist/poisson.rs	r-source/src/nmath/qpois.c	qpois	faithful	Poisson quantile behavior.
-rmath-rs/rmath/src/nmath/dist/poisson.rs	r-source/src/nmath/rpois.c	rpois	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/rmath/src/nmath/dist/gamma.rs	r-source/src/nmath/dgamma.c	dgamma	faithful	Gamma density behavior.
-rmath-rs/rmath/src/nmath/dist/gamma.rs	r-source/src/nmath/pgamma.c	pgamma	faithful	Gamma CDF behavior.
-rmath-rs/rmath/src/nmath/dist/gamma.rs	r-source/src/nmath/qgamma.c	qgamma	faithful	Gamma quantile behavior.
-rmath-rs/rmath/src/nmath/dist/gamma.rs	r-source/src/nmath/rgamma.c	rgamma	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/dbeta.c	dbeta	faithful	Beta density (Loader); re-exported via dist/beta.
-rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/pbeta.c	pbeta, bratio	faithful	pbeta_raw delegates to nmath::special::toms708::bratio (TOMS 708).
-rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/qbeta.c	qbeta	faithful	Beta quantile behavior.
-rmath-rs/rmath/src/nmath/dist/beta.rs	r-source/src/nmath/rbeta.c	rbeta	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/rmath/src/nmath/special/toms708.rs	r-source/src/nmath/toms708.c	bratio	faithful	ACM TOMS 708 incomplete beta / bratio implementation.
+rmath-rs/nmath/src/dpq.rs	r-source/src/nmath/dpq.h	R_D__0, R_DT_qIv, R_DT_CIv	faithful	Probability/log-tail helper macros translated into explicit Rust helpers.
+rmath-rs/nmath/src/fprec.rs	r-source/src/nmath/fprec.c	fprec	faithful	Numeric precision helper mirrors upstream control flow.
+rmath-rs/nmath/src/dist/normal.rs	r-source/src/nmath/dnorm.c	dnorm4	faithful	Normal density behavior, log flag, NA/NaN handling.
+rmath-rs/nmath/src/dist/normal.rs	r-source/src/nmath/pnorm.c	pnorm5	faithful	Normal CDF behavior and tail/log handling.
+rmath-rs/nmath/src/dist/normal.rs	r-source/src/nmath/qnorm.c	qnorm5	faithful	Normal quantile behavior and boundary handling.
+rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/dbinom.c	dbinom_raw, dbinom	faithful	Binomial density behavior.
+rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/pbinom.c	pbinom	faithful	Binomial CDF behavior.
+rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/qbinom.c	qbinom	faithful	Binomial quantile behavior.
+rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/rbinom.c	rbinom	faithful	Session RNG replaces process-global RNG state.
+rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/dpois.c	dpois_raw, dpois	faithful	Poisson density behavior.
+rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/ppois.c	ppois	faithful	Poisson CDF behavior.
+rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/qpois.c	qpois	faithful	Poisson quantile behavior.
+rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/rpois.c	rpois	faithful	Session RNG replaces process-global RNG state.
+rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/dgamma.c	dgamma	faithful	Gamma density behavior.
+rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/pgamma.c	pgamma	faithful	Gamma CDF behavior.
+rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/qgamma.c	qgamma	faithful	Gamma quantile behavior.
+rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/rgamma.c	rgamma	faithful	Session RNG replaces process-global RNG state.
+rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/dbeta.c	dbeta	faithful	Beta density (Loader); re-exported via dist/beta.
+rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/pbeta.c	pbeta, bratio	faithful	pbeta_raw delegates to nmath::special::toms708::bratio (TOMS 708).
+rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/qbeta.c	qbeta	faithful	Beta quantile behavior.
+rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/rbeta.c	rbeta	faithful	Session RNG replaces process-global RNG state.
+rmath-rs/nmath/src/special/toms708.rs	r-source/src/nmath/toms708.c	bratio	faithful	ACM TOMS 708 incomplete beta / bratio implementation.
 rmath-rs/rmath/src/mainutils/altrep.rs	r-source/src/main/altrep.c	ALTREP classes	known-gap	ALTREP bit honored in duplicate; full class method tables and R_tryWrap incomplete.
 rmath-rs/rmath/src/eval/bc_eval.rs	r-source/src/main/eval.c	bcEval	known-gap	Partial bytecode opcode set; not full GNU R bcEval.
 rmath-rs/rmath/src/eval/bc_compile.rs	r-source/src/library/compiler	R_cmpfun	known-gap	Minimal compiler subset; compiler package and full for-loop BC not ported.
 rmath-rs/rmath/src/library/grid/register.rs	r-source/src/library/grid	grid .Call register	known-gap	Grid registration currently no-op; GE integration incomplete.
 rmath-rs/rmath/src/library/graphics/base.rs	r-source/src/main/plot.c	C_* graphics	known-gap	Many base graphics C entrypoints unimplemented vs stock devices.
-rmath-rs/rmath/src/nmath/dist/cauchy.rs	r-source/src/nmath/dcauchy.c, r-source/src/nmath/pcauchy.c, r-source/src/nmath/qcauchy.c, r-source/src/nmath/rcauchy.c	dcauchy, pcauchy, qcauchy, rcauchy	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/chisq.rs	r-source/src/nmath/dchisq.c, r-source/src/nmath/pchisq.c, r-source/src/nmath/qchisq.c, r-source/src/nmath/rchisq.c	dchisq, pchisq, qchisq, rchisq	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/exponential.rs	r-source/src/nmath/dexp.c, r-source/src/nmath/pexp.c, r-source/src/nmath/qexp.c, r-source/src/nmath/rexp.c	dexp, pexp, qexp, rexp	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/geometric.rs	r-source/src/nmath/dgeom.c, r-source/src/nmath/pgeom.c, r-source/src/nmath/qgeom.c, r-source/src/nmath/rgeom.c	dgeom, pgeom, qgeom, rgeom	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/hypergeometric.rs	r-source/src/nmath/dhyper.c, r-source/src/nmath/phyper.c, r-source/src/nmath/qhyper.c, r-source/src/nmath/rhyper.c	dhyper, phyper, qhyper, rhyper	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/lnorm.rs	r-source/src/nmath/dlnorm.c, r-source/src/nmath/plnorm.c, r-source/src/nmath/qlnorm.c, r-source/src/nmath/rlnorm.c	dlnorm, plnorm, qlnorm, rlnorm	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/logistic.rs	r-source/src/nmath/dlogis.c, r-source/src/nmath/plogis.c, r-source/src/nmath/qlogis.c, r-source/src/nmath/rlogis.c	dlogis, plogis, qlogis, rlogis	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/t_dist.rs	r-source/src/nmath/dt.c, r-source/src/nmath/pt.c, r-source/src/nmath/qt.c, r-source/src/nmath/rt.c	dt, pt, qt, rt	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/uniform.rs	r-source/src/nmath/dunif.c, r-source/src/nmath/punif.c, r-source/src/nmath/qunif.c, r-source/src/nmath/runif.c	dunif, punif, qunif, runif	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/nmath/dist/weibull.rs	r-source/src/nmath/dweibull.c, r-source/src/nmath/pweibull.c, r-source/src/nmath/qweibull.c, r-source/src/nmath/rweibull.c	dweibull, pweibull, qweibull, rweibull	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/cauchy.rs	r-source/src/nmath/dcauchy.c, r-source/src/nmath/pcauchy.c, r-source/src/nmath/qcauchy.c, r-source/src/nmath/rcauchy.c	dcauchy, pcauchy, qcauchy, rcauchy	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/chisq.rs	r-source/src/nmath/dchisq.c, r-source/src/nmath/pchisq.c, r-source/src/nmath/qchisq.c, r-source/src/nmath/rchisq.c	dchisq, pchisq, qchisq, rchisq	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/exponential.rs	r-source/src/nmath/dexp.c, r-source/src/nmath/pexp.c, r-source/src/nmath/qexp.c, r-source/src/nmath/rexp.c	dexp, pexp, qexp, rexp	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/geometric.rs	r-source/src/nmath/dgeom.c, r-source/src/nmath/pgeom.c, r-source/src/nmath/qgeom.c, r-source/src/nmath/rgeom.c	dgeom, pgeom, qgeom, rgeom	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/hypergeometric.rs	r-source/src/nmath/dhyper.c, r-source/src/nmath/phyper.c, r-source/src/nmath/qhyper.c, r-source/src/nmath/rhyper.c	dhyper, phyper, qhyper, rhyper	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/lnorm.rs	r-source/src/nmath/dlnorm.c, r-source/src/nmath/plnorm.c, r-source/src/nmath/qlnorm.c, r-source/src/nmath/rlnorm.c	dlnorm, plnorm, qlnorm, rlnorm	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/logistic.rs	r-source/src/nmath/dlogis.c, r-source/src/nmath/plogis.c, r-source/src/nmath/qlogis.c, r-source/src/nmath/rlogis.c	dlogis, plogis, qlogis, rlogis	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/t_dist.rs	r-source/src/nmath/dt.c, r-source/src/nmath/pt.c, r-source/src/nmath/qt.c, r-source/src/nmath/rt.c	dt, pt, qt, rt	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/uniform.rs	r-source/src/nmath/dunif.c, r-source/src/nmath/punif.c, r-source/src/nmath/qunif.c, r-source/src/nmath/runif.c	dunif, punif, qunif, runif	faithful	Distribution family grouped in one Rust module.
+rmath-rs/nmath/src/dist/weibull.rs	r-source/src/nmath/dweibull.c, r-source/src/nmath/pweibull.c, r-source/src/nmath/qweibull.c, r-source/src/nmath/rweibull.c	dweibull, pweibull, qweibull, rweibull	faithful	Distribution family grouped in one Rust module.
 rmath-rs/rmath/src/eval/parser.rs	r-source/src/main/gram.y	parse grammar	rust-shaped	Handwritten parser preserves user-visible grammar semantics instead of Bison-generated structure.
 rmath-rs/rmath/src/eval/eval.rs	r-source/src/main/eval.c	Rf_eval, do_begin, do_if, do_for, do_while	rust-shaped	Typed EvalContext/RSession entrypoints own cancellation and visibility; raw shim delegates inward.
 rmath-rs/rmath/src/eval/closure.rs	r-source/src/main/eval.c	applyClosure, matchArgs_NR	rust-shaped	Promise/default-argument semantics with Rust-owned frames and checked ownership.
@@ -80,7 +80,6 @@ rmath-rs/rmath/src/appl/maxcol.rs	r-source/src/appl/maxcol.c	maxcol	faithful	Mat
 rmath-rs/rmath/src/appl/optim.rs	r-source/src/appl/optim.c	optim helpers	faithful	Optimization helpers.
 rmath-rs/rmath/src/appl/pretty.rs	r-source/src/appl/pretty.c	pretty	faithful	Pretty break calculation.
 rmath-rs/rmath/src/appl/uncmin.rs	r-source/src/appl/uncmin.c	uncmin	faithful	Optimization routine translation.
-rmath-rs/rmath/src/plot_engine.rs	r-source/src/main/plot.c	plot, axis, titles	rust-shaped	Small plot subset for Android headless rendering, not a full graphics port.
 crates/r-graphics-engine/src/lib.rs	r-source/src/main/graphics.c	graphics engine device calls	rust-shaped	Device-independent Rust drawing primitives for embedding.
 crates/r-device-android-headless/src/lib.rs	r-source/src/include/R_ext/GraphicsEngine.h	graphics device contract	rust-shaped	PNG-backed headless Android renderer.
 rmath-rs/rmath/src/android.rs	none	Android embedding facade	rust-shaped	No upstream C equivalent; app-facing owned values and session policy.

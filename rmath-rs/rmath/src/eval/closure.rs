@@ -7,16 +7,19 @@
 //! 2. Binding formal parameters to actual arguments
 //! 3. Evaluating the body in the new environment
 
+use std::ffi::CStr;
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{BODY, CAR, CDR, SETCAR, TAG, TYPEOF};
+use crate::sexp::accessors::{
+    BODY, CAR, CDR, CHAR, PRCODE, PRINTNAME, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, XLENGTH,
+};
 use crate::sexp::envir::{Environment, addMissingVarsToNewEnv};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
+use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE};
 use crate::sexp::object::{PairlistBuilder, PairlistIter, Sexp, SexpError};
-use crate::sexp::symbol::{R_DotsSymbol, symbol_name_bytes_equal};
+use crate::sexp::symbol::R_DotsSymbol;
 
 use super::eval::Rf_eval;
 
@@ -96,31 +99,9 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
         return Ok(args);
     }
 
-    let mut builder = PairlistBuilder::new();
-    let mut formal_iter = PairlistIter::new(formals);
-    let mut arg_iter = PairlistIter::new(args);
-
-    for formal in &mut formal_iter {
-        let arg = arg_iter.next();
-        let tag = formal
-            .try_tag()
-            .map_err(|err| sexp_err("formal argument tag lookup", err))?;
-
-        let val = if let Some(ref a) = arg {
-            a.try_car()
-                .map_err(|err| sexp_err("actual argument value lookup", err))?
-        } else {
-            unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
-        };
-
-        builder
-            .push(val, (!tag.is_nil()).then_some(tag))
-            .map_err(|err| sexp_err("matched argument pairlist build", err))?;
-    }
-
-    builder
-        .finish()
-        .map_err(|err| sexp_err("matched argument pairlist wrap", err))
+    unsafe { match_closure_args(formals.as_raw(), args.as_raw()) }.and_then(|matched| {
+        Sexp::try_from_raw(matched).map_err(|err| sexp_err("matched argument wrap", err))
+    })
 }
 
 /// Safe environment creation.
@@ -268,10 +249,10 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                 };
 
                 let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
-                let matched = match match_closure_args(formals.as_raw(), promised_args) {
-                    Ok(m) => m,
-                    Err(_) => return R_NilValue(),
-                };
+                let matched =
+                    match_closure_args(formals.as_raw(), promised_args).unwrap_or_else(|message| {
+                        std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
+                    });
 
                 let new_env = match create_env_safe(Sexp::from_raw_unchecked(matched), cloenv) {
                     Ok(e) => e,
@@ -285,101 +266,286 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
             _ => R_NilValue(),
         }
     }))
-    .unwrap_or_else(|_| unsafe { R_NilValue() })
+    .unwrap_or_else(|payload| {
+        if payload
+            .downcast_ref::<crate::sexp::context::RSignal>()
+            .is_some()
+            || payload
+                .downcast_ref::<crate::sexp::context::RError>()
+                .is_some()
+        {
+            std::panic::resume_unwind(payload);
+        }
+        unsafe { R_NilValue() }
+    })
 }
 
-unsafe fn exact_tag_name_equal(left: SEXP, right: SEXP) -> bool {
+unsafe fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
     unsafe {
-        if left.is_null() || right.is_null() || left == R_NilValue() || right == R_NilValue() {
-            return false;
+        if formal_tag.is_null() || formal_tag == R_NilValue() {
+            return None;
         }
-        symbol_name_bytes_equal(left, right)
+        let pname = PRINTNAME(formal_tag);
+        if pname.is_null() || pname == R_NilValue() {
+            return None;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            return None;
+        }
+        Some(CStr::from_ptr(chars).to_string_lossy().into_owned())
     }
 }
 
-unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, ()> {
+/// Port of R's `matchArgs_NR` (r-source/src/main/match.c).
+///
+/// Matches the supplied argument list against the formals using, in order:
+/// 1. exact tag matching,
+/// 2. partial (prefix) tag matching — exact matching is required after the
+///    first `...` formal,
+/// 3. positional matching of untagged values to unmatched non-`...` formals.
+///
+/// Any remaining unused arguments are collected into the first `...` formal as
+/// a DOTSXP; with no `...` formal present, an "unused arguments" error is
+/// raised. The returned pairlist has one element per formal, in formal order,
+/// each holding the matched value or `R_MissingArg`.
+unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, String> {
     unsafe {
+        // Snapshot the supplied cells so we can index them alongside a
+        // parallel `used` flag vector (upstream uses ARGUSED on the cells).
         let mut supplied_cells = Vec::new();
         let mut cur = supplied;
         while !cur.is_null() && cur != R_NilValue() {
             supplied_cells.push(cur);
             cur = CDR(cur);
         }
-        let mut used = vec![false; supplied_cells.len()];
+        // 0 = unused, 1 = partially matched, 2 = exactly matched.
+        let mut used = vec![0u8; supplied_cells.len()];
+        // fargused[i]: whether formal i has been matched (and how many times).
+        let formal_count = {
+            let mut n = 0usize;
+            let mut f = formals;
+            while !f.is_null() && f != R_NilValue() {
+                n += 1;
+                f = CDR(f);
+            }
+            n
+        };
+        let mut fargused = vec![false; formal_count];
 
-        let mut result = PairlistBuilder::new();
-        let mut positional = 0usize;
-
-        let mut formal = formals;
-        while !formal.is_null() && formal != R_NilValue() {
-            let formal_tag = TAG(formal);
-            let mut value = R_MissingArg();
-            let mut matched_index = None;
-
-            if formal_tag == R_DotsSymbol() {
-                value = collect_unused_args(&supplied_cells, &mut used);
-            } else {
-                for (idx, supplied_cell) in supplied_cells.iter().enumerate() {
-                    if !used[idx] && exact_tag_name_equal(formal_tag, TAG(*supplied_cell)) {
-                        matched_index = Some(idx);
-                        break;
-                    }
+        // Build the result as a chain of cells (one per formal, all initially
+        // R_MissingArg), mirroring upstream matchArgs_NR's `actuals`. Each
+        // cell carries its formal name as TAG: this pairlist becomes the new
+        // environment's frame, whose lookups are tag-based.
+        let mut result_cells: Vec<SEXP> = Vec::with_capacity(formal_count);
+        {
+            let mut f = formals;
+            while !f.is_null() && f != R_NilValue() {
+                let cell = CONS_NR(R_MissingArg(), R_NilValue());
+                if cell.is_null() || cell == R_NilValue() {
+                    return Err("failed to allocate matched argument cell".to_string());
                 }
+                if let Some(&last) = result_cells.last() {
+                    SETCDR(last, cell);
+                }
+                let ftag = TAG(f);
+                if !ftag.is_null() && ftag != R_NilValue() {
+                    crate::sexp::accessors::SETTAG(cell, ftag);
+                }
+                result_cells.push(cell);
+                f = CDR(f);
+            }
+        }
 
-                if matched_index.is_none() {
-                    while positional < supplied_cells.len() {
-                        let supplied_cell = supplied_cells[positional];
-                        let supplied_tag = TAG(supplied_cell);
-                        if !used[positional]
-                            && (supplied_tag.is_null() || supplied_tag == R_NilValue())
-                        {
-                            matched_index = Some(positional);
-                            positional += 1;
-                            break;
+        // First pass: exact matches by tag.
+        {
+            let mut formal_idx = 0usize;
+            let mut f = formals;
+            while !f.is_null() && f != R_NilValue() {
+                let ftag = TAG(f);
+                if !ftag.is_null() && ftag != R_NilValue() && ftag != R_DotsSymbol() {
+                    if let Some(ftag_name) = formal_tag_name(ftag) {
+                        for i in 0..supplied_cells.len() {
+                            let btag = TAG(supplied_cells[i]);
+                            if btag.is_null() || btag == R_NilValue() {
+                                continue;
+                            }
+                            let Some(btag_name) = formal_tag_name(btag) else {
+                                continue;
+                            };
+                            if ftag_name == btag_name {
+                                if fargused[formal_idx] {
+                                    return Err(format!(
+                                        "formal argument \"{ftag_name}\" matched by multiple actual arguments"
+                                    ));
+                                }
+                                if used[i] == 2 {
+                                    return Err(format!(
+                                        "argument {} matches multiple formal arguments",
+                                        i + 1
+                                    ));
+                                }
+                                SETCAR(result_cells[formal_idx], CAR(supplied_cells[i]));
+                                used[i] = 2;
+                                fargused[formal_idx] = true;
+                            }
                         }
-                        positional += 1;
                     }
                 }
+                f = CDR(f);
+                formal_idx += 1;
+            }
+        }
 
-                if let Some(idx) = matched_index {
-                    used[idx] = true;
-                    value = CAR(supplied_cells[idx]);
+        // Second pass: partial matches based on tags. An exact match is
+        // required after the first ... ; its location is recorded so the ...
+        // can gobble remaining args later.
+        let mut dots_formal_index: Option<usize> = None;
+        let mut seen_dots = false;
+        {
+            let mut formal_idx = 0usize;
+            let mut f = formals;
+            while !f.is_null() && f != R_NilValue() {
+                if !fargused[formal_idx] {
+                    let ftag = TAG(f);
+                    if ftag == R_DotsSymbol() && !seen_dots {
+                        // Record where ... value goes.
+                        dots_formal_index = Some(formal_idx);
+                        seen_dots = true;
+                    } else if !seen_dots {
+                        if let Some(ftag_name) = formal_tag_name(ftag) {
+                            for i in 0..supplied_cells.len() {
+                                let btag = TAG(supplied_cells[i]);
+                                if btag.is_null() || btag == R_NilValue() || used[i] == 2 {
+                                    continue;
+                                }
+                                let Some(btag_name) = formal_tag_name(btag) else {
+                                    continue;
+                                };
+                                // Upstream psmatch: the supplied tag may be a
+                                // prefix of the formal's name.
+                                if ftag_name.starts_with(btag_name.as_str()) {
+                                    if used[i] != 0 {
+                                        return Err(format!(
+                                            "argument {} matches multiple formal arguments",
+                                            i + 1
+                                        ));
+                                    }
+                                    if fargused[formal_idx] {
+                                        return Err(format!(
+                                            "formal argument \"{ftag_name}\" matched by multiple actual arguments"
+                                        ));
+                                    }
+                                    SETCAR(result_cells[formal_idx], CAR(supplied_cells[i]));
+                                    used[i] = 1;
+                                    fargused[formal_idx] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                f = CDR(f);
+                formal_idx += 1;
+            }
+        }
+
+        // Third pass: matches based on order. All tagged args have now been
+        // matched. Bind untagged values in order to any unmatched formals,
+        // stopping at the first ... (which gobbles all remaining args below).
+        {
+            let mut formal_idx = 0usize;
+            let mut b = 0usize;
+            let mut f = formals;
+            let mut seendots = false;
+            while !f.is_null() && f != R_NilValue() && b < supplied_cells.len() && !seendots {
+                let ftag = TAG(f);
+                if ftag == R_DotsSymbol() {
+                    seendots = true;
+                    f = CDR(f);
+                    formal_idx += 1;
+                } else if !is_missing_car(result_cells[formal_idx]) {
+                    // Already matched by tag: skip to next formal.
+                    f = CDR(f);
+                    formal_idx += 1;
+                } else if used[b] != 0 || !tag_is_nil(TAG(supplied_cells[b])) {
+                    // This value is used or tagged: skip to next value.
+                    b += 1;
+                } else {
+                    // Positional match.
+                    SETCAR(result_cells[formal_idx], CAR(supplied_cells[b]));
+                    used[b] = 1;
+                    fargused[formal_idx] = true;
+                    b += 1;
+                    f = CDR(f);
+                    formal_idx += 1;
                 }
             }
-
-            let value = Sexp::try_from_raw(value).map_err(|_| ())?;
-            let formal_tag = Sexp::from_raw(formal_tag);
-            result.push(value, formal_tag).map_err(|_| ())?;
-            formal = CDR(formal);
         }
 
-        if used.iter().any(|used| !*used) {
-            return Err(());
+        // Finally: gobble up all unused actuals into ..., or error.
+        if let Some(dots_idx) = dots_formal_index {
+            let mut dots = PairlistBuilder::new();
+            for i in 0..supplied_cells.len() {
+                if used[i] != 0 {
+                    continue;
+                }
+                used[i] = 1;
+                let tag_raw = TAG(supplied_cells[i]);
+                let tag = if tag_raw.is_null() || tag_raw == R_NilValue() {
+                    None
+                } else {
+                    Some(Sexp::from_raw_unchecked(tag_raw))
+                };
+                dots.push(Sexp::from_raw_unchecked(CAR(supplied_cells[i])), tag)
+                    .map_err(|err| sexp_err("dots argument pairlist build", err))?;
+            }
+            let dots_value = dots
+                .finish_as_type(SEXPTYPE::DOTSXP)
+                .map_err(|err| sexp_err("dots argument pairlist wrap", err))?;
+            SETCAR(result_cells[dots_idx], dots_value.as_raw());
+        } else {
+            for i in 0..supplied_cells.len() {
+                if used[i] != 0 {
+                    continue;
+                }
+                // Show bad arguments in the call without evaluating them:
+                // unwrap promises back to their expressions for deparsing.
+                let mut car_b = CAR(supplied_cells[i]);
+                if TYPEOF(car_b) == SEXPTYPE::PROMSXP {
+                    car_b = PRCODE(car_b);
+                }
+                return Err(format!("unused argument ({})", deparse_for_error(car_b)));
+            }
         }
 
-        result.finish().map(Sexp::as_raw).map_err(|_| ())
+        // Return the head of the matched-arguments chain.
+        Ok(if result_cells.is_empty() {
+            R_NilValue()
+        } else {
+            result_cells[0]
+        })
     }
 }
 
-unsafe fn collect_unused_args(supplied_cells: &[SEXP], used: &mut [bool]) -> SEXP {
+unsafe fn is_missing_car(cell: SEXP) -> bool {
+    unsafe { CAR(cell) == R_MissingArg() }
+}
+
+unsafe fn tag_is_nil(tag: SEXP) -> bool {
+    unsafe { tag.is_null() || tag == R_NilValue() }
+}
+
+fn deparse_for_error(expr: SEXP) -> String {
     unsafe {
-        let mut dots = PairlistBuilder::new();
-
-        for (idx, supplied_cell) in supplied_cells.iter().enumerate() {
-            if used[idx] {
-                continue;
-            }
-            used[idx] = true;
-            let Some(value) = Sexp::from_raw(CAR(*supplied_cell)) else {
-                continue;
-            };
-            let tag = Sexp::from_raw(TAG(*supplied_cell));
-            let _ = dots.push(value, tag);
+        let text = crate::mainutils::deparse::deparse1line(expr, false);
+        if text.is_null() || text == R_NilValue() || XLENGTH(text) == 0 {
+            return String::new();
         }
-
-        dots.finish_as_type(SEXPTYPE::DOTSXP)
-            .map(Sexp::as_raw)
-            .unwrap_or_else(|_| R_NilValue())
+        let chars = CHAR(STRING_ELT(text, 0));
+        if chars.is_null() {
+            return String::new();
+        }
+        CStr::from_ptr(chars).to_string_lossy().into_owned()
     }
 }
 
@@ -435,6 +601,16 @@ pub unsafe fn R_execClosure(
                     Err(crate::sexp::context::RError {
                         message: err.message.clone(),
                     })
+                } else if let Some(signal) = payload.downcast_ref::<crate::sexp::context::RSignal>()
+                {
+                    match signal {
+                        crate::sexp::context::RSignal::Error { message } => {
+                            Err(crate::sexp::context::RError {
+                                message: message.clone(),
+                            })
+                        }
+                        _ => std::panic::resume_unwind(payload),
+                    }
                 } else {
                     Err(crate::sexp::context::RError {
                         message: "unknown error".to_string(),

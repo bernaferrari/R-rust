@@ -53,10 +53,16 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
                         .unwrap_or_else(|_| "???".to_string())
                 }
             };
-            format!("argument \"{}\" is missing, with no default", name)
+            format!("argument \"{name}\" is missing, with no default")
         }
     };
-    bc_error(message);
+    // Attribute to the enclosing call like upstream signalMissingArgError
+    // (which passes the bc interpreter's current expression); the innermost
+    // context call is the closure call being evaluated.
+    crate::mainutils::errors::errorcall_str(
+        unsafe { crate::mainutils::errors::R_getCurrentCall() },
+        &message,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +350,17 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         bc_error("object not found");
                     } else if val == R_MissingArg() {
                         bc_missing_arg_error(sym);
+                    } else if TYPEOF(val) == SEXPTYPE::DOTSXP {
+                        // A `...` binding is a DOTSXP, never an ordinary
+                        // value. The compiler must not emit GETVAR for it
+                        // (GNU R handles dots ops as runtime builtins); if a
+                        // hand-built bytecode does anyway, fall back to the
+                        // AST evaluator instead of pushing the raw DOTSXP.
+                        let call = Rf_cons(sym, R_NilValue());
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
+                        stack.push(crate::eval::eval::Rf_eval(call, rho));
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
                         let forced = forcePromise(val);
                         if forced == R_MissingArg() {

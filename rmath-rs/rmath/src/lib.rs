@@ -1,7 +1,12 @@
-//! rmath: Rust port of R's nmath statistical library
+//! rmath: Rust port of R's core runtime.
 //!
-//! This crate provides a drop-in replacement for R's libRmath.a,
-//! implementing statistical math functions with C-compatible FFI.
+//! This crate is a full Rust port of R's core runtime — parser, evaluator,
+//! SEXP arena and object model, base/stats library slices, and the
+//! Android/embedding facade. The faithful translations of the nmath
+//! statistical routines (`dist`, `dpq`, `special`, `nmath`) live in the
+//! dedicated `rmath-nmath` crate and are re-exported here as `rmath::nmath`.
+//! See `docs/rust-r-port-architecture.md` for the layering and ownership
+//! model.
 
 // C-to-Rust translation conventions (R's nmath library uses C naming)
 #![allow(non_upper_case_globals)]
@@ -202,8 +207,7 @@ pub mod mainutils;
 pub mod modules;
 #[cfg(not(target_arch = "wasm32"))]
 pub use mainutils as main;
-#[allow(unused, dead_code, non_camel_case_types)]
-pub mod nmath;
+pub use rmath_nmath as nmath;
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod sexp;
@@ -216,8 +220,3 @@ pub mod trio;
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod unix;
-/// Lightweight internal state shim for wasm. It provides
-/// `with_required_current_instance` backed by a thread-local, so the pure-math
-/// crate compiles without the full sexp/eval/mainutils interpreter modules.
-#[cfg(target_arch = "wasm32")]
-pub(crate) mod wasm_shim;

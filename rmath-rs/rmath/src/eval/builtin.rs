@@ -608,27 +608,27 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "seq",
-        handler: crate::mainutils::essentials::do_seq,
+        handler: crate::mainutils::seq::do_seq,
     },
     EvaluatedBuiltin {
         name: "seq.int",
-        handler: crate::mainutils::essentials::do_seq,
+        handler: crate::mainutils::seq::do_seq,
     },
     EvaluatedBuiltin {
         name: "sequence",
-        handler: crate::mainutils::essentials::do_sequence,
+        handler: crate::mainutils::seq::do_sequence,
     },
     EvaluatedBuiltin {
         name: "rep",
-        handler: crate::mainutils::essentials::do_rep,
+        handler: crate::mainutils::seq::do_rep,
     },
     EvaluatedBuiltin {
         name: "rep.int",
-        handler: crate::mainutils::essentials::do_rep_int,
+        handler: crate::mainutils::seq::do_rep_int,
     },
     EvaluatedBuiltin {
         name: "rep_len",
-        handler: crate::mainutils::essentials::do_rep_len,
+        handler: crate::mainutils::seq::do_rep_len,
     },
     EvaluatedBuiltin {
         name: "paste",
@@ -2684,11 +2684,11 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "seq_len",
-        handler: crate::mainutils::essentials::do_seq_len,
+        handler: crate::mainutils::seq::do_seq_len,
     },
     EvaluatedBuiltin {
         name: "seq_along",
-        handler: crate::mainutils::essentials::do_seq_along,
+        handler: crate::mainutils::seq::do_seq_along,
     },
     EvaluatedBuiltin {
         name: "diff",

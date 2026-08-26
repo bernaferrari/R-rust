@@ -1,1 +1,1 @@
-Error: argument "verbose" is missing, with no default
+Error in gcinfo() : argument "verbose" is missing, with no default

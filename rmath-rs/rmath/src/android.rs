@@ -77,6 +77,34 @@ fn error_result(message: impl Into<String>) -> RResult {
     .with_error_output()
 }
 
+/// Top-level eval failure: keep the captured output — it already contains the
+/// rendered error text ("Error in <call> : ...", written by verrorcall_dflt
+/// through the output-capture channel), exactly like Rscript's stderr. Falls
+/// back to the bare-message rendering when nothing was captured (e.g. errors
+/// raised before evaluation starts).
+fn error_result_with_captured(
+    message: impl Into<String>,
+    captured: &super::sexp::output::RCapturedOutput,
+) -> RResult {
+    let mut result = error_result(message);
+    // Mirror Rscript's combined output: any stdout printed before the error,
+    // then the rendered error text. The rendered text comes from
+    // `with_error_output` (error buffer when this error was the last one
+    // rendered there, bare "Error: <message>" otherwise) — raise-time
+    // emission is intentionally deferred to here so caught errors never
+    // leak into results.
+    let mut text = String::new();
+    if !captured.stdout.is_empty() {
+        text.push_str(captured.stdout.trim_end());
+        text.push('\n');
+    }
+    text.push_str(result.output.trim_end());
+    if text.contains("Error") {
+        result.output = text;
+    }
+    result
+}
+
 fn is_valid_package_name(package: &str) -> bool {
     let mut chars = package.chars();
     let Some(first) = chars.next() else {
@@ -347,7 +375,7 @@ impl RSession {
                     code,
                     |result, captured, visible| match result {
                         Ok(result) => result_from_eval(result, captured, visible),
-                        Err(e) => error_result(e.to_string()),
+                        Err(e) => error_result_with_captured(e.to_string(), &captured),
                     },
                 );
         self.core.set_cancellation_token(previous);
@@ -355,17 +383,26 @@ impl RSession {
     }
 
     #[cfg(feature = "renderplot-device")]
-    pub fn eval_script_with_renderplot_backend(
-        &mut self,
+    /// Evaluate a script with a RenderPlot drawing backend.
+    ///
+    /// Takes the backend by exclusive reference: no raw pointers cross this
+    /// embedding boundary. The backend is installed as the current DrawTarget
+    /// for the duration of the evaluation and restored afterward.
+    pub fn eval_script_with_renderplot_backend<'session>(
+        &'session mut self,
         code: &str,
-        backend: *mut dyn r_graphics_engine::DrawTarget,
+        backend: &'session mut dyn r_graphics_engine::DrawTarget,
     ) -> RResult {
+        // SAFETY: the backend reference outlives this call ('session) and the
+        // internal backend slot is restored before returning, so the raw
+        // pointer stored by the activation layer never dangles.
+        let backend = backend as *mut (dyn r_graphics_engine::DrawTarget + 'session);
         self.core.eval_script_with_output_capture_then_renderplot(
             code,
             backend,
             |result, captured, visible| match result {
                 Ok(result) => result_from_eval(result, captured, visible),
-                Err(e) => error_result(e.to_string()),
+                Err(e) => error_result_with_captured(e.to_string(), &captured),
             },
         )
     }
@@ -455,10 +492,24 @@ impl RResult {
     fn with_error_output(mut self) -> Self {
         if let RValue::Error(message) = &self.typed {
             let message = message.trim_end();
-            self.output = if message.starts_with("Error:") {
+            self.output = if message.starts_with("Error") {
                 message.to_string()
             } else {
-                format!("Error: {message}")
+                // Prefer the fully rendered top-level error text (with call
+                // attribution, "Error in <call> : ...") when it was rendered
+                // by this exact error — mirroring what Rscript prints on
+                // stderr. `error_was_last_rendered` rejects stale renders
+                // left in the error buffer by earlier, already-caught errors.
+                let rendered = crate::mainutils::errors::R_GetErrorBuf();
+                let rendered = rendered.trim_end();
+                if rendered.starts_with("Error")
+                    && rendered.contains(message)
+                    && crate::mainutils::errors::error_was_last_rendered(message)
+                {
+                    rendered.to_string()
+                } else {
+                    format!("Error: {message}")
+                }
             };
         }
         self
@@ -1639,7 +1690,10 @@ mod tests {
 
         let single = session.eval("is.single(1)");
         assert!(matches!(single.typed, RValue::Error(_)));
-        assert_eq!(single.output, "Error: type \"single\" unimplemented in R");
+        assert_eq!(
+            single.output,
+            "Error in is.single(1) : type \"single\" unimplemented in R"
+        );
     }
 
     #[test]
@@ -2420,9 +2474,11 @@ mod tests {
     fn test_eval_missing_arg_error() {
         let mut session = RSession::new();
         let result = session.eval("f <- function(x) x\nf()");
+        // Call attribution is now faithful to stock R: the error carries the
+        // failing call, like Rscript's stderr rendering.
         assert_eq!(
             result.output,
-            "Error: argument \"x\" is missing, with no default"
+            "Error in f() : argument \"x\" is missing, with no default"
         );
     }
 

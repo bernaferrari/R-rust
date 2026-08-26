@@ -1,1 +1,1 @@
-Error: could not find function "print.integer"
+Error in print.integer(1L) : could not find function "print.integer"

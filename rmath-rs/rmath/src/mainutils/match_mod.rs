@@ -628,7 +628,7 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
                 i = 1;
                 while b != R_NilValue() {
                     let btag = TAG(b);
-                    if btag != R_NilValue() {
+                    if !btag.is_null() && btag != R_NilValue() {
                         let btag_name = CHAR(PRINTNAME(btag));
                         if streql(ftag_name, btag_name) != 0 {
                             if fargused[arg_i as usize] == 2 {
@@ -683,6 +683,7 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
                     i = 1;
                     while b != R_NilValue() {
                         if ARGUSED(b) != 2
+                            && !TAG(b).is_null()
                             && TAG(b) != R_NilValue()
                             && pmatch(TAG(f), TAG(b), if seendots { TRUE } else { FALSE }) != 0
                         {
@@ -739,7 +740,7 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
                 // Already matched by tag — skip to next formal
                 f = CDR(f);
                 a = CDR(a);
-            } else if ARGUSED(b) != 0 || TAG(b) != R_NilValue() {
+            } else if ARGUSED(b) != 0 || !TAG(b).is_null() {
                 // This value used or tagged, skip to next value
                 // The second test ensures we don't consider tagged values
                 // for positional matches.

@@ -417,10 +417,9 @@ impl RSession {
 "#,
             code
         );
-        let result = self.inner.eval_script_with_renderplot_backend(
-            &wrapped,
-            &mut renderer as *mut _ as *mut dyn r_graphics_engine::DrawTarget,
-        );
+        let result = self
+            .inner
+            .eval_script_with_renderplot_backend(&wrapped, &mut renderer);
         if let RValue::Error(message) = result.typed {
             return Err(RSessionError::RenderError(message));
         }

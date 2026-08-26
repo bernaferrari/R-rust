@@ -174,16 +174,17 @@ pub extern "C" fn R_integer_divide(x: c_int, y: c_int) -> f64 {
 // Floating-point modulus and floor division
 // ---------------------------------------------------------------------------
 
-/// Custom floating-point modulus with improved accuracy.
+/// Ported from R's internal `myfmod` (arithmetic.c).
 ///
-/// Ported from R's internal `myfmod`. Uses standard fmod for the
-/// general case, with special handling for small values.
+/// Keep myfmod() and myfloor() in step. Uses a floor-based algorithm so the
+/// result takes the sign of the divisor, matching R's `%%` operator. Warns
+/// when the quotient is large enough that precision is probably lost.
 pub fn myfmod(x1: f64, x2: f64) -> f64 {
     if x2 == 0.0 {
         return f64::NAN;
     }
 
-    // Special case: very small x1 relative to x2
+    // Special case: very small |x1| relative to x2
     if x2.abs() * C_EPS > 1.0 && R_FINITE(x1) && x1.abs() <= x2.abs() {
         if x1.abs() == x2.abs() {
             return 0.0;
@@ -191,11 +192,21 @@ pub fn myfmod(x1: f64, x2: f64) -> f64 {
         if (x1 < 0.0 && x2 > 0.0) || (x2 < 0.0 && x1 > 0.0) {
             return x1 + x2; // differing signs
         }
-        return x1; // same signs
+        return x1; // "same" signs (incl. 0)
     }
 
-    // Use fmod for the general case
-    x1 % x2
+    let q = x1 / x2;
+    if R_FINITE(q) && q.abs() * C_EPS > 1.0 {
+        // SAFETY: null call pointer is accepted (same as C's warning() path).
+        unsafe {
+            crate::mainutils::errors::Rf_warningcall1(
+                std::ptr::null_mut(),
+                c"probable complete loss of accuracy in modulus".as_ptr(),
+            );
+        }
+    }
+    let tmp = x1 - libm::floor(q) * x2;
+    tmp - libm::floor(tmp / x2) * x2
 }
 
 /// Custom floor division with improved accuracy.
@@ -1427,7 +1438,8 @@ mod tests {
     #[test]
     fn test_myfmod_basic() {
         assert!((myfmod(10.0, 3.0) - 1.0).abs() < 1e-10);
-        assert!((myfmod(-10.0, 3.0) - (-1.0)).abs() < 1e-10);
+        // R's %% takes the sign of the divisor (floor-based), unlike C fmod.
+        assert!((myfmod(-10.0, 3.0) - 2.0).abs() < 1e-10);
         assert!(myfmod(10.0, 0.0).is_nan());
     }
 

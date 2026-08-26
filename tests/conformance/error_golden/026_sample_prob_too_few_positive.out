@@ -1,1 +1,1 @@
-Error: too few positive probabilities
+Error in sample.int(length(x), size, replace, prob) : too few positive probabilities

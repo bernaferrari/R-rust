@@ -9,7 +9,7 @@
 
 use libc;
 use std::collections::{HashMap, HashSet};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -2635,7 +2635,7 @@ pub unsafe fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get the current standardGeneric function pointer.
-unsafe fn R_get_standardGeneric_ptr() -> R_stdGen_ptr_t {
+pub(crate) unsafe fn R_get_standardGeneric_ptr() -> R_stdGen_ptr_t {
     with_objects_state(|state| state.standard_generic_ptr)
 }
 
@@ -2673,7 +2673,7 @@ pub unsafe fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// then evaluates a call to it with the same arguments.
 ///
 /// Ported from objects.c:1275-1319.
-unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
+pub(crate) unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
     unsafe {
         let symbol = crate::mainutils::subset::installTrChar(asChar(name));
 
@@ -2813,15 +2813,39 @@ pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -
             ));
         }
 
-        if R_get_standardGeneric_ptr().is_none() {
-            R_set_standardGeneric_ptr(Some(dispatchNonGeneric), ptr::null_mut());
+        // Route through the methods package dispatch when it has been
+        // initialized; otherwise initialize it on first use. The bare
+        // dispatchNonGeneric fallback cannot dispatch S4 methods and would
+        // recurse forever when the name still resolves to the generic, so
+        // only take that path for genuinely non-generic functions.
+        let dispatch = crate::library::methods::methods_list_dispatch::standard_generic_dispatch();
+        if std::ptr::fn_addr_eq(
+            dispatch,
+            dispatchNonGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP,
+        ) {
+            let generic_marker = sym("generic");
+            let gen_attr = getAttrib(fdef, generic_marker);
+            let env_marker = if TYPEOF(fdef) == SEXPTYPE::CLOSXP {
+                crate::sexp::envir::R_findVarInFrame(CLOENV(fdef), sym("Generic"))
+            } else {
+                R_UnboundValue()
+            };
+            let is_generic_fdef =
+                (gen_attr != R_NilValue() && !gen_attr.is_null()) || env_marker != R_UnboundValue();
+            if is_generic_fdef {
+                let raw = CHAR(STRING_ELT(arg, 0));
+                let name_str = if raw.is_null() {
+                    "<unknown>"
+                } else {
+                    CStr::from_ptr(raw).to_str().unwrap_or("<unknown>")
+                };
+                error(&format!(
+                    "no direct or inherited method for function '{}' for this call",
+                    name_str
+                ));
+            }
         }
-
-        let ptr = R_get_standardGeneric_ptr();
-        match ptr {
-            Some(func) => func(arg, env, fdef),
-            None => error("methods dispatch could not be enabled"),
-        }
+        dispatch(arg, env, fdef)
     }
 }
 

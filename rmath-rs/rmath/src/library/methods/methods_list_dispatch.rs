@@ -204,6 +204,48 @@ pub unsafe fn R_initMethodDispatch(envir: SEXP) -> SEXP {
     }
 }
 
+/// True when the full methods-package dispatch pointer has been installed
+/// (i.e. R_initMethodDispatch ran), so standardGeneric should route there
+/// instead of the bare dispatchNonGeneric fallback.
+pub fn standard_generic_ptr_installed() -> bool {
+    // SAFETY: reads the session-local dispatch pointer; no SEXP deref.
+    let ptr = unsafe { crate::mainutils::objects::R_get_standardGeneric_ptr() };
+    ptr.is_some_and(|f| {
+        !std::ptr::fn_addr_eq(
+            f,
+            crate::mainutils::objects::dispatchNonGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP,
+        )
+    })
+}
+
+/// The dispatch entry to use for `standardGeneric()`: the methods-package
+/// implementation once installed, else the bare non-generic fallback.
+pub fn standard_generic_dispatch() -> unsafe fn(SEXP, SEXP, SEXP) -> SEXP {
+    // SAFETY: reads the session-local dispatch pointer; no SEXP deref.
+    let ptr = unsafe { crate::mainutils::objects::R_get_standardGeneric_ptr() };
+    match ptr {
+        Some(f)
+            if !std::ptr::fn_addr_eq(
+                f,
+                crate::mainutils::objects::dispatchNonGeneric
+                    as unsafe fn(SEXP, SEXP, SEXP) -> SEXP,
+            ) =>
+        {
+            f
+        }
+        _ => {
+            // Initialize on first use so table/S4 dispatch is available even
+            // when nothing called R_initMethodDispatch explicitly. Table
+            // dispatch is the default for setGeneric/setMethod flows.
+            unsafe {
+                with_methods_dispatch_state(|state| state.table_dispatch_on = 1);
+                R_initMethodDispatch(crate::sexp::globals::R_GlobalEnv());
+            }
+            R_dispatchGeneric as unsafe fn(SEXP, SEXP, SEXP) -> SEXP
+        }
+    }
+}
+
 /// R_standardGeneric - C version of the standardGeneric R function.
 /// Dispatches to the appropriate method for a generic function call.
 pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
@@ -315,6 +357,15 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
             let arg = crate::sexp::envir::R_findVarInFrame(ev, arg_sym);
             if arg == R_UnboundValue() || arg == R_MissingArg() {
                 classes.push("missing".to_string());
+            } else if TYPEOF(arg) == SEXPTYPE::PROMSXP {
+                let forced = crate::sexp::envir::forcePromise(arg);
+                if forced.is_null() || forced == R_NilValue() {
+                    return R_NilValue();
+                }
+                let Some(class) = first_data_class_name(forced) else {
+                    return R_NilValue();
+                };
+                classes.push(class);
             } else {
                 let Some(class) = first_data_class_name(arg) else {
                     return R_NilValue();
@@ -457,6 +508,38 @@ pub unsafe fn R_getGeneric(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP
         } else {
             value
         }
+    }
+}
+
+/// Like R_getGeneric but walks the whole enclosing-environment chain, so a
+/// generic defined in the global environment is found from any caller.
+pub unsafe fn R_getGenericByName(name: SEXP, mustFind: SEXP, env: SEXP, _package: SEXP) -> SEXP {
+    unsafe {
+        let Some(name_string) = sexp_to_string(name) else {
+            r_error("The argument \"f\" to getGeneric must be a single string or symbol");
+        };
+        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+                r_error(format!(
+                    "no generic function definition found for '{}'",
+                    name_string
+                ));
+            }
+            return R_NilValue();
+        }
+        let cname = CString::new(name_string.as_str()).unwrap_or_default();
+        let symbol = crate::sexp::symbol::Rf_install(cname.as_ptr());
+        let value = crate::sexp::envir::R_findVar(symbol, env);
+        if value == crate::sexp::globals::R_UnboundValue() || value == R_NilValue() {
+            if crate::mainutils::coerce::asLogical(mustFind) != 0 {
+                r_error(format!(
+                    "no generic function definition found for '{}'",
+                    name_string
+                ));
+            }
+            return R_NilValue();
+        }
+        value
     }
 }
 
@@ -1147,6 +1230,32 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 99);
         }
+    }
+
+    #[test]
+    fn probe_set_generic_flow() {
+        let mut session = crate::android::RSession::new();
+        // 1) Does setMethod find the generic when passed the CLOSURE directly?
+        let d = session.eval("g <- function(object) standardGeneric(\"show\"); setMethod(\"show\", \"numeric\", function(object) 42L)");
+        println!("setMethod-by-name => {:?}", d.output);
+        let e = session.eval("setMethod(g, \"numeric\", function(object) 42L); g(1.5)");
+        println!("dispatch-via-closure => {:?}", e.output);
+    }
+
+    #[test]
+    fn probe_set_generic_set_method_dispatch_returns_42() {
+        let mut session = crate::android::RSession::new();
+
+        // setGeneric rebinds `show` to a generic closure carrying the
+        let a = session.eval("setGeneric(\"show\", function(object) standardGeneric(\"show\"))");
+        println!("step1 setGeneric => {:?}", a.output);
+        let b = session.eval("typeof(show)");
+        println!("step2 typeof(show) => {:?}", b.output);
+        let c = session.eval("setMethod(\"show\", \"numeric\", function(object) 42)");
+        println!("step3 setMethod => {:?}", c.output);
+        let d = session.eval("show(1.5)");
+        println!("step4 call => {:?}", d.output);
+        assert_eq!(d.output, "[1] 42");
     }
 
     #[test]

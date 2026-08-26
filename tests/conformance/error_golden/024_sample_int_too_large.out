@@ -1,1 +1,1 @@
-Error: cannot take a sample larger than the population when 'replace = FALSE'
+Error in sample.int(3, 4, FALSE) : cannot take a sample larger than the population when 'replace = FALSE'

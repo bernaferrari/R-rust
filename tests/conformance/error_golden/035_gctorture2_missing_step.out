@@ -1,1 +1,1 @@
-Error: argument "step" is missing, with no default
+Error in gctorture2() : argument "step" is missing, with no default
