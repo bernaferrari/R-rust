@@ -337,10 +337,6 @@ pub struct RInstance {
     pub(crate) active_bindings: HashMap<(usize, usize), SEXP>,
     /// Per-session nmath math state (sampler caches and rank memo tables).
     pub(crate) math_state: rmath_nmath::MathState,
-    /// Per-instance stats::pacf Starma external-pointer tag symbol.
-    pub(crate) stats_starma_tag: SEXP,
-    /// Per-instance stats::deriv operator/function symbol cache.
-    pub(crate) stats_deriv_symbols: HashMap<String, SEXP>,
     /// Per-instance stats::loess workspace buffers.
     pub(crate) loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState,
     /// Per-instance stats::bspline recurrence continuation state.
@@ -466,8 +462,6 @@ impl RInstance {
             locked_bindings: HashSet::new(),
             active_bindings: HashMap::new(),
             math_state: rmath_nmath::MathState::default(),
-            stats_starma_tag: std::ptr::null_mut(),
-            stats_deriv_symbols: HashMap::new(),
             loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
             fexact_state: crate::library::stats::fexact::FexactState::default(),

@@ -49,7 +49,6 @@ use super::instance::{
 };
 use super::memory::{ArenaBudget, RArena};
 use super::object::Sexp;
-#[cfg(test)]
 use super::protect::protect;
 use super::protect::protect_sexp;
 #[cfg(test)]
@@ -531,9 +530,20 @@ impl RSession {
             // Stale error-buffer renders from a previous script must not be
             // trusted by this script's top-level error renderer.
             crate::mainutils::errors::clear_last_rendered_message();
+            // The not-yet-evaluated statements are reachable only from the
+            // local Vec while later statements run; the quiescent GC below
+            // (or a gc() inside a statement) would otherwise free them.
+            // Upstream R preserves the parsed expression list across the
+            // top-level eval loop; these guards are its UNPROTECT at the end
+            // of the script.
+            let expression_guards: Vec<_> = expressions
+                .iter()
+                .copied()
+                .map(|expr| protect(expr_or_nil(expr)))
+                .collect();
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
-            for raw_expr in expressions {
+            for &raw_expr in &expressions {
                 let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
                     Ok(expr) => expr,
                     Err(err) => {
@@ -604,9 +614,16 @@ impl RSession {
             let _guard = self.activate();
             let _backend_guard = RenderPlotBackendGuard::install(&mut self.instance, backend);
             self.instance.output_capture.borrow_mut().start();
+            // Same preservation of the remaining parsed statements as the
+            // plain script loop above.
+            let expression_guards: Vec<_> = expressions
+                .iter()
+                .copied()
+                .map(|expr| protect(expr_or_nil(expr)))
+                .collect();
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
-            for raw_expr in expressions {
+            for &raw_expr in &expressions {
                 let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
                     Ok(expr) => expr,
                     Err(err) => {

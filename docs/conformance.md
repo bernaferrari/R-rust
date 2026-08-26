@@ -54,6 +54,19 @@ You can also choose explicit output paths:
   --markdown target/conformance-summary.md
 ```
 
+Regenerate the error-case goldens from stock C R (run manually; never part of
+CI — goldens are reviewed artifacts, so commit the diff only after reading it):
+
+```bash
+./scripts/conformance_parity.sh --regen-goldens
+```
+
+It re-runs every `tests/conformance/error_cases/*.R` under
+`Rscript --vanilla`, applies the harness's error normalization, and rewrites
+`tests/conformance/error_golden/*.out` in place. It refuses to run without
+`Rscript` on `PATH` and leaves any case whose stock-R run stops erroring
+untouched.
+
 ## Upstream Core Slices
 
 `scripts/upstream_core_slices.sh` runs curated excerpts adapted from GNU R's

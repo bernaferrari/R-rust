@@ -183,6 +183,8 @@ pub mod tzone;
 #[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone_strftime;
 pub mod utils;
+#[cfg(target_arch = "wasm32")]
+mod wasm_shim;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod xdr;
 

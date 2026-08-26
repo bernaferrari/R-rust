@@ -84,6 +84,21 @@ impl PairlistBuilder {
         unsafe { self.append_raw(value.as_raw(), tag) }.map(|_| ())
     }
 
+    /// Append a cell and return the raw cons cell so callers can protect it.
+    ///
+    /// Incremental list builders such as `evalList`/`promiseArgs` evaluate
+    /// (and thus may run a collection) between appends; every cell built so
+    /// far is reachable only from this builder's raw locals, so callers must
+    /// protect each returned cell until the finished list is handed off.
+    pub(crate) fn push_cell<'a>(
+        &mut self,
+        value: Sexp<'a>,
+        tag: Option<Sexp<'a>>,
+    ) -> SexpResult<SEXP> {
+        let tag = tag.map(Sexp::as_raw).unwrap_or_else(ptr::null_mut);
+        unsafe { self.append_raw(value.as_raw(), tag) }
+    }
+
     unsafe fn append_raw(&mut self, value: SEXP, tag: SEXP) -> SexpResult<SEXP> {
         unsafe {
             let cell = Rf_cons(value, R_NilValue());

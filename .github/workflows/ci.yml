@@ -52,6 +52,10 @@ jobs:
         if: runner.os == 'Linux'
         run: bash scripts/script_diff_parity.sh --check
 
+      # Error goldens are reviewed artifacts: CI only checks parity. When a
+      # golden legitimately changes, regenerate locally with
+      # `bash scripts/conformance_parity.sh --regen-goldens` and commit the
+      # reviewed diff; never auto-regenerate in CI.
       - name: Stock R conformance (strict)
         if: runner.os == 'Linux'
         run: bash scripts/conformance_parity.sh --check --strict

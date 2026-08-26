@@ -2683,17 +2683,6 @@ pub(crate) fn parse_iso_date_days(text: &str) -> Option<f64> {
     Some(days_from_civil(year, month, day) as f64)
 }
 
-/// Advance a Date (days since epoch) by `n` calendar months, clamping the
-/// day-of-month like R's seq.Date(by = "months") behaviour.
-pub(crate) fn date_add_months(days: f64, n: i64) -> Option<f64> {
-    let (year, month, day) = date_days_to_civil(days)?;
-    let total = year * 12 + (month - 1) + n;
-    let new_year = total.div_euclid(12);
-    let new_month = total.rem_euclid(12) + 1;
-    let new_day = day.min(days_in_month(new_year, new_month));
-    Some(days_from_civil(new_year, new_month, new_day) as f64)
-}
-
 pub(crate) fn date_days_to_iso(days: f64) -> Option<String> {
     let (year, month, day) = date_days_to_civil(days)?;
     Some(format!("{year:04}-{month:02}-{day:02}"))

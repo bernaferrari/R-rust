@@ -1425,7 +1425,7 @@ unsafe fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
 
         let mut anyIdxNA = false;
         for i in 0..nrs {
-            if *psc.add(i as usize) == NA_INTEGER {
+            if *psr.add(i as usize) == NA_INTEGER {
                 anyIdxNA = true;
                 break;
             }

@@ -197,10 +197,12 @@ pub fn myfmod(x1: f64, x2: f64) -> f64 {
 
     let q = x1 / x2;
     if R_FINITE(q) && q.abs() * C_EPS > 1.0 {
-        // SAFETY: null call pointer is accepted (same as C's warning() path).
+        // Stock C warning() attributes the message to the current call
+        // ("In 1e+300 %% 1.1 : probable complete loss of accuracy in
+        // modulus"); Rf_warning1 looks up getCurrentCall() like C's
+        // Rf_warning().
         unsafe {
-            crate::mainutils::errors::Rf_warningcall1(
-                std::ptr::null_mut(),
+            crate::mainutils::errors::Rf_warning1(
                 c"probable complete loss of accuracy in modulus".as_ptr(),
             );
         }

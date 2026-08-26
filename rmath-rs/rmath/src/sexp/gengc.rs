@@ -598,7 +598,11 @@ fn update_field(field: &mut SEXP, old_to_new: &HashMap<usize, SEXP>) {
 
 #[inline]
 fn vector_payload_has_sexp_refs(t: SEXPTYPE) -> bool {
-    matches!(t.0, 16 | 19 | 20) // STRSXP, VECSXP, EXPRSXP
+    // BCODESXP (21) is included: its payload holds the instruction stream,
+    // constant pool, and stack-depth vector as SEXP references. Without
+    // tracing them, a collection frees a compiled closure's code while the
+    // BCODESXP itself survives (e.g. `f <- function(x) x+1; gc(); f(1)`).
+    matches!(t.0, 16 | 19 | 20 | 21) // STRSXP, VECSXP, EXPRSXP, BCODESXP
 }
 
 fn update_protect_stack_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {

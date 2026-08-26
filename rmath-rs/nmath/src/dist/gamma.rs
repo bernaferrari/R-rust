@@ -18,7 +18,6 @@ use crate::rng::*;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::{lgammafn, lgammafn1p, log1pmx};
 use crate::special::stirlerr::stirlerr;
-#[cfg(not(target_arch = "wasm32"))]
 use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::{exp, expm1, fabs, floor, log, log1p, pow, sqrt};

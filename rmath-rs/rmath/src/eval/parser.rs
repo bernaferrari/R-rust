@@ -952,11 +952,30 @@ impl<'arena> Parser<'arena> {
     }
 
     fn parse_multiplication(&mut self) -> Result<SEXP, ParseError> {
-        let mut left = self.parse_colon()?;
+        let mut left = self.parse_special()?;
         loop {
             let op_name = match self.peek() {
                 Token::Star => "*".to_string(),
                 Token::Slash => "/".to_string(),
+                _ => return Ok(left),
+            };
+            self.advance();
+            self.skip_newlines();
+            let right = self.parse_special()?;
+            let op = self.install_symbol(&op_name)?;
+            left = self.lang3(op, left, right);
+        }
+    }
+
+    /// Percent-delimited special operators: `%%`, `%/%`, `%in%`, `%*%` and
+    /// user-defined `%foo%`. gram.y declares these (SPECIAL) one level
+    /// tighter than `*` / `/` and looser than `:`, so `2 * 3 %% 2` parses
+    /// as `2 * (3 %% 2)` and `10 %/% 3 * 2` as `(10 %/% 3) * 2`, while
+    /// `1:3 %% 2` still groups the colon first.
+    fn parse_special(&mut self) -> Result<SEXP, ParseError> {
+        let mut left = self.parse_colon()?;
+        loop {
+            let op_name = match self.peek() {
                 Token::Percent(name) => name.clone(),
                 _ => return Ok(left),
             };

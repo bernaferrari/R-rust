@@ -111,6 +111,10 @@ unsafe fn errorcall(call: SEXP, format: *const c_char) {
     crate::mainutils::errors::errorcall(call, format);
 }
 
+fn errorcall_never(call: SEXP, msg: &str) -> ! {
+    crate::mainutils::errors::errorcall_str(call, msg);
+}
+
 unsafe fn warningcall(call: SEXP, format: *const c_char) {
     unsafe { crate::mainutils::errors::warningcall(call, format) }
 }
@@ -1313,48 +1317,113 @@ enum DatetimeKind {
     Posixct,
 }
 
-/// Result of parsing an R `by` string such as "3 months" or "week".
-struct BySpec {
-    unit: &'static str,
-    mult: c_double,
-    /// Calendar-unit flag (months/quarters/years).
-    calendar: bool,
+/// pmatch(x, table) for a single string: an exact match wins, otherwise a
+/// unique prefix match; ambiguity or no match is NA (stock pmatch).
+fn pmatch_one(x: &str, table: &[&str]) -> Option<usize> {
+    if let Some(i) = table.iter().position(|t| *t == x) {
+        return Some(i);
+    }
+    let mut matches = table.iter().enumerate().filter(|(_, t)| t.starts_with(x));
+    match (matches.next(), matches.next()) {
+        (Some((i, _)), None) => Some(i),
+        _ => None,
+    }
 }
 
-unsafe fn parse_by_string(s: &str, units: &[&str]) -> Option<BySpec> {
-    let parts: Vec<&str> = s.split(' ').filter(|p| !p.is_empty()).collect();
-    if parts.is_empty() || parts.len() > 2 {
+/// as.integer() on a character multiplier: parse as a double and truncate
+/// toward zero (as.integer("1.5") == 1L).  Non-numeric or out-of-range
+/// strings give NA with stock's coercion warning.
+unsafe fn as_integer_multiplier(call: SEXP, s: &str) -> Option<i64> {
+    unsafe {
+        let warn = |msg: &str| {
+            let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+            warningcall(call, c_msg.as_ptr());
+        };
+        let t = s.trim();
+        if t.is_empty() {
+            warn("NAs introduced by coercion");
+            return None;
+        }
+        match t.parse::<c_double>() {
+            Ok(v) if v.is_finite() && v >= INT_MIN_C && v <= INT_MAX_C => Some(v as i64),
+            Ok(_) => {
+                // Numeric but outside the integer range: stock's distinct
+                // "coercion to integer range" warning.
+                warn("NAs introduced by coercion to integer range");
+                None
+            }
+            Err(_) => {
+                warn("NAs introduced by coercion");
+                None
+            }
+        }
+    }
+}
+
+/// strsplit(s, " ", fixed=TRUE): split on every single space, dropping the
+/// trailing empty strings R's strsplit discards.
+fn split_by_spaces(s: &str) -> Vec<&str> {
+    let mut parts: Vec<&str> = s.split(' ').collect();
+    while parts.last().is_some_and(|p| p.is_empty()) {
+        parts.pop();
+    }
+    parts
+}
+
+/// Which POSIXlt field a calendar `by` steps (seq.POSIXt months/years/
+/// DSTdays handling).
+#[derive(Clone, Copy, PartialEq)]
+enum CalendarField {
+    Months,
+    Years,
+    Dstdays,
+}
+
+/// UTC POSIXlt-style fields of an epoch value.  The runtime models
+/// Date/POSIXct in UTC, which is also what stock uses for Date endpoints
+/// (as.POSIXlt.Date is UTC midnight).
+fn posixlt_fields(secs: c_double) -> Option<(i64, i64, i64, c_double)> {
+    if secs.to_bits() == NA_REAL.to_bits() || !secs.is_finite() {
         return None;
     }
-    let last = parts[parts.len() - 1];
-    let candidates = [
-        "secs", "mins", "hours", "days", "weeks", "months", "quarters", "years",
-    ];
-    let list: &[&str] = if units.len() == 4 { units } else { &candidates };
-    // Stock R matches `by` strings via pmatch(): the user string is a
-    // unique prefix of the table entry ("day" -> "days", "days" -> "days").
-    let idx = list.iter().position(|u| u.starts_with(last))?;
-    let unit = match idx {
-        0 => "secs",
-        1 => "mins",
-        2 => "hours",
-        3 => "days",
-        4 => "weeks",
-        5 => "months",
-        6 => "quarters",
-        _ => "years",
-    };
-    let mult = if parts.len() == 2 {
-        parts[0].trim().parse::<c_double>().ok()? as c_double
-    } else {
-        1.0
-    };
-    let calendar = matches!(unit, "months" | "quarters" | "years");
-    Some(BySpec {
-        unit,
-        mult,
-        calendar,
-    })
+    let frac = secs - secs.floor();
+    let whole = secs.floor() as i64;
+    let days = whole.div_euclid(86_400);
+    let tod = whole.rem_euclid(86_400) as c_double + frac;
+    let (y, m, d) = crate::mainutils::essentials::civil_from_days(days);
+    Some((y, m - 1, d, tod))
+}
+
+/// mktime-style recomposition: month and day overflow normalizes by
+/// rolling into later months (linear civil-day arithmetic, like mktime).
+fn mktime_utc(year: i64, mon0: i64, mday: i64, tod: c_double) -> c_double {
+    let y = year + mon0.div_euclid(12);
+    let m = mon0.rem_euclid(12) + 1;
+    crate::mainutils::essentials::days_from_civil(y, m, mday) as c_double * 86_400.0 + tod
+}
+
+/// seq.int(from, to, by) over exact integers: returns the number of values
+/// (from, from+by, ... <= to for by > 0), applying stock's error checks.
+unsafe fn calendar_count(call: SEXP, from: i64, to: i64, by: i64) -> i64 {
+    unsafe {
+        if by == 0 {
+            if from == to {
+                return 1;
+            }
+            errorcall(
+                call,
+                b"invalid '(to - from)/by'\0".as_ptr() as *const c_char,
+            );
+        }
+        let del = to - from;
+        if del != 0 && (del > 0) != (by > 0) {
+            errorcall(
+                call,
+                b"wrong sign in 'by' argument\0".as_ptr() as *const c_char,
+            );
+        }
+        del / by + 1
+    }
 }
 
 unsafe fn attach_datetime_class(ans: SEXP, kind: DatetimeKind, tz_source: SEXP) -> SEXP {
@@ -1372,6 +1441,101 @@ unsafe fn attach_datetime_class(ans: SEXP, kind: DatetimeKind, tz_source: SEXP) 
     }
 }
 
+/// Calendar stepping for by = "months"/"quarters"/"years"/"DSTdays"
+/// (seq.POSIXt's POSIXlt arithmetic, which seq.Date delegates to).
+unsafe fn calendar_seq(
+    call: SEXP,
+    field: CalendarField,
+    mult: i64,
+    vanchor: c_double,
+    vother: c_double,
+    miss_to: bool,
+    miss_from: bool,
+    lout: R_xlen_t,
+) -> Vec<c_double> {
+    unsafe {
+        // Anchor fields (lres <- as.POSIXlt(if from given from else to)).
+        let Some((year, mon0, mday, tod)) = posixlt_fields(vanchor) else {
+            // NA anchor: the from+to modes filter everything out; the
+            // length.out modes propagate NA fields (seq.int on NA).
+            return if miss_to || miss_from {
+                vec![c_double::NAN; lout.max(0) as usize]
+            } else {
+                Vec::new()
+            };
+        };
+
+        // Value at integer step k from the anchor.
+        let value_at = |k: i64| -> c_double {
+            match field {
+                CalendarField::Months | CalendarField::Years => {
+                    let mon_step = if field == CalendarField::Months {
+                        mult
+                    } else {
+                        12 * mult
+                    };
+                    let mon_abs = (year * 12 + mon0) + k * mon_step;
+                    mktime_utc(0, mon_abs, mday, tod)
+                }
+                CalendarField::Dstdays => mktime_utc(year, mon0, mday + k * mult, tod),
+            }
+        };
+
+        if miss_to || miss_from {
+            // length.out mode: exactly lout values anchored at the given
+            // endpoint (seq.int(to/from = <field>, by = by, length.out)).
+            let n = lout.max(0) as i64;
+            return (0..n)
+                .map(|i| {
+                    if miss_from {
+                        value_at(i - (n - 1))
+                    } else {
+                        value_at(i)
+                    }
+                })
+                .collect();
+        }
+
+        // from + to + by: seq.int(<field>, <target field>, by) then keep
+        // values not past `to` (seq.POSIXt's res[res <= cto] filter, which
+        // drops a final month whose day-overflow passes the endpoint).
+        let mut values: Vec<c_double> = if field == CalendarField::Dstdays {
+            // "We might have a short day, so need to over-estimate":
+            // length.out = 2 + floor((cto - cfrom)/(by * 86400)).
+            if mult == 0 {
+                errorcall(
+                    call,
+                    b"invalid '(to - from)/by'\0".as_ptr() as *const c_char,
+                );
+            }
+            let span = (vother - vanchor) / (mult as c_double * 86_400.0);
+            let n_est = 2.0 + span.floor();
+            let n_est = if n_est.is_finite() && n_est >= 0.0 {
+                n_est as i64
+            } else {
+                0
+            };
+            (0..n_est).map(value_at).collect()
+        } else {
+            let Some((to_year, to_mon0, _, _)) = posixlt_fields(vother) else {
+                return Vec::new();
+            };
+            let count = if field == CalendarField::Years {
+                calendar_count(call, year, to_year, mult)
+            } else {
+                calendar_count(call, year * 12 + mon0, to_year * 12 + to_mon0, mult)
+            };
+            (0..count).map(value_at).collect()
+        };
+        if mult > 0 {
+            values.retain(|v| *v <= vother);
+        } else {
+            values.retain(|v| *v >= vother);
+        }
+        values
+    }
+}
+
 unsafe fn datetime_seq(
     call: SEXP,
     from: SEXP,
@@ -1382,8 +1546,9 @@ unsafe fn datetime_seq(
     miss_to: bool,
 ) -> Option<SEXP> {
     unsafe {
-        // Classify endpoints (POSIXct wins over Date when mixed, like R's
-        // method dispatch picking seq.POSIXt for a leading POSIXt argument).
+        // Classify endpoints.  The leading endpoint's class wins when the
+        // two differ, mirroring UseMethod dispatch on the first argument of
+        // the seq.Date / seq.POSIXt S3 methods.
         let kind: DatetimeKind = {
             let kf = if miss_from {
                 None
@@ -1398,73 +1563,146 @@ unsafe fn datetime_seq(
         };
 
         let have_lout = lout != NA_INTEGER as R_xlen_t;
+        let by_given = by != R_MissingArg() && by != R_NilValue();
+
+        // seq.POSIXt: "exactly three of 'to', 'from', 'by' and
+        // 'length.out' / 'along.with' must be specified", then the class /
+        // length-1 checks on the supplied endpoints ('to' first).
+        if kind == DatetimeKind::Posixct {
+            let missing_count =
+                miss_from as u32 + miss_to as u32 + (!have_lout) as u32 + (!by_given) as u32;
+            if missing_count != 1 {
+                errorcall(
+                    call,
+                    b"exactly three of 'to', 'from', 'by' and 'length.out' / 'along.with' must be specified\0"
+                        .as_ptr() as *const c_char,
+                );
+            }
+            if !miss_to {
+                if !crate::mainutils::essentials::sexp_has_class(to, "POSIXct") {
+                    errorcall(
+                        call,
+                        b"'to' must be a \"POSIXt\" object\0".as_ptr() as *const c_char,
+                    );
+                }
+                if LENGTH(to) != 1 {
+                    errorcall(
+                        call,
+                        b"'to' must be of length 1\0".as_ptr() as *const c_char,
+                    );
+                }
+            }
+            if !miss_from {
+                if !crate::mainutils::essentials::sexp_has_class(from, "POSIXct") {
+                    errorcall(
+                        call,
+                        b"'from' must be a \"POSIXt\" object\0".as_ptr() as *const c_char,
+                    );
+                }
+                if LENGTH(from) != 1 {
+                    errorcall(
+                        call,
+                        b"'from' must be of length 1\0".as_ptr() as *const c_char,
+                    );
+                }
+            }
+        } else if !by_given && (miss_from || miss_to) && !have_lout {
+            // seq.Date without 'by'.
+            errorcall(
+                call,
+                b"without 'by', when one of 'to', 'from' is missing, 'length.out' / 'along.with' must be specified\0"
+                    .as_ptr() as *const c_char,
+            );
+        }
 
         // 'by' handling -----------------------------------------------------
-        let mut rby: c_double;
-        let mut calendar = false;
-        if by != R_MissingArg() && by != R_NilValue() {
+        // Linear step in native units (days for Date, seconds for POSIXct).
+        let mut rby: c_double = 1.0;
+        let mut calendar: Option<(CalendarField, i64)> = None;
+        if by_given {
             if LENGTH(by) != 1 {
                 errorcall(
                     call,
                     b"'by' must be of length 1\0".as_ptr() as *const c_char,
                 );
             }
+            if kind == DatetimeKind::Date {
+                let missing_count = miss_from as u32 + miss_to as u32 + (!have_lout) as u32;
+                if missing_count != 1 {
+                    errorcall(
+                        call,
+                        b"given 'by', exactly two of 'to', 'from' and 'length.out' / 'along.with' must be specified\0"
+                            .as_ptr() as *const c_char,
+                    );
+                }
+            }
             if TYPEOF(by) == STRSXP_VAL {
-                let text = first_str_elt(by)?;
-                let day_units = ["days", "weeks"];
-                let spec = if kind == DatetimeKind::Date {
-                    parse_by_string(&text, &day_units)
-                } else {
-                    parse_by_string(&text, &[])
-                }?;
-                let base: c_double = match spec.unit {
-                    "secs" => 1.0,
-                    "mins" => 60.0,
-                    "hours" => 3600.0,
-                    "days" => 86400.0,
-                    "weeks" => 7.0 * 86400.0,
-                    "months" => 30.4375 * 86400.0, // fallback only; calendar path below
-                    "quarters" => 91.3125 * 86400.0,
-                    _ => 365.25 * 86400.0,
+                // strsplit(by, " ", fixed = TRUE); an NA string gives NA
+                // fields, so pmatch returns NA ("invalid string for 'by'").
+                let text = match first_str_elt(by) {
+                    Some(t) => t,
+                    None => errorcall_never(call, "invalid string for 'by'"),
                 };
-                calendar = spec.calendar;
-                rby = spec.mult * base;
+                let parts = split_by_spaces(&text);
+                if parts.is_empty() || parts.len() > 2 {
+                    errorcall(call, b"invalid 'by' string\0".as_ptr() as *const c_char);
+                }
+                let last = parts[parts.len() - 1];
+                let table: &[&str] = if kind == DatetimeKind::Date {
+                    &["days", "weeks", "months", "quarters", "years"]
+                } else {
+                    &[
+                        "secs", "mins", "hours", "days", "weeks", "months", "years", "DSTdays",
+                        "quarters",
+                    ]
+                };
+                // pmatch: unique prefix or exact; ambiguous (e.g. "m" for
+                // POSIXct: mins/months) is NA -> "invalid string for 'by'".
+                let valid = match pmatch_one(last, table) {
+                    Some(v) => v,
+                    None => errorcall_never(call, "invalid string for 'by'"),
+                };
+                let mult: i64 = if parts.len() == 2 {
+                    match as_integer_multiplier(call, parts[0]) {
+                        Some(m) => m,
+                        None => errorcall_never(call, "'by' is NA"),
+                    }
+                } else {
+                    1
+                };
+
                 if kind == DatetimeKind::Date {
-                    // Dates work in day units.
-                    rby = match spec.unit {
-                        "days" => spec.mult,
-                        "weeks" => 7.0 * spec.mult,
-                        "months" | "quarters" | "years" => spec.mult,
-                        _ => rby,
-                    };
-                    if matches!(spec.unit, "months" | "quarters" | "years") {
-                        rby *= match spec.unit {
-                            "quarters" => 3.0,
-                            "years" => 12.0,
-                            _ => 1.0,
-                        };
-                        calendar = true;
+                    match valid {
+                        0 => rby = mult as c_double,
+                        1 => rby = 7.0 * mult as c_double,
+                        2 => calendar = Some((CalendarField::Months, mult)),
+                        3 => calendar = Some((CalendarField::Months, 3 * mult)),
+                        _ => calendar = Some((CalendarField::Years, mult)),
+                    }
+                } else {
+                    match valid {
+                        0 => rby = mult as c_double,
+                        1 => rby = 60.0 * mult as c_double,
+                        2 => rby = 3600.0 * mult as c_double,
+                        3 => rby = 86_400.0 * mult as c_double,
+                        4 => rby = 7.0 * 86_400.0 * mult as c_double,
+                        5 => calendar = Some((CalendarField::Months, mult)),
+                        6 => calendar = Some((CalendarField::Years, mult)),
+                        7 => calendar = Some((CalendarField::Dstdays, mult)),
+                        _ => calendar = Some((CalendarField::Months, 3 * mult)),
                     }
                 }
-            } else {
+            } else if TYPEOF(by) == REALSXP_VAL || TYPEOF(by) == INTSXP_VAL {
                 rby = asReal(by);
                 if ISNAN(rby) {
                     errorcall(call, b"'by' is NA\0".as_ptr() as *const c_char);
                 }
+            } else {
+                errorcall(call, b"invalid mode for 'by'\0".as_ptr() as *const c_char);
             }
-        } else {
-            // No 'by': only from/to + length.out supported (R requires it).
-            if !have_lout || miss_from || miss_to {
-                errorcall(
-                    call,
-                    b"without 'by', when one of 'to', 'from' is missing, 'length.out' / 'along.with' must be specified\0"
-                        .as_ptr() as *const c_char,
-                );
-            }
-            rby = c_double::NAN; // computed below from span / (lout - 1)
         }
 
-        // Endpoints as raw numbers ------------------------------------------
+        // Endpoints as raw numbers (days for Date, seconds for POSIXct).
         let vfrom = if miss_from {
             c_double::NAN
         } else {
@@ -1472,51 +1710,84 @@ unsafe fn datetime_seq(
         };
         let vto = if miss_to { c_double::NAN } else { asReal(to) };
 
-        // Build the raw numeric sequence ------------------------------------
         let build = |first: c_double, step: c_double, n: usize| -> Vec<c_double> {
             (0..n).map(|i| first + i as c_double * step).collect()
         };
 
-        let values: Vec<c_double> = if !miss_from && !miss_to && have_lout {
-            // from, to, length.out
-            let n = lout.max(1) as usize;
-            if n == 1 {
+        let values: Vec<c_double> = if let Some((field, mult)) = calendar {
+            // Calendar arithmetic runs in epoch seconds (seq.POSIXt's
+            // POSIXlt path, which seq.Date delegates to at UTC midnight);
+            // Date endpoints are day values.
+            let (anchor, other) = if miss_from {
+                (vto, c_double::NAN)
+            } else {
+                (vfrom, vto)
+            };
+            let (anchor, other) = if kind == DatetimeKind::Date {
+                (anchor * 86_400.0, other * 86_400.0)
+            } else {
+                (anchor, other)
+            };
+            let secs = calendar_seq(call, field, mult, anchor, other, miss_to, miss_from, lout);
+            if kind == DatetimeKind::Date {
+                secs.into_iter().map(|s| s / 86_400.0).collect()
+            } else {
+                secs
+            }
+        } else if miss_to {
+            // from + (by|length.out): step forward from `from`.
+            build(vfrom, rby, lout.max(0) as usize)
+        } else if miss_from {
+            // to + (by|length.out): step backward from `to`.
+            let n = lout.max(0) as usize;
+            let start = vto - (n as c_double - 1.0) * rby;
+            build(start, rby, n)
+        } else if have_lout {
+            // from + to + length.out (or no 'by'): linear interpolation.
+            let n = lout.max(0) as usize;
+            if n == 0 {
+                Vec::new()
+            } else if n == 1 {
                 vec![vfrom]
             } else {
                 let step = (vto - vfrom) / (n as c_double - 1.0);
                 build(vfrom, step, n)
             }
-        } else if !miss_from && !miss_to && !have_lout {
-            if calendar && kind == DatetimeKind::Date {
-                // Month-style stepping over dates.
-                let mut out = Vec::new();
-                let mut cur = vfrom;
-                let m = rby as i64;
-                let sign: i64 = if rby < 0.0 { -1 } else { 1 };
-                while (sign > 0 && cur <= vto) || (sign < 0 && cur >= vto) {
-                    out.push(cur);
-                    cur = crate::mainutils::essentials::date_add_months(cur, m)
-                        .unwrap_or(c_double::NAN);
-                }
-                out
-            } else {
-                let del = vto - vfrom;
-                let n = (del / rby).floor() as i64;
-                if n < 0 {
-                    errorcall(
-                        call,
-                        b"wrong sign in 'by' argument\0".as_ptr() as *const c_char,
-                    );
-                }
-                build(vfrom, rby, (n + 1) as usize)
+        } else if by_given {
+            // from + to + by: seq.int(from, to, by) semantics.
+            let del = vto - vfrom;
+            let n = del / rby;
+            if !n.is_finite() {
+                errorcall(
+                    call,
+                    b"invalid '(to - from)/by'\0".as_ptr() as *const c_char,
+                );
             }
-        } else if miss_to {
-            build(vfrom, rby, lout as usize)
+            if n > 100.0 * INT_MAX_C {
+                errorcall(
+                    call,
+                    b"'by' argument is much too small\0".as_ptr() as *const c_char,
+                );
+            }
+            if n < -FEPS {
+                errorcall(
+                    call,
+                    b"wrong sign in 'by' argument\0".as_ptr() as *const c_char,
+                );
+            }
+            let nn = (n + FEPS) as i64;
+            build(vfrom, rby, (nn + 1) as usize)
         } else {
-            // miss_from: end-anchored
-            let n = lout as usize;
-            let start = vto - (n as c_double - 1.0) * rby;
-            build(start, rby, n)
+            // Date from:to without 'by' (seq.int(from, to) colon steps by
+            // one day in either direction).
+            let del = vto - vfrom;
+            if del == 0.0 {
+                vec![vfrom]
+            } else {
+                let step = if del > 0.0 { 1.0 } else { -1.0 };
+                let n = del.abs() as usize + 1;
+                build(vfrom, step, n)
+            }
         };
 
         // Emit the result vector --------------------------------------------
@@ -2956,6 +3227,183 @@ mod tests {
             let ans = do_sequence(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!ans.is_null());
             assert_eq!(LENGTH(ans), 0);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // datetime seq tests (stock R 4.6.1 parity)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_pmatch_one_semantics() {
+        let posixct_table = [
+            "secs", "mins", "hours", "days", "weeks", "months", "years", "DSTdays", "quarters",
+        ];
+        let date_table = ["days", "weeks", "months", "quarters", "years"];
+        // Ambiguous prefix is NA for POSIXct ("m" -> mins|months).
+        assert_eq!(pmatch_one("m", &posixct_table), None);
+        // But unique in the Date table ("m" -> months).
+        assert_eq!(pmatch_one("m", &date_table), Some(2));
+        assert_eq!(pmatch_one("month", &date_table), Some(2));
+        assert_eq!(pmatch_one("DSTday", &posixct_table), Some(7));
+        assert_eq!(pmatch_one("day", &posixct_table), Some(3));
+        assert_eq!(pmatch_one("days", &posixct_table), Some(3));
+        assert_eq!(pmatch_one("quarter", &posixct_table), Some(8));
+        assert_eq!(pmatch_one("", &posixct_table), None);
+        assert_eq!(pmatch_one("3", &posixct_table), None);
+        assert_eq!(pmatch_one("secs", &date_table), None);
+    }
+
+    #[test]
+    fn test_split_by_spaces_strsplit_semantics() {
+        assert_eq!(split_by_spaces("3 months"), vec!["3", "months"]);
+        assert_eq!(split_by_spaces("month"), vec!["month"]);
+        assert_eq!(split_by_spaces(""), Vec::<&str>::new());
+        // strsplit drops trailing empty strings only.
+        assert_eq!(split_by_spaces("days "), vec!["days"]);
+        assert_eq!(split_by_spaces(" days"), vec!["", "days"]);
+        assert_eq!(split_by_spaces("1  days"), vec!["1", "", "days"]);
+    }
+
+    #[test]
+    fn test_as_integer_multiplier_truncates_like_r() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            assert_eq!(as_integer_multiplier(ptr::null_mut(), "3"), Some(3));
+            // as.integer("1.5") == 1L: seq(..., by="1.5 days") steps a day.
+            assert_eq!(as_integer_multiplier(ptr::null_mut(), "1.5"), Some(1));
+            assert_eq!(as_integer_multiplier(ptr::null_mut(), "-2.9"), Some(-2));
+            assert_eq!(as_integer_multiplier(ptr::null_mut(), "1e3"), Some(1000));
+            assert_eq!(as_integer_multiplier(ptr::null_mut(), "abc"), None);
+            assert_eq!(as_integer_multiplier(ptr::null_mut(), ""), None);
+            // Out of integer range is NA too.
+            assert_eq!(as_integer_multiplier(ptr::null_mut(), "1e10"), None);
+        }
+    }
+
+    #[test]
+    fn test_calendar_seq_months_matches_stock_dates() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let iso = |secs: c_double| {
+                crate::mainutils::essentials::date_days_to_iso(secs / 86_400.0).unwrap()
+            };
+            // seq(as.Date('2020-01-31'), by = 'month', length.out = 3):
+            // Feb 31 normalizes to Mar 2 (2020 is a leap year), then Mar 31.
+            let anchor =
+                crate::mainutils::essentials::days_from_civil(2020, 1, 31) as c_double * 86_400.0;
+            let out = calendar_seq(
+                ptr::null_mut(),
+                CalendarField::Months,
+                1,
+                anchor,
+                c_double::NAN,
+                true,
+                false,
+                3,
+            );
+            let got: Vec<String> = out.iter().map(|s| iso(*s)).collect();
+            assert_eq!(got, ["2020-01-31", "2020-03-02", "2020-03-31"]);
+
+            // seq(as.Date('2020-02-29'), by = 'year', length.out = 3):
+            // Feb 29 normalizes to Mar 1 in non-leap years.
+            let anchor =
+                crate::mainutils::essentials::days_from_civil(2020, 2, 29) as c_double * 86_400.0;
+            let out = calendar_seq(
+                ptr::null_mut(),
+                CalendarField::Years,
+                1,
+                anchor,
+                c_double::NAN,
+                true,
+                false,
+                3,
+            );
+            let got: Vec<String> = out.iter().map(|s| iso(*s)).collect();
+            assert_eq!(got, ["2020-02-29", "2021-03-01", "2022-03-01"]);
+        }
+    }
+
+    #[test]
+    fn test_calendar_seq_from_to_filters_endpoint() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let iso = |secs: c_double| {
+                crate::mainutils::essentials::date_days_to_iso(secs / 86_400.0).unwrap()
+            };
+            // seq(as.Date('2020-06-30'), as.Date('2020-12-31'), by='month'):
+            // day-30 stepping never hits Dec 31, so the endpoint is not
+            // included (stock: 2020-06-30 .. 2020-12-30).
+            let from =
+                crate::mainutils::essentials::days_from_civil(2020, 6, 30) as c_double * 86_400.0;
+            let to =
+                crate::mainutils::essentials::days_from_civil(2020, 12, 31) as c_double * 86_400.0;
+            let out = calendar_seq(
+                ptr::null_mut(),
+                CalendarField::Months,
+                1,
+                from,
+                to,
+                false,
+                false,
+                NA_INTEGER as R_xlen_t,
+            );
+            let got: Vec<String> = out.iter().map(|s| iso(*s)).collect();
+            assert_eq!(
+                got,
+                [
+                    "2020-06-30",
+                    "2020-07-30",
+                    "2020-08-30",
+                    "2020-09-30",
+                    "2020-10-30",
+                    "2020-11-30",
+                    "2020-12-30"
+                ]
+            );
+
+            // to-anchored quarters keep the day-of-month:
+            // seq(to = as.Date('2020-06-30'), by = 'quarter', length.out = 3)
+            let to =
+                crate::mainutils::essentials::days_from_civil(2020, 6, 30) as c_double * 86_400.0;
+            let out = calendar_seq(
+                ptr::null_mut(),
+                CalendarField::Months,
+                3,
+                to,
+                c_double::NAN,
+                false,
+                true,
+                3,
+            );
+            let got: Vec<String> = out.iter().map(|s| iso(*s)).collect();
+            assert_eq!(got, ["2019-12-30", "2020-03-30", "2020-06-30"]);
+
+            // DSTdays over-estimate + filter:
+            // seq(POSIXct 2020-01-01 .. 2020-01-05, by = '2 DSTdays')
+            let from =
+                crate::mainutils::essentials::days_from_civil(2020, 1, 1) as c_double * 86_400.0;
+            let to =
+                crate::mainutils::essentials::days_from_civil(2020, 1, 5) as c_double * 86_400.0;
+            let out = calendar_seq(
+                ptr::null_mut(),
+                CalendarField::Dstdays,
+                2,
+                from,
+                to,
+                false,
+                false,
+                NA_INTEGER as R_xlen_t,
+            );
+            let got: Vec<i64> = out.iter().map(|s| (s / 86_400.0) as i64).collect();
+            assert_eq!(
+                got,
+                [
+                    crate::mainutils::essentials::days_from_civil(2020, 1, 1),
+                    crate::mainutils::essentials::days_from_civil(2020, 1, 3),
+                    crate::mainutils::essentials::days_from_civil(2020, 1, 5),
+                ]
+            );
         }
     }
 }

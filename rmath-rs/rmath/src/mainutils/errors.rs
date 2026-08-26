@@ -735,13 +735,33 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
         };
         set_in_error(1);
 
-        // Format the variadic message
-        let tmp_str = format_varargs(format, ap);
+        // Format the variadic message.  Like errors.c:790-817, the message
+        // is capped by the warning length: with a call at
+        // min(BUFSIZE, R_WarnLength) + 1 - strlen("Error in ") bytes for
+        // Rvsnprintf (i.e. warn_len - 9 characters), without a call at
+        // warn_len - 7 ("Error: ").
+        let warn_len = BUFSIZE.min(r_warn_length().max(0) as usize);
+        let has_call = !call.is_null() && isNull(call) == 0;
+        let head_len = if has_call {
+            b"Error in ".len()
+        } else {
+            b"Error: ".len()
+        };
+        let tmp_cap = (warn_len + 1).saturating_sub(head_len).saturating_sub(1);
+        let mut tmp_str = format_varargs(format, ap);
+        truncate_bytes(&mut tmp_str, tmp_cap);
+
+        // ERRBUFCAT only concatenates while the total stays under BUFSIZE.
+        let errcat = |buf: &mut String, s: &str| {
+            if buf.len() + s.len() < BUFSIZE {
+                buf.push_str(s);
+            }
+        };
 
         // Build the full error message and write to errbuf via R_SetErrmessage
         let mut err_msg = String::new();
 
-        if !call.is_null() && isNull(call) == 0 {
+        if has_call {
             // Error with call — "Error in <call> : <message>"
             // Upstream errors.c verrorcall_dflt deparses the call with
             // deparse1s(); reuse the faithful port instead of a placeholder.
@@ -768,43 +788,58 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
                 }
             };
 
-            if 7 + dcall.len() + 3 + tmp_str.len() < BUFSIZE {
-                err_msg.push_str("Error in ");
-                err_msg.push_str(&dcall);
-                err_msg.push_str(" : ");
+            // errors.c:818 — the buffer-fit test is strlen("Error in ") +
+            // strlen("\n  ") + strlen(tmp) < BUFSIZE; the deparsed call
+            // participates only in the LONGWARN wrap decision below.
+            if head_len + b"\n  ".len() + tmp_str.len() < BUFSIZE {
+                errcat(&mut err_msg, "Error in ");
+                errcat(&mut err_msg, &dcall);
+                errcat(&mut err_msg, " : ");
 
                 // Check if first line is too long
+                // (14 + strlen(dcall) + msgline1 > LONGWARN).
                 let msg_first_line = tmp_str
                     .find('\n')
                     .map(|i| &tmp_str[..i])
                     .unwrap_or(&tmp_str);
                 if 14 + dcall.len() + msg_first_line.len() > LONGWARN {
-                    err_msg.push_str("\n  ");
+                    errcat(&mut err_msg, "\n  ");
                 }
-                err_msg.push_str(&tmp_str);
+                errcat(&mut err_msg, &tmp_str);
             } else {
                 // Fallback: just "Error: <message>"
-                err_msg.push_str("Error: ");
-                err_msg.push_str(&tmp_str);
+                errcat(&mut err_msg, "Error: ");
+                errcat(&mut err_msg, &tmp_str);
             }
         } else {
             // Error without call — "Error: <message>"
-            err_msg.push_str("Error: ");
-            err_msg.push_str(&tmp_str);
+            errcat(&mut err_msg, "Error: ");
+            errcat(&mut err_msg, &tmp_str);
         }
 
-        // Ensure newline termination
-        if !err_msg.ends_with('\n') {
-            err_msg.push('\n');
-        }
-
-        // Show error call trace if configured
-        if r_show_error_calls() && !call.is_null() && isNull(call) == 0 {
-            let tr = R_ConciseTraceback(call, 0);
-            if !tr.is_empty() && err_msg.len() + tr.len() + 10 < BUFSIZE {
-                err_msg.push_str("Calls: ");
-                err_msg.push_str(&tr);
+        // Approximate truncation detection (errors.c:855-863): with a
+        // single-byte locale (R_MB_CUR_MAX == 1) this can only trigger when
+        // the buffer already overflowed past BUFSIZE - 1.
+        let nc = err_msg.len();
+        if nc > BUFSIZE - 1 {
+            let end = (nc + 1).min(BUFSIZE + 1 - 4);
+            truncate_bytes(&mut err_msg, end - 1);
+            err_msg.push_str("...\n");
+        } else {
+            // Ensure newline termination
+            if !err_msg.ends_with('\n') {
                 err_msg.push('\n');
+            }
+
+            // Show error call trace if configured (errors.c:870-882:
+            // nc_tr + nc + strlen("Calls:") + 2 < BUFSIZE + 1).
+            if r_show_error_calls() && has_call {
+                let tr = R_ConciseTraceback(call, 0);
+                if !tr.is_empty() && tr.len() + err_msg.len() + b"Calls:".len() + 2 < BUFSIZE + 1 {
+                    err_msg.push_str("Calls: ");
+                    err_msg.push_str(&tr);
+                    err_msg.push('\n');
+                }
             }
         }
 
@@ -853,6 +888,19 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
             message: payload_message,
         });
     }
+}
+
+/// Truncate `s` to at most `limit` bytes without splitting a UTF-8
+/// character (the intent of errors.c's mbcsTruncateToValid).
+fn truncate_bytes(s: &mut String, limit: usize) {
+    if s.len() <= limit {
+        return;
+    }
+    let mut end = limit;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s.truncate(end);
 }
 
 // ---------------------------------------------------------------------------

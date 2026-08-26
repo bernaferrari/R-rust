@@ -27,19 +27,38 @@ use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::object::{PairlistBuilder, Sexp};
-use crate::sexp::protect::protect;
+use crate::sexp::protect::{ProtectGuard, protect};
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::builtin::PRIMNAME;
 use super::closure::applyClosure;
 use super::eval::Rf_eval;
 
-fn push_pairlist_cell(builder: &mut PairlistBuilder, value: SEXP, tag: SEXP) {
+/// Push one evaluated argument cell onto `builder`, keeping every cell built
+/// so far protected until the caller finishes the list.
+///
+/// Upstream `evalList`/`promiseArgs` PROTECT each accumulated pairlist cell
+/// (and the value stored into it) while later arguments are still being
+/// evaluated: a `gc()` run by a later argument — directly or via a forced
+/// promise or loop safe point — must not free the earlier results. `guards`
+/// owns those protect-stack entries; drop it only once the finished list has
+/// been handed to the caller.
+fn push_pairlist_cell(
+    builder: &mut PairlistBuilder,
+    guards: &mut Vec<ProtectGuard>,
+    value: SEXP,
+    tag: SEXP,
+) {
+    // The value is reachable only from this local until it lives in a
+    // protected cell, and the cons allocation below may run the collector.
+    guards.push(protect(value));
     let Some(value) = Sexp::from_raw(value) else {
         return;
     };
     let tag = Sexp::from_raw(tag);
-    let _ = builder.push(value, tag);
+    if let Ok(cell) = builder.push_cell(value, tag) {
+        guards.push(protect(cell));
+    }
 }
 
 fn finish_pairlist(builder: PairlistBuilder) -> SEXP {
@@ -63,6 +82,9 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
         }
 
         let mut result = PairlistBuilder::new();
+        // Cells of the in-progress list stay protected across later argument
+        // evaluations; released once the finished list is returned.
+        let mut cell_guards: Vec<ProtectGuard> = Vec::new();
 
         let mut current = el;
         let mut count: c_int = 0;
@@ -86,7 +108,7 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                             break;
                         }
                         let val = Rf_eval(CAR(dh), rho);
-                        push_pairlist_cell(&mut result, val, TAG(dh));
+                        push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(dh));
                         dh = CDR(dh);
                         count += 1;
                     }
@@ -101,7 +123,7 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                 });
             } else {
                 let val = Rf_eval(expr, rho);
-                push_pairlist_cell(&mut result, val, TAG(current));
+                push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(current));
             }
 
             current = CDR(current);
@@ -126,6 +148,8 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
         }
 
         let mut result = PairlistBuilder::new();
+        // Same protect chain as evalList: forcing a later promise can run gc().
+        let mut cell_guards: Vec<ProtectGuard> = Vec::new();
 
         let mut current = call;
         while !current.is_null() && current != R_NilValue() {
@@ -148,7 +172,7 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
                         } else {
                             mkPROMISE(CAR(dh), rho)
                         };
-                        push_pairlist_cell(&mut result, cell_value, TAG(dh));
+                        push_pairlist_cell(&mut result, &mut cell_guards, cell_value, TAG(dh));
                         dh = CDR(dh);
                     }
                 } else if h != R_MissingArg() {
@@ -157,11 +181,11 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
                     });
                 }
             } else if arg_expr == R_MissingArg() {
-                push_pairlist_cell(&mut result, R_MissingArg(), tag);
+                push_pairlist_cell(&mut result, &mut cell_guards, R_MissingArg(), tag);
             } else {
                 // Create a promise for each argument
                 let prom = mkPROMISE(arg_expr, rho);
-                push_pairlist_cell(&mut result, prom, tag);
+                push_pairlist_cell(&mut result, &mut cell_guards, prom, tag);
             }
             current = CDR(current);
         }
@@ -190,6 +214,7 @@ unsafe fn evalArgs(
         }
 
         let mut result = PairlistBuilder::new();
+        let mut cell_guards: Vec<ProtectGuard> = Vec::new();
         let mut current = args;
 
         while !current.is_null() && current != R_NilValue() {
@@ -208,7 +233,7 @@ unsafe fn evalArgs(
                 continue;
             }
 
-            push_pairlist_cell(&mut result, val, TAG(current));
+            push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(current));
             current = CDR(current);
         }
 
@@ -884,6 +909,9 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                         } else {
                             val = Rf_eval(CAR(dh), rho);
                         }
+                        // The value is reachable only from this local until
+                        // its cell is linked into the protected head chain.
+                        let _val_guard = protect(val);
                         let ev = CONS_NR(val, R_NilValue());
                         if head == R_NilValue() {
                             head = ev;
@@ -913,6 +941,9 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                 } else {
                     val = Rf_eval(CAR(remaining), rho);
                 }
+                // The value is reachable only from this local until its cell
+                // is linked into the protected head chain.
+                let _val_guard = protect(val);
                 let ev = CONS_NR(val, R_NilValue());
                 if head == R_NilValue() {
                     head = ev;

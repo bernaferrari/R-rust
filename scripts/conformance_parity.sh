@@ -9,6 +9,11 @@ ERROR_GOLDEN_DIR="$ROOT_DIR/tests/conformance/error_golden"
 XFAIL_FILE="$ROOT_DIR/tests/conformance/xfail.tsv"
 RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 
+usage() {
+    echo "usage: $0 [--check] [--regen-goldens] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
+    exit 2
+}
+
 MODE="--check"
 REPORT_DIR=""
 REPORT_JSON=""
@@ -21,37 +26,37 @@ while (($# > 0)); do
             MODE="--check"
             shift
             ;;
+        --regen-goldens)
+            MODE="--regen-goldens"
+            shift
+            ;;
         --strict)
             STRICT=1
             shift
             ;;
         --report)
             if (($# < 2)); then
-                echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
-                exit 2
+                usage
             fi
             REPORT_DIR="$2"
             shift 2
             ;;
         --json)
             if (($# < 2)); then
-                echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
-                exit 2
+                usage
             fi
             REPORT_JSON="$2"
             shift 2
             ;;
         --markdown)
             if (($# < 2)); then
-                echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
-                exit 2
+                usage
             fi
             REPORT_MD="$2"
             shift 2
             ;;
         *)
-            echo "usage: $0 [--check] [--strict] [--report DIR] [--json FILE] [--markdown FILE]" >&2
-            exit 2
+            usage
             ;;
     esac
 done
@@ -71,7 +76,10 @@ if [[ -n "$REPORT_MD" ]]; then
 fi
 
 if ! command -v Rscript >/dev/null 2>&1; then
-    if [[ "$STRICT" -eq 1 ]]; then
+    if [[ "$MODE" == "--regen-goldens" ]]; then
+        echo "ERROR: Rscript not found; --regen-goldens regenerates goldens from stock C R." >&2
+        exit 1
+    elif [[ "$STRICT" -eq 1 ]]; then
         echo "ERROR: Rscript not found; strict conformance parity requires stock GNU R." >&2
         exit 1
     else
@@ -110,30 +118,32 @@ if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
     RUSTFLAGS_FOR_BUILD="${RUSTFLAGS_FOR_BUILD:+$RUSTFLAGS_FOR_BUILD }-Awarnings"
 fi
 
-echo "INFO: building Rust rmath artifact for conformance runner." >&2
-(cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
+if [[ "$MODE" != "--regen-goldens" ]]; then
+    echo "INFO: building Rust rmath artifact for conformance runner." >&2
+    (cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
 
-RUST_RLIB="$(find_rust_rlib)"
+    RUST_RLIB="$(find_rust_rlib)"
 
-if [[ -z "$RUST_RLIB" ]]; then
-    echo "ERROR: Rust rmath artifact still missing after build." >&2
-    exit 1
-fi
+    if [[ -z "$RUST_RLIB" ]]; then
+        echo "ERROR: Rust rmath artifact still missing after build." >&2
+        exit 1
+    fi
 
-RUNNER_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-conformance-runner.XXXXXX")"
-RUST_BIN="$RUNNER_TMP_DIR/rust_runner"
-cleanup_runner() {
-    rm -rf "$RUNNER_TMP_DIR"
-}
-trap cleanup_runner EXIT
+    RUNNER_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-conformance-runner.XXXXXX")"
+    RUST_BIN="$RUNNER_TMP_DIR/rust_runner"
+    cleanup_runner() {
+        rm -rf "$RUNNER_TMP_DIR"
+    }
+    trap cleanup_runner EXIT
 
-RESULTS_TSV="$RUNNER_TMP_DIR/results.tsv"
-touch "$RESULTS_TSV"
+    RESULTS_TSV="$RUNNER_TMP_DIR/results.tsv"
+    touch "$RESULTS_TSV"
 
-if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/debug/deps" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
-    echo "ERROR: failed to compile Rust conformance runner"
-    sed 's/^/  rustc | /' "$RUNNER_TMP_DIR/rustc.log"
-    exit 1
+    if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/debug/deps" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
+        echo "ERROR: failed to compile Rust conformance runner"
+        sed 's/^/  rustc | /' "$RUNNER_TMP_DIR/rustc.log"
+        exit 1
+    fi
 fi
 
 normalize_output() {
@@ -143,20 +153,82 @@ normalize_output() {
 }
 
 normalize_error_output() {
-    # NOTE: golden files under tests/conformance/error_golden/ were generated
-    # under the previous normalization, which stripped the
-    # "Error in <call> :" call-context prefix into a bare "Error:". After this
-    # change they need one-time regeneration with stock R (performed by CI);
-    # do not hand-edit them.
+    # NOTE: golden files under tests/conformance/error_golden/ hold the
+    # normalized stock-R output. Regenerate them with
+    # `scripts/conformance_parity.sh --regen-goldens` whenever the case set
+    # or this normalization changes (CI does not regenerate them — review
+    # the diff before committing); do not hand-edit them.
     #
     # We preserve the "Error in <call> :" attribution and normalize only
-    # volatile rendering: a message wrapped onto the line after the call is
-    # re-joined, "Calls:" traceback blocks are dropped, and the
-    # "Execution halted" footer is removed.
+    # volatile rendering: the message wrapped onto the lines after the call
+    # header is re-joined (stock R indents each continuation line after
+    # "Error in <call> : " and a long message may span several of them),
+    # "Calls:" traceback blocks are dropped, and the "Execution halted"
+    # footer is removed.
     normalize_output |
-        sed -E '/^Error in .* :$/ { N; s/\n[[:space:]]*/ /; }' |
+        awk '
+            /^Error in .* :$/ {
+                if (pending != "") print pending
+                pending = $0
+                next
+            }
+            pending != "" && /^[[:space:]]+/ {
+                sub(/^[[:space:]]+/, "")
+                pending = pending " " $0
+                next
+            }
+            {
+                if (pending != "") {
+                    print pending
+                    pending = ""
+                }
+                print
+            }
+            END {
+                if (pending != "") print pending
+            }
+        ' |
         sed '/^Calls:/d' |
         sed '/^Execution halted$/d'
+}
+
+regen_error_goldens() {
+    # Regenerate error goldens from stock C R with the current
+    # normalize_error_output. Goldens are reviewed artifacts: this mode is
+    # run manually (never by CI) and the resulting diff is committed only
+    # after review.
+    if [[ ! -d "$ERROR_CASES_DIR" ]]; then
+        echo "ERROR: missing error cases directory: $ERROR_CASES_DIR" >&2
+        exit 1
+    fi
+    mkdir -p "$ERROR_GOLDEN_DIR"
+
+    shopt -s nullglob
+    local error_cases=("$ERROR_CASES_DIR"/*.R)
+    shopt -u nullglob
+
+    if (( ${#error_cases[@]} == 0 )); then
+        echo "ERROR: no error cases found in $ERROR_CASES_DIR" >&2
+        exit 1
+    fi
+
+    local case_file case_name golden_file raw_out count=0
+    for case_file in "${error_cases[@]}"; do
+        case_name="$(basename "$case_file" .R)"
+        golden_file="$ERROR_GOLDEN_DIR/${case_name}.out"
+        raw_out="$(mktemp "${TMPDIR:-/tmp}/rport-regen.XXXXXX")"
+        if env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$raw_out" 2>&1; then
+            echo "ERROR: ${case_name}: Rscript succeeded, expected an error; golden left unchanged." >&2
+            rm -f "$raw_out"
+            exit 1
+        fi
+        normalize_error_output <"$raw_out" >"$golden_file"
+        rm -f "$raw_out"
+        echo "REGEN ${case_name}"
+        count=$((count + 1))
+    done
+
+    echo "Regenerated ${count} error golden files in $ERROR_GOLDEN_DIR; review the diff before committing."
 }
 
 is_xfail() {
@@ -531,6 +603,11 @@ main() {
     local xfailed=0
     local xpassed=0
     local failed=0
+
+    if [[ "$MODE" == "--regen-goldens" ]]; then
+        regen_error_goldens
+        return 0
+    fi
 
     shopt -s nullglob
     local cases=("$CASES_DIR"/*.R)

@@ -10,7 +10,6 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
-#[cfg(not(target_arch = "wasm32"))]
 use crate::state::with_required_current_instance;
 use crate::utils::{fmax2, fmin2};
 use libm::{exp, expm1, fabs, log, log1p, pow, sqrt, trunc};

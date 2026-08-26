@@ -14,7 +14,6 @@ use crate::error::*;
 use crate::rng::*;
 use crate::special::bd0::bd0;
 use crate::special::stirlerr::stirlerr;
-#[cfg(not(target_arch = "wasm32"))]
 use crate::state::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
@@ -421,7 +420,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
             st.psave = pp;
             st.nsave = n;
             if np < 30.0 {
-                st.qn = pow(q, n as f64);
+                st.qn = crate::special::mlutils::R_pow_di(q, n);
             } else {
                 let ffm = np + p;
                 st.m = ffm as i32;
@@ -451,168 +450,104 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
         let use_small = np < 30.0;
 
         if !use_small {
-            // BTPE algorithm
+            // BTPE algorithm (Kachitvichyanukul & Schmeiser 1988).  The
+            // triangular region accepts directly; parallelogram and tail
+            // candidates fall through to the shared accept/reject test
+            // (rbinom.c:118-182).
             let ix = 'btpe: loop {
                 let u = unif_rand() * st.p4;
                 let v = unif_rand();
                 let ix: i32;
+                let vt: f64;
 
                 if u <= st.p1 {
-                    ix = (st.xm - st.p1 * v + u) as i32;
+                    // triangular region: accept without further testing
+                    break 'btpe (st.xm - st.p1 * v + u) as i32;
                 } else if u <= st.p2 {
+                    // parallelogram region
                     let x = st.xl + (u - st.p1) / st.c;
-                    let v = v * st.c + 1.0 - fabs(st.xm - x) / st.p1;
-                    if v > 1.0 || v <= 0.0 {
+                    let v_par = v * st.c + 1.0 - fabs(st.xm - x) / st.p1;
+                    if v_par > 1.0 || v_par <= 0.0 {
                         continue;
                     }
                     ix = x as i32;
+                    vt = v_par;
                 } else if u > st.p3 {
+                    // right tail
                     ix = (st.xr - log(v) / st.xlr) as i32;
                     if ix > n {
                         continue;
                     }
-                    let v = v * (u - st.p3) * st.xlr;
-                    // Fall through to accept/reject test
-                    let k = (ix - st.m).abs();
-                    if k <= 20 || k >= (st.npq / 2.0 - 1.0) as i32 {
-                        let mut f = 1.0;
-                        if st.m < ix {
-                            for i in (st.m + 1)..=ix {
-                                f *= g / (i as f64) - r_val;
-                            }
-                        } else if st.m != ix {
-                            for i in (ix + 1)..=st.m {
-                                f /= g / (i as f64) - r_val;
-                            }
-                        }
-                        if v <= f {
-                            break 'btpe ix;
-                        }
-                    } else {
-                        let amaxp = ((k as f64) / st.npq)
-                            * (((k as f64) * ((k as f64) / 3.0 + 0.625) + 0.1666666666666)
-                                / st.npq
-                                + 0.5);
-                        let ynorm = -((k as f64) * (k as f64)) / (2.0 * st.npq);
-                        let alv = log(v);
-                        if alv < ynorm - amaxp {
-                            break 'btpe ix;
-                        }
-                        if alv <= ynorm + amaxp {
-                            let x1 = (ix + 1) as f64;
-                            let f1 = st.fm + 1.0;
-                            let z = (n + 1 - st.m) as f64;
-                            let w = (n - ix + 1) as f64;
-                            let z2 = z * z;
-                            let x2 = x1 * x1;
-                            let f2 = f1 * f1;
-                            let w2 = w * w;
-                            let stirling_term1 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / f2) / f2) / f2) / f2)
-                                / f1
-                                / 166320.0;
-                            let stirling_term2 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / z2) / z2) / z2) / z2)
-                                / z
-                                / 166320.0;
-                            let stirling_term3 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / x2) / x2) / x2) / x2)
-                                / x1
-                                / 166320.0;
-                            let stirling_term4 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / w2) / w2) / w2) / w2)
-                                / w
-                                / 166320.0;
-                            if alv
-                                <= st.xm * log(f1 / x1)
-                                    + (n - st.m) as f64 * log(z / w)
-                                    + (ix - st.m) as f64 * log(w * p / (x1 * q))
-                                    + stirling_term1
-                                    + stirling_term2
-                                    + stirling_term3
-                                    + stirling_term4
-                            {
-                                break 'btpe ix;
-                            }
-                        }
-                    }
-                    continue;
+                    vt = v * (u - st.p3) * st.xlr;
                 } else {
                     // left tail
                     ix = (st.xl + log(v) / st.xll) as i32;
                     if ix < 0 {
                         continue;
                     }
-                    let v = v * (u - st.p2) * st.xll;
-                    let k = (ix - st.m).abs();
-                    if k <= 20 || k >= (st.npq / 2.0 - 1.0) as i32 {
-                        let mut f = 1.0;
-                        if st.m < ix {
-                            for i in (st.m + 1)..=ix {
-                                f *= g / (i as f64) - r_val;
-                            }
-                        } else if st.m != ix {
-                            for i in (ix + 1)..=st.m {
-                                f /= g / (i as f64) - r_val;
-                            }
-                        }
-                        if v <= f {
-                            break 'btpe ix;
-                        }
-                    } else {
-                        let amaxp = ((k as f64) / st.npq)
-                            * (((k as f64) * ((k as f64) / 3.0 + 0.625) + 0.1666666666666)
-                                / st.npq
-                                + 0.5);
-                        let ynorm = -((k as f64) * (k as f64)) / (2.0 * st.npq);
-                        let alv = log(v);
-                        if alv < ynorm - amaxp {
-                            break 'btpe ix;
-                        }
-                        if alv <= ynorm + amaxp {
-                            let x1 = (ix + 1) as f64;
-                            let f1 = st.fm + 1.0;
-                            let z = (n + 1 - st.m) as f64;
-                            let w = (n - ix + 1) as f64;
-                            let z2 = z * z;
-                            let x2 = x1 * x1;
-                            let f2 = f1 * f1;
-                            let w2 = w * w;
-                            let stirling_term1 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / f2) / f2) / f2) / f2)
-                                / f1
-                                / 166320.0;
-                            let stirling_term2 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / z2) / z2) / z2) / z2)
-                                / z
-                                / 166320.0;
-                            let stirling_term3 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / x2) / x2) / x2) / x2)
-                                / x1
-                                / 166320.0;
-                            let stirling_term4 = (13860.0
-                                - (462.0 - (132.0 - (99.0 - 140.0 / w2) / w2) / w2) / w2)
-                                / w
-                                / 166320.0;
-                            if alv
-                                <= st.xm * log(f1 / x1)
-                                    + (n - st.m) as f64 * log(z / w)
-                                    + (ix - st.m) as f64 * log(w * p / (x1 * q))
-                                    + stirling_term1
-                                    + stirling_term2
-                                    + stirling_term3
-                                    + stirling_term4
-                            {
-                                break 'btpe ix;
-                            }
-                        }
-                    }
-                    continue;
+                    vt = v * (u - st.p2) * st.xll;
                 }
 
-                // triangular region or parallelogram reached ix
-                // For triangular and parallelogram, simple acceptance
-                break 'btpe ix;
+                // determine appropriate way to perform accept/reject test
+                // (C compares int k against the double npq/2 - 1)
+                let k = (ix - st.m).abs();
+                if k as f64 <= 20.0 || k as f64 >= st.npq / 2.0 - 1.0 {
+                    // explicit evaluation
+                    let mut f = 1.0;
+                    if st.m < ix {
+                        for i in (st.m + 1)..=ix {
+                            f *= g / (i as f64) - r_val;
+                        }
+                    } else if st.m != ix {
+                        for i in (ix + 1)..=st.m {
+                            f /= g / (i as f64) - r_val;
+                        }
+                    }
+                    if vt <= f {
+                        break 'btpe ix;
+                    }
+                } else {
+                    // squeezing using upper and lower bounds on log(f(x))
+                    let amaxp = ((k as f64) / st.npq)
+                        * (((k as f64) * ((k as f64) / 3.0 + 0.625) + 0.1666666666666) / st.npq
+                            + 0.5);
+                    let ynorm = -((k as f64) * (k as f64)) / (2.0 * st.npq);
+                    let alv = log(vt);
+                    if alv < ynorm - amaxp {
+                        break 'btpe ix;
+                    }
+                    if alv <= ynorm + amaxp {
+                        // stirling's formula to machine accuracy
+                        // for the final acceptance/rejection test
+                        let x1 = (ix + 1) as f64;
+                        let f1 = st.fm + 1.0;
+                        let z = (n + 1 - st.m) as f64;
+                        let w = (n - ix + 1) as f64;
+                        let z2 = z * z;
+                        let x2 = x1 * x1;
+                        let f2 = f1 * f1;
+                        let w2 = w * w;
+                        if alv
+                            <= st.xm * log(f1 / x1)
+                                + ((n - st.m) as f64 + 0.5) * log(z / w)
+                                + (ix - st.m) as f64 * log(w * p / (x1 * q))
+                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / f2) / f2) / f2) / f2)
+                                    / f1
+                                    / 166320.0
+                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / z2) / z2) / z2) / z2)
+                                    / z
+                                    / 166320.0
+                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / x2) / x2) / x2) / x2)
+                                    / x1
+                                    / 166320.0
+                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / w2) / w2) / w2) / w2)
+                                    / w
+                                    / 166320.0
+                        {
+                            break 'btpe ix;
+                        }
+                    }
+                }
             };
 
             // finis: C applies the p > 0.5 complement flip once, at the
@@ -713,6 +648,58 @@ mod tests {
                 assert_eq!(state.nsave, -1);
                 assert_eq!(state.psave, -1.0);
             });
+        });
+    }
+
+    #[test]
+    fn rbinom_matches_stock_multicarry_stream() {
+        // Golden values captured from stock R 4.6.1 (rbinom.c BTPE) driven
+        // with the same Marsaglia-MultiCarry stream: after
+        // RNGkind("Marsaglia-Multicarry"), .Random.seed <- c(10401L, i1, i2).
+        // Covers the BTPE triangular/parallelogram/tail regions, the
+        // accept/reject squeeze, the p > 0.5 complement flip and the
+        // np < 30 inverse-CDF path (qn = R_pow_di(q, n)).
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(200.0, 0.4) as i32).collect();
+            assert_eq!(got, [72, 87, 77, 77, 85, 85, 81, 87, 73, 93]);
+
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<i32> = (0..12).map(|_| rbinom_inner(2000.0, 0.5) as i32).collect();
+            assert_eq!(
+                got,
+                [
+                    967, 1016, 978, 979, 1039, 1011, 1007, 996, 986, 1025, 953, 1024
+                ]
+            );
+
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<i32> = (0..8).map(|_| rbinom_inner(40.0, 0.3) as i32).collect();
+            assert_eq!(got, [8, 15, 11, 9, 21, 8, 11, 19]);
+
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(200.0, 0.9) as i32).collect();
+            assert_eq!(got, [185, 176, 182, 184, 166, 186, 181, 169, 182, 172]);
+
+            crate::rng::set_seed(99, 424_242);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(300.0, 0.25) as i32).collect();
+            assert_eq!(got, [86, 72, 90, 75, 93, 78, 79, 85, 93, 78]);
+
+            crate::rng::set_seed(777, 333);
+            let got: Vec<i32> = (0..15).map(|_| rbinom_inner(500.0, 0.06) as i32).collect();
+            assert_eq!(
+                got,
+                [30, 30, 27, 28, 31, 33, 27, 26, 25, 24, 31, 32, 20, 39, 30]
+            );
+
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<i32> = (0..10).map(|_| rbinom_inner(100.0, 0.31) as i32).collect();
+            assert_eq!(got, [27, 25, 35, 25, 33, 38, 27, 32, 29, 30]);
+
+            crate::rng::set_seed(5, 5);
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(500.0, 0.9) as i32).collect();
+            assert_eq!(got, [440, 448, 452, 451, 450, 456]);
         });
     }
 }
