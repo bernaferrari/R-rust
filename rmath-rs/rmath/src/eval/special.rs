@@ -78,6 +78,7 @@ unsafe fn dispatch_special_by_name(
             "on.exit" => do_on_exit_from_args(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
             "~" => crate::mainutils::names::do_tilde(call, op, args, rho),
+            "&&" | "||" => crate::mainutils::logic::do_logic2(call, op, args, rho),
             "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
             "@" => crate::mainutils::essentials::do_at(call, op, args, rho),
             "@<-" => crate::mainutils::essentials::do_at_set(call, op, args, rho),

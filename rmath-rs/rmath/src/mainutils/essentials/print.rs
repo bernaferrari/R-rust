@@ -556,6 +556,36 @@ fn emit_print_data_frame_line(line: &str) {
     }
 }
 
+/// Derive the row labels of a data.frame for printing.
+///
+/// Mirrors stock `print.data.frame`: automatic compact row names (`c(NA, n)`
+/// stored as a length-2 integer vector) expand to `1..n`; explicit integer or
+/// character `row.names` are used verbatim.
+fn data_frame_row_labels(x: SEXP, nrow: R_xlen_t) -> Vec<String> {
+    let row_names =
+        unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr())) };
+    unsafe {
+        if !row_names.is_null() {
+            let t = TYPEOF(row_names);
+            if t == SEXPTYPE::STRSXP && XLENGTH(row_names) == nrow {
+                return (0..nrow).map(|i| elt_to_string(row_names, i)).collect();
+            }
+            if t == SEXPTYPE::INTSXP && XLENGTH(row_names) == nrow {
+                // Compact automatic row names are stored as c(NA_integer_, n);
+                // only a full-length vector of real integers names the rows.
+                let first = *INTEGER(row_names);
+                let is_compact = XLENGTH(row_names) == 2 && first == crate::sexp::ffi::NA_INTEGER;
+                if !is_compact {
+                    return (0..nrow)
+                        .map(|i| INTEGER(row_names).add(i as usize).read().to_string())
+                        .collect();
+                }
+            }
+        }
+    }
+    (1..=nrow).map(|i| i.to_string()).collect()
+}
+
 /// R's `print.data.frame(x)` — print a data.frame nicely with aligned columns.
 pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -577,7 +607,13 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
 
         let show_row_names = print_data_frame_show_row_names(args);
         let (headers, columns) = print_data_frame_column_texts(x, ncol, nrow);
-        let row_width = nrow.to_string().len().max(1);
+        let row_labels = data_frame_row_labels(x, nrow);
+        let row_width = row_labels
+            .iter()
+            .map(|label| label.len())
+            .max()
+            .unwrap_or(0)
+            .max(1);
         let widths: Vec<usize> = headers
             .iter()
             .zip(&columns)
@@ -595,14 +631,30 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
                 .map(|(idx, name)| format!("{:>width$}", name, width = widths[idx]))
                 .collect::<Vec<_>>()
                 .join(" ");
-            emit_print_data_frame_line(&format!("{} {header}", " ".repeat(row_width)));
+            // With row labels shown, stock pads the header by the label
+            // column width plus one separator; with row.names = FALSE the
+            // label column is empty strings, leaving exactly one separator.
+            let label_pad = if show_row_names {
+                " ".repeat(row_width)
+            } else {
+                String::new()
+            };
+            emit_print_data_frame_line(&format!("{label_pad} {header}"));
         }
 
         let print_rows = nrow.min(100) as usize; // increased for better visibility/polish (was 20 hard cap per review feedback on df print); R uses max.print option
         for row in 0..print_rows {
             let mut cells = Vec::with_capacity(headers.len() + usize::from(show_row_names));
+            // Stock left-justifies row labels (auto 1..n, explicit numeric,
+            // and character row names alike) inside the label column; a hidden
+            // label column still contributes its separator space.
             if show_row_names {
-                cells.push(format!("{:>row_width$}", row + 1));
+                cells.push(format!(
+                    "{:<row_width$}",
+                    row_labels.get(row).map(String::as_str).unwrap_or("")
+                ));
+            } else {
+                cells.push(String::new());
             }
             for (idx, values) in columns.iter().enumerate() {
                 let value = values.get(row).map(String::as_str).unwrap_or("");

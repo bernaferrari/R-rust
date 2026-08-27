@@ -4,6 +4,10 @@
 //! embeds an [`RngState`] alongside its [`MathState`](crate::state::MathState)
 //! so `set_seed`/`unif_rand` and the distribution samplers advance one
 //! session-owned stream.
+//!
+//! A host can also install [`set_unif_hook`] to route `unif_rand` through a
+//! richer engine (R's full RNG dispatch with `.Random.seed` round-tripping);
+//! the samplers then draw from that stream instead of MultiCarry.
 
 use std::cell::{Cell, RefCell};
 
@@ -86,11 +90,40 @@ pub fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
     }
 }
 
+/// Host-supplied uniform generator hook.
+///
+/// When installed, [`unif_rand`] delegates to it instead of advancing the
+/// Marsaglia-MultiCarry state. The R-level runtime installs a bridge to the
+/// full RNG dispatch (all RNG kinds, `.Random.seed` round-tripping) so the
+/// nmath samplers draw from the same session stream as `runif()`.
+pub type UnifRandHook = fn() -> f64;
+
+thread_local! {
+    static UNIF_HOOK: Cell<Option<UnifRandHook>> = const { Cell::new(None) };
+}
+
+/// Install (or clear, with `None`) this thread's uniform generator hook.
+pub fn set_unif_hook(hook: Option<UnifRandHook>) {
+    UNIF_HOOK.with(|slot| slot.set(hook));
+}
+
 /// Generate a uniform random number in [0, 1).
 ///
-/// Faithful port of the Marsaglia-MultiCarry generator.
+/// Delegates to the installed host hook when present; otherwise advances the
+/// built-in Marsaglia-MultiCarry stream.
 #[must_use]
 pub fn unif_rand() -> f64 {
+    if let Some(hook) = UNIF_HOOK.with(Cell::get) {
+        return hook();
+    }
+    multicarry_unif_rand()
+}
+
+/// The built-in Marsaglia-MultiCarry stream, ignoring any installed hook.
+///
+/// Host bridges use this as the fallback when no R instance is active.
+#[must_use]
+pub fn multicarry_unif_rand() -> f64 {
     let installed = CURRENT_RNG.with(|slot| *slot.borrow());
     let step = |state: &mut RngState| -> f64 {
         let (mut i1, mut i2) = (state.0, state.1);

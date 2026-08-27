@@ -1,17 +1,17 @@
-0x1 integer 
-1x0 integer 
-2x1 integer 
+0x1 integer
+1x0 integer
+2x1 integer
      [,1]
 [1,]    1
 [2,]    2
-1x2 integer 
+1x2 integer
      [,1] [,2]
 [1,]    1    2
-0x2 double 
-2x0 double 
-0x1 integer 
+0x2 double
+2x0 double
+0x1 integer
 [1] TRUE
 [1] "a"
-1x0 integer 
+1x0 integer
 [1] "a"
 [1] TRUE

@@ -115,7 +115,6 @@ fn verify_gc_invariants_in(instance: &mut instance::RInstance) {
 // per GC and hashing cost on every pointer edge during marking. Sweep still walks actives
 // (necessary) to find unmarked for free.
 // Protected "force" marking uses the traced path (now default behavior).
-
 #[inline(always)]
 fn mark_reachable(obj: SEXP) {
     if obj.is_null() {
@@ -129,6 +128,19 @@ fn mark_reachable_traced(obj: SEXP) {
     if obj.is_null() {
         return;
     }
+    // A reachable SEXP is always pointer-aligned and lives far above the
+    // null page. This used to be a silent skip that masked real heap
+    // corruption: slots holding small integer sentinels or recycled native
+    // pointers after the collector wrongly swept live bindings. With
+    // persistent roots re-traced every cycle and raw stack references
+    // protected across allocating calls, every traced slot is a real SEXP,
+    // so keep only a debug tripwire that surfaces regressions loudly
+    // instead of dereferencing (or silently skipping) garbage.
+    debug_assert!(
+        (obj as usize) >= 0x1_0000 && (obj as usize).trailing_zeros() >= 3,
+        "mark_reachable_traced on implausible SEXP pointer {:#x}",
+        obj as usize
+    );
 
     unsafe {
         if (*obj).sxpinfo.mark() {
@@ -143,7 +155,9 @@ fn mark_reachable_traced(obj: SEXP) {
                 mark_reachable((*obj).data.symsxp.value);
                 mark_reachable((*obj).data.symsxp.internal);
             }
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
+            // DOTSXP (...) chains are cons cells with the same listsxp
+            // layout; skipping them left spliced `...` arguments untraced.
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
                 mark_reachable((*obj).data.listsxp.carval);
                 mark_reachable((*obj).data.listsxp.cdrval);
                 mark_reachable((*obj).data.listsxp.tagval);
@@ -419,9 +433,17 @@ impl Drop for CardTable {
 // ---------------------------------------------------------------------------
 
 /// Remembered set tracking old objects with references to young objects.
+///
+/// Membership lives in owned state (`members`), never in the SEXP mark bit.
+/// The mark bit belongs to the collector's mark phase: setting it at barrier
+/// time made the remembered-set scans in `do_minor_gc_in` /
+/// `mark_from_all_roots_in` early-return on `mark_reachable`, so the young
+/// children of a remembered old object were never traced and could be swept
+/// while still reachable (plans/001-separate-remembered-set-membership.md).
 #[derive(Default)]
 pub struct RememberedSet {
     entries: Vec<SEXP>,
+    members: HashSet<usize>,
 }
 
 impl RememberedSet {
@@ -434,26 +456,23 @@ impl RememberedSet {
             if (*obj).sxpinfo.gcgen() == 0 {
                 return;
             }
-
-            if !(*obj).sxpinfo.mark() {
-                (*obj).sxpinfo.set_mark(true);
-                if self.entries.try_reserve(1).is_err() {
-                    return;
-                }
-                self.entries.push(obj);
-            }
         }
+        let addr = obj as usize;
+        if self.members.contains(&addr) {
+            return;
+        }
+        // Reserve both collections before mutating either, so an allocation
+        // failure cannot leave entries and membership out of sync.
+        if self.entries.try_reserve(1).is_err() || self.members.try_reserve(1).is_err() {
+            return;
+        }
+        self.entries.push(obj);
+        self.members.insert(addr);
     }
 
     pub fn clear(&mut self) {
-        for &obj in &self.entries {
-            if !obj.is_null() {
-                unsafe {
-                    (*obj).sxpinfo.set_mark(false);
-                }
-            }
-        }
         self.entries.clear();
+        self.members.clear();
     }
 
     pub fn iter(&self) -> impl Iterator<Item = SEXP> + '_ {
@@ -465,8 +484,22 @@ impl RememberedSet {
         self.entries.len()
     }
 
-    pub fn entries_mut(&mut self) -> &mut Vec<SEXP> {
-        &mut self.entries
+    /// Remap entries through a relocation map (non-moving sweep redirects
+    /// freed addresses to `R_NilValue`) and rebuild membership so a later
+    /// barrier cannot deduplicate against a stale address.
+    pub fn remap(&mut self, old_to_new: &HashMap<usize, SEXP>) {
+        for entry in &mut self.entries {
+            let addr = *entry as usize;
+            if let Some(&new_ptr) = old_to_new.get(&addr) {
+                *entry = new_ptr;
+            }
+        }
+        self.members = self
+            .entries
+            .iter()
+            .filter(|entry| !entry.is_null())
+            .map(|entry| *entry as usize)
+            .collect();
     }
 }
 
@@ -627,12 +660,7 @@ fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
 
 fn update_remembered_set_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
     with_gc_state_in(instance, |state| {
-        for entry in state.remembered_set.entries_mut() {
-            let addr = *entry as usize;
-            if let Some(&new_ptr) = old_to_new.get(&addr) {
-                *entry = new_ptr;
-            }
-        }
+        state.remembered_set.remap(old_to_new);
     });
 }
 
@@ -648,7 +676,9 @@ fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
                 update_field(&mut (*obj).data.symsxp.value, old_to_new);
                 update_field(&mut (*obj).data.symsxp.internal, old_to_new);
             }
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
+            // DOTSXP (...) chains share the listsxp layout; keep sweep-time
+            // redirection consistent with mark_reachable_traced above.
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
                 update_field(&mut (*obj).data.listsxp.carval, old_to_new);
                 update_field(&mut (*obj).data.listsxp.cdrval, old_to_new);
                 update_field(&mut (*obj).data.listsxp.tagval, old_to_new);
@@ -874,6 +904,13 @@ where
 
     instance.gc_state.in_progress = true;
     verify_gc_invariants_in(instance);
+    // Sweep only visits arena nodes, so persistent nodes keep whatever mark
+    // the previous cycle left on them. Clear those marks before marking so
+    // every cycle re-traces the persistent roots (environment frames,
+    // interned symbol pnames, raw cons cells); a stale mark would make
+    // `mark_reachable_traced` short-circuit and sweep bindings that are
+    // still reachable, leaving dangling frame chains behind.
+    clear_persistent_node_marks_in(instance);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| collect(instance)));
     instance.gc_state.in_progress = false;
@@ -891,6 +928,32 @@ where
         // was already reset above, so a panic caught higher up does not leave
         // GC permanently disabled.
         Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+/// Clear trace marks on nodes this instance owns outside the arena.
+///
+/// The mark bit doubles as the per-cycle "visited" flag, but sweep only
+/// resets it for arena nodes. Persistent nodes (the empty/base/global
+/// environment sentinels in `env_nodes`, interned symbols in
+/// `symbol_nodes`, and out-of-arena cons cells in `raw_cons`) therefore
+/// survived earlier cycles with the bit still set, and every later cycle
+/// skipped tracing them. The process-global sentinels (`R_NilValue`,
+/// `R_UnboundValue`, `R_MissingArg`, `R_RestartToken`) are deliberately not
+/// touched: they are pre-marked to pin, and none of them traces children.
+fn clear_persistent_node_marks_in(instance: &mut instance::RInstance) {
+    for node in &mut instance.env_nodes {
+        node.sxpinfo.set_mark(false);
+    }
+    for node in &mut instance.symbol_nodes {
+        node.sxpinfo.set_mark(false);
+    }
+    for &node in &instance.raw_cons {
+        unsafe {
+            if !node.is_null() {
+                (*node).sxpinfo.set_mark(false);
+            }
+        }
     }
 }
 
@@ -983,6 +1046,31 @@ fn push_environment_binding_protects(instance: &mut instance::RInstance) {
     for value in values {
         push_protect_in(instance, value);
     }
+}
+
+/// Run an explicit user-requested collection (`gc()` / `gcinfo`-style entry
+/// points) with the same environment force-protect preamble the eval safe
+/// points use.
+///
+/// `gc()` can fire mid-evaluation — inside a loop body or a closure call —
+/// unlike safe points, which only run between statements. Without the
+/// preamble, a full collection there sweeps in-flight frame bindings (loop
+/// variables, closure-call environments), surfacing later as
+/// `object 'i' not found`.
+pub fn collect_with_environment_protects(full: bool) -> (usize, usize) {
+    instance::with_required_current_instance(|instance| {
+        let start = instance.protect_stack.borrow().len();
+        push_environment_binding_protects(instance);
+        let added = instance.protect_stack.borrow().len().saturating_sub(start);
+        instance.gc_state.gc_pending = false;
+        let result = if full {
+            full_gc_in(instance)
+        } else {
+            minor_gc_in(instance)
+        };
+        super::protect::unprotect_count_in(instance, added);
+        result
+    })
 }
 
 /// Run collection at a cooperative safe point during evaluation.
@@ -1252,6 +1340,60 @@ mod tests {
     use crate::sexp::session::RSession;
 
     use super::*;
+
+    /// Persistent environment sentinels live outside the arena, so sweep
+    /// never resets their mark bits. Before `clear_persistent_node_marks_in`
+    /// ran at cycle start, the mark left by cycle one made
+    /// `mark_reachable_traced` short-circuit on every later cycle: global
+    /// frame bindings were not re-traced and got swept while still
+    /// reachable, leaving dangling frame chains that later collections (or
+    /// frame walks) dereferenced as garbage.
+    #[test]
+    fn test_persistent_env_roots_retraced_every_cycle() {
+        let _session = RSession::new();
+
+        let sym =
+            unsafe { crate::sexp::symbol::Rf_install(b"retrace_probe\0".as_ptr() as *const _) };
+        let value = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        unsafe {
+            *(crate::sexp::accessors::INTEGER(value)) = 42;
+        }
+        unsafe {
+            crate::sexp::envir::defineVar(sym, value, crate::sexp::globals::R_GlobalEnv());
+        }
+
+        // Cycle one marks the persistent global env; cycle two must clear
+        // the stale mark and walk the frame again instead of sweeping it.
+        full_gc();
+        let found = unsafe {
+            crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym)
+        };
+        assert!(found != unsafe { crate::sexp::globals::R_UnboundValue() });
+        assert!(with_arena(|arena| arena.contains(found)));
+
+        full_gc();
+        let found = unsafe {
+            crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym)
+        };
+        assert!(
+            found != unsafe { crate::sexp::globals::R_UnboundValue() },
+            "global binding swept after second cycle: persistent env mark went stale"
+        );
+        assert!(with_arena(|arena| arena.contains(found)));
+        assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(found) }, 42);
+
+        // The quiescent path has no force-protect preamble; with the fix the
+        // global env root alone must keep the binding alive.
+        let (_p, _f) = minor_gc();
+        let found = unsafe {
+            crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym)
+        };
+        assert!(
+            found != unsafe { crate::sexp::globals::R_UnboundValue() },
+            "global binding swept by preamble-less minor gc"
+        );
+        assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(found) }, 42);
+    }
 
     fn reset_gc_test_arena(arena: &mut RArena) {
         *arena = RArena::new();
@@ -2131,5 +2273,156 @@ mod tests {
 
         let after_ptr = unsafe { *((*vec).gengc_next_node as *mut SEXP) };
         assert_eq!(after_ptr, replacement);
+    }
+
+    #[test]
+    fn test_dotsxp_chain_is_traced_from_protected_head() {
+        let _session = RSession::new();
+
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+
+            let sym_a = arena.alloc_node(SEXPTYPE::SYMSXP);
+            let sym_b = arena.alloc_node(SEXPTYPE::SYMSXP);
+            let one = arena.alloc_node(SEXPTYPE::INTSXP);
+            let two = arena.alloc_node(SEXPTYPE::INTSXP);
+            let tail = arena.alloc_node(SEXPTYPE::DOTSXP);
+            let head = arena.alloc_node(SEXPTYPE::DOTSXP);
+            let nil = unsafe { crate::sexp::globals::R_NilValue() };
+            unsafe {
+                (*tail).data.listsxp.tagval = sym_b;
+                (*tail).data.listsxp.carval = two;
+                (*tail).data.listsxp.cdrval = nil;
+                (*head).data.listsxp.tagval = sym_a;
+                (*head).data.listsxp.carval = one;
+                (*head).data.listsxp.cdrval = tail;
+            }
+
+            // Only the chain head is rooted; the cells beyond it are reachable
+            // exclusively through the DOTSXP tracing arm.
+            instance::with_required_current_instance(|inst| {
+                push_protect_in(inst, head);
+            });
+
+            minor_gc();
+
+            let active: Vec<SEXP> = arena.active_nodes().collect();
+            assert!(active.contains(&tail), "DOTSXP tail cell was swept");
+            assert!(active.contains(&one), "DOTSXP car value was swept");
+            assert!(active.contains(&two), "DOTSXP tail car value was swept");
+            unsafe {
+                assert_eq!((*head).data.listsxp.cdrval, tail);
+                assert_eq!((*tail).data.listsxp.carval, two);
+            }
+        });
+    }
+
+    #[test]
+    fn test_remembered_old_list_keeps_young_car_across_minor_gc() {
+        let _session = RSession::new();
+
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+
+            let parent = arena.alloc_node(SEXPTYPE::LISTSXP);
+            let child = arena.alloc_node(SEXPTYPE::INTSXP);
+            let nil = unsafe { crate::sexp::globals::R_NilValue() };
+            unsafe {
+                (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
+                (*parent).data.listsxp.carval = child;
+                (*parent).data.listsxp.cdrval = nil;
+                (*parent).data.listsxp.tagval = nil;
+                (*child).sxpinfo.set_gcgen(Generation::Young as u8);
+            }
+
+            // The parent is intentionally not rooted anywhere else: the
+            // remembered set is the only path that must keep the young child
+            // alive through a minor collection.
+            write_barrier(parent, child);
+            unsafe {
+                assert!(
+                    !(*parent).sxpinfo.mark(),
+                    "write_barrier must not borrow the mark bit for membership"
+                );
+            }
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+
+            minor_gc();
+
+            let active: Vec<SEXP> = arena.active_nodes().collect();
+            assert!(
+                active.contains(&child),
+                "young child of a remembered old parent was swept"
+            );
+            unsafe {
+                assert_eq!((*parent).data.listsxp.carval, child);
+            }
+        });
+    }
+
+    #[test]
+    fn test_remembered_vector_element_survives_and_dedupes() {
+        let _session = RSession::new();
+
+        with_arena(|arena| {
+            reset_gc_test_arena(arena);
+
+            use crate::sexp::accessors::{SET_VECTOR_ELT, VECTOR_ELT};
+            let parent = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+            let child = arena.alloc_node(SEXPTYPE::STRSXP);
+            unsafe {
+                (*parent).sxpinfo.set_gcgen(Generation::Old as u8);
+                (*child).sxpinfo.set_gcgen(Generation::Young as u8);
+                SET_VECTOR_ELT(parent, 0, child);
+            }
+
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+            unsafe {
+                SET_VECTOR_ELT(parent, 0, child);
+            }
+            assert_eq!(
+                with_gc_state(|state| state.remembered_set.len()),
+                1,
+                "duplicate barrier calls must deduplicate"
+            );
+            unsafe {
+                assert!(!(*parent).sxpinfo.mark());
+            }
+
+            minor_gc();
+
+            let active: Vec<SEXP> = arena.active_nodes().collect();
+            assert!(
+                active.contains(&child),
+                "young element of a remembered old vector was swept"
+            );
+            unsafe {
+                assert_eq!(VECTOR_ELT(parent, 0), child);
+            }
+        });
+    }
+
+    #[test]
+    fn test_remembered_set_remap_updates_membership() {
+        let mut inst = instance::RInstance::new();
+        let old = inst.arena.alloc_node(SEXPTYPE::INTSXP);
+        let new = inst.arena.alloc_node(SEXPTYPE::REALSXP);
+        unsafe {
+            (*old).sxpinfo.set_gcgen(Generation::Old as u8);
+            (*new).sxpinfo.set_gcgen(Generation::Old as u8);
+        }
+
+        inst.gc_state.remembered_set.add(old);
+        let mut map = HashMap::new();
+        map.insert(old as usize, new);
+        update_remembered_set_in(&mut inst, &map);
+
+        assert!(inst.gc_state.remembered_set.iter().any(|obj| obj == new));
+        // Membership follows the remapped address: re-adding the new pointer
+        // deduplicates, while the stale old address is no longer a member.
+        inst.gc_state.remembered_set.add(new);
+        assert_eq!(inst.gc_state.remembered_set.len(), 1);
+        inst.gc_state.remembered_set.add(old);
+        assert_eq!(inst.gc_state.remembered_set.len(), 2);
     }
 }

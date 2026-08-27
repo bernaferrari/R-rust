@@ -157,6 +157,7 @@ fn expr_or_nil(expr: SEXP) -> SEXP {
 struct CurrentInstanceGuard {
     previous: Option<*mut RInstance>,
     previous_rng: Option<*mut rmath_nmath::RngState>,
+    previous_state: Option<*mut rmath_nmath::MathState>,
 }
 
 impl Drop for CurrentInstanceGuard {
@@ -166,6 +167,7 @@ impl Drop for CurrentInstanceGuard {
             // Restore the RNG installation this activation replaced so two
             // live sessions on one thread never observe each other's stream.
             rmath_nmath::rng::swap_rng(self.previous_rng);
+            rmath_nmath::state::restore_state(self.previous_state);
         }
     }
 }
@@ -259,6 +261,12 @@ impl RSession {
             set_current_instance(&mut *instance as *mut RInstance);
             install_state(&mut instance.math_state as *mut MathState);
             install_rng(&mut instance.rng_state as *mut RngState);
+            // Route the nmath samplers through the full R-level RNG dispatch
+            // (all RNG kinds, `.Random.seed` state). The bridge resolves the
+            // *current* instance dynamically, so one installation per thread
+            // serves every session and falls back to the standalone
+            // MultiCarry stream when no instance is active.
+            rmath_nmath::rng::set_unif_hook(Some(crate::mainutils::random::nmath_unif_hook));
         }
         RSession {
             active: true,
@@ -300,9 +308,18 @@ impl RSession {
                 &mut (*self.instance_ptr()).rng_state as *mut rmath_nmath::RngState,
             ))
         };
+        // Scope the nmath sampler state (rgamma/beta/... caches) the same
+        // way; without this a detached session's sampler state resets on
+        // every access and stateful algorithms like rgamma's GD loop fail.
+        let previous_state = unsafe {
+            rmath_nmath::state::replace_state(
+                &mut (*self.instance_ptr()).math_state as *mut rmath_nmath::MathState,
+            )
+        };
         CurrentInstanceGuard {
             previous,
             previous_rng,
+            previous_state,
         }
     }
 
@@ -908,7 +925,11 @@ impl RSession {
 
     /// Set this session's RNG seed state.
     pub fn set_seed(&self, i1: u32, i2: u32) {
-        self.with_active(|| crate::rng::set_seed(i1, i2));
+        // Seed the full R-level engine (all RNG kinds, `.Random.seed`), which
+        // the nmath samplers share via the uniform hook.
+        self.with_active(|| {
+            crate::mainutils::random::set_session_seed64(((i1 as i64) << 32) | (i2 as i64))
+        });
     }
 
     /// Set or clear this session's cooperative cancellation token.

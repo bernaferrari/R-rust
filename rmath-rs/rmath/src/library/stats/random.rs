@@ -724,7 +724,7 @@ pub unsafe fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
             sa,
             sb,
             crate::nmath::dist::nbinom::rnbinom_mu_inner,
-            SEXPTYPE::REALSXP,
+            SEXPTYPE::INTSXP,
         )
     }
 }
@@ -918,5 +918,540 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
 
         PutRNGstate();
         ans
+    }
+}
+
+// ---------------------------------------------------------------------------
+// R-level adapters -- the stock stats closures bake in argument defaults and
+// ncp/prob-vs-mu/rate-vs-scale dispatch before calling the .Call entry points.
+// The port has no R closures, so these adapters reproduce that front end.
+// ---------------------------------------------------------------------------
+
+unsafe fn adapter_absent(x: SEXP) -> bool {
+    unsafe { x.is_null() || x == R_NilValue() || x == R_MissingArg() }
+}
+
+fn missing_required(call: SEXP, name: &str) -> ! {
+    crate::main::errors::errorcall_str(
+        call,
+        &format!("argument \"{name}\" is missing, with no default"),
+    )
+}
+
+/// True when the pairlist cell's tag is `name` (named-argument dispatch:
+/// the evaluator keeps call order, so `rnbinom(n, size, mu = m)` delivers
+/// `mu` in the third slot). `cell` must be the argument's pairlist cons
+/// cell, not its value.
+unsafe fn arg_tag_is(cell: SEXP, name: &str) -> bool {
+    unsafe {
+        if cell.is_null() || cell == R_NilValue() {
+            return false;
+        }
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            return false;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() {
+            return false;
+        }
+        std::ffi::CStr::from_ptr(CHAR(pname)).to_bytes() == name.as_bytes()
+    }
+}
+
+/// `x` or a ScalarReal(default) when the argument is absent; freshly
+/// allocated defaults are protected via `guards` for the adapter's scope.
+unsafe fn with_default(
+    x: SEXP,
+    default: c_double,
+    guards: &mut Vec<crate::sexp::protect::ProtectGuard>,
+) -> SEXP {
+    unsafe {
+        if adapter_absent(x) {
+            let s = Rf_ScalarReal(default);
+            guards.push(protect(s));
+            s
+        } else {
+            x
+        }
+    }
+}
+
+/// Vectorized `1/x` (the `rexp` closure's `1/rate`), with R's Inf/NA rules.
+unsafe fn reciprocal_vector(x: SEXP) -> SEXP {
+    unsafe {
+        let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+        let _v_guard = protect(v);
+        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, XLENGTH(v) as c_int);
+        let _out_guard = protect(out);
+        let src = REAL(v);
+        let dst = REAL(out);
+        for i in 0..XLENGTH(v) as usize {
+            *dst.add(i) = 1.0 / *src.add(i);
+        }
+        out
+    }
+}
+
+/// Elementwise `s * x` for a numeric vector (e.g. rbeta's `2 * shape1`).
+unsafe fn scaled_vector(x: SEXP, s: c_double) -> SEXP {
+    unsafe {
+        let v = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
+        let _v_guard = protect(v);
+        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, XLENGTH(v) as c_int);
+        let _out_guard = protect(out);
+        let src = REAL(v);
+        let dst = REAL(out);
+        for i in 0..XLENGTH(v) as usize {
+            *dst.add(i) = s * *src.add(i);
+        }
+        out
+    }
+}
+
+/// Elementwise binary op on two REALSXP results with stock recycling of the
+/// shorter operand (used by the ncp composition closures).
+unsafe fn vector_binop(a: SEXP, b: SEXP, f: unsafe fn(c_double, c_double) -> c_double) -> SEXP {
+    unsafe {
+        let na = XLENGTH(a);
+        let nb = XLENGTH(b);
+        let n = na.max(nb);
+        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
+        let _out_guard = protect(out);
+        let pa = REAL(a);
+        let pb = REAL(b);
+        let dst = REAL(out);
+        for i in 0..n as usize {
+            *dst.add(i) = f(*pa.add(i % na as usize), *pb.add(i % nb as usize));
+        }
+        out
+    }
+}
+
+unsafe fn div(a: c_double, b: c_double) -> c_double {
+    a / b
+}
+
+unsafe fn add(a: c_double, b: c_double) -> c_double {
+    a + b
+}
+
+/// Elementwise sqrt on a REALSXP vector.
+unsafe fn sqrt_vector(x: SEXP) -> SEXP {
+    unsafe {
+        let out = Rf_allocVector(SEXPTYPE::REALSXP.0, XLENGTH(x) as c_int);
+        let _out_guard = protect(out);
+        let src = REAL(x);
+        let dst = REAL(out);
+        for i in 0..XLENGTH(x) as usize {
+            *dst.add(i) = (*src.add(i)).sqrt();
+        }
+        out
+    }
+}
+
+pub unsafe fn do_rchisq_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let df = CADR(args);
+        if adapter_absent(df) {
+            missing_required(call, "df");
+        }
+        let ncp = CADDR(args);
+        if adapter_absent(ncp) {
+            do_rchisq(n, df)
+        } else {
+            do_rnchisq(n, df, ncp)
+        }
+    }
+}
+
+pub unsafe fn do_rexp_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let mut guards = Vec::new();
+        let rate = with_default(CADR(args), 1.0, &mut guards);
+        let scale = reciprocal_vector(rate);
+        do_rexp(n, scale)
+    }
+}
+
+pub unsafe fn do_rgeom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let prob = CADR(args);
+        if adapter_absent(prob) {
+            missing_required(call, "prob");
+        }
+        do_rgeom(n, prob)
+    }
+}
+
+pub unsafe fn do_rpois_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let lambda = CADR(args);
+        if adapter_absent(lambda) {
+            missing_required(call, "lambda");
+        }
+        do_rpois(n, lambda)
+    }
+}
+
+pub unsafe fn do_rt_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let df = CADR(args);
+        if adapter_absent(df) {
+            missing_required(call, "df");
+        }
+        let ncp = CADDR(args);
+        if adapter_absent(ncp) {
+            do_rt(n, df)
+        } else {
+            // rnorm(n, ncp)/sqrt(rchisq(n, df)/df): two full passes, in the
+            // stock closure's draw order (normals first, then chisq).
+            let mut guards = Vec::new();
+            let one = with_default(R_NilValue(), 1.0, &mut guards);
+            let z = do_rnorm(n, ncp, one);
+            let _z_guard = protect(z);
+            let chi = do_rchisq(n, df);
+            let _chi_guard = protect(chi);
+            let ratio = vector_binop(chi, df, div);
+            let _ratio_guard = protect(ratio);
+            let root = sqrt_vector(ratio);
+            let _root_guard = protect(root);
+            vector_binop(z, root, div)
+        }
+    }
+}
+
+pub unsafe fn do_rsignrank_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let nn = CAR(args);
+        if adapter_absent(nn) {
+            missing_required(call, "nn");
+        }
+        let n = CADR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        do_rsignrank(nn, n)
+    }
+}
+
+pub unsafe fn do_rbeta_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let shape1 = CADR(args);
+        if adapter_absent(shape1) {
+            missing_required(call, "shape1");
+        }
+        let shape2 = CADDR(args);
+        if adapter_absent(shape2) {
+            missing_required(call, "shape2");
+        }
+        let ncp = CADDDR(args);
+        if adapter_absent(ncp) {
+            do_rbeta(n, shape1, shape2)
+        } else {
+            // X <- rchisq(n, 2*shape1, ncp); X/(X + rchisq(n, 2*shape2))
+            let df1 = scaled_vector(shape1, 2.0);
+            let _df1_guard = protect(df1);
+            let x = do_rnchisq(n, df1, ncp);
+            let _x_guard = protect(x);
+            let df2 = scaled_vector(shape2, 2.0);
+            let _df2_guard = protect(df2);
+            let y = do_rchisq(n, df2);
+            let _y_guard = protect(y);
+            let sum = vector_binop(x, y, add);
+            let _sum_guard = protect(sum);
+            vector_binop(x, sum, div)
+        }
+    }
+}
+
+pub unsafe fn do_rbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let size = CADR(args);
+        if adapter_absent(size) {
+            missing_required(call, "size");
+        }
+        let prob = CADDR(args);
+        if adapter_absent(prob) {
+            missing_required(call, "prob");
+        }
+        do_rbinom(n, size, prob)
+    }
+}
+
+pub unsafe fn do_rcauchy_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let mut guards = Vec::new();
+        do_rcauchy(
+            n,
+            with_default(CADR(args), 0.0, &mut guards),
+            with_default(CADDR(args), 1.0, &mut guards),
+        )
+    }
+}
+
+pub unsafe fn do_rf_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let df1 = CADR(args);
+        if adapter_absent(df1) {
+            missing_required(call, "df1");
+        }
+        let df2 = CADDR(args);
+        if adapter_absent(df2) {
+            missing_required(call, "df2");
+        }
+        let ncp = CADDDR(args);
+        if adapter_absent(ncp) {
+            do_rf(n, df1, df2)
+        } else {
+            // (rchisq(n, df1, ncp)/df1) / (rchisq(n, df2)/df2)
+            let num0 = do_rnchisq(n, df1, ncp);
+            let _num0_guard = protect(num0);
+            let num = vector_binop(num0, df1, div);
+            let _num_guard = protect(num);
+            let den0 = do_rchisq(n, df2);
+            let _den0_guard = protect(den0);
+            let den = vector_binop(den0, df2, div);
+            let _den_guard = protect(den);
+            vector_binop(num, den, div)
+        }
+    }
+}
+
+pub unsafe fn do_rgamma_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let shape = CADR(args);
+        if adapter_absent(shape) {
+            missing_required(call, "shape");
+        }
+        let mut guards = Vec::new();
+        // Named rate/scale can land in either trailing slot.
+        let cell3 = CDR(CDR(args));
+        let cell4 = CDR(cell3);
+        let mut rate = CADDR(args);
+        let mut scale = CADDDR(args);
+        if adapter_absent(scale) && arg_tag_is(cell3, "scale") {
+            scale = rate;
+            rate = R_NilValue();
+        } else if adapter_absent(rate) && arg_tag_is(cell4, "rate") {
+            rate = scale;
+            scale = R_NilValue();
+        }
+        let rate_present = !adapter_absent(rate);
+        let scale_present = !adapter_absent(scale);
+        if rate_present && scale_present {
+            // |rate * scale - 1| < 1e-15 -> warning, else error (stock)
+            let rv = coerceVector(rate, SEXPTYPE::REALSXP.as_c_int());
+            let _rv_guard = protect(rv);
+            let sv = coerceVector(scale, SEXPTYPE::REALSXP.as_c_int());
+            let _sv_guard = protect(sv);
+            let r0 = *REAL(rv).add(0);
+            let s0 = *REAL(sv).add(0);
+            if (r0 * s0 - 1.0).abs() < 1e-15 {
+                let msg = std::ffi::CString::new("specify 'rate' or 'scale' but not both")
+                    .unwrap_or_default();
+                crate::main::errors::Rf_warningcall1(call, msg.as_ptr());
+            } else {
+                crate::main::errors::errorcall_str(call, "specify 'rate' or 'scale' but not both");
+            }
+        }
+        let scale_arg = if scale_present {
+            scale
+        } else {
+            reciprocal_vector(with_default(rate, 1.0, &mut guards))
+        };
+        do_rgamma(n, shape, scale_arg)
+    }
+}
+
+pub unsafe fn do_rlnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let mut guards = Vec::new();
+        do_rlnorm(
+            n,
+            with_default(CADR(args), 0.0, &mut guards),
+            with_default(CADDR(args), 1.0, &mut guards),
+        )
+    }
+}
+
+pub unsafe fn do_rlogis_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let mut guards = Vec::new();
+        do_rlogis(
+            n,
+            with_default(CADR(args), 0.0, &mut guards),
+            with_default(CADDR(args), 1.0, &mut guards),
+        )
+    }
+}
+
+pub unsafe fn do_rnbinom_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let size = CADR(args);
+        if adapter_absent(size) {
+            missing_required(call, "size");
+        }
+        // The evaluator keeps call order, so rnbinom(n, size, mu = m)
+        // delivers mu in the third slot; recognize the tag on the cells.
+        let cell3 = CDR(CDR(args));
+        let cell4 = CDR(cell3);
+        let mut prob = CADDR(args);
+        let mut mu = CADDDR(args);
+        if adapter_absent(mu) && arg_tag_is(cell3, "mu") {
+            mu = prob;
+            prob = R_NilValue();
+        } else if adapter_absent(prob) && arg_tag_is(cell4, "prob") {
+            prob = mu;
+            mu = R_NilValue();
+        }
+        if !adapter_absent(mu) {
+            if !adapter_absent(prob) {
+                crate::main::errors::errorcall_str(call, "'prob' and 'mu' both specified");
+            }
+            do_rnbinom_mu(n, size, mu)
+        } else {
+            if adapter_absent(prob) {
+                missing_required(call, "prob");
+            }
+            do_rnbinom(n, size, prob)
+        }
+    }
+}
+
+pub unsafe fn do_rnorm_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let mut guards = Vec::new();
+        do_rnorm(
+            n,
+            with_default(CADR(args), 0.0, &mut guards),
+            with_default(CADDR(args), 1.0, &mut guards),
+        )
+    }
+}
+
+pub unsafe fn do_runif_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let mut guards = Vec::new();
+        do_runif(
+            n,
+            with_default(CADR(args), 0.0, &mut guards),
+            with_default(CADDR(args), 1.0, &mut guards),
+        )
+    }
+}
+
+pub unsafe fn do_rweibull_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = CAR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let shape = CADR(args);
+        if adapter_absent(shape) {
+            missing_required(call, "shape");
+        }
+        let mut guards = Vec::new();
+        do_rweibull(n, shape, with_default(CADDR(args), 1.0, &mut guards))
+    }
+}
+
+pub unsafe fn do_rwilcox_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let nn = CAR(args);
+        if adapter_absent(nn) {
+            missing_required(call, "nn");
+        }
+        let m = CADR(args);
+        if adapter_absent(m) {
+            missing_required(call, "m");
+        }
+        let n = CADDR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        do_rwilcox(nn, m, n)
+    }
+}
+
+pub unsafe fn do_rhyper_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let nn = CAR(args);
+        if adapter_absent(nn) {
+            missing_required(call, "nn");
+        }
+        let m = CADR(args);
+        if adapter_absent(m) {
+            missing_required(call, "m");
+        }
+        let n = CADDR(args);
+        if adapter_absent(n) {
+            missing_required(call, "n");
+        }
+        let k = CADDDR(args);
+        if adapter_absent(k) {
+            missing_required(call, "k");
+        }
+        do_rhyper(nn, m, n, k)
     }
 }

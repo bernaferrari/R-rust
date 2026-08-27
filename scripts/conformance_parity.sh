@@ -192,6 +192,41 @@ normalize_error_output() {
         sed '/^Execution halted$/d'
 }
 
+regen_normal_goldens() {
+    # Regenerate normal-case goldens from stock C R with the current
+    # normalize_output. Goldens are reviewed artifacts: this mode is
+    # run manually (never by CI) and the resulting diff is committed only
+    # after review.
+    mkdir -p "$GOLDEN_DIR"
+
+    shopt -s nullglob
+    local cases=("$CASES_DIR"/*.R)
+    shopt -u nullglob
+
+    if (( ${#cases[@]} == 0 )); then
+        echo "ERROR: no conformance cases found in $CASES_DIR" >&2
+        exit 1
+    fi
+
+    local case_file case_name golden_file raw_out count=0
+    for case_file in "${cases[@]}"; do
+        case_name="$(basename "$case_file" .R)"
+        golden_file="$GOLDEN_DIR/${case_name}.out"
+        raw_out="$(mktemp "${TMPDIR:-/tmp}/rport-regen.XXXXXX")"
+        if ! env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$raw_out" 2>&1; then
+            echo "ERROR: ${case_name}: Rscript exited non-zero, expected success; golden left unchanged." >&2
+            rm -f "$raw_out"
+            exit 1
+        fi
+        normalize_output <"$raw_out" >"$golden_file"
+        rm -f "$raw_out"
+        echo "REGEN ${case_name}"
+        count=$((count + 1))
+    done
+
+    echo "Regenerated ${count} golden files in $GOLDEN_DIR; review the diff before committing."
+}
+
 regen_error_goldens() {
     # Regenerate error goldens from stock C R with the current
     # normalize_error_output. Goldens are reviewed artifacts: this mode is
@@ -605,6 +640,7 @@ main() {
     local failed=0
 
     if [[ "$MODE" == "--regen-goldens" ]]; then
+        regen_normal_goldens
         regen_error_goldens
         return 0
     fi

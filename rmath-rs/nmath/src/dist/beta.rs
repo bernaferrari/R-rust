@@ -952,27 +952,31 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
     if a <= 1.0 {
         // --- Algorithm BC ---
         if !qsame {
+            // fma() matches the contraction clang applies to these
+            // a*b+-c subexpressions when compiling stock R's rbeta.c.
             with_beta_state(|state| {
                 state.beta = 1.0 / a;
                 state.delta = 1.0 + b - a;
-                state.k1 = state.delta * (0.0138889 + 0.0416667 * a) / (b * (1.0 / a) - 0.777778);
-                state.k2 = 0.25 + (0.5 + 0.25 / state.delta) * a;
+                state.k1 = state.delta * 0.0416667_f64.mul_add(a, 0.0138889)
+                    / b.mul_add(state.beta, -0.777778);
+                state.k2 = (0.5 + 0.25 / state.delta).mul_add(a, 0.25);
             });
         }
 
-        let (k1, k2, beta) = with_beta_state(|state| (state.k1, state.k2, state.beta));
+        let (k1, k2) = with_beta_state(|state| (state.k1, state.k2));
 
         loop {
             let u1 = unif_rand();
             let u2 = unif_rand();
+            let z: f64;
             if u1 < 0.5 {
                 let y = u1 * u2;
-                let z = u1 * y;
+                z = u1 * y;
                 if 0.25 * u2 + z - y >= k1 {
                     continue;
                 }
             } else {
-                let z = u1 * u1 * u2;
+                z = u1 * u1 * u2;
                 if z <= 0.25 {
                     let (_, w) = v_w_from_u1_bet(u1, b);
                     return if aa == a { a / (a + w) } else { w / (a + w) };
@@ -982,10 +986,8 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
                 }
             }
 
-            let (_, w) = v_w_from_u1_bet(u1, b);
-            let v = beta * log(u1 / (1.0 - u1));
-
-            if alpha * (log(alpha / (a + w)) + v) - M_LN4 >= log(u1 * u1 * u2) {
+            let (v, w) = v_w_from_u1_bet(u1, b);
+            if alpha.mul_add(log(alpha / (a + w)) + v, -1.3862944) >= log(z) {
                 return if aa == a { a / (a + w) } else { w / (a + w) };
             }
         }
@@ -993,20 +995,25 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
         // Algorithm BB
         if !qsame {
             with_beta_state(|state| {
-                state.beta = sqrt((alpha - 2.0) / (2.0 * a * b - alpha));
+                state.beta = sqrt((alpha - 2.0) / (2.0 * a).mul_add(b, -alpha));
                 state.gamma = a + 1.0 / state.beta;
             });
         }
 
-        let (gamma_v, beta) = with_beta_state(|state| (state.gamma, state.beta));
+        let gamma_v = with_beta_state(|state| state.gamma);
 
+        // C: do { ... } while (r + alpha * log(alpha / (b + w)) < t);
+        // repeat while that condition holds, return with the current w
+        // once it fails -- no extra unif_rand() on the break paths.
+        let mut w;
         loop {
             let u1 = unif_rand();
             let u2 = unif_rand();
-            let (_, w) = v_w_from_u1_bet(u1, a);
+            let (v, w_i) = v_w_from_u1_bet(u1, a);
+            w = w_i;
 
             let z = u1 * u1 * u2;
-            let r = gamma_v * beta * log(u1 / (1.0 - u1)) - M_LN4;
+            let r = gamma_v.mul_add(v, -1.3862944);
             let s = a + r - w;
             if s + 2.609438 >= 5.0 * z {
                 break;
@@ -1015,12 +1022,11 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
             if s > t {
                 break;
             }
-            if r + alpha * log(alpha / (b + w)) < t {
-                return if aa != a { b / (b + w) } else { w / (b + w) };
+            if !(alpha.mul_add(log(alpha / (b + w)), r) < t) {
+                break;
             }
         }
 
-        let (_, w) = v_w_from_u1_bet(unif_rand(), a);
         return if aa != a { b / (b + w) } else { w / (b + w) };
     }
 }
@@ -1072,7 +1078,12 @@ pub fn rbeta(a: f64, b: f64) -> f64 {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    /// (name, aa, bb, scripted uniforms, consumed count, expected draw bits)
+    type ConsumptionCase = (&'static str, f64, f64, &'static [f64], usize, u64);
+    use crate::rng::set_unif_hook;
     use crate::test_session::TestSession;
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
 
     #[test]
     fn rbeta_state_is_session_local_on_same_thread() {
@@ -1094,6 +1105,404 @@ mod tests {
                 assert_eq!(state.oldb, -1.0);
                 assert_eq!(state.beta, 0.0);
             });
+        });
+    }
+
+    /// Golden values captured from stock R 4.6.1 (Rscript, rbeta.c Cheng
+    /// BB/BC) driven with the same Marsaglia-MultiCarry stream: after
+    /// RNGkind("Marsaglia-Multicarry"), .Random.seed <- c(10401L, i1, i2).
+    /// Covers the BC squeeze/k2/quick/full paths, the BB squeeze / s>t /
+    /// do-while paths, the a,b ~ 1+eps contracted init, the (0,0) point-mass
+    /// path and alternating parameters (qsame re-init).
+    ///
+    /// Draws are asserted at a 1e-13 relative tolerance rather than
+    /// bit-exactly: stock homebrew R compiles rbeta.c with clang's default
+    /// FMA contraction (mirrored here via mul_add at the contracted sites),
+    /// and Rust's libm exp/log can differ from macOS libm by a final ulp --
+    /// the same residual class that affects rnorm/rgamma parity port-wide.
+    /// A uniform-consumption divergence produces O(1) different draws, far
+    /// outside this tolerance.
+    #[test]
+    fn rbeta_matches_stock_multicarry_stream() {
+        fn assert_close(got: &[f64], want: &[f64]) {
+            assert_eq!(got.len(), want.len());
+            for (i, (g, w)) in got.iter().zip(want).enumerate() {
+                assert!(
+                    (g - w).abs() <= 1e-13 * w.abs().max(1e-300),
+                    "draw {i}: got {g:.17e}, want {w:.17e}"
+                );
+            }
+        }
+
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            let draws = |n, a, b| -> Vec<f64> { (0..n).map(|_| rbeta_inner(a, b)).collect() };
+
+            // --- Algorithm BC (a <= 1) ---
+            crate::rng::set_seed(1234, 5678);
+            assert_close(
+                &draws(10, 0.5, 0.8),
+                &[
+                    0.64631808969296334,
+                    8.8350185132821101e-07,
+                    0.10606422460960811,
+                    0.6553979068970045,
+                    0.42130561400517058,
+                    0.7571416186787735,
+                    0.036577643477011527,
+                    0.21163985128288318,
+                    3.3797437316110677e-06,
+                    0.52629433336682985,
+                ],
+            );
+
+            crate::rng::set_seed(1234, 5678);
+            assert_close(
+                &draws(10, 0.3, 4.0),
+                &[
+                    0.30957547638272714,
+                    1.335388546829043e-11,
+                    0.0046808844253926644,
+                    0.32398730063569103,
+                    0.088188680053452415,
+                    0.00070353750668065507,
+                    0.018009018409832458,
+                    1.2495010713374348e-10,
+                    0.16362903596697756,
+                    0.27781465493144225,
+                ],
+            );
+
+            // aa != a: swapped return orientation
+            crate::rng::set_seed(1234, 5678);
+            assert_close(
+                &draws(10, 2.0, 0.5),
+                &[
+                    0.57771418887069192,
+                    0.99999964659907215,
+                    0.95469090578900506,
+                    0.56793687760031586,
+                    0.77446668278526587,
+                    0.44502784146973667,
+                    0.98504063563128241,
+                    0.90303049215531228,
+                    0.99999864809976591,
+                    0.69232602487299388,
+                ],
+            );
+
+            // long squeeze / k2 / full-reject chains
+            crate::rng::set_seed(99, 424_242);
+            assert_close(
+                &draws(12, 0.2, 0.7),
+                &[
+                    5.6833061096527566e-05,
+                    0.00094560177296646895,
+                    0.43187130864618328,
+                    0.98098300463907373,
+                    0.030710794107121506,
+                    0.82453769730428739,
+                    1.5078995313838586e-05,
+                    0.0041721871770901871,
+                    0.02836979647785003,
+                    0.68710275556295086,
+                    0.00020764137067298918,
+                    0.09751887641958322,
+                ],
+            );
+
+            crate::rng::set_seed(777, 333);
+            assert_close(
+                &draws(12, 0.75, 1.0),
+                &[
+                    0.68899338644560904,
+                    0.65683652938523518,
+                    0.064702761222018318,
+                    0.67057873616464969,
+                    0.78030144565066517,
+                    0.45062619186948316,
+                    0.4753353716258184,
+                    0.37634624008382084,
+                    0.66969812911064264,
+                    0.74453575107931069,
+                    0.10261010095475172,
+                    0.44229292806177806,
+                ],
+            );
+
+            // extreme small shapes
+            crate::rng::set_seed(5, 5);
+            assert_close(
+                &draws(8, 0.01, 0.01),
+                &[
+                    1.0,
+                    1.3544983664016456e-126,
+                    1.6515443909291071e-06,
+                    0.2910454584747354,
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                ],
+            );
+
+            // --- Algorithm BB (a > 1) ---
+            crate::rng::set_seed(1234, 5678);
+            assert_close(
+                &draws(10, 2.0, 5.0),
+                &[
+                    0.094090019232039065,
+                    0.22287638999845477,
+                    0.22867982605538428,
+                    0.22301091566461806,
+                    0.40105890551068973,
+                    0.22073768725685719,
+                    0.27615676621081064,
+                    0.19550580505421722,
+                    0.48807184544867188,
+                    0.34203310658538399,
+                ],
+            );
+
+            crate::rng::set_seed(1234, 5678);
+            assert_close(
+                &draws(10, 1.5, 3.7),
+                &[
+                    0.075571467517154087,
+                    0.21451181811913961,
+                    0.22122985901594147,
+                    0.21466723507172875,
+                    0.42775360057781819,
+                    0.21204300209025564,
+                    0.27706743427988195,
+                    0.18322618069301955,
+                    0.53209652563348342,
+                    0.35624731802253179,
+                ],
+            );
+
+            crate::rng::set_seed(99, 424_242);
+            assert_close(
+                &draws(12, 10.0, 10.0),
+                &[
+                    0.63158320880509089,
+                    0.43231241590366881,
+                    0.59082414074013356,
+                    0.38538363121997021,
+                    0.74528987127569646,
+                    0.56310281389993255,
+                    0.37497841315031705,
+                    0.58931415216997118,
+                    0.48453281866805525,
+                    0.7095856799897875,
+                    0.35932394486857594,
+                    0.55451333317957441,
+                ],
+            );
+
+            crate::rng::set_seed(777, 333);
+            assert_close(
+                &draws(12, 1.2, 1.3),
+                &[
+                    0.30799027502945509,
+                    0.32936235574929068,
+                    0.82130440656917603,
+                    0.12190201749463517,
+                    0.25416525649807536,
+                    0.32026749754518408,
+                    0.24463430942474479,
+                    0.68014571452676242,
+                    0.46496987463021622,
+                    0.44835983240728655,
+                    0.03469899021617695,
+                    0.056578241350413797,
+                ],
+            );
+
+            // shapes ~ 1+eps: init denominator 2ab - alpha cancels
+            // catastrophically, so the mul_add contraction above matters.
+            crate::rng::set_seed(1234, 5678);
+            assert_close(
+                &draws(10, 1.0000001, 1.0000001),
+                &[
+                    0.10208907977268006,
+                    0.36901409043763672,
+                    0.99881246063936469,
+                    0.38156450024179511,
+                    0.36930568403082176,
+                    0.69652251782457397,
+                    0.36437438638866743,
+                    0.48093579536559361,
+                    0.30926928137696896,
+                    0.80226725714543545,
+                ],
+            );
+
+            // point mass 1/2 at each of {0, 1}: one uniform per draw,
+            // exact integers.
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<f64> = (0..10).map(|_| rbeta_inner(0.0, 0.0)).collect();
+            assert_eq!(got, [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]);
+
+            // alternating parameters on one stream: re-init (qsame) each call
+            crate::rng::set_seed(1234, 5678);
+            let alt: Vec<f64> = (0..10)
+                .flat_map(|_| [rbeta_inner(0.4, 6.0), rbeta_inner(2.5, 2.5)])
+                .collect();
+            assert_close(
+                &alt,
+                &[
+                    0.20311656681825777,
+                    0.98606595520116769,
+                    0.0082846470321573124,
+                    0.41291789870597367,
+                    0.074653166525108255,
+                    0.37561514048540484,
+                    0.0020064816534724793,
+                    0.56641351869404788,
+                    1.7384622336735472e-08,
+                    0.45464528794138093,
+                    0.18514882129945051,
+                    0.67886413805152346,
+                    0.044861207741992246,
+                    0.049312525278236097,
+                    0.13513997022951002,
+                    0.72442248585300717,
+                    0.049698564505604274,
+                    0.45112953071029627,
+                    0.0058476326222255091,
+                    0.39971678235016006,
+                ],
+            );
+        });
+    }
+
+    /// Replays deterministic uniform sequences through a hooked unif_rand
+    /// and asserts the exact number of uniforms each draw consumes plus the
+    /// exact returned bits. The sequences are consecutive values of the
+    /// Marsaglia-MultiCarry stream; expected consumption and branch
+    /// decisions were cross-checked against r-source/src/nmath/rbeta.c
+    /// compiled standalone (clang -O2 with its default FMA contraction, and
+    /// a counting unif_rand): every iteration consumes exactly one (u1, u2)
+    /// pair and the accept/reject decisions match on all sequences below.
+    /// Expected bits are the port's own deterministic output (pure-Rust
+    /// libm, IEEE ops and mul_add are platform-stable).
+    #[test]
+    fn rbeta_consumption_order_matches_c_reference() {
+        thread_local! {
+            static SCRIPT: RefCell<VecDeque<f64>> = RefCell::new(VecDeque::new());
+            static DRAWN: Cell<usize> = const { Cell::new(0) };
+        }
+
+        fn scripted_unif() -> f64 {
+            DRAWN.with(|c| c.set(c.get() + 1));
+            SCRIPT.with(|q| q.borrow_mut().pop_front().expect("script exhausted"))
+        }
+
+        fn rbeta_scripted(aa: f64, bb: f64, script: &[f64]) -> (f64, usize) {
+            with_beta_state(|state| *state = BetaState::default());
+            SCRIPT.with(|q| *q.borrow_mut() = script.iter().copied().collect());
+            DRAWN.with(|c| c.set(0));
+            set_unif_hook(Some(scripted_unif));
+            let x = rbeta_inner(aa, bb);
+            set_unif_hook(None);
+            (x, DRAWN.with(Cell::get))
+        }
+
+        // (name, aa, bb, script, uniforms consumed, expected bits)
+        #[rustfmt::skip]
+        let cases: &[ConsumptionCase] = &[
+            (
+                "BC squeeze-continue then full-accept",
+                0.5, 0.8,
+                &[0.10208906980745704, 0.8541567381131826,
+                  0.36901408419222892, 0.1646773105404985],
+                4, 0x3fe4aea346416c51,
+            ),
+            (
+                "BC quick-accept (z <= 0.25)",
+                0.5, 0.8,
+                &[0.99881246103877475, 0.092923666372178956],
+                2, 0x3eada5391e0d8830,
+            ),
+            (
+                "BC squeeze/full-reject/k2 chain (9 pairs)",
+                0.2, 0.7,
+                &[0.29703099543607272, 0.8300730434316379,
+                  0.76164812309705821, 0.62819044795543655,
+                  0.9520031618773942, 0.68892922012343272,
+                  0.18602909175353799, 0.35821778149302524,
+                  0.96755325025123362, 0.35674027571378741,
+                  0.69050329194648719, 0.9527624400688246,
+                  0.92918192872991345, 0.97516895899902289,
+                  0.16580376475253225, 0.084314301629623917,
+                  0.75804591918318653, 0.079398121004784022],
+                18, 0x3f4efc48584fa55c,
+            ),
+            (
+                "BC full-accept (a = b = 0.9)",
+                0.9, 0.9,
+                &[0.10208906980745704, 0.8541567381131826],
+                2, 0x3fed607540be259b,
+            ),
+            (
+                "BB do-while exit on first pair",
+                2.0, 5.0,
+                &[0.10208906980745704, 0.8541567381131826],
+                2, 0x3fb81648937b4b5f,
+            ),
+            (
+                "BB squeeze break",
+                2.0, 5.0,
+                &[0.36901408419222892, 0.1646773105404985],
+                2, 0x3fcc8736ab0c0512,
+            ),
+            (
+                "BB while-repeat then do-while exit",
+                2.0, 5.0,
+                &[0.99881246103877475, 0.092923666372178956,
+                  0.38156449454407304, 0.99136333213917971],
+                4, 0x3fcd45616b14d814,
+            ),
+            (
+                "BB s > t break",
+                2.0, 5.0,
+                &[0.36930567779794926, 0.96001240144484012],
+                2, 0x3fcc8b9f26b71c37,
+            ),
+            (
+                "BB shapes 1+eps (contracted init)",
+                1.0000001, 1.0000001,
+                &[0.10208906980745704, 0.8541567381131826],
+                2, 0x3fba22828ae7036c,
+            ),
+            (
+                "BB s > t break (a = b = 2.5)",
+                2.5, 2.5,
+                &[0.30739534280900727, 0.84495957844074787],
+                2, 0x3fd7f4bd33c47713,
+            ),
+            (
+                "BB do-while exit (a = b = 2.5)",
+                2.5, 2.5,
+                &[0.8566246498042307, 0.62739101974931322],
+                2, 0x3fe830a4573f71aa,
+            ),
+            (
+                "point mass (0,0): single uniform",
+                0.0, 0.0,
+                &[0.3],
+                1, 0x0,
+            ),
+        ];
+
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            for (name, aa, bb, script, want_used, want_bits) in cases {
+                let (x, used) = rbeta_scripted(*aa, *bb, script);
+                assert_eq!(used, *want_used, "{name}: uniforms consumed");
+                assert_eq!(x.to_bits(), *want_bits, "{name}: returned value");
+            }
         });
     }
 }

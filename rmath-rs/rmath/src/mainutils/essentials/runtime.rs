@@ -2580,6 +2580,13 @@ fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, val
 }
 
 /// R's `gc()` — garbage collection with session-owned memory counters.
+///
+/// Mirrors stock `base::gc`: the value is the `.Internal(gc(...))` counters
+/// shaped into a 2x7 matrix — rows Ncells/Vcells, columns
+/// `used (Mb) gc trigger (Mb) limit (Mb) max used (Mb)` — with the (Mb)
+/// cells rounded up to 0.1 Mb. The port imposes no cell limits, so the
+/// `limit (Mb)` column is all-NA and dropped, yielding the stock 2x6 table.
+/// Unlike the old port, the result is *visible* (stock prints it).
 pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         crate::mainutils::memory_main::R_gc();
@@ -2600,55 +2607,81 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
             .max(snapshot.current_bytes);
         let vcell_peak = snapshot.peak_bytes / vcell_size;
 
-        // Return a 2x7 matrix. Rows are Ncells and Vcells; columns follow R's
-        // visible shape: used, (Mb), gc trigger, (Mb), max used, (Mb), limit.
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, 14);
+        // R rounds the (Mb) columns up to 0.1 Mb.
+        let mb = |bytes: usize| 0.1 * (10.0 * bytes_to_mb(bytes)).ceil();
+
+        // Full stock layout, column-major with 2 rows:
+        //   used | (Mb) | gc trigger | (Mb) | limit (Mb) | max used | (Mb)
+        let full: [(f64, f64); 7] = [
+            (snapshot.active_nodes as f64, vcell_used as f64),
+            (mb(ncell_bytes), mb(snapshot.current_bytes)),
+            (
+                ncell_trigger as f64,
+                (vcell_trigger_bytes / vcell_size) as f64,
+            ),
+            (
+                mb(ncell_trigger.saturating_mul(node_size)),
+                mb(vcell_trigger_bytes),
+            ),
+            (NA_REAL, NA_REAL), // no cell limits in this port
+            (ncell_peak as f64, vcell_peak as f64),
+            (
+                mb(ncell_peak.saturating_mul(node_size)),
+                mb(snapshot.peak_bytes),
+            ),
+        ];
+
+        // base::gc drops the `limit (Mb)` column when it is all-NA.
+        let drop_limit = full[4].0.is_nan() && full[4].1.is_nan();
+        let cols: Vec<&(f64, f64)> = if drop_limit {
+            full.iter()
+                .enumerate()
+                .filter(|(i, _)| *i != 4)
+                .map(|(_, col)| col)
+                .collect()
+        } else {
+            full.iter().collect()
+        };
+        let col_names: Vec<&str> = if drop_limit {
+            vec!["used", "(Mb)", "gc trigger", "(Mb)", "max used", "(Mb)"]
+        } else {
+            vec![
+                "used",
+                "(Mb)",
+                "gc trigger",
+                "(Mb)",
+                "limit (Mb)",
+                "max used",
+                "(Mb)",
+            ]
+        };
+
+        let ncols = cols.len();
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, (2 * ncols) as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
         let _p = protect(result);
         let dst = REAL(result);
-        set_real_matrix_cell(dst, 0, 0, 2, snapshot.active_nodes as f64);
-        set_real_matrix_cell(dst, 1, 0, 2, vcell_used as f64);
-        set_real_matrix_cell(dst, 0, 1, 2, bytes_to_mb(ncell_bytes));
-        set_real_matrix_cell(dst, 1, 1, 2, bytes_to_mb(snapshot.current_bytes));
-        set_real_matrix_cell(dst, 0, 2, 2, ncell_trigger as f64);
-        set_real_matrix_cell(dst, 1, 2, 2, (vcell_trigger_bytes / vcell_size) as f64);
-        set_real_matrix_cell(
-            dst,
-            0,
-            3,
-            2,
-            bytes_to_mb(ncell_trigger.saturating_mul(node_size)),
-        );
-        set_real_matrix_cell(dst, 1, 3, 2, bytes_to_mb(vcell_trigger_bytes));
-        set_real_matrix_cell(dst, 0, 4, 2, ncell_peak as f64);
-        set_real_matrix_cell(dst, 1, 4, 2, vcell_peak as f64);
-        set_real_matrix_cell(
-            dst,
-            0,
-            5,
-            2,
-            bytes_to_mb(ncell_peak.saturating_mul(node_size)),
-        );
-        set_real_matrix_cell(dst, 1, 5, 2, bytes_to_mb(snapshot.peak_bytes));
-        set_real_matrix_cell(dst, 0, 6, 2, 0.0);
-        set_real_matrix_cell(dst, 1, 6, 2, 0.0);
+        for (col, (ncell, vcell)) in cols.iter().enumerate() {
+            set_real_matrix_cell(dst, 0, col, 2, *ncell);
+            set_real_matrix_cell(dst, 1, col, 2, *vcell);
+        }
 
-        // Set dim = c(2, 7)
+        // dim = c(2, ncol)
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
             let _p2 = protect(dim);
             let d = INTEGER(dim);
             *d.add(0) = 2;
-            *d.add(1) = 7;
+            *d.add(1) = ncols as c_int;
             crate::sexp::attrib_core::setAttrib(
                 result,
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
                 dim,
             );
         }
-        // Set dimnames
+        // dimnames = list(c("Ncells", "Vcells"), col_names)
         let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         if !dn.is_null() {
             let _p3 = protect(dn);
@@ -2669,29 +2702,18 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 );
                 SET_VECTOR_ELT(dn, 0, row_names);
             }
-            let col_names = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
-            if !col_names.is_null() {
-                let _p5 = protect(col_names);
-                for (i, name) in [
-                    "used",
-                    "(Mb)",
-                    "gc trigger",
-                    "(Mb)",
-                    "max used",
-                    "(Mb)",
-                    "limit",
-                ]
-                .iter()
-                .enumerate()
-                {
+            let col_names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, ncols as R_xlen_t);
+            if !col_names_vec.is_null() {
+                let _p5 = protect(col_names_vec);
+                for (i, name) in col_names.iter().enumerate() {
                     let cstr = CString::new(*name).unwrap_or_default();
                     SET_STRING_ELT(
-                        col_names,
+                        col_names_vec,
                         i as R_xlen_t,
                         crate::sexp::constructors::Rf_mkChar(cstr.as_ptr()),
                     );
                 }
-                SET_VECTOR_ELT(dn, 1, col_names);
+                SET_VECTOR_ELT(dn, 1, col_names_vec);
             }
             crate::sexp::attrib_core::setAttrib(
                 result,
@@ -2699,7 +2721,6 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 dn,
             );
         }
-        crate::sexp::globals::set_R_Visible(FALSE);
         result
     }
 }

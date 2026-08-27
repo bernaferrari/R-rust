@@ -1,15 +1,15 @@
-NULL : NULL 
-logical : logical 
-numeric : integer 
-numeric : double 
-complex : complex 
-character : character 
-list : list 
-name : symbol 
-call : language 
-expression : expression 
-function : function 
-raw : raw 
-a b 
-1 2 
+NULL : NULL
+logical : logical
+numeric : integer
+numeric : double
+complex : complex
+character : character
+list : list
+name : symbol
+call : language
+expression : expression
+function : function
+raw : raw
+a b
+1 2
 [1] "a" "b"

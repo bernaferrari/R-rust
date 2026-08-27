@@ -168,6 +168,8 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "system"
             | "suppressWarnings"
             | "suppressMessages"
+            | "set.seed"
+            | "RNGkind"
     )
 }
 

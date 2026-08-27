@@ -7,6 +7,16 @@
 //!   - Multiple RNG algorithms (Wichmann-Hill, Marsaglia-MultiCarry, Super-Duper,
 //!     Mersenne-Twister, Knuth-TAOCP, Knuth-TAOCP-2002, L'Ecuyer-CMRG)
 //!   - Normal variate generation (Box-Muller, Inversion, etc.)
+//! RNG state shared between the R-level stream and the nmath samplers.
+//!
+//! Ported from standalone/sunif.c (Marsaglia-MultiCarry). The host runtime
+//! embeds an [`RngState`] alongside its [`MathState`](crate::state::MathState)
+//! so `set_seed`/`unif_rand` and the distribution samplers advance one
+//! session-owned stream.
+//!
+//! A host can also install [`set_unif_hook`] to route `unif_rand` through a
+//! richer engine (R's full RNG dispatch with `.Random.seed` round-tripping);
+//! the samplers then draw from that stream instead of MultiCarry.
 //!   - RNG state management (GetRNGstate, PutRNGstate)
 //!   - R-level functions: RNGkind(), set.seed(), rnorm(), runif(), rbinom(), etc.
 //!   - Probability sampling: sample(), ProbSampleReplace, ProbSampleNoReplace
@@ -24,7 +34,7 @@ use crate::sexp::protect::*;
 use std::cell::Cell;
 use std::os::raw::{c_double, c_int};
 
-fn error(msg: &str) {
+unsafe fn error(msg: &str) {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
@@ -120,16 +130,13 @@ struct RNGTab {
 }
 
 /// Per-instance RNG state.
-///
-/// MT and Knuth-TAOCP scratch arrays mirror R's layout: the persisted seed
-/// state lives in `rng_table[kind].i_seed` (so `.Random.seed` round-trips
-/// through `PutRNGstate`/`GetRNGstate`); `kt_x`/`kt_ran_arr_*` hold the
-/// Knuth working state that R also keeps outside `.Random.seed`.
 pub(crate) struct RNGState {
     rng_kind: Cell<RNGtype>,
     n01_kind: Cell<N01type>,
     sample_kind: Cell<Sampletype>,
     rng_table: [RNGTab; 8],
+    // Mersenne Twister state (stored separately for direct access)
+    mt: [u32; MT_N],
     // Knuth TAOCP state
     kt_x: [i64; KT_KK],
     kt_ran_arr_buf: [i64; KT_QUALITY],
@@ -137,8 +144,6 @@ pub(crate) struct RNGState {
     kt_pos: Cell<usize>,
     // Box-Muller saved value
     bm_norm_keep: Cell<f64>,
-    // Whether RNG_Init has run (stock randomizes lazily on first use)
-    initialized: Cell<bool>,
 }
 
 impl RNGState {
@@ -191,12 +196,12 @@ impl RNGState {
             n01_kind: Cell::new(N01_DEFAULT),
             sample_kind: Cell::new(Sample_DEFAULT),
             rng_table,
+            mt: [0u32; MT_N],
             kt_x: [0i64; KT_KK],
             kt_ran_arr_buf: [0i64; KT_QUALITY],
             kt_ran_arr_ptr: Cell::new(0),
             kt_pos: Cell::new(100),
             bm_norm_keep: Cell::new(0.0),
-            initialized: Cell::new(false),
         };
         // Initialize MT index
         state.rng_table[3].i_seed[0] = MT_N as u32; // mti = N+1 means not initialized
@@ -243,61 +248,48 @@ fn is_odd(x: i64) -> bool {
 // Mersenne Twister implementation
 // ---------------------------------------------------------------------------
 
-/// MT working words: `i_seed[1 ..= 624]`; `i_seed[0]` holds `mti`.
-///
-/// Keeping the state in `i_seed` (like R's shared `dummy` array) makes
-/// `.Random.seed` round-trips exact: `mt_genrand` mutations are visible to
-/// `PutRNGstate` without a separate sync.
-fn mt_words(rng: &mut RNGState) -> &mut [u32] {
-    let kind = rng.rng_kind.get() as usize;
-    &mut rng.rng_table[kind].i_seed[1..1 + MT_N]
-}
-
-fn mt_sgenrand(mt: &mut [u32], seed: u32) {
+fn mt_sgenrand(rng: &mut RNGState, seed: u32) {
     let mut s = seed;
-    for word in mt.iter_mut() {
-        *word = s & 0xffff0000;
+    for i in 0..MT_N {
+        rng.mt[i] = s & 0xffff0000;
         s = 69069u32.wrapping_mul(s).wrapping_add(1);
-        *word |= (s & 0xffff0000) >> 16;
+        rng.mt[i] |= (s & 0xffff0000) >> 16;
         s = 69069u32.wrapping_mul(s).wrapping_add(1);
     }
 }
 
 fn mt_genrand(rng: &mut RNGState) -> f64 {
     let rng_kind = rng.rng_kind.get();
-    let mut mti = rng.rng_table[rng_kind as usize].i_seed[0] as usize;
+    let mti = rng.rng_table[rng_kind as usize].i_seed[0] as usize;
 
     if mti >= MT_N {
         if mti == MT_N + 1 {
             // Not initialized, use default seed
-            mt_sgenrand(mt_words(rng), 4357);
+            mt_sgenrand(rng, 4357);
         }
 
         // Generate N words at one time
-        let mt = mt_words(rng);
         let mut kk = 0usize;
         while kk < MT_N - MT_M {
-            let y = (mt[kk] & MT_UPPER_MASK) | (mt[kk + 1] & MT_LOWER_MASK);
-            mt[kk] = mt[kk + MT_M] ^ (y >> 1) ^ if (y & 1) != 0 { MT_MATRIX_A } else { 0 };
+            let y = (rng.mt[kk] & MT_UPPER_MASK) | (rng.mt[kk + 1] & MT_LOWER_MASK);
+            rng.mt[kk] = rng.mt[kk + MT_M] ^ (y >> 1) ^ if (y & 1) != 0 { MT_MATRIX_A } else { 0 };
             kk += 1;
         }
         while kk < MT_N - 1 {
-            let y = (mt[kk] & MT_UPPER_MASK) | (mt[kk + 1] & MT_LOWER_MASK);
+            let y = (rng.mt[kk] & MT_UPPER_MASK) | (rng.mt[kk + 1] & MT_LOWER_MASK);
             // M - N = 397 - 624 = -227, which wraps in unsigned arithmetic
-            mt[kk] = mt[kk.wrapping_add(MT_M).wrapping_sub(MT_N)]
+            rng.mt[kk] = rng.mt[kk.wrapping_add(MT_M).wrapping_sub(MT_N)]
                 ^ (y >> 1)
                 ^ if (y & 1) != 0 { MT_MATRIX_A } else { 0 };
             kk += 1;
         }
-        let y = (mt[MT_N - 1] & MT_UPPER_MASK) | (mt[0] & MT_LOWER_MASK);
-        mt[MT_N - 1] = mt[MT_M - 1] ^ (y >> 1) ^ if (y & 1) != 0 { MT_MATRIX_A } else { 0 };
+        let y = (rng.mt[MT_N - 1] & MT_UPPER_MASK) | (rng.mt[0] & MT_LOWER_MASK);
+        rng.mt[MT_N - 1] = rng.mt[MT_M - 1] ^ (y >> 1) ^ if (y & 1) != 0 { MT_MATRIX_A } else { 0 };
 
-        mti = 0;
         rng.rng_table[rng_kind as usize].i_seed[0] = 0; // mti = 0
     }
 
-    let mt = mt_words(rng);
-    let mut y = mt[mti];
+    let mut y = rng.mt[rng.rng_table[rng_kind as usize].i_seed[0] as usize];
     rng.rng_table[rng_kind as usize].i_seed[0] += 1;
     y ^= y >> 11;
     y ^= (y << 7) & MT_TEMPERING_MASK_B;
@@ -514,7 +506,6 @@ fn FixupSeeds(rng: &mut RNGState, kind: RNGtype, initial: bool) {
 // ---------------------------------------------------------------------------
 
 fn RNG_Init(rng: &mut RNGState, kind: RNGtype, seed: i64) {
-    rng.initialized.set(true);
     rng.bm_norm_keep.set(0.0); // zap Box-Muller history
 
     // Initial scrambling (C uses int which wraps at 32 bits)
@@ -528,12 +519,19 @@ fn RNG_Init(rng: &mut RNGState, kind: RNGtype, seed: i64) {
         | RNGtype::MARSAGLIA_MULTICARRY
         | RNGtype::SUPER_DUPER
         | RNGtype::MERSENNE_TWISTER => {
-            // i_seed[0] is mti for MT, but the chain still fills it for
-            // historical consistency; FixupSeeds(initial) resets it below.
             let n_seed = rng.rng_table[kind as usize].n_seed;
             for j in 0..n_seed {
                 seed = seed.wrapping_mul(69069).wrapping_add(1);
                 rng.rng_table[kind as usize].i_seed[j] = seed as u32;
+            }
+            // For MT, also fill the mt array
+            if kind == RNGtype::MERSENNE_TWISTER {
+                rng.rng_table[kind as usize].i_seed[0] = MT_N as u32;
+                for j in 0..MT_N {
+                    seed = seed.wrapping_mul(69069).wrapping_add(1);
+                    rng.mt[j] = seed as u32;
+                    rng.rng_table[kind as usize].i_seed[j + 1] = seed as u32;
+                }
             }
             FixupSeeds(rng, kind, true);
         }
@@ -548,16 +546,14 @@ fn RNG_Init(rng: &mut RNGState, kind: RNGtype, seed: i64) {
             let mut seed = seed as i32;
             for j in 0..n_seed {
                 seed = seed.wrapping_mul(69069).wrapping_add(1);
-                // Int32 is unsigned: compare the raw bit pattern against m2.
-                while (seed as u32) as i64 >= CMRG_M2 {
+                while (seed as i64) >= CMRG_M2 {
                     seed = seed.wrapping_mul(69069).wrapping_add(1);
                 }
                 rng.rng_table[kind as usize].i_seed[j] = seed as u32;
             }
         }
         RNGtype::USER_UNIF => {
-            // R errors when no user-supplied generator is registered.
-            error("'user_unif_rand' not in load table");
+            // Not implemented -- requires user-supplied function
         }
     }
 }
@@ -566,24 +562,14 @@ fn RNG_Init_KT(rng: &mut RNGState, seed: i64) {
     let s = seed.rem_euclid(1073741821);
     ran_start(rng, s);
     rng.kt_pos.set(100);
-    sync_kt_seeds(rng, RNGtype::KNUTH_TAOCP);
+    rng.rng_table[RNGtype::KNUTH_TAOCP as usize].i_seed[KT_KK] = 100;
 }
 
 fn RNG_Init_KT2(rng: &mut RNGState, seed: i64) {
     let s = seed.rem_euclid(1073741821);
     ran_start(rng, s);
     rng.kt_pos.set(100);
-    sync_kt_seeds(rng, RNGtype::KNUTH_TAOCP2);
-}
-
-/// Mirror the Knuth working state into `i_seed` so `.Random.seed` carries the
-/// live x array and KT_pos, exactly as R's shared `dummy` backing store does.
-fn sync_kt_seeds(rng: &mut RNGState, kind: RNGtype) {
-    let table = &mut rng.rng_table[kind as usize];
-    for j in 0..KT_KK {
-        table.i_seed[j] = rng.kt_x[j] as u32;
-    }
-    table.i_seed[KT_KK] = rng.kt_pos.get() as u32;
+    rng.rng_table[RNGtype::KNUTH_TAOCP2 as usize].i_seed[KT_KK] = 100;
 }
 
 // ---------------------------------------------------------------------------
@@ -760,55 +746,14 @@ pub fn r_sample_kind() -> Sampletype {
 // GetRNGstate / PutRNGstate
 // ---------------------------------------------------------------------------
 
-/// Issue a call-less warning, like R's `warning(...)`.
-///
-/// Records it in the session warning state (stock semantics) and renders it
-/// immediately, mirroring the port's `warning()` builtin so script output
-/// shows RNG warnings the way stock R does.
-fn warn(msg: &str) {
-    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    unsafe { crate::mainutils::errors::Rf_warning1(c_msg.as_ptr()) };
-    let message = format!("Warning message:\n{} \n", msg);
-    unsafe {
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stderr(&message);
-        } else {
-            eprint!("{message}");
-        }
-    }
-}
-
-fn type_to_char(x: SEXP) -> &'static str {
-    let t = unsafe { TYPEOF(x) };
-    if t == SEXPTYPE::REALSXP.as_c_int() {
-        "double"
-    } else if t == SEXPTYPE::STRSXP.as_c_int() {
-        "character"
-    } else if t == SEXPTYPE::LGLSXP.as_c_int() {
-        "logical"
-    } else if t == SEXPTYPE::VECSXP.as_c_int() {
-        "list"
-    } else if t == SEXPTYPE::CPLXSXP.as_c_int() {
-        "complex"
-    } else if t == SEXPTYPE::RAWSXP.as_c_int() {
-        "raw"
-    } else {
-        "unknown"
-    }
-}
-
 /// Get the .Random.seed into proper variables.
-///
-/// Port of R's `GetRNGstate`: loads kind codes and the engine state from the
-/// global `.Random.seed`; a missing or corrupt seed falls back to defaults
-/// with a time-based seed (and a warning + write-back for corrupt values).
 pub unsafe fn GetRNGstate() {
     unsafe {
         let seeds_sym = R_SeedsSymbol();
         let seeds = R_findVarInFrame(R_GlobalEnv(), seeds_sym);
 
         if seeds == R_UnboundValue() {
-            // No .Random.seed -- randomize with the current kind
+            // No .Random.seed -- randomize
             with_rng_state(|rng| {
                 let kind = rng.rng_kind.get();
                 RNG_Init(rng, kind, TimeToSeed() as i64);
@@ -816,8 +761,10 @@ pub unsafe fn GetRNGstate() {
             return;
         }
 
-        if TYPEOF(seeds) == SEXPTYPE::PROMSXP {
-            // R evaluates the promise; randomizing keeps the stream local
+        // Check if PROMSXP
+        let ty = TYPEOF(seeds);
+        if ty == SEXPTYPE::PROMSXP {
+            // Would need eval -- for now just randomize
             with_rng_state(|rng| {
                 let kind = rng.rng_kind.get();
                 RNG_Init(rng, kind, TimeToSeed() as i64);
@@ -825,33 +772,26 @@ pub unsafe fn GetRNGstate() {
             return;
         }
 
-        // Corrupt .Random.seed: warn, fall back to the defaults, randomize,
-        // and write the restored state back out (R's GetRNGkind invalid path).
-        macro_rules! invalid {
-            ($msg:expr) => {{
-                warn(&$msg);
-                with_rng_state(|rng| {
-                    rng.rng_kind.set(RNG_DEFAULT);
-                    rng.n01_kind.set(N01_DEFAULT);
-                    rng.sample_kind.set(Sample_DEFAULT);
-                    RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
-                });
-                PutRNGstate();
-                return;
-            }};
-        }
-
-        if TYPEOF(seeds) != SEXPTYPE::INTSXP {
-            invalid!(format!(
-                "'.Random.seed' is not an integer vector but of type '{}', so ignored",
-                type_to_char(seeds)
-            ));
+        if ty != SEXPTYPE::INTSXP {
+            with_rng_state(|rng| {
+                RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
+                rng.rng_kind.set(RNG_DEFAULT);
+                rng.n01_kind.set(N01_DEFAULT);
+                rng.sample_kind.set(Sample_DEFAULT);
+            });
+            return;
         }
 
         let is = INTEGER(seeds);
         let tmp = *is.add(0);
         if tmp == NA_INTEGER || tmp < 0 || tmp > 11000 {
-            invalid!("'.Random.seed[1]' is not a valid integer, so ignored");
+            with_rng_state(|rng| {
+                RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
+                rng.rng_kind.set(RNG_DEFAULT);
+                rng.n01_kind.set(N01_DEFAULT);
+                rng.sample_kind.set(Sample_DEFAULT);
+            });
+            return;
         }
 
         let new_rng = tmp % 100;
@@ -859,7 +799,13 @@ pub unsafe fn GetRNGstate() {
         let new_sample = tmp / 10000;
 
         if new_n01 > 5 || new_sample > 1 {
-            invalid!("'.Random.seed[1]' is not a valid Normal type, so ignored");
+            with_rng_state(|rng| {
+                RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
+                rng.rng_kind.set(RNG_DEFAULT);
+                rng.n01_kind.set(N01_DEFAULT);
+                rng.sample_kind.set(Sample_DEFAULT);
+            });
+            return;
         }
 
         let rng_kind = match new_rng {
@@ -868,13 +814,14 @@ pub unsafe fn GetRNGstate() {
             2 => RNGtype::SUPER_DUPER,
             3 => RNGtype::MERSENNE_TWISTER,
             4 => RNGtype::KNUTH_TAOCP,
-            5 => {
-                invalid!("'.Random.seed[1] = 5' but no user-supplied generator, so ignored");
-            }
+            5 => RNGtype::USER_UNIF,
             6 => RNGtype::KNUTH_TAOCP2,
             7 => RNGtype::LECUYER_CMRG,
             _ => {
-                invalid!("'.Random.seed[1]' is not a valid RNG kind so ignored");
+                with_rng_state(|rng| {
+                    RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
+                });
+                return;
             }
         };
 
@@ -884,7 +831,8 @@ pub unsafe fn GetRNGstate() {
             2 => N01type::BOX_MULLER,
             3 => N01type::USER_NORM,
             4 => N01type::INVERSION,
-            _ => N01type::KINDERMAN_RAMAGE,
+            5 => N01type::KINDERMAN_RAMAGE,
+            _ => N01_DEFAULT,
         };
 
         let sample_kind = if new_sample == 0 {
@@ -893,11 +841,17 @@ pub unsafe fn GetRNGstate() {
             Sampletype::REJECTION
         };
 
-        let len_seed = rng_table_len_seed(rng_kind);
+        let len_seed = match rng_kind {
+            RNGtype::WICHMANN_HILL => 3,
+            RNGtype::MARSAGLIA_MULTICARRY => 2,
+            RNGtype::SUPER_DUPER => 2,
+            RNGtype::MERSENNE_TWISTER => 1 + MT_N,
+            RNGtype::KNUTH_TAOCP | RNGtype::KNUTH_TAOCP2 => 1 + KT_KK,
+            RNGtype::USER_UNIF => 0,
+            RNGtype::LECUYER_CMRG => 6,
+        };
+
         let seeds_len = XLENGTH(seeds) as usize;
-        if seeds_len > 1 && seeds_len < len_seed + 1 {
-            error("'.Random.seed' has wrong length");
-        }
 
         with_rng_state(|rng| {
             rng.rng_kind.set(rng_kind);
@@ -906,17 +860,28 @@ pub unsafe fn GetRNGstate() {
 
             if seeds_len == 1 && rng_kind != RNGtype::USER_UNIF {
                 RNG_Init(rng, rng_kind, TimeToSeed() as i64);
-            } else {
+            } else if seeds_len > 1 {
+                // Copy seeds in
                 for j in 0..len_seed {
-                    rng.rng_table[rng_kind as usize].i_seed[j] = *is.add(j + 1) as u32;
-                }
-                // Restore the Knuth working state from the persisted x array
-                if matches!(rng_kind, RNGtype::KNUTH_TAOCP | RNGtype::KNUTH_TAOCP2) {
-                    let table = &rng.rng_table[rng_kind as usize];
-                    for j in 0..KT_KK {
-                        rng.kt_x[j] = table.i_seed[j] as i64;
+                    if j + 1 < seeds_len {
+                        rng.rng_table[rng_kind as usize].i_seed[j] = *is.add(j + 1) as u32;
                     }
-                    rng.kt_pos.set(table.i_seed[KT_KK] as usize);
+                }
+                // For MT, also copy into mt array
+                if rng_kind == RNGtype::MERSENNE_TWISTER {
+                    for j in 0..MT_N {
+                        if j + 1 < seeds_len {
+                            rng.mt[j] = *is.add(j + 1) as u32;
+                        }
+                    }
+                }
+                // For Knuth TAOCP, copy into kt_x
+                if rng_kind == RNGtype::KNUTH_TAOCP || rng_kind == RNGtype::KNUTH_TAOCP2 {
+                    for j in 0..KT_KK {
+                        if j + 1 < seeds_len {
+                            rng.kt_x[j] = *is.add(j + 1) as i64;
+                        }
+                    }
                 }
                 FixupSeeds(rng, rng_kind, false);
             }
@@ -924,44 +889,14 @@ pub unsafe fn GetRNGstate() {
     }
 }
 
-fn rng_table_len_seed(kind: RNGtype) -> usize {
-    match kind {
-        RNGtype::WICHMANN_HILL => 3,
-        RNGtype::MARSAGLIA_MULTICARRY => 2,
-        RNGtype::SUPER_DUPER => 2,
-        RNGtype::MERSENNE_TWISTER => 1 + MT_N,
-        RNGtype::KNUTH_TAOCP | RNGtype::KNUTH_TAOCP2 => 1 + KT_KK,
-        RNGtype::USER_UNIF => 0,
-        RNGtype::LECUYER_CMRG => 6,
-    }
-}
-
-fn rng_kind_out_of_range() -> bool {
-    with_rng_state(|rng| {
-        rng.rng_kind.get() as i32 > 7
-            || rng.n01_kind.get() as i32 > 5
-            || rng.sample_kind.get() as i32 > 1
-    })
-}
-
 /// Copy seeds out to .Random.seed.
 pub unsafe fn PutRNGstate() {
     unsafe {
-        if rng_kind_out_of_range() {
-            warn("Internal .Random.seed is corrupt: not saving");
-            return;
-        }
-
-        let (len_seed, seeds_vec) = with_rng_state(|rng| {
+        let (rng_kind, n01_kind, sample_kind, len_seed, seeds_vec) = with_rng_state(|rng| {
             let kind = rng.rng_kind.get();
             let n01 = rng.n01_kind.get();
             let samp = rng.sample_kind.get();
             let ls = rng.rng_table[kind as usize].n_seed;
-
-            // Keep the Knuth working state in i_seed so it round-trips
-            if matches!(kind, RNGtype::KNUTH_TAOCP | RNGtype::KNUTH_TAOCP2) {
-                sync_kt_seeds(rng, kind);
-            }
 
             // Build the full seed vector: [kinds, i_seed[0], i_seed[1], ...]
             let mut sv = vec![0i32; ls + 1];
@@ -969,8 +904,12 @@ pub unsafe fn PutRNGstate() {
             for j in 0..ls {
                 sv[j + 1] = rng.rng_table[kind as usize].i_seed[j] as i32;
             }
-            (ls, sv)
+            (kind, n01, samp, ls, sv)
         });
+
+        if rng_kind as i32 > 7 || n01_kind as i32 > 5 || sample_kind as i32 > 1 {
+            return;
+        }
 
         let seeds_sym = R_SeedsSymbol();
         let existing = R_findVarInFrame(R_GlobalEnv(), seeds_sym);
@@ -1003,68 +942,48 @@ pub unsafe fn PutRNGstate() {
 // ---------------------------------------------------------------------------
 
 fn r_RNGkind(newkind: RNGtype) {
-    // Choose a new kind of RNG; initialize its seed from the old RNG's
-    // unif_rand() (R's RNGkind()).
-    if newkind == RNGtype::MARSAGLIA_MULTICARRY {
-        warn("RNGkind: Marsaglia-Multicarry has poor statistical properties");
-    }
-    if !matches!(
-        newkind,
+    let kind = newkind;
+
+    // Validate
+    match kind {
         RNGtype::WICHMANN_HILL
-            | RNGtype::MARSAGLIA_MULTICARRY
-            | RNGtype::SUPER_DUPER
-            | RNGtype::MERSENNE_TWISTER
-            | RNGtype::KNUTH_TAOCP
-            | RNGtype::USER_UNIF
-            | RNGtype::KNUTH_TAOCP2
-            | RNGtype::LECUYER_CMRG
-    ) {
-        error(&format!(
-            "RNGkind: unimplemented RNG kind {}",
-            newkind as i32
-        ));
+        | RNGtype::MARSAGLIA_MULTICARRY
+        | RNGtype::SUPER_DUPER
+        | RNGtype::MERSENNE_TWISTER
+        | RNGtype::KNUTH_TAOCP
+        | RNGtype::USER_UNIF
+        | RNGtype::KNUTH_TAOCP2
+        | RNGtype::LECUYER_CMRG => {}
     }
 
-    unsafe { GetRNGstate() };
-    // Precaution against corruption as per package randtoolbox
+    // Get current state and generate a seed from it
     let u = r_unif_rand();
-    let seed = if !(0.0..=1.0).contains(&u) {
-        warn("someone corrupted the random-number generator: re-initializing");
+    let seed = if u < 0.0 || u > 1.0 {
         TimeToSeed() as i64
     } else {
         (u * u32::MAX as f64) as i64
     };
 
     with_rng_state(|rng| {
-        RNG_Init(rng, newkind, seed);
-        rng.rng_kind.set(newkind);
+        RNG_Init(rng, kind, seed);
+        rng.rng_kind.set(kind);
     });
 
+    // Put the new state
     unsafe {
         PutRNGstate();
     }
 }
 
 fn r_Norm_kind(kind: N01type) {
-    let mm = with_rng_state(|rng| rng.rng_kind.get() == RNGtype::MARSAGLIA_MULTICARRY);
-    if kind == N01type::KINDERMAN_RAMAGE && mm {
-        warn(
-            "RNGkind: severe deviations from normality for Kinderman-Ramage + Marsaglia-Multicarry",
-        );
-    }
-    if kind == N01type::AHRENS_DIETER && mm {
-        warn("RNGkind: deviations from normality for Ahrens-Dieter + Marsaglia-Multicarry");
-    }
     if kind as i32 > 5 {
-        error("invalid Normal type in 'RNGkind'");
+        return;
     }
-    if kind == N01type::USER_NORM {
-        error("'user_norm_rand' not in load table");
-    }
-    unsafe { GetRNGstate() }; /* might not be initialized */
+
     if kind == N01type::BOX_MULLER {
-        with_rng_state(|rng| rng.bm_norm_keep.set(0.0)); /* zap Box-Muller history */
+        with_rng_state(|rng| rng.bm_norm_keep.set(0.0));
     }
+
     with_rng_state(|rng| rng.n01_kind.set(kind));
     unsafe {
         PutRNGstate();
@@ -1073,9 +992,8 @@ fn r_Norm_kind(kind: N01type) {
 
 fn r_Samp_kind(kind: Sampletype) {
     if kind as i32 > 1 {
-        error("invalid sample type in 'RNGkind'");
+        return;
     }
-    unsafe { GetRNGstate() }; /* might not be initialized */
     with_rng_state(|rng| rng.sample_kind.set(kind));
     unsafe {
         PutRNGstate();
@@ -1753,252 +1671,15 @@ pub unsafe fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 // ---------------------------------------------------------------------------
-// do_RNGkind / do_setseed -- R's RNGkind() and set.seed()
-//
-// Stock R wraps the .Internal layer in base-package closures that validate
-// string arguments (pmatch against the kind tables) and convert the integer
-// result back to names. This port has no R-level closures, so the same
-// validation and name conversion lives here.
+// do_RNGkind -- R's RNGkind() function
 // ---------------------------------------------------------------------------
 
-const RNG_KIND_NAMES: [&str; 9] = [
-    "Wichmann-Hill",
-    "Marsaglia-Multicarry",
-    "Super-Duper",
-    "Mersenne-Twister",
-    "Knuth-TAOCP",
-    "user-supplied",
-    "Knuth-TAOCP-2002",
-    "L'Ecuyer-CMRG",
-    "default",
-];
-
-const N01_KIND_NAMES: [&str; 7] = [
-    "Buggy Kinderman-Ramage",
-    "Ahrens-Dieter",
-    "Box-Muller",
-    "user-supplied",
-    "Inversion",
-    "Kinderman-Ramage",
-    "default",
-];
-
-const SAMPLE_KIND_NAMES: [&str; 3] = ["Rounding", "Rejection", "default"];
-
-/// pmatch(x, table) for one string: exact match wins, then a unique prefix
-/// match; ambiguity or no match is None (stock pmatch).
-fn pmatch_one(x: &str, table: &[&str]) -> Option<usize> {
-    if let Some(i) = table.iter().position(|t| *t == x) {
-        return Some(i);
-    }
-    let mut matches = table.iter().enumerate().filter(|(_, t)| t.starts_with(x));
-    match (matches.next(), matches.next()) {
-        (Some((i, _)), None) => Some(i),
-        _ => None,
-    }
-}
-
-fn arg_is_absent(x: SEXP) -> bool {
-    x.is_null() || unsafe { x == R_NilValue() || x == R_MissingArg() }
-}
-
-/// True when the slot carries the given parameter tag. The evaluator keeps
-/// call order, so `RNGkind(normal.kind = "Inversion")` delivers the value in
-/// the first slot; tag inspection restores the stock parameter mapping.
-unsafe fn kind_tag_is(x: SEXP, name: &str) -> bool {
-    unsafe {
-        if x.is_null() {
-            return false;
-        }
-        let tag = TAG(x);
-        if tag.is_null() || tag == R_NilValue() {
-            return false;
-        }
-        let pname = PRINTNAME(tag);
-        if pname.is_null() {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(CHAR(pname)).to_bytes() == name.as_bytes()
-    }
-}
-
-/// Map positional slots to kind parameters by tag when any tag is present.
-///
-/// `cells` are the pairlist cells holding the kind/normal.kind/sample.kind
-/// arguments in call order; TAG is read from the cell, not the value.
-unsafe fn resolve_kind_args(cells: [SEXP; 3]) -> (SEXP, SEXP, SEXP) {
-    unsafe {
-        let nil = R_NilValue();
-        let mut kind = nil;
-        let mut norm = nil;
-        let mut sample = nil;
-        for cell in cells {
-            if cell.is_null() || cell == nil {
-                continue;
-            }
-            let x = CAR(cell);
-            if arg_is_absent(x) {
-                continue;
-            }
-            if kind_tag_is(cell, "normal.kind") {
-                norm = x;
-            } else if kind_tag_is(cell, "sample.kind") {
-                sample = x;
-            } else {
-                // Untagged slots fill kind, then normal.kind, then
-                // sample.kind (stock positional order).
-                if kind == nil {
-                    kind = x;
-                } else if norm == nil {
-                    norm = x;
-                } else {
-                    sample = x;
-                }
-            }
-        }
-        (kind, norm, sample)
-    }
-}
-
-unsafe fn kind_string(arg: SEXP) -> String {
-    unsafe {
-        let char_sexp = STRING_ELT(arg, 0);
-        std::ffi::CStr::from_ptr(CHAR(char_sexp))
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-fn kind_error(msg: &str) -> ! {
-    unsafe {
-        let call = crate::mainutils::errors::R_getCurrentCall();
-        let nil = R_NilValue();
-        if !call.is_null() && call != nil {
-            crate::mainutils::errors::errorcall_str(call, msg);
-        }
-        crate::mainutils::errors::errorcall_str(nil, msg);
-    }
-}
-
-/// `kind = NULL` absent | code 0..=7 | -1 for "default".
-unsafe fn parse_rng_kind_arg(arg: SEXP) -> Option<i32> {
-    unsafe {
-        if arg_is_absent(arg) || (TYPEOF(arg) == SEXPTYPE::STRSXP && XLENGTH(arg) == 0) {
-            return None;
-        }
-        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) > 1 {
-            kind_error("'kind' must be a character string (RNG to be used).");
-        }
-        let s = kind_string(arg);
-        match pmatch_one(&s, &RNG_KIND_NAMES) {
-            Some(i) if i == RNG_KIND_NAMES.len() - 1 => Some(-1),
-            Some(i) => Some(i as i32),
-            None => kind_error(&format!("'{s}' is not a valid abbreviation of an RNG")),
-        }
-    }
-}
-
-/// `normal.kind = NULL` absent | code 0..=5 | -1 for "default".
-unsafe fn parse_normal_kind_arg(arg: SEXP, from_setseed: bool) -> Option<i32> {
-    unsafe {
-        if arg_is_absent(arg) {
-            return None;
-        }
-        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
-            kind_error("'normal.kind' must be a character string");
-        }
-        let s = kind_string(arg);
-        match pmatch_one(&s, &N01_KIND_NAMES) {
-            None => kind_error(&format!("'{s}' is not a valid choice")),
-            Some(0) => {
-                // Buggy Kinderman-Ramage
-                if from_setseed {
-                    kind_error("buggy version of Kinderman-Ramage generator is not allowed");
-                }
-                warn("buggy version of Kinderman-Ramage generator used");
-                Some(0)
-            }
-            Some(i) if i == N01_KIND_NAMES.len() - 1 => Some(-1),
-            Some(i) => Some(i as i32),
-        }
-    }
-}
-
-/// `sample.kind = NULL` absent | code 0..=1 | -1 for "default".
-unsafe fn parse_sample_kind_arg(arg: SEXP) -> Option<i32> {
-    unsafe {
-        if arg_is_absent(arg) {
-            return None;
-        }
-        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
-            kind_error("'sample.kind' must be a character string");
-        }
-        let s = kind_string(arg);
-        match pmatch_one(&s, &SAMPLE_KIND_NAMES) {
-            None => kind_error(&format!("'{s}' is not a valid choice")),
-            Some(0) => {
-                warn("non-uniform 'Rounding' sampler used");
-                Some(0)
-            }
-            Some(i) if i == SAMPLE_KIND_NAMES.len() - 1 => Some(-1),
-            Some(i) => Some(i as i32),
-        }
-    }
-}
-
-fn rng_kind_from_code(code: i32) -> RNGtype {
-    match code {
-        0 => RNGtype::WICHMANN_HILL,
-        1 => RNGtype::MARSAGLIA_MULTICARRY,
-        2 => RNGtype::SUPER_DUPER,
-        3 => RNGtype::MERSENNE_TWISTER,
-        4 => RNGtype::KNUTH_TAOCP,
-        5 => RNGtype::USER_UNIF,
-        6 => RNGtype::KNUTH_TAOCP2,
-        7 => RNGtype::LECUYER_CMRG,
-        -1 => RNG_DEFAULT,
-        _ => RNG_DEFAULT,
-    }
-}
-
-fn n01_kind_from_code(code: i32) -> N01type {
-    match code {
-        0 => N01type::BUGGY_KINDERMAN_RAMAGE,
-        1 => N01type::AHRENS_DIETER,
-        2 => N01type::BOX_MULLER,
-        3 => N01type::USER_NORM,
-        4 => N01type::INVERSION,
-        5 => N01type::KINDERMAN_RAMAGE,
-        -1 => N01_DEFAULT,
-        _ => N01_DEFAULT,
-    }
-}
-
-fn sample_kind_from_code(code: i32) -> Sampletype {
-    match code {
-        0 => Sampletype::ROUNDING,
-        -1 => Sample_DEFAULT,
-        _ => Sampletype::REJECTION,
-    }
-}
-
-/// R's `RNGkind(kind = NULL, normal.kind = NULL, sample.kind = NULL)`.
-///
-/// Returns the *old* kind names as a character vector; the value is visible
-/// when nothing was set and invisible otherwise (stock closure behavior).
 pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        GetRNGstate(); /* might not be initialized */
+        GetRNGstate();
 
-        let (rng_code, norm_code, sample_code) =
-            resolve_kind_args([args, CDR(args), CDR(CDR(args))]);
-        let rng_parsed = parse_rng_kind_arg(rng_code);
-        let norm_parsed = parse_normal_kind_arg(norm_code, false);
-        let sample_parsed = parse_sample_kind_arg(sample_code);
-
-        // Snapshot the old kinds before applying anything.
-        let (old_rng, old_n01, old_sample) = with_rng_state(|rng| {
+        let (rng_kind, n01_kind, sample_kind) = with_rng_state(|rng| {
             (
                 rng.rng_kind.get() as c_int,
                 rng.n01_kind.get() as c_int,
@@ -2006,127 +1687,139 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             )
         });
 
-        // Stock pulls the kind codes from .Random.seed (if present) before
-        // switching; reloading the full state from the same source matches.
-        GetRNGstate();
-
-        if let Some(code) = rng_parsed {
-            r_RNGkind(rng_kind_from_code(code));
-        }
-        if let Some(code) = norm_parsed {
-            r_Norm_kind(n01_kind_from_code(code));
-        }
-        if let Some(code) = sample_parsed {
-            r_Samp_kind(sample_kind_from_code(code));
-        }
-
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, 3);
         let _ans_guard = protect(ans);
-        for (i, name) in [
-            RNG_KIND_NAMES[old_rng as usize],
-            N01_KIND_NAMES[old_n01 as usize],
-            SAMPLE_KIND_NAMES[old_sample as usize],
-        ]
-        .iter()
-        .enumerate()
-        {
-            let cstr = std::ffi::CString::new(*name).unwrap_or_default();
-            SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        *INTEGER(ans).add(0) = rng_kind;
+        *INTEGER(ans).add(1) = n01_kind;
+        *INTEGER(ans).add(2) = sample_kind;
+
+        let rng_arg = CAR(args);
+        let norm_arg = CADR(args);
+        let sample_arg = CADDR(args);
+
+        if !isNull(rng_arg) {
+            let v = asInteger_local(rng_arg);
+            if v != NA_INTEGER {
+                let kind = match v {
+                    0 => RNGtype::WICHMANN_HILL,
+                    1 => RNGtype::MARSAGLIA_MULTICARRY,
+                    2 => RNGtype::SUPER_DUPER,
+                    3 => RNGtype::MERSENNE_TWISTER,
+                    4 => RNGtype::KNUTH_TAOCP,
+                    5 => RNGtype::USER_UNIF,
+                    6 => RNGtype::KNUTH_TAOCP2,
+                    7 => RNGtype::LECUYER_CMRG,
+                    _ => RNGtype::MERSENNE_TWISTER,
+                };
+                r_RNGkind(kind);
+            }
+        }
+        if !isNull(norm_arg) {
+            let v = asInteger_local(norm_arg);
+            if v != NA_INTEGER {
+                let kind = match v {
+                    0 => N01type::BUGGY_KINDERMAN_RAMAGE,
+                    1 => N01type::AHRENS_DIETER,
+                    2 => N01type::BOX_MULLER,
+                    3 => N01type::USER_NORM,
+                    4 => N01type::INVERSION,
+                    5 => N01type::KINDERMAN_RAMAGE,
+                    _ => N01type::INVERSION,
+                };
+                r_Norm_kind(kind);
+            }
+        }
+        if !isNull(sample_arg) {
+            let v = asInteger_local(sample_arg);
+            if v != NA_INTEGER {
+                let kind = if v == 0 {
+                    Sampletype::ROUNDING
+                } else {
+                    Sampletype::REJECTION
+                };
+                r_Samp_kind(kind);
+            }
         }
 
-        crate::sexp::globals::set_R_Visible(i32::from(
-            rng_parsed.is_none() && norm_parsed.is_none() && sample_parsed.is_none(),
-        ));
         ans
     }
 }
 
-/// R's `set.seed(seed, kind = NULL, normal.kind = NULL, sample.kind = NULL)`.
-///
-/// Returns invisible NULL.
+// ---------------------------------------------------------------------------
+// do_setseed -- R's set.seed() function
+// ---------------------------------------------------------------------------
+
 pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
-        // The stock closure validates kind arguments before any state change.
-        let tail = CDR(args);
-        let (skind, nkind, sampkind) = resolve_kind_args([tail, CDR(tail), CDR(CDR(tail))]);
-        let kind_parsed = parse_rng_kind_arg(skind);
-        let norm_parsed = parse_normal_kind_arg(nkind, true);
-        let sample_parsed = parse_sample_kind_arg(sampkind);
-
         let seed: i64;
-        if !isNull(CAR(args)) && CAR(args) != R_MissingArg() {
-            let arg = CAR(args);
-            if TYPEOF(arg) == SEXPTYPE::STRSXP {
-                // asInteger() coerces strings via NAs
-                warn("NAs introduced by coercion");
-                kind_error("supplied seed is not a valid integer");
-            }
-            let v = asInteger_local(arg);
+        if !isNull(CAR(args)) {
+            let v = asInteger_local(CAR(args));
             if v == NA_INTEGER {
-                kind_error("supplied seed is not a valid integer");
+                error("supplied seed is not a valid integer");
             }
             seed = v as i64;
         } else {
             seed = TimeToSeed() as i64;
         }
 
-        // Pull RNG_kind/N01_kind from .Random.seed if present (stock).
-        GetRNGstate();
+        let skind = CADR(args);
+        let nkind = CADDR(args);
+        let sampkind = CADDDR(args);
 
-        if let Some(code) = kind_parsed {
-            r_RNGkind(rng_kind_from_code(code));
+        if !isNull(skind) {
+            let v = asInteger_local(skind);
+            if v != NA_INTEGER {
+                let kind = match v {
+                    0 => RNGtype::WICHMANN_HILL,
+                    1 => RNGtype::MARSAGLIA_MULTICARRY,
+                    2 => RNGtype::SUPER_DUPER,
+                    3 => RNGtype::MERSENNE_TWISTER,
+                    4 => RNGtype::KNUTH_TAOCP,
+                    5 => RNGtype::USER_UNIF,
+                    6 => RNGtype::KNUTH_TAOCP2,
+                    7 => RNGtype::LECUYER_CMRG,
+                    _ => RNGtype::MERSENNE_TWISTER,
+                };
+                r_RNGkind(kind);
+            }
         }
-        if let Some(code) = norm_parsed {
-            r_Norm_kind(n01_kind_from_code(code));
+        if !isNull(nkind) {
+            let v = asInteger_local(nkind);
+            if v != NA_INTEGER {
+                let kind = match v {
+                    0 => N01type::BUGGY_KINDERMAN_RAMAGE,
+                    1 => N01type::AHRENS_DIETER,
+                    2 => N01type::BOX_MULLER,
+                    3 => N01type::USER_NORM,
+                    4 => N01type::INVERSION,
+                    5 => N01type::KINDERMAN_RAMAGE,
+                    _ => N01type::INVERSION,
+                };
+                r_Norm_kind(kind);
+            }
         }
-        if let Some(code) = sample_parsed {
-            r_Samp_kind(sample_kind_from_code(code));
+        if !isNull(sampkind) {
+            let v = asInteger_local(sampkind);
+            if v != NA_INTEGER {
+                let kind = if v == 0 {
+                    Sampletype::ROUNDING
+                } else {
+                    Sampletype::REJECTION
+                };
+                r_Samp_kind(kind);
+            }
         }
 
-        // Initialize the RNG with the seed (zaps Box-Muller history)
+        // Initialize the RNG with the seed
         with_rng_state(|rng| {
             let kind = rng.rng_kind.get();
             RNG_Init(rng, kind, seed);
         });
         PutRNGstate();
 
-        crate::sexp::globals::set_R_Visible(0);
         R_NilValue()
-    }
-}
-
-/// Seed the session's R-level RNG from a 64-bit host seed and write
-/// `.Random.seed` (host-embedding analogue of `set.seed`).
-pub fn set_session_seed64(seed: i64) {
-    with_rng_state(|rng| {
-        let kind = rng.rng_kind.get();
-        RNG_Init(rng, kind, seed);
-    });
-    unsafe {
-        PutRNGstate();
-    }
-}
-
-/// Hook installed into the nmath crate so its samplers draw from the
-/// session's R-level RNG dispatch (all RNG kinds, `.Random.seed` state)
-/// instead of the standalone MultiCarry stream.
-pub fn nmath_unif_hook() -> f64 {
-    if crate::sexp::instance::current_instance_ptr().is_some() {
-        // Stock R randomizes lazily when the RNG is first used without a
-        // .Random.seed; a virgin per-instance state gets the same treatment
-        // instead of drawing from an all-zero Mersenne Twister state.
-        let virgin = with_rng_state(|rng| !rng.initialized.get());
-        if virgin {
-            with_rng_state(|rng| {
-                let kind = rng.rng_kind.get();
-                RNG_Init(rng, kind, crate::mainutils::times::TimeToSeed() as i64);
-            });
-        }
-        r_unif_rand()
-    } else {
-        crate::nmath::rng::multicarry_unif_rand()
     }
 }
 

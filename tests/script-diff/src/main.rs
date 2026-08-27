@@ -48,7 +48,38 @@ fn case_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
+fn usage() {
+    eprintln!("usage: rport-script-diff [--allow-skip]");
+    eprintln!();
+    eprintln!("Exits 0 when every case runs and matches, 1 when any case fails,");
+    eprintln!("2 when any case is skipped because stock R failed to run it");
+    eprintln!("(suppressed by --allow-skip), and 3 on bad usage.");
+}
+
+fn parse_args() -> Result<bool, String> {
+    let mut allow_skip = false;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--allow-skip" => allow_skip = true,
+            "--help" | "-h" => {
+                usage();
+                std::process::exit(0);
+            }
+            other => return Err(other.to_string()),
+        }
+    }
+    Ok(allow_skip)
+}
+
 fn main() {
+    let allow_skip = match parse_args() {
+        Ok(allow_skip) => allow_skip,
+        Err(arg) => {
+            usage();
+            eprintln!("error: unknown argument: {arg}");
+            std::process::exit(3);
+        }
+    };
     let cases_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("cases");
     let mut passed = 0usize;
     let mut failed = 0usize;
@@ -90,5 +121,12 @@ fn main() {
     println!("script-diff: {passed} passed, {failed} failed, {skipped} skipped");
     if failed > 0 {
         std::process::exit(1);
+    }
+    if skipped > 0 && !allow_skip {
+        eprintln!(
+            "script-diff: {skipped} case(s) skipped because stock R failed to run them; \
+             pass --allow-skip to tolerate"
+        );
+        std::process::exit(2);
     }
 }

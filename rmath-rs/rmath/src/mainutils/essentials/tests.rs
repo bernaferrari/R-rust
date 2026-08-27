@@ -282,7 +282,9 @@ fn test_gc_reports_session_memory_counters() {
         );
         assert!(!dim.is_null());
         assert_eq!(*INTEGER(dim), 2);
-        assert_eq!(*INTEGER(dim).add(1), 7);
+        // Stock base::gc drops the all-NA `limit (Mb)` column (the port has
+        // no cell limits), so the visible table is 2x6.
+        assert_eq!(*INTEGER(dim).add(1), 6);
 
         let data = REAL(result);
         assert!(*data > 0.0, "Ncells used should reflect active arena nodes");

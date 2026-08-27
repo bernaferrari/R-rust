@@ -341,7 +341,7 @@ mod prho;
     unused_assignments,
     non_camel_case_types
 )]
-mod random;
+pub(crate) mod random;
 #[allow(
     dead_code,
     unused_imports,

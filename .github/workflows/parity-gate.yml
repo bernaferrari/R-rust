@@ -136,8 +136,8 @@ jobs:
         shell: bash
         run: env RUSTFLAGS="-Awarnings" cargo build -p rmath
 
-      # Error goldens are reviewed artifacts: CI only checks parity.
-      # Regenerate locally with
+      # Goldens (normal and error cases) are reviewed artifacts: CI only
+      # checks parity. Regenerate locally with
       # `bash scripts/conformance_parity.sh --regen-goldens` and commit the
       # reviewed diff; never auto-regenerate in CI.
       - name: Run conformance harness

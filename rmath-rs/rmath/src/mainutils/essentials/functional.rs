@@ -36,6 +36,14 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if x.is_null() || x == R_NilValue() || fun.is_null() {
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
+        // `x` and `fun` live across `apply_unary_value` -> `Rf_eval`, which
+        // allocates and can run a deferred collection at an eval safe point.
+        // Raw Rust locals are not GC roots, so an unprotected `x` can be
+        // swept mid-loop and its slab slot recycled as another node type;
+        // `extract_element` then reads `TYPEOF(x)` off the recycled node.
+        // Protect both for the whole loop, like `result`.
+        let _x_guard = protect(x);
+        let _fun_guard = protect(fun);
         let n = list_apply_len(x);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -85,6 +93,9 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if fun.is_null() || x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        // Protect across the eval-per-element loop (see do_lapply).
+        let _x_guard = protect(x);
+        let _fun_guard = protect(fun);
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -108,6 +119,9 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if fun.is_null() || x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
+        // Protect across the eval-per-element loop (see do_lapply).
+        let _x_guard = protect(x);
+        let _fun_guard = protect(fun);
         let n = XLENGTH(x);
         let mut kept: Vec<R_xlen_t> = Vec::new();
         for i in 0..n {
@@ -360,6 +374,21 @@ pub(crate) fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
             }
             return R_NilValue();
         }
+        // Only allocate a scalar element for atomic vector inputs.
+        // `Rf_allocVector3(TYPEOF(x), 1)` with an arbitrary type would
+        // fabricate a node whose union payload is a vector header
+        // ({length, truelength}) but whose SEXPTYPE is non-vector — the GC
+        // then traces e.g. a PROMSXP-typed node whose value/expr slots hold
+        // the integers 1/1 and whose env slot is uninitialized memory.
+        if t != SEXPTYPE::REALSXP
+            && t != SEXPTYPE::INTSXP
+            && t != SEXPTYPE::LGLSXP
+            && t != SEXPTYPE::CPLXSXP
+            && t != SEXPTYPE::RAWSXP
+            && t != SEXPTYPE::STRSXP
+        {
+            return R_NilValue();
+        }
         let elem = Rf_allocVector3(t, 1);
         if elem.is_null() {
             return R_NilValue();
@@ -370,6 +399,17 @@ pub(crate) fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
             *INTEGER(elem) = *INTEGER(x).add(i as usize);
         } else if t == SEXPTYPE::LGLSXP {
             *LOGICAL(elem) = *LOGICAL(x).add(i as usize);
+        } else if t == SEXPTYPE::CPLXSXP {
+            *crate::sexp::accessors::COMPLEX(elem) =
+                *crate::sexp::accessors::COMPLEX(x).add(i as usize);
+        } else if t == SEXPTYPE::RAWSXP {
+            *crate::sexp::accessors::RAW(elem) = *crate::sexp::accessors::RAW(x).add(i as usize);
+        } else if t == SEXPTYPE::STRSXP {
+            crate::sexp::accessors::SET_STRING_ELT(
+                elem,
+                0,
+                crate::sexp::accessors::STRING_ELT(x, i as i64),
+            );
         }
         elem
     }

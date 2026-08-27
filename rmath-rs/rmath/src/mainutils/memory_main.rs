@@ -148,7 +148,10 @@ pub unsafe fn R_gc() {
         state.gc_count += 1;
         state.in_gc = 1;
     });
-    crate::sexp::gengc::full_gc();
+    // Explicit gc() may fire mid-evaluation (inside loop bodies / closure
+    // calls). Route it through the safe-point preamble so in-flight frame
+    // bindings are force-protected during the collection instead of swept.
+    crate::sexp::gengc::collect_with_environment_protects(true);
     with_memory_state(|state| state.in_gc = 0);
     unsafe {
         R_RunPendingFinalizers();
@@ -160,7 +163,7 @@ pub unsafe fn R_gc() {
 /// This is the equivalent of R's `R_gc_lite()`.
 pub unsafe fn R_gc_lite() {
     with_memory_state(|state| state.gc_count += 1);
-    crate::sexp::gengc::minor_gc();
+    crate::sexp::gengc::collect_with_environment_protects(false);
     unsafe {
         R_RunPendingFinalizers();
     }

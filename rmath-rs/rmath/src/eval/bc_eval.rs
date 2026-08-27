@@ -293,6 +293,41 @@ unsafe fn stack_at_checked(stack: &R_bcstack_t, index: usize, context: &str) -> 
     }
 }
 
+/// Run `f` with the residual operand stack (and `extra`) rooted on the
+/// protection stack.
+///
+/// The bytecode operand stack lives in a Rust local, invisible to the
+/// collector's root scan. Nested evaluation (`Rf_eval`, `forcePromise`) can
+/// reach an eval safe point and run a deferred collection; without this
+/// window, every value still live in operand slots below the ones an op has
+/// already popped — plus the freshly built call/args cons cells — would be
+/// swept mid-op. `protect_n` returns an RAII guard, so the bounded window
+/// also unwinds cleanly when the nested evaluation raises an R error.
+unsafe fn with_stack_rooted<F, R>(stack: &R_bcstack_t, extra: SEXP, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    unsafe {
+        let depth = stack.depth();
+        let mut rooted = 0usize;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            for i in 0..depth {
+                let val = stack.at(i);
+                if !val.is_null() {
+                    crate::sexp::protect::push_protect_in(inst, val);
+                    rooted += 1;
+                }
+            }
+            if !extra.is_null() {
+                crate::sexp::protect::push_protect_in(inst, extra);
+                rooted += 1;
+            }
+        });
+        let _unwind = crate::sexp::protect::protect_n(rooted);
+        f()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // bcEval — the main bytecode evaluation loop
 // ---------------------------------------------------------------------------
@@ -360,9 +395,13 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
-                        stack.push(crate::eval::eval::Rf_eval(call, rho));
+                        let evaluated = with_stack_rooted(&stack, call, || unsafe {
+                            crate::eval::eval::Rf_eval(call, rho)
+                        });
+                        stack.push(evaluated);
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
-                        let forced = forcePromise(val);
+                        let forced =
+                            with_stack_rooted(&stack, val, || unsafe { forcePromise(val) });
                         if forced == R_MissingArg() {
                             bc_missing_arg_error(sym);
                         }
@@ -514,7 +553,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
-                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        let result = with_stack_rooted(&stack, call, || unsafe {
+                            crate::eval::eval::Rf_eval(call, rho)
+                        });
                         stack.push(result);
                     }
                 }
@@ -534,7 +575,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
-                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        let result = with_stack_rooted(&stack, call, || unsafe {
+                            crate::eval::eval::Rf_eval(call, rho)
+                        });
                         stack.push(result);
                     }
                     super::runtime::set_visible(TRUE);
@@ -555,7 +598,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
-                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        let result = with_stack_rooted(&stack, call, || unsafe {
+                            crate::eval::eval::Rf_eval(call, rho)
+                        });
                         stack.push(result);
                     }
                     super::runtime::set_visible(FALSE);
@@ -656,7 +701,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         stack.push(R_NilValue());
                     } else {
                         let call = Rf_lang2(fun, args);
-                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        let result = with_stack_rooted(&stack, call, || unsafe {
+                            crate::eval::eval::Rf_eval(call, rho)
+                        });
                         stack.push(result);
                     }
                     super::runtime::set_visible(FALSE);
@@ -719,7 +766,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                             if !call.is_null() {
                                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                             }
-                            let result = crate::eval::eval::Rf_eval(call, rho);
+                            let result = with_stack_rooted(&stack, call, || unsafe {
+                                crate::eval::eval::Rf_eval(call, rho)
+                            });
                             stack.push(result);
                         }
                     }
@@ -748,7 +797,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                             if !call.is_null() {
                                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                             }
-                            let result = crate::eval::eval::Rf_eval(call, rho);
+                            let result = with_stack_rooted(&stack, call, || unsafe {
+                                crate::eval::eval::Rf_eval(call, rho)
+                            });
                             stack.push(result);
                         }
                     }
@@ -1137,6 +1188,67 @@ mod tests {
         let result = unsafe { bcEval(bcode, env) };
         unsafe {
             assert_eq!(*INTEGER(result), 42);
+        }
+    }
+
+    #[test]
+    fn test_bc_eval_operand_stack_survives_gc_in_callee() {
+        let mut session = crate::sexp::session::RSession::new();
+
+        // Callee whose body forces a full collection while the caller's
+        // bytecode frame is suspended mid-OP_CALL.
+        let gc_closure = session
+            .with_arena(|arena| unsafe {
+                let clos = arena.alloc_node(SEXPTYPE::CLOSXP);
+                (*clos).data.closxp.formals = R_NilValue();
+                let body = Rf_cons(
+                    crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
+                    R_NilValue(),
+                );
+                (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                (*clos).data.closxp.body = body;
+                (*clos).data.closxp.env = crate::sexp::globals::R_BaseEnv();
+                clos
+            })
+            .expect("session active");
+        let _callee_guard = crate::sexp::protect::protect(gc_closure);
+
+        // Detached arena keeps the bytecode alive for the whole test but is
+        // invisible to the instance collector.
+        let mut arena = crate::sexp::memory::RArena::new();
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+        unsafe {
+            let data = (*consts).gengc_next_node as *mut SEXP;
+            *data.add(0) = gc_closure;
+        }
+        let bcode = bcode_with(
+            &mut arena,
+            &[
+                opcodes::OP_PUSHTRUE, // fresh young scalar: operand-stack-only
+                opcodes::OP_PUSHCONST,
+                0, // push the gc() closure
+                opcodes::OP_CALL,
+                0,                  // nested evaluation runs a full GC
+                opcodes::OP_POP,    // drop gc()'s NULL result
+                opcodes::OP_RETURN, // return the residual operand value
+            ],
+            consts,
+        );
+        let env = empty_env(&mut arena);
+
+        let result = unsafe { bcEval(bcode, env) };
+        // The residual operand value must survive the collection that ran
+        // inside the callee: still active, still the TRUE logical.
+        let still_active = session
+            .with_arena(|a| a.active_nodes().any(|node| node == result))
+            .expect("session active");
+        assert!(
+            still_active,
+            "operand-stack value was swept by the GC run inside the callee"
+        );
+        unsafe {
+            assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
+            assert_eq!(*LOGICAL(result), TRUE);
         }
     }
 }

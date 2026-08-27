@@ -2620,6 +2620,11 @@ mod tests {
         let left = RSession::new();
         let right = RSession::new();
 
+        // Identical seeds reproduce one stream per session without leaking
+        // across concurrently-live sessions (fresh sessions randomize lazily
+        // from the clock, like stock R without a .Random.seed).
+        left.set_seed(10, 20);
+        right.set_seed(10, 20);
         let left_first = left.unif_rand();
         let right_first = right.unif_rand();
         let left_second = left.unif_rand();

@@ -2,9 +2,9 @@
 // Ported from dweibull.c, pweibull.c, qweibull.c, rweibull.c
 
 use crate::constants::*;
-use crate::dist::exponential::exp_rand;
 use crate::dpq::*;
 use crate::error::*;
+use crate::rng::unif_rand;
 use libm::*;
 
 // ---- Inner implementations ----
@@ -102,18 +102,15 @@ pub fn qweibull_inner(p: f64, shape: f64, scale: f64, lower_tail: bool, log_p: b
 
 #[must_use]
 pub fn rweibull_inner(shape: f64, scale: f64) -> f64 {
-    if !r_finite(shape) || !r_finite(scale) || shape < 0.0 || scale <= 0.0 {
+    if !r_finite(shape) || !r_finite(scale) || shape <= 0.0 || scale <= 0.0 {
         if scale == 0.0 {
             return 0.0;
         }
         /* else */
         return ml_warn_return_nan();
     }
-    if shape == 0.0 {
-        return if exp_rand() <= 1.0 { 0.0 } else { ML_POSINF };
-    }
 
-    scale * pow(-log(exp_rand()), 1.0 / shape)
+    scale * pow(-log(unif_rand()), 1.0 / shape)
 }
 
 // ---- FFI shims ----
@@ -208,18 +205,17 @@ mod tests {
         assert_eq!(qweibull_inner(0.5, 0.0, 1.0, true, false), 0.0);
         assert!(qweibull_inner(0.9, 0.0, 1.0, true, false).is_infinite());
     }
-
-    /// rweibull with shape = 0 returns only 0 or +Inf (never NaN).
+    /// rweibull with shape = 0 warns and returns NaN (stock rgamma.c-family
+    /// guard: shape <= 0 is out of domain; scale == 0 still yields 0).
     #[test]
-    fn weibull_shape_zero_random_is_zero_or_inf() {
+    fn weibull_shape_zero_random_is_nan() {
         let _session = crate::test_session::TestSession::new();
         for _ in 0..100 {
             let r = rweibull_inner(0.0, 1.0);
-            assert!(
-                r == 0.0 || r.is_infinite(),
-                "rweibull(shape=0) unexpected: {r}"
-            );
+            assert!(r.is_nan(), "rweibull(shape=0) unexpected: {r}");
         }
+        // scale == 0 short-circuits to 0 for any shape.
+        assert_eq!(rweibull_inner(2.0, 0.0), 0.0);
     }
 
     /// Negative shape still warns and returns NaN (guard retained).

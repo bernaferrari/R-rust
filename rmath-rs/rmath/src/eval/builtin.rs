@@ -772,27 +772,87 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "set.seed",
-        handler: crate::mainutils::rng_dispatch::do_set_seed,
+        handler: crate::mainutils::random::do_setseed,
     },
     EvaluatedBuiltin {
         name: "RNGkind",
-        handler: crate::mainutils::rng_dispatch::do_RNGkind,
+        handler: crate::mainutils::random::do_RNGkind,
     },
     EvaluatedBuiltin {
         name: "runif",
-        handler: crate::mainutils::rng_dispatch::do_runif,
+        handler: crate::library::stats::random::do_runif_r,
     },
     EvaluatedBuiltin {
         name: "rnorm",
-        handler: crate::mainutils::rng_dispatch::do_rnorm,
+        handler: crate::library::stats::random::do_rnorm_r,
     },
     EvaluatedBuiltin {
         name: "rpois",
-        handler: crate::mainutils::rng_dispatch::do_rpois,
+        handler: crate::library::stats::random::do_rpois_r,
     },
     EvaluatedBuiltin {
         name: "rexp",
-        handler: crate::mainutils::rng_dispatch::do_rexp,
+        handler: crate::library::stats::random::do_rexp_r,
+    },
+    EvaluatedBuiltin {
+        name: "rchisq",
+        handler: crate::library::stats::random::do_rchisq_r,
+    },
+    EvaluatedBuiltin {
+        name: "rgeom",
+        handler: crate::library::stats::random::do_rgeom_r,
+    },
+    EvaluatedBuiltin {
+        name: "rt",
+        handler: crate::library::stats::random::do_rt_r,
+    },
+    EvaluatedBuiltin {
+        name: "rsignrank",
+        handler: crate::library::stats::random::do_rsignrank_r,
+    },
+    EvaluatedBuiltin {
+        name: "rbeta",
+        handler: crate::library::stats::random::do_rbeta_r,
+    },
+    EvaluatedBuiltin {
+        name: "rbinom",
+        handler: crate::library::stats::random::do_rbinom_r,
+    },
+    EvaluatedBuiltin {
+        name: "rcauchy",
+        handler: crate::library::stats::random::do_rcauchy_r,
+    },
+    EvaluatedBuiltin {
+        name: "rf",
+        handler: crate::library::stats::random::do_rf_r,
+    },
+    EvaluatedBuiltin {
+        name: "rgamma",
+        handler: crate::library::stats::random::do_rgamma_r,
+    },
+    EvaluatedBuiltin {
+        name: "rlnorm",
+        handler: crate::library::stats::random::do_rlnorm_r,
+    },
+    EvaluatedBuiltin {
+        name: "rlogis",
+        handler: crate::library::stats::random::do_rlogis_r,
+    },
+    EvaluatedBuiltin {
+        name: "rnbinom",
+        handler: crate::library::stats::random::do_rnbinom_r,
+    },
+    EvaluatedBuiltin {
+        name: "rweibull",
+        handler: crate::library::stats::random::do_rweibull_r,
+    },
+    EvaluatedBuiltin {
+        name: "rwilcox",
+        handler: crate::library::stats::random::do_rwilcox_r,
+    },
+    EvaluatedBuiltin {
+        name: "rhyper",
+        handler: crate::library::stats::random::do_rhyper_r,
     },
     EvaluatedBuiltin {
         name: "sample",

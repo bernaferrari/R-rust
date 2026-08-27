@@ -54,18 +54,21 @@ You can also choose explicit output paths:
   --markdown target/conformance-summary.md
 ```
 
-Regenerate the error-case goldens from stock C R (run manually; never part of
-CI — goldens are reviewed artifacts, so commit the diff only after reading it):
+Regenerate the goldens from stock C R (run manually; never part of CI —
+goldens are reviewed artifacts, so commit the diff only after reading it):
 
 ```bash
 ./scripts/conformance_parity.sh --regen-goldens
 ```
 
-It re-runs every `tests/conformance/error_cases/*.R` under
-`Rscript --vanilla`, applies the harness's error normalization, and rewrites
-`tests/conformance/error_golden/*.out` in place. It refuses to run without
-`Rscript` on `PATH` and leaves any case whose stock-R run stops erroring
-untouched.
+It re-runs every `tests/conformance/cases/*.R` and
+`tests/conformance/error_cases/*.R` under `Rscript --vanilla`, applies the
+harness's normalization (plain output normalization for normal cases, error
+normalization for expected-error cases), and rewrites
+`tests/conformance/golden/*.out` and `tests/conformance/error_golden/*.out`
+in place. It refuses to run without `Rscript` on `PATH` and leaves goldens
+untouched whenever stock R misbehaves (a normal case exiting non-zero, or an
+error case that stops erroring).
 
 ## Upstream Core Slices
 
@@ -198,16 +201,39 @@ work needs a scoped bead and a stock-R or target-specific gate.
 | Full GNU R compatibility | Not claimed by the Android release subset. The checked suite and curated upstream slices are the active proof boundary. | `rport-pcqa`, `rport-65tc` | `scripts/conformance_parity.sh --check --strict`, `scripts/upstream_core_slices.sh` |
 | WASM interpreter embedding | Not currently exposed through `r-embed` or `r-uniffi`; those crates depend on the native/Android interpreter session and UniFFI runtime surface. WASM support is the pure Rust math/headless-graphics surface. | `rport-flq8`, `rport-mczh` | `scripts/wasm_toolchain_check.sh` |
 | Native/compiled package loading | Intentionally rejected for Android-style embedding until a host-specific native extension policy is implemented. Pure-R packages are the release surface. | `rport-ku08`, `rport-rmbf` | `scripts/pure_r_package_corpus.sh --check` |
-| Exact `.Random.seed` byte-stream parity | Not claimed. Tests assert stock-R behavior contracts such as shape, replacement, validation, tail/log flags, and deterministic edge cases. | `rport-pcqa` | Conformance RNG fixtures and this RNG policy |
+| Exact `.Random.seed` byte-stream parity | Claimed for the seeded default path: `set.seed`/`RNGkind`/`.Random.seed` and the Mersenne-Twister default reproduce stock R 4.6.1 streams bit-for-bit (`set.seed(42); runif(1)` and the 626-integer `.Random.seed` match stock). Non-default kinds are engine-faithful ports but not individually gated against stock streams. | `rport-pcqa` | Manual A/B probes against stock R 4.6.1 plus conformance RNG fixtures |
 | Host UI, network, and native devices | Policy constrained outside the mobile/headless release surface. Unsupported devices or host calls should fail cleanly instead of silently pretending to work. | `rport-a5w7`, `rport-h0jm` | Platform/global scans plus targeted conformance fixtures |
 
 ## RNG Policy
 
 RNG state is session-owned, reproducible within a session, and isolated across
-parallel sessions. Conformance fixtures avoid asserting exact random streams
-unless the result is deterministic by construction, such as zero-weight
-sampling. This keeps the parity gate focused on stock-R behavior contracts:
-shape, type, replacement rules, probability validation, tail/log flags, and
-numeric edge handling. Exact byte-for-byte `.Random.seed` stream parity with a
-specific stock R release is a separate compatibility target and should be
-tracked explicitly if required by a package or demo.
+parallel sessions. The R-level surface (`set.seed`, `RNGkind`, `runif`,
+`rnorm`, `rbinom`, the `r*` sampler family, `sample`) is a port of stock R's
+`RNG.c`/`random.c` dispatch: all eight RNG kinds, string-argument validation
+with stock error messages, `.Random.seed` round-tripping, and the
+Mersenne-Twister default. The nmath distribution samplers draw from the same
+session stream via a uniform hook, so seeded sequences match stock R 4.6.1
+bit-for-bit on the default kind.
+
+Known divergences from stock R 4.6.1:
+
+- `gc()` reports no cell limits, so the `limit (Mb)` column is always NA and
+  the visible table is 2x6 (stock drops that column only when it is all-NA;
+  a stock build with a vector-cell limit shows a 2x7 table). Counter values
+  are the port's arena statistics, not stock's cell counts.
+- RNG warnings render as `Warning message:` blocks without stock's
+  `In <call> :` attribution line, matching the port's `warning()` builtin.
+- Error attribution for `set.seed`/`RNGkind` validation renders as
+  `Error: <message>` (stock prefixes `Error in <call> :`); the message text
+  itself matches stock.
+- `RNGkind("user-supplied")` and `normal.kind = "user-supplied"` error like
+  stock with no dynamic user generator registered; `sample(kind = "Rounding")`
+  is accepted (and warned about) but `sample()` still uses the rejection
+  sampler.
+- `gc(verbose/reset/full)` accepts and ignores `reset`; peak-used counters
+  are not resettable.
+
+Conformance fixtures avoid asserting exact random streams unless the result is
+deterministic by construction, such as zero-weight sampling. This keeps the
+parity gate focused on stock-R behavior contracts: shape, type, replacement
+rules, probability validation, tail/log flags, and numeric edge handling.
