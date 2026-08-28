@@ -169,6 +169,9 @@ fn format_integer_value(v: i32) -> String {
 }
 
 fn format_real_value(v: f64) -> String {
+    // IEEE allows signed zeros; print them as plain 0 like stock R's
+    // EncodeReal0 ("if (x == 0.0) x = 0.0").
+    let v = if v == 0.0 { 0.0 } else { v };
     if R_IsNA(v) {
         "NA".to_string()
     } else if R_IsNaN(v) {

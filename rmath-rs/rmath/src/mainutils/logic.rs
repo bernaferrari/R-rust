@@ -552,11 +552,14 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// Port of R's `do_logic2` from logic.c.
 ///
 /// Implements `&&` and `||` — short-circuit scalar logical operators.
+/// Like upstream, `&&` / `||` are SPECIALSXP primitives: the handler is
+/// passed the *unevaluated* argument expressions and evaluates them itself,
+/// so the right operand is only evaluated when the left one has not already
+/// decided the result.
 ///
 /// `PRIMVAL(op)`: 1 = `&&`, 2 = `||`.
 ///
-/// These always return a length-1 logical scalar. They evaluate the second
-/// argument only if needed (short-circuit semantics):
+/// These always return a length-1 logical scalar:
 /// - `&&`: if x1 is FALSE, result is FALSE without evaluating x2
 /// - `||`: if x1 is TRUE, result is TRUE without evaluating x2
 ///
@@ -567,7 +570,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// - `TRUE || NA` = TRUE
 /// - `FALSE || NA` = NA
 /// - `NA || NA` = NA
-pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op); // 1 = &&, 2 = ||
 
@@ -579,8 +582,10 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             ));
         }
 
-        let s1 = CAR(args);
-        let s2 = CADR(args);
+        // Evaluate the left operand, then validate and coerce it before the
+        // right operand is touched (upstream evaluates CAR(args) first).
+        let s1 = crate::eval::eval::Rf_eval(CAR(args), env);
+        let _s1_guard = protect(s1);
 
         // Validate s1 is numeric
         if !is_number(s1) {
@@ -600,6 +605,8 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     return Rf_ScalarLogical(FALSE);
                 }
                 // Need to evaluate second argument
+                let s2 = crate::eval::eval::Rf_eval(CADR(args), env);
+                let _s2_guard = protect(s2);
                 if !is_number(s2) {
                     logic_error(format!(
                         "invalid 'y' type in 'x {} y'",
@@ -625,6 +632,8 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     return Rf_ScalarLogical(TRUE);
                 }
                 // Need to evaluate second argument
+                let s2 = crate::eval::eval::Rf_eval(CADR(args), env);
+                let _s2_guard = protect(s2);
                 if !is_number(s2) {
                     logic_error(format!(
                         "invalid 'y' type in 'x {} y'",
@@ -652,7 +661,7 @@ pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// Coerce a SEXP to a scalar logical value.
 ///
 /// For length-1 vectors, returns the logical value directly.
-/// For longer vectors, returns the first element (with a warning in full R).
+/// For longer vectors, errors the way stock R's `asLogical()` does.
 /// For NA inputs, returns NA_LOGICAL.
 unsafe fn coerce_scalar_to_logical(x: SEXP, _call: SEXP) -> c_int {
     unsafe {
@@ -662,6 +671,9 @@ unsafe fn coerce_scalar_to_logical(x: SEXP, _call: SEXP) -> c_int {
         let len = XLENGTH(x);
         if len == 0 {
             return NA_LOGICAL;
+        }
+        if len > 1 {
+            logic_error(format!("'length = {len}' in coercion to 'logical(1)'"));
         }
 
         let t = TYPEOF(x);

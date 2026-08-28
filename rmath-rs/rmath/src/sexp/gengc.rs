@@ -1,4 +1,4 @@
-//! Generational garbage collector with card marking write barriers.
+//! Generational garbage collector with remembered-set write barriers.
 //!
 //! The collector is intentionally defensive: it scopes state to the active
 //! `RInstance`, catches panics at public GC entry points, and uses a
@@ -6,8 +6,8 @@
 //! Raw `SEXP` internals still require careful auditing; do not document new
 //! invariants here unless they are enforced by code and regression tests.
 
-use std::alloc::{Layout, alloc, dealloc};
 use std::collections::{HashMap, HashSet};
+#[cfg(test)]
 use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE};
@@ -16,18 +16,6 @@ use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
     push_protect_in, update_preserve_stack_refs_in, update_protect_stack_refs_in,
 };
-
-/// Card size in bytes for the card marking table.
-pub const CARD_SIZE: usize = 512;
-
-/// Card table entry states.
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CardState {
-    Clean = 0,
-    Dirty = 1,
-    Marked = 2,
-}
 
 /// Generations for object aging.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -317,118 +305,6 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
 }
 
 // ---------------------------------------------------------------------------
-// Card Marking Table
-// ---------------------------------------------------------------------------
-
-/// Card marking table for old generation.
-pub struct CardTable {
-    base: *mut u8,
-    size: usize,
-    heap_base: *mut u8,
-    heap_end: *mut u8,
-}
-
-impl CardTable {
-    pub unsafe fn new(heap_base: *mut u8, heap_size: usize) -> Self {
-        unsafe {
-            if heap_base.is_null() || heap_size == 0 {
-                return CardTable {
-                    base: ptr::null_mut(),
-                    size: 0,
-                    heap_base,
-                    heap_end: heap_base,
-                };
-            }
-
-            let card_count = heap_size.div_ceil(CARD_SIZE);
-            let layout = match Layout::from_size_align(card_count, 64) {
-                Ok(l) => l,
-                Err(_) => {
-                    return CardTable {
-                        base: ptr::null_mut(),
-                        size: 0,
-                        heap_base,
-                        heap_end: heap_base.add(heap_size),
-                    };
-                }
-            };
-            let base = alloc(layout);
-            if base.is_null() {
-                return CardTable {
-                    base: ptr::null_mut(),
-                    size: 0,
-                    heap_base,
-                    heap_end: heap_base.add(heap_size),
-                };
-            }
-            ptr::write_bytes(base, 0, card_count);
-
-            CardTable {
-                base,
-                size: card_count,
-                heap_base,
-                heap_end: heap_base.add(heap_size),
-            }
-        }
-    }
-
-    #[inline]
-    pub fn card_index(&self, obj: SEXP) -> usize {
-        if self.base.is_null() || self.size == 0 || obj.is_null() {
-            return 0;
-        }
-        let offset = (obj as *mut u8 as usize).saturating_sub(self.heap_base as usize);
-        offset / CARD_SIZE
-    }
-
-    #[inline]
-    pub fn mark_dirty(&self, obj: SEXP) {
-        if self.base.is_null() || self.size == 0 {
-            return;
-        }
-        let idx = self.card_index(obj);
-        if idx < self.size {
-            unsafe {
-                *self.base.add(idx) = CardState::Dirty as u8;
-            }
-        }
-    }
-
-    pub fn clear_dirty(&mut self) {
-        if self.base.is_null() || self.size == 0 {
-            return;
-        }
-        unsafe {
-            ptr::write_bytes(self.base, 0, self.size);
-        }
-    }
-
-    pub fn dirty_cards(&self) -> impl Iterator<Item = usize> + '_ {
-        let base = self.base;
-        let size = self.size;
-        (0..size).filter(move |&i| {
-            if base.is_null() {
-                return false;
-            }
-            unsafe { *base.add(i) == CardState::Dirty as u8 }
-        })
-    }
-}
-
-impl Drop for CardTable {
-    fn drop(&mut self) {
-        if !self.base.is_null()
-            && self.size > 0
-            && let Ok(layout) = Layout::from_size_align(self.size, 64)
-        {
-            unsafe {
-                dealloc(self.base, layout);
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Remembered Set
 // ---------------------------------------------------------------------------
 
@@ -511,7 +387,6 @@ pub struct GcState {
     pub(crate) stats: GcStats,
     pub(crate) callbacks: Vec<GcCallback>,
     pub(crate) in_progress: bool,
-    pub(crate) card_table: CardTable,
     pub(crate) remembered_set: RememberedSet,
     /// Set when allocation would trigger GC during evaluation; flushed at quiescence.
     pub(crate) gc_pending: bool,
@@ -523,7 +398,6 @@ impl GcState {
             stats: GcStats::default(),
             callbacks: Vec::new(),
             in_progress: false,
-            card_table: unsafe { CardTable::new(0x100000000 as *mut u8, 1 << 30) },
             remembered_set: RememberedSet::default(),
             gc_pending: false,
         }
@@ -567,7 +441,6 @@ pub fn write_barrier(parent: SEXP, child: SEXP) {
         if parent_gen == Generation::Old as u8 && child_gen == Generation::Young as u8 {
             with_gc_state(|state| {
                 state.remembered_set.add(parent);
-                state.card_table.mark_dirty(parent);
             });
         }
     }
@@ -600,17 +473,6 @@ pub unsafe fn promote_to_old(obj: SEXP) {
         }
         debug_assert!((*obj).sxpinfo.gcgen() == Generation::Young as u8);
         (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
-    }
-}
-
-pub unsafe fn init_gc_heap(heap_base: *mut u8, heap_size: usize) {
-    unsafe {
-        if heap_base.is_null() || heap_size == 0 {
-            return;
-        }
-        with_gc_state(|state| {
-            state.card_table = CardTable::new(heap_base, heap_size);
-        });
     }
 }
 
@@ -1166,7 +1028,6 @@ fn do_minor_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
     }
 
     instance.gc_state.remembered_set.clear();
-    instance.gc_state.card_table.clear_dirty();
 
     (promoted_count, freed_count)
 }
@@ -1251,7 +1112,6 @@ fn do_full_mark_sweep_in(instance: &mut instance::RInstance) -> (usize, usize) {
     }
 
     instance.gc_state.remembered_set.clear();
-    instance.gc_state.card_table.clear_dirty();
 
     (promoted_count, freed_count)
 }
@@ -1403,7 +1263,6 @@ mod tests {
             instance.preserve_stack.borrow_mut().clear();
             instance.context_stack.clear();
             instance.gc_state.remembered_set.clear();
-            instance.gc_state.card_table.clear_dirty();
             instance.error_state.warnings = nil;
             instance.error_state.handler_stack = nil;
             instance.error_state.restart_stack = nil;
@@ -1508,27 +1367,6 @@ mod tests {
                 .iter()
                 .any(|obj| obj == right_obj)
         );
-    }
-
-    #[test]
-    fn test_card_table_marking() {
-        unsafe {
-            let heap = alloc(
-                Layout::from_size_align(4096, 4096).unwrap_or_else(|e| panic!("layout: {e:?}")),
-            );
-            let ct = CardTable::new(heap, 4096);
-
-            let obj = heap.add(1024) as SEXP;
-            ct.mark_dirty(obj);
-
-            let dirty: Vec<usize> = ct.dirty_cards().collect();
-            assert_eq!(dirty, vec![2]);
-
-            dealloc(
-                heap,
-                Layout::from_size_align(4096, 4096).unwrap_or_else(|e| panic!("layout: {e:?}")),
-            );
-        }
     }
 
     #[test]
@@ -1673,16 +1511,6 @@ mod tests {
         minor_gc();
 
         assert!(rx.try_recv().is_ok());
-    }
-
-    #[test]
-    fn test_card_table_null_handling() {
-        let ct = unsafe { CardTable::new(ptr::null_mut(), 0) };
-        assert!(ct.base.is_null());
-        assert_eq!(ct.size, 0);
-        ct.mark_dirty(ptr::null_mut());
-        let dirty: Vec<usize> = ct.dirty_cards().collect();
-        assert!(dirty.is_empty());
     }
 
     #[test]
@@ -2113,15 +1941,6 @@ mod tests {
     fn test_promote_to_old_null_handling() {
         unsafe {
             promote_to_old(ptr::null_mut());
-        }
-    }
-
-    #[test]
-    fn test_init_gc_heap_null_handling() {
-        unsafe {
-            init_gc_heap(ptr::null_mut(), 0);
-            init_gc_heap(ptr::null_mut(), 1024);
-            init_gc_heap(0x1 as *mut u8, 0);
         }
     }
 

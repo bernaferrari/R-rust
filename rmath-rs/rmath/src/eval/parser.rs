@@ -7,6 +7,7 @@
 //! - Numbers (integer and real), strings, identifiers
 //! - All R keywords: TRUE, FALSE, NULL, NA, Inf, NaN, NA_real_, NA_integer_, NA_character_, NA_complex_
 //! - Binary operators: +, -, *, /, ^, <, >, <=, >=, ==, !=, &, &&, |, ||, %%, %/%
+//! - Native pipe: x |> f(), x |> f(y = _), x |> _[i] / _$col extractor chains
 //! - Custom infix operators: %in%, %o%, %*%, any %xxx% sequence
 //! - Unary minus/plus
 //! - Assignment: <-, =, ->, <<-
@@ -23,6 +24,7 @@
 
 use std::ffi::CString;
 
+use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, PRINTNAME, SETCAR, TAG, TYPEOF};
 use crate::sexp::builder::{
     scalar_complex_in, scalar_integer_in, scalar_logical_in, scalar_real_in, scalar_string_in,
 };
@@ -62,6 +64,10 @@ enum Token {
     Or,
     Or2,
     Not,
+    // Pipe
+    Pipe,
+    // Pipe placeholder (`_`)
+    Placeholder,
     // Assignment
     Assign,      // =
     LeftAssign,  // <-
@@ -299,6 +305,9 @@ impl Lexer {
                 if self.peek_char() == Some('|') {
                     self.advance();
                     Token::Or2
+                } else if self.peek_char() == Some('>') {
+                    self.advance();
+                    Token::Pipe
                 } else {
                     Token::Or
                 }
@@ -556,6 +565,12 @@ impl Lexer {
             return self.read_raw_string();
         }
 
+        // A standalone `_` is the pipe placeholder (R 4.2+ `|>`); it is
+        // only valid inside the RHS of a pipe and is rejected elsewhere by
+        // the post-parse scan.
+        if s == "_" {
+            return Token::Placeholder;
+        }
         // Check keywords
         match s.as_str() {
             "if" => Token::KwIf,
@@ -588,6 +603,88 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// The source text of a comparison token, for `unexpected '<'`-style
+/// non-associativity errors.
+fn comparison_token_text(tok: &Token) -> &'static str {
+    match tok {
+        Token::Lt => "<",
+        Token::Gt => ">",
+        Token::Le => "<=",
+        Token::Ge => ">=",
+        Token::Eq => "==",
+        Token::Ne => "!=",
+        _ => "<cmp>",
+    }
+}
+
+/// The print name of a symbol as an owned Rust string.
+fn symbol_name_string(sym: SEXP) -> String {
+    unsafe {
+        let chars = CHAR(PRINTNAME(sym));
+        if chars.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(chars)
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+}
+
+/// Functions upstream marks IS_SPECIAL_SYMBOL (names.c `Spec_name`); gram.y's
+/// `check_rhs()` screens these out of pipe RHS calls (`9 |> `/`(3)` is an
+/// error, not division).
+fn is_special_rhs_function(name: &str) -> bool {
+    matches!(
+        name,
+        "if" | "while"
+            | "repeat"
+            | "for"
+            | "break"
+            | "next"
+            | "return"
+            | "function"
+            | "("
+            | "{"
+            | "+"
+            | "-"
+            | "*"
+            | "/"
+            | "^"
+            | "%%"
+            | "%/%"
+            | "%*%"
+            | ":"
+            | "::"
+            | ":::"
+            | "?"
+            | "|>"
+            | "~"
+            | "@"
+            | "=>"
+            | "=="
+            | "!="
+            | "<"
+            | ">"
+            | "<="
+            | ">="
+            | "&"
+            | "|"
+            | "&&"
+            | "||"
+            | "!"
+            | "<-"
+            | "<<-"
+            | "="
+            | "$"
+            | "["
+            | "[["
+            | "$<-"
+            | "[<-"
+            | "[[<-"
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Parser
 // ---------------------------------------------------------------------------
@@ -596,6 +693,13 @@ pub struct Parser<'arena> {
     tokens: Vec<Token>,
     pos: usize,
     arena: &'arena mut RArena,
+    /// The shared node representing the pipe placeholder `_`.
+    ///
+    /// Upstream represents the placeholder as a distinguished string, so it
+    /// prints as `"_"` in error messages and can be spotted by identity in
+    /// the post-parse scan. One node per parser keeps identity comparisons
+    /// valid while user `"_"` string literals remain distinct objects.
+    placeholder: SEXP,
 }
 
 impl<'arena> Parser<'arena> {
@@ -614,7 +718,16 @@ impl<'arena> Parser<'arena> {
             tokens,
             pos: 0,
             arena,
+            placeholder: std::ptr::null_mut(),
         }
+    }
+
+    /// The shared placeholder node for `_`, allocated on first use.
+    fn placeholder_node(&mut self) -> SEXP {
+        if self.placeholder.is_null() {
+            self.placeholder = self.scalar_string("_");
+        }
+        self.placeholder
     }
 
     fn install_symbol(&self, name: &str) -> Result<SEXP, ParseError> {
@@ -737,7 +850,13 @@ impl<'arena> Parser<'arena> {
             if self.peek() == &Token::Eof {
                 break;
             }
-            exprs.push(self.parse_expr()?);
+            let expr = self.parse_expr()?;
+            // gram.y rejects any `_` placeholder that survived the pipe
+            // rewrite: nested placeholders or `_` used outside a pipe.
+            if self.expr_contains_placeholder(expr) {
+                return Err(ParseError("invalid use of pipe placeholder".to_string()));
+            }
+            exprs.push(expr);
             self.skip_terminators();
         }
 
@@ -915,24 +1034,32 @@ impl<'arena> Parser<'arena> {
         }
     }
 
+    /// Comparison operators. gram.y declares these %nonassoc, so after one
+    /// comparison a second operator at this level is a syntax error:
+    /// `1 < 2 < 3` fails to parse while `(1 < 2) < 3` is fine.
     fn parse_comparison(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_addition()?;
-        loop {
-            let op_name = match self.peek() {
-                Token::Lt => "<",
-                Token::Gt => ">",
-                Token::Le => "<=",
-                Token::Ge => ">=",
-                Token::Eq => "==",
-                Token::Ne => "!=",
-                _ => return Ok(left),
-            };
-            self.advance();
-            self.skip_newlines();
-            let right = self.parse_addition()?;
-            let op = self.install_symbol(op_name)?;
-            left = self.lang3(op, left, right);
+        let op_name = match self.peek() {
+            Token::Lt => "<",
+            Token::Gt => ">",
+            Token::Le => "<=",
+            Token::Ge => ">=",
+            Token::Eq => "==",
+            Token::Ne => "!=",
+            _ => return Ok(left),
+        };
+        self.advance();
+        self.skip_newlines();
+        let right = self.parse_addition()?;
+        let op = self.install_symbol(op_name)?;
+        left = self.lang3(op, left, right);
+        if let tok @ (Token::Lt | Token::Gt | Token::Le | Token::Ge | Token::Eq | Token::Ne) =
+            self.peek()
+        {
+            let unexpected = comparison_token_text(tok);
+            return Err(ParseError(format!("unexpected '{unexpected}'")));
         }
+        Ok(left)
     }
 
     fn parse_addition(&mut self) -> Result<SEXP, ParseError> {
@@ -966,24 +1093,173 @@ impl<'arena> Parser<'arena> {
             left = self.lang3(op, left, right);
         }
     }
-
-    /// Percent-delimited special operators: `%%`, `%/%`, `%in%`, `%*%` and
-    /// user-defined `%foo%`. gram.y declares these (SPECIAL) one level
-    /// tighter than `*` / `/` and looser than `:`, so `2 * 3 %% 2` parses
-    /// as `2 * (3 %% 2)` and `10 %/% 3 * 2` as `(10 %/% 3) * 2`, while
+    /// Percent-delimited special operators (`%%`, `%/%`, `%in%`, `%*%`,
+    /// user-defined `%foo%`) and the native pipe `|>`. gram.y declares
+    /// SPECIAL and PIPE at the same %left tier — tighter than `*` / `/`
+    /// and `+` / `-`, looser than `:` — so `2 |> f() * 10` parses as
+    /// `(2 |> f()) * 10` and `x |> f() |> g()` as `g(f(x))`, while
     /// `1:3 %% 2` still groups the colon first.
     fn parse_special(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_colon()?;
         loop {
-            let op_name = match self.peek() {
-                Token::Percent(name) => name.clone(),
+            match self.peek() {
+                Token::Percent(name) => {
+                    let op_name = name.clone();
+                    self.advance();
+                    self.skip_newlines();
+                    let right = self.parse_colon()?;
+                    let op = self.install_symbol(&op_name)?;
+                    left = self.lang3(op, left, right);
+                }
+                Token::Pipe => {
+                    self.advance();
+                    self.skip_newlines();
+                    let right = self.parse_colon()?;
+                    left = self.build_pipe(left, right)?;
+                }
                 _ => return Ok(left),
-            };
-            self.advance();
-            self.skip_newlines();
-            let right = self.parse_colon()?;
-            let op = self.install_symbol(&op_name)?;
-            left = self.lang3(op, left, right);
+            }
+        }
+    }
+
+    /// Build the call for `lhs |> rhs`, porting gram.y's `xxpipe()`.
+    ///
+    /// The RHS must be a function call; a bare symbol is rejected. The LHS
+    /// is inserted as the first argument unless a `_` placeholder names the
+    /// insertion point:
+    /// - a top-level argument `tag = _` is replaced in place — the
+    ///   placeholder must be named and may only appear once, and
+    /// - an extractor chain like `_[i]`, `_$col`, `_[[i]]`, `_@slot` has
+    ///   its placeholder head replaced (R 4.5+).
+    fn build_pipe(&mut self, lhs: SEXP, rhs: SEXP) -> Result<SEXP, ParseError> {
+        if unsafe { TYPEOF(rhs) } != SEXPTYPE::LANGSXP {
+            return Err(ParseError(
+                "The pipe operator requires a function call as RHS".to_string(),
+            ));
+        }
+
+        let placeholder = self.placeholder;
+        unsafe {
+            let fun = CAR(rhs);
+
+            // A placeholder in the function position is never substitutable.
+            if self.expr_contains_placeholder(fun) {
+                return Err(ParseError(
+                    "pipe placeholder cannot be used in the RHS function".to_string(),
+                ));
+            }
+
+            // Extractor chains: `x |> _[2]`, `d |> _$col`, ...
+            if let Some(phcell) = self.find_extractor_placeholder_cell(rhs) {
+                let nil = R_NilValue();
+                let mut rest = CDR(CDR(rhs));
+                while rest != nil {
+                    if self.expr_contains_placeholder(CAR(rest)) {
+                        return Err(ParseError(
+                            "pipe placeholder may only appear once".to_string(),
+                        ));
+                    }
+                    rest = CDR(rest);
+                }
+                SETCAR(phcell, lhs);
+                return Ok(rhs);
+            }
+
+            // A top-level placeholder argument marks the insertion point.
+            let nil = R_NilValue();
+            let mut cell = CDR(rhs);
+            while cell != nil {
+                if CAR(cell) == placeholder {
+                    let tag = TAG(cell);
+                    if tag.is_null() || tag == nil {
+                        return Err(ParseError(
+                            "pipe placeholder can only be used as a named argument".to_string(),
+                        ));
+                    }
+                    let mut rest = CDR(cell);
+                    while rest != nil {
+                        if CAR(rest) == placeholder {
+                            return Err(ParseError(
+                                "pipe placeholder may only appear once".to_string(),
+                            ));
+                        }
+                        rest = CDR(rest);
+                    }
+                    SETCAR(cell, lhs);
+                    return Ok(rhs);
+                }
+                cell = CDR(cell);
+            }
+
+            // Screen out syntactically special functions like `/` or `$`.
+            if TYPEOF(fun) == SEXPTYPE::SYMSXP {
+                let name = symbol_name_string(fun);
+                if is_special_rhs_function(&name) {
+                    return Err(ParseError(format!(
+                        "function '{name}' not supported in RHS call of a pipe"
+                    )));
+                }
+            }
+
+            // Default: prepend the LHS as the first argument.
+            let args = self.cons(lhs, CDR(rhs));
+            let call = self.cons(fun, args);
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            Ok(call)
+        }
+    }
+
+    /// Find the argument cell whose CAR is the placeholder at the head of
+    /// an extractor chain (`[`, `[[`, `$`, `@`), mirroring gram.y's
+    /// `findExtractorChainPHCell()`. Returns the cell to overwrite with
+    /// the pipe LHS.
+    fn find_extractor_placeholder_cell(&self, expr: SEXP) -> Option<SEXP> {
+        unsafe {
+            let fun = CAR(expr);
+            let bracket = Rf_install(c"[".as_ptr());
+            let bracket2 = Rf_install(c"[[".as_ptr());
+            let dollar = Rf_install(c"$".as_ptr());
+            let at = Rf_install(c"@".as_ptr());
+            if fun != bracket && fun != bracket2 && fun != dollar && fun != at {
+                return None;
+            }
+            let arg1 = CADR(expr);
+            if arg1 == self.placeholder {
+                Some(CDR(expr))
+            } else if TYPEOF(arg1) == SEXPTYPE::LANGSXP {
+                self.find_extractor_placeholder_cell(arg1)
+            } else {
+                None
+            }
+        }
+    }
+
+    /// Whether `expr` contains the pipe placeholder node anywhere,
+    /// mirroring gram.y's `checkForPlaceholder()`. Used for the RHS
+    /// function slot and for the final per-expression scan.
+    fn expr_contains_placeholder(&self, expr: SEXP) -> bool {
+        if expr.is_null() || self.placeholder.is_null() {
+            return false;
+        }
+        if expr == self.placeholder {
+            return true;
+        }
+        unsafe {
+            let t = TYPEOF(expr);
+            if t != SEXPTYPE::LANGSXP && t != SEXPTYPE::LISTSXP {
+                return false;
+            }
+            let nil = R_NilValue();
+            let mut cur = expr;
+            while cur != nil {
+                if self.expr_contains_placeholder(CAR(cur)) {
+                    return true;
+                }
+                cur = CDR(cur);
+            }
+            false
         }
     }
 
@@ -1582,6 +1858,10 @@ impl<'arena> Parser<'arena> {
                     let sym = Rf_install(c"...".as_ptr());
                     Ok(sym)
                 }
+            }
+            Token::Placeholder => {
+                self.advance();
+                Ok(self.placeholder_node())
             }
             Token::Ident(ref name) => {
                 let name = name.clone();

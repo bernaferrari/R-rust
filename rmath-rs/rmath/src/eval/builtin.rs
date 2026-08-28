@@ -269,6 +269,16 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         handler: crate::mainutils::names::do_tilde,
         restore_visibility_always: false,
     },
+    UnevaluatedBuiltin {
+        name: "&&",
+        handler: crate::mainutils::logic::do_logic2,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "||",
+        handler: crate::mainutils::logic::do_logic2,
+        restore_visibility_always: false,
+    },
 ];
 
 #[derive(Clone, Copy)]
@@ -449,14 +459,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "!",
         handler: crate::mainutils::logic::do_logic,
-    },
-    EvaluatedBuiltin {
-        name: "&&",
-        handler: crate::mainutils::logic::do_logic2,
-    },
-    EvaluatedBuiltin {
-        name: "||",
-        handler: crate::mainutils::logic::do_logic2,
     },
     EvaluatedBuiltin {
         name: "abs",

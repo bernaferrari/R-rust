@@ -48,7 +48,7 @@ fn csignrank(k: i32, n: i32) -> f64 {
     with_signrank_cache(|cache| {
         let entry = cache
             .entry(n)
-            .or_insert_with(|| vec![-1.0_f64; (c + 1) as usize]);
+            .or_insert_with(|| vec![0.0_f64; (c + 1) as usize]);
 
         // Check if already computed (w[0] == 1 means initialized)
         if entry[0] == 1.0 {

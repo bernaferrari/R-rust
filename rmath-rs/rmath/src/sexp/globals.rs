@@ -9,7 +9,7 @@
 use std::ptr;
 use std::sync::OnceLock;
 
-use super::ffi::{SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo};
+use super::ffi::{FALSE, SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo, TRUE};
 use super::instance::{RInstance, with_required_current_instance};
 
 // ---------------------------------------------------------------------------
@@ -274,22 +274,35 @@ static R_TRUE: OnceLock<usize> = OnceLock::new();
 /// R_False: the logical FALSE singleton (scalar LGLSXP with value 0).
 static R_FALSE: OnceLock<usize> = OnceLock::new();
 
-/// Get a pointer to R_True (logical scalar TRUE).
-pub unsafe fn R_True() -> SEXP {
-    *R_TRUE.get_or_init(|| {
+/// Build a persistent scalar LGLSXP singleton with a readable payload.
+///
+/// Vector data lives in a separate allocation referenced through
+/// `gengc_next_node` ([`crate::sexp::accessors::DATAPTR`]); the node alone is
+/// not enough. Without the data word, `LOGICAL_ELT` falls back to
+/// `NA_LOGICAL` and direct `LOGICAL(x)` reads would dereference null. Both
+/// the node and the 1-element buffer are intentionally leaked, like every
+/// other process-global sentinel here (see `persistent_mkChar` for the same
+/// pattern for CHARSXP).
+fn init_persistent_logical(value: i32) -> usize {
+    use std::alloc::{Layout, alloc};
+    unsafe {
         let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
         node.sxpinfo.set_scalar(true);
+        let data = alloc(Layout::new::<i32>()) as *mut i32;
+        *data = value;
+        node.gengc_next_node = data as *mut SexprecCore;
         Box::into_raw(Box::new(node)) as usize
-    }) as SEXP
+    }
+}
+
+/// Get a pointer to R_True (logical scalar TRUE).
+pub unsafe fn R_True() -> SEXP {
+    *R_TRUE.get_or_init(|| init_persistent_logical(TRUE)) as SEXP
 }
 
 /// Get a pointer to R_False (logical scalar FALSE).
 pub unsafe fn R_False() -> SEXP {
-    *R_FALSE.get_or_init(|| {
-        let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
-        node.sxpinfo.set_scalar(true);
-        Box::into_raw(Box::new(node)) as usize
-    }) as SEXP
+    *R_FALSE.get_or_init(|| init_persistent_logical(FALSE)) as SEXP
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +474,63 @@ mod tests {
         assert_eq!(R_EvalDepth_in(&mut right), 13);
         unsafe {
             replace_current_instance(previous);
+        }
+    }
+
+    #[test]
+    fn test_r_true_false_readable_through_standard_accessors() {
+        use crate::sexp::accessors::{DATAPTR, LENGTH, LOGICAL, LOGICAL_ELT, XLENGTH};
+        unsafe {
+            let t = R_True();
+            let f = R_False();
+
+            // Shape: scalar LGLSXP vectors of length 1.
+            assert_eq!((*t).sxpinfo.type_of(), SEXPTYPE::LGLSXP);
+            assert_eq!((*f).sxpinfo.type_of(), SEXPTYPE::LGLSXP);
+            assert_eq!(LENGTH(t), 1);
+            assert_eq!(XLENGTH(f), 1);
+            assert!((*t).sxpinfo.scalar());
+            assert!((*f).sxpinfo.scalar());
+
+            // The payload must be a real data word, not a null pointer.
+            assert!(!DATAPTR(t).is_null());
+            assert!(!DATAPTR(f).is_null());
+            assert!(!LOGICAL(t).is_null());
+            assert!(!LOGICAL(f).is_null());
+            assert_eq!(*LOGICAL(t), 1);
+            assert_eq!(*LOGICAL(f), 0);
+
+            // Element accessor used across the evaluator (LGLSXP storage is
+            // INTEGER-compatible, so translated C code reads it via LOGICAL
+            // and sometimes INTEGER pointers; INTEGER_ELT itself requires
+            // exact INTSXP).
+            assert_eq!(LOGICAL_ELT(t, 0), 1);
+            assert_eq!(LOGICAL_ELT(f, 0), 0);
+            assert!(!LOGICAL_IS_NA(LOGICAL_ELT(t, 0)));
+            assert!(!LOGICAL_IS_NA(LOGICAL_ELT(f, 0)));
+
+            // Stable, distinct singletons.
+            assert_eq!(R_True(), t);
+            assert_eq!(R_False(), f);
+            assert_ne!(t, f);
+        }
+    }
+
+    #[test]
+    fn test_r_true_false_survive_gc_cycles() {
+        use crate::sexp::accessors::LOGICAL_ELT;
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            // Churn young garbage, then run both collection kinds: the
+            // singletons are out-of-arena and must keep their payload word.
+            for i in 0..2000 {
+                let _ = crate::sexp::constructors::Rf_ScalarInteger(i);
+            }
+            crate::sexp::gengc::minor_gc();
+            crate::sexp::gengc::full_gc();
+            crate::sexp::gengc::minor_gc();
+            assert_eq!(LOGICAL_ELT(R_True(), 0), 1);
+            assert_eq!(LOGICAL_ELT(R_False(), 0), 0);
         }
     }
 }

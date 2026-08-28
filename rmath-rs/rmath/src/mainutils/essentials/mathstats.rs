@@ -89,7 +89,6 @@ pub unsafe fn do_round(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let _result_guard = protect(result);
         let dst = REAL(result);
-        let scale = 10.0_f64.powf(digits);
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
                 *REAL(x_arg).add(i as usize)
@@ -102,10 +101,119 @@ pub unsafe fn do_round(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 NA_REAL
             } else {
-                (v * scale).round() / scale
+                fround(v, digits)
             };
         }
         result
+    }
+}
+
+/// Port of R's `fround` (r-source/src/nmath/fround.c): round `x` to `digits`
+/// decimal digits with ties-to-even. Instead of a naive multiply-round-divide
+/// (which double-rounds when `x * 10^dig` is itself inexact), it compares the
+/// exact decimal candidates `floor(x*10^dig)/10^dig` and `ceil(x*10^dig)/10^dig`
+/// and picks the nearer, breaking ties toward the even candidate.
+fn fround(x: f64, digits: f64) -> f64 {
+    const MAX_DIGITS: f64 = 323.0; // DBL_MAX_10_EXP + DBL_DIG
+    const MAX10E: i32 = 308; // DBL_MAX_10_EXP
+    const DBL_DIG: f64 = 15.0;
+
+    if x.is_nan() || digits.is_nan() {
+        return x + digits;
+    }
+    if !x.is_finite() {
+        return x;
+    }
+    if digits > MAX_DIGITS || x == 0.0 {
+        return x;
+    }
+    if digits < -(MAX10E as f64) {
+        return 0.0;
+    }
+    if digits == 0.0 {
+        return x.round_ties_even();
+    }
+
+    let dig = (digits + 0.5).floor() as i32;
+    let sgn = if x < 0.0 { -1.0 } else { 1.0 };
+    let x = x.abs();
+    let l10x = std::f64::consts::LOG10_2 * (0.5 + logb(x));
+    if l10x + dig as f64 > DBL_DIG {
+        // Rounding to so many digits that no rounding is needed.
+        return sgn * x;
+    }
+    let (pow10, p10): (f64, f64);
+    let (xd, xu): (f64, f64);
+    let i10: f64;
+    if dig <= MAX10E {
+        pow10 = r_pow_di(10.0, dig);
+        p10 = 1.0;
+    } else {
+        p10 = r_pow_di(10.0, dig - MAX10E);
+        pow10 = r_pow_di(10.0, MAX10E);
+    }
+    let x10 = if dig <= MAX10E {
+        x * pow10
+    } else {
+        (x * pow10) * p10
+    };
+    i10 = x10.floor();
+    if dig <= MAX10E {
+        xd = i10 / pow10;
+        xu = (i10 + 1.0) / pow10;
+    } else {
+        xd = i10 / pow10 / p10;
+        xu = (i10 + 1.0) / pow10 / p10;
+    }
+    let du = xu - x;
+    let dd = x - xd;
+    sgn * (if du < dd || (i10 % 2.0 == 1.0 && du == dd) {
+        xu
+    } else {
+        xd
+    })
+}
+
+/// Port of R's `R_pow_di`: 10^n by binary exponentiation (matches C exactly).
+fn r_pow_di(x: f64, n: i32) -> f64 {
+    let mut n = n;
+    let mut x = x;
+    let mut dev = 1.0;
+    if n == 0 {
+        return 1.0;
+    }
+    if n < 0 {
+        n = -n;
+        x = 1.0 / x;
+    }
+    while n != 0 {
+        if n & 1 != 0 {
+            dev *= x;
+        }
+        x *= x;
+        n >>= 1;
+    }
+    dev
+}
+
+/// logb(3): the integral binary exponent of `x` as a double.
+fn logb(x: f64) -> f64 {
+    if x == 0.0 || !x.is_finite() {
+        return f64::NAN;
+    }
+    let bits = x.to_bits();
+    let raw_exp = ((bits >> 52) & 0x7ff) as i32;
+    if raw_exp == 0 {
+        // subnormal: normalize
+        let mut m = bits & 0x000f_ffff_ffff_ffff;
+        let mut e = -1022;
+        while m & 0x0010_0000_0000_0000 == 0 {
+            m <<= 1;
+            e -= 1;
+        }
+        e as f64
+    } else {
+        (raw_exp - 1023) as f64
     }
 }
 
@@ -145,7 +253,7 @@ pub unsafe fn do_signif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             } else {
                 let magnitude = v.abs().log10().floor() - digits + 1.0;
                 let scale = 10.0_f64.powf(magnitude);
-                (v / scale).round() * scale
+                (v / scale).round_ties_even() * scale
             };
         }
         result
