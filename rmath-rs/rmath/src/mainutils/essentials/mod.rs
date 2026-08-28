@@ -84,8 +84,11 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         let mut chain = frame;
 
         for &name in registry::ALL_FNS {
+            // `[` / `[[` are SPECIALSXP upstream (funtab eval=0): they must
+            // not be pre-evaluated, so empty subscript slots (`m[,1]`) reach
+            // the subset handlers' keep-missing argument evaluation.
             let kind = match name {
-                "quote" | "substitute" => SEXPTYPE::SPECIALSXP,
+                "quote" | "substitute" | "[" | "[[" => SEXPTYPE::SPECIALSXP,
                 _ => SEXPTYPE::BUILTINSXP,
             };
             let prim = crate::eval::primitive::make_primitive_binding(name, kind);

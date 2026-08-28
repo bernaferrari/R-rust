@@ -1120,7 +1120,6 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
         let mut stretch: R_xlen_t = 0;
         let ns = LENGTH(s);
         let nd = INTEGER_ELT(dims, dim);
-
         let stype = TYPEOF(s);
         if stype == SEXPTYPE::NILSXP {
             Rf_allocVector3(SEXPTYPE::INTSXP, 0)

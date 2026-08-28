@@ -390,6 +390,11 @@ pub struct GcState {
     pub(crate) remembered_set: RememberedSet,
     /// Set when allocation would trigger GC during evaluation; flushed at quiescence.
     pub(crate) gc_pending: bool,
+    /// Number of collections performed at evaluation safe points. Every
+    /// [`SAFE_POINT_FULL_COLLECTION_INTERVAL`]-th one is a full collection so
+    /// old-generation garbage cannot accumulate unbounded between explicit
+    /// `gc()` calls (safe points otherwise collect the young generation only).
+    pub(crate) safe_point_collections: u64,
 }
 
 impl GcState {
@@ -400,6 +405,7 @@ impl GcState {
             in_progress: false,
             remembered_set: RememberedSet::default(),
             gc_pending: false,
+            safe_point_collections: 0,
         }
     }
 }
@@ -845,6 +851,51 @@ pub fn maybe_collect_during_alloc() {
     // will collect. This is the quiescence-only GC policy.
 }
 
+/// gctorture/gctorture2 support: mirror of upstream `FORCE_GC`
+/// (r-source/src/main/memory.c), evaluated at every arena allocation entry.
+///
+/// When torture is armed (`gc_force_gap > 0` via `gctorture()`/`gctorture2()`),
+/// the `gc_force_wait` countdown delays the first forced collection, then
+/// re-arms to `gc_force_gap` so every gap-th allocation forces a FULL
+/// collection (`R_gc_internal(0)` upstream), run through the same
+/// environment force-protect preamble `gc()` uses. When a collection is
+/// already in progress the request defers via `gc_pending` (upstream's
+/// `R_in_gc` path) instead of recursing.
+pub fn maybe_torture_gc_during_alloc() {
+    let Some(ptr) = instance::current_instance_ptr() else {
+        return;
+    };
+    unsafe {
+        let inst = &mut *ptr;
+        if inst.memory_state.gc_force_gap <= 0 {
+            // Not armed: default behavior is identical (single branch).
+            return;
+        }
+        if inst.gc_state.in_progress || inst.memory_state.in_gc != 0 {
+            // Mirrors upstream's R_in_gc deferral: don't recurse into a
+            // collection from inside one; run it at the next safe point.
+            inst.gc_state.gc_pending = true;
+            return;
+        }
+        // FORCE_GC countdown: `--gc_force_wait` fires when it reaches zero,
+        // then re-arms to `gc_force_gap`.
+        if inst.memory_state.gc_force_wait > 1 {
+            inst.memory_state.gc_force_wait -= 1;
+            return;
+        }
+        inst.memory_state.gc_force_wait = inst.memory_state.gc_force_gap;
+        let start = inst.protect_stack.borrow().len();
+        push_environment_binding_protects(inst);
+        let added = inst.protect_stack.borrow().len().saturating_sub(start);
+        inst.gc_state.gc_pending = false;
+        inst.memory_state.in_gc = 1;
+        inst.memory_state.gc_count = inst.memory_state.gc_count.wrapping_add(1);
+        run_gc_cycle_in(inst, do_torture_mark_sweep_in);
+        inst.memory_state.in_gc = 0;
+        super::protect::unprotect_count_in(inst, added);
+    }
+}
+
 fn eval_safe_point_gc_due_in(instance: &instance::RInstance) -> bool {
     instance.gc_state.gc_pending
         || instance.arena.node_count() > GC_TRIGGER_THRESHOLD
@@ -935,6 +986,11 @@ pub fn collect_with_environment_protects(full: bool) -> (usize, usize) {
     })
 }
 
+/// Every N-th evaluation-safe-point collection also runs a full collection
+/// (via the same environment force-protect preamble) so old-generation
+/// garbage is reclaimed without waiting for an explicit `gc()`.
+const SAFE_POINT_FULL_COLLECTION_INTERVAL: u64 = 64;
+
 /// Run collection at a cooperative safe point during evaluation.
 ///
 /// Call this after loop iterations and brace-block statements complete, when
@@ -948,7 +1004,16 @@ pub fn maybe_collect_at_eval_safe_point() {
         push_environment_binding_protects(instance);
         let added = instance.protect_stack.borrow().len().saturating_sub(start);
         instance.gc_state.gc_pending = false;
-        minor_gc_in(instance);
+        // Safe points normally collect the young generation only; without a
+        // periodic full pass, old-generation garbage from promoted-then-dead
+        // objects would accumulate unbounded between explicit gc() calls.
+        instance.gc_state.safe_point_collections =
+            instance.gc_state.safe_point_collections.wrapping_add(1);
+        if instance.gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL == 0 {
+            full_gc_in(instance);
+        } else {
+            minor_gc_in(instance);
+        }
         super::protect::unprotect_count_in(instance, added);
     });
 }
@@ -1049,6 +1114,88 @@ pub fn full_gc() -> (usize, usize) {
 
 pub(crate) fn full_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
     run_gc_cycle_in(instance, do_full_mark_sweep_in)
+}
+
+/// gctorture collection: full mark from all roots, but only OLD-generation
+/// garbage is swept.
+///
+/// Upstream `FORCE_GC` runs `R_gc_internal(0)` — a full sweep — at arbitrary
+/// allocation points, safely, because R's collector conservatively scans the
+/// C stack and every partially built structure in a local survives. This
+/// port has no stack scan, so an alloc-time full sweep would reclaim young
+/// nodes that translated code legitimately holds only in Rust locals between
+/// two allocations (e.g. the CHARSXP held across the STRSXP allocation in
+/// `Rf_mkString`). Young nodes therefore survive torture collections and are
+/// reclaimed, as usual, by the safe-point/quiescent collections that never
+/// run mid-construction. Old-generation garbage — the accumulation gctorture
+/// exists to exercise — is still reclaimed on every forced cycle.
+fn do_torture_mark_sweep_in(instance: &mut instance::RInstance) -> (usize, usize) {
+    mark_from_all_roots_in(instance);
+
+    let mut freed_count = 0;
+    let mut to_free = Vec::new();
+
+    {
+        let arena = &mut instance.arena;
+        for obj in arena.active_nodes() {
+            if obj.is_null() {
+                continue;
+            }
+            unsafe {
+                if (*obj).sxpinfo.mark() {
+                    // Marked nodes stay in their generation: promotion to
+                    // the old generation here would let the very next forced
+                    // collection (only `gc_force_gap` allocations later)
+                    // sweep an in-flight value that is momentarily
+                    // reachable only from a Rust local. Promotion stays
+                    // the safe-point collectors' job.
+                    (*obj).sxpinfo.set_mark(false);
+                } else if (*obj).sxpinfo.gcgen() != Generation::Young as u8 {
+                    // Old-generation garbage: reclaim now.
+                    to_free.push(obj);
+                }
+                // Unmarked young nodes survive alloc-time collections; the
+                // next safe-point collection sweeps whichever stay dead.
+            }
+        }
+    }
+
+    let mut freed_set: HashSet<usize> = HashSet::new();
+    if !to_free.is_empty() {
+        let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
+        let keep_alive = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
+            &mut instance.memory_state,
+            &unreachable,
+        );
+        if !keep_alive.is_empty() {
+            to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+        }
+    }
+
+    if !to_free.is_empty() {
+        freed_set = to_free.iter().map(|&obj| obj as usize).collect();
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        let old_to_nil: HashMap<usize, SEXP> =
+            to_free.iter().map(|&obj| (obj as usize, nil)).collect();
+        update_all_references_in(instance, &old_to_nil);
+
+        for obj in to_free {
+            instance.arena.free_node(obj);
+            freed_count += 1;
+        }
+    }
+
+    // The remembered set cannot be cleared wholesale (unlike a true full
+    // collection, reachable young nodes were not promoted, so live
+    // old-to-young edges still exist). Drop only entries whose old parent
+    // was reclaimed this cycle.
+    instance
+        .gc_state
+        .remembered_set
+        .entries
+        .retain(|parent| !parent.is_null() && !freed_set.contains(&(*parent as usize)));
+
+    (0, freed_count)
 }
 
 fn mark_from_all_roots_in(instance: &mut instance::RInstance) {

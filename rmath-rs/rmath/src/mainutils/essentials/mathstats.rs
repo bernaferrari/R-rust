@@ -218,6 +218,9 @@ fn logb(x: f64) -> f64 {
 }
 
 /// R's `signif(x, digits=6)` — round to significant digits.
+///
+/// Wires through the faithful `fprec` port (r-source/src/nmath/fprec.c),
+/// mirroring how `do_round` routes through `fround`.
 pub unsafe fn do_signif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = CAR(args);
@@ -228,7 +231,7 @@ pub unsafe fn do_signif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
             6.0
         } else {
-            real_or_default(digits_arg, 6.0).max(1.0)
+            real_or_default(digits_arg, 6.0)
         };
         let n = XLENGTH(x_arg);
         let t = TYPEOF(x_arg);
@@ -238,6 +241,9 @@ pub unsafe fn do_signif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let _result_guard = protect(result);
         let dst = REAL(result);
+        // Mirror if_NA_Math2_set: NA in either operand yields NA (regular
+        // NaN flows through fprec as x + digits, like upstream).
+        let digits_is_na = digits.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
         for i in 0..n {
             let v = if t == SEXPTYPE::REALSXP {
                 *REAL(x_arg).add(i as usize)
@@ -247,14 +253,12 @@ pub unsafe fn do_signif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             } else {
                 NA_REAL
             };
-            *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v == 0.0
-            {
-                v
-            } else {
-                let magnitude = v.abs().log10().floor() - digits + 1.0;
-                let scale = 10.0_f64.powf(magnitude);
-                (v / scale).round_ties_even() * scale
-            };
+            *dst.add(i as usize) =
+                if digits_is_na || v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                    NA_REAL
+                } else {
+                    crate::fprec::fprec(v, digits)
+                };
         }
         result
     }

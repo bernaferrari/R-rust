@@ -98,6 +98,32 @@ if [[ ! -d "$GOLDEN_DIR" ]]; then
     exit 1
 fi
 
+check_unique_case_numbers() {
+    # The numeric prefix of a case file is its ordering identity; two cases
+    # sharing one prefix silently reorder history and confuse golden
+    # reviews. Error cases keep their own 0xx series, so each directory is
+    # checked separately.
+    local spec label dir dups duplicates=0
+    for spec in "cases:$CASES_DIR" "error_cases:$ERROR_CASES_DIR"; do
+        label="${spec%%:*}"
+        dir="${spec#*:}"
+        [[ -d "$dir" ]] || continue
+        dups="$(
+            cd "$dir" || exit 1
+            ls -1 ./*.R 2>/dev/null | sed 's|.*/||; s/_.*//' | sort | uniq -d
+        )"
+        if [[ -n "$dups" ]]; then
+            echo "ERROR: duplicate case numbers in ${label}:" >&2
+            sed 's/^/  /' <<<"$dups" >&2
+            duplicates=1
+        fi
+    done
+    if (( duplicates )); then
+        echo "ERROR: renumber the newer case (and its golden) to the next free prefix." >&2
+        exit 1
+    fi
+}
+
 find_rust_rlib() {
     local found=""
     shopt -s nullglob
@@ -638,6 +664,8 @@ main() {
     local xfailed=0
     local xpassed=0
     local failed=0
+
+    check_unique_case_numbers
 
     if [[ "$MODE" == "--regen-goldens" ]]; then
         regen_normal_goldens

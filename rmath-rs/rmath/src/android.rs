@@ -498,17 +498,16 @@ impl RResult {
                 // Prefer the fully rendered top-level error text (with call
                 // attribution, "Error in <call> : ...") when it was rendered
                 // by this exact error — mirroring what Rscript prints on
-                // stderr. `error_was_last_rendered` rejects stale renders
-                // left in the error buffer by earlier, already-caught errors.
-                let rendered = crate::mainutils::errors::R_GetErrorBuf();
-                let rendered = rendered.trim_end();
-                if rendered.starts_with("Error")
-                    && rendered.contains(message)
-                    && crate::mainutils::errors::error_was_last_rendered(message)
-                {
-                    rendered.to_string()
-                } else {
-                    format!("Error: {message}")
+                // stderr. The last-rendered check rejects stale renders left
+                // in the error buffer by earlier, already-caught errors.
+                let rendered = crate::mainutils::errors::try_last_rendered_message(message);
+                match rendered.as_deref().map(str::trim_end) {
+                    Some(rendered)
+                        if rendered.starts_with("Error") && rendered.contains(message) =>
+                    {
+                        rendered.to_string()
+                    }
+                    _ => format!("Error: {message}"),
                 }
             };
         }

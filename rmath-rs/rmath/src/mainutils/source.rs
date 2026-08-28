@@ -323,7 +323,7 @@ mod tests {
             assert!(
                 CStr::from_ptr(crate::mainutils::main::R_GetParseErrorMsg())
                     .to_string_lossy()
-                    .contains("unexpected token")
+                    .contains("unexpected end of input")
             );
 
             let context = getParseContext();

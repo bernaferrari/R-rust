@@ -36,7 +36,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocLang;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -457,11 +457,12 @@ unsafe fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
 // DropDims -- drop dimensions with extent 1
 // ---------------------------------------------------------------------------
 
-/// Drop dimensions of length 1 from result.
-///
-/// Walks the dim attribute and removes any dimension with extent 1,
-/// adjusting the result accordingly. If all dimensions are 1, returns
-/// a length-0 vector. If no dimensions are 1, returns input unchanged.
+/// Port of upstream `DropDims()` from subset.c: drop all extent-1
+/// dimensions. One surviving dimension becomes a plain vector carrying that
+/// dimension's dimnames slot as vector names (`m[,1]` → named vector); no
+/// surviving dimension becomes a scalar. Attribute-only mutation is safe
+/// because callers pass freshly allocated subset results (dropping a
+/// singleton dimension never reorders column-major data).
 unsafe fn DropDims(x: SEXP) -> SEXP {
     unsafe {
         if isNull(x) {
@@ -475,91 +476,71 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
         if ndim < 2 {
             return x;
         }
-        // Count dimensions to keep
-        let mut keep_count = 0;
+
+        let mut kept: Vec<c_int> = Vec::with_capacity(ndim as usize);
+        let mut kept_idx: Vec<c_int> = Vec::with_capacity(ndim as usize);
         for i in 0..ndim {
-            if INTEGER_ELT(dim, i as c_int) != 1 {
-                keep_count += 1;
+            let d = INTEGER_ELT(dim, i);
+            if d != 1 {
+                kept.push(d);
+                kept_idx.push(i);
             }
         }
-        // If all dims are 1, return length-0 vector
-        if keep_count == 0 {
-            return Rf_allocVector3(TYPEOF(x), 0);
-        }
-        // If no dims to drop, return unchanged
-        if keep_count == ndim {
+
+        let dimnames = getAttrib(x, sym_DimNames());
+        let _dimnames_guard = protect(dimnames);
+        let slot = |i: c_int| -> SEXP {
+            if dimnames.is_null()
+                || dimnames == R_NilValue()
+                || TYPEOF(dimnames) != SEXPTYPE::VECSXP
+                || i >= LENGTH(dimnames)
+            {
+                R_NilValue()
+            } else {
+                VECTOR_ELT(dimnames, i as R_xlen_t)
+            }
+        };
+
+        if kept.is_empty() {
+            // Every dimension was 1: the result is a length-1 scalar.
+            setAttrib(x, sym_Dim(), R_NilValue());
+            setAttrib(x, sym_DimNames(), R_NilValue());
             return x;
         }
-        // Build new dim
-        let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, keep_count as R_xlen_t);
+        if kept.len() == 1 {
+            // Single surviving dimension: plain vector, with that
+            // dimension's names carried over as vector names.
+            let names = slot(kept_idx[0]);
+            let _names_guard = protect(names);
+            setAttrib(x, sym_Dim(), R_NilValue());
+            setAttrib(x, sym_DimNames(), R_NilValue());
+            if !isNull(names) && names != R_MissingArg() {
+                setAttrib(x, sym_Names(), names);
+            }
+            return x;
+        }
+
+        let new_dim = Rf_allocVector3(SEXPTYPE::INTSXP, kept.len() as R_xlen_t);
         let _new_dim_guard = protect(new_dim);
-        let mut new_len: R_xlen_t = 1;
-        let mut j = 0;
-        for i in 0..ndim {
-            let d = INTEGER_ELT(dim, i as c_int);
-            if d != 1 {
-                *INTEGER(new_dim).add(j as usize) = d;
-                new_len *= d as R_xlen_t;
-                j += 1;
-            }
+        for (j, d) in kept.iter().enumerate() {
+            *INTEGER(new_dim).add(j) = *d;
         }
-        // Reallocate x with new dimensions
-        let new_x = Rf_allocVector3(TYPEOF(x), new_len);
-        let _new_x_guard = protect(new_x);
-        // Copy data
-        let xtype = TYPEOF(x);
-        if xtype == SEXPTYPE::INTSXP || xtype == SEXPTYPE::LGLSXP {
-            for i in 0..new_len {
-                *INTEGER(new_x).add(i as usize) = *INTEGER(x).add(i as usize);
+        setAttrib(x, sym_Dim(), new_dim);
+
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            let new_dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, kept.len() as R_xlen_t);
+            let _new_dimnames_guard = protect(new_dimnames);
+            for (j, i) in kept_idx.iter().enumerate() {
+                SET_VECTOR_ELT(new_dimnames, j as R_xlen_t, slot(*i));
             }
-        } else if xtype == SEXPTYPE::REALSXP {
-            for i in 0..new_len {
-                *REAL(new_x).add(i as usize) = *REAL(x).add(i as usize);
+            let dimnames_names = getAttrib(dimnames, sym_Names());
+            let _dimnames_names_guard = protect(dimnames_names);
+            if !isNull(dimnames_names) {
+                setAttrib(new_dimnames, sym_Names(), dimnames_names);
             }
-        } else if xtype == SEXPTYPE::STRSXP {
-            for i in 0..new_len {
-                SET_STRING_ELT(new_x, i, STRING_ELT(x, i));
-            }
-        } else if xtype == SEXPTYPE::VECSXP || xtype == SEXPTYPE::EXPRSXP {
-            for i in 0..new_len {
-                SET_VECTOR_ELT(new_x, i, VECTOR_ELT(x, i));
-            }
+            setAttrib(x, sym_DimNames(), new_dimnames);
         }
-        // Copy attributes except dim and dimnames
-        let src_attr = ATTRIB(x);
-        if !isNull(src_attr) {
-            let mut new_attr_list = R_NilValue();
-            let mut prev: SEXP = R_NilValue();
-            let mut a = src_attr;
-            while !isNull(a) {
-                let tag = TAG(a);
-                if tag == sym_Dim() || tag == sym_DimNames() {
-                    a = CDR(a);
-                    continue;
-                }
-                let new_pair =
-                    Rf_cons(crate::mainutils::duplicate::duplicate(CAR(a)), R_NilValue());
-                SETTAG(new_pair, tag);
-                if isNull(new_attr_list) {
-                    new_attr_list = new_pair;
-                } else {
-                    SETCDR(prev, new_pair);
-                }
-                prev = new_pair;
-                a = CDR(a);
-            }
-            // Add new dim
-            let dim_pair = Rf_cons(new_dim, R_NilValue());
-            SETTAG(dim_pair, sym_Dim());
-            SETCDR(prev, dim_pair);
-            SET_ATTRIB(new_x, new_attr_list);
-        } else {
-            let dim_pair = Rf_cons(new_dim, R_NilValue());
-            SETTAG(dim_pair, sym_Dim());
-            SET_ATTRIB(new_x, dim_pair);
-        }
-        SET_OBJECT(new_x, OBJECT(x));
-        new_x
+        x
     }
 }
 
@@ -988,7 +969,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 
         let psr = INTEGER(sr);
         let psc = INTEGER(sc);
-        let result = Rf_allocVector3(TYPEOF(x), (nrs as R_xlen_t) * (ncs as R_xlen_t));
+        let mut result = Rf_allocVector3(TYPEOF(x), (nrs as R_xlen_t) * (ncs as R_xlen_t));
         let _result_guard = protect(result);
 
         let mut i: R_xlen_t;
@@ -1002,8 +983,8 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         for j in 0..(ncs as R_xlen_t) {
             jj = *psc.add(j as usize) as R_xlen_t;
             if jj != NA_INTEGER as R_xlen_t {
-                if jj < 1 || jj > nr as R_xlen_t {
-                    errorcallOutOfBounds(x, 0, jj, call);
+                if jj < 1 || jj > nc as R_xlen_t {
+                    errorcallOutOfBounds(x, 1, jj, call);
                 }
                 jj -= 1;
             }
@@ -1011,7 +992,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                 ii = *psr.add(i_idx as usize) as R_xlen_t;
                 if ii != NA_INTEGER as R_xlen_t {
                     if ii < 1 || ii > nr as R_xlen_t {
-                        errorcallOutOfBounds(x, 1, ii, call);
+                        errorcallOutOfBounds(x, 0, ii, call);
                     }
                     ii -= 1;
                 }
@@ -1119,7 +1100,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         }
 
         if drop != 0 {
-            DropDims(result);
+            result = DropDims(result);
         }
 
         result
@@ -1207,7 +1188,7 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         }
 
         /* Transfer subset elements */
-        let result = Rf_allocVector3(mode, n);
+        let mut result = Rf_allocVector3(mode, n);
         let _result_guard = protect(result);
 
         for i in 0..n {
@@ -1345,7 +1326,7 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         }
 
         if drop != 0 {
-            DropDims(result);
+            result = DropDims(result);
         }
 
         result
@@ -1467,10 +1448,12 @@ unsafe fn R_DispatchOrEvalSP(
 
         let mut prom: SEXP = ptr::null_mut();
         let mut args_work = args;
+        let mut x = R_NilValue();
+        let mut x_guard = None;
 
         if args != R_NilValue() && CAR(args) != R_DotsSymbol() {
-            let x = Rf_eval(CAR(args), rho);
-            let _px = protect(x);
+            x = Rf_eval(CAR(args), rho);
+            x_guard = Some(protect(x));
             if !isObject(x) {
                 let rest = evalListKeepMissing(CDR(args), rho);
                 let _pr = protect(rest);
@@ -1486,6 +1469,18 @@ unsafe fn R_DispatchOrEvalSP(
 
         let _pa = protect(args_work);
         let disp = DispatchOrEval(call, op, generic, args_work, rho, ans, 0, 0);
+        if disp == 0 && !x_guard.is_none() {
+            // No method matched: evaluate the remaining arguments the same
+            // way as the non-object path so the default handler receives
+            // values (keeping R_MissingArg slots). Without this, non-literal
+            // subscripts like `df[2:3, ]` would reach do_subset_dflt as
+            // unevaluated language objects.
+            let rest = evalListKeepMissing(CDR(args), rho);
+            let _pr = protect(rest);
+            if !ans.is_null() {
+                *ans = CONS_NR(x, rest);
+            }
+        }
         let _ = prom;
         disp
     }
@@ -1573,6 +1568,110 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             }
         } else {
             errorcallNotSubsettable(x, call);
+        }
+
+        /// Whether to take the `[.data.frame` emulation path: a data.frame with
+        /// exactly two `[` subscripts (`df[i, j]`).
+        unsafe fn data_frame_subset_2(x: SEXP, nsubs: c_int) -> bool {
+            unsafe {
+                nsubs == 2 && is_data_frame(x) && TYPEOF(x) == SEXPTYPE::VECSXP && length_int(x) > 0
+            }
+        }
+
+        /// Subset a data.frame's row.names for `df[i, ]`, handling the compact
+        /// automatic form `c(NA_integer_, -n)` the way stock does: a contiguous
+        /// `1..k` selection keeps the compact form, anything else expands to the
+        /// selected row numbers as strings.
+        unsafe fn subset_frame_rownames(rownames: SEXP, sr: SEXP, _nrows: c_int) -> SEXP {
+            unsafe {
+                if TYPEOF(rownames) == SEXPTYPE::INTSXP
+                    && length_int(rownames) == 2
+                    && INTEGER_ELT(rownames, 0) == NA_INTEGER
+                {
+                    let nsr = LENGTH(sr);
+                    let mut contiguous = true;
+                    for i in 0..nsr {
+                        if INTEGER_ELT(sr, i) != i + 1 {
+                            contiguous = false;
+                            break;
+                        }
+                    }
+                    if contiguous {
+                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+                        let _ans_guard = protect(ans);
+                        *INTEGER(ans).add(0) = NA_INTEGER;
+                        *INTEGER(ans).add(1) = -nsr;
+                        return ans;
+                    }
+                    let ans = Rf_allocVector3(SEXPTYPE::STRSXP, nsr as R_xlen_t);
+                    let _ans_guard = protect(ans);
+                    for i in 0..nsr {
+                        let idx = INTEGER_ELT(sr, i);
+                        let label = if idx == NA_INTEGER {
+                            "NA".to_string()
+                        } else {
+                            format!("{idx}")
+                        };
+                        let cstr = std::ffi::CString::new(label).unwrap_or_default();
+                        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                    }
+                    return ans;
+                }
+                VectorSubset(rownames, sr, std::ptr::null_mut())
+            }
+        }
+
+        /* data.frames with two subscripts: emulate [.data.frame (i, j).
+        A single selected column with drop=TRUE returns the column
+        itself; otherwise the result is a data.frame of the selected
+        rows and columns. Both subscripts may be missing (`df[1,]`,
+        `df[,1]`). */
+        if data_frame_subset_2(x, nsubs) {
+            let nrows = length_int(VECTOR_ELT(ax, 0));
+            let ncols = length_int(ax);
+            let dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let _dims_guard = protect(dims);
+            *INTEGER(dims).add(0) = nrows;
+            *INTEGER(dims).add(1) = ncols;
+            let sr = int_arraySubscript(0, CAR(subs), dims, ax, call);
+            let _sr_guard = protect(sr);
+            let sc = int_arraySubscript(1, CADR(subs), dims, ax, call);
+            let _sc_guard = protect(sc);
+            let colnames = getAttrib(x, sym_Names());
+            let _colnames_guard = protect(colnames);
+
+            if LENGTH(sc) == 1 && drop != 0 {
+                let col = VECTOR_ELT(ax, (*INTEGER(sc) as R_xlen_t) - 1);
+                let _col_guard = protect(col);
+                return VectorSubset(col, sr, call);
+            }
+
+            let ncol = LENGTH(sc);
+            let ans = Rf_allocVector3(SEXPTYPE::VECSXP, ncol as R_xlen_t);
+            let _ans_guard = protect(ans);
+            for j in 0..ncol {
+                let col = VECTOR_ELT(ax, (*INTEGER(sc).add(j as usize) as R_xlen_t) - 1);
+                let _col_guard = protect(col);
+                SET_VECTOR_ELT(ans, j as R_xlen_t, VectorSubset(col, sr, call));
+            }
+            if !isNull(colnames) {
+                let new_names = ExtractSubset(colnames, sc, call);
+                let _new_names_guard = protect(new_names);
+                setAttrib(ans, sym_Names(), new_names);
+            }
+            let rownames = getAttrib(x, sym_RowNames());
+            let _rownames_guard = protect(rownames);
+            if !isNull(rownames) {
+                setAttrib(
+                    ans,
+                    sym_RowNames(),
+                    subset_frame_rownames(rownames, sr, nrows),
+                );
+            }
+            let class_attr = getAttrib(x, sym_Class());
+            let _class_guard = protect(class_attr);
+            setAttrib(ans, sym_Class(), class_attr);
+            return ans;
         }
 
         /* The actual subsetting code */
@@ -2265,7 +2364,7 @@ pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         /* Fall through to default -- delegated to subassign module */
-        crate::mainutils::subassign::do_subassign_dflt(call, op, args, env)
+        crate::mainutils::subassign::do_subassign_dflt(call, op, ans, env)
     }
 }
 
@@ -2295,7 +2394,7 @@ pub unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
         }
 
         /* Fall through to default -- delegated to subassign module */
-        crate::mainutils::subassign::do_subassign2_dflt(call, op, args, env)
+        crate::mainutils::subassign::do_subassign2_dflt(call, op, ans, env)
     }
 }
 

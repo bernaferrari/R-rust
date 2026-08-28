@@ -37,7 +37,7 @@ fn ilogb_approx(x: f64) -> f64 {
 }
 
 #[inline]
-fn fprec_inner(x: f64, digits: f64) -> f64 {
+fn fprec_inner(x: f64, mut digits: f64) -> f64 {
     if isnan(x) || isnan(digits) {
         return x + digits;
     }
@@ -45,7 +45,12 @@ fn fprec_inner(x: f64, digits: f64) -> f64 {
         return x;
     }
     if !r_finite(digits) {
-        return if digits > 0.0 { x } else { digits };
+        // fprec.c: positive infinity leaves x alone; any other non-finite
+        // value (e.g. -Inf) is treated as digits = 1.
+        if digits > 0.0 {
+            return x;
+        }
+        digits = 1.0;
     }
     if x == 0.0 {
         return x;
@@ -77,10 +82,10 @@ fn fprec_inner(x: f64, digits: f64) -> f64 {
         if e10 > 0 {
             // Try always to have pow >= 1 and so exactly representable
             let pow10 = R_pow_di(10.0, e10);
-            sgn * libm::round((x * pow10) * p10) / pow10 / p10
+            sgn * ((x * pow10) * p10).round_ties_even() / pow10 / p10
         } else {
             let pow10 = R_pow_di(10.0, -e10);
-            sgn * libm::round(x / pow10) * pow10
+            sgn * (x / pow10).round_ties_even() * pow10
         }
     } else {
         // -- LARGE or small --

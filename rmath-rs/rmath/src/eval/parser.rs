@@ -597,23 +597,81 @@ pub struct ParseError(pub String);
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "parse error: {}", self.0)
+        // The message is already upstream-shaped ("unexpected ')' in ..."
+        // or "unexpected end of input"); top-level renderers wrap it as
+        // `Error: <message>` exactly like Rscript.
+        write!(f, "{}", self.0)
     }
 }
 
 impl std::error::Error for ParseError {}
 
-/// The source text of a comparison token, for `unexpected '<'`-style
-/// non-associativity errors.
-fn comparison_token_text(tok: &Token) -> &'static str {
+/// Parse-error context window, mirroring upstream's `PARSE_CONTEXT_SIZE`:
+/// how many trailing source characters are considered for the
+/// `in "<context>"` suffix.
+const PARSE_CONTEXT_WINDOW: usize = 256;
+
+/// How a token appears in an upstream "unexpected X" parse error, per
+/// gram.y's `yytname_translations` table (constants and symbols in prose,
+/// operators and keywords as quoted source text).
+fn token_display(tok: &Token) -> String {
     match tok {
-        Token::Lt => "<",
-        Token::Gt => ">",
-        Token::Le => "<=",
-        Token::Ge => ">=",
-        Token::Eq => "==",
-        Token::Ne => "!=",
-        _ => "<cmp>",
+        Token::Number(_) | Token::Complex(_) | Token::Int(_) => "numeric constant".to_string(),
+        Token::Str(_) => "string constant".to_string(),
+        Token::Ident(_) => "symbol".to_string(),
+        Token::LeftAssign => "assignment".to_string(),
+        Token::Newline => "end of line".to_string(),
+        Token::Eof => "end of input".to_string(),
+        Token::Percent(op) => format!("'{op}'"),
+        Token::Plus => "'+'".to_string(),
+        Token::Minus => "'-'".to_string(),
+        Token::Star => "'*'".to_string(),
+        Token::Slash => "'/'".to_string(),
+        Token::Caret => "'^'".to_string(),
+        Token::Lt => "'<'".to_string(),
+        Token::Gt => "'>'".to_string(),
+        Token::Le => "'<='".to_string(),
+        Token::Ge => "'>='".to_string(),
+        Token::Eq => "'=='".to_string(),
+        Token::Ne => "'!='".to_string(),
+        Token::And => "'&'".to_string(),
+        Token::And2 => "'&&'".to_string(),
+        Token::Or => "'|'".to_string(),
+        Token::Or2 => "'||'".to_string(),
+        Token::Not => "'!'".to_string(),
+        Token::Pipe => "'|>'".to_string(),
+        Token::Placeholder => "'_'".to_string(),
+        Token::Assign => "'='".to_string(),
+        Token::RightAssign => "'->'".to_string(),
+        Token::LeftSuper => "'<<-'".to_string(),
+        Token::LParen => "'('".to_string(),
+        Token::RParen => "')'".to_string(),
+        Token::LBrace => "'{'".to_string(),
+        Token::RBrace => "'}'".to_string(),
+        Token::RBracket => "']'".to_string(),
+        Token::LBracket => "'['".to_string(),
+        Token::LDoubleBracket => "'[['".to_string(),
+        Token::RDoubleBracket => "']]'".to_string(),
+        Token::Comma => "','".to_string(),
+        Token::Semicolon => "';'".to_string(),
+        Token::Tilde => "'~'".to_string(),
+        Token::Colon => "':'".to_string(),
+        Token::DoubleColon => "'::'".to_string(),
+        Token::TripleColon => "':::'".to_string(),
+        Token::Dollar => "'$'".to_string(),
+        Token::At => "'@'".to_string(),
+        Token::DotDotDot => "'...'".to_string(),
+        Token::KwIf => "'if'".to_string(),
+        Token::KwElse => "'else'".to_string(),
+        Token::KwFor => "'for'".to_string(),
+        Token::KwIn => "'in'".to_string(),
+        Token::KwWhile => "'while'".to_string(),
+        Token::KwRepeat => "'repeat'".to_string(),
+        Token::KwFunction => "'function'".to_string(),
+        Token::KwLambda => "'\\('".to_string(),
+        Token::KwBreak => "'break'".to_string(),
+        Token::KwNext => "'next'".to_string(),
+        Token::KwReturn => "'return'".to_string(),
     }
 }
 
@@ -691,6 +749,12 @@ fn is_special_rhs_function(name: &str) -> bool {
 
 pub struct Parser<'arena> {
     tokens: Vec<Token>,
+    /// Half-open char span `[start, end)` of each token in `source`,
+    /// parallel to `tokens`. Used to render upstream-style parse errors
+    /// (`unexpected ')' in "<context>"`); the EOF token has an empty span.
+    spans: Vec<(usize, usize)>,
+    /// The parsed source as chars, for slicing token context windows.
+    source: Vec<char>,
     pos: usize,
     arena: &'arena mut RArena,
     /// The shared node representing the pipe placeholder `_`.
@@ -706,16 +770,22 @@ impl<'arena> Parser<'arena> {
     pub fn new(input: &str, arena: &'arena mut RArena) -> Self {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
+        let mut spans = Vec::new();
         loop {
+            let start = lexer.pos;
             let tok = lexer.next_token();
+            let end = lexer.pos;
             let is_eof = tok == Token::Eof;
             tokens.push(tok);
+            spans.push((start, end));
             if is_eof {
                 break;
             }
         }
         Parser {
             tokens,
+            spans,
+            source: input.chars().collect(),
             pos: 0,
             arena,
             placeholder: std::ptr::null_mut(),
@@ -818,10 +888,45 @@ impl<'arena> Parser<'arena> {
         if &tok == expected {
             Ok(())
         } else {
-            Err(ParseError(format!(
-                "expected {:?}, got {:?}",
-                expected, tok
-            )))
+            // Upstream renders bison "expecting" errors as plain
+            // "unexpected X" (gram.y edits the expecting clause away).
+            Err(self.unexpected_at(self.pos - 1))
+        }
+    }
+
+    /// Build the upstream-shaped parse error for the token at `index`:
+    /// `unexpected ')' in "<source context>"`, with no context when the
+    /// input ran out. The context is the source through the end of the
+    /// offending token, windowed to the last `PARSE_CONTEXT_WINDOW` chars
+    /// and reduced to its final two lines (source.c `parseError`).
+    fn unexpected_at(&self, index: usize) -> ParseError {
+        let tok = self.tokens.get(index).cloned().unwrap_or(Token::Eof);
+        let head = format!("unexpected {}", token_display(&tok));
+        if matches!(tok, Token::Eof) {
+            // The REPL resets the parse context between attempts, so EOF
+            // errors surface without one.
+            return ParseError(head);
+        }
+        let end = self
+            .spans
+            .get(index)
+            .map(|&(_, end)| end)
+            .unwrap_or(self.source.len());
+        let start = end.saturating_sub(PARSE_CONTEXT_WINDOW);
+        let window: String = self.source[start..end].iter().collect();
+        let mut lines: Vec<&str> = window.split('\n').collect();
+        // getParseContext drops the empty line after a trailing newline.
+        if matches!(lines.last(), Some(last) if last.is_empty()) {
+            lines.pop();
+        }
+        match lines.as_slice() {
+            [] | [""] => ParseError(head),
+            [line] => ParseError(format!("{head} in \"{line}\"")),
+            lines => ParseError(format!(
+                "{head} in:\n\"{}\n{}\"",
+                lines[lines.len() - 2],
+                lines[lines.len() - 1]
+            )),
         }
     }
 
@@ -1053,11 +1158,13 @@ impl<'arena> Parser<'arena> {
         let right = self.parse_addition()?;
         let op = self.install_symbol(op_name)?;
         left = self.lang3(op, left, right);
-        if let tok @ (Token::Lt | Token::Gt | Token::Le | Token::Ge | Token::Eq | Token::Ne) =
-            self.peek()
-        {
-            let unexpected = comparison_token_text(tok);
-            return Err(ParseError(format!("unexpected '{unexpected}'")));
+        if matches!(
+            self.peek(),
+            Token::Lt | Token::Gt | Token::Le | Token::Ge | Token::Eq | Token::Ne
+        ) {
+            // Non-associative chained comparison; the offending token is
+            // the second comparison operator at the current position.
+            return Err(self.unexpected_at(self.pos));
         }
         Ok(left)
     }
@@ -1480,10 +1587,7 @@ impl<'arena> Parser<'arena> {
                 self.advance();
                 self.install_symbol(&name)
             }
-            _ => Err(ParseError(format!(
-                "expected name after $ or @, got {:?}",
-                self.peek()
-            ))),
+            _ => Err(self.unexpected_at(self.pos)),
         }
     }
 
@@ -1648,12 +1752,7 @@ impl<'arena> Parser<'arena> {
         // var must be an identifier
         let var_name = match self.advance() {
             Token::Ident(name) => name,
-            tok => {
-                return Err(ParseError(format!(
-                    "expected identifier in for, got {:?}",
-                    tok
-                )));
-            }
+            _ => return Err(self.unexpected_at(self.pos - 1)),
         };
         let var = self.install_symbol(&var_name)?;
 
@@ -1763,7 +1862,7 @@ impl<'arena> Parser<'arena> {
                     };
                     pairs.push((name, default));
                 }
-                tok => return Err(ParseError(format!("expected formal arg, got {:?}", tok))),
+                _ => return Err(self.unexpected_at(self.pos)),
             }
 
             self.skip_newlines();
@@ -1835,6 +1934,10 @@ impl<'arena> Parser<'arena> {
     // -----------------------------------------------------------------------
 
     fn parse_atom(&mut self) -> Result<SEXP, ParseError> {
+        // An operand position never terminates on a newline (gram.l's
+        // EatLines): `1 +\n2` continues on the next line and `1 +\n` runs
+        // out of input, exactly like upstream.
+        self.skip_newlines();
         match self.peek().clone() {
             Token::Number(n) => {
                 self.advance();
@@ -1883,7 +1986,7 @@ impl<'arena> Parser<'arena> {
                     _ => self.install_symbol(&name),
                 }
             }
-            ref tok => Err(ParseError(format!("unexpected token: {:?}", tok))),
+            _ => Err(self.unexpected_at(self.pos)),
         }
     }
 

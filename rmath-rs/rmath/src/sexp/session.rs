@@ -532,13 +532,19 @@ impl RSession {
         let expressions = match expressions {
             Ok(exprs) => exprs,
             Err(err) => {
-                return f(
-                    Err(REvalError {
-                        message: err.to_string(),
-                    }),
-                    super::output::RCapturedOutput::default(),
-                    false,
-                );
+                // Map the failure while this session is still the scoped
+                // active instance: the mapping closures of embedding facades
+                // consult error-buffer state while converting the result.
+                // Parse failed before output capture started, so the capture
+                // is empty.
+                let message = err.to_string();
+                return self.with_active(|| {
+                    f(
+                        Err(REvalError { message }),
+                        super::output::RCapturedOutput::default(),
+                        false,
+                    )
+                });
             }
         };
 
@@ -617,13 +623,15 @@ impl RSession {
         let expressions = match expressions {
             Ok(exprs) => exprs,
             Err(err) => {
-                return f(
-                    Err(REvalError {
-                        message: err.to_string(),
-                    }),
-                    super::output::RCapturedOutput::default(),
-                    false,
-                );
+                // Same scoped mapping as the plain script path above.
+                let message = err.to_string();
+                return self.with_active(|| {
+                    f(
+                        Err(REvalError { message }),
+                        super::output::RCapturedOutput::default(),
+                        false,
+                    )
+                });
             }
         };
 
@@ -690,13 +698,15 @@ impl RSession {
         let raw_expr = match raw_expr {
             Ok(expr) => expr_or_nil(expr),
             Err(err) => {
-                return f(
-                    Err(REvalError {
-                        message: err.to_string(),
-                    }),
-                    super::output::RCapturedOutput::default(),
-                    false,
-                );
+                // Same scoped mapping as the script paths above.
+                let message = err.to_string();
+                return self.with_active(|| {
+                    f(
+                        Err(REvalError { message }),
+                        super::output::RCapturedOutput::default(),
+                        false,
+                    )
+                });
             }
         };
         let expr = match self.owned_sexp(raw_expr, "parsed expression") {
@@ -1154,6 +1164,37 @@ mod tests {
         assert_eq!(output.stdout, "[1] 1\n");
         assert_eq!(result.real_elt(0), Some(2.0));
         assert!(visible);
+    }
+
+    #[test]
+    fn test_session_script_parse_error_maps_to_upstream_message() {
+        let mut session = RSession::new();
+
+        // Parse failures must surface as a clean REvalError rendered like
+        // Rscript ("Error: unexpected ')' in ..."), never as a panic from
+        // the error-conversion path touching unscoped runtime state.
+        let (result, output, visible) = session.eval_script_with_output_capture("print(1 + )");
+        let err = result.expect_err("syntax error must fail the script");
+        assert_eq!(err.message, "unexpected ')' in \"print(1 + )\"");
+        assert!(output.stdout.is_empty());
+        assert!(!visible);
+
+        // The session stays usable after a parse failure.
+        let (result, output, _) = session.eval_script_with_output_capture("print(40 + 2)");
+        assert_eq!(
+            result.expect("session should recover").real_elt(0),
+            Some(42.0)
+        );
+        assert_eq!(output.stdout, "[1] 42\n");
+    }
+
+    #[test]
+    fn test_session_script_parse_error_at_end_of_input_has_no_context() {
+        let mut session = RSession::new();
+
+        let (result, _, _) = session.eval_script_with_output_capture("1 + +");
+        let err = result.expect_err("incomplete input must fail the script");
+        assert_eq!(err.message, "unexpected end of input");
     }
 
     #[test]

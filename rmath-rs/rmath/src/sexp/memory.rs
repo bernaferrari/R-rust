@@ -291,6 +291,7 @@ impl RArena {
     /// and improve locality (hard problem from review: one alloc per node was bad).
     #[inline(always)]
     pub(crate) fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
+        crate::sexp::gengc::maybe_torture_gc_during_alloc();
         if !self.can_activate_node() {
             return ptr::null_mut();
         }
@@ -334,6 +335,8 @@ impl RArena {
         if length < 0 {
             return ptr::null_mut();
         }
+
+        crate::sexp::gengc::maybe_torture_gc_during_alloc();
 
         if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
             crate::sexp::gengc::maybe_collect_during_alloc();
@@ -397,6 +400,8 @@ impl RArena {
         if length < 0 {
             return Err(ArenaError::InvalidLength);
         }
+
+        crate::sexp::gengc::maybe_torture_gc_during_alloc();
 
         // Check node budget
         if self.budget.max_nodes > 0 {
@@ -484,8 +489,8 @@ impl RArena {
     ///
     /// Returns null if allocation fails (OOM safety).
     pub(crate) fn alloc_charsxp(&mut self, s: &[u8]) -> SEXP {
+        crate::sexp::gengc::maybe_torture_gc_during_alloc();
         let len = s.len() as R_xlen_t;
-
         let total_bytes = match (len as usize).checked_add(1) {
             Some(n) => n,
             None => return ptr::null_mut(),

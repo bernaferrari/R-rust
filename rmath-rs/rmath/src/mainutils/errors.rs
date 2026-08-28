@@ -224,6 +224,28 @@ pub unsafe fn R_curErrorBuf() -> *const c_char {
     with_error_state(|state| state.error_buffer.as_ptr() as *const c_char)
 }
 
+/// The rendered top-level error text for `message`, when this exact message
+/// was the last one rendered into the error buffer.
+///
+/// Returns `None` when no R instance is active (e.g. while converting a
+/// failure for a closed session) or when the buffer holds something else;
+/// callers then fall back to the bare-message rendering.
+pub fn try_last_rendered_message(message: &str) -> Option<String> {
+    instance::with_current_instance(|instance| {
+        let state = &instance.error_state;
+        if state.last_rendered_message.as_deref() != Some(message) {
+            return None;
+        }
+        let len = state
+            .error_buffer
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(BUFSIZE);
+        Some(String::from_utf8_lossy(&state.error_buffer[..len]).into_owned())
+    })
+    .flatten()
+}
+
 /// Get the current error buffer contents as a Rust String.
 pub fn R_GetErrorBuf() -> String {
     with_error_state(|state| {
