@@ -343,19 +343,19 @@ unsafe fn CLEAR_ATTRIB(x: SEXP) {
 ///
 /// This is the equivalent of R's `CoercionWarning()` from coerce.c.
 pub unsafe fn CoercionWarning(warn: c_int) {
-    // In a full implementation these would call R's warning() function.
-    // For now we use eprintln to avoid aborting.
+    // Route through the warnings machinery (like stock's warningcall) so
+    // handlers such as suppressWarnings()/withCallingHandlers() see them.
     if warn & WARN_NA != 0 {
-        eprintln!("Warning: NAs introduced by coercion");
+        crate::mainutils::errors::Rf_warning(b"NAs introduced by coercion\0".as_ptr() as *const libc::c_char);
     }
     if warn & WARN_INT_NA != 0 {
-        eprintln!("Warning: NAs introduced by coercion to integer range");
+        crate::mainutils::errors::Rf_warning(b"NAs introduced by coercion to integer range\0".as_ptr() as *const libc::c_char);
     }
     if warn & WARN_IMAG != 0 {
-        eprintln!("Warning: imaginary parts discarded in coercion");
+        crate::mainutils::errors::Rf_warning(b"imaginary parts discarded in coercion\0".as_ptr() as *const libc::c_char);
     }
     if warn & WARN_RAW != 0 {
-        eprintln!("Warning: out-of-range values treated as 0 in coercion to raw");
+        crate::mainutils::errors::Rf_warning(b"out-of-range values treated as 0 in coercion to raw\0".as_ptr() as *const libc::c_char);
     }
 }
 

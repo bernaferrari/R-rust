@@ -12,6 +12,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
+use std::os::raw::c_int;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_BraceSymbol;
@@ -292,6 +293,24 @@ unsafe fn do_invisible(args: SEXP, rho: SEXP) -> SEXP {
 // do_if — the if/else special form
 // ---------------------------------------------------------------------------
 
+/// Stock StrToLogical (coerce.c): the strings accepted by asLogical on a
+/// character vector; anything else (including NA) is NA.
+unsafe fn str_to_logical(x: SEXP) -> c_int {
+    unsafe {
+        let s = crate::sexp::accessors::STRING_ELT(x, 0);
+        if s.is_null() || s == crate::sexp::globals::R_NaString() {
+            return crate::sexp::ffi::NA_LOGICAL;
+        }
+        let chars = CHAR(s);
+        let text = std::ffi::CStr::from_ptr(chars).to_string_lossy();
+        match text.as_ref() {
+            "T" | "TRUE" | "true" | "True" | "t" => 1,
+            "F" | "FALSE" | "false" | "False" | "f" => 0,
+            _ => crate::sexp::ffi::NA_LOGICAL,
+        }
+    }
+}
+
 /// Implement the `if` special form.
 unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -306,38 +325,95 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
 
         let cond_val = Rf_eval(cond, rho);
 
-        // Check condition (logical vector, take first element)
-        let result = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
-            let data = crate::sexp::accessors::LOGICAL(cond_val);
-            if data.is_null() {
-                eprintln!("Error: missing value where TRUE/FALSE needed");
-                std::panic::panic_any(RError {
-                    message: "missing value where TRUE/FALSE needed".to_string(),
-                });
-            }
-            let v = *data;
-            if v == 1 {
-                // TRUE
-                Rf_eval(true_branch, rho)
-            } else if v == 0 {
-                // FALSE
-                if false_branch == R_NilValue() {
-                    R_NilValue()
-                } else {
-                    Rf_eval(false_branch, rho)
+
+        // Stock asLogicalNoNA (eval.c): scalar logical/integer fast paths,
+        // then a length check, then asLogical coercion; NA with the right
+        // error message per the value type.
+        let cond_len = Rf_length(cond_val);
+        let as_logical_coerced = |x: SEXP| -> c_int {
+            // Rf_asLogical semantics for the non-logical/int types.
+            match TYPEOF(x) {
+                t if t == SEXPTYPE::REALSXP => {
+                    let v = *crate::sexp::accessors::REAL(x);
+                    if v.is_nan() {
+                        crate::sexp::ffi::NA_LOGICAL
+                    } else {
+                        c_int::from(v != 0.0)
+                    }
                 }
+                t if t == SEXPTYPE::STRSXP => str_to_logical(x),
+                t if t == SEXPTYPE::CPLXSXP => {
+                    let z = crate::sexp::accessors::COMPLEX_ELT(x, 0);
+                    if z.r.is_nan() || z.i.is_nan() {
+                        crate::sexp::ffi::NA_LOGICAL
+                    } else {
+                        c_int::from(z.r != 0.0 || z.i != 0.0)
+                    }
+                }
+                _ => crate::sexp::ffi::NA_LOGICAL,
+            }
+        };
+
+
+        let result = match TYPEOF(cond_val) {
+            t if t == SEXPTYPE::LGLSXP && cond_len == 1 => {
+                let v = crate::sexp::accessors::LOGICAL_ELT(cond_val, 0);
+                v
+            }
+            t if t == SEXPTYPE::INTSXP && cond_len == 1 => {
+                let v = crate::sexp::accessors::INTEGER_ELT(cond_val, 0);
+                if v == crate::sexp::ffi::NA_INTEGER {
+                    crate::sexp::ffi::NA_LOGICAL
+                } else {
+                    c_int::from(v != 0)
+                }
+            }
+            _ => {
+                if cond_len > 1 {
+                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                        message: "the condition has length > 1".to_string(),
+                    });
+                }
+                if cond_len == 0 {
+                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                        message: "argument is of length zero".to_string(),
+                    });
+                }
+                match TYPEOF(cond_val) {
+                    t if t == SEXPTYPE::LGLSXP => {
+                        crate::sexp::accessors::LOGICAL_ELT(cond_val, 0)
+                    }
+                    t if t == SEXPTYPE::INTSXP => {
+                        let v = crate::sexp::accessors::INTEGER_ELT(cond_val, 0);
+                        if v == crate::sexp::ffi::NA_INTEGER {
+                            crate::sexp::ffi::NA_LOGICAL
+                        } else {
+                            c_int::from(v != 0)
+                        }
+                    }
+                    _ => as_logical_coerced(cond_val),
+                }
+            }
+        };
+
+        let result = if result == 1 {
+            // TRUE
+            Rf_eval(true_branch, rho)
+        } else if result == 0 {
+            // FALSE
+            if false_branch == R_NilValue() {
+                R_NilValue()
             } else {
-                // NA_LOGICAL
-                eprintln!("Error: missing value where TRUE/FALSE needed");
-                std::panic::panic_any(RError {
-                    message: "missing value where TRUE/FALSE needed".to_string(),
-                });
+                Rf_eval(false_branch, rho)
             }
         } else {
-            eprintln!("Error: argument is not interpretable as logical");
-            std::panic::panic_any(RError {
-                message: "argument is not interpretable as logical".to_string(),
-            });
+            // NA_LOGICAL
+            let message = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
+                "missing value where TRUE/FALSE needed".to_string()
+            } else {
+                "argument is not interpretable as logical".to_string()
+            };
+            std::panic::panic_any(crate::sexp::context::RSignal::Error { message });
         };
 
         result

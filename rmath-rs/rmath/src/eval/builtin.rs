@@ -891,7 +891,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "sprintf",
-        handler: crate::mainutils::essentials::do_sprintf,
+        handler: crate::mainutils::sprintf_main::do_sprintf,
     },
     EvaluatedBuiltin {
         name: "gsub",
@@ -924,6 +924,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "strsplit",
         handler: crate::mainutils::essentials::do_strsplit,
+    },
+    EvaluatedBuiltin {
+        name: "strptime",
+        handler: crate::mainutils::datetime::do_strptime,
     },
     EvaluatedBuiltin {
         name: "pmin",

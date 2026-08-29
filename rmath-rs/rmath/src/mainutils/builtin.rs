@@ -721,6 +721,17 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             errorcall(_call, "EXPR must be a length 1 vector");
         }
 
+        // Stock warns (and invisibly returns NULL) when there are no
+        // alternatives beyond EXPR.
+        if nargs == 1 {
+            crate::mainutils::errors::warningcall(
+                _call,
+                b"'switch' with no alternatives\0".as_ptr() as *const c_char,
+            );
+            crate::eval::runtime::set_visible(FALSE);
+            return R_NilValue();
+        }
+
         let alternatives = CDR(args);
         let mut dflt: SEXP = std::ptr::null_mut();
 

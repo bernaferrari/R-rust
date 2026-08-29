@@ -97,6 +97,16 @@ fn set_r_show_error_calls(val: bool) {
     with_error_state(|state| state.show_error_calls = val);
 }
 
+/// 1-based index of the top-level expression a session script loop is
+/// currently evaluating (0 = no script position is active).
+pub fn toplevel_expr_no() -> usize {
+    instance::with_current_instance(|inst| inst.error_state.toplevel_expr_no).unwrap_or(0)
+}
+
+pub fn set_toplevel_expr_no(no: usize) {
+    instance::with_current_instance(|inst| inst.error_state.toplevel_expr_no = no);
+}
+
 fn last_rendered_message() -> Option<String> {
     with_error_state(|state| state.last_rendered_message.clone())
 }
@@ -748,6 +758,29 @@ fn strip_call_prefix(message: &str) -> String {
     message.to_string()
 }
 
+/// `show.error.locations` gate (errors.c:803-808): a length-1 option whose
+/// value is logically TRUE, or a string partially matching "top", enables
+/// the `(from ...)` location marker. Other strings ("bottom" included —
+/// upstream dropped bottom-position support) and NA leave it off; numeric
+/// values convert to logical.
+unsafe fn show_error_locations_enabled() -> bool {
+    unsafe {
+        let opt = GetOption1(Rf_install(b"show.error.locations\0".as_ptr() as *const c_char));
+        if opt.is_null() || isNull(opt) != 0 || XLENGTH(opt) != 1 {
+            return false;
+        }
+        if crate::mainutils::coerce::asLogical(opt) == 1 {
+            return true;
+        }
+        if TYPEOF(opt) == SEXPTYPE::STRSXP {
+            let pattern = Rf_mkString(b"top\0".as_ptr() as *const c_char);
+            let _pattern_guard = protect(pattern);
+            return crate::mainutils::match_mod::pmatch(pattern, opt, 0) != 0;
+        }
+        false
+    }
+}
+
 unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
         let old_in_err = in_error();
@@ -810,6 +843,22 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
         let mut tmp_str = format_varargs(format, ap);
         truncate_bytes(&mut tmp_str, tmp_cap);
 
+        // errors.c:804-819 — resolve the `(from <loc>)` marker before
+        // rendering: gated by show.error.locations, pointing at the 1-based
+        // index of the top-level expression being evaluated. The port parses
+        // scripts without srcrefs, so the script-loop position stands in for
+        // upstream's srcref-derived `#line` (GetSrcLoc with an unnamed
+        // srcfile renders exactly this `(from #n)` shape); 0 = no location.
+        let location_no = if show_error_locations_enabled() {
+            toplevel_expr_no()
+        } else {
+            0
+        };
+        let location_mark = if location_no > 0 {
+            format!(" (from #{location_no})")
+        } else {
+            String::new()
+        };
         // ERRBUFCAT only concatenates while the total stays under BUFSIZE.
         let errcat = |buf: &mut String, s: &str| {
             if buf.len() + s.len() < BUFSIZE {
@@ -853,6 +902,9 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
             if head_len + b"\n  ".len() + tmp_str.len() < BUFSIZE {
                 errcat(&mut err_msg, "Error in ");
                 errcat(&mut err_msg, &dcall);
+                // errors.c:815-819/828-830 — the "(from <loc>)" marker sits
+                // between the deparsed call and the " : " separator.
+                errcat(&mut err_msg, &location_mark);
                 errcat(&mut err_msg, " : ");
 
                 // Check if first line is too long
@@ -871,9 +923,13 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
                 errcat(&mut err_msg, &tmp_str);
             }
         } else {
-            // Error without call — "Error: <message>"
+            // Error without call — "Error: <message>". Upstream only decorates
+            // the "Error in <call>" form (a top-level stop() carries no call),
+            // so here the location marker appends to the rendered line
+            // instead, keeping every top-level error line locatable.
             errcat(&mut err_msg, "Error: ");
             errcat(&mut err_msg, &tmp_str);
+            errcat(&mut err_msg, &location_mark);
         }
 
         // Approximate truncation detection (errors.c:855-863): with a

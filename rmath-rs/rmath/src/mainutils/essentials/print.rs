@@ -1025,35 +1025,16 @@ pub unsafe fn do_print_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("integer(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x);
-        if n == 0 {
-            println!("integer(0)");
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
+        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+            crate::sexp::output::format_vector_stock(sexp, true)
+        } else {
+            String::new()
+        };
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&rendered);
+        } else {
+            print!("{rendered}");
         }
-        print!("[1]");
-        for i in 0..n.min(500) {
-            let v = *INTEGER(x).add(i as usize);
-            let s = if v == NA_INTEGER {
-                "NA".to_string()
-            } else {
-                format!("{}", v)
-            };
-            if i == 0 {
-                print!(" {}", s);
-            } else if (i + 1) % 6 == 0 {
-                print!("\n[{}] {}", i + 1, s);
-            } else {
-                print!(" {}", s);
-            }
-        }
-        if n > 500 {
-            print!(
-                "\n [ reached getOption(\"max.print\") -- omitted {} entries ]",
-                n - 500
-            );
-        }
-        println!();
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
@@ -1067,35 +1048,16 @@ pub unsafe fn do_print_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("numeric(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x);
-        if n == 0 {
-            println!("numeric(0)");
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
+        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+            crate::sexp::output::format_vector_stock(sexp, true)
+        } else {
+            String::new()
+        };
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&rendered);
+        } else {
+            print!("{rendered}");
         }
-        print!("[1]");
-        for i in 0..n.min(500) {
-            let v = *REAL(x).add(i as usize);
-            let s = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                "NA".to_string()
-            } else {
-                format!("{}", v)
-            };
-            if i == 0 {
-                print!(" {}", s);
-            } else if (i + 1) % 4 == 0 {
-                print!("\n[{}] {}", i + 1, s);
-            } else {
-                print!(" {}", s);
-            }
-        }
-        if n > 500 {
-            print!(
-                "\n [ reached getOption(\"max.print\") -- omitted {} entries ]",
-                n - 500
-            );
-        }
-        println!();
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
@@ -1109,37 +1071,16 @@ pub unsafe fn do_print_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("logical(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x);
-        if n == 0 {
-            println!("logical(0)");
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
+        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+            crate::sexp::output::format_vector_stock(sexp, true)
+        } else {
+            String::new()
+        };
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&rendered);
+        } else {
+            print!("{rendered}");
         }
-        print!("[1]");
-        for i in 0..n.min(500) {
-            let v = *LOGICAL(x).add(i as usize);
-            let s = if v == NA_INTEGER {
-                "NA".to_string()
-            } else if v == TRUE {
-                "TRUE".to_string()
-            } else {
-                "FALSE".to_string()
-            };
-            if i == 0 {
-                print!(" {}", s);
-            } else if (i + 1) % 6 == 0 {
-                print!("\n[{}] {}", i + 1, s);
-            } else {
-                print!(" {}", s);
-            }
-        }
-        if n > 500 {
-            print!(
-                "\n [ reached getOption(\"max.print\") -- omitted {} entries ]",
-                n - 500
-            );
-        }
-        println!();
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
@@ -1159,15 +1100,15 @@ pub unsafe fn do_print_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return x;
         }
-        for i in 0..n.min(500) {
-            let s = elt_to_string(x, i);
-            println!("[{}] \"{}\"", i + 1, s);
-        }
-        if n > 500 {
-            println!(
-                " [ reached getOption(\"max.print\") -- omitted {} entries ]",
-                n - 500
-            );
+        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+            crate::sexp::output::format_vector_stock(sexp, true)
+        } else {
+            String::new()
+        };
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&rendered);
+        } else {
+            print!("{rendered}");
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
@@ -1182,33 +1123,16 @@ pub unsafe fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             println!("complex(0)");
             return R_NilValue();
         }
-        let n = XLENGTH(x);
-        if n == 0 {
-            println!("complex(0)");
-            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-            return x;
+        let rendered = if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
+            crate::sexp::output::format_vector_stock(sexp, true)
+        } else {
+            String::new()
+        };
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout(&rendered);
+        } else {
+            print!("{rendered}");
         }
-        print!("[1]");
-        for i in 0..n.min(500) {
-            // Complex data is stored as pairs of f64
-            let re = *REAL(x).add((i * 2) as usize);
-            let im = *REAL(x).add((i * 2 + 1) as usize);
-            let s = format!("{}+{}i", re, im);
-            if i == 0 {
-                print!(" {}", s);
-            } else if (i + 1) % 4 == 0 {
-                print!("\n[{}] {}", i + 1, s);
-            } else {
-                print!(" {}", s);
-            }
-        }
-        if n > 500 {
-            print!(
-                "\n [ reached getOption(\"max.print\") -- omitted {} entries ]",
-                n - 500
-            );
-        }
-        println!();
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }

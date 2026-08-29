@@ -646,6 +646,30 @@ pub unsafe fn GetOptionDigits() -> c_int {
     }
 }
 
+/// Get the current scipen (significant digits penalty) option.
+pub unsafe fn GetOptionScipen() -> c_int {
+    unsafe {
+        let val = GetOptionByName("scipen");
+        if val == R_NilValue() {
+            return 0;
+        }
+        let w = asInteger(val);
+        if w == NA_INTEGER { 0 } else { w }
+    }
+}
+
+/// Get the current max.print option (R_print.max).
+pub unsafe fn GetOptionMaxPrint() -> c_int {
+    unsafe {
+        let val = GetOptionByName("max.print");
+        if val == R_NilValue() {
+            return 99999;
+        }
+        let w = asInteger(val);
+        if w == NA_INTEGER { 99999 } else { w }
+    }
+}
+
 /// Get the deparse.cutoff option.
 pub unsafe fn GetOptionCutoff() -> c_int {
     unsafe {

@@ -155,8 +155,14 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
         exit 1
     fi
 
+    # Pin a snapshot copy: concurrent `cargo build` runs by siblings can
+    # mutate/delete the newest rlib mid-suite and skew per-case results.
     RUNNER_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-conformance-runner.XXXXXX")"
     RUST_BIN="$RUNNER_TMP_DIR/rust_runner"
+    RUST_RLIB_SNAPSHOT="$RUNNER_TMP_DIR/librmath.rlib"
+    cp "$RUST_RLIB" "$RUST_RLIB_SNAPSHOT"
+    RUST_RLIB="$RUST_RLIB_SNAPSHOT"
+
     cleanup_runner() {
         rm -rf "$RUNNER_TMP_DIR"
     }
@@ -164,6 +170,7 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
 
     RESULTS_TSV="$RUNNER_TMP_DIR/results.tsv"
     touch "$RESULTS_TSV"
+
 
     if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/debug/deps" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
         echo "ERROR: failed to compile Rust conformance runner"

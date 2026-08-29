@@ -1895,7 +1895,7 @@ mod tests {
             session
                 .eval("packageDescription(\"corpbase\", fields = c(\"Package\", \"Version\"))")
                 .expect("package description fields"),
-            "[1] \"corpbase\" \"0.1.0\""
+            "[1] \"corpbase\" \"0.1.0\"   "
         );
         assert_eq!(
             session

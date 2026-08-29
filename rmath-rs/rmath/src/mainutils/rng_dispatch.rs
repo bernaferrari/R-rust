@@ -50,12 +50,7 @@ pub unsafe fn do_sample(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         // attributed to that inner call.
         let sample_int_call = sample_int_wrapper_call("length(x)");
         crate::mainutils::errors::attribute_handler_errors(sample_int_call, || {
-            let indices = if is_present(parsed.prob) {
-                let weights = parse_probability_weights(parsed.prob, x_len);
-                weighted_sample_indices(&weights, size, replace)
-            } else {
-                sample_indices(x_len, size, replace)
-            };
+            let indices = sampled_indices(x_len, size, replace, parsed.prob);
             sample_vector_by_indices(parsed.x, &indices)
         })
     }
@@ -149,6 +144,29 @@ unsafe fn tag_name(tag: SEXP) -> Option<String> {
     }
 }
 
+/// Sample `size` 0-based indices from a population of length `n`, bracketing
+/// the draws with GetRNGstate/PutRNGstate like stock do_sample (random.c) so
+/// `.Random.seed` reflects consumed draws and a manually assigned seed is
+/// honored.
+pub(crate) unsafe fn sampled_indices(
+    n: R_xlen_t,
+    size: R_xlen_t,
+    replace: bool,
+    prob_arg: SEXP,
+) -> Vec<usize> {
+    unsafe {
+        crate::mainutils::random::GetRNGstate();
+        let indices = if is_present(prob_arg) {
+            let weights = parse_probability_weights(prob_arg, n, size, replace);
+            weighted_sample_indices(&weights, size, replace)
+        } else {
+            sample_indices(n, size, replace)
+        };
+        crate::mainutils::random::PutRNGstate();
+        indices
+    }
+}
+
 pub(crate) unsafe fn sample_int_values(
     n: i64,
     size_arg: SEXP,
@@ -161,12 +179,7 @@ pub(crate) unsafe fn sample_int_values(
         if n <= 0 || size <= 0 {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let indices = if is_present(prob_arg) {
-            let weights = parse_probability_weights(prob_arg, n as R_xlen_t);
-            weighted_sample_indices(&weights, size, replace)
-        } else {
-            sample_indices(n as R_xlen_t, size, replace)
-        };
+        let indices = sampled_indices(n as R_xlen_t, size, replace, prob_arg);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, size as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
@@ -180,6 +193,11 @@ pub(crate) unsafe fn sample_int_values(
     }
 }
 
+/// Uniform index sampling, port of do_sample's uniform branch
+/// (r-source/src/main/random.c): every draw is `R_unif_index(n)` — the
+/// rejection method under `sample.kind = "Rejection"` — either directly
+/// (replace, or a single draw) or through the Fisher-Yates copy-out loop
+/// (`iy[i] = x[j]; x[j] = x[--n]`).
 fn sample_indices(population_len: R_xlen_t, size: R_xlen_t, replace: bool) -> Vec<usize> {
     if population_len <= 0 || size <= 0 {
         return Vec::new();
@@ -191,76 +209,58 @@ fn sample_indices(population_len: R_xlen_t, size: R_xlen_t, replace: bool) -> Ve
         });
     }
 
-    if replace {
+    if replace || size < 2 {
         let mut indices = Vec::with_capacity(size as usize);
         for _ in 0..size {
-            let u = crate::rng::unif_rand();
-            let idx = ((u * population_len as f64) as usize).min(population_len as usize - 1);
-            indices.push(idx);
+            indices.push(crate::mainutils::random::r_R_unif_index(population_len as f64) as usize);
         }
         return indices;
     }
 
     let mut pool: Vec<usize> = (0..population_len as usize).collect();
-    for i in 0..size as usize {
-        let remaining = pool.len() - i;
-        let u = crate::rng::unif_rand();
-        let j = i + ((u * remaining as f64) as usize).min(remaining - 1);
-        pool.swap(i, j);
+    let mut remaining = population_len as usize;
+    let mut indices = Vec::with_capacity(size as usize);
+    for _ in 0..size as usize {
+        let j = crate::mainutils::random::r_R_unif_index(remaining as f64) as usize;
+        indices.push(pool[j]);
+        remaining -= 1;
+        pool[j] = pool[remaining];
     }
-    pool.truncate(size as usize);
-    pool
+    indices
 }
 
+/// Weighted sampling through the stock ProbSampleReplace / ProbSampleNoReplace
+/// algorithms (descending revsort + cumulative scan / totalmass depletion).
+/// Stock picks walker_ProbSampleReplace when more than 200 categories have
+/// `n * p[i] > 0.1`; that alias-method variant is not ported, so those very
+/// wide weight vectors take the plain path (same distribution, different
+/// stream from stock).
 fn weighted_sample_indices(weights: &[f64], size: R_xlen_t, replace: bool) -> Vec<usize> {
     if weights.is_empty() || size <= 0 {
         return Vec::new();
     }
 
-    let positive = weights.iter().filter(|weight| **weight > 0.0).count();
-    if positive == 0 {
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: "too few positive probabilities".to_string(),
-        });
-    }
-    if !replace && size as usize > positive {
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: "too few positive probabilities".to_string(),
-        });
-    }
-
-    let mut active = weights.to_vec();
-    let mut indices = Vec::with_capacity(size as usize);
-    for _ in 0..size {
-        let total: f64 = active.iter().sum();
-        if total <= 0.0 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "too few positive probabilities".to_string(),
-            });
-        }
-
-        let mut threshold = crate::rng::unif_rand() * total;
-        let mut chosen = active.len() - 1;
-        for (idx, weight) in active.iter().copied().enumerate() {
-            if weight <= 0.0 {
-                continue;
-            }
-            if threshold <= weight {
-                chosen = idx;
-                break;
-            }
-            threshold -= weight;
-        }
-
-        indices.push(chosen);
-        if !replace {
-            active[chosen] = 0.0;
-        }
-    }
-    indices
+    let n = weights.len();
+    let mut p = weights.to_vec();
+    let ans = if replace {
+        crate::mainutils::random::ProbSampleReplace_r(n, &mut p, size as usize)
+    } else {
+        crate::mainutils::random::ProbSampleNoReplace_r(n, &mut p, size as usize)
+    };
+    ans.into_iter().map(|v| v as usize - 1).collect()
 }
 
-fn parse_probability_weights(prob: SEXP, expected_len: R_xlen_t) -> Vec<f64> {
+
+/// Coerce `prob` to doubles and apply stock FixupProb (random.c): the
+/// coercion matches coerceVector(INTSXP/LGLSXP -> REALSXP), then NA /
+/// negative / too-few-positive errors fire in stock order and the vector
+/// is normalized to sum 1.
+fn parse_probability_weights(
+    prob: SEXP,
+    expected_len: R_xlen_t,
+    size: R_xlen_t,
+    replace: bool,
+) -> Vec<f64> {
     unsafe {
         if XLENGTH(prob) != expected_len {
             std::panic::panic_any(crate::sexp::context::RError {
@@ -286,12 +286,34 @@ fn parse_probability_weights(prob: SEXP, expected_len: R_xlen_t) -> Vec<f64> {
                     });
                 }
             };
-            if !weight.is_finite() || weight < 0.0 {
+            weights.push(weight);
+        }
+
+        let mut sum = 0.0;
+        let mut npos = 0usize;
+        for weight in &weights {
+            if !weight.is_finite() {
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: "invalid probability vector".to_string(),
+                    message: "NA in probability vector".to_string(),
                 });
             }
-            weights.push(weight);
+            if *weight < 0.0 {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "negative probability".to_string(),
+                });
+            }
+            if *weight > 0.0 {
+                npos += 1;
+                sum += *weight;
+            }
+        }
+        if npos == 0 || (!replace && size as usize > npos) {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "too few positive probabilities".to_string(),
+            });
+        }
+        for weight in &mut weights {
+            *weight /= sum;
         }
         weights
     }

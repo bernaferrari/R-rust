@@ -2407,32 +2407,65 @@ pub fn ProbSampleReplace_r(n: usize, p: &mut [f64], nans: usize) -> Vec<c_int> {
     let nm1 = n - 1;
     for i in 0..nans {
         let r_u = r_unif_rand();
-        let mut j = 0;
+        let mut j = nm1;
         for jj in 0..nm1 {
             if r_u <= p[jj] {
                 j = jj;
                 break;
             }
-            j = jj;
         }
         ans[i] = perm[j];
     }
     ans
 }
 
-/// Simple reverse sort (descending) with permutation tracking.
+/// Stock revsort (r-source/src/main/sort.c:359): descending HEAPSORT of
+/// `p` with `perm` carried along. The heapsort (not a stable sort) is
+/// load-bearing: ProbSampleReplace/ProbSampleNoReplace stream parity
+/// depends on its exact permutation for tied probabilities.
 fn revsort_with_perm(p: &mut [f64], perm: &mut [c_int], n: usize) {
-    for i in 1..n {
-        let pv = p[i];
-        let iv = perm[i];
-        let mut j = i;
-        while j > 0 && p[j - 1] < pv {
-            p[j] = p[j - 1];
-            perm[j] = perm[j - 1];
-            j -= 1;
+    if n <= 1 {
+        return;
+    }
+    // Indices kept 1-based like the C (`a--; ib--;`), addressed via -1.
+    let mut l = (n >> 1) + 1;
+    let mut ir = n;
+    loop {
+        let ra;
+        let ii;
+        if l > 1 {
+            l -= 1;
+            ra = p[l - 1];
+            ii = perm[l - 1];
+        } else {
+            ra = p[ir - 1];
+            ii = perm[ir - 1];
+            p[ir - 1] = p[0];
+            perm[ir - 1] = perm[0];
+            ir -= 1;
+            if ir == 1 {
+                p[0] = ra;
+                perm[0] = ii;
+                return;
+            }
         }
-        p[j] = pv;
-        perm[j] = iv;
+        let mut i = l;
+        let mut j = l << 1;
+        while j <= ir {
+            if j < ir && p[j - 1] > p[j] {
+                j += 1;
+            }
+            if ra > p[j - 1] {
+                p[i - 1] = p[j - 1];
+                perm[i - 1] = perm[j - 1];
+                i = j;
+                j += i;
+            } else {
+                j = ir + 1;
+            }
+        }
+        p[i - 1] = ra;
+        perm[i - 1] = ii;
     }
 }
 

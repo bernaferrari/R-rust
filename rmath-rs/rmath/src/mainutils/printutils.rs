@@ -16,7 +16,7 @@
 //!   Rprintf, Rvprintf, REvprintf, REvprintf_internal,
 //!   Rcons_vprintf, VectorIndex
 
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::io::Write as IoWrite;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -287,7 +287,6 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
             let val_bytes = val.as_bytes();
             let val_len = val_bytes.len().min(mw);
             buf.fill(b' ');
-            buf[mw..].copy_from_slice(&[0u8; 1]); // zero the tail
             let start = mw - val_len;
             buf[start..mw].copy_from_slice(&val_bytes[..val_len]);
             buf[mw] = 0; // null-terminate
@@ -327,32 +326,89 @@ pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: format_number_fixed
-// ---------------------------------------------------------------------------
+/// Detect R's NA real (a NaN with R's specific NA payload).
+fn r_real_is_na(x: f64) -> bool {
+    x.is_nan() && x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+}
 
-/// Helper: format a float with fixed-point notation and given precision.
-/// Avoids Rust format! precision syntax issues with named args.
-fn format_number_fixed(x: f64, prec: usize) -> String {
-    match prec {
-        0 => format!("{}", x as i64),
-        1 => format!("{:.1}", x),
-        2 => format!("{:.2}", x),
-        3 => format!("{:.3}", x),
-        4 => format!("{:.4}", x),
-        5 => format!("{:.5}", x),
-        6 => format!("{:.6}", x),
-        7 => format!("{:.7}", x),
-        8 => format!("{:.8}", x),
-        9 => format!("{:.9}", x),
-        10 => format!("{:.10}", x),
-        11 => format!("{:.11}", x),
-        12 => format!("{:.12}", x),
-        13 => format!("{:.13}", x),
-        14 => format!("{:.14}", x),
-        15 => format!("{:.15}", x),
-        _ => format!("{:.15}", x),
+/// Render a real exactly like the C snprintf formats stock EncodeReal0,
+/// EncodeReal2 and EncodeRealDrop0 are built on.
+///
+/// `w` is the (minimum) field width, `d` the number of digits after the
+/// decimal point, `e != 0` selects the exponential form. `hash_f` mirrors the
+/// C `#` flag for the fixed-point form: the decimal point is forced even when
+/// `d == 0` (EncodeReal2). The exponential form keeps stock's exact flag use:
+/// `%#w.de` when `d != 0`, plain `%w.de` when `d == 0`. Exponents carry a
+/// sign and at least two digits ("1e+19", "1.234568e+17", "1.5e-05").
+fn format_real_printf_style(
+    x: f64,
+    w: c_int,
+    d: c_int,
+    e: c_int,
+    hash_f: bool,
+    na: &str,
+) -> String {
+    let mw = if (w as usize) < NB - 1 { w as usize } else { NB - 1 };
+    if !x.is_finite() {
+        if r_real_is_na(x) {
+            format!("{na:>mw$}")
+        } else if x.is_nan() {
+            format!("{:>mw$}", "NaN")
+        } else if x > 0.0 {
+            format!("{:>mw$}", "Inf")
+        } else {
+            format!("{:>mw$}", "-Inf")
+        }
+    } else if e != 0 {
+        // C "%#w.de" / "%w.de": d mantissa decimals, exponent with sign and
+        // at least two digits, padded to the field width like snprintf.
+        let rendered = format!("{:.*e}", d as usize, x);
+        let body = match rendered.split_once('e') {
+            Some((mantissa, exponent)) => {
+                let exp: i32 = exponent.parse().unwrap_or(0);
+                let sign = if exp < 0 { '-' } else { '+' };
+                format!("{mantissa}e{sign}{:02}", exp.abs())
+            }
+            None => rendered,
+        };
+        format!("{body:>mw$}")
+    } else if hash_f && d == 0 {
+        // C "%#w.0f": fixed form keeps the decimal point ("1.", not "1"),
+        // with the point counted inside the field width.
+        format!("{:>mw$}", format!("{x:.0}."))
+    } else {
+        format!("{:1$.2$}", x, mw, d as usize)
     }
+}
+
+/// Write a formatted real into one of the per-instance encode buffers,
+/// replacing "." with the requested decimal mark when needed.
+unsafe fn store_real_formatted(buf: &mut [u8], formatted: &str, dec: &str) -> *const c_char {
+    if dec != "." {
+        let mut idx = 0usize;
+        for ch in formatted.chars() {
+            if ch == '.' {
+                for dc in dec.chars() {
+                    if idx < buf.len() - 1 {
+                        buf[idx] = dc as u8;
+                        idx += 1;
+                    }
+                }
+            } else {
+                if idx < buf.len() - 1 {
+                    buf[idx] = ch as u8;
+                    idx += 1;
+                }
+            }
+        }
+        buf[idx] = 0;
+    } else {
+        let bytes = formatted.as_bytes();
+        let len = bytes.len().min(buf.len() - 1);
+        buf[..len].copy_from_slice(&bytes[..len]);
+        buf[len] = 0;
+    }
+    buf.as_ptr() as *const c_char
 }
 
 // ---------------------------------------------------------------------------
@@ -384,68 +440,11 @@ pub unsafe fn EncodeReal0(
         let x = if x == 0.0 { 0.0 } else { x };
 
         let na = na_string_str();
-        let mw = if (w as usize) < NB - 1 {
-            w as usize
-        } else {
-            NB - 1
-        };
-
-        let formatted = if !x.is_finite() {
-            if x.is_nan() {
-                // Check for NA: R uses a specific bit pattern
-                let bits = x.to_bits();
-                if (bits & 0x0007fffffffffffffu64) == 0x0001954u64 && (bits >> 52) == 0x7ffu64 {
-                    format!("{:width$}", na, width = mw)
-                } else {
-                    format!("{:width$}", "NaN", width = mw)
-                }
-            } else if x > 0.0 {
-                format!("{:width$}", "Inf", width = mw)
-            } else {
-                format!("{:width$}", "-Inf", width = mw)
-            }
-        } else if e != 0 {
-            if d != 0 {
-                format!("{:+.prec$e}", x, prec = d as usize)
-            } else {
-                format!("{:.prec$e}", x, prec = d as usize)
-            }
-        } else {
-            format_number_fixed(x, d as usize)
-        };
+        let formatted = format_real_printf_style(x, w, d, e, false, &na);
 
         crate::sexp::instance::with_required_current_instance(|inst| {
             let buf = &mut inst.eval_state.printutils.encode_real0;
-
-            // Copy into buf, replacing "." with dec if needed
-            let out = if dec_str != "." {
-                let mut idx = 0usize;
-                for ch in formatted.chars() {
-                    if ch == '.' {
-                        for dc in dec_str.chars() {
-                            if idx < 2 * NB - 1 {
-                                buf[idx] = dc as u8;
-                                idx += 1;
-                            }
-                        }
-                    } else {
-                        if idx < 2 * NB - 1 {
-                            buf[idx] = ch as u8;
-                            idx += 1;
-                        }
-                    }
-                }
-                buf[idx] = 0;
-                buf.as_ptr()
-            } else {
-                let bytes = formatted.as_bytes();
-                let len = bytes.len().min(NB - 1);
-                buf[..len].copy_from_slice(&bytes[..len]);
-                buf[len] = 0;
-                buf.as_ptr()
-            };
-
-            out as *const c_char
+            store_real_formatted(buf, &formatted, dec_str)
         })
     }
 }
@@ -487,34 +486,7 @@ pub unsafe fn EncodeRealDrop0(
         let x = if x == 0.0 { 0.0 } else { x };
 
         let na = na_string_str();
-        let mw = if (w as usize) < NB - 1 {
-            w as usize
-        } else {
-            NB - 1
-        };
-
-        let formatted = if !x.is_finite() {
-            if x.is_nan() {
-                let bits = x.to_bits();
-                if (bits & 0x0007fffffffffffffu64) == 0x0001954u64 && (bits >> 52) == 0x7ffu64 {
-                    format!("{:width$}", na, width = mw)
-                } else {
-                    format!("{:width$}", "NaN", width = mw)
-                }
-            } else if x > 0.0 {
-                format!("{:width$}", "Inf", width = mw)
-            } else {
-                format!("{:width$}", "-Inf", width = mw)
-            }
-        } else if e != 0 {
-            if d != 0 {
-                format!("{:+.prec$e}", x, prec = d as usize)
-            } else {
-                format!("{:.prec$e}", x, prec = d as usize)
-            }
-        } else {
-            format_number_fixed(x, d as usize)
-        };
+        let formatted = format_real_printf_style(x, w, d, e, false, &na);
 
         // Drop trailing zeros after decimal point
         let mut trimmed: Vec<u8> = formatted.bytes().collect();
@@ -583,34 +555,7 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
         let x = if x == 0.0 { 0.0 } else { x };
 
         let na = na_string_str();
-        let mw = if (w as usize) < NB - 1 {
-            w as usize
-        } else {
-            NB - 1
-        };
-
-        let formatted = if !x.is_finite() {
-            if x.is_nan() {
-                let bits = x.to_bits();
-                if (bits & 0x0007fffffffffffffu64) == 0x0001954u64 && (bits >> 52) == 0x7ffu64 {
-                    format!("{:width$}", na, width = mw)
-                } else {
-                    format!("{:width$}", "NaN", width = mw)
-                }
-            } else if x > 0.0 {
-                format!("{:width$}", "Inf", width = mw)
-            } else {
-                format!("{:width$}", "-Inf", width = mw)
-            }
-        } else if e != 0 {
-            if d != 0 {
-                format!("{:+.prec$e}", x, prec = d as usize)
-            } else {
-                format!("{:.prec$e}", x, prec = d as usize)
-            }
-        } else {
-            format_number_fixed(x, d as usize)
-        };
+        let formatted = format_real_printf_style(x, w, d, e, true, &na);
 
         crate::sexp::instance::with_required_current_instance(|inst| {
             let buf = &mut inst.eval_state.printutils.encode_real2;
@@ -649,38 +594,32 @@ pub unsafe fn EncodeComplex(
         } else {
             CStr::from_ptr(dec).to_str().unwrap_or(".")
         };
+        let _ = dec_str;
 
         // Normalize signed zeros
         let r = if x.r == 0.0 { 0.0 } else { x.r };
         let mut i = if x.i == 0.0 { 0.0 } else { x.i };
 
-        let dec_cstr = CString::new(dec_str).unwrap_or_default();
-        let dec_ptr = dec_cstr.as_ptr();
-
         let na = na_string_str();
-        let is_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
 
-        let result = if is_na(r) || is_na(i) {
-            na.clone()
+        // Stock pads the NA string over the combined real+imaginary width
+        // (`"%*s"` with `wr+wi+2`), otherwise encodes each part with its own
+        // width/digits/scientific flag and joins them with the sign and "i".
+        let result = if r_real_is_na(r) || r_real_is_na(i) {
+            let wtot = (wr + wi + 2) as usize;
+            let mw = wtot.min(NB - 1);
+            format!("{na:>mw$}")
         } else {
-            let re_str = format!("{}", r);
+            let re = format_real_printf_style(r, wr, dr, er, false, &na);
             let flag_neg_im = i < 0.0;
             if flag_neg_im {
                 i = -i;
             }
-            let im_str = format!("{}", i);
-            let im_str = if im_str == "0" {
-                // Effectively zero imaginary part, don't show sign
-                format!("{}+0i", re_str)
-            } else {
-                format!(
-                    "{}{}{}i",
-                    re_str,
-                    if flag_neg_im { "-" } else { "+" },
-                    im_str
-                )
-            };
-            im_str
+            let im = format_real_printf_style(i, wi, di, ei, false, &na);
+            // A printed imaginary part of exactly "0" loses its sign, as in
+            // stock (`if (streql(Im, "0")) flagNegIm = FALSE;`).
+            let flag_neg_im = if im == "0" { false } else { flag_neg_im };
+            format!("{}{}{im}i", re, if flag_neg_im { "-" } else { "+" })
         };
 
         crate::sexp::instance::with_required_current_instance(|inst| {
@@ -898,10 +837,31 @@ pub enum Rprt_adj {
 /// thread-local buffer.
 pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
-        if s.is_null() {
+        // Stock: NA_STRING renders as the unquoted text "NA" (from
+        // R_print.na_string), regardless of the quote flag.
+        let is_na = !s.is_null() && s == crate::sexp::globals::R_NaString();
+        if s.is_null() || is_na {
             return crate::sexp::instance::with_required_current_instance(|inst| {
                 let buffer = &mut inst.eval_state.printutils.encode_string;
                 buffer.clear();
+                // Padding to the field width, then the plain text "NA".
+                let text_len: c_int = 2;
+                let mut b = w - text_len;
+                if justify == Rprt_adj::none {
+                    b = 0;
+                }
+                if b > 0 && justify != Rprt_adj::left {
+                    let b0 = if justify == Rprt_adj::centre {
+                        b / 2
+                    } else {
+                        b
+                    };
+                    for _ in 0..b0 {
+                        buffer.push(b' ');
+                    }
+                }
+                buffer.push(b'N');
+                buffer.push(b'A');
                 buffer.push(0);
                 buffer.as_ptr() as *const c_char
             });

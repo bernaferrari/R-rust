@@ -154,6 +154,16 @@ fn expr_or_nil(expr: SEXP) -> SEXP {
     }
 }
 
+/// Resets the top-level expression location when a script loop ends so a
+/// stale `(from #n)` position never outlives the script that set it.
+struct ToplevelExprNoGuard;
+
+impl Drop for ToplevelExprNoGuard {
+    fn drop(&mut self) {
+        crate::mainutils::errors::set_toplevel_expr_no(0);
+    }
+}
+
 struct CurrentInstanceGuard {
     previous: Option<*mut RInstance>,
     previous_rng: Option<*mut rmath_nmath::RngState>,
@@ -572,6 +582,10 @@ impl RSession {
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             let last_index = expressions.len().saturating_sub(1);
+            // Upstream's REPL updates the current srcref per top-level
+            // expression; the 1-based loop index is the port's location for
+            // show.error.locations rendering.
+            let _toplevel_no_guard = ToplevelExprNoGuard;
             for (index, &raw_expr) in expressions.iter().enumerate() {
                 let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
                     Ok(expr) => expr,
@@ -580,6 +594,7 @@ impl RSession {
                         break;
                     }
                 };
+                crate::mainutils::errors::set_toplevel_expr_no(index + 1);
                 result = self.eval_sexp(expr);
                 if result.is_err() {
                     // An uncaught top-level error unwinds like R's error()
@@ -665,6 +680,8 @@ impl RSession {
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
             let last_index = expressions.len().saturating_sub(1);
+            // Same per-expression location as the plain script loop above.
+            let _toplevel_no_guard = ToplevelExprNoGuard;
             for (index, &raw_expr) in expressions.iter().enumerate() {
                 let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
                     Ok(expr) => expr,
@@ -673,6 +690,7 @@ impl RSession {
                         break;
                     }
                 };
+                crate::mainutils::errors::set_toplevel_expr_no(index + 1);
                 result = self.eval_sexp(expr);
                 if result.is_err() {
                     // Same top-level halt semantics as the plain script loop:
@@ -741,6 +759,10 @@ impl RSession {
         };
         self.with_active(|| {
             self.instance.output_capture.borrow_mut().start();
+            // Single-chunk eval: the parsed expression is script position
+            // #1, same location contract as the script loops above.
+            let _toplevel_no_guard = ToplevelExprNoGuard;
+            crate::mainutils::errors::set_toplevel_expr_no(1);
             let result = self.eval_sexp(expr);
             let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
             crate::sexp::gengc::run_pending_gc_if_quiescent();

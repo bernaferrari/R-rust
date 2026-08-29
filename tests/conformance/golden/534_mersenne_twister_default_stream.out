@@ -1,0 +1,22 @@
+Mersenne-Twister|Inversion|Rejection|BTPE
+[1] 0.2655087 0.3721239 0.5728534
+[1] -0.6264538  0.1836433
+[1] 626
+[1]     110403        624 -169270483 -442010614 -603558397 -222347416
+[1] 0.914806
+[1] 1.3727453 0.5228067
+[1] 1.9880100 0.3704372
+[1] 10  3  7  4  2
+[1] 10  3  7  2 10
+[1] "b" "a" "a" "a" "a" "b" "a" "b"
+[1] 9 4 7 1 2
+[1] 5
+[1] 0.8983897
+[1] 0.22160140 0.02423391
+[1] 626
+[1]      110403           2  1291130895 -2096229563  -757476100
+Mersenne-Twister|Inversion|Rejection|BTPE
+Wichmann-Hill|Inversion|Rejection|BTPE
+Wichmann-Hill|Inversion|Rejection|BTPE
+[1] 0.5897256
+roundtrip ok

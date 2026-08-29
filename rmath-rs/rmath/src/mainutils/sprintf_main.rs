@@ -24,6 +24,7 @@ use crate::sexp::accessors::{
     CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_isString, Rf_mkChar};
+use crate::sexp::protect::protect;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_FINITE, R_IsNA, R_xlen_t, SEXP};
 
 // ---------------------------------------------------------------------------
@@ -81,11 +82,6 @@ unsafe fn mkCharCE(s: *const c_char, _enc: c_int) -> SEXP {
     unsafe { Rf_mkChar(s) }
 }
 
-unsafe fn error(fmt: *const c_char) {
-    unsafe {
-        crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
-    }
-}
 
 unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
     unsafe {
@@ -314,8 +310,14 @@ unsafe fn c_strcat(dest: *mut c_char, src: *const c_char) {
 // do_sprintf
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        // Stock do_sprintf raises via error(), which attributes the error to
+        // the innermost call ("Error in sprintf(...) : ..."). Attribute the
+        // raise sites here to this builtin's own applied call.
+        let error = |fmt: *const c_char| {
+            crate::mainutils::errors::errorcall(call, fmt);
+        };
         let mut nargs: c_int = 0;
         let mut nfmt: c_int = 0;
         let nprotect: c_int = 0;
@@ -333,7 +335,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             return Rf_allocVector(STRSXP, 0);
         }
         let args_rest = CDR(args);
-        nargs = LENGTH(args_rest);
+        nargs = crate::sexp::constructors::Rf_length(args_rest);
         if nargs as usize >= MAXNARGS {
             error(b"only 100 arguments are allowed\0".as_ptr() as *const c_char);
         }
@@ -379,7 +381,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let mut ans: SEXP = ptr::null_mut();
 
         for ns in 0..maxlen as R_xlen_t {
-            let outputString = R_AllocStringBuffer(0, &mut outbuff);
+            let mut outputString = R_AllocStringBuffer(0, &mut outbuff);
             *outputString = 0;
 
             let use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
@@ -690,7 +692,18 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     }
                                     b'a' | b'A' | b'e' | b'f' | b'g' | b'E' | b'G' => {
                                         if TYPEOF(_this) != REALSXP && TYPEOF(_this) != STRSXP {
-                                            _this = coerceVector(_this, REALSXP);
+                                            // stock evaluates as.double(<arg>) so
+                                            // methods and coercion warnings fire
+                                            // (e.g. complex -> real discards the
+                                            // imaginary part with a warning).
+                                            let tmp = crate::sexp::constructors::Rf_lang2(
+                                                crate::sexp::symbol::Rf_install(
+                                                    b"as.double\0".as_ptr() as *const c_char,
+                                                ),
+                                                _this,
+                                            );
+                                            let _tmp_guard = protect(tmp);
+                                            _this = crate::eval::eval::Rf_eval(tmp, env);
                                             a[nthis as usize] = _this;
                                             let new_len = LENGTH(_this);
                                             if new_len == 0 {
@@ -705,7 +718,24 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     }
                                     b's' => {
                                         if TYPEOF(_this) != STRSXP {
-                                            _this = coerceVector(_this, STRSXP);
+                                            // stock evaluates as.character(<arg>);
+                                            // the S3 dispatch may call sprintf
+                                            // recursively and grow the shared
+                                            // output buffer, so save and restore
+                                            // the partial output around the eval.
+                                            let saved: Vec<c_char> = {
+                                                let len = c_strlen(outputString) as usize;
+                                                std::slice::from_raw_parts(outputString, len + 1)
+                                                    .to_vec()
+                                            };
+                                            let tmp = crate::sexp::constructors::Rf_lang2(
+                                                crate::sexp::symbol::Rf_install(
+                                                    b"as.character\0".as_ptr() as *const c_char,
+                                                ),
+                                                _this,
+                                            );
+                                            let _tmp_guard = protect(tmp);
+                                            _this = crate::eval::eval::Rf_eval(tmp, env);
                                             a[nthis as usize] = _this;
                                             let new_len = LENGTH(_this);
                                             if new_len == 0 {
@@ -716,6 +746,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                                 );
                                             }
                                             lens[nthis as usize] = new_len;
+                                            let restored =
+                                                R_AllocStringBuffer(saved.len() as i64, &mut outbuff);
+                                            std::ptr::copy_nonoverlapping(
+                                                saved.as_ptr(),
+                                                restored,
+                                                saved.len(),
+                                            );
                                         }
                                     }
                                     _ => {}
@@ -901,9 +938,8 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                     }
                     bit[chunk] = 0;
                 }
-
                 let append_str = if !ss.is_null() { ss } else { bit.as_ptr() };
-                let outputString = R_AllocStringBuffer(
+                outputString = R_AllocStringBuffer(
                     (c_strlen(outputString) + c_strlen(append_str)) as i64,
                     &mut outbuff,
                 );

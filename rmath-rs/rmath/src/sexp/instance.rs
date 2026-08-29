@@ -58,6 +58,12 @@ pub(crate) struct ErrorState {
     /// renders from previously caught errors are ignored (mirrors upstream,
     /// where caught errors never reach `verrorcall_dflt` printing).
     pub last_rendered_message: Option<String>,
+    /// 1-based index of the top-level expression a session script loop is
+    /// currently evaluating (0 = no script position is active). The port
+    /// parses scripts without srcrefs, so the loop's expression index stands
+    /// in for upstream's most-recent-known srcref (`R_Srcref`): the
+    /// `show.error.locations` render uses it as the `(from #n)` location.
+    pub toplevel_expr_no: usize,
 }
 
 impl Default for ErrorState {
@@ -77,13 +83,14 @@ impl Default for ErrorState {
             interrupts_pending: false,
             collect_warnings: 0,
             nwarnings: 50,
+            last_rendered_message: None,
+            toplevel_expr_no: 0,
             warnings: std::ptr::null_mut(),
             handler_stack: std::ptr::null_mut(),
             restart_stack: std::ptr::null_mut(),
             error_buffer: [0; crate::mainutils::errors::BUFSIZE + 1],
             expressions: 500,
             expressions_keep: 500,
-            last_rendered_message: None,
         }
     }
 }

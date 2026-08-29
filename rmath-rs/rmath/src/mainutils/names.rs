@@ -5006,6 +5006,7 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
         "radixsort" => Some(crate::mainutils::radixsort::do_radixsort),
         "save" => Some(crate::mainutils::saveload::do_save),
         "load" => Some(crate::mainutils::saveload::do_load),
+        "strptime" => Some(crate::mainutils::datetime::do_strptime),
         _ => None,
     }
 }

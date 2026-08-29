@@ -70,6 +70,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "enc2utf8",
     "trimws",
     "sprintf",
+    "strptime",
     "gsub",
     "sub",
     "grep",

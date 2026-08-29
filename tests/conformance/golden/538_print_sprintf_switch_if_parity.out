@@ -1,0 +1,43 @@
+a b
+1 2
+  aaa     b
+  1.5 100.0
+[1] 1e+19
+[1] 1e+15
+[1] 1e+16
+[1] 1.234568e+17
+[1] -1e+19
+[1] 1.00 2.25
+[1]   1.50 100.25
+[1] 1.9880100 0.3704372
+[1] 1.37274529 0.52280674 0.07253794 0.40211492
+[1]    1   NA  Inf -Inf  NaN
+[1]   1   2 300
+  x
+1 1
+0.000000
+Inf
+NaN
+-Inf
+ 3.14
+7 seven
+1.234568e+04
+[1] "Error in try(stop(\"x\"), silent = TRUE) : x\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in doTryCatch(return(expr), name, parentenv, handler): x>
+<simpleError: boom>
+int-true
+num-true
+neg-true
+zero-false
+str-true
+[1] "try-error"
+[1] "try-error"
+[1] "try-error"
+[1] "try-error"
+[1] TRUE
+[1] 1
+[1] "second"
+[1] 99

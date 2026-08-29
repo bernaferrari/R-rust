@@ -2665,6 +2665,41 @@ mod tests {
     }
 
     #[test]
+    fn test_sessions_keep_rlevel_mt_stream_isolated() {
+        // R-level set.seed (Mersenne-Twister default) is per-session: two
+        // concurrently-live sessions seeded differently and evaluated in
+        // interleaved order each replay their own stock stream
+        // (goldens from R 4.6.1 / 4.7.0-dev, identical on both).
+        let stock_seed1 = [0.26550866314209998, 0.37212389963679016];
+        let stock_seed5 = [0.20021445257589221, 0.68521859566681087];
+
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+        left.eval("set.seed(1)");
+        right.eval("set.seed(5)");
+
+        // Interleaved draws: each session consumes only its own stream.
+        let l1 = left.eval("runif(1)").value;
+        let r1 = right.eval("runif(1)").value;
+        let l2 = left.eval("runif(1)").value;
+        let r2 = right.eval("runif(1)").value;
+
+        assert_eq!(l1, stock_seed1[0]);
+        assert_eq!(l2, stock_seed1[1]);
+        assert_eq!(r1, stock_seed5[0]);
+        assert_eq!(r2, stock_seed5[1]);
+
+        // The persisted kind word is session-local too (MT default =
+        // 10403), and the two sessions hold different engine states.
+        assert_eq!(left.eval(".Random.seed[1]").value, 110403.0);
+        assert_eq!(right.eval(".Random.seed[1]").value, 110403.0);
+        assert_ne!(
+            left.eval(".Random.seed[3]").value,
+            right.eval(".Random.seed[3]").value
+        );
+    }
+
+    #[test]
     fn test_eval_null() {
         let mut session = RSession::new();
         let result = session.eval("NULL");

@@ -67,7 +67,7 @@ rmath-rs/rmath/src/mainutils/format.rs	r-source/src/main/format.c	formatVector	f
 rmath-rs/rmath/src/mainutils/deparse.rs	r-source/src/main/deparse.c	deparse1, deparse2buff	faithful	Deparse output should track upstream for parser/eval diagnostics.
 rmath-rs/rmath/src/mainutils/names.rs	r-source/src/main/names.c	FUNTAB, builtins table	rust-shaped	Registration table keeps C names but delegates to Rust implementations.
 rmath-rs/rmath/src/mainutils/random.rs	r-source/src/main/random.c	do_sample, FixupSeeds	rust-shaped	User-visible random helpers with session-owned RNG.
-rmath-rs/rmath/src/rng/mod.rs	r-source/src/main/RNG.c	GetRNGstate, PutRNGstate	rust-shaped	RNG state is per session; exact .Random.seed byte stream parity is not claimed.
+rmath-rs/rmath/src/rng/mod.rs	r-source/src/main/RNG.c	GetRNGstate, PutRNGstate	rust-shaped	RNG state is per session; seeded-default streams and .Random.seed layout match stock bit-for-bit (conformance case 534).
 rmath-rs/rmath/src/mainutils/connections.rs	r-source/src/main/connections.c	Rconnections, file/url helpers	policy	Android path and process policy intentionally constrain host IO.
 rmath-rs/rmath/src/mainutils/paths.rs	r-source/src/main/platform.c	R_HomeDir, R_tmpnam	policy	Android app-private path policy replaces process/user-global paths.
 rmath-rs/rmath/src/mainutils/platform.rs	r-source/src/main/platform.c	platform helpers	policy	Host-sensitive values are normalized for Android embedding.

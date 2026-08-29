@@ -47,8 +47,16 @@ impl Default for RPrint {
 }
 
 fn current_R_print() -> RPrint {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.format_print)
-        .unwrap_or_default()
+    // R's R_print is kept in sync with options("digits") / options("scipen");
+    // read them live so formatReal and scientific() follow the option.
+    unsafe {
+        RPrint {
+            digits: crate::mainutils::options::GetOptionDigits(),
+            scipen: crate::mainutils::options::GetOptionScipen(),
+            na_width: 2,
+            na_width_noquote: 2,
+        }
+    }
 }
 
 pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
@@ -405,8 +413,15 @@ pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote:
         for i in 0..n {
             let si = STRING_ELT(x, i);
             let l;
-            if si.is_null() {
-                // NA_STRING
+            if !si.is_null() && si == crate::sexp::globals::R_NaString() {
+                // Stock: NA_STRING occupies R_print.na_width (2) columns,
+                // quoted or not.
+                l = if quote != 0 {
+                    current_R_print().na_width
+                } else {
+                    current_R_print().na_width_noquote
+                };
+            } else if si.is_null() {
                 l = if quote != 0 {
                     current_R_print().na_width
                 } else {

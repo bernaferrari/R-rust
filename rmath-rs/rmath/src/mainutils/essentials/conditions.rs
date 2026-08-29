@@ -61,78 +61,57 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
                 let silent = as_bool_arg(silent_arg, rho);
 
-                // Build structure(class = c("simpleError","error","condition"),
-                //                  list(message = ..., call = ...))
-                let klass = {
-                    let s0 = crate::sexp::constructors::Rf_mkChar(
-                        c"simpleError".as_ptr() as *const libc::c_char
-                    );
-                    let s1 = crate::sexp::constructors::Rf_mkChar(
-                        c"error".as_ptr() as *const libc::c_char
-                    );
-                    let s2 = crate::sexp::constructors::Rf_mkChar(
-                        c"condition".as_ptr() as *const libc::c_char
-                    );
-                    let v = crate::sexp::constructors::Rf_allocVector(
-                        crate::sexp::ffi::SEXPTYPE::STRSXP,
-                        3,
-                    );
-                    crate::sexp::accessors::SET_STRING_ELT(v, 0, s0);
-                    crate::sexp::accessors::SET_STRING_ELT(v, 1, s1);
-                    crate::sexp::accessors::SET_STRING_ELT(v, 2, s2);
-                    v
+                // Stock try() composes "Error in <deparsed call>: msg\n" from
+                // the deparsed try() call (the condition call is the internal
+                // doTryCatch frame, remapped to the try() call for the prefix).
+                let dcall_sexp = crate::mainutils::deparse::deparse1s(_call);
+                let dcall: String = if !dcall_sexp.is_null() && dcall_sexp != R_NilValue() {
+                    let elt = crate::sexp::accessors::STRING_ELT(dcall_sexp, 0);
+                    if elt.is_null() {
+                        String::new()
+                    } else {
+                        let chars = crate::sexp::accessors::CHAR(elt);
+                        if chars.is_null() {
+                            String::new()
+                        } else {
+                            std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned()
+                        }
+                    }
+                } else {
+                    String::new()
                 };
+
+                let first_line_len = message.split('\n').next().map(str::chars).map_or(0, |c| {
+                    c.count()
+                });
+                let mut prefix = format!("Error in {dcall} : ");
+                // stock: 14L + 2*nchar(dcall, "w") + nchar(first line, "w") > 75L
+                let width = 14 + 2 * dcall.chars().count() + first_line_len;
+                if width > 75 {
+                    prefix.push_str("\n  ");
+                }
+                let out_text = format!("{prefix}{message}\n");
+
+                if !silent {
+                    eprint!("{out_text}");
+                }
+
+                // The stored condition keeps the internal doTryCatch frame as
+                // its call, exactly like stock tryCatch (which try() wraps).
+                let condition = simple_error_condition(&message);
+                let _cond_guard = protect(condition);
+
+                // structure(class = "try-error", condition = e, msg):
+                // a character vector of the composed message.
                 let msg_sexp = crate::sexp::constructors::Rf_mkString(
-                    CString::new(message.as_str()).unwrap_or_default().as_ptr(),
+                    CString::new(out_text.as_str()).unwrap_or_default().as_ptr(),
                 );
-                let call_sexp = if _call.is_null() { R_NilValue() } else { _call };
-                let payload_list = crate::sexp::constructors::Rf_allocVector(
-                    crate::sexp::ffi::SEXPTYPE::VECSXP,
-                    2,
-                );
-                let names = crate::sexp::constructors::Rf_allocVector(
+                let _msg_guard = protect(msg_sexp);
+                let klass = crate::sexp::constructors::Rf_allocVector(
                     crate::sexp::ffi::SEXPTYPE::STRSXP,
-                    2,
-                );
-                let m_name = crate::sexp::constructors::Rf_mkChar(
-                    c"message".as_ptr() as *const libc::c_char
-                );
-                let c_name =
-                    crate::sexp::constructors::Rf_mkChar(c"call".as_ptr() as *const libc::c_char);
-                crate::sexp::accessors::SET_STRING_ELT(names, 0, m_name);
-                crate::sexp::accessors::SET_STRING_ELT(names, 1, c_name);
-                let msg_slot = crate::sexp::constructors::Rf_allocVector(
-                    crate::sexp::ffi::SEXPTYPE::VECSXP,
                     1,
                 );
-                crate::sexp::accessors::SET_VECTOR_ELT(payload_list, 0, msg_sexp);
-                // call slot: leave NULL element (stock stores the call; the
-                // harness never inspects it here).
-                crate::sexp::accessors::SET_VECTOR_ELT(payload_list, 1, R_NilValue());
-                let cond = crate::sexp::constructors::Rf_allocVector(
-                    crate::sexp::ffi::SEXPTYPE::VECSXP,
-                    1,
-                );
-                crate::sexp::accessors::SET_VECTOR_ELT(cond, 0, msg_sexp);
-                crate::sexp::attrib_core::Rf_setAttrib(
-                    cond,
-                    crate::eval::attrib_core::R_NamesSymbol(),
-                    names,
-                );
-                crate::sexp::attrib_core::Rf_setAttrib(
-                    cond,
-                    crate::eval::attrib_core::R_ClassSymbol(),
-                    klass,
-                );
-
-                // condition(message=, call=) list build above mirrors stock
-                // simpleError: message in slot 0, call in slot 1.
-                let _ = payload_list;
-
-                let _ = &message;
-
-                // Mark as try-error: stock returns the condition object with
-                // class try-error appended.
+                let _klass_guard = protect(klass);
                 crate::sexp::accessors::SET_STRING_ELT(
                     klass,
                     0,
@@ -140,7 +119,17 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         c"try-error".as_ptr() as *const libc::c_char
                     ),
                 );
-                cond
+                crate::sexp::attrib_core::Rf_setAttrib(
+                    msg_sexp,
+                    crate::eval::attrib_core::R_ClassSymbol(),
+                    klass,
+                );
+                crate::sexp::attrib_core::Rf_setAttrib(
+                    msg_sexp,
+                    Rf_install(c"condition".as_ptr() as *const libc::c_char),
+                    condition,
+                );
+                msg_sexp
             }
         }
     }
@@ -690,9 +679,30 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 }
 
 unsafe fn simple_error_condition(message: &str) -> SEXP {
-    unsafe { simple_condition(message, &["simpleError", "error", "condition"]) }
+    unsafe {
+        // stock: conditions caught by tryCatch's error handler carry the
+        // internal doTryCatch(return(expr), name, parentenv, handler) frame
+        // as their call.
+        let s = |name: &str| Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        let inner = crate::sexp::constructors::Rf_lang2(s("return"), s("expr"));
+        let call = crate::sexp::constructors::Rf_lang5(
+            s("doTryCatch"),
+            inner,
+            s("name"),
+            s("parentenv"),
+            s("handler"),
+        );
+        let _call_guard = protect(call);
+        let c_msg = CString::new(message).unwrap_or_default();
+        crate::mainutils::errors::R_makeErrorCondition(
+            call,
+            c"simpleError".as_ptr() as *const libc::c_char,
+            std::ptr::null(),
+            0,
+            c_msg.as_ptr(),
+        )
+    }
 }
-
 unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
@@ -1131,18 +1141,23 @@ pub unsafe fn do_conditionMessage(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         if cond.is_null() || cond == R_NilValue() {
             return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
         }
-        // Try to get the "message" attribute or element
+        // Stock conditionMessage.condition is `c$message`: the element of
+        // the condition list whose name is "message" (not an attribute).
+        if let Some(msg) =
+            crate::mainutils::essentials::tables::list_element_by_name(cond, "message")
+        {
+            if !msg.is_null() && msg != R_NilValue() && TYPEOF(msg) == SEXPTYPE::STRSXP {
+                return msg;
+            }
+        }
+        // Fall back to the explicit "message" attribute for non-list
+        // condition representations.
         let msg_sym = Rf_install(CString::new("message").unwrap_or_default().as_ptr());
         let msg = crate::sexp::attrib_core::getAttrib(cond, msg_sym);
         if !msg.is_null() && msg != R_NilValue() && TYPEOF(msg) == SEXPTYPE::STRSXP {
             return msg;
         }
-        // Fallback: deparse the condition
-        Rf_mkString(
-            CString::new(elt_to_string(cond, 0))
-                .unwrap_or_default()
-                .as_ptr(),
-        )
+        Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
     }
 }
 

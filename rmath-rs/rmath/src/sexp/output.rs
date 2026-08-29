@@ -1074,12 +1074,440 @@ fn format_expression_vector(x: Sexp<'_>) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Faithful ports of stock printvector.c: printVector / printNamedVector.
+//
+// Field widths come from format.rs (formatRealS & co.) and each element is
+// encoded through the printutils Encode* primitives at the COMMON width, so
+// all elements of a vector share one number of decimals and one field width,
+// exactly like stock. Lines wrap at options("width") with "[i]" index labels.
+// ---------------------------------------------------------------------------
+
+const OUT_DEC: *const std::os::raw::c_char = b".\0".as_ptr() as *const std::os::raw::c_char;
+
+unsafe fn encode_cstr(p: *const std::os::raw::c_char) -> String {
+    if p.is_null() {
+        String::new()
+    } else {
+        std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+    }
+}
+
+/// (R_print.width, R_print.gap, R_print.max) from the current options.
+fn vector_print_settings() -> (std::os::raw::c_int, std::os::raw::c_int, i64) {
+    unsafe {
+        let width = crate::mainutils::options::GetOptionWidth();
+        let max = crate::mainutils::options::GetOptionMaxPrint();
+        let gap = crate::mainutils::printutils::get_R_print().gap;
+        (width, gap, max as i64)
+    }
+}
+
+/// Stock VectorIndex: right-justify "[i]" in `labwidth` columns.
+fn vector_index(i: R_xlen_t, labwidth: usize) -> String {
+    format!("{:>labwidth$}", format!("[{i}]"))
+}
+
+/// The stock type-specific field width `w` (before the gap is added by the
+/// callers that add it), computed over the first `n` elements.
+unsafe fn type_field_width(
+    raw: SEXP,
+    tp: SEXPTYPE,
+    n: R_xlen_t,
+    quote: bool,
+) -> (std::os::raw::c_int, std::os::raw::c_int, std::os::raw::c_int) {
+    // (w, d, e); only real/complex use d/e.
+    let _ = quote;
+    match tp {
+        SEXPTYPE::LGLSXP => {
+            let mut w = 0;
+            crate::mainutils::format::formatLogicalS(raw, n, &mut w);
+            (w, 0, 0)
+        }
+        SEXPTYPE::INTSXP => {
+            let mut w = 0;
+            crate::mainutils::format::formatIntegerS(raw, n, &mut w);
+            (w, 0, 0)
+        }
+        SEXPTYPE::REALSXP => {
+            let mut w = 0;
+            let mut d = 0;
+            let mut e = 0;
+            crate::mainutils::format::formatRealS(raw, n, &mut w, &mut d, &mut e, 0);
+            (w, d, e)
+        }
+        SEXPTYPE::CPLXSXP => {
+            let mut wr = 0;
+            let mut dr = 0;
+            let mut er = 0;
+            let mut wi = 0;
+            let mut di = 0;
+            let mut ei = 0;
+            crate::mainutils::format::formatComplexS(
+                raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
+            );
+            (wr + wi + 2, dr, er)
+        }
+        SEXPTYPE::STRSXP => {
+            let mut w = 0;
+            crate::mainutils::format::formatStringS(raw, n, &mut w, quote as std::os::raw::c_int);
+            (w, 0, 0)
+        }
+        SEXPTYPE::RAWSXP => {
+            let mut w = 0;
+            crate::mainutils::format::formatRawS(raw, n, &mut w);
+            (w, 0, 0)
+        }
+        _ => (0, 0, 0),
+    }
+}
+
+/// formatComplexS results, computed once per vector.
+#[derive(Clone, Copy)]
+struct ComplexFmt {
+    wr: std::os::raw::c_int,
+    dr: std::os::raw::c_int,
+    er: std::os::raw::c_int,
+    wi: std::os::raw::c_int,
+    di: std::os::raw::c_int,
+    ei: std::os::raw::c_int,
+}
+
+unsafe fn complex_fmt(raw: SEXP, n: R_xlen_t) -> ComplexFmt {
+    let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
+    crate::mainutils::format::formatComplexS(
+        raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
+    );
+    ComplexFmt { wr, dr, er, wi, di, ei }
+}
+
+fn part_is_na(v: f64) -> bool {
+    v.is_nan() && v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+}
+
+fn part_is_nan(v: f64) -> bool {
+    v.is_nan()
+}
+
+/// Encode element `i` at the common width, per stock print*Vector tight loops.
+unsafe fn encode_element_at(
+    raw: SEXP,
+    tp: SEXPTYPE,
+    i: R_xlen_t,
+    w: std::os::raw::c_int,
+    d: std::os::raw::c_int,
+    e: std::os::raw::c_int,
+    quote: bool,
+    gap: std::os::raw::c_int,
+    cfmt: ComplexFmt,
+) -> String {
+    encode_element_adj(
+        raw, tp, i, w, d, e, quote, gap, cfmt,
+        crate::mainutils::printutils::Rprt_adj::right,
+    )
+}
+
+/// Like encode_element_at, with an explicit justification for STRSXP
+/// elements: stock printVector left-adjusts (R_print.right = FALSE by
+/// default), printNamedVector right-adjusts (Rprt_adj_right).
+unsafe fn encode_element_adj(
+    raw: SEXP,
+    tp: SEXPTYPE,
+    i: R_xlen_t,
+    w: std::os::raw::c_int,
+    d: std::os::raw::c_int,
+    e: std::os::raw::c_int,
+    quote: bool,
+    gap: std::os::raw::c_int,
+    cfmt: ComplexFmt,
+    str_adj: crate::mainutils::printutils::Rprt_adj,
+) -> String {
+    let i32i = i as std::os::raw::c_int;
+    match tp {
+        SEXPTYPE::LGLSXP => encode_cstr(crate::mainutils::printutils::EncodeLogical(
+            crate::sexp::accessors::LOGICAL_ELT(raw, i32i),
+            w,
+        )),
+        SEXPTYPE::INTSXP => encode_cstr(crate::mainutils::printutils::EncodeInteger(
+            crate::sexp::accessors::INTEGER_ELT(raw, i32i),
+            w,
+        )),
+        SEXPTYPE::REALSXP => encode_cstr(crate::mainutils::printutils::EncodeReal0(
+            crate::sexp::accessors::REAL_ELT(raw, i32i),
+            w,
+            d,
+            e,
+            OUT_DEC,
+        )),
+        SEXPTYPE::CPLXSXP => {
+            let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32i);
+            if part_is_na(c.r) || part_is_na(c.i) {
+                // stock: NA parts render as NA over the total width
+                encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                    crate::sexp::ffi::NA_REAL,
+                    w,
+                    0,
+                    0,
+                    OUT_DEC,
+                ))
+            } else {
+                encode_cstr(crate::mainutils::printutils::EncodeComplex(
+                    c,
+                    cfmt.wr + gap,
+                    cfmt.dr,
+                    cfmt.er,
+                    cfmt.wi,
+                    cfmt.di,
+                    cfmt.ei,
+                    OUT_DEC,
+                ))
+            }
+        }
+        SEXPTYPE::STRSXP => {
+            let quote_ch = if quote { b'"' as std::os::raw::c_int } else { 0 };
+            encode_cstr(crate::mainutils::printutils::EncodeString(
+                crate::sexp::accessors::STRING_ELT(raw, i),
+                w,
+                quote_ch,
+                str_adj,
+            ))
+        }
+        SEXPTYPE::RAWSXP => encode_cstr(crate::mainutils::printutils::EncodeRaw(
+            crate::sexp::accessors::RAW_ELT(raw, i32i),
+            std::ptr::null(),
+        )),
+        _ => String::new(),
+    }
+}
+
+/// Stock printVector: unnamed vector with "[i]" index labels, wrapping at
+/// options("width"). Every element occupies the common field width.
+pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String {
+    let raw = x.as_raw();
+    let tp = x.typeof_();
+    let (print_width, gap, _max) = vector_print_settings();
+    let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
+    let mut out = String::new();
+    let labwidth = crate::mainutils::printutils::IndexWidth_xlen(n_pr) + 2;
+    let mut width: std::os::raw::c_int = 0;
+    out.push_str(&vector_index(1, labwidth as usize));
+    width = labwidth;
+    if !matches!(tp, SEXPTYPE::STRSXP | SEXPTYPE::RAWSXP) {
+        w += gap;
+    }
+    let is_str = matches!(tp, SEXPTYPE::STRSXP);
+    let gap_prefixed = is_str || tp == SEXPTYPE::RAWSXP;
+    let cfmt = if tp == SEXPTYPE::CPLXSXP {
+        complex_fmt(raw, n_pr)
+    } else {
+        ComplexFmt { wr: 0, dr: 0, er: 0, wi: 0, di: 0, ei: 0 }
+    };
+    for i in 0..n_pr {
+        if i > 0 {
+            // stock wrap conditions: char adds the gap to the check and to
+            // the accumulated width; raw prefixes the gap but counts only w.
+            let wrap = if is_str {
+                width + w + gap > print_width
+            } else {
+                width + w > print_width
+            };
+            if wrap {
+                out.push('\n');
+                out.push_str(&vector_index(i + 1, labwidth as usize));
+                width = labwidth;
+            }
+        }
+        if gap_prefixed {
+            out.push_str(&" ".repeat(gap as usize));
+        }
+        out.push_str(&encode_element_adj(
+            raw, tp, i, w, d, e, quote, gap, cfmt,
+            crate::mainutils::printutils::Rprt_adj::left,
+        ));
+        width += if is_str { w + gap } else { w };
+    }
+    out.push('\n');
+    out
+}
+/// Stock printNamedVector: names line(s) right-justified over the value
+/// column(s), every column at the common width `w`, gap-separated.
+pub(crate) unsafe fn print_named_vector_stock(
+    x: Sexp,
+    names: Sexp,
+    quote: bool,
+    n_pr: R_xlen_t,
+) -> String {
+    let raw = x.as_raw();
+    let names_raw = names.as_raw();
+    let tp = x.typeof_();
+    let (print_width, gap, _max) = vector_print_settings();
+    let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
+    let mut wn = 0;
+    let cfmt0 = if tp == SEXPTYPE::CPLXSXP {
+        complex_fmt(raw, n_pr)
+    } else {
+        ComplexFmt { wr: 0, dr: 0, er: 0, wi: 0, di: 0, ei: 0 }
+    };
+    crate::mainutils::format::formatStringS(names_raw, n_pr, &mut wn, 0);
+    if w < wn {
+        w = wn;
+    }
+    let nperline = ((print_width / (w + gap)).max(1)) as R_xlen_t;
+    let nlines = n_pr / nperline + R_xlen_t::from(n_pr % nperline != 0);
+    let mut out = String::new();
+    for i in 0..nlines {
+        if i != 0 {
+            out.push('\n');
+        }
+        for j in 0..nperline {
+            let k = i * nperline + j;
+            if k >= n_pr {
+                break;
+            }
+            out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeString(
+                crate::sexp::accessors::STRING_ELT(names_raw, k),
+                w,
+                0,
+                crate::mainutils::printutils::Rprt_adj::right,
+            )));
+            out.push_str(&" ".repeat(gap as usize));
+        }
+        out.push('\n');
+        for j in 0..nperline {
+            let k = i * nperline + j;
+            if k >= n_pr {
+                break;
+            }
+            let i32k = k as std::os::raw::c_int;
+            if matches!(tp, SEXPTYPE::CPLXSXP) {
+                if j != 0 {
+                    out.push_str(&" ".repeat(gap as usize));
+                }
+                let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32k);
+                if part_is_na(c.r) || part_is_na(c.i) {
+                    out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                        crate::sexp::ffi::NA_REAL,
+                        w,
+                        0,
+                        0,
+                        OUT_DEC,
+                    )));
+                } else {
+                    out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                        c.r, cfmt0.wr, cfmt0.dr, cfmt0.er, OUT_DEC,
+                    )));
+                    if part_is_nan(c.i) {
+                        out.push_str("+NaNi");
+                    } else if c.i >= 0.0 {
+                        out.push('+');
+                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                            c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
+                        )));
+                        out.push('i');
+                    } else {
+                        out.push('-');
+                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                            -c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
+                        )));
+                        out.push('i');
+                    }
+                }
+            } else if matches!(tp, SEXPTYPE::RAWSXP) {
+                // stock: "%*s%s%*s" with w-2, raw, gap
+                out.push_str(&" ".repeat((w - 2).max(0) as usize));
+                out.push_str(&encode_element_at(raw, tp, k, w, d, e, quote, gap, cfmt0));
+                out.push_str(&" ".repeat(gap as usize));
+            } else {
+                let str_quote = if matches!(tp, SEXPTYPE::STRSXP) {
+                    quote
+                } else {
+                    false
+                };
+                out.push_str(&encode_element_at(raw, tp, k, w, d, e, str_quote, gap, cfmt0));
+                out.push_str(&" ".repeat(gap as usize));
+            }
+        }
+    }
+    out.push('\n');
+    out
+}
+
+/// Render an atomic vector exactly like stock print.default: named vectors go
+/// through printNamedVector, others through printVector with index labels;
+/// both honour options("max.print") truncation.
+pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
+    let n = x.len();
+    if n == 0 {
+        // stock printVector PRINT_V_0. Callers own the final newline,
+        // exactly like the non-empty paths (whose closing newline is
+        // popped below).
+        return match x.typeof_() {
+            SEXPTYPE::LGLSXP => "logical(0)".to_string(),
+            SEXPTYPE::INTSXP => "integer(0)".to_string(),
+            SEXPTYPE::REALSXP => "numeric(0)".to_string(),
+            SEXPTYPE::CPLXSXP => "complex(0)".to_string(),
+            SEXPTYPE::STRSXP => "character(0)".to_string(),
+            SEXPTYPE::RAWSXP => "raw(0)".to_string(),
+            _ => String::new(),
+        };
+    }
+    let (_width, _gap, max) = vector_print_settings();
+    let n_pr = if n <= (max + 1) as R_xlen_t {
+        n
+    } else {
+        max as R_xlen_t
+    };
+    let mut out = match names_sexp(x) {
+        Some(names) => print_named_vector_stock(x, names, quote, n_pr),
+        None => print_vector_stock(x, quote, n_pr),
+    };
+    if n_pr < n {
+        out.push_str(&format!(
+            " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]\n",
+            n - n_pr
+        ));
+    }
+    // Callers own the final newline (print_value appends it; string contexts
+    // embed the rendering without one).
+    if out.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
+/// The raw names attribute when it is a character vector of full length.
+fn names_sexp(x: Sexp<'_>) -> Option<Sexp<'_>> {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let names = Sexp::from_raw(names)?;
+        if names.typeof_() == SEXPTYPE::STRSXP && names.len() == x.len() {
+            Some(names)
+        } else {
+            None
+        }
+    }
+}
+
 /// Print an R object to the captured output (or stdout if not capturing).
 ///
 /// This is the Rust implementation of R's Rf_PrintValue. For Android
 /// embedding, use [`start_capture`] before evaluation and [`stop_capture`]
 /// after to collect printed output as a string.
 pub fn print_value(x: Sexp<'_>) {
+    // Objects of class "try-error" print per stock print.default: the
+    // message string as a character vector plus class/condition attrs.
+    // Condition objects print via print.condition.
+    if has_class(x, "try-error") {
+        unsafe { emit(&format!("{}\n", format_try_error(x))) };
+        return;
+    }
+    if has_class(x, "condition") {
+        unsafe { emit(&format!("{}\n", format_condition(x))) };
+        return;
+    }
     match x.typeof_() {
         SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP => {
             emit(&format!("{}\n", deparse_expression_one(x.as_raw())));
@@ -1116,19 +1544,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let vals: Vec<String> = (0..x.len().min(10))
-                .map(|i| format_integer_element(x, i))
-                .collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format_named_atomic_vector(x, vals.clone())
-                .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| {
-                    if x.len() == 1 {
-                        format!("[1] {}", vals[0])
-                    } else {
-                        format!("[1] {}{}", format_aligned_values(vals), suffix)
-                    }
-                });
+            let base = unsafe { format_vector_stock(x, true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::REALSXP => {
@@ -1167,15 +1583,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{}\n", format_date_vector(x)));
                 return;
             }
-            let base = if x.len() == 1 {
-                format!("[1] {}", format_real_element(x, 0))
-            } else {
-                let vals = format_real_vector_values(x, 10);
-                let suffix = if x.len() > 10 { " ..." } else { "" };
-                format_named_atomic_vector(x, vals.clone())
-                    .map(|output| format!("{output}{suffix}"))
-                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
-            };
+            let base = unsafe { format_vector_stock(x, true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::LGLSXP => {
@@ -1190,13 +1598,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let vals: Vec<String> = (0..x.len().min(10))
-                .map(|i| format_logical_element(x, i))
-                .collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format_named_atomic_vector(x, vals.clone())
-                .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            let base = unsafe { format_vector_stock(x, true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::CPLXSXP => {
@@ -1211,13 +1613,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let vals: Vec<String> = (0..x.len().min(10))
-                .map(|i| format_complex_element(x, i))
-                .collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format_named_atomic_vector(x, vals.clone())
-                .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            let base = unsafe { format_vector_stock(x, true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::STRSXP => {
@@ -1229,15 +1625,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let vals: Vec<String> = (0..x.len().min(10))
-                .map(|i| format_string_element(x, i))
-                .collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = if let Some(output) = format_named_atomic_vector(x, vals) {
-                format!("{output}{suffix}")
-            } else {
-                format_string_vector(x)
-            };
+            let base = unsafe { format_vector_stock(x, true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::RAWSXP => {
@@ -1248,9 +1636,7 @@ pub fn print_value(x: Sexp<'_>) {
                 ));
                 return;
             }
-            let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format!("[1] {}{}", vals.join(" "), suffix);
+            let base = unsafe { format_vector_stock(x, true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::VECSXP => {
@@ -1300,6 +1686,12 @@ fn emit(msg: &str) {
 }
 
 pub fn format_sexp_direct(x: Sexp<'_>) -> String {
+    if has_class(x, "try-error") {
+        return unsafe { format_try_error(x) };
+    }
+    if has_class(x, "condition") {
+        return unsafe { format_condition(x) };
+    }
     match x.typeof_() {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
@@ -1317,19 +1709,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_factor(x) {
                 return output;
             }
-            let vals: Vec<String> = (0..x.len().min(10))
-                .map(|i| format_integer_element(x, i))
-                .collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format_named_atomic_vector(x, vals.clone())
-                .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| {
-                    if x.len() == 1 {
-                        format!("[1] {}", vals[0])
-                    } else {
-                        format!("[1] {}{}", format_aligned_values(vals), suffix)
-                    }
-                });
+            let base = unsafe { format_vector_stock(x, true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::REALSXP => {
@@ -1348,15 +1728,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x) {
                 return output;
             }
-            let base = if x.len() == 1 {
-                format!("[1] {}", format_real_element(x, 0))
-            } else {
-                let vals = format_real_vector_values(x, 10);
-                let suffix = if x.len() > 10 { " ..." } else { "" };
-                format_named_atomic_vector(x, vals.clone())
-                    .map(|output| format!("{output}{suffix}"))
-                    .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix))
-            };
+            let base = unsafe { format_vector_stock(x, true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::LGLSXP => {
@@ -1366,13 +1738,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x) {
                 return output;
             }
-            let vals: Vec<String> = (0..x.len().min(10))
-                .map(|i| format_logical_element(x, i))
-                .collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format_named_atomic_vector(x, vals.clone())
-                .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            let base = unsafe { format_vector_stock(x, true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::CPLXSXP => {
@@ -1382,23 +1748,18 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x) {
                 return output;
             }
-            let vals: Vec<String> = (0..x.len().min(10))
-                .map(|i| format_complex_element(x, i))
-                .collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format_named_atomic_vector(x, vals.clone())
-                .map(|output| format!("{output}{suffix}"))
-                .unwrap_or_else(|| format!("[1] {}{}", format_aligned_values(vals), suffix));
+            let base = unsafe { format_vector_stock(x, true) };
             format_with_printable_attributes(base, x)
         }
-        SEXPTYPE::STRSXP => format_with_printable_attributes(format_string_vector(x), x),
+        SEXPTYPE::STRSXP => {
+            let base = unsafe { format_vector_stock(x, true) };
+            format_with_printable_attributes(base, x)
+        }
         SEXPTYPE::RAWSXP => {
             if x.len() == 0 {
                 return format_with_printable_attributes("raw(0)".to_string(), x);
             }
-            let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
-            let suffix = if x.len() > 10 { " ..." } else { "" };
-            let base = format!("[1] {}{}", vals.join(" "), suffix);
+            let base = unsafe { format_vector_stock(x, true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::VECSXP => format_list(x),
@@ -1413,10 +1774,122 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 SEXPTYPE::LISTSXP => "pairlist",
                 SEXPTYPE::CHARSXP => "charsxp",
                 _ => "unknown",
+
             };
             format!("[{}; length={}]", type_name, x.len())
         }
     }
+}
+/// First class string of an object, for print.condition-style rendering.
+unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
+    unsafe {
+        let klass = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let klass = Sexp::from_raw(klass)?;
+        if klass.typeof_() != SEXPTYPE::STRSXP || klass.len() == 0 {
+            return None;
+        }
+        let s = crate::sexp::accessors::STRING_ELT(klass.as_raw(), 0);
+        if s.is_null() {
+            return None;
+        }
+        let chars = crate::sexp::accessors::CHAR(s);
+        if chars.is_null() {
+            return None;
+        }
+        std::ffi::CStr::from_ptr(chars).to_str().ok().map(str::to_string)
+    }
+}
+
+/// Stock print.condition: `<class: msg>` or `<class in <deparsed call>: msg>`.
+/// Conditions are `list(message, call, ...)` per R_makeErrorCondition.
+unsafe fn format_condition(x: Sexp<'_>) -> String {
+    let raw = x.as_raw();
+    let class = first_class_string(x).unwrap_or_else(|| "condition".to_string());
+    let mut message = String::new();
+    let mut call_text = String::new();
+    if x.typeof_() == SEXPTYPE::VECSXP && x.len() >= 1 {
+        let msg = crate::sexp::accessors::VECTOR_ELT(raw, 0);
+        if !msg.is_null() && msg != crate::sexp::globals::R_NilValue() {
+            if let Some(sexp) = Sexp::from_raw(msg) {
+                if sexp.typeof_() == SEXPTYPE::STRSXP && sexp.len() >= 1 {
+                    let elt = crate::sexp::accessors::STRING_ELT(sexp.as_raw(), 0);
+                    if !elt.is_null() {
+                        let chars = crate::sexp::accessors::CHAR(elt);
+                        if !chars.is_null() {
+                            if let Ok(s) = std::ffi::CStr::from_ptr(chars).to_str() {
+                                message = s.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if x.len() >= 2 {
+            let call = crate::sexp::accessors::VECTOR_ELT(raw, 1);
+            if !call.is_null() && call != crate::sexp::globals::R_NilValue() {
+                let dcall = crate::mainutils::deparse::deparse1s(call);
+                if !dcall.is_null() && dcall != crate::sexp::globals::R_NilValue() {
+                    let elt = crate::sexp::accessors::STRING_ELT(dcall, 0);
+                    if !elt.is_null() {
+                        let chars = crate::sexp::accessors::CHAR(elt);
+                        if !chars.is_null() {
+                            if let Ok(s) = std::ffi::CStr::from_ptr(chars).to_str() {
+                                call_text = format!(" in {s}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    format!("<{class}{call_text}: {message}>")
+}
+
+/// Stock print.default on a try-error object: the message string rendered as
+/// a character vector, then the class and condition attributes.
+unsafe fn format_try_error(x: Sexp<'_>) -> String {
+    let mut out = if x.typeof_() == SEXPTYPE::STRSXP {
+        format_vector_stock(x, true)
+    } else {
+        format!("{}\n", format_sexp_direct(x))
+    };
+    out.push('\n');
+    unsafe {
+        let klass = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        let has_condition = {
+            let cond_sym = crate::sexp::symbol::Rf_install(
+                b"condition\0".as_ptr() as *const std::os::raw::c_char,
+            );
+            let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
+            !cond.is_null() && cond != R_NilValue()
+        };
+        if let Some(klass) = Sexp::from_raw(klass) {
+            if klass.typeof_() == SEXPTYPE::STRSXP {
+                out.push_str("attr(,\"class\")\n");
+                out.push_str(&format_vector_stock(klass, true));
+                // print_value owns the final newline; add the separator
+                // between attribute sections here.
+                if has_condition {
+                    out.push('\n');
+                }
+            }
+        }
+        let cond_sym = crate::sexp::symbol::Rf_install(b"condition\0".as_ptr() as *const std::os::raw::c_char);
+        let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
+        if let Some(cond) = Sexp::from_raw(cond) {
+            if cond.typeof_() != SEXPTYPE::NILSXP {
+                out.push_str("attr(,\"condition\")\n");
+                out.push_str(&format_condition(cond));
+            }
+        }
+    }
+    out
 }
 
 fn format_environment(x: Sexp<'_>) -> String {
