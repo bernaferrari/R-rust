@@ -263,7 +263,6 @@ pub struct RhyperState {
     k: i32,
     n1: i32,
     n2: i32,
-    big_n: f64,
     // HIN algorithm state
     w: f64,
     // H2PE algorithm state
@@ -295,8 +294,8 @@ impl RhyperState {
             k: 0,
             n1: 0,
             n2: 0,
-            big_n: 0.0,
             w: 0.0,
+
             a: 0.0,
             xl: 0.0,
             xr: 0.0,
@@ -327,13 +326,13 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
     let nn1in = r_forceint(nn1in);
     let nn2in = r_forceint(nn2in);
     let kkin = r_forceint(kkin);
+    let big_n = nn1in + nn2in;
 
     if nn1in < 0.0 || nn2in < 0.0 || kkin < 0.0 || kkin > nn1in + nn2in {
         return ml_warn_return_nan();
     }
-
-    if nn1in >= int_max || nn2in >= int_max || kkin >= int_max {
-        // large n -- evade integer overflow
+    if big_n > int_max || kkin >= int_max {
+        // large n -- evade integer overflow (and inappropriate algorithms)
         if kkin == 1.0 {
             return crate::dist::binomial::rbinom_inner(kkin, nn1in / (nn1in + nn2in));
         }
@@ -347,12 +346,12 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
     with_rhyper_state(|st| {
         // Setup based on parameter changes
         let setup1 = nn1 != st.n1s || nn2 != st.n2s;
-        let setup2 = kk != st.ks;
+        // n1 | n2 changed => setup all; else kk changed => setup k only
+        let setup2 = setup1 || kk != st.ks;
 
         if setup1 {
             st.n1s = nn1;
             st.n2s = nn2;
-            st.big_n = nn1 as f64 + nn2 as f64;
             if nn1 <= nn2 {
                 st.n1 = nn1;
                 st.n2 = nn2;
@@ -364,15 +363,15 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
 
         if setup2 {
             st.ks = kk;
-            if (kk as f64) + (kk as f64) >= st.big_n {
-                st.k = (st.big_n - kk as f64) as i32;
+            if (kk as f64) + (kk as f64) >= big_n {
+                st.k = (big_n - kk as f64) as i32;
             } else {
                 st.k = kk;
             }
         }
 
         if setup1 || setup2 {
-            st.m = (((st.k + 1) as f64) * ((st.n1 + 1) as f64) / (st.big_n + 2.0)) as i32;
+            st.m = (((st.k + 1) as f64) * ((st.n1 + 1) as f64) / (big_n + 2.0)) as i32;
             st.minjx = imax2(0, st.k - st.n2);
             st.maxjx = imin2(st.n1, st.k);
         }
@@ -418,10 +417,10 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
             // III: H2PE Algorithm
             if setup1 || setup2 {
                 let s = sqrt(
-                    ((st.big_n - st.k as f64) * st.k as f64 * st.n1 as f64 * st.n2 as f64)
-                        / (st.big_n - 1.0)
-                        / st.big_n
-                        / st.big_n,
+                    ((big_n - st.k as f64) * st.k as f64 * st.n1 as f64 * st.n2 as f64)
+                        / (big_n - 1.0)
+                        / big_n
+                        / big_n,
                 );
                 let d = (1.5 * s) as i32 as f64 + 0.5;
                 st.xl = st.m as f64 - d + 0.5;
@@ -570,7 +569,7 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
         }
 
         // L_finis: return appropriate variate
-        if (kk as f64) + (kk as f64) >= st.big_n {
+        if (kk as f64) + (kk as f64) >= big_n {
             if nn1 > nn2 {
                 ix = kk - nn2 + ix;
             } else {
@@ -651,6 +650,57 @@ mod tests {
                 assert_eq!(state.n2s, -1);
                 assert_eq!(state.ks, -1);
             });
+        });
+    }
+
+    /// Goldens from trunk (bac5839) rhyper.c compiled standalone with the
+    /// built-in Marsaglia-MultiCarry stream (identical to the vendored
+    /// old-commit values on these sequences).
+    #[test]
+    fn rhyper_matches_trunk_multicarry_stream() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<i32> = (0..8).map(|_| rhyper_inner(30.0, 40.0, 12.0) as i32).collect();
+            assert_eq!(got, [3, 7, 5, 4, 10, 3, 5, 9]);
+
+            crate::rng::set_seed(1234, 5678);
+            let got: Vec<i32> =
+                (0..8).map(|_| rhyper_inner(100.0, 200.0, 50.0) as i32).collect();
+            assert_eq!(got, [16, 17, 17, 20, 16, 18, 16, 21]);
+        });
+    }
+
+    /// Trunk guard: evade the int algorithms when the *total* nn1+nn2
+    /// exceeds INT_MAX, even when each population still fits an int (the
+    /// old code entered the int path here). The big-n path consumes one
+    /// uniform and returns qhyper(u, nn1, nn2, kk, false, false) -- 56 on
+    /// this stream, where the old int algorithm drew 49.
+    #[test]
+    fn rhyper_large_total_uses_qhyper_inversion() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            crate::rng::set_seed(1234, 5678);
+            let got = rhyper_inner(2.0e9, 2.0e9, 100.0);
+
+            crate::rng::set_seed(1234, 5678);
+            let u = crate::rng::multicarry_unif_rand();
+            assert_eq!(got, qhyper_inner(u, 2.0e9, 2.0e9, 100.0, false, false));
+            assert_eq!(got, 56.0);
+        });
+    }
+
+    /// nn1 == INT_MAX exactly with nn2 == 0: N == INT_MAX is not
+    /// "> INT_MAX", so trunk keeps the (degenerate) int path and draws no
+    /// uniform; the old code evaded to qhyper and burned one.
+    #[test]
+    fn rhyper_intmax_boundary_uses_int_path_without_uniforms() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            crate::rng::set_seed(1234, 5678);
+            assert_eq!(rhyper_inner(2147483647.0, 0.0, 5.0), 5.0);
+            // no uniform consumed: the next draw is still the stream head
+            assert_eq!(crate::rng::multicarry_unif_rand(), 0.102_089_069_807_457_04);
         });
     }
 }

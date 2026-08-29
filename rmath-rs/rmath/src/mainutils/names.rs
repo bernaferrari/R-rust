@@ -2543,7 +2543,7 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         None,
         0,
         11,
-        3,
+        4,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(
@@ -2551,7 +2551,7 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         None,
         0,
         111,
-        4,
+        5,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     // Data Summaries
@@ -4443,6 +4443,16 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         6,
         11,
         2,
+        PPinfo::new(PP_FUNCALL, PREC_FN, 0),
+    ),
+    // {.Internal(objsxp())} — bare OBJSXP constructor behind .OBJSXP()
+    // (upstream registers this after "rowsum_df", before "setS4Object").
+    FunTabEntry::new(
+        b"objsxp\0",
+        None,
+        0,
+        11,
+        0,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     // Sentinel

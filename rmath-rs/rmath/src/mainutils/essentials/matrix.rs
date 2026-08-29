@@ -24,6 +24,7 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
+use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
 // ---------------------------------------------------------------------------
 // Matrix: lower.tri, upper.tri
 // ---------------------------------------------------------------------------
@@ -469,11 +470,15 @@ pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         };
         let _dim_guard = protect(dim);
-        let dim_len = XLENGTH(dim);
-        let mut total_len: R_xlen_t = 1;
-        for i in 0..dim_len {
-            total_len = total_len.saturating_mul(*INTEGER(dim).add(i as usize) as R_xlen_t);
-        }
+        // dim2total(dims, &err) with all checks (trunk array.c): errors on
+        // length-0, NA, and negative dims; "too many elements specified"
+        // once the product passes R_XLEN_T_MAX.
+        let total_len = match crate::mainutils::array::dim2total(dim) {
+            Ok(total) => total,
+            Err(()) => std::panic::panic_any(RError {
+                message: "too many elements specified".to_string(),
+            }),
+        };
 
         if !valid_array_dimnames(dimnames, dim) {
             std::panic::panic_any(RError {
@@ -611,6 +616,11 @@ pub unsafe fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `t(x)` — transpose a matrix.
+///
+/// Ported from R's `do_transpose` in array.c (line 1569). Plain vectors
+/// (dim of length 0 or 1) transpose as column vectors; dimnames are swapped
+/// (including their names), and all other attributes are copied via
+/// copyMostAttrib.
 pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -618,27 +628,70 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return R_NilValue();
         }
 
-        // Get dimensions
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
-        let (nrow, ncol) =
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
-            {
-                (
-                    *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr).add(1) as R_xlen_t,
-                )
-            } else {
-                (XLENGTH(x), 1)
-            };
-
         let t = TYPEOF(x);
-        if !supported_matrix_type(t) || nrow < 0 || ncol < 0 {
-            return R_NilValue();
+        if !supported_matrix_type(t) {
+            not_matrix();
         }
-        let result = Rf_allocVector3(t, nrow * ncol);
+
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, R_DimSymbol());
+        let ldim = if !dim_attr.is_null()
+            && dim_attr != R_NilValue()
+            && TYPEOF(dim_attr) == SEXPTYPE::INTSXP
+        {
+            LENGTH(dim_attr) as R_xlen_t
+        } else {
+            0
+        };
+
+        // (nrow, ncol, rnames, cnames, names(dimnames), whether to attach
+        // dimnames at all) as in the C ldim switch.
+        let (nrow, ncol, rnames, cnames, dimnames_names, have_dimnames) = match ldim {
+            0 => {
+                let rnames = crate::sexp::attrib_core::getAttrib(x, R_NamesSymbol());
+                let have = !rnames.is_null() && rnames != R_NilValue();
+                (XLENGTH(x), 1, rnames, R_NilValue(), R_NilValue(), have)
+            }
+            1 | 2 => {
+                let dimnames = crate::sexp::attrib_core::getAttrib(x, R_DimNamesSymbol());
+                let have = !dimnames.is_null() && dimnames != R_NilValue();
+                if !have {
+                    if ldim == 2 {
+                        (
+                            *INTEGER(dim_attr) as R_xlen_t,
+                            *INTEGER(dim_attr).add(1) as R_xlen_t,
+                            R_NilValue(),
+                            R_NilValue(),
+                            R_NilValue(),
+                            false,
+                        )
+                    } else {
+                        (XLENGTH(x), 1, R_NilValue(), R_NilValue(), R_NilValue(), false)
+                    }
+                } else {
+                    let (nrow, ncol, rnames, cnames) = if ldim == 2 {
+                        (
+                            *INTEGER(dim_attr) as R_xlen_t,
+                            *INTEGER(dim_attr).add(1) as R_xlen_t,
+                            VECTOR_ELT(dimnames, 0),
+                            VECTOR_ELT(dimnames, 1),
+                        )
+                    } else {
+                        (
+                            XLENGTH(x),
+                            1,
+                            VECTOR_ELT(dimnames, 0),
+                            R_NilValue(),
+                        )
+                    };
+                    let names = crate::sexp::attrib_core::getAttrib(dimnames, R_NamesSymbol());
+                    (nrow, ncol, rnames, cnames, names, true)
+                }
+            }
+            _ => not_matrix(),
+        };
+
+        let len = nrow * ncol;
+        let result = Rf_allocVector3(t, len);
         if result.is_null() {
             return R_NilValue();
         }
@@ -660,15 +713,50 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if !dim.is_null() {
             *INTEGER(dim) = ncol as c_int;
             *INTEGER(dim).add(1) = nrow as c_int;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
+            crate::sexp::attrib_core::setAttrib(result, R_DimSymbol(), dim);
         }
 
+        if have_dimnames {
+            let new_dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            if !new_dimnames.is_null() {
+                let _dimnames_guard = protect(new_dimnames);
+                SET_VECTOR_ELT(new_dimnames, 0, cnames);
+                SET_VECTOR_ELT(new_dimnames, 1, rnames);
+                if !dimnames_names.is_null() && dimnames_names != R_NilValue() {
+                    let new_names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+                    if !new_names.is_null() {
+                        let _names_guard = protect(new_names);
+                        SET_STRING_ELT(new_names, 1, STRING_ELT(dimnames_names, 0));
+                        SET_STRING_ELT(
+                            new_names,
+                            0,
+                            if ldim == 2 {
+                                STRING_ELT(dimnames_names, 1)
+                            } else {
+                                // R_BlankString
+                                Rf_mkChar(c"".as_ptr())
+                            },
+                        );
+                        crate::sexp::attrib_core::setAttrib(
+                            new_dimnames,
+                            R_NamesSymbol(),
+                            new_names,
+                        );
+                    }
+                }
+                crate::sexp::attrib_core::setAttrib(result, R_DimNamesSymbol(), new_dimnames);
+            }
+        }
+
+        crate::mainutils::array::copyMostAttrib(x, result);
         result
     }
+}
+
+fn not_matrix() -> ! {
+    std::panic::panic_any(RError {
+        message: "argument is not a matrix".to_string(),
+    });
 }
 
 /// R's `nrow(x)` — number of rows.
@@ -875,28 +963,21 @@ unsafe fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP,
             return Err("invalid second argument, must be vector or NULL".to_string());
         }
 
-        let n = XLENGTH(value);
-        if n == 0 {
-            return Err("length-0 dimension vector is invalid".to_string());
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(value));
+        let _dim_guard = protect(dim);
+        for i in 0..XLENGTH(value) {
+            *INTEGER(dim).add(i as usize) = dimension_component(value, i);
         }
 
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        let mut product: i128 = 1;
-        for i in 0..n {
-            let part = dimension_component(value, i);
-            if part == NA_INTEGER {
-                return Err("the dims contain missing values".to_string());
-            }
-            if part < 0 {
-                return Err("the dims contain negative values".to_string());
-            }
-            *INTEGER(dim).add(i as usize) = part;
-            product = product.saturating_mul(part as i128);
-        }
+        // dimgets(): dims are validated and totaled by array.c's dim2total()
+        // (trunk attrib.c delegates there — it errors on length-0/missing/
+        // negative dims itself).
+        let total = crate::mainutils::array::dim2total(dim)
+            .map_err(|()| "too many elements specified".to_string())?;
 
-        if product != object_len as i128 {
+        if total != object_len {
             return Err(format!(
-                "dims [product {product}] do not match the length of object [{object_len}]"
+                "dims [product {total}] do not match the length of object [{object_len}]"
             ));
         }
 
@@ -904,6 +985,10 @@ unsafe fn dimension_attribute(value: SEXP, object_len: R_xlen_t) -> Result<SEXP,
     }
 }
 
+/// Coerce the `dim=` argument of `array()` to an integer vector, as
+/// upstream's `coerceVector(dims, INTSXP)`. The dim2total() checks
+/// (length-0 / NA / negative / overflow) run in do_array on the coerced
+/// vector, exactly as in trunk array.c.
 unsafe fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Result<SEXP, String> {
     unsafe {
         if value.is_null() || value == R_NilValue() {
@@ -919,29 +1004,14 @@ unsafe fn array_dimension_attribute(value: SEXP, data_len: R_xlen_t) -> Result<S
             return Err("'dim' must be a numeric vector".to_string());
         }
 
-        let n = XLENGTH(value);
-        if n == 0 {
-            return Err("length-0 dimension vector is invalid".to_string());
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, XLENGTH(value));
+        if dim.is_null() {
+            return Ok(R_NilValue());
         }
-
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        let mut product: i128 = 1;
-        for i in 0..n {
-            let part = dimension_component(value, i);
-            if part == NA_INTEGER {
-                return Err("the dims contain missing values".to_string());
-            }
-            if part < 0 {
-                return Err("the dims contain negative values".to_string());
-            }
-            *INTEGER(dim).add(i as usize) = part;
-            product = product.saturating_mul(part as i128);
+        let _dim_guard = protect(dim);
+        for i in 0..XLENGTH(value) {
+            *INTEGER(dim).add(i as usize) = dimension_component(value, i);
         }
-
-        if product > R_xlen_t::MAX as i128 {
-            return Err("array is too large".to_string());
-        }
-
         Ok(dim)
     }
 }

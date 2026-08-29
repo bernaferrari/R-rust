@@ -179,8 +179,29 @@ fn set_interrupts_pending(val: bool) {
     with_error_state(|state| state.interrupts_pending = val);
 }
 
-fn collect_warnings() -> c_int {
+pub(crate) fn collect_warnings() -> c_int {
     with_error_state(|state| state.collect_warnings)
+}
+
+/// Test/inspection helper: message of the most recently collected warning
+/// (empty string when none).  Reads a copy — never mutates the stored
+/// CHARSXP (upstream errors.c PrintWarnings measures msgline1 on a copy).
+pub(crate) fn last_collected_warning_message() -> String {
+    let cw = collect_warnings();
+    if cw <= 0 {
+        return String::new();
+    }
+    unsafe {
+        let names = CAR(ATTRIB(warnings_ptr()));
+        if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return String::new();
+        }
+        let cs = STRING_ELT(names, (cw - 1) as R_xlen_t);
+        if cs.is_null() {
+            return String::new();
+        }
+        CStr::from_ptr(translateChar(cs)).to_string_lossy().into_owned()
+    }
 }
 
 fn set_collect_warnings(val: c_int) {
@@ -1352,7 +1373,11 @@ pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
 unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
     unsafe {
         let hooksym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
-        if SYMVALUE(hooksym) != globals::R_UnboundValue() {
+        // A freshly interned port symbol carries a NULL value slot (C uses
+        // R_UnboundValue), so treat NULL as unbound too: otherwise every
+        // warning would take the hook path and be silently dropped.
+        let hook = SYMVALUE(hooksym);
+        if !hook.is_null() && hook != globals::R_UnboundValue() {
             let msg = if format.is_null() {
                 Rf_mkString(b"\0".as_ptr() as *const c_char)
             } else {
@@ -2974,10 +2999,12 @@ pub unsafe fn R_signalWarningCondition(cond: SEXP) {
 }
 
 /// R_makeWarningCondition — create a warning condition object.
-/// Matches C's `SEXP R_makeWarningCondition(SEXP call, const char *classname, ...)`
+/// Matches C's `SEXP R_makeWarningCondition(SEXP call, const char *classname,
+/// const char *subclassname, int nextra, const char *format, ...)`
 pub unsafe fn R_makeWarningCondition(
     call: SEXP,
     classname: *const c_char,
+    subclassname: *const c_char,
     nextra: c_int,
     format: *const c_char,
 ) -> SEXP {
@@ -2988,6 +3015,11 @@ pub unsafe fn R_makeWarningCondition(
             CStr::from_ptr(classname)
                 .to_str()
                 .unwrap_or("simpleWarning")
+        };
+        let sub = if subclassname.is_null() {
+            ""
+        } else {
+            CStr::from_ptr(subclassname).to_str().unwrap_or("")
         };
         let fmt = if format.is_null() {
             ""
@@ -3017,50 +3049,137 @@ pub unsafe fn R_makeWarningCondition(
         SET_STRING_ELT(names, 0, Rf_mkChar(b"message\0".as_ptr() as *const c_char));
         SET_STRING_ELT(names, 1, Rf_mkChar(b"call\0".as_ptr() as *const c_char));
 
-        // Class attribute: "simpleWarning", "warning", "condition"
-        let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        // Class attribute: with a subclass,
+        // [subclass, class, "warning", "condition"]; without,
+        // [class, "warning", "condition"].
+        let nclass = if sub.is_empty() { 3 } else { 4 };
+        let klass = Rf_allocVector(SEXPTYPE::STRSXP, nclass);
         setAttrib_wrap(cond, R_ClassSymbol(), klass);
-        SET_STRING_ELT(klass, 0, Rf_mkChar(class.as_ptr() as *const c_char));
-        SET_STRING_ELT(klass, 1, Rf_mkChar(b"warning\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(
-            klass,
-            2,
-            Rf_mkChar(b"condition\0".as_ptr() as *const c_char),
-        );
+
+        if sub.is_empty() {
+            SET_STRING_ELT(klass, 0, Rf_mkChar(class.as_ptr() as *const c_char));
+            SET_STRING_ELT(klass, 1, Rf_mkChar(b"warning\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(
+                klass,
+                2,
+                Rf_mkChar(b"condition\0".as_ptr() as *const c_char),
+            );
+        } else {
+            SET_STRING_ELT(klass, 0, Rf_mkChar(sub.as_ptr() as *const c_char));
+            SET_STRING_ELT(klass, 1, Rf_mkChar(class.as_ptr() as *const c_char));
+            SET_STRING_ELT(klass, 2, Rf_mkChar(b"warning\0".as_ptr() as *const c_char));
+            SET_STRING_ELT(
+                klass,
+                3,
+                Rf_mkChar(b"condition\0".as_ptr() as *const c_char),
+            );
+        }
 
         cond
     }
 }
 
-/// R_makePartialMatchWarningCondition — create a partial match warning condition.
-/// Matches C's `SEXP R_makePartialMatchWarningCondition(SEXP call, SEXP argument, SEXP formal)`
-pub unsafe fn R_makePartialMatchWarningCondition(call: SEXP, argument: SEXP, formal: SEXP) -> SEXP {
+/// Message text for a partial-match warning operand: PRINTNAME for a
+/// symbol, translateChar for a CHARSXP string (upstream errors.c passes
+/// these straight into the format string).
+unsafe fn partial_match_text(x: SEXP) -> String {
     unsafe {
-        let arg_name = if !argument.is_null() && TYPEOF(argument) == SEXPTYPE::SYMSXP {
-            CHAR_local(PRINTNAME(argument))
+        if !x.is_null() && TYPEOF(x) == SEXPTYPE::SYMSXP {
+            CStr::from_ptr(CHAR_local(PRINTNAME(x)))
+                .to_string_lossy()
+                .into_owned()
+        } else if !x.is_null() {
+            CStr::from_ptr(translateChar(x)).to_string_lossy().into_owned()
         } else {
-            b"?\0".as_ptr() as *const c_char
-        };
-        let formal_name = if !formal.is_null() && TYPEOF(formal) == SEXPTYPE::SYMSXP {
-            CHAR_local(PRINTNAME(formal))
-        } else {
-            b"?\0".as_ptr() as *const c_char
-        };
+            "?".to_string()
+        }
+    }
+}
 
-        let arg_str = CStr::from_ptr(arg_name).to_str().unwrap_or("?");
-        let formal_str = CStr::from_ptr(formal_name).to_str().unwrap_or("?");
+/// R_makePartialMatchWarningCondition — create a partial match warning condition.
+/// Matches C's `SEXP R_makePartialMatchWarningCondition(SEXP call, SEXP input, SEXP target)`
+/// where input/target are symbols or CHARSXP strings.
+pub unsafe fn R_makePartialMatchWarningCondition(call: SEXP, input: SEXP, target: SEXP) -> SEXP {
+    unsafe {
         let msg = format!(
-            "'{}' matches multiple arguments (partial match of '{}' to '{}')",
-            arg_str, arg_str, formal_str
+            "partial match of '{}' to '{}'",
+            partial_match_text(input),
+            partial_match_text(target),
         );
         let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
-        R_makeWarningCondition(
+        let cond = R_makeWarningCondition(
             call,
-            b"simpleWarning\0".as_ptr() as *const c_char,
-            0,
+            b"partialMatchWarning\0".as_ptr() as *const c_char,
+            ptr::null(),
+            2,
             c_msg.as_ptr(),
-        )
+        );
+        let _cond_guard = protect(cond);
+        R_setConditionField(
+            cond,
+            2,
+            b"input\0".as_ptr() as *const c_char,
+            if !input.is_null() && TYPEOF(input) == SEXPTYPE::SYMSXP {
+                input
+            } else {
+                Rf_ScalarString(input)
+            },
+        );
+        R_setConditionField(
+            cond,
+            3,
+            b"target\0".as_ptr() as *const c_char,
+            if !target.is_null() && TYPEOF(target) == SEXPTYPE::SYMSXP {
+                target
+            } else {
+                Rf_ScalarString(target)
+            },
+        );
+        // ideally we would want the function/object in a field also
+        cond
+    }
+}
+
+/// R_makePartialArgumentMatchWarningCondition — create a partial argument
+/// match warning condition (supplied argument tag vs function formal).
+/// Matches C's `SEXP R_makePartialArgumentMatchWarningCondition(SEXP call,
+/// SEXP argument, SEXP formal)`
+pub unsafe fn R_makePartialArgumentMatchWarningCondition(
+    call: SEXP,
+    argument: SEXP,
+    formal: SEXP,
+) -> SEXP {
+    unsafe {
+        let msg = format!(
+            "partial argument match of '{}' to '{}'",
+            partial_match_text(argument),
+            partial_match_text(formal),
+        );
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+
+        let cond = R_makeWarningCondition(
+            call,
+            b"partialMatchWarning\0".as_ptr() as *const c_char,
+            b"partialArgumentMatchWarning\0".as_ptr() as *const c_char,
+            2,
+            c_msg.as_ptr(),
+        );
+        let _cond_guard = protect(cond);
+        R_setConditionField(
+            cond,
+            2,
+            b"argument\0".as_ptr() as *const c_char,
+            argument,
+        );
+        R_setConditionField(
+            cond,
+            3,
+            b"formal\0".as_ptr() as *const c_char,
+            formal,
+        );
+        // ideally we would want the function/object in a field also
+        cond
     }
 }
 
@@ -3917,6 +4036,7 @@ mod tests {
             let cond = R_makeWarningCondition(
                 ptr::null_mut(),
                 b"simpleWarning\0".as_ptr() as *const c_char,
+                ptr::null(),
                 0,
                 b"test warning message\0".as_ptr() as *const c_char,
             );
@@ -3999,11 +4119,104 @@ mod tests {
         let _session = RSession::new();
 
         unsafe {
-            let arg = Rf_install(b"abc\0".as_ptr() as *const c_char);
-            let formal = Rf_install(b"abcdef\0".as_ptr() as *const c_char);
-            let cond = R_makePartialMatchWarningCondition(ptr::null_mut(), arg, formal);
+            let input = Rf_install(b"abc\0".as_ptr() as *const c_char);
+            let target = Rf_install(b"abcdef\0".as_ptr() as *const c_char);
+            let cond = R_makePartialMatchWarningCondition(ptr::null_mut(), input, target);
             assert!(!cond.is_null());
             assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
+            assert_eq!(LENGTH(cond), 4);
+
+            // Message: "partial match of 'abc' to 'abcdef'"
+            let msg = VECTOR_ELT(cond, 0);
+            let msg_str = CStr::from_ptr(translateChar(STRING_ELT(msg, 0)));
+            assert_eq!(
+                msg_str.to_string_lossy(),
+                "partial match of 'abc' to 'abcdef'"
+            );
+
+            // Class: partialMatchWarning, warning, condition
+            let klass = getAttrib_wrap(cond, R_ClassSymbol());
+            assert_eq!(LENGTH(klass), 3);
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(klass, 0))).to_string_lossy(),
+                "partialMatchWarning"
+            );
+
+            // Fields: input/target hold the symbols themselves
+            assert_eq!(VECTOR_ELT(cond, 2), input);
+            assert_eq!(VECTOR_ELT(cond, 3), target);
+            let names = getAttrib_wrap(cond, R_NamesSymbol());
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(names, 2))).to_string_lossy(),
+                "input"
+            );
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(names, 3))).to_string_lossy(),
+                "target"
+            );
+
+            // Non-symbol (CHARSXP) input is wrapped via ScalarString
+            let chars = Rf_mkChar(b"nam\0".as_ptr() as *const c_char);
+            let cond2 = R_makePartialMatchWarningCondition(ptr::null_mut(), chars, target);
+            let wrapped = VECTOR_ELT(cond2, 2);
+            assert_eq!(TYPEOF(wrapped), SEXPTYPE::STRSXP);
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(wrapped, 0))).to_string_lossy(),
+                "nam"
+            );
+            let msg2 = VECTOR_ELT(cond2, 0);
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(msg2, 0))).to_string_lossy(),
+                "partial match of 'nam' to 'abcdef'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_r_make_partial_argument_match_warning_condition() {
+        let _session = crate::sexp::session::RSession::new();
+        let _session = RSession::new();
+
+        unsafe {
+            let argument = Rf_install(b"ab\0".as_ptr() as *const c_char);
+            let formal = Rf_install(b"abcde\0".as_ptr() as *const c_char);
+            let cond =
+                R_makePartialArgumentMatchWarningCondition(ptr::null_mut(), argument, formal);
+            assert!(!cond.is_null());
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
+            assert_eq!(LENGTH(cond), 4);
+
+            // Message: "partial argument match of 'ab' to 'abcde'"
+            let msg = VECTOR_ELT(cond, 0);
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(msg, 0))).to_string_lossy(),
+                "partial argument match of 'ab' to 'abcde'"
+            );
+
+            // Class: partialArgumentMatchWarning, partialMatchWarning, warning, condition
+            let klass = getAttrib_wrap(cond, R_ClassSymbol());
+            assert_eq!(LENGTH(klass), 4);
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(klass, 0))).to_string_lossy(),
+                "partialArgumentMatchWarning"
+            );
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(klass, 1))).to_string_lossy(),
+                "partialMatchWarning"
+            );
+
+            // Fields: argument/formal hold the symbols
+            assert_eq!(VECTOR_ELT(cond, 2), argument);
+            assert_eq!(VECTOR_ELT(cond, 3), formal);
+            let names = getAttrib_wrap(cond, R_NamesSymbol());
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(names, 2))).to_string_lossy(),
+                "argument"
+            );
+            assert_eq!(
+                CStr::from_ptr(translateChar(STRING_ELT(names, 3))).to_string_lossy(),
+                "formal"
+            );
         }
     }
 
@@ -4086,6 +4299,7 @@ mod tests {
             let cond = R_makeWarningCondition(
                 ptr::null_mut(),
                 b"simpleWarning\0".as_ptr() as *const c_char,
+                ptr::null(),
                 0,
                 b"test warning\0".as_ptr() as *const c_char,
             );

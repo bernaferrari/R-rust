@@ -119,6 +119,59 @@ pub fn unif_rand() -> f64 {
     multicarry_unif_rand()
 }
 
+/// Different kinds of "Bin(n,p)" generators (R_ext/Random.h's `Binomtype`).
+///
+/// `BTPE` is the corrected algorithm (PR#19049 fixes two signs in the
+/// Stirling squeeze terms and sharpens the 1/6 constant); `BUGGY_BTPE`
+/// keeps the pre-2026 behavior so old `.Random.seed` streams can be
+/// replayed.
+#[allow(non_camel_case_types)] // mirror R_ext/Random.h's Binomtype spelling
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum Binomtype {
+    BUGGY_BTPE = 0,
+    BTPE = 1,
+}
+
+// Standalone default for the binomial generator kind (rbinom.c's
+// `ML_Binom_kind`, default `BTPE`).
+thread_local! {
+    static ML_BINOM_KIND: Cell<Binomtype> = const { Cell::new(Binomtype::BTPE) };
+}
+
+/// Host-supplied binomial generator kind hook.
+///
+/// When installed, [`R_binom_kind`] asks it for the kind instead of the
+/// standalone default. The R-level runtime installs a bridge reading the
+/// session's `RNGkind(binom.kind=)` setting so `rbinom` follows the
+/// session RNG configuration, mirroring the [`UnifRandHook`] bridge.
+pub type BinomKindHook = fn() -> Binomtype;
+
+thread_local! {
+    static BINOM_KIND_HOOK: Cell<Option<BinomKindHook>> = const { Cell::new(None) };
+}
+
+/// Install (or clear, with `None`) this thread's binomial-kind hook.
+pub fn set_binom_kind_hook(hook: Option<BinomKindHook>) {
+    BINOM_KIND_HOOK.with(|slot| slot.set(hook));
+}
+
+/// Set the standalone binomial generator kind (rbinom.c's `ML_Binom_kind`).
+pub fn set_binom_kind(kind: Binomtype) {
+    ML_BINOM_KIND.with(|slot| slot.set(kind));
+}
+
+/// The binomial generator kind `rbinom` should use (rbinom.c's
+/// `R_binom_kind()`): the installed host hook's session kind when present,
+/// otherwise the standalone default.
+#[must_use]
+pub fn R_binom_kind() -> Binomtype {
+    if let Some(hook) = BINOM_KIND_HOOK.with(Cell::get) {
+        return hook();
+    }
+    ML_BINOM_KIND.with(Cell::get)
+}
+
 /// The built-in Marsaglia-MultiCarry stream, ignoring any installed hook.
 ///
 /// Host bridges use this as the fallback when no R instance is active.

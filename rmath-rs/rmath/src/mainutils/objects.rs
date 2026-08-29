@@ -3526,6 +3526,23 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
+// R_allocObject / do_objsxp -- bare OBJSXP allocation
+// ---------------------------------------------------------------------------
+
+/// Allocate a bare object of type "object" (OBJSXP without the S4 bit).
+///
+/// This is the equivalent of R's `R_allocObject()` — the constructor behind
+/// `.OBJSXP()`, as used e.g. by S7.
+pub unsafe fn R_allocObject() -> SEXP {
+    unsafe { crate::sexp::memory_ext::allocSExp(SEXPTYPE::OBJSXP) }
+}
+
+/// R's `.OBJSXP()` — a bare OBJSXP object without the S4 bit.
+pub unsafe fn do_objsxp(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsafe { R_allocObject() }
+}
+
+// ---------------------------------------------------------------------------
 // do_setS4Object -- internal .setS4Object()
 // ---------------------------------------------------------------------------
 
@@ -4565,6 +4582,24 @@ mod tests {
             let result = do_setS4Object(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
             // With complete=2 (conditional), should return unchanged
+        }
+    }
+
+    #[test]
+    fn test_do_objsxp_allocates_bare_object() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let result = do_objsxp(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            assert!(!result.is_null());
+            assert_eq!(TYPEOF(result), SEXPTYPE::OBJSXP.as_c_int());
+            // A bare OBJSXP has no S4 bit (upstream R_allocObject, not
+            // allocS4Object): typeof() is "object", isS4() is FALSE.
+            assert_eq!(IS_S4_OBJECT(result), FALSE);
         }
     }
 

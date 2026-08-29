@@ -489,6 +489,10 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             } else {
                 0
             };
+        } else if t == SEXPTYPE::OBJSXP {
+            // OBJSXP: attributes already tested, so all slots identical
+            // (S4 and bare objects alike, e.g. .OBJSXP()-constructed ones).
+            return 1;
         } else if t == SEXPTYPE::RAWSXP {
             // RAWSXP: memcmp on raw bytes
             let nx = LENGTH(x);

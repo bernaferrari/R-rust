@@ -408,6 +408,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "simpleWarning",
     "withRestarts",
     "isS4",
+    ".OBJSXP",
     "is",
     "setClass",
     "setValidity",

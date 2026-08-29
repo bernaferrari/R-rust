@@ -259,11 +259,30 @@ unsafe fn length(x: SEXP) -> c_int {
     }
 }
 
-/// R_warn_partial_match_args — stub, no-op.
-/// In full R, this signals a condition when warnPartialMatchArgs is TRUE.
+/// R_warn_partial_match_args — signals a partial-argument-match warning
+/// condition when `options(warnPartialMatchArgs = TRUE)`.
 #[inline(always)]
-unsafe fn R_warn_partial_match_dots(_call: SEXP, _btag: SEXP, _ftag: SEXP) {
-    // No action needed stub: warning conditions not yet implemented
+pub(crate) unsafe fn R_warn_partial_match_args(call: SEXP, btag: SEXP, ftag: SEXP) {
+    unsafe {
+        if !warn_partial_match_args_enabled() {
+            return;
+        }
+        let cond =
+            crate::mainutils::errors::R_makePartialArgumentMatchWarningCondition(call, btag, ftag);
+        let _cond_guard = protect(cond);
+        crate::mainutils::errors::R_signalWarningCondition(cond);
+    }
+}
+
+/// Read `options(warnPartialMatchArgs)` (C's `R_warn_partial_match_args`).
+#[inline(always)]
+unsafe fn warn_partial_match_args_enabled() -> bool {
+    unsafe {
+        let s = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
+            b"warnPartialMatchArgs\0".as_ptr() as *const c_char,
+        ));
+        !s.is_null() && s != R_NilValue() && asLogical(s) == 1
+    }
 }
 
 /// Seql — check if two CHARSXP are string-equal.
@@ -703,7 +722,7 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
                                     ),
                                 });
                             }
-                            R_warn_partial_match_dots(call, TAG(b), TAG(f));
+                            R_warn_partial_match_args(call, TAG(b), TAG(f));
                             SETCAR(a, CAR(b));
                             if CAR(b) != R_MissingArg() {
                                 SET_MISSING(a, 0);

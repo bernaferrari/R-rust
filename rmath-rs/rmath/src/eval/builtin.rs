@@ -1497,6 +1497,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_isS4,
     },
     EvaluatedBuiltin {
+        name: "objsxp",
+        handler: crate::mainutils::objects::do_objsxp,
+    },
+    EvaluatedBuiltin {
+        name: ".OBJSXP",
+        handler: crate::mainutils::objects::do_objsxp,
+    },
+    EvaluatedBuiltin {
         name: "is",
         handler: crate::mainutils::essentials::do_is,
     },

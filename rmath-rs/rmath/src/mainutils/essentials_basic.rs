@@ -228,6 +228,15 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             t if t == SEXPTYPE::SPECIALSXP => "special",
             t if t == SEXPTYPE::ENVSXP => "environment",
             t if t == SEXPTYPE::NILSXP => "NULL",
+            t if t == SEXPTYPE::OBJSXP => {
+                // R_typeToChar: distinguish S4 objects from bare OBJSXP
+                // (e.g. S7 objects constructed via .OBJSXP()).
+                if crate::mainutils::coerce::IS_S4_OBJECT(x) != 0 {
+                    "S4"
+                } else {
+                    "object"
+                }
+            }
             t if t == SEXPTYPE::CHARSXP => "character",
             _ => "unknown",
         };

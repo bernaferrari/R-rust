@@ -115,6 +115,18 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
             return;
         }
 
+        // setAttrib(x, R_DimSymbol, val) routes through dimgets(), whose
+        // first step stores the dims as integer (coerceVector(val, INTSXP)).
+        let value = if which == R_DimSymbol()
+            && !value.is_null()
+            && value != R_NilValue()
+            && TYPEOF(value) != SEXPTYPE::INTSXP
+        {
+            crate::mainutils::coerce::coerceVector(value, SEXPTYPE::INTSXP.into())
+        } else {
+            value
+        };
+
         let attrib = ATTRIB(x);
 
         // Search for existing attribute

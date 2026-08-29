@@ -2220,7 +2220,32 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 // ---------------------------------------------------------------------------
 // R_subset3_dflt -- default method for `$`
-// ---------------------------------------------------------------------------
+/// Read `options(warnPartialMatchDollar)` (C's `R_warn_partial_match_dollar`).
+#[inline(always)]
+unsafe fn warn_partial_match_dollar() -> bool {
+    unsafe {
+        let s = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
+            b"warnPartialMatchDollar\0".as_ptr() as *const c_char,
+        ));
+        !s.is_null() && s != R_NilValue() && asLogical(s) == 1
+    }
+}
+
+/// Signal the partial-match warning condition for `$` subsetting (unique
+/// partial match of `input` to `target`), gated on
+/// `options(warnPartialMatchDollar = TRUE)`.
+#[inline(always)]
+unsafe fn warn_partial_match_dollar_condition(call: SEXP, input: SEXP, target: SEXP) {
+    unsafe {
+        if !warn_partial_match_dollar() {
+            return;
+        }
+        let cond = crate::mainutils::errors::R_makePartialMatchWarningCondition(call, input, target);
+        let _cond_guard = protect(cond);
+        crate::mainutils::errors::R_signalWarningCondition(cond);
+    }
+}
+
 
 /// Default method for `$`. Performs partial matching on pair-list and
 /// vector-list names, and also handles environment subsetting.
@@ -2261,6 +2286,7 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
             }
             if havematch == 1 {
                 /* unique partial match */
+                warn_partial_match_dollar_condition(call, input, TAG(xmatch));
                 let result = CAR(xmatch);
                 RAISE_NAMED(result, NAMED(x));
                 return result;
@@ -2298,6 +2324,7 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
 
             if havematch == 1 {
                 /* unique partial match */
+                warn_partial_match_dollar_condition(call, input, STRING_ELT(nlist, imatch));
                 let result = VECTOR_ELT(x, imatch);
                 RAISE_NAMED(result, NAMED(x));
                 return result;

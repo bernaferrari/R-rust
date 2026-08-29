@@ -1,0 +1,163 @@
+diff --git a/src/main/array.c b/src/main/array.c
+index 9638cd7..d3b8e72 100644
+--- a/src/main/array.c
++++ b/src/main/array.c
+@@ -1,6 +1,6 @@
+ /*
+  *  R : A Computer Language for Statistical Data Analysis
+- *  Copyright (C) 1998-2025   The R Core Team
++ *  Copyright (C) 1998-2026   The R Core Team
+  *  Copyright (C) 2002-2025   The R Foundation
+  *  Copyright (C) 1995, 1996  Robert Gentleman and Ross Ihaka
+  *
+@@ -277,28 +277,42 @@ SEXP alloc3DArray(SEXPTYPE mode, int nrow, int ncol, int nface)
+     return s;
+ }
+ 
+-
+-SEXP allocArray(SEXPTYPE mode, SEXP dims)
++// dim(.) --> prod(dim(.)) { = length(.)} with all checks --- also called from attrib.c
++attribute_hidden
++R_xlen_t dim2total(SEXP dim /* INTSXP */, bool *err)
+ {
+-    SEXP array;
+-    int i;
+-    R_xlen_t n = 1;
+-    double dn = 1;
+-
+-    for (i = 0; i < LENGTH(dims); i++) {
+-	dn *= INTEGER(dims)[i];
++    int ndim = LENGTH(dim);
++    if (ndim == 0)
++	error(_("'dim' cannot be of length 0"));
++    *err = false;
++    double dn = 1.;
++    for (int i = 0; i < ndim; i++) {
++	/* need this test first as NA_INTEGER is < 0 */
++	if (INTEGER(dim)[i] == NA_INTEGER)
++	    error(_("the dims contain missing values"));
++	if (INTEGER(dim)[i] < 0)
++	    error(_("the dims contain negative values"));
++	if(INTEGER(dim)[i])
++	    dn *= INTEGER(dim)[i];
++	else dn = 0.; // but continue checking ..
++    }
+ #ifdef LONG_VECTOR_SUPPORT
+-	if(dn > R_XLEN_T_MAX)
+-	    error(_("'allocArray': too many elements specified by 'dims'"));
++    if (dn > R_XLEN_T_MAX)
+ #else
+-	if(dn > INT_MAX)
+-	    error(_("'allocArray': too many elements specified by 'dims'"));
++    if (dn > INT_MAX)
+ #endif
+-	n *= INTEGER(dims)[i];
+-    }
++	*err = true;
++    return (R_xlen_t) dn;
++}
+ 
++SEXP allocArray(SEXPTYPE mode, SEXP dims)
++{
++    bool err;
++    R_xlen_t n = dim2total(dims, &err);
++    if(err)
++	error(_("'allocArray': too many elements specified by 'dims'"));
+     PROTECT(dims = duplicate(dims));
+-    PROTECT(array = allocVector(mode, n));
++    SEXP array = PROTECT(allocVector(mode, n));
+     setAttrib(array, R_DimSymbol, dims);
+     UNPROTECT(2);
+     return array;
+@@ -1747,6 +1761,15 @@ attribute_hidden SEXP do_aperm(SEXP call, SEXP op, SEXP args, SEXP rho)
+ 	}
+     }
+ 
++    /* handle the resize */
++    int resize = asLogical(CADDR(args));
++    if (resize == NA_LOGICAL) error(_("'resize' must be TRUE or FALSE"));
++
++    /* short-circuit identity permutation (PR#19069) */
++    bool skip = true;
++    for (i = 0; i < n; i++) if (pp[i] != i) {skip = false; break;}
++    if (resize && skip) {UNPROTECT(1); return(a);}
++
+     R_xlen_t *iip = (R_xlen_t *) R_alloc((size_t) n, sizeof(R_xlen_t));
+     Memzero(iip, n);
+     for (i = 0; i < n; i++)
+@@ -1755,6 +1778,19 @@ attribute_hidden SEXP do_aperm(SEXP call, SEXP op, SEXP args, SEXP rho)
+     for (i = 0; i < n; i++)
+ 	if (iip[i] == 0) error(_("invalid '%s' argument"), "perm");
+ 
++    if (n == 2 && !skip) {
++	/* special case for 2D arrays (PR#19133) */
++	SEXP r = do_transpose(call, op, args, rho);
++	if (resize) {
++	    UNPROTECT(1);
++	    return r;
++	}
++	PROTECT(r);
++	setAttrib(r, R_DimSymbol, dimsa);
++	UNPROTECT(2);
++        return r;
++    }
++
+     /* create the stride object and permute */
+ 
+     R_xlen_t *stride = (R_xlen_t *) R_alloc((size_t) n, sizeof(R_xlen_t));
+@@ -1842,11 +1878,7 @@ attribute_hidden SEXP do_aperm(SEXP call, SEXP op, SEXP args, SEXP rho)
+ 	UNIMPLEMENTED_TYPE("aperm", a);
+     }
+ 
+-    /* handle the resize */
+-    int resize = asLogical(CADDR(args));
+-    if (resize == NA_LOGICAL) error(_("'resize' must be TRUE or FALSE"));
+-
+-    /* and handle names(dim(.)) and the dimnames if any */
++    /* handle names(dim(.)) and the dimnames if any */
+     if (resize) {
+ 	SEXP nmdm = getAttrib(dimsa, R_NamesSymbol);
+ 	if(nmdm != R_NilValue) { // dimsr needs correctly permuted names()
+@@ -1886,12 +1918,7 @@ attribute_hidden SEXP do_aperm(SEXP call, SEXP op, SEXP args, SEXP rho)
+     else // !resize
+ 	setAttrib(r, R_DimSymbol, dimsa);
+ 
+-    /* FIXME:
+-       The docs have forever said that all "other" (not dim or dimnames)
+-       attributes are copied.  This can easily be achieved via
+-         copyMostAttrib(a, r);
+-       which seems to break about 15 CRAN packages.
+-    */
++    copyMostAttrib(a, r);
+ 
+     UNPROTECT(3); /* dimsa, r, dimsr */
+     return r;
+@@ -2166,23 +2193,16 @@ attribute_hidden SEXP do_array(SEXP call, SEXP op, SEXP args, SEXP rho)
+ 	    break;
+ 	default:
+ 	    error(_("'data' must be of a vector type, was '%s'"),
+-		R_typeToChar(vals));
++		  R_typeToChar(vals));
+     }
+     SEXP ans,
+ 	dims     = CADR(args),
+ 	dimnames = CADDR(args);
+     PROTECT(dims = coerceVector(dims, INTSXP));
+-    int nd = LENGTH(dims);
+-    if (nd == 0) error(_("'dim' cannot be of length 0"));
+-    double d = 1.0;
+-    for (int j = 0; j < nd; j++) d *= INTEGER(dims)[j];
+-#ifdef LONG_VECTOR_SUPPORT
+-    if (d > R_XLEN_T_MAX) error(_("too many elements specified"));
+-#else
+-    if (d > INT_MAX) error(_("too many elements specified"));
+-#endif
+-    R_xlen_t lendat = XLENGTH(vals),
+-	i, nans = (R_xlen_t) d;
++    bool err;
++    R_xlen_t nans = dim2total(dims, &err);
++    if(err) error(_("too many elements specified"));
++    R_xlen_t lendat = XLENGTH(vals), i;
+ 
+     PROTECT(ans = allocVector(TYPEOF(vals), nans));
+     switch(TYPEOF(vals)) {

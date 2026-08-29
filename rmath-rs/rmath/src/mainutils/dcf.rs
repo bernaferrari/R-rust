@@ -17,6 +17,27 @@ use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::*;
 
+/// Interpret `bytes` as UTF-8, replacing every invalid byte with `"<xx>"`
+/// (lowercase hex).
+///
+/// Mirrors upstream dcf.c's `mkCharUTF8sub()` -> `reEnc3(s, "UTF-8",
+/// "UTF-8", 1)`: DCF files are required to be UTF-8, so invalid byte
+/// sequences are repaired by escaping each byte as `<xx>`, exactly as
+/// `iconv(from = "UTF-8", to = "UTF-8", sub = "byte")` does (which the R
+/// code paths in read.dcf()/write.dcf() also use).  The CE_UTF8 marking of
+/// the upstream helper has no counterpart here: this port does not track
+/// CHARSXP encodings (`Rf_mkChar` never sets encoding bits).
+fn utf8_sub_bytes(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len());
+    for chunk in bytes.utf8_chunks() {
+        out.push_str(chunk.valid());
+        for &b in chunk.invalid() {
+            out.push_str(&format!("<{b:02x}>"));
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // DCF line classification helpers
 // ---------------------------------------------------------------------------
@@ -173,11 +194,14 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             return R_NilValue();
         };
 
-        // Read the file content
-        let content = match fs::read_to_string(&filename) {
-            Ok(s) => s,
+        // Read the file content as raw bytes and repair invalid UTF-8 byte
+        // sequences ("<xx>", as upstream dcf.c's mkCharUTF8sub() does), so
+        // that field names and values become valid UTF-8 strings.
+        let content_bytes = match fs::read(&filename) {
+            Ok(b) => b,
             Err(_) => return R_NilValue(),
         };
+        let content = utf8_sub_bytes(&content_bytes);
 
         // fields argument: a STRSXP vector of field names to extract
         // If empty (length 0), we use dynamic mode (all fields)
@@ -456,4 +480,81 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 #[inline]
 fn idx_from_lastm(lastm: i32, _nwhat: c_int, field_names_len: usize) -> usize {
     lastm as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn char_elt(s: SEXP, i: usize) -> String {
+        unsafe {
+            let p = CHAR(STRING_ELT(s, i as R_xlen_t));
+            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+        }
+    }
+
+    #[test]
+    fn utf8_sub_bytes_passes_valid_utf8_through() {
+        assert_eq!(utf8_sub_bytes(b"plain ascii"), "plain ascii");
+        assert_eq!(utf8_sub_bytes("caf\u{e9}".as_bytes()), "caf\u{e9}");
+    }
+
+    #[test]
+    fn utf8_sub_bytes_escapes_invalid_bytes() {
+        // lone 0xE9 (would start a 3-byte sequence): one byte, one escape
+        assert_eq!(utf8_sub_bytes(b"caf\xe9 ok"), "caf<e9> ok");
+        // truncated multi-byte sequence at end of input
+        assert_eq!(utf8_sub_bytes(b"a\xf0\x9f"), "a<f0><9f>");
+        // continuation bytes without a lead byte
+        assert_eq!(utf8_sub_bytes(b"\x80\x81"), "<80><81>");
+    }
+
+    #[test]
+    fn read_dcf_repairs_invalid_utf8() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "rport-dcf-{}-{}.dcf",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        // "Package: caf\xc3\xa9" (valid UTF-8) and "Field: caf\xe9 ok"
+        // (0xE9 is an invalid UTF-8 start byte here).
+        let content = b"Package: caf\xc3\xa9\nField: caf\xe9 ok\n\n";
+        std::fs::write(&path, content).unwrap();
+
+        unsafe {
+            let file = Rf_mkString(
+                CString::new(path.to_str().unwrap())
+                    .unwrap_or_default()
+                    .as_ptr(),
+            );
+            let fields = Rf_allocVector(SEXPTYPE::STRSXP, 0); // dynamic mode
+            let args = {
+                let mut tail = R_NilValue();
+                for item in [R_NilValue(), fields, file] {
+                    tail = Rf_cons(item, tail);
+                }
+                tail
+            };
+            let res = do_readDCF(std::ptr::null_mut(), std::ptr::null_mut(), args, std::ptr::null_mut());
+            assert_eq!(TYPEOF(res), SEXPTYPE::STRSXP);
+            assert_eq!(LENGTH(res), 2);
+            // column-major: 1 row, 2 fields
+            assert_eq!(char_elt(res, 0), "caf\u{e9}");
+            assert_eq!(char_elt(res, 1), "caf<e9> ok");
+
+            // dim attribute is 1 x 2
+            let dim = crate::eval::attrib_core::getAttrib(
+                res,
+                crate::eval::attrib_core::R_DimSymbol(),
+            );
+            assert_eq!(*INTEGER(dim), 1);
+            assert_eq!(*INTEGER(dim).add(1), 2);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
 }

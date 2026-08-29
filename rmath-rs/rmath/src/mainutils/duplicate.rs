@@ -53,16 +53,6 @@ unsafe fn R_tryWrap(x: SEXP) -> SEXP {
     x
 }
 
-unsafe fn R_allocObject() -> SEXP {
-    unsafe {
-        let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::INTSXP);
-        if !s.is_null() {
-            let gp = (*s).sxpinfo.gp() | S4_OBJECT_MASK;
-            (*s).sxpinfo.set_gp(gp);
-        }
-        s
-    }
-}
 unsafe fn DispatchGroup(
     _s: SEXP,
     _code: *const c_char,
@@ -557,7 +547,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
                 return s;
             }
             SEXPTYPE::OBJSXP => {
-                t = R_allocObject();
+                t = crate::mainutils::objects::R_allocObject();
                 if !t.is_null() {
                     DUPLICATE_ATTRIB(t, s, deep);
                 } else {

@@ -10,6 +10,7 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::sexp::accessors::{
     CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME,
@@ -58,6 +59,8 @@ const VECSXP_VAL: c_int = 19;
 const EXPRSXP_VAL: c_int = 20;
 const RAWSXP_VAL: c_int = 24;
 const LISTSXP_VAL: c_int = 2;
+const LANGSXP_VAL: c_int = 6;
+const DOTSXP_VAL: c_int = 17;
 const NILSXP_VAL: c_int = 0;
 
 // ---------------------------------------------------------------------------
@@ -83,27 +86,49 @@ unsafe fn DispatchOrEval(
 unsafe fn checkArity(op: SEXP, args: SEXP) {
     unsafe { crate::mainutils::relop::checkArity(op, args) }
 }
+
 unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
     unsafe {
-        // R's check1arg: error if the first argument is supplied by name.
-        if args.is_null() || args == crate::sexp::globals::R_NilValue() {
+        // Upstream util.c Rf_check1arg: a supplied tag must be a prefix of
+        // the formal name; a strict prefix triggers the partial-match
+        // warning when options(warnPartialMatchArgs=TRUE).
+        let tag = TAG(args);
+        if tag.is_null() || tag == R_NilValue() {
             return;
         }
-        let tag = TAG(args);
-        if !tag.is_null() && tag != crate::sexp::globals::R_NilValue() {
-            let tag_name = CHAR(PRINTNAME(tag));
-            if !tag_name.is_null() {
-                let given = CStr::from_ptr(tag_name).to_str().unwrap_or("");
-                let formal = CStr::from_ptr(name).to_str().unwrap_or("");
-                // Partial match against the formal name, like R's pmatch
-                if !formal.is_empty() && (formal == given || formal.starts_with(given)) {
-                    let msg = format!(
-                        "the first argument should not be named - using it positionally anyway\0"
-                    );
-                    errorcall(call, msg.as_ptr() as *const c_char);
-                }
-            }
+        let tag_name = CHAR(PRINTNAME(tag));
+        if tag_name.is_null() {
+            return;
         }
+        let supplied = CStr::from_ptr(tag_name).to_bytes();
+        let formal = CStr::from_ptr(name).to_bytes();
+        if supplied.len() > formal.len() || !formal.starts_with(supplied) {
+            let msg = format!(
+                "supplied argument name '{}' does not match '{}'\0",
+                String::from_utf8_lossy(supplied),
+                String::from_utf8_lossy(formal),
+            );
+            errorcall(call, msg.as_ptr() as *const c_char);
+            return;
+        }
+        if !supplied.is_empty() && supplied.len() < formal.len() && warn_partial_match_args() {
+            let fsym = Rf_install_stub(name);
+            let cond = crate::mainutils::errors::R_makePartialArgumentMatchWarningCondition(
+                call, tag, fsym,
+            );
+            let _cond_guard = crate::sexp::protect::protect(cond);
+            crate::mainutils::errors::R_signalWarningCondition(cond);
+        }
+    }
+}
+
+/// R_warn_partial_match_args — read options(warnPartialMatchArgs).
+unsafe fn warn_partial_match_args() -> bool {
+    unsafe {
+        let s = crate::mainutils::options::GetOption1(Rf_install_stub(
+            b"warnPartialMatchArgs\0".as_ptr() as *const c_char,
+        ));
+        !s.is_null() && s != R_NilValue() && asLogical(s) == 1
     }
 }
 
@@ -117,6 +142,32 @@ fn errorcall_never(call: SEXP, msg: &str) -> ! {
 
 unsafe fn warningcall(call: SEXP, format: *const c_char) {
     unsafe { crate::mainutils::errors::warningcall(call, format) }
+}
+
+/// `xlength()` — like `XLENGTH()`, but walks pairlists (counting cells) and
+/// treats non-vector nodes as length 1, matching R's `Rinlinedfuns.h`
+/// `xlength()` used by `do_seq()` for `along.with`.
+#[inline(always)]
+unsafe fn xlength(s: SEXP) -> R_xlen_t {
+    unsafe {
+        if s.is_null() || s == R_NilValue() {
+            return 0;
+        }
+        let t = TYPEOF(s);
+        if t == LISTSXP_VAL || t == LANGSXP_VAL || t == DOTSXP_VAL {
+            let mut n: R_xlen_t = 0;
+            let mut cur = s;
+            while !cur.is_null() && cur != R_NilValue() {
+                n += 1;
+                cur = CDR(cur);
+            }
+            n
+        } else if isVector(s) != 0 {
+            XLENGTH(s)
+        } else {
+            1 // symbols, environments, ... (C xlength default)
+        }
+    }
 }
 
 unsafe fn error(msg: &str) {
@@ -2332,7 +2383,7 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // along.with handling
         let mut lout: R_xlen_t = NA_INTEGER as R_xlen_t;
         if along != R_MissingArg() {
-            lout = XLENGTH(along);
+            lout = xlength(along);
             if one_arg {
                 if lout > 0 {
                     ans = seq_colon(1.0, lout as c_double, call);
@@ -2805,7 +2856,31 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
-        let max_len = std::cmp::max(std::cmp::max(lengths_len, from_len), by_len);
+        let mut max_len = std::cmp::max(std::cmp::max(lengths_len, from_len), by_len);
+
+        // A shorter 'nvec' with recycle = FALSE only uses the first
+        // lengths_len inputs; warn (if `recycle` was not supplied) that
+        // future R's default 'recycle = TRUE' will recycle 'nvec' -- at most
+        // once per R session.
+        if !recycle_1st && lengths_len < max_len {
+            // C's maybe_warn: the R-level wrapper passes 0L when `recycle`
+            // is missing; the port sees R_MissingArg directly.
+            let maybe_warn = recycle_1st_arg == R_MissingArg();
+            static WARN_1ST: AtomicBool = AtomicBool::new(true);
+            if maybe_warn && WARN_1ST.swap(false, Ordering::Relaxed) {
+                let msg = format!(
+                    "length(nvec) = {} < {} = max(length(from), length(by))",
+                    lengths_len, max_len
+                );
+                let c_msg = std::ffi::CString::new(format!(
+                    "{} -- future R's default 'recycle = TRUE' will recycle 'nvec'",
+                    msg
+                ))
+                .unwrap_or_default();
+                warningcall(R_NilValue(), c_msg.as_ptr());
+            }
+            max_len = lengths_len;
+        }
 
         let lengths_elt = INTEGER(lengths);
 
@@ -3403,6 +3478,63 @@ mod tests {
                     crate::mainutils::essentials::days_from_civil(2020, 1, 3),
                     crate::mainutils::essentials::days_from_civil(2020, 1, 5),
                 ]
+            );
+        }
+    }
+
+    #[test]
+    fn test_check1arg_partial_match_warning() {
+        let mut session = crate::sexp::session::RSession::new();
+        let _ = session.eval_script_with_output_capture("options(warnPartialMatchArgs = TRUE)");
+
+        unsafe {
+            // args cell: (l = 3L) checked against formal "length.out" —
+            // "l" is a strict prefix, so a partial-argument-match warning
+            // must be collected (default warn = 0).
+            let args = Rf_cons(Rf_ScalarInteger(3), R_NilValue());
+            let _args_guard = crate::sexp::protect::protect(args);
+            SETTAG(args, Rf_install_stub(b"l\0".as_ptr() as *const c_char));
+            check1arg(
+                args,
+                ptr::null_mut(),
+                b"length.out\0".as_ptr() as *const c_char,
+            );
+
+            assert_eq!(crate::mainutils::errors::collect_warnings(), 1);
+            let msg = crate::mainutils::errors::last_collected_warning_message();
+            assert_eq!(msg.trim(), "partial argument match of 'l' to 'length.out'");
+
+            // Full tag: no additional warning, no error.
+            SETTAG(
+                args,
+                Rf_install_stub(b"length.out\0".as_ptr() as *const c_char),
+            );
+            check1arg(
+                args,
+                ptr::null_mut(),
+                b"length.out\0".as_ptr() as *const c_char,
+            );
+            assert_eq!(crate::mainutils::errors::collect_warnings(), 1);
+
+            // Non-matching tag errors (upstream: supplied argument name
+            // '%s' does not match '%s').
+            SETTAG(args, Rf_install_stub(b"bogus\0".as_ptr() as *const c_char));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                unsafe {
+                    check1arg(
+                        args,
+                        ptr::null_mut(),
+                        b"length.out\0".as_ptr() as *const c_char,
+                    );
+                }
+            }));
+            let err = result.unwrap_err();
+            let payload = err
+                .downcast_ref::<crate::sexp::context::RError>()
+                .expect("RError payload");
+            assert_eq!(
+                payload.message.trim(),
+                "supplied argument name 'bogus' does not match 'length.out'"
             );
         }
     }

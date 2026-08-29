@@ -798,53 +798,69 @@ unsafe fn attr1(s: SEXP, d: *mut LocalParseData) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
-// attr2 — write attribute suffix to buffer
+// attrEntry — deparse a single attribute entry
 // ---------------------------------------------------------------------------
 
-/// Write the attribute suffix (e.g., ", names = ..., dim = ...") to buffer.
-unsafe fn attr2(s: SEXP, d: *mut LocalParseData, not_names: bool) {
+/// Deparse a single attribute as `<name> = <value>`, shared by attr2() (the
+/// structure(..) form) and the OBJSXP / object(..) deparse below.
+/// Port of upstream deparse.c attrEntry().
+unsafe fn attrEntry(a: SEXP, d: *mut LocalParseData) {
     unsafe {
         let d = &mut *d;
         let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
-        let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
         let dim_sym = Rf_install(b"dim\0".as_ptr() as *const c_char);
         let dimnames_sym = Rf_install(b"dimnames\0".as_ptr() as *const c_char);
         let tsp_sym = Rf_install(b"tsp\0".as_ptr() as *const c_char);
         let levels_sym = Rf_install(b"levels\0".as_ptr() as *const c_char);
 
+        if TAG(a) == dim_sym {
+            print2buff(b"dim\0".as_ptr() as *const c_char, d); // was .Dim
+        } else if TAG(a) == dimnames_sym {
+            print2buff(b"dimnames\0".as_ptr() as *const c_char, d); // was .Dimnames
+        } else if TAG(a) == names_sym {
+            print2buff(b"names\0".as_ptr() as *const c_char, d); // was .Names
+        } else if TAG(a) == tsp_sym {
+            print2buff(b"tsp\0".as_ptr() as *const c_char, d); // was .Tsp
+        } else if TAG(a) == levels_sym {
+            print2buff(b"levels\0".as_ptr() as *const c_char, d); // was .Label
+        } else {
+            // TAG(a) might contain spaces etc
+            let tag_name = CHAR(PRINTNAME(TAG(a)));
+            let d_opts_in = d.opts;
+            d.opts = SIMPLEDEPARSE; /* turn off quote()ing */
+            if !tag_name.is_null() && isValidName(tag_name) {
+                deparse2buff(TAG(a), d);
+            } else {
+                print2buff(b"\"\0".as_ptr() as *const c_char, d);
+                deparse2buff(TAG(a), d);
+                print2buff(b"\"\0".as_ptr() as *const c_char, d);
+            }
+            d.opts = d_opts_in;
+        }
+        print2buff(b" = \0".as_ptr() as *const c_char, d);
+        let fnarg = d.fnarg;
+        d.fnarg = true;
+        deparse2buff(CAR(a), d);
+        d.fnarg = fnarg;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// attr2 — write attribute suffix to buffer
+// ---------------------------------------------------------------------------
+
+/// Write full attributes(s) to 'buff'.  Port of upstream deparse.c attr2().
+unsafe fn attr2(s: SEXP, d: *mut LocalParseData, not_names: bool) {
+    unsafe {
+        let d = &mut *d;
+        let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
+        let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+
         let mut a = ATTRIB(s);
         while !isNull(a) {
             if TAG(a) != srcref_sym && !(TAG(a) == names_sym && not_names) {
                 print2buff(b", \0".as_ptr() as *const c_char, d);
-                if TAG(a) == dim_sym {
-                    print2buff(b"dim\0".as_ptr() as *const c_char, d);
-                } else if TAG(a) == dimnames_sym {
-                    print2buff(b"dimnames\0".as_ptr() as *const c_char, d);
-                } else if TAG(a) == names_sym {
-                    print2buff(b"names\0".as_ptr() as *const c_char, d);
-                } else if TAG(a) == tsp_sym {
-                    print2buff(b"tsp\0".as_ptr() as *const c_char, d);
-                } else if TAG(a) == levels_sym {
-                    print2buff(b"levels\0".as_ptr() as *const c_char, d);
-                } else {
-                    // TAG(a) might contain spaces etc
-                    let tag_name = CHAR(PRINTNAME(TAG(a)));
-                    let d_opts_in = d.opts;
-                    d.opts = SIMPLEDEPARSE;
-                    if !tag_name.is_null() && isValidName(tag_name) {
-                        deparse2buff(TAG(a), d);
-                    } else {
-                        print2buff(b"\"\0".as_ptr() as *const c_char, d);
-                        deparse2buff(TAG(a), d);
-                        print2buff(b"\"\0".as_ptr() as *const c_char, d);
-                    }
-                    d.opts = d_opts_in;
-                }
-                print2buff(b" = \0".as_ptr() as *const c_char, d);
-                let fnarg = d.fnarg;
-                d.fnarg = true;
-                deparse2buff(CAR(a), d);
-                d.fnarg = fnarg;
+                attrEntry(a, d);
             }
             a = CDR(a);
         }
@@ -2624,8 +2640,22 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             d.sourceable = 0;
             print2buff(b"<weak reference>\0".as_ptr() as *const c_char, d);
         } else if sexp_type == SEXPTYPE::OBJSXP {
-            d.sourceable = 0;
-            print2buff(b"<object>\0".as_ptr() as *const c_char, d);
+            // A bare OBJSXP, e.g. from S7; objects with the S4 bit are
+            // dealt with above.  Deparse to .OBJSXP() or
+            // structure(.OBJSXP(), <attrs>).
+            if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
+                let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
+                let mut a = ATTRIB(s);
+                print2buff(b"structure(.OBJSXP()\0".as_ptr() as *const c_char, d);
+                while !isNull(a) {
+                    if TAG(a) != srcref_sym {
+                        print2buff(b", \0".as_ptr() as *const c_char, d);
+                        attrEntry(a, d);
+                    }
+                    a = CDR(a);
+                }
+            }
+            print2buff(b")\0".as_ptr() as *const c_char, d);
         } else {
             d.sourceable = 0;
         }
@@ -3270,6 +3300,35 @@ mod tests {
     #[test]
     fn test_show_attr_or_nms() {
         assert_eq!(SHOW_ATTR_OR_NMS, SHOWATTRIBUTES | NICE_NAMES);
+    }
+
+    #[test]
+    fn test_deparse_objsxp_structure_form() {
+        let _session = RSession::new();
+        unsafe {
+            // A bare OBJSXP (e.g. from S7 / .OBJSXP()) deparses to the
+            // trunk structure() form — not the old "<object>" placeholder.
+            let x = crate::mainutils::objects::R_allocObject();
+            let _x_guard = protect(x);
+            let out = deparse1s(x);
+            assert!(!out.is_null() && TYPEOF(out) == SEXPTYPE::STRSXP);
+            assert_eq!(
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(out, 0))).to_string_lossy(),
+                "structure(.OBJSXP())"
+            );
+
+            // Attributes go through attrEntry(): `foo = 42`.
+            crate::eval::attrib_core::setAttrib(
+                x,
+                Rf_install(b"foo\0".as_ptr() as *const c_char),
+                Rf_ScalarReal(42.0),
+            );
+            let out2 = deparse1s(x);
+            assert_eq!(
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(out2, 0))).to_string_lossy(),
+                "structure(.OBJSXP(), foo = 42)"
+            );
+        }
     }
 
     #[test]

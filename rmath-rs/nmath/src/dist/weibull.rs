@@ -51,10 +51,10 @@ pub fn pweibull_inner(x: f64, shape: f64, scale: f64, lower_tail: bool, log_p: b
 
     // R_P_bounds_01(x, 0., ML_POSINF)
     if x <= 0.0 {
-        return r_d__0(log_p);
+        return r_dt_0(lower_tail, log_p);
     }
     if x >= ML_POSINF {
-        return r_d__1(log_p);
+        return r_dt_1(lower_tail, log_p);
     }
     let x = -pow(x / scale, shape);
     if lower_tail {
@@ -102,12 +102,20 @@ pub fn qweibull_inner(p: f64, shape: f64, scale: f64, lower_tail: bool, log_p: b
 
 #[must_use]
 pub fn rweibull_inner(shape: f64, scale: f64) -> f64 {
-    if !r_finite(shape) || !r_finite(scale) || shape <= 0.0 || scale <= 0.0 {
+    if !r_finite(shape) || !r_finite(scale) || shape < 0.0 || scale <= 0.0 {
         if scale == 0.0 {
             return 0.0;
         }
         /* else */
         return ml_warn_return_nan();
+    }
+
+    if shape == 0.0 {
+        return if -log(unif_rand()) <= 1.0 {
+            0.0
+        } else {
+            ML_POSINF
+        };
     }
 
     scale * pow(-log(unif_rand()), 1.0 / shape)
@@ -186,6 +194,14 @@ mod tests {
     fn weibull_cdf_boundary() {
         assert_eq!(pweibull_inner(0.0, 2.0, 1.0, true, false), 0.0);
         assert_eq!(pweibull_inner(f64::INFINITY, 2.0, 1.0, true, false), 1.0);
+        // R_P_bounds_01 is tail-aware (R_DT_0/R_DT_1): verified against
+        // trunk pweibull.c compiled standalone.
+        assert_eq!(pweibull_inner(-1.0, 3.0, 1.0, false, false), 1.0);
+        assert_eq!(pweibull_inner(-1.0, 3.0, 1.0, false, true), 0.0);
+        assert_eq!(pweibull_inner(0.0, 3.0, 1.0, false, false), 1.0);
+        assert_eq!(pweibull_inner(f64::INFINITY, 3.0, 1.0, false, false), 0.0);
+        assert_eq!(pweibull_inner(f64::INFINITY, 3.0, 1.0, false, true), f64::NEG_INFINITY);
+        assert_eq!(pweibull_inner(-1.0, 3.0, 1.0, true, false), 0.0);
     }
 
     /// PR#19055: shape = 0 is now supported (previously returned NaN).
@@ -205,15 +221,21 @@ mod tests {
         assert_eq!(qweibull_inner(0.5, 0.0, 1.0, true, false), 0.0);
         assert!(qweibull_inner(0.9, 0.0, 1.0, true, false).is_infinite());
     }
-    /// rweibull with shape = 0 warns and returns NaN (stock rgamma.c-family
-    /// guard: shape <= 0 is out of domain; scale == 0 still yields 0).
+
+    /// rweibull with shape = 0 is the trunk degenerate case: each draw
+    /// consumes one uniform and returns 0 when -log(u) <= 1, else +Inf.
+    /// Golden values from trunk rweibull.c (bac5839) compiled standalone
+    /// with the same Marsaglia-MultiCarry stream, seed (1234, 5678).
     #[test]
-    fn weibull_shape_zero_random_is_nan() {
+    fn weibull_shape_zero_random_is_degenerate() {
         let _session = crate::test_session::TestSession::new();
-        for _ in 0..100 {
-            let r = rweibull_inner(0.0, 1.0);
-            assert!(r.is_nan(), "rweibull(shape=0) unexpected: {r}");
-        }
+        crate::rng::set_seed(1234, 5678);
+        let got: Vec<f64> = (0..12).map(|_| rweibull_inner(0.0, 1.0)).collect();
+        let inf = f64::INFINITY;
+        let want = [
+            inf, 0.0, 0.0, inf, 0.0, inf, 0.0, 0.0, 0.0, 0.0, 0.0, inf,
+        ];
+        assert_eq!(got, want.to_vec(), "rweibull(shape=0) stream changed");
         // scale == 0 short-circuits to 0 for any shape.
         assert_eq!(rweibull_inner(2.0, 0.0), 0.0);
     }

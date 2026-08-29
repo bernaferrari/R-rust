@@ -18,8 +18,8 @@ use std::os::raw::c_int;
 
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, OBJECT, PRINTNAME, RAW, REAL,
+    SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
@@ -686,22 +686,45 @@ unsafe fn parse_ties_method(value: SEXP) -> c_int {
     }
 }
 
-unsafe fn dim_product(dims: SEXP) -> Result<R_xlen_t, &'static str> {
+/// `R_XLEN_T_MAX` on 64-bit builds (LONG_VECTOR_SUPPORT): 2^52, as a double
+/// for the product overflow check (Rinternals.h).
+const R_XLEN_T_MAX: f64 = 4503599627370496.0;
+
+/// `dim(.)` --> `prod(dim(.))` { = `length(.)`} with all checks --- also called
+/// for `dim<-` (upstream attrib.c).
+///
+/// Ported from R's `dim2total` in array.c. Hard-errors on length-0, NA, or
+/// negative dims; returns `Err(())` when the product exceeds `R_XLEN_T_MAX`
+/// so each caller raises its own "too many elements" message.
+pub(crate) unsafe fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
     unsafe {
-        if dims.is_null() || dims == R_NilValue() || TYPEOF(dims) != SEXPTYPE::INTSXP {
-            return Err("'dims' must be an integer vector");
+        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+            array_error("'dims' must be an integer vector");
         }
-        let mut total: R_xlen_t = 1;
-        for i in 0..XLENGTH(dims) {
-            let dim = *INTEGER(dims).add(i as usize);
-            if dim < 0 {
-                return Err("negative extents are not allowed");
+        let ndim = XLENGTH(dim);
+        if ndim == 0 {
+            array_error("'dim' cannot be of length 0");
+        }
+        let mut dn: f64 = 1.0;
+        for i in 0..ndim as usize {
+            let value = *INTEGER(dim).add(i);
+            /* need this test first as NA_INTEGER is < 0 */
+            if value == NA_INTEGER {
+                array_error("the dims contain missing values");
             }
-            total = total
-                .checked_mul(dim as R_xlen_t)
-                .ok_or("array is too large")?;
+            if value < 0 {
+                array_error("the dims contain negative values");
+            }
+            if value != 0 {
+                dn *= value as f64;
+            } else {
+                dn = 0.0; // but continue checking ..
+            }
         }
-        Ok(total)
+        if dn > R_XLEN_T_MAX {
+            return Err(());
+        }
+        Ok(dn as R_xlen_t)
     }
 }
 
@@ -836,9 +859,9 @@ pub unsafe fn allocArray(mode: c_int, dims: SEXP) -> SEXP {
         if !valid_array_storage_type(mode) {
             array_error("invalid array storage mode");
         }
-        let len = match dim_product(dims) {
+        let len = match dim2total(dims) {
             Ok(len) => len,
-            Err(message) => array_error(message),
+            Err(()) => array_error("'allocArray': too many elements specified by 'dims'"),
         };
         let result = Rf_allocVector3(mode, len);
         if result.is_null() {
@@ -991,7 +1014,7 @@ pub unsafe fn do_transpose(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 /// `aperm(a, perm, resize = TRUE)` -- array transposition by permutation.
 ///
 /// Ported from R's `do_aperm` in array.c (line 1704).
-pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = first_arg(args, "aperm()");
         let source_dim = getAttrib(x, R_DimSymbol());
@@ -1021,9 +1044,22 @@ pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Short-circuit identity permutation (PR#19069): when resizing and the
         // permutation is the identity, return the original array unchanged.
-        if resize && perm.iter().enumerate().all(|(i, &axis)| axis == i) {
+        let is_identity = perm.iter().enumerate().all(|(i, &axis)| axis == i);
+        if resize && is_identity {
             return x;
         }
+
+        // Special case for 2D arrays (PR#19133): the only non-identity
+        // permutation of two dims is the transpose, so delegate to `t()`.
+        if ndim == 2 {
+            let transposed = do_transpose(call, op, args, env);
+            if resize {
+                return transposed;
+            }
+            setAttrib(transposed, R_DimSymbol(), source_dim);
+            return transposed;
+        }
+
         let permuted_dims: Vec<_> = perm.iter().map(|axis| dims[*axis]).collect();
 
         let result = Rf_allocVector3(TYPEOF(x), total as R_xlen_t);
@@ -1057,7 +1093,61 @@ pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         } else {
             setAttrib(result, R_DimSymbol(), source_dim);
         }
+
+        // Copy all other attributes as documented (names/dim/dimnames excluded).
+        copyMostAttrib(x, result);
         result
+    }
+}
+
+/// Set the S4 bit on an object (bit 4 of the gp field).
+#[inline]
+unsafe fn SET_S4_OBJECT(x: SEXP) {
+    unsafe {
+        if !x.is_null() {
+            let gp = (*x).sxpinfo.gp() | (1 << 4);
+            (*x).sxpinfo.set_gp(gp);
+        }
+    }
+}
+
+/// Unset the S4 bit on an object (bit 4 of the gp field).
+#[inline]
+unsafe fn UNSET_S4_OBJECT(x: SEXP) {
+    unsafe {
+        if !x.is_null() {
+            let gp = (*x).sxpinfo.gp() & !(1 << 4);
+            (*x).sxpinfo.set_gp(gp);
+        }
+    }
+}
+
+/// Copy all attributes from `src` to `dest` except dim, dimnames, and names
+/// (plus the OBJECT and S4 bits).
+///
+/// Ported from R's `copyMostAttrib` in attrib.c (line 301). Used by
+/// `do_aperm` (and `do_transpose` in essentials) as documented since 2006.
+pub(crate) unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
+    unsafe {
+        if dest.is_null() || dest == R_NilValue() {
+            array_error("attempt to set an attribute on NULL");
+        }
+        let mut cell = ATTRIB(src);
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
+                setAttrib(dest, tag, CAR(cell));
+            }
+            cell = CDR(cell);
+        }
+        if OBJECT(src) != 0 {
+            SET_OBJECT(dest, 1);
+        }
+        if crate::mainutils::coerce::IS_S4_OBJECT(src) != 0 {
+            SET_S4_OBJECT(dest);
+        } else {
+            UNSET_S4_OBJECT(dest);
+        }
     }
 }
 
@@ -1824,9 +1914,11 @@ mod tests {
             assert_eq!(*INTEGER(result_dim), 3);
             assert_eq!(*INTEGER(result_dim).add(1), 2);
 
+            // Trunk PR#19133: 2D non-identity aperm delegates to t(), which
+            // builds a fresh dim vector, so names(dim) are NOT permuted here
+            // (unlike the n > 2 general path).
             let dim_names = getAttrib(result_dim, R_NamesSymbol());
-            assert_eq!(string_elt_str(dim_names, 0), "cols");
-            assert_eq!(string_elt_str(dim_names, 1), "rows");
+            assert_eq!(dim_names, R_NilValue());
 
             let result_dimnames = getAttrib(result, R_DimNamesSymbol());
             let result_dimnames_names = getAttrib(result_dimnames, R_NamesSymbol());
@@ -1869,8 +1961,16 @@ mod tests {
 
             let dim_names = getAttrib(result_dim, R_NamesSymbol());
             assert_eq!(string_elt_str(dim_names, 0), "rows");
-            assert_eq!(string_elt_str(dim_names, 1), "cols");
-            assert_eq!(getAttrib(result, R_DimNamesSymbol()), R_NilValue());
+            // Trunk PR#19133: the !resize 2D path returns t()'s result with
+            // the dim reset, so the swapped dimnames survive (the general
+            // path drops them for !resize). This fixture has no
+            // names(dimnames), so none appear on the result either.
+            let result_dimnames = getAttrib(result, R_DimNamesSymbol());
+            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 0), 0), "c1");
+            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 0), 2), "c3");
+            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 1), 0), "r1");
+            assert_eq!(string_elt_str(VECTOR_ELT(result_dimnames, 1), 1), "r2");
+            assert_eq!(getAttrib(result_dimnames, R_NamesSymbol()), R_NilValue());
         }
     }
 

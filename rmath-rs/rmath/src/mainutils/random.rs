@@ -68,6 +68,14 @@ pub enum Sampletype {
     REJECTION = 1,
 }
 
+/// Different kinds of "Bin(n,p)" generators (R_ext/Random.h's Binomtype).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Binomtype {
+    BUGGY_BTPE = 0,
+    BTPE = 1,
+}
+
 type Int32 = u32; // unsigned 32-bit, matching R's typedef
 
 // ---------------------------------------------------------------------------
@@ -77,6 +85,7 @@ type Int32 = u32; // unsigned 32-bit, matching R's typedef
 const RNG_DEFAULT: RNGtype = RNGtype::MERSENNE_TWISTER;
 const N01_DEFAULT: N01type = N01type::INVERSION;
 const Sample_DEFAULT: Sampletype = Sampletype::REJECTION;
+const Binom_DEFAULT: Binomtype = Binomtype::BTPE;
 
 /// Threshold for using stack allocation vs heap allocation in Walker's method.
 const SMALL: usize = 10000;
@@ -129,6 +138,7 @@ pub(crate) struct RNGState {
     rng_kind: Cell<RNGtype>,
     n01_kind: Cell<N01type>,
     sample_kind: Cell<Sampletype>,
+    binom_kind: Cell<Binomtype>,
     rng_table: [RNGTab; 8],
     // Knuth TAOCP state
     kt_x: [i64; KT_KK],
@@ -190,6 +200,7 @@ impl RNGState {
             rng_kind: Cell::new(RNG_DEFAULT),
             n01_kind: Cell::new(N01_DEFAULT),
             sample_kind: Cell::new(Sample_DEFAULT),
+            binom_kind: Cell::new(Binom_DEFAULT),
             rng_table,
             kt_x: [0i64; KT_KK],
             kt_ran_arr_buf: [0i64; KT_QUALITY],
@@ -756,6 +767,10 @@ pub fn r_sample_kind() -> Sampletype {
     with_rng_state(|rng| rng.sample_kind.get())
 }
 
+pub fn r_binom_kind() -> Binomtype {
+    with_rng_state(|rng| rng.binom_kind.get())
+}
+
 // ---------------------------------------------------------------------------
 // GetRNGstate / PutRNGstate
 // ---------------------------------------------------------------------------
@@ -834,6 +849,7 @@ pub unsafe fn GetRNGstate() {
                     rng.rng_kind.set(RNG_DEFAULT);
                     rng.n01_kind.set(N01_DEFAULT);
                     rng.sample_kind.set(Sample_DEFAULT);
+                    rng.binom_kind.set(Binom_DEFAULT);
                     RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
                 });
                 PutRNGstate();
@@ -850,16 +866,18 @@ pub unsafe fn GetRNGstate() {
 
         let is = INTEGER(seeds);
         let tmp = *is.add(0);
-        if tmp == NA_INTEGER || tmp < 0 || tmp > 11000 {
+        // avoid overflow here: max current value is 110507
+        if tmp == NA_INTEGER || tmp < 0 || tmp > 111000 {
             invalid!("'.Random.seed[1]' is not a valid integer, so ignored");
         }
 
         let new_rng = tmp % 100;
         let new_n01 = (tmp % 10000) / 100;
-        let new_sample = tmp / 10000;
+        let new_sample = (tmp % 100000) / 10000;
+        let new_binom = tmp / 100000;
 
-        if new_n01 > 5 || new_sample > 1 {
-            invalid!("'.Random.seed[1]' is not a valid Normal type, so ignored");
+        if new_n01 > 5 || new_sample > 1 || new_binom > 1 {
+            invalid!("'.Random.seed[1]' is not a valid Normal | Sample | Binom type, so ignored");
         }
 
         let rng_kind = match new_rng {
@@ -869,12 +887,14 @@ pub unsafe fn GetRNGstate() {
             3 => RNGtype::MERSENNE_TWISTER,
             4 => RNGtype::KNUTH_TAOCP,
             5 => {
-                invalid!("'.Random.seed[1] = 5' but no user-supplied generator, so ignored");
+                invalid!(
+                    "'.Random.seed[1] %% 100 = 5' but no user-supplied generator, so ignored"
+                );
             }
             6 => RNGtype::KNUTH_TAOCP2,
             7 => RNGtype::LECUYER_CMRG,
             _ => {
-                invalid!("'.Random.seed[1]' is not a valid RNG kind so ignored");
+                invalid!("'.Random.seed[1] %% 100' is not a valid RNG kind so ignored");
             }
         };
 
@@ -893,16 +913,22 @@ pub unsafe fn GetRNGstate() {
             Sampletype::REJECTION
         };
 
+        let binom_kind = if new_binom == 0 {
+            Binomtype::BUGGY_BTPE
+        } else {
+            Binomtype::BTPE
+        };
+
         let len_seed = rng_table_len_seed(rng_kind);
         let seeds_len = XLENGTH(seeds) as usize;
         if seeds_len > 1 && seeds_len < len_seed + 1 {
             error("'.Random.seed' has wrong length");
         }
-
         with_rng_state(|rng| {
             rng.rng_kind.set(rng_kind);
             rng.n01_kind.set(n01_kind);
             rng.sample_kind.set(sample_kind);
+            rng.binom_kind.set(binom_kind);
 
             if seeds_len == 1 && rng_kind != RNGtype::USER_UNIF {
                 RNG_Init(rng, rng_kind, TimeToSeed() as i64);
@@ -941,6 +967,7 @@ fn rng_kind_out_of_range() -> bool {
         rng.rng_kind.get() as i32 > 7
             || rng.n01_kind.get() as i32 > 5
             || rng.sample_kind.get() as i32 > 1
+            || rng.binom_kind.get() as i32 > 1
     })
 }
 
@@ -956,6 +983,7 @@ pub unsafe fn PutRNGstate() {
             let kind = rng.rng_kind.get();
             let n01 = rng.n01_kind.get();
             let samp = rng.sample_kind.get();
+            let binom = rng.binom_kind.get();
             let ls = rng.rng_table[kind as usize].n_seed;
 
             // Keep the Knuth working state in i_seed so it round-trips
@@ -965,7 +993,10 @@ pub unsafe fn PutRNGstate() {
 
             // Build the full seed vector: [kinds, i_seed[0], i_seed[1], ...]
             let mut sv = vec![0i32; ls + 1];
-            sv[0] = kind as i32 + 100 * n01 as i32 + 10000 * samp as i32;
+            sv[0] = kind as i32
+                + 100 * n01 as i32
+                + 10000 * samp as i32
+                + 100000 * binom as i32;
             for j in 0..ls {
                 sv[j + 1] = rng.rng_table[kind as usize].i_seed[j] as i32;
             }
@@ -1082,6 +1113,17 @@ fn r_Samp_kind(kind: Sampletype) {
     }
 }
 
+fn r_Bin_kind(kind: Binomtype) {
+    if kind as i32 > 1 {
+        error("invalid binom type in 'RNGkind'");
+    }
+    unsafe { GetRNGstate() }; /* might not be initialized */
+    with_rng_state(|rng| rng.binom_kind.set(kind));
+    unsafe {
+        PutRNGstate();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // R scalar random generators (matching Rmath.h signatures)
 // ---------------------------------------------------------------------------
@@ -1191,6 +1233,10 @@ pub fn R_unif_index(dn: c_double) -> c_double {
 
 pub fn R_sample_kind() -> c_int {
     r_sample_kind() as c_int
+}
+
+pub fn R_binom_kind() -> c_int {
+    r_binom_kind() as c_int
 }
 
 // ---------------------------------------------------------------------------
@@ -1785,6 +1831,8 @@ const N01_KIND_NAMES: [&str; 7] = [
 
 const SAMPLE_KIND_NAMES: [&str; 3] = ["Rounding", "Rejection", "default"];
 
+const BINOM_KIND_NAMES: [&str; 3] = ["Buggy BTPE", "BTPE", "default"];
+
 /// pmatch(x, table) for one string: exact match wins, then a unique prefix
 /// match; ambiguity or no match is None (stock pmatch).
 fn pmatch_one(x: &str, table: &[&str]) -> Option<usize> {
@@ -1824,14 +1872,15 @@ unsafe fn kind_tag_is(x: SEXP, name: &str) -> bool {
 
 /// Map positional slots to kind parameters by tag when any tag is present.
 ///
-/// `cells` are the pairlist cells holding the kind/normal.kind/sample.kind
-/// arguments in call order; TAG is read from the cell, not the value.
-unsafe fn resolve_kind_args(cells: [SEXP; 3]) -> (SEXP, SEXP, SEXP) {
+/// `cells` are the pairlist cells holding the kind/normal.kind/sample.kind/
+/// binom.kind arguments in call order; TAG is read from the cell, not the value.
+unsafe fn resolve_kind_args(cells: [SEXP; 4]) -> (SEXP, SEXP, SEXP, SEXP) {
     unsafe {
         let nil = R_NilValue();
         let mut kind = nil;
         let mut norm = nil;
         let mut sample = nil;
+        let mut binom = nil;
         for cell in cells {
             if cell.is_null() || cell == nil {
                 continue;
@@ -1844,19 +1893,23 @@ unsafe fn resolve_kind_args(cells: [SEXP; 3]) -> (SEXP, SEXP, SEXP) {
                 norm = x;
             } else if kind_tag_is(cell, "sample.kind") {
                 sample = x;
+            } else if kind_tag_is(cell, "binom.kind") {
+                binom = x;
             } else {
                 // Untagged slots fill kind, then normal.kind, then
-                // sample.kind (stock positional order).
+                // sample.kind, then binom.kind (stock positional order).
                 if kind == nil {
                     kind = x;
                 } else if norm == nil {
                     norm = x;
-                } else {
+                } else if sample == nil {
                     sample = x;
+                } else {
+                    binom = x;
                 }
             }
         }
-        (kind, norm, sample)
+        (kind, norm, sample, binom)
     }
 }
 
@@ -1909,7 +1962,7 @@ unsafe fn parse_normal_kind_arg(arg: SEXP, from_setseed: bool) -> Option<i32> {
         }
         let s = kind_string(arg);
         match pmatch_one(&s, &N01_KIND_NAMES) {
-            None => kind_error(&format!("'{s}' is not a valid choice")),
+            None => kind_error(&format!("'{s}' is not valid for 'normal.kind'")),
             Some(0) => {
                 // Buggy Kinderman-Ramage
                 if from_setseed {
@@ -1935,12 +1988,34 @@ unsafe fn parse_sample_kind_arg(arg: SEXP) -> Option<i32> {
         }
         let s = kind_string(arg);
         match pmatch_one(&s, &SAMPLE_KIND_NAMES) {
-            None => kind_error(&format!("'{s}' is not a valid choice")),
+            None => kind_error(&format!("'{s}' is not valid for 'sample.kind'")),
             Some(0) => {
                 warn("non-uniform 'Rounding' sampler used");
                 Some(0)
             }
             Some(i) if i == SAMPLE_KIND_NAMES.len() - 1 => Some(-1),
+            Some(i) => Some(i as i32),
+        }
+    }
+}
+
+/// `binom.kind = NULL` absent | code 0..=1 | -1 for "default".
+unsafe fn parse_binom_kind_arg(arg: SEXP) -> Option<i32> {
+    unsafe {
+        if arg_is_absent(arg) {
+            return None;
+        }
+        if TYPEOF(arg) != SEXPTYPE::STRSXP || XLENGTH(arg) != 1 {
+            kind_error("'binom.kind' must be a character string");
+        }
+        let s = kind_string(arg);
+        match pmatch_one(&s, &BINOM_KIND_NAMES) {
+            None => kind_error(&format!("'{s}' is not valid for 'binom.kind'")),
+            Some(0) => {
+                warn("Buggy BTPE algorithm used for rbinom()");
+                Some(0)
+            }
+            Some(i) if i == BINOM_KIND_NAMES.len() - 1 => Some(-1),
             Some(i) => Some(i as i32),
         }
     }
@@ -1982,7 +2057,16 @@ fn sample_kind_from_code(code: i32) -> Sampletype {
     }
 }
 
-/// R's `RNGkind(kind = NULL, normal.kind = NULL, sample.kind = NULL)`.
+fn binom_kind_from_code(code: i32) -> Binomtype {
+    match code {
+        0 => Binomtype::BUGGY_BTPE,
+        -1 => Binom_DEFAULT,
+        _ => Binomtype::BTPE,
+    }
+}
+
+/// R's `RNGkind(kind = NULL, normal.kind = NULL, sample.kind = NULL,
+/// binom.kind = NULL)`.
 ///
 /// Returns the *old* kind names as a character vector; the value is visible
 /// when nothing was set and invisible otherwise (stock closure behavior).
@@ -1991,18 +2075,24 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         checkArity(op, args);
         GetRNGstate(); /* might not be initialized */
 
-        let (rng_code, norm_code, sample_code) =
-            resolve_kind_args([args, CDR(args), CDR(CDR(args))]);
+        let (rng_code, norm_code, sample_code, binom_code) = resolve_kind_args([
+            args,
+            CDR(args),
+            CDR(CDR(args)),
+            CDR(CDR(CDR(args))),
+        ]);
         let rng_parsed = parse_rng_kind_arg(rng_code);
         let norm_parsed = parse_normal_kind_arg(norm_code, false);
         let sample_parsed = parse_sample_kind_arg(sample_code);
+        let binom_parsed = parse_binom_kind_arg(binom_code);
 
         // Snapshot the old kinds before applying anything.
-        let (old_rng, old_n01, old_sample) = with_rng_state(|rng| {
+        let (old_rng, old_n01, old_sample, old_binom) = with_rng_state(|rng| {
             (
                 rng.rng_kind.get() as c_int,
                 rng.n01_kind.get() as c_int,
                 rng.sample_kind.get() as c_int,
+                rng.binom_kind.get() as c_int,
             )
         });
 
@@ -2019,13 +2109,17 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         if let Some(code) = sample_parsed {
             r_Samp_kind(sample_kind_from_code(code));
         }
+        if let Some(code) = binom_parsed {
+            r_Bin_kind(binom_kind_from_code(code));
+        }
 
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 4);
         let _ans_guard = protect(ans);
         for (i, name) in [
             RNG_KIND_NAMES[old_rng as usize],
             N01_KIND_NAMES[old_n01 as usize],
             SAMPLE_KIND_NAMES[old_sample as usize],
+            BINOM_KIND_NAMES[old_binom as usize],
         ]
         .iter()
         .enumerate()
@@ -2035,13 +2129,17 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
 
         crate::sexp::globals::set_R_Visible(i32::from(
-            rng_parsed.is_none() && norm_parsed.is_none() && sample_parsed.is_none(),
+            rng_parsed.is_none()
+                && norm_parsed.is_none()
+                && sample_parsed.is_none()
+                && binom_parsed.is_none(),
         ));
         ans
     }
 }
 
-/// R's `set.seed(seed, kind = NULL, normal.kind = NULL, sample.kind = NULL)`.
+/// R's `set.seed(seed, kind = NULL, normal.kind = NULL, sample.kind = NULL,
+/// binom.kind = NULL)`.
 ///
 /// Returns invisible NULL.
 pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -2050,10 +2148,16 @@ pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         // The stock closure validates kind arguments before any state change.
         let tail = CDR(args);
-        let (skind, nkind, sampkind) = resolve_kind_args([tail, CDR(tail), CDR(CDR(tail))]);
+        let (skind, nkind, sampkind, binomkind) = resolve_kind_args([
+            tail,
+            CDR(tail),
+            CDR(CDR(tail)),
+            CDR(CDR(CDR(tail))),
+        ]);
         let kind_parsed = parse_rng_kind_arg(skind);
         let norm_parsed = parse_normal_kind_arg(nkind, true);
         let sample_parsed = parse_sample_kind_arg(sampkind);
+        let binom_parsed = parse_binom_kind_arg(binomkind);
 
         let seed: i64;
         if !isNull(CAR(args)) && CAR(args) != R_MissingArg() {
@@ -2083,6 +2187,9 @@ pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
         if let Some(code) = sample_parsed {
             r_Samp_kind(sample_kind_from_code(code));
+        }
+        if let Some(code) = binom_parsed {
+            r_Bin_kind(binom_kind_from_code(code));
         }
 
         // Initialize the RNG with the seed (zaps Box-Muller history)
@@ -2127,6 +2234,21 @@ pub fn nmath_unif_hook() -> f64 {
         r_unif_rand()
     } else {
         crate::nmath::rng::multicarry_unif_rand()
+    }
+}
+
+/// Hook installed into the nmath crate so `rbinom()`'s BTPE algorithm
+/// selection follows the session's `binom.kind` — the port-side equivalent
+/// of stock RNG.c's `Bin_kind` writing nmath's shared `Binom_kind` global.
+pub fn nmath_binom_kind_hook() -> crate::nmath::rng::Binomtype {
+    if crate::sexp::instance::current_instance_ptr().is_some() {
+        match r_binom_kind() {
+            Binomtype::BUGGY_BTPE => crate::nmath::rng::Binomtype::BUGGY_BTPE,
+            Binomtype::BTPE => crate::nmath::rng::Binomtype::BTPE,
+        }
+    } else {
+        // No active session: the standalone default (ML_Binom_kind role).
+        crate::nmath::rng::Binomtype::BTPE
     }
 }
 

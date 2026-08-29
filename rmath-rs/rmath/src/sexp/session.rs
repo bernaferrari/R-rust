@@ -267,6 +267,11 @@ impl RSession {
             // serves every session and falls back to the standalone
             // MultiCarry stream when no instance is active.
             rmath_nmath::rng::set_unif_hook(Some(crate::mainutils::random::nmath_unif_hook));
+            // Route the nmath rbinom() algorithm selection through the
+            // session's binom.kind (RNGkind(binom.kind=...) / set.seed).
+            rmath_nmath::rng::set_binom_kind_hook(Some(
+                crate::mainutils::random::nmath_binom_kind_hook,
+            ));
         }
         RSession {
             active: true,

@@ -1,0 +1,64 @@
+diff --git a/src/nmath/dweibull.c b/src/nmath/dweibull.c
+index d18cb67..bcb7821 100644
+--- a/src/nmath/dweibull.c
++++ b/src/nmath/dweibull.c
+@@ -32,7 +32,7 @@ double dweibull(double x, double shape, double scale, int give_log)
+     if (ISNAN(x) || ISNAN(shape) || ISNAN(scale))
+ 	return x + shape + scale;
+ #endif
+-    if (shape <= 0 || scale <= 0) ML_WARN_return_NAN;
++    if (shape < 0 || scale <= 0) ML_WARN_return_NAN;
+ 
+     if (x < 0) return R_D__0;
+     if (!R_FINITE(x)) return R_D__0;
+diff --git a/src/nmath/pweibull.c b/src/nmath/pweibull.c
+index 922f6d9..4d625a9 100644
+--- a/src/nmath/pweibull.c
++++ b/src/nmath/pweibull.c
+@@ -31,10 +31,10 @@ double pweibull(double x, double shape, double scale, int lower_tail, int log_p)
+     if (ISNAN(x) || ISNAN(shape) || ISNAN(scale))
+ 	return x + shape + scale;
+ #endif
+-    if(shape <= 0 || scale <= 0) ML_WARN_return_NAN;
++    if(shape < 0 || scale <= 0) ML_WARN_return_NAN;
++
++    R_P_bounds_01(x, 0., ML_POSINF);
+ 
+-    if (x <= 0)
+-	return R_DT_0;
+     x = -pow(x / scale, shape);
+     return lower_tail
+ 	? (log_p ? R_Log1_Exp(x) : -expm1(x))
+diff --git a/src/nmath/qweibull.c b/src/nmath/qweibull.c
+index 22bf5ee..a651a3d 100644
+--- a/src/nmath/qweibull.c
++++ b/src/nmath/qweibull.c
+@@ -32,7 +32,7 @@ double qweibull(double p, double shape, double scale, int lower_tail, int log_p)
+     if (ISNAN(p) || ISNAN(shape) || ISNAN(scale))
+ 	return p + shape + scale;
+ #endif
+-    if (shape <= 0 || scale <= 0) ML_WARN_return_NAN;
++    if (shape < 0 || scale <= 0) ML_WARN_return_NAN;
+ 
+     R_Q_P01_boundaries(p, 0, ML_POSINF);
+ 
+diff --git a/src/nmath/rweibull.c b/src/nmath/rweibull.c
+index 0fdd4db..a952d1a 100644
+--- a/src/nmath/rweibull.c
++++ b/src/nmath/rweibull.c
+@@ -26,11 +26,14 @@
+ 
+ double rweibull(double shape, double scale)
+ {
+-    if (!R_FINITE(shape) || !R_FINITE(scale) || shape <= 0. || scale <= 0.) {
++    if (!R_FINITE(shape) || !R_FINITE(scale) || shape < 0. || scale <= 0.) {
+ 	if(scale == 0.) return 0.;
+ 	/* else */
+ 	ML_WARN_return_NAN;
+     }
+ 
++    if (shape == 0.)
++	return -log(unif_rand()) <= 1.0 ? 0. : ML_POSINF;
++
+     return scale * pow(-log(unif_rand()), 1.0 / shape);
+ }

@@ -420,7 +420,12 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
             st.psave = pp;
             st.nsave = n;
             if np < 30.0 {
-                st.qn = crate::special::mlutils::R_pow_di(q, n);
+                st.qn = /* (1-p)^n = q^n, but (1-p) may have underflown to 1 : */
+                    if p > 0.25 {
+                        crate::special::mlutils::R_pow_di(q, n)
+                    } else {
+                        exp((n as f64) * log1p(-p))
+                    };
             } else {
                 let ffm = np + p;
                 st.m = ffm as i32;
@@ -439,15 +444,13 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
                 st.p3 = st.p2 + st.c / st.xll;
                 st.p4 = st.p3 + st.c / st.xlr;
             }
-        } else if n == st.nsave {
-            if np < 30.0 {
-                // go to L_np_small
-            } else {
-                // fall through to BTPE
-            }
+        } else {
+            // pp == psave && n == nsave
         }
 
         let use_small = np < 30.0;
+
+        let rbinom_kind = R_binom_kind(); /* ../main/RNG.c */
 
         if !use_small {
             // BTPE algorithm (Kachitvichyanukul & Schmeiser 1988).  The
@@ -507,10 +510,15 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
                         break 'btpe ix;
                     }
                 } else {
+                    // 21 <= k <= npq/2 - 2 : ==> 21 <= npq/2 - 2 <==> npq >= 46
                     // squeezing using upper and lower bounds on log(f(x))
+                    let one_6th = if rbinom_kind == Binomtype::BTPE {
+                        0.16666666666666666
+                    } else {
+                        0.1666666666666
+                    };
                     let amaxp = ((k as f64) / st.npq)
-                        * (((k as f64) * ((k as f64) / 3.0 + 0.625) + 0.1666666666666) / st.npq
-                            + 0.5);
+                        * (((k as f64) * ((k as f64) / 3.0 + 0.625) + one_6th) / st.npq + 0.5);
                     let ynorm = -((k as f64) * (k as f64)) / (2.0 * st.npq);
                     let alv = log(vt);
                     if alv < ynorm - amaxp {
@@ -527,24 +535,57 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
                         let x2 = x1 * x1;
                         let f2 = f1 * f1;
                         let w2 = w * w;
-                        if alv
-                            <= st.xm * log(f1 / x1)
-                                + ((n - st.m) as f64 + 0.5) * log(z / w)
-                                + (ix - st.m) as f64 * log(w * p / (x1 * q))
-                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / f2) / f2) / f2) / f2)
-                                    / f1
-                                    / 166320.0
-                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / z2) / z2) / z2) / z2)
-                                    / z
-                                    / 166320.0
-                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / x2) / x2) / x2) / x2)
-                                    / x1
-                                    / 166320.0
-                                + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / w2) / w2) / w2) / w2)
-                                    / w
-                                    / 166320.0
-                        {
-                            break 'btpe ix;
+                        if rbinom_kind == Binomtype::BTPE {
+                            if alv
+                                <= st.xm * log(f1 / x1)
+                                    + ((n - st.m) as f64 + 0.5) * log(z / w)
+                                    + (ix - st.m) as f64 * log(w * p / (x1 * q))
+                                    + ((13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / f2) / f2) / f2)
+                                        / f2)
+                                        / f1
+                                        + (13860.0
+                                            - (462.0 - (132.0 - (99.0 - 140.0 / z2) / z2) / z2)
+                                            / z2)
+                                            / z)
+                                        / 166320.0
+                                        - /* was '+' */ ((13860.0
+                                            - (462.0 - (132.0 - (99.0 - 140.0 / x2) / x2) / x2)
+                                            / x2)
+                                            / x1
+                                            + (13860.0
+                                                - (462.0 - (132.0 - (99.0 - 140.0 / w2) / w2) / w2)
+                                                / w2)
+                                            / w)
+                                        / 166320.0
+                            {
+                                break 'btpe ix;
+                            }
+                        } else {
+                            // BUGGY_BTPE: PR#19049's pre-fix '+' signs
+                            // retained so old streams can be replayed
+                            if alv
+                                <= st.xm * log(f1 / x1)
+                                    + ((n - st.m) as f64 + 0.5) * log(z / w)
+                                    + (ix - st.m) as f64 * log(w * p / (x1 * q))
+                                    + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / f2) / f2) / f2)
+                                        / f2)
+                                        / f1
+                                        / 166320.0
+                                    + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / z2) / z2) / z2)
+                                        / z2)
+                                        / z
+                                        / 166320.0
+                                    + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / x2) / x2) / x2)
+                                        / x2)
+                                        / x1
+                                        / 166320.0
+                                    + (13860.0 - (462.0 - (132.0 - (99.0 - 140.0 / w2) / w2) / w2)
+                                        / w2)
+                                        / w
+                                        / 166320.0
+                            {
+                                break 'btpe ix;
+                            }
                         }
                     }
                 }
@@ -659,6 +700,9 @@ mod tests {
         // Covers the BTPE triangular/parallelogram/tail regions, the
         // accept/reject squeeze, the p > 0.5 complement flip and the
         // np < 30 inverse-CDF path (qn = R_pow_di(q, n)).
+        // Re-verified against trunk (bac5839) rbinom.c compiled standalone
+        // with this stream: PR#19049's sign fix and the qn log1p path do
+        // not shift any of these sequences.
         let mut session = TestSession::new();
         session.with_protected(|| {
             crate::rng::set_seed(1234, 5678);
@@ -700,6 +744,49 @@ mod tests {
             crate::rng::set_seed(5, 5);
             let got: Vec<i32> = (0..6).map(|_| rbinom_inner(500.0, 0.9) as i32).collect();
             assert_eq!(got, [440, 448, 452, 451, 450, 456]);
+        });
+    }
+
+    /// PR#19049: the corrected (BTPE) Stirling squeeze terms and the
+    /// BUGGY_BTPE replay mode diverge on real streams. Goldens from trunk
+    /// (bac5839) rbinom.c compiled standalone with the built-in
+    /// Marsaglia-MultiCarry stream, seed (2058, 2058*7919+13); the
+    /// pre-2026 algorithm (and the vendored old r-source) draws
+    /// [82, 79, 59, 65, 92, 76] on the same stream.
+    #[test]
+    fn rbinom_binom_kind_switches_stirling_squeeze() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            assert_eq!(R_binom_kind(), Binomtype::BTPE);
+
+            crate::rng::set_seed(2058, 2058 * 7919 + 13);
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(200.0, 0.4) as i32).collect();
+            assert_eq!(got, [82, 79, 65, 92, 76, 85]);
+
+            set_binom_kind(Binomtype::BUGGY_BTPE);
+            crate::rng::set_seed(2058, 2058 * 7919 + 13);
+            let got: Vec<i32> = (0..6).map(|_| rbinom_inner(200.0, 0.4) as i32).collect();
+            assert_eq!(got, [82, 79, 59, 65, 92, 76]);
+
+            set_binom_kind(Binomtype::BTPE);
+        });
+    }
+
+    /// Trunk rbinom.c computes the inverse-CDF seed probability as
+    /// q^n when p > 0.25 and exp(n * log1p(-p)) otherwise (where 1-p may
+    /// have rounded to 1). Check both arms through the cached state.
+    #[test]
+    fn rbinom_small_np_qn_formula_follows_p_quarter() {
+        let mut session = TestSession::new();
+        session.with_protected(|| {
+            let _ = rbinom_inner(100.0, 0.1);
+            with_rbinom_state(|st| {
+                assert!((st.qn - exp(100.0 * log1p(-0.1))).abs() < 1e-15);
+            });
+            let _ = rbinom_inner(40.0, 0.3);
+            with_rbinom_state(|st| {
+                assert!((st.qn - crate::special::mlutils::R_pow_di(0.7, 40)).abs() < 1e-15);
+            });
         });
     }
 }

@@ -949,9 +949,15 @@ unsafe fn SubassignTypeFix(
             }
 
             1025 | 1325 | 1425 | 1525 | 1625 | 2425 => {
-                // various <- S4/OBJ
+                // various <- S4|OBJ
                 if dispatch_asvector(y, call, rho) {
-                    return SubassignTypeFix(x, y, stretch, level, call, rho);
+                    // dispatch_asvector() leaves the new *y unprotected; the
+                    // recursive call below may allocate (coerceVector), so the
+                    // new value has to be protected (upstream GC fix):
+                    let y_guard = protect(*y);
+                    let which = SubassignTypeFix(x, y, stretch, level, call, rho);
+                    drop(y_guard);
+                    return which;
                 }
             }
 

@@ -436,6 +436,11 @@ unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, Stri
                                             "formal argument \"{ftag_name}\" matched by multiple actual arguments"
                                         ));
                                     }
+                                    crate::mainutils::match_mod::R_warn_partial_match_args(
+                                        R_NilValue(),
+                                        btag,
+                                        ftag,
+                                    );
                                     SETCAR(result_cells[formal_idx], CAR(supplied_cells[i]));
                                     used[i] = 1;
                                     fargused[formal_idx] = true;
