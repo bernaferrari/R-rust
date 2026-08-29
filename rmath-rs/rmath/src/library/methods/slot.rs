@@ -2,8 +2,10 @@
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/methods/src/slot.c
  *
- *  S4 slot access functions. These delegate to the main implementations
- *  in main/attrib.rs (R_do_slot, R_do_slot_assign, R_has_slot).
+ *  S4 slot access functions. The canonical slot machinery (R_do_slot,
+ *  R_do_slot_assign, R_has_slot) lives in mainutils/essentials/s4.rs;
+ *  the simplified counterparts below operate directly on the object's
+ *  names attribute and vector payload.
  */
 
 use std::os::raw::c_int;

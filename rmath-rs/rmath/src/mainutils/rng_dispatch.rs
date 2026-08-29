@@ -229,12 +229,11 @@ fn sample_indices(population_len: R_xlen_t, size: R_xlen_t, replace: bool) -> Ve
     indices
 }
 
-/// Weighted sampling through the stock ProbSampleReplace / ProbSampleNoReplace
-/// algorithms (descending revsort + cumulative scan / totalmass depletion).
-/// Stock picks walker_ProbSampleReplace when more than 200 categories have
-/// `n * p[i] > 0.1`; that alias-method variant is not ported, so those very
-/// wide weight vectors take the plain path (same distribution, different
-/// stream from stock).
+/// Weighted sampling through the stock algorithms (random.c do_sample):
+/// walker_ProbSampleReplace (alias method) when more than 200 categories
+/// have `n * p[i] > 0.1`, else ProbSampleReplace (descending revsort +
+/// cumulative scan); ProbSampleNoReplace (totalmass depletion) when
+/// `replace = FALSE`.
 fn weighted_sample_indices(weights: &[f64], size: R_xlen_t, replace: bool) -> Vec<usize> {
     if weights.is_empty() || size <= 0 {
         return Vec::new();
@@ -243,13 +242,17 @@ fn weighted_sample_indices(weights: &[f64], size: R_xlen_t, replace: bool) -> Ve
     let n = weights.len();
     let mut p = weights.to_vec();
     let ans = if replace {
-        crate::mainutils::random::ProbSampleReplace_r(n, &mut p, size as usize)
+        let nc = p.iter().filter(|&&pi| n as f64 * pi > 0.1).count();
+        if nc > 200 {
+            crate::mainutils::random::walker_ProbSampleReplace_r(n, &mut p, size as usize)
+        } else {
+            crate::mainutils::random::ProbSampleReplace_r(n, &mut p, size as usize)
+        }
     } else {
         crate::mainutils::random::ProbSampleNoReplace_r(n, &mut p, size as usize)
     };
     ans.into_iter().map(|v| v as usize - 1).collect()
 }
-
 
 /// Coerce `prob` to doubles and apply stock FixupProb (random.c): the
 /// coercion matches coerceVector(INTSXP/LGLSXP -> REALSXP), then NA /

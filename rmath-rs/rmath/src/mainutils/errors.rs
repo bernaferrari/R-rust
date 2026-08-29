@@ -765,7 +765,9 @@ fn strip_call_prefix(message: &str) -> String {
 /// values convert to logical.
 unsafe fn show_error_locations_enabled() -> bool {
     unsafe {
-        let opt = GetOption1(Rf_install(b"show.error.locations\0".as_ptr() as *const c_char));
+        let opt = GetOption1(Rf_install(
+            b"show.error.locations\0".as_ptr() as *const c_char
+        ));
         if opt.is_null() || isNull(opt) != 0 || XLENGTH(opt) != 1 {
             return false;
         }
@@ -1737,7 +1739,7 @@ pub(crate) unsafe fn take_warnings_block() -> Option<String> {
 /// `deparse1s()` of a stored warning call as a Rust string (errors.c uses the
 /// same rendering for the `In <call> :` header). Falls back to `<call>` when
 /// the deparse yields nothing usable, mirroring the error renderer above.
-unsafe fn warning_dcall(call: SEXP) -> String {
+pub(crate) unsafe fn warning_dcall(call: SEXP) -> String {
     unsafe {
         let dcall_sexp = crate::mainutils::deparse::deparse1s(call);
         if dcall_sexp.is_null()

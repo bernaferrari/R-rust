@@ -5,6 +5,9 @@
 //! structure instead of inline in the register function; names must be
 //! unique (enforced by test below) since registration resolves handlers
 //! purely by name.
+//!
+//! SPECIALSXP special forms (`if`, `while`, `function`, `<-`, ...) are
+//! registered separately by `eval::arithmetic::register_special_forms`.
 
 /// All builtin names registered by `register_essentials_builtins`, in order.
 pub(super) const ALL_FNS: &[&str] = &[
@@ -694,6 +697,26 @@ pub(super) const ALL_FNS: &[&str] = &[
     "besselJ",
     "besselK",
     "besselY",
+    // Arithmetic and comparison operators plus `mean`, moved from
+    // eval/arithmetic.rs `register_arithmetic_builtins` (now deleted):
+    // registration resolves handlers purely by name, so the essentials
+    // loop binds them identically via `make_primitive_binding`.
+    "+",
+    "-",
+    "*",
+    "/",
+    "^",
+    "%%",
+    "%/%",
+    ":",
+    "<",
+    ">",
+    "<=",
+    ">=",
+    "==",
+    "!=",
+    "mean",
+    "(",
 ];
 
 #[cfg(test)]
@@ -706,5 +729,28 @@ mod tests {
         for name in ALL_FNS {
             assert!(seen.insert(*name), "duplicate builtin name: {name}");
         }
+    }
+
+    #[test]
+    fn arithmetic_operator_names_resolve() {
+        // The operator/comparison names and `mean` moved from
+        // eval/arithmetic.rs `register_arithmetic_builtins` into ALL_FNS;
+        // each must still resolve a canonical R_FunTab entry and a builtin
+        // handler by name. `(` only needs its funtab entry: it dispatches
+        // through the evaluator's special-form path, not the handler table.
+        let names = [
+            "+", "-", "*", "/", "^", "%%", "%/%", ":", "<", ">", "<=", ">=", "==", "!=", "mean",
+        ];
+        for name in names {
+            assert!(
+                crate::eval::primitive::fun_tab_index_by_name(name).is_some(),
+                "no R_FunTab entry for arithmetic builtin {name}"
+            );
+            assert!(
+                crate::eval::builtin::has_builtin_handler(name),
+                "no builtin handler for arithmetic builtin {name}"
+            );
+        }
+        assert!(crate::eval::primitive::fun_tab_index_by_name("(").is_some());
     }
 }

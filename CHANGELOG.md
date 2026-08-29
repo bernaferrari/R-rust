@@ -4,6 +4,23 @@
 
 This is the first Android-focused Rust R runtime slice.
 
+### Numerical fidelity fixes (2026-08-29)
+
+- `besselJ` now matches GNU R trunk for integer orders >= 3 at small and
+  moderate `x`: the branch-3 storing backward-recursion loop reads the
+  `b[n+2]` term (was reading `b[n+1]`), the `nend < 0` path falls through
+  into the shared storing loop like `J_bessel` in `bessel_j.c` instead of a
+  divergent re-derivation, normalization uses `Rf_gamma_cody` like stock, and
+  the `very_small_nu` clamp is `2^-800` (was `2^-1022`). 64-probe trunk
+  parity matrix added (`rmath-test` Special Functions).
+- `sample(..., prob = ...)` with replacement now uses Walker's alias method
+  (port of `walker_ProbSampleReplace` in `random.c`) when more than 200
+  categories have `n * p[i] > 0.1`, so the sampled values match stock R
+  exactly on a seeded stream (previously those wide weight vectors took the
+  plain path with a different draw count). Seeded-parity tests added
+  (`rmath-test` Sampling incl. the 200/201 dispatch boundary and the
+  `sample.kind = "Rounding"` variant).
+
 ### Correctness and maintenance fixes (2026-07-11)
 
 - Corrected two TOMS 708 translation defects: `bup` now retains every

@@ -2419,6 +2419,73 @@ pub fn ProbSampleReplace_r(n: usize, p: &mut [f64], nans: usize) -> Vec<c_int> {
     ans
 }
 
+/// A version using Walker's alias method, based on Alg 3.13B in
+/// Ripley (1987). Port of walker_ProbSampleReplace
+/// (r-source/src/main/random.c), which stock `do_sample` picks over
+/// ProbSampleReplace when more than 200 categories have `n * p[i] > 0.1`.
+///
+/// `p` must already be FixupProb-normalized; its contents are left
+/// untouched (stock works on a duplicated/coerced `prob` vector).
+pub fn walker_ProbSampleReplace_r(n: usize, p: &mut [f64], nans: usize) -> Vec<c_int> {
+    // Alias array `a` and the HL working vector. Stock passes INTEGER(x) of a
+    // fresh allocVector(INTSXP, n) as `a`; entries whose alias is never built
+    // are only ever consulted when their q >= 1, where the alias is unused.
+    let mut a = vec![0 as c_int; n];
+    // HL[0..h) labels the entries with q < 1 and HL[l..n) those >= 1.
+    let mut hl = vec![0 as c_int; n];
+    let mut q = vec![0.0_f64; n];
+
+    /* Create the alias tables.
+    By rounding error we could have q[i] < 1. or > 1. for all entries. */
+    let mut h = 0usize; // H write cursor (grows up)
+    let mut l = n; // L write cursor (grows down)
+    for i in 0..n {
+        q[i] = p[i] * n as f64;
+        if q[i] < 1.0 {
+            hl[h] = i as c_int;
+            h += 1;
+        } else {
+            l -= 1;
+            hl[l] = i as c_int;
+        }
+    }
+    if h > 0 && l < n {
+        /* So some q[i] are >= 1 and some < 1 */
+        for k in 0..n - 1 {
+            let i = hl[k] as usize;
+            let j = hl[l] as usize; // j = *L
+            a[i] = j as c_int;
+            q[j] += q[i] - 1.0;
+            if q[j] < 1.0 {
+                l += 1;
+            }
+            if l >= n {
+                break; /* now all are >= 1 */
+            }
+        }
+    }
+    for (i, qi) in q.iter_mut().enumerate() {
+        *qi += i as f64;
+    }
+
+    /* generate sample */
+    let sample_kind = r_sample_kind();
+    let mut ans = vec![0 as c_int; nans];
+    for i in 0..nans {
+        let k: usize;
+        let r_u: f64;
+        if sample_kind == Sampletype::ROUNDING {
+            r_u = r_unif_rand() * n as f64;
+            k = r_u as usize;
+        } else {
+            k = r_R_unif_index(n as f64) as usize;
+            r_u = k as f64 + r_unif_rand();
+        }
+        ans[i] = if r_u < q[k] { k as c_int + 1 } else { a[k] + 1 };
+    }
+    ans
+}
+
 /// Stock revsort (r-source/src/main/sort.c:359): descending HEAPSORT of
 /// `p` with `perm` carried along. The heapsort (not a stable sort) is
 /// load-bearing: ProbSampleReplace/ProbSampleNoReplace stream parity

@@ -84,7 +84,6 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env:
         pre_intern_symbols_in(inst);
         crate::eval::jit::R_init_jit_enabled_in(inst);
 
-        crate::eval::arithmetic::register_arithmetic_builtins(base_env);
         crate::eval::arithmetic::register_special_forms(base_env);
         crate::mainutils::essentials::register_essentials_builtins(base_env);
         initialize_special_environment_bindings_in(inst, base_env);

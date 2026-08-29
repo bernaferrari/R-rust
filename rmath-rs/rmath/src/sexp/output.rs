@@ -1115,7 +1115,11 @@ unsafe fn type_field_width(
     tp: SEXPTYPE,
     n: R_xlen_t,
     quote: bool,
-) -> (std::os::raw::c_int, std::os::raw::c_int, std::os::raw::c_int) {
+) -> (
+    std::os::raw::c_int,
+    std::os::raw::c_int,
+    std::os::raw::c_int,
+) {
     // (w, d, e); only real/complex use d/e.
     let _ = quote;
     match tp {
@@ -1178,7 +1182,14 @@ unsafe fn complex_fmt(raw: SEXP, n: R_xlen_t) -> ComplexFmt {
     crate::mainutils::format::formatComplexS(
         raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
     );
-    ComplexFmt { wr, dr, er, wi, di, ei }
+    ComplexFmt {
+        wr,
+        dr,
+        er,
+        wi,
+        di,
+        ei,
+    }
 }
 
 fn part_is_na(v: f64) -> bool {
@@ -1202,7 +1213,15 @@ unsafe fn encode_element_at(
     cfmt: ComplexFmt,
 ) -> String {
     encode_element_adj(
-        raw, tp, i, w, d, e, quote, gap, cfmt,
+        raw,
+        tp,
+        i,
+        w,
+        d,
+        e,
+        quote,
+        gap,
+        cfmt,
         crate::mainutils::printutils::Rprt_adj::right,
     )
 }
@@ -1264,7 +1283,11 @@ unsafe fn encode_element_adj(
             }
         }
         SEXPTYPE::STRSXP => {
-            let quote_ch = if quote { b'"' as std::os::raw::c_int } else { 0 };
+            let quote_ch = if quote {
+                b'"' as std::os::raw::c_int
+            } else {
+                0
+            };
             encode_cstr(crate::mainutils::printutils::EncodeString(
                 crate::sexp::accessors::STRING_ELT(raw, i),
                 w,
@@ -1300,7 +1323,14 @@ pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) ->
     let cfmt = if tp == SEXPTYPE::CPLXSXP {
         complex_fmt(raw, n_pr)
     } else {
-        ComplexFmt { wr: 0, dr: 0, er: 0, wi: 0, di: 0, ei: 0 }
+        ComplexFmt {
+            wr: 0,
+            dr: 0,
+            er: 0,
+            wi: 0,
+            di: 0,
+            ei: 0,
+        }
     };
     for i in 0..n_pr {
         if i > 0 {
@@ -1321,7 +1351,15 @@ pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) ->
             out.push_str(&" ".repeat(gap as usize));
         }
         out.push_str(&encode_element_adj(
-            raw, tp, i, w, d, e, quote, gap, cfmt,
+            raw,
+            tp,
+            i,
+            w,
+            d,
+            e,
+            quote,
+            gap,
+            cfmt,
             crate::mainutils::printutils::Rprt_adj::left,
         ));
         width += if is_str { w + gap } else { w };
@@ -1346,7 +1384,14 @@ pub(crate) unsafe fn print_named_vector_stock(
     let cfmt0 = if tp == SEXPTYPE::CPLXSXP {
         complex_fmt(raw, n_pr)
     } else {
-        ComplexFmt { wr: 0, dr: 0, er: 0, wi: 0, di: 0, ei: 0 }
+        ComplexFmt {
+            wr: 0,
+            dr: 0,
+            er: 0,
+            wi: 0,
+            di: 0,
+            ei: 0,
+        }
     };
     crate::mainutils::format::formatStringS(names_raw, n_pr, &mut wn, 0);
     if w < wn {
@@ -1423,7 +1468,9 @@ pub(crate) unsafe fn print_named_vector_stock(
                 } else {
                     false
                 };
-                out.push_str(&encode_element_at(raw, tp, k, w, d, e, str_quote, gap, cfmt0));
+                out.push_str(&encode_element_at(
+                    raw, tp, k, w, d, e, str_quote, gap, cfmt0,
+                ));
                 out.push_str(&" ".repeat(gap as usize));
             }
         }
@@ -1774,7 +1821,6 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 SEXPTYPE::LISTSXP => "pairlist",
                 SEXPTYPE::CHARSXP => "charsxp",
                 _ => "unknown",
-
             };
             format!("[{}; length={}]", type_name, x.len())
         }
@@ -1799,7 +1845,10 @@ unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
         if chars.is_null() {
             return None;
         }
-        std::ffi::CStr::from_ptr(chars).to_str().ok().map(str::to_string)
+        std::ffi::CStr::from_ptr(chars)
+            .to_str()
+            .ok()
+            .map(str::to_string)
     }
 }
 
@@ -1864,7 +1913,7 @@ unsafe fn format_try_error(x: Sexp<'_>) -> String {
         );
         let has_condition = {
             let cond_sym = crate::sexp::symbol::Rf_install(
-                b"condition\0".as_ptr() as *const std::os::raw::c_char,
+                b"condition\0".as_ptr() as *const std::os::raw::c_char
             );
             let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
             !cond.is_null() && cond != R_NilValue()
@@ -1880,7 +1929,8 @@ unsafe fn format_try_error(x: Sexp<'_>) -> String {
                 }
             }
         }
-        let cond_sym = crate::sexp::symbol::Rf_install(b"condition\0".as_ptr() as *const std::os::raw::c_char);
+        let cond_sym =
+            crate::sexp::symbol::Rf_install(b"condition\0".as_ptr() as *const std::os::raw::c_char);
         let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
         if let Some(cond) = Sexp::from_raw(cond) {
             if cond.typeof_() != SEXPTYPE::NILSXP {

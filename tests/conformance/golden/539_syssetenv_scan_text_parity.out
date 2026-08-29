@@ -1,0 +1,25 @@
+[1] TRUE
+[1] "v1"
+[1] TRUE TRUE
+SCAN_ENV_PROBE    OTHER_PROBE
+          "v2"         "xy=1"
+[1] FALSE
+[1] ""
+[1] TRUE TRUE
+[1] "GONE"
+Read 3 items
+[1] 1 2 3
+Read 3 items
+[1] "a" "b" "c"
+Read 2 items
+[1] 1 2
+Read 2 items
+[1] 1 2
+Read 0 items
+integer(0)
+Read 2 items
+[1] 1 2
+Read 3 items
+[1]  1 NA  3
+Read 3 items
+[1] 3

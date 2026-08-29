@@ -21,7 +21,7 @@
 use std::ffi::CString;
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{CHAR, PRINTNAME, TYPEOF, VECTOR_ELT, XLENGTH};
+use crate::sexp::accessors::{CHAR, PRINTNAME, TYPEOF};
 use crate::sexp::envir::{find_fun_result, forcePromise};
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
@@ -199,26 +199,9 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
         EvalKind::Closure => Ok(expr),
         EvalKind::Promise => eval_promise_safe(expr, env),
         EvalKind::Dots => eval_dots_safe(expr, env),
-        EvalKind::ExpressionVector => eval_expression_vector_safe(expr, env),
         EvalKind::Bytecode => eval_bytecode_safe(expr, env),
         EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
     }
-}
-
-fn eval_expression_vector_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let mut result = unsafe { Sexp::from_raw_unchecked(R_NilValue()) };
-    let len = unsafe { XLENGTH(expr.as_raw()) };
-
-    for index in 0..len {
-        let raw_element = unsafe { VECTOR_ELT(expr.as_raw(), index) };
-        if raw_element.is_null() || raw_element == unsafe { R_NilValue() } {
-            continue;
-        }
-        let element = unsafe { Sexp::from_raw_unchecked(raw_element) };
-        result = eval_safe(element, env)?;
-    }
-
-    Ok(result)
 }
 
 fn eval_bytecode_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
@@ -240,7 +223,6 @@ enum EvalKind {
     Closure,
     Promise,
     Dots,
-    ExpressionVector,
     Bytecode,
     Unsupported(SEXPTYPE),
 }
@@ -256,8 +238,10 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
         | SEXPTYPE::STRSXP
         | SEXPTYPE::RAWSXP
         | SEXPTYPE::VECSXP
+        // eval.c Rf_eval: an expression vector is a VALUE and is returned
+        // unchanged; only do_eval() (R-level eval()) walks its elements.
+        | SEXPTYPE::EXPRSXP
         | SEXPTYPE::EXTPTRSXP => EvalKind::SelfEvaluating,
-        SEXPTYPE::EXPRSXP => EvalKind::ExpressionVector,
         SEXPTYPE::SYMSXP => EvalKind::Symbol,
         SEXPTYPE::LANGSXP => EvalKind::Language,
         SEXPTYPE::CLOSXP => EvalKind::Closure,
@@ -789,7 +773,9 @@ mod tests {
                 0,
             ))
             .expect("expression vector");
-            assert_eq!(classify_expr(expr_vec), EvalKind::ExpressionVector);
+            // eval.c Rf_eval returns expression vectors unchanged; only
+            // R-level eval() (do_eval) walks their elements.
+            assert_eq!(classify_expr(expr_vec), EvalKind::SelfEvaluating);
         }
     }
 

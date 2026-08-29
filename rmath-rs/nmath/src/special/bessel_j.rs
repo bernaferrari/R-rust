@@ -11,7 +11,7 @@ use crate::constants::*;
 use crate::error::*;
 use crate::special::bessel_y::{bessel_y, bessel_y_ex};
 use crate::special::cospi::{cospi, sinpi};
-use crate::special::gamma::gammafn;
+use crate::special::gamma_cody::Rf_gamma_cody;
 use crate::utils::*;
 use libm::*;
 
@@ -27,8 +27,8 @@ const ENTEN_BESS: f64 = 1e308;
 
 const XLRG_BESS_IJ: f64 = 1e5;
 
-/// 2^-800 = 1.4996968....e-241
-const VERY_SMALL_NU: f64 = f64::from_bits(0x0010_0000_0000_0000); // 2^-800
+/// 2^-800 = 1.4996968....e-241 (bessel_j.c: #define very_small_nu 0x1p-800)
+const VERY_SMALL_NU: f64 = f64::from_bits(0x0DF0_0000_0000_0000); // 2^-800
 
 /// Minimum of two ints (from bessel_j.c: #define min0(x, y) (((x) <= (y)) ? (x) : (y)))
 #[inline(always)]
@@ -105,7 +105,7 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
             alpem = 1.0 + nu;
             let halfx: f64 = if x > ENMTEN_BESS { 0.5 * x } else { 0.0 };
             aa = if nu != 0.0 {
-                pow(halfx, nu) / (nu * gammafn(nu))
+                pow(halfx, nu) / (nu * Rf_gamma_cody(nu))
             } else {
                 1.0
             };
@@ -400,17 +400,24 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
             /* Store b[NB]. */
             b[(n - 1) as usize] = aa;
 
+            /* C control flow: after `if (nend >= 0) {...}` execution FALLS
+            THROUGH into the storing backward-recursion loop below (also for
+            nend < 0, where the non-storing loop above never ran).
+            `n <= 1`  => goto L250 (skip loop, b[1] and L240);
+            `nb == 2` => goto L240 (skip loop and b[1]). */
+            let mut goto_l240 = false;
+            let mut goto_l250 = false;
             if nend >= 0 {
                 if n <= 1 {
                     sum += b[0] * if nu == 0.0 { 1.0 } else { nu };
-                    // goto L250
+                    goto_l250 = true;
                 } else {
                     /* nb >= 2: Calculate and store b[NB-1]. */
                     n -= 1; // => n = nb-1
                     en -= 2.0;
                     b[(n - 1) as usize] = en * aa / x - bb;
                     if n == 1 {
-                        // goto L240
+                        goto_l240 = true;
                     } else {
                         if m != 0 {
                             m = 0;
@@ -426,65 +433,17 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
                             }
                             sum = (sum + b[(n - 1) as usize] * alp2em) * alpem / em;
                         }
-
-                        /* Calculate via difference equation and store b[N],
-                        until N = 2. */
-                        let mut nn = n - 1;
-                        while nn >= 2 {
-                            en -= 2.0;
-                            b[(nn - 1) as usize] =
-                                en * b[nn as usize] / x - b[(nn + 1 - 1) as usize];
-                            if m != 0 {
-                                m = 0;
-                            } else {
-                                m = 2;
-                            }
-                            if m != 0 {
-                                em -= 1.0;
-                                alp2em = em + em + nu;
-                                alpem = em - 1.0 + nu;
-                                if alpem == 0.0 {
-                                    alpem = 1.0;
-                                }
-                                sum = (sum + b[(nn - 1) as usize] * alp2em) * alpem / em;
-                            }
-                            nn -= 1;
-                        }
-
-                        /* Calculate b[1]. */
-                        b[0] = 2.0 * (nu + 1.0) * b[1] / x - b[2];
                     }
-
-                    // L240:
-                    em -= 1.0;
-                    alp2em = em + em + nu;
-                    if alp2em == 0.0 {
-                        alp2em = 1.0;
-                    }
-                    sum += b[0] * alp2em;
                 }
+            }
 
-                // L250:
-                /* Normalize. Divide all b[N] by sum. */
-                // NB. ensured above that |nu| >= VERY_SMALL_NU
-                if nu != 0.0 {
-                    sum *= gammafn(nu) * pow(0.5 * x, -nu);
-                }
-
-                for n in 1..=(nb as usize) {
-                    b[n - 1] /= sum;
-                }
-            } else {
-                /* nend < 0: backward recursion didn't reach NB.
-                Still need to compute and store remaining b[] values
-                and then normalize. */
-                // Continue backward recursion, now storing values.
-                loop {
-                    n -= 1;
+            if !goto_l240 && !goto_l250 {
+                /* Calculate via difference equation and store b[N],
+                until N = 2. */
+                let mut nn = n - 1;
+                while nn >= 2 {
                     en -= 2.0;
-                    cc = bb;
-                    bb = aa;
-                    aa = en * bb / x - cc;
+                    b[(nn - 1) as usize] = en * b[nn as usize] / x - b[(nn + 1) as usize];
                     if m != 0 {
                         m = 0;
                     } else {
@@ -497,26 +456,34 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
                         if alpem == 0.0 {
                             alpem = 1.0;
                         }
-                        sum = (sum + aa * alp2em) * alpem / em;
+                        sum = (sum + b[(nn - 1) as usize] * alp2em) * alpem / em;
                     }
-                    b[(n - 1) as usize] = aa;
-                    if n <= 1 {
-                        break;
-                    }
+                    nn -= 1;
                 }
 
-                if n == 1 {
-                    sum += b[0] * if nu == 0.0 { 1.0 } else { nu };
-                }
+                /* Calculate b[1]. */
+                b[0] = 2.0 * (nu + 1.0) * b[1] / x - b[2];
+            }
 
-                /* L250: Normalize. */
-                if nu != 0.0 {
-                    sum *= gammafn(nu) * pow(0.5 * x, -nu);
+            if !goto_l250 {
+                // L240:
+                em -= 1.0;
+                alp2em = em + em + nu;
+                if alp2em == 0.0 {
+                    alp2em = 1.0;
                 }
+                sum += b[0] * alp2em;
+            }
 
-                for n in 1..=(nb as usize) {
-                    b[n - 1] /= sum;
-                }
+            // L250:
+            /* Normalize. Divide all b[N] by sum. */
+            // NB. ensured above that |nu| >= VERY_SMALL_NU
+            if nu != 0.0 {
+                sum *= Rf_gamma_cody(nu) * pow(0.5 * x, -nu);
+            }
+
+            for n in 1..=(nb as usize) {
+                b[n - 1] /= sum;
             }
         }
 

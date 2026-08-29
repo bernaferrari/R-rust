@@ -1,0 +1,25 @@
+[1] "0.333333333333333"
+[1] "0.3"
+[1] "123456789.123457"
+[1] "1e-10"
+[1] "0.142857142857143"
+[1] "0.5"
+[1] "1e+10"
+[1] "1e+20"
+[1] "1e-05"
+[1] "0.333333333333333"
+[1] 0.3333
+[1] "Error in try(stop(\"x\"), silent = TRUE) : x\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in doTryCatch(return(expr), name, parentenv, handler): x>
+<simpleError: boom>
+<myerr: oops>
+<simpleError in f(1): m>
+<simpleWarning in doTryCatch(return(expr), name, parentenv, handler): bad thing>
+msg
+Warning message:
+w
+Warning message:
+In f() : w2

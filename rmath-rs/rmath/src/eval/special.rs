@@ -12,10 +12,10 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
-use std::os::raw::c_int;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_BraceSymbol;
+use std::os::raw::c_int;
 
 use super::eval::Rf_eval;
 
@@ -325,7 +325,6 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
 
         let cond_val = Rf_eval(cond, rho);
 
-
         // Stock asLogicalNoNA (eval.c): scalar logical/integer fast paths,
         // then a length check, then asLogical coercion; NA with the right
         // error message per the value type.
@@ -354,7 +353,6 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
             }
         };
 
-
         let result = match TYPEOF(cond_val) {
             t if t == SEXPTYPE::LGLSXP && cond_len == 1 => {
                 let v = crate::sexp::accessors::LOGICAL_ELT(cond_val, 0);
@@ -380,9 +378,7 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
                     });
                 }
                 match TYPEOF(cond_val) {
-                    t if t == SEXPTYPE::LGLSXP => {
-                        crate::sexp::accessors::LOGICAL_ELT(cond_val, 0)
-                    }
+                    t if t == SEXPTYPE::LGLSXP => crate::sexp::accessors::LOGICAL_ELT(cond_val, 0),
                     t if t == SEXPTYPE::INTSXP => {
                         let v = crate::sexp::accessors::INTEGER_ELT(cond_val, 0);
                         if v == crate::sexp::ffi::NA_INTEGER {

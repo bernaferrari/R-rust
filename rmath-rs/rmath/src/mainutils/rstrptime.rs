@@ -524,11 +524,9 @@ fn strptime_internal(
                 }
                 *poffset = off;
             }
-            'Z' => {
-                std::panic::panic_any(RError {
-                    message: "use of %Z for input is not supported".to_string(),
-                })
-            }
+            'Z' => std::panic::panic_any(RError {
+                message: "use of %Z for input is not supported".to_string(),
+            }),
             'O' => {
                 // Alternative numeric symbols; only %OS carries extra
                 // information in this port.
@@ -674,10 +672,8 @@ fn strptime_internal(
         if !have_yday {
             // Get yday from the week and day-of-the-week.
             // This does not validate yday against any upper limit.
-            tm.tm_yday = (7 - (tm.tm_wday - w_offset)) % 7
-                + (week_no - 1) * 7
-                + save_wday
-                - w_offset;
+            tm.tm_yday =
+                (7 - (tm.tm_wday - w_offset)) % 7 + (week_no - 1) * 7 + save_wday - w_offset;
             if tm.tm_yday < 0 {
                 tm.tm_yday += 7; // r90447 / PR#19124
             }

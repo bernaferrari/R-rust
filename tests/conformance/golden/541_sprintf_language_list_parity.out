@@ -1,0 +1,20 @@
+a
+ f(1)
+f(1)|1
+ 2.5
+ NULL
+ .Primitive("sin")
+1 + 1
+1
+ 2
+x 1
+ y 2
+1
+ 2
+[1] "invalid type of argument[1]: 'language'"
+[1] "invalid type of argument[1]: 'language'"
+[1] "invalid type of argument[1]: 'language'"
+[1] "invalid type of argument[1]: 'symbol'"
+[1] "invalid type of argument[2]: 'language'"
+[1] "unsupported type"
+[1] "unsupported type"

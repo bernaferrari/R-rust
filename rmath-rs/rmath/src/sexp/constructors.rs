@@ -61,7 +61,6 @@ pub unsafe fn Rf_lang3(car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
     }
 }
 
-
 /// Create a lang5 (5-element call).
 pub unsafe fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
     unsafe {

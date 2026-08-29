@@ -74,16 +74,20 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         if chars.is_null() {
                             String::new()
                         } else {
-                            std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned()
+                            std::ffi::CStr::from_ptr(chars)
+                                .to_string_lossy()
+                                .into_owned()
                         }
                     }
                 } else {
                     String::new()
                 };
 
-                let first_line_len = message.split('\n').next().map(str::chars).map_or(0, |c| {
-                    c.count()
-                });
+                let first_line_len = message
+                    .split('\n')
+                    .next()
+                    .map(str::chars)
+                    .map_or(0, |c| c.count());
                 let mut prefix = format!("Error in {dcall} : ");
                 // stock: 14L + 2*nchar(dcall, "w") + nchar(first line, "w") > 75L
                 let width = 14 + 2 * dcall.chars().count() + first_line_len;
@@ -623,14 +627,43 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             });
         }
 
-        let message = format!("Warning message:\n{} \n", warning_text);
+        // Stock defers printing and renders via PrintWarnings()
+        // (errors.c:615-631): header "Warning message:", then either
+        // "In <dcall> : <msg>" (warning attributed to the enclosing call —
+        // stock findCall(); R_getCurrentCall() is the builtin-call
+        // equivalent here, R_NilValue at top level) with the LONGWARN
+        // one-space wrap, or "<msg> " without a call. The port emits at
+        // signal time into the stderr capture so builtin warning() output
+        // stays in signal order with message() output (case 372); C-internal
+        // warningcall() sites keep the deferred collection path.
+        let wcall = crate::mainutils::errors::R_getCurrentCall();
+        let call_ok = !wcall.is_null() && wcall != R_NilValue();
+        let mut text = String::from("Warning message:\n");
+        if call_ok {
+            let dcall = crate::mainutils::errors::warning_dcall(wcall);
+            text.push_str("In ");
+            text.push_str(&dcall);
+            text.push_str(" :");
+            let msgline1 = warning_text.split('\n').next().map_or(0, str::len);
+            if 6 + dcall.len() + msgline1 > 75 {
+                text.push('\n');
+                text.push(' ');
+            }
+            text.push(' ');
+        }
+        text.push_str(&warning_text);
+        text.push(if call_ok { '\n' } else { ' ' });
+        text.push('\n');
         if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stderr(&message);
+            crate::sexp::output::capture_stderr(&text);
         } else {
-            eprint!("{message}");
+            eprint!("{text}");
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-        R_NilValue()
+        // Stock returns the message string (the R closure wraps it in
+        // invisible()); print(warning("w")) therefore renders `[1] "w"`.
+        let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
+        Rf_mkString(c_msg.as_ptr())
     }
 }
 
@@ -697,6 +730,33 @@ unsafe fn simple_error_condition(message: &str) -> SEXP {
         crate::mainutils::errors::R_makeErrorCondition(
             call,
             c"simpleError".as_ptr() as *const libc::c_char,
+            std::ptr::null(),
+            0,
+            c_msg.as_ptr(),
+        )
+    }
+}
+
+unsafe fn simple_warning_condition(message: &str) -> SEXP {
+    unsafe {
+        // stock: warnings caught by tryCatch's warning handler carry the
+        // internal doTryCatch(return(expr), name, parentenv, handler) frame
+        // as their call (print.condition renders it: `<simpleWarning in
+        // doTryCatch(...): msg>`).
+        let s = |name: &str| Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        let inner = crate::sexp::constructors::Rf_lang2(s("return"), s("expr"));
+        let call = crate::sexp::constructors::Rf_lang5(
+            s("doTryCatch"),
+            inner,
+            s("name"),
+            s("parentenv"),
+            s("handler"),
+        );
+        let _call_guard = protect(call);
+        let c_msg = CString::new(message).unwrap_or_default();
+        crate::mainutils::errors::R_makeWarningCondition(
+            call,
+            c"simpleWarning".as_ptr() as *const libc::c_char,
             std::ptr::null(),
             0,
             c_msg.as_ptr(),
@@ -817,7 +877,7 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                                 .iter()
                                 .find(|(tag, _)| classes.contains(&tag.as_str()));
                             if let Some((_, handler)) = matching {
-                                let condition = simple_condition(&message, &classes);
+                                let condition = simple_warning_condition(&message);
                                 let _cond_guard = protect(condition);
                                 let call = crate::sexp::constructors::Rf_lang2(*handler, condition);
                                 return crate::eval::eval::Rf_eval(call, rho);
@@ -1376,14 +1436,16 @@ mod tests {
         assert!(!output.stderr.contains("Warning message"));
 
         // An error-only frame does not catch warnings: the warning falls
-        // through to the default print path and tryCatch returns NULL.
+        // through to the default print path and tryCatch returns the
+        // warning() return value — the message string, invisibly (stock
+        // do_warning returns CAR(args)).
         let (result, output, _) = session.eval_script_with_output_capture(
-            "is.null(tryCatch(warning('y'), error = function(e) 'E'))",
+            "identical(tryCatch(warning('y'), error = function(e) 'E'), 'y')",
         );
-        let is_null = result
+        let identical = result
             .map(|s| unsafe { crate::sexp::accessors::LOGICAL(s.as_raw()).read() == TRUE })
             .unwrap_or(false);
-        assert!(is_null);
+        assert!(identical);
         assert!(output.stderr.contains("Warning message"));
     }
 

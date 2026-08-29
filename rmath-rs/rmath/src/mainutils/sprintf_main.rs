@@ -24,8 +24,8 @@ use crate::sexp::accessors::{
     CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_isString, Rf_mkChar};
-use crate::sexp::protect::protect;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_FINITE, R_IsNA, R_xlen_t, SEXP};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -51,6 +51,8 @@ const R_NegInf: c_double = f64::NEG_INFINITY;
 const LGLSXP: c_int = 10;
 const INTSXP: c_int = 13;
 const REALSXP: c_int = 14;
+const LISTSXP: c_int = 2;
+const DOTSXP: c_int = 17;
 const STRSXP: c_int = 16;
 const LANGSXP: c_int = 6;
 const SYMSXP: c_int = 1;
@@ -81,7 +83,6 @@ unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
 unsafe fn mkCharCE(s: *const c_char, _enc: c_int) -> SEXP {
     unsafe { Rf_mkChar(s) }
 }
-
 
 unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
     unsafe {
@@ -350,9 +351,33 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             a[i] = CAR(tmp_args);
             used[i] = false;
             if t_ai == LANGSXP || t_ai == SYMSXP {
-                error(b"invalid type of argument\0".as_ptr() as *const c_char);
+                // sprintf.c: error(_("invalid type of argument[%d]: '%s'"),
+                //                  i+1, CHAR(type2str(t_ai)));
+                let type_name =
+                    std::ffi::CStr::from_ptr(crate::mainutils::printvector::type2str_nowarn(t_ai))
+                        .to_string_lossy()
+                        .into_owned();
+                let msg = std::ffi::CString::new(format!(
+                    "invalid type of argument[{}]: '{}'",
+                    i + 1,
+                    type_name
+                ))
+                .unwrap_or_else(|_| std::ffi::CString::new("invalid type of argument").unwrap());
+                error(msg.as_ptr());
             }
-            lens[i] = LENGTH(a[i]);
+            // sprintf.c uses length(), which walks pairlist-like nodes;
+            // the raw LENGTH() field is meaningless for them.
+            lens[i] = if t_ai == LISTSXP || t_ai == LANGSXP || t_ai == DOTSXP {
+                let mut cell = a[i];
+                let mut n: c_int = 0;
+                while !cell.is_null() && cell != crate::sexp::globals::R_NilValue() {
+                    n += 1;
+                    cell = CDR(cell);
+                }
+                n
+            } else {
+                LENGTH(a[i])
+            };
             if lens[i] == 0 {
                 return Rf_allocVector(STRSXP, 0);
             }
@@ -746,8 +771,10 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                                 );
                                             }
                                             lens[nthis as usize] = new_len;
-                                            let restored =
-                                                R_AllocStringBuffer(saved.len() as i64, &mut outbuff);
+                                            let restored = R_AllocStringBuffer(
+                                                saved.len() as i64,
+                                                &mut outbuff,
+                                            );
                                             std::ptr::copy_nonoverlapping(
                                                 saved.as_ptr(),
                                                 restored,

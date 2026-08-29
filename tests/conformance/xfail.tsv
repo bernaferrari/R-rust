@@ -1,5 +1,5 @@
 # case	owner	reason
-# Active xfails are empty for the gated 590-case suite (all pass).
+# Active xfails are empty for the gated 604-case suite (all pass).
 # Full-GNU-R debt is tracked in docs/upstream-port-map.tsv as known-gap/policy
 # and in beads (rport-wpdk natives, rport-wszw lazy/bytecode, rport-btb7 essentials).
 # Do not add silent skips here; use known-gap rows + owner beads for out-of-suite debt.

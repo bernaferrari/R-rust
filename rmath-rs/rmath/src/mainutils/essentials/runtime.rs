@@ -347,10 +347,22 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
 unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
     unsafe {
         let parsed = parse_source_expression_vector(content);
+        // do_eval()-style element-wise evaluation: Rf_eval returns an
+        // expression vector unchanged, so source() walks the statements
+        // itself (eval.c eval expression loop).
         let result = if parsed.is_null() || parsed == R_NilValue() {
             R_NilValue()
         } else {
-            crate::eval::eval::Rf_eval(parsed, env)
+            let mut result = R_NilValue();
+            let n = XLENGTH(parsed);
+            for i in 0..n {
+                let element = VECTOR_ELT(parsed, i);
+                if element.is_null() || element == R_NilValue() {
+                    continue;
+                }
+                result = crate::eval::eval::Rf_eval(element, env);
+            }
+            result
         };
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         result
@@ -679,7 +691,30 @@ pub unsafe fn do_eval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             envir_arg
         };
-        crate::eval::eval::Rf_eval(expr, envir)
+        // eval.c do_eval(): language/symbol/bytecode values evaluate in
+        // `envir`; expression vectors evaluate element-wise returning the
+        // last value; any other value is returned unchanged (Rf_eval no
+        // longer treats expression vectors as evaluable).
+        let bcode = SEXPTYPE::BCODESXP;
+        if TYPEOF(expr) == SEXPTYPE::LANGSXP
+            || TYPEOF(expr) == SEXPTYPE::SYMSXP
+            || TYPEOF(expr) == bcode
+        {
+            return crate::eval::eval::Rf_eval(expr, envir);
+        }
+        if TYPEOF(expr) == SEXPTYPE::EXPRSXP {
+            let n = XLENGTH(expr);
+            let mut result = R_NilValue();
+            for i in 0..n {
+                let element = VECTOR_ELT(expr, i);
+                if element.is_null() || element == R_NilValue() {
+                    continue;
+                }
+                result = crate::eval::eval::Rf_eval(element, envir);
+            }
+            return result;
+        }
+        expr
     }
 }
 
@@ -1705,9 +1740,26 @@ pub unsafe fn do_R_home(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 pub unsafe fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
-        if x.is_null() || x == R_NilValue() {
-            let s = CString::new("").unwrap_or_default();
-            return Rf_mkString(s.as_ptr());
+        if x.is_null() || x == R_NilValue() || XLENGTH(x) == 0 {
+            // No names: return the whole environment as "NAME=VALUE" strings,
+            // read live from libc's environ so Sys.setenv results are visible.
+            let mut vars: Vec<String> = Vec::new();
+            unsafe {
+                let mut envp: *mut *mut c_char = environ;
+                while !(*envp).is_null() {
+                    let entry = CStr::from_ptr(*envp).to_string_lossy();
+                    vars.push(entry.into_owned());
+                    envp = envp.add(1);
+                }
+            }
+            let n = vars.len() as R_xlen_t;
+            let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _ans_guard = protect(ans);
+            for (i, var) in vars.iter().enumerate() {
+                let c_str = CString::new(var.as_str()).unwrap_or_default();
+                SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
+            }
+            return ans;
         }
         let unset_arg = arg_by_name_or_position(args, &["unset"], 1);
         let unset = if !unset_arg.is_null()
@@ -1726,53 +1778,117 @@ pub unsafe fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let values = (0..XLENGTH(x))
             .map(|i| {
                 let name = elt_to_string(x, i);
-                std::env::var(&name).ok().or_else(|| unset.clone())
+                libc_getenv(&name).or_else(|| unset.clone())
             })
             .collect::<Vec<_>>();
-        optional_string_vector(&values)
+        let result = optional_string_vector(&values);
+        if XLENGTH(x) > 1 {
+            // Stock names the result vector when looking up more than one name.
+            let n = XLENGTH(x);
+            let names = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _names_guard = protect(names);
+            for i in 0..n {
+                SET_STRING_ELT(names, i, STRING_ELT(x, i));
+            }
+            let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+            crate::sexp::attrib_core::setAttrib(result, names_sym, names);
+        }
+        result
     }
+}
+
+/// Read a variable live via libc getenv (sees Sys.setenv writes).
+fn libc_getenv(name: &str) -> Option<String> {
+    let c_name = CString::new(name).ok()?;
+    unsafe {
+        let val = libc::getenv(c_name.as_ptr());
+        if val.is_null() {
+            None
+        } else {
+            Some(CStr::from_ptr(val).to_string_lossy().into_owned())
+        }
+    }
+}
+
+/// Set a variable live via libc setenv (overwrites); false on invalid input.
+fn libc_setenv(name: &str, value: &str) -> bool {
+    let Ok(c_name) = CString::new(name) else {
+        return false;
+    };
+    let Ok(c_value) = CString::new(value) else {
+        return false;
+    };
+    unsafe { libc::setenv(c_name.as_ptr(), c_value.as_ptr(), 1) == 0 }
+}
+
+/// Unset a variable live via libc unsetenv; false on invalid input.
+fn libc_unsetenv(name: &str) -> bool {
+    let Ok(c_name) = CString::new(name) else {
+        return false;
+    };
+    unsafe { libc::unsetenv(c_name.as_ptr()) == 0 }
+}
+
+unsafe extern "C" {
+    static mut environ: *mut *mut c_char;
 }
 
 /// R's `Sys.setenv(...)` — set environment variables.
 pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let mut results: Vec<c_int> = Vec::new();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
+            let ok = if !arg.is_null() && arg != R_NilValue() {
                 if let Some(key) = tag_name(current)
                     && !key.is_empty()
                 {
-                    std::env::set_var(key, elt_to_string(arg, 0));
+                    libc_setenv(&key, &elt_to_string(arg, 0))
                 } else {
+                    // Unnamed "NAME=value" argument; '=' in NAME fails like stock.
                     let s = elt_to_string(arg, 0);
-                    if let Some(pos) = s.find('=') {
-                        let key = &s[..pos];
-                        let val = &s[pos + 1..];
-                        std::env::set_var(key, val);
+                    match s.find('=') {
+                        Some(pos) => libc_setenv(&s[..pos], &s[pos + 1..]),
+                        None => false,
                     }
                 }
-            }
+            } else {
+                false
+            };
+            results.push(if ok { TRUE } else { FALSE });
             current = CDR(current);
         }
-        Rf_ScalarLogical(TRUE)
+        let n = results.len() as R_xlen_t;
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
+        for (i, ok) in results.iter().enumerate() {
+            *LOGICAL(ans).add(i) = *ok;
+        }
+        ans
     }
 }
 
-/// R's `Sys.unsetenv(x)` — unset environment variable.
+/// R's `Sys.unsetenv(x)` — unset environment variables.
 pub unsafe fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        for i in 0..XLENGTH(x) {
+        let n = XLENGTH(x);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
+        for i in 0..n {
             let name = elt_to_string(x, i);
-            if !name.is_empty() && name != "NA" {
-                std::env::remove_var(name);
-            }
+            let ok = if name.is_empty() {
+                false
+            } else {
+                libc_unsetenv(&name)
+            };
+            *LOGICAL(ans).add(i as usize) = if ok { TRUE } else { FALSE };
         }
-        Rf_ScalarLogical(TRUE)
+        ans
     }
 }
 

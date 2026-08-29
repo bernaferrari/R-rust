@@ -36,14 +36,14 @@ unsafe extern "C" {
     fn tzset();
 }
 
+use crate::mainutils::rstrptime::R_strptime;
 use crate::sexp::accessors::*;
+use crate::sexp::attrib_core::{R_NamesSymbol, R_classgets, getAttrib, setAttrib};
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::{R_MissingArg, R_NaString, R_NilValue};
 use crate::sexp::protect::*;
-use crate::mainutils::rstrptime::R_strptime;
-use crate::sexp::attrib_core::{getAttrib, setAttrib, R_classgets, R_NamesSymbol};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -1189,12 +1189,7 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             // (`storage.mode<-(x, "character")` for plain vectors).
             let arglist = Rf_cons(x, R_NilValue());
             let _arglist_guard = protect(arglist);
-            x = crate::mainutils::essentials_basic::do_as_character(
-                _call,
-                _op,
-                arglist,
-                _env,
-            );
+            x = crate::mainutils::essentials_basic::do_as_character(_call, _op, arglist, _env);
         }
         let _x_guard = protect(x);
 
@@ -1252,13 +1247,9 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             Rf_mkString(mk_char_str(&tz).as_ptr())
         } else {
             let tzone = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
-            for (j, s) in [
-                tz.clone(),
-                tzname_str(0),
-                tzname_str(1),
-            ]
-            .iter()
-            .enumerate()
+            for (j, s) in [tz.clone(), tzname_str(0), tzname_str(1)]
+                .iter()
+                .enumerate()
             {
                 let cs = CString::new(s.as_str()).unwrap_or_default();
                 SET_STRING_ELT(tzone, j as R_xlen_t, Rf_mkChar(cs.as_ptr()));
@@ -1300,10 +1291,7 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 if tm.tm_mday == 0 {
                     tm.tm_mday = NA_INTEGER;
                 }
-                if tm.tm_mon == NA_INTEGER
-                    || tm.tm_mday == NA_INTEGER
-                    || tm.tm_year == NA_INTEGER
-                {
+                if tm.tm_mon == NA_INTEGER || tm.tm_mday == NA_INTEGER || tm.tm_year == NA_INTEGER {
                     glibc_fix(&mut tm, &mut invalid);
                 }
                 tm.tm_isdst = -1;
@@ -1350,7 +1338,11 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 ans,
                 i as R_xlen_t,
                 !invalid,
-                if invalid { NA_REAL } else { psecs - psecs.floor() },
+                if invalid {
+                    NA_REAL
+                } else {
+                    psecs - psecs.floor()
+                },
             );
 
             if isUTC {
@@ -1365,8 +1357,11 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 };
                 let cs = CString::new(p).unwrap_or_default();
                 SET_STRING_ELT(VECTOR_ELT(ans, 9), i as R_xlen_t, Rf_mkChar(cs.as_ptr()));
-                *INTEGER(VECTOR_ELT(ans, 10)).add(iu) =
-                    if invalid { NA_INTEGER } else { tm.tm_gmtoff as c_int };
+                *INTEGER(VECTOR_ELT(ans, 10)).add(iu) = if invalid {
+                    NA_INTEGER
+                } else {
+                    tm.tm_gmtoff as c_int
+                };
             }
         } // for(i ..)
 
@@ -1419,11 +1414,7 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             let nm3 = Rf_allocVector3(SEXPTYPE::STRSXP, N);
             let _nm3_guard = protect(nm3);
             for j in 0..N {
-                SET_STRING_ELT(
-                    nm3,
-                    j as R_xlen_t,
-                    STRING_ELT(nm, (j % n) as R_xlen_t),
-                );
+                SET_STRING_ELT(nm3, j as R_xlen_t, STRING_ELT(nm, (j % n) as R_xlen_t));
             }
             setAttrib(VECTOR_ELT(ans, 5), R_NamesSymbol(), nm3);
         }

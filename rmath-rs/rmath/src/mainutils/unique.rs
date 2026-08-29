@@ -725,6 +725,10 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
 ///
 /// `.Internal(unique(x, incomparables, fromLast, nmax))`
 /// PRIMVAL(op) == 1 in the C source; here called directly as do_unique.
+///
+/// Test-only in this port: the registered `unique` builtin dispatches to
+/// `crate::mainutils::essentials::do_unique`; this raw pairlist wrapper is
+/// exercised by the unit tests below.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let args_s = Sexp::try_from_raw(args)
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });
@@ -737,6 +741,10 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// Implementation of R's `duplicated()` builtin.
 ///
 /// `.Internal(duplicated(x, incomparables, fromLast, nmax))`
+///
+/// Test-only in this port: the registered `duplicated` builtin dispatches to
+/// `crate::mainutils::essentials::do_duplicated`; this raw pairlist wrapper
+/// is exercised by the unit tests below.
 pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let args_s = Sexp::try_from_raw(args)
         .unwrap_or_else(|err| -> Sexp<'_> { unique_error(err.to_string()) });

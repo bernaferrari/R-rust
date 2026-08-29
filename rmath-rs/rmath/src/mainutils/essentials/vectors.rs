@@ -27,6 +27,69 @@ use crate::sexp::symbol::Rf_install;
 // do_c — combine vectors
 // ---------------------------------------------------------------------------
 
+/// bind.c AnswerType()/ListAnswer() classify a plain pairlist cell-wise.
+unsafe fn is_bind_pairlist(t: c_int) -> bool {
+    t == SEXPTYPE::LISTSXP
+}
+
+/// bind.c AnswerType() `default:` — every other non-vector entry
+/// (language objects, symbols, closures, builtins, promises, ...) binds
+/// as exactly one element and forces a list result.  Using the raw
+/// XLENGTH() on these is undefined (their length field overlaps the
+/// pairlist pointers, which used to yield astronomic allocations).
+unsafe fn is_bind_single_object(t: c_int) -> bool {
+    t == SEXPTYPE::LANGSXP
+        || t == SEXPTYPE::DOTSXP
+        || t == SEXPTYPE::SYMSXP
+        || t == SEXPTYPE::CLOSXP
+        || t == SEXPTYPE::SPECIALSXP
+        || t == SEXPTYPE::BUILTINSXP
+        || t == SEXPTYPE::PROMSXP
+        || t == SEXPTYPE::EXTPTRSXP
+        || t == SEXPTYPE::BCODESXP
+        || t == SEXPTYPE::WEAKREFSXP
+}
+
+/// Number of list slots `x` occupies in a c() result.
+unsafe fn bind_length(x: SEXP, t: c_int) -> R_xlen_t {
+    unsafe {
+        if is_bind_pairlist(t) {
+            let mut cell = x;
+            let mut n: R_xlen_t = 0;
+            while !cell.is_null() && cell != R_NilValue() {
+                n += 1;
+                cell = CDR(cell);
+            }
+            n
+        } else if is_bind_single_object(t) {
+            1
+        } else {
+            XLENGTH(x)
+        }
+    }
+}
+
+/// The i-th list slot of `x` under c() binding semantics.
+unsafe fn bind_element(x: SEXP, t: c_int, i: R_xlen_t) -> SEXP {
+    unsafe {
+        if is_bind_pairlist(t) {
+            let mut cell = x;
+            let mut k: R_xlen_t = 0;
+            while k < i && !cell.is_null() && cell != R_NilValue() {
+                cell = CDR(cell);
+                k += 1;
+            }
+            CAR(cell)
+        } else if is_bind_single_object(t) {
+            x
+        } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
+            VECTOR_ELT(x, i)
+        } else {
+            extract_element(x, i)
+        }
+    }
+}
+
 /// R's `c(...)` — concatenates vectors into a single vector.
 ///
 /// Coercion rules: STRSXP > CPLXSXP > REALSXP > INTSXP > LGLSXP.
@@ -62,25 +125,47 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 {
                     has_names = true;
                 }
-                if t == SEXPTYPE::VECSXP {
-                    result_type = SEXPTYPE::VECSXP.as_c_int();
-                } else if datetime_class.is_some() && result_type != SEXPTYPE::VECSXP {
+                if t == SEXPTYPE::EXPRSXP {
+                    // bind.c AnswerType(): expression args force an
+                    // expression result (flag 512) and win over the list
+                    // flag (256).
+                    result_type = SEXPTYPE::EXPRSXP.as_c_int();
+                } else if is_bind_pairlist(t) || is_bind_single_object(t) {
+                    // Non-vector entries force a list result; expressions
+                    // keep precedence.
+                    if result_type != SEXPTYPE::EXPRSXP.as_c_int() {
+                        result_type = SEXPTYPE::VECSXP.as_c_int();
+                    }
+                } else if t == SEXPTYPE::VECSXP {
+                    if result_type != SEXPTYPE::EXPRSXP.as_c_int() {
+                        result_type = SEXPTYPE::VECSXP.as_c_int();
+                    }
+                } else if datetime_class.is_some()
+                    && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::EXPRSXP
+                {
                     result_type = SEXPTYPE::REALSXP.as_c_int();
-                } else if t == SEXPTYPE::STRSXP && result_type != SEXPTYPE::VECSXP {
+                } else if t == SEXPTYPE::STRSXP
+                    && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::EXPRSXP
+                {
                     result_type = SEXPTYPE::STRSXP.as_c_int();
                 } else if t == SEXPTYPE::CPLXSXP
                     && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::EXPRSXP
                     && result_type != SEXPTYPE::STRSXP
                 {
                     result_type = SEXPTYPE::CPLXSXP.as_c_int();
                 } else if t == SEXPTYPE::REALSXP
                     && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::EXPRSXP
                     && result_type != SEXPTYPE::STRSXP
                     && result_type != SEXPTYPE::CPLXSXP
                 {
                     result_type = SEXPTYPE::REALSXP.as_c_int();
                 } else if t == SEXPTYPE::INTSXP
                     && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::EXPRSXP
                     && result_type != SEXPTYPE::STRSXP
                     && result_type != SEXPTYPE::CPLXSXP
                     && result_type != SEXPTYPE::REALSXP
@@ -88,6 +173,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     result_type = SEXPTYPE::INTSXP.as_c_int();
                 } else if t == SEXPTYPE::LGLSXP
                     && result_type != SEXPTYPE::VECSXP
+                    && result_type != SEXPTYPE::EXPRSXP
                     && result_type != SEXPTYPE::STRSXP
                     && result_type != SEXPTYPE::CPLXSXP
                     && result_type != SEXPTYPE::REALSXP
@@ -97,7 +183,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 } else if t == SEXPTYPE::RAWSXP && result_type == SEXPTYPE::NILSXP.as_c_int() {
                     result_type = SEXPTYPE::RAWSXP.as_c_int();
                 }
-                total_len += XLENGTH(arg);
+                total_len += bind_length(arg, t);
             }
             current = CDR(current);
         }
@@ -136,7 +222,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             None
         };
 
-        if result_type == SEXPTYPE::VECSXP {
+        if result_type == SEXPTYPE::VECSXP || result_type == SEXPTYPE::EXPRSXP {
             current = args;
             while !current.is_null() && current != R_NilValue() {
                 let arg = CAR(current);
@@ -158,14 +244,10 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         continue;
                     }
                     let t = TYPEOF(arg);
-                    let n = XLENGTH(arg);
+                    let n = bind_length(arg, t);
                     let arg_names = crate::sexp::attrib_core::getAttrib(arg, names_symbol);
                     for i in 0..n {
-                        let value = if t == SEXPTYPE::VECSXP {
-                            VECTOR_ELT(arg, i)
-                        } else {
-                            extract_element(arg, i)
-                        };
+                        let value = bind_element(arg, t, i);
                         SET_VECTOR_ELT(result, offset + i, value);
 
                         if has_names {

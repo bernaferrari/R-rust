@@ -13,7 +13,9 @@
 //!     RealFromLogical, RealFromInteger, RealFromComplex, RealFromString
 //!     ComplexFromLogical, ComplexFromInteger, ComplexFromReal, ComplexFromString
 //!     ComplexFromStringC (C-string variant)
-//!     StringFromLogical, StringFromInteger, StringFromReal, StringFromComplex, StringFromRaw
+//!     StringFromLogical, StringFromInteger, StringFromComplex, StringFromRaw
+//!     (StringFromReal is printutils::StringFromReal; real→string coercion
+//!     delegates to it, matching upstream coerce.c → printutils.c)
 //!   Vector coercion:
 //!     coerceVector -- main dispatcher
 //!     coerceToLogical, coerceToInteger, coerceToReal, coerceToComplex,
@@ -346,16 +348,33 @@ pub unsafe fn CoercionWarning(warn: c_int) {
     // Route through the warnings machinery (like stock's warningcall) so
     // handlers such as suppressWarnings()/withCallingHandlers() see them.
     if warn & WARN_NA != 0 {
-        crate::mainutils::errors::Rf_warning(b"NAs introduced by coercion\0".as_ptr() as *const libc::c_char);
+        unsafe {
+            crate::mainutils::errors::Rf_warning(
+                b"NAs introduced by coercion\0".as_ptr() as *const libc::c_char
+            );
+        }
     }
     if warn & WARN_INT_NA != 0 {
-        crate::mainutils::errors::Rf_warning(b"NAs introduced by coercion to integer range\0".as_ptr() as *const libc::c_char);
+        unsafe {
+            crate::mainutils::errors::Rf_warning(
+                b"NAs introduced by coercion to integer range\0".as_ptr() as *const libc::c_char,
+            );
+        }
     }
     if warn & WARN_IMAG != 0 {
-        crate::mainutils::errors::Rf_warning(b"imaginary parts discarded in coercion\0".as_ptr() as *const libc::c_char);
+        unsafe {
+            crate::mainutils::errors::Rf_warning(
+                b"imaginary parts discarded in coercion\0".as_ptr() as *const libc::c_char,
+            );
+        }
     }
     if warn & WARN_RAW != 0 {
-        crate::mainutils::errors::Rf_warning(b"out-of-range values treated as 0 in coercion to raw\0".as_ptr() as *const libc::c_char);
+        unsafe {
+            crate::mainutils::errors::Rf_warning(
+                b"out-of-range values treated as 0 in coercion to raw\0".as_ptr()
+                    as *const libc::c_char,
+            );
+        }
     }
 }
 
@@ -907,25 +926,6 @@ pub unsafe fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
     }
 }
 
-/// Convert real to string (CHARSXP).
-///
-/// Returns NA_STRING for R's NA. Uses maximal precision (DBL_DIG=15) for
-/// other values, matching R's behavior.
-///
-/// Note: The `#[unsafe(no_mangle)]` FFI symbol is defined in printutils.rs.
-/// This is the module-private implementation used by coerceToString().
-pub(crate) unsafe fn StringFromReal_impl(x: c_double, _warn: *mut c_int) -> SEXP {
-    unsafe {
-        if R_IsNA(x) {
-            return R_NaString();
-        }
-        // Use 17 significant digits for round-trip safety (matches R's DBL_DIG + 2)
-        let s = format!("{:.17e}", x);
-        let cstr = std::ffi::CString::new(s).unwrap_or_default();
-        Rf_mkChar(cstr.as_ptr())
-    }
-}
-
 fn string_from_real_for_complex(x: c_double) -> String {
     if R_IsNA(x) {
         "NA".to_string()
@@ -1198,12 +1198,49 @@ unsafe fn coerceToString(v: SEXP) -> SEXP {
         SHALLOW_DUPLICATE_ATTRIB(ans, v);
 
         let vtype = TYPEOF(v);
+        // stock coerce.c:772-778 (REALSXP) and 781-787 (CPLXSXP): pin the
+        // printing digits to DBL_DIG (MAX precision) around the
+        // StringFromReal loop so as.character(<double>) renders 15
+        // significant digits regardless of options("digits"). The port's
+        // formatReal reads options("digits") live, so pin the option.
+        let pin_digits = vtype == SEXPTYPE::REALSXP || vtype == SEXPTYPE::CPLXSXP;
+        let saved_digits = if pin_digits {
+            let digits_sym = Rf_install(b"digits\0".as_ptr() as *const c_char);
+            let saved = crate::mainutils::options::GetOption1(digits_sym);
+            let _saved_guard = protect(saved);
+            let max = Rf_ScalarInteger(15);
+            let _max_guard = protect(max);
+            crate::mainutils::options::R_SetOption(digits_sym, max);
+            saved
+        } else {
+            R_NilValue()
+        };
+        let _digits_guard = RestoreDigitsOnScopeEnd {
+            active: pin_digits,
+            saved_digits,
+        };
+        struct RestoreDigitsOnScopeEnd {
+            active: bool,
+            saved_digits: SEXP,
+        }
+        impl Drop for RestoreDigitsOnScopeEnd {
+            fn drop(&mut self) {
+                if self.active {
+                    let digits_sym = unsafe { Rf_install(b"digits\0".as_ptr() as *const c_char) };
+                    unsafe {
+                        crate::mainutils::options::R_SetOption(digits_sym, self.saved_digits);
+                    }
+                }
+            }
+        }
         for i in 0..n {
             let ii = i as c_int;
             let s = match vtype {
                 t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, ii)),
                 t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::REALSXP => StringFromReal_impl(REAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::REALSXP => {
+                    crate::mainutils::printutils::StringFromReal(REAL_ELT(v, ii), &mut warn)
+                }
                 t if t == SEXPTYPE::CPLXSXP => StringFromComplex(COMPLEX_ELT(v, ii), &mut warn),
                 t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, ii), &mut warn),
                 _ => R_NaString(),
@@ -1353,7 +1390,16 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         }
 
         if type_ == SEXPTYPE::STRSXP {
-            let n = LENGTH(v);
+            // bind length: pairlists carry no meaningful raw length field,
+            // so count the cells (trunk length()).
+            let mut n: c_int = 0;
+            {
+                let mut counter = v;
+                while !counter.is_null() && !isNull(counter) {
+                    n += 1;
+                    counter = CDR(counter);
+                }
+            }
             let rval = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
             let _rval_guard = protect(rval);
             let mut vp = v;
@@ -1362,8 +1408,18 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                 if isString(car) && LENGTH(car) == 1 {
                     SET_STRING_ELT(rval, i as R_xlen_t, STRING_ELT(car, 0));
                 } else {
-                    // deparse not available; use StringFromLogical as fallback
-                    SET_STRING_ELT(rval, i as R_xlen_t, StringFromLogical(0));
+                    // coerce.c coercePairList: deparse non-trivial cells
+                    // onto a single line (deparse1line).
+                    let dep = crate::mainutils::deparse::deparse1line(car, false);
+                    if !dep.is_null()
+                        && dep != R_NilValue()
+                        && TYPEOF(dep) == SEXPTYPE::STRSXP
+                        && xlength(dep) > 0
+                    {
+                        SET_STRING_ELT(rval, i as R_xlen_t, STRING_ELT(dep, 0));
+                    } else {
+                        SET_STRING_ELT(rval, i as R_xlen_t, R_NaString());
+                    }
                 }
                 vp = CDR(vp);
             }
@@ -1488,8 +1544,20 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                 if isString(elt) && LENGTH(elt) == 1 {
                     SET_STRING_ELT(rval, i, STRING_ELT(elt, 0));
                 } else {
-                    // deparse not available; convert via asCharacterFactor-like path
-                    SET_STRING_ELT(rval, i, StringFromLogical(0));
+                    // coerce.c coerceVectorList: non-trivial entries are
+                    // deparsed onto a single line (deparse1line_ex with
+                    // NICE_NAMES); e.g. calls -> "f(1)", NULL -> "NULL",
+                    // .Primitive("sin") -> ".Primitive(\"sin\")".
+                    let dep = crate::mainutils::deparse::deparse1line(elt, false);
+                    if !dep.is_null()
+                        && dep != R_NilValue()
+                        && TYPEOF(dep) == SEXPTYPE::STRSXP
+                        && xlength(dep) > 0
+                    {
+                        SET_STRING_ELT(rval, i, STRING_ELT(dep, 0));
+                    } else {
+                        SET_STRING_ELT(rval, i, R_NaString());
+                    }
                 }
             }
             return rval;
@@ -1560,7 +1628,9 @@ unsafe fn coerceToSymbol(v: SEXP) -> SEXP {
         let ans = match TYPEOF(v) {
             t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, 0)),
             t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, 0), &mut warn),
-            t if t == SEXPTYPE::REALSXP => StringFromReal_impl(REAL_ELT(v, 0), &mut warn),
+            t if t == SEXPTYPE::REALSXP => {
+                crate::mainutils::printutils::StringFromReal(REAL_ELT(v, 0), &mut warn)
+            }
             t if t == SEXPTYPE::CPLXSXP => StringFromComplex(COMPLEX_ELT(v, 0), &mut warn),
             t if t == SEXPTYPE::STRSXP => STRING_ELT(v, 0),
             t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, 0), &mut warn),
@@ -4098,10 +4168,12 @@ mod tests {
     #[test]
     fn test_string_from_real() {
         let _session = crate::sexp::session::RSession::new();
-        let s = unsafe { StringFromReal_impl(3.14, std::ptr::null_mut()) };
+        let s = unsafe { crate::mainutils::printutils::StringFromReal(3.14, std::ptr::null_mut()) };
         assert!(!s.is_null());
 
-        let s_na = unsafe { StringFromReal_impl(R_NA_REAL(), std::ptr::null_mut()) };
+        let s_na = unsafe {
+            crate::mainutils::printutils::StringFromReal(R_NA_REAL(), std::ptr::null_mut())
+        };
         assert!(!s_na.is_null());
     }
 

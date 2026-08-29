@@ -552,21 +552,50 @@ pub(crate) unsafe fn named_arg(args: SEXP, name: &str) -> Option<SEXP> {
 /// interactive console and connection scans report explicit R errors.
 pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let file_arg = CAR(args);
-        let what_arg = CAR(CDR(args));
-        let nmax_arg = CAR(CDR(CDR(args)));
-        let fourth_arg = CAR(CDR(CDR(CDR(args))));
-        let fifth_arg = CAR(CDR(CDR(CDR(CDR(args)))));
-        if file_arg.is_null() || file_arg == R_NilValue() {
-            scan_error("scan() requires a file path in the Android/headless runtime");
-        }
-        if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
-            scan_error("scan() currently supports character file paths only");
-        }
-        let filename = elt_to_string(file_arg, 0);
-        if filename.is_empty() {
-            scan_error("scan() cannot read from an interactive console in this runtime");
-        }
+        // Resolve arguments the way stock .Internal(scan(...)) sees them, by
+        // named tag first, then positional slot:
+        // (file, what, nmax, sep, dec, quote, skip, nlines, na.strings,
+        //  flush, fill, text, fileEncoding).
+        let by_slot = |names: &[&str], position: usize| -> SEXP {
+            arg_by_name_or_position(args, names, position)
+        };
+        // Stock precedence: text= is used only when file= is missing
+        // (scan.R: `if (missing(file) && !missing(text)) file <- textConnection(text)`).
+        let text_arg = by_slot(&["text"], 11);
+        let file_arg = by_slot(&["file"], 0);
+        let what_arg = by_slot(&["what"], 1);
+        let nmax_arg = by_slot(&["nmax"], 2);
+        let file_given = !file_arg.is_null() && file_arg != R_NilValue();
+        let text = if file_given
+            || text_arg.is_null()
+            || text_arg == R_NilValue()
+            || XLENGTH(text_arg) == 0
+        {
+            None
+        } else {
+            if TYPEOF(text_arg) != SEXPTYPE::STRSXP {
+                scan_error("invalid 'text' argument");
+            }
+            Some(elt_to_string(text_arg, 0))
+        };
+        let contents = if let Some(text) = text {
+            text
+        } else {
+            if file_arg.is_null() || file_arg == R_NilValue() || file_arg == R_MissingArg() {
+                scan_error("scan() requires a file path in the Android/headless runtime");
+            }
+            if TYPEOF(file_arg) != SEXPTYPE::STRSXP || XLENGTH(file_arg) < 1 {
+                scan_error("scan() currently supports character file paths only");
+            }
+            let filename = elt_to_string(file_arg, 0);
+            if filename.is_empty() {
+                scan_error("scan() cannot read from an interactive console in this runtime");
+            }
+            match std::fs::read_to_string(&filename) {
+                Ok(s) => s,
+                Err(err) => scan_error(format!("cannot open file '{filename}': {err}")),
+            }
+        };
         let what_type = if what_arg.is_null() || what_arg == R_NilValue() {
             SEXPTYPE::REALSXP.as_c_int()
         } else {
@@ -577,26 +606,40 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             real_or_default(nmax_arg, -1.0) as i64
         };
-        let sep_arg = if let Some(sep) = named_arg(args, "sep") {
-            sep
-        } else if !fourth_arg.is_null() && TYPEOF(fourth_arg) == SEXPTYPE::STRSXP {
-            fourth_arg
-        } else {
-            fifth_arg
+        let nlines = match named_arg(args, "nlines") {
+            Some(nl) if !nl.is_null() && nl != R_NilValue() => real_or_default(nl, -1.0) as i64,
+            _ => -1_i64,
         };
+        // nlines: only the first `nlines` lines are read (partial last line kept).
+        let contents = if nlines >= 0 {
+            let mut kept: Vec<&str> = contents.split('\n').take(nlines as usize).collect();
+            if let Some(last) = kept.last_mut() {
+                if let Some(stripped) = last.strip_suffix('\r') {
+                    *last = stripped;
+                }
+            }
+            kept.join("\n")
+        } else {
+            contents
+        };
+        let sep_arg = by_slot(&["sep"], 3);
         let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
             String::new()
         } else {
             elt_to_string(sep_arg, 0)
         };
-
-        let contents = match std::fs::read_to_string(&filename) {
-            Ok(s) => s,
-            Err(err) => scan_error(format!("cannot open file '{filename}': {err}")),
-        };
-
         let values = split_scan_fields(&contents, &sep, nmax);
         let n = values.len() as R_xlen_t;
+        let quiet = match named_arg(args, "quiet") {
+            Some(q) if !q.is_null() && q != R_NilValue() && XLENGTH(q) > 0 => {
+                TYPEOF(q) != SEXPTYPE::LGLSXP || *LOGICAL(q) != 0
+            }
+            _ => false,
+        };
+        if !quiet {
+            let item_word = if n == 1 { "item" } else { "items" };
+            crate::sexp::output::capture_stdout(&format!("Read {n} {item_word}\n"));
+        }
         if what_type == SEXPTYPE::INTSXP {
             let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
             if result.is_null() {

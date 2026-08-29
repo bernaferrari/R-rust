@@ -708,18 +708,15 @@ pub(crate) unsafe fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
         }
         let mut dn: f64 = 1.0;
         for i in 0..ndim as usize {
-            let value = *INTEGER(dim).add(i);
-            /* need this test first as NA_INTEGER is < 0 */
-            if value == NA_INTEGER {
+            let d = *INTEGER(dim).add(i);
+            // NA_INTEGER is < 0; kept explicit for safety, mirroring
+            // trunk array.c (r9deb2eb restructure).
+            if d >= 0 && d != NA_INTEGER {
+                dn *= d as f64;
+            } else if d == NA_INTEGER {
                 array_error("the dims contain missing values");
-            }
-            if value < 0 {
-                array_error("the dims contain negative values");
-            }
-            if value != 0 {
-                dn *= value as f64;
             } else {
-                dn = 0.0; // but continue checking ..
+                array_error("the dims contain negative values");
             }
         }
         if dn > R_XLEN_T_MAX {

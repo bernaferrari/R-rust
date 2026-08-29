@@ -28,7 +28,6 @@ use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::{
     NA_INTEGER, R_NA_BIT_PATTERN, R_size_t, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
 };
-use crate::sexp::globals::R_NilValue;
 
 use crate::mainutils::format::{
     formatComplex, formatInteger, formatLogical, formatReal, formatString,
@@ -348,7 +347,11 @@ fn format_real_printf_style(
     hash_f: bool,
     na: &str,
 ) -> String {
-    let mw = if (w as usize) < NB - 1 { w as usize } else { NB - 1 };
+    let mw = if (w as usize) < NB - 1 {
+        w as usize
+    } else {
+        NB - 1
+    };
     if !x.is_finite() {
         if r_real_is_na(x) {
             format!("{na:>mw$}")
@@ -778,14 +781,14 @@ pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
 
 /// Create a CHARSXP from a formatted real value.
 ///
-/// Uses `formatReal` to determine optimal formatting, then creates a CHARSXP
-/// via `Rf_mkChar`. Returns R_NilValue (NA_STRING equivalent) for NA values.
+/// Stock `StringFromReal` (printutils.c:310): `formatReal` for w/d/e, then
+/// `EncodeRealDrop0`; NA renders as NA_STRING. Callers embedding the result
+/// into a STRSXP (coerce.c's coerceToString) require a real CHARSXP here.
 pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
     unsafe {
         // Check for NA
         if x.to_bits() == R_NA_BIT_PATTERN {
-            // Return R_NilValue as a stand-in for NA_STRING when no arena is initialized
-            return R_NilValue();
+            return crate::sexp::globals::R_NaString();
         }
 
         // Use formatReal to determine optimal w, d, e
