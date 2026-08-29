@@ -162,17 +162,48 @@ pub unsafe fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn do_at(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+/// The `@` operator (main/attrib.c `do_AT`).
+///
+/// Upstream dispatches an internal generic for S3 objects first; with no
+/// `@` method registered (the only case in this port) it falls through to
+/// the stock checks: only S4 objects (or `.Data`) may be slot-extracted,
+/// otherwise "no applicable method for `@` ..." with the object's class.
+pub unsafe fn do_at(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
             return R_NilValue();
         }
         let object = crate::eval::eval::Rf_eval(CAR(args), rho);
         let _object_guard = protect(object);
-        let slot_name = CAR(CDR(args));
-        let slot_args = Rf_cons(object, Rf_cons(slot_name, R_NilValue()));
-        let _slot_args_guard = protect(slot_args);
-        do_slot(_call, op, slot_args, rho)
+        let nlist = CADR(args);
+
+        // do_AT name check: symbol or non-NA scalar string.
+        let name_ok = !nlist.is_null()
+            && (TYPEOF(nlist) == SEXPTYPE::SYMSXP
+                || (TYPEOF(nlist) == SEXPTYPE::STRSXP
+                    && LENGTH(nlist) == 1
+                    && STRING_ELT(nlist, 0) != crate::sexp::globals::R_NaString()));
+        if !name_ok {
+            let msg = "invalid type or length for slot name".to_string();
+            std::panic::panic_any(RError { message: msg });
+        }
+
+        // Only `.Data` bypasses the S4 requirement; anything else on a
+        // non-S4 object is upstream's dispatch failure message.
+        if crate::mainutils::essentials::s4::name_of(nlist).as_deref() != Some(".Data")
+            && crate::mainutils::coerce::IS_S4_OBJECT(object) == crate::sexp::ffi::FALSE
+        {
+            let class_str = crate::mainutils::essentials::s4::first_class_display(object);
+            let msg = format!(
+                "no applicable method for `@` applied to an object of class \"{}\"",
+                class_str
+            );
+            std::panic::panic_any(RError { message: msg });
+        }
+
+        let _ = call;
+        let _ = op;
+        crate::mainutils::essentials::s4::R_do_slot(object, nlist)
     }
 }
 

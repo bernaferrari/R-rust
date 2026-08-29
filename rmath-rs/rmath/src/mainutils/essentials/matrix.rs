@@ -665,7 +665,14 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                             false,
                         )
                     } else {
-                        (XLENGTH(x), 1, R_NilValue(), R_NilValue(), R_NilValue(), false)
+                        (
+                            XLENGTH(x),
+                            1,
+                            R_NilValue(),
+                            R_NilValue(),
+                            R_NilValue(),
+                            false,
+                        )
                     }
                 } else {
                     let (nrow, ncol, rnames, cnames) = if ldim == 2 {
@@ -676,12 +683,7 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                             VECTOR_ELT(dimnames, 1),
                         )
                     } else {
-                        (
-                            XLENGTH(x),
-                            1,
-                            VECTOR_ELT(dimnames, 0),
-                            R_NilValue(),
-                        )
+                        (XLENGTH(x), 1, VECTOR_ELT(dimnames, 0), R_NilValue())
                     };
                     let names = crate::sexp::attrib_core::getAttrib(dimnames, R_NamesSymbol());
                     (nrow, ncol, rnames, cnames, names, true)
@@ -2036,17 +2038,32 @@ fn structure_attr_name(name: &str) -> &str {
 }
 
 /// R's `structure(.Data, ...)` — attach attributes to an object.
-pub unsafe fn do_structure(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+///
+/// Mirrors src/library/base/R/structure.R: the historical dotted attribute
+/// names `.Dim`, `.Dimnames`, `.Names`, `.Tsp` and `.Label` are renamed to
+/// `dim`, `dimnames`, `names`, `tsp` and `levels` before being attached, and
+/// the rename emits the upstream deprecation warning listing every renamed
+/// name in call order (`structure(.OBJSXP, dim=)` construct side; the deparse
+/// side landed separately with SyncErrDep).
+pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
 
+        const SPECIALS: [&str; 5] = [".Dim", ".Dimnames", ".Names", ".Tsp", ".Label"];
+        const REPLACEMENTS: [&str; 5] = ["dim", "dimnames", "names", "tsp", "levels"];
+
+        let mut renamed: Vec<(String, String)> = Vec::new();
+
         let mut current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
             if let Some(name) = tag_name(current) {
                 let attr_name = structure_attr_name(&name);
+                if let Some(slot) = SPECIALS.iter().position(|special| *special == name) {
+                    renamed.push((name.clone(), REPLACEMENTS[slot].to_string()));
+                }
                 crate::sexp::attrib_core::setAttrib(
                     x,
                     Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
@@ -2054,6 +2071,33 @@ pub unsafe fn do_structure(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 );
             }
             current = CDR(current);
+        }
+
+        if !renamed.is_empty() {
+            // pc <- function(nms) paste0(sQuote(nms), collapse = ", ") —
+            // sQuote renders ASCII quotes in the C locale the gates run in.
+            let pc = |names: &[&str]| {
+                names
+                    .iter()
+                    .map(|name| format!("'{name}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let msg = format!(
+                "Replacing special names {} is deprecated; use {} instead.",
+                pc(&renamed
+                    .iter()
+                    .map(|(from, _)| from.as_str())
+                    .collect::<Vec<_>>()),
+                pc(&renamed
+                    .iter()
+                    .map(|(_, to)| to.as_str())
+                    .collect::<Vec<_>>()),
+            );
+            let c_msg = CString::new(msg).unwrap_or_default();
+            // .Deprecated() warns with the structure() call so the deferred
+            // print renders "In structure(...) :".
+            crate::mainutils::errors::Rf_warningcall1(call, c_msg.as_ptr());
         }
 
         x

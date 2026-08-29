@@ -143,6 +143,29 @@ pub unsafe fn SET_OBJECT(x: SEXP, v: c_int) {
     }
 }
 
+/// S4 object bit (gp bit 4), matching Rinternals.h `SET_S4_OBJECT`/`IS_S4_OBJECT`.
+pub const S4_OBJECT_MASK: u16 = 1 << 4;
+
+/// Set the S4 object bit (gp bit 4).
+pub unsafe fn SET_S4_OBJECT(x: SEXP) {
+    unsafe {
+        if is_valid_sexp_ptr(x) {
+            let gp = (*x).sxpinfo.gp() | S4_OBJECT_MASK;
+            (*x).sxpinfo.set_gp(gp);
+        }
+    }
+}
+
+/// Unset the S4 object bit (gp bit 4).
+pub unsafe fn UNSET_S4_OBJECT(x: SEXP) {
+    unsafe {
+        if is_valid_sexp_ptr(x) {
+            let gp = (*x).sxpinfo.gp() & !S4_OBJECT_MASK;
+            (*x).sxpinfo.set_gp(gp);
+        }
+    }
+}
+
 /// Get the namedness level (0, 1, or 2).
 pub unsafe fn NAMED(x: SEXP) -> c_int {
     unsafe {

@@ -66,6 +66,8 @@ enum Token {
     Not,
     // Pipe
     Pipe,
+    // Pipe bind (`=>`, gated by the _R_USE_PIPEBIND_ envvar)
+    PipeBind,
     // Pipe placeholder (`_`)
     Placeholder,
     // Assignment
@@ -107,16 +109,23 @@ enum Token {
     KwReturn,
     // Eof
     Eof,
+    // Malformed numeric lexeme ("0x", "0x1p", "1e") — upstream's
+    // lexer-level ERROR, rendered as "unexpected input".
+    Invalid,
 }
 
 // ---------------------------------------------------------------------------
 // Lexer
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
 struct Lexer {
     chars: Vec<char>,
     pos: usize,
+    /// Position where the most recently returned token starts, i.e. after
+    /// leading whitespace and comments — gram.y captures yylloc in
+    /// token() right after SkipSpace, so this (not the pre-skip position)
+    /// is what upstream location reporting uses.
+    last_token_start: usize,
 }
 
 impl Lexer {
@@ -124,6 +133,7 @@ impl Lexer {
         Lexer {
             chars: input.chars().collect(),
             pos: 0,
+            last_token_start: 0,
         }
     }
 
@@ -163,10 +173,10 @@ impl Lexer {
             }
         }
     }
-
     fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         self.skip_comment();
+        self.last_token_start = self.pos;
 
         let ch = match self.peek_char() {
             Some(c) => c,
@@ -281,6 +291,11 @@ impl Lexer {
                 if self.peek_char() == Some('=') {
                     self.advance();
                     Token::Eq
+                } else if self.peek_char() == Some('>') {
+                    // gram.y: '=' + '>' → PIPEBIND ("=>"), the pipe-bind
+                    // symbol; the feature gate is applied at reduce time.
+                    self.advance();
+                    Token::PipeBind
                 } else {
                     Token::Assign
                 }
@@ -369,7 +384,10 @@ impl Lexer {
         let mut has_dot = false;
         let mut has_e = false;
 
-        // Handle hex literals: 0x...
+        // Hex literals: 0x... (gram.y `NumericValue`). The mantissa takes
+        // hex digits and at most one '.', needs at least one character, and
+        // may carry a [pP][+-]?[0-9]+ binary exponent (fractions do not
+        // require one, and "0x.8p1" / "0x1." are accepted).
         if self.peek_char() == Some('0')
             && (self.peek_char_at(1) == Some('x') || self.peek_char_at(1) == Some('X'))
         {
@@ -381,37 +399,74 @@ impl Lexer {
             };
             s.push(zero);
             s.push(prefix);
+            let mut nd = 0usize;
             while let Some(ch) = self.peek_char() {
                 if ch.is_ascii_hexdigit() {
                     s.push(ch);
                     self.advance();
+                    nd += 1;
+                } else if ch == '.' && !has_dot {
+                    has_dot = true;
+                    s.push(ch);
+                    self.advance();
+                    nd += 1;
                 } else {
                     break;
                 }
             }
-            let digits = s[2..].to_string();
-            let val = u64::from_str_radix(&digits, 16).ok();
+            if nd == 0 {
+                // "0x" with no mantissa: upstream lexical error.
+                return Token::Invalid;
+            }
+            if matches!(self.peek_char(), Some('p') | Some('P')) {
+                has_e = true;
+                s.push(self.advance().unwrap());
+                if matches!(self.peek_char(), Some('+') | Some('-')) {
+                    s.push(self.advance().unwrap());
+                }
+                let mut ed = 0usize;
+                loop {
+                    match self.peek_char() {
+                        Some(d) if d.is_ascii_digit() => {
+                            s.push(d);
+                            self.advance();
+                            ed += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                if ed == 0 {
+                    // "0x1p" without exponent digits: upstream lexical error.
+                    return Token::Invalid;
+                }
+            }
+            // libc strtod is correctly rounded for C99 hex floats, matching
+            // trunk's R_strtod on the hex path; it also accepts arbitrarily
+            // long hex integers (beyond u64).
+            let Some(v) = (unsafe { crate::mainutils::coerce::parse_double_str(&s) }) else {
+                return Token::Invalid;
+            };
             if self.peek_char() == Some('i') {
                 self.advance();
-                return Token::Complex(val.unwrap_or(0) as f64);
+                return Token::Complex(v);
             }
             if self.peek_char() == Some('L') {
                 self.advance();
+                return Self::integer_or_float(v, &s, has_dot, has_e);
             }
-            // Range-check before the cast: hex values that exceed the integer
-            // range widen to a double literal, matching decimal behavior
-            // (with or without the L suffix).
-            return match val {
-                Some(v) if i32::try_from(v).is_ok() => Token::Int(v as i32),
-                Some(v) => Token::Number(v as f64),
-                None => Token::Number(digits.parse::<f64>().unwrap_or(0.0)),
-            };
+            return Token::Number(v);
         }
 
+        // Decimal literals. `exp_digits` counts digits after the exponent
+        // marker so "1e" / "1e+" can be rejected like upstream.
+        let mut exp_digits: Option<usize> = None;
         while let Some(ch) = self.peek_char() {
             if ch.is_ascii_digit() {
                 s.push(ch);
                 self.advance();
+                if let Some(n) = exp_digits.as_mut() {
+                    *n += 1;
+                }
             } else if ch == '.' && !has_dot && !has_e {
                 has_dot = true;
                 s.push(ch);
@@ -426,46 +481,56 @@ impl Lexer {
                 {
                     s.push(sign);
                 }
-            } else if ch == 'L' {
-                self.advance();
-                if !has_dot && let Some(v) = Self::parse_int_literal_value(&s) {
-                    return Token::Int(v);
-                }
-                break;
+                exp_digits = Some(0);
             } else {
+                // 'L' and everything else ends the literal; the L suffix is
+                // handled after the loop (left unconsumed here).
                 break;
             }
+        }
+        if exp_digits == Some(0) {
+            // "1e" / "1e+": upstream lexical error.
+            return Token::Invalid;
         }
 
         let v: f64 = s.parse().unwrap_or(0.0);
         if self.peek_char() == Some('i') {
             self.advance();
-            Token::Complex(v)
-        } else if !has_dot {
-            // Leading-zero digit strings are octal (R follows C: 010 == 8).
-            // Values are range-checked; overflow keeps the double literal,
-            // matching decimal integer overflow.
-            Token::Number(Self::parse_int_literal_value(&s).map_or(v, |i| i as f64))
-        } else {
-            Token::Number(v)
+            return Token::Complex(v);
         }
+        if self.peek_char() == Some('L') {
+            self.advance();
+            return Self::integer_or_float(v, &s, has_dot, has_e);
+        }
+        // Bare decimal literals are double in R and there are no octal
+        // source literals ("010" is ten); only the L suffix makes an integer.
+        Token::Number(v)
     }
 
-    /// Interpret a digit string as an R integer literal value: leading-zero
-    /// digit strings are octal. Returns None when the value exceeds the
-    /// integer range or the digits are invalid, so callers fall back to a
-    /// double literal (consistent with decimal overflow handling).
-    fn parse_int_literal_value(s: &str) -> Option<i32> {
-        if s.len() > 1 && s.starts_with('0') {
-            let oct = u64::from_str_radix(&s[1..], 8).ok()?;
-            if i32::try_from(oct).is_ok() {
-                Some(oct as i32)
-            } else {
-                None
+    /// Trunk's L-suffix rule (gram.y `NumericValue`): the literal becomes an
+    /// integer only when its value is integral and fits in `int`; otherwise
+    /// the numeric value wins, with one of upstream's literal warnings.
+    fn integer_or_float(v: f64, lexeme: &str, has_dot: bool, has_e: bool) -> Token {
+        let fits = v.is_finite() && v == v.trunc() && i32::try_from(v as i64).is_ok();
+        let lexeme = format!("{lexeme}L");
+        if fits {
+            if has_dot && !has_e {
+                warn_literal(&format!(
+                    "integer literal {lexeme} contains unnecessary decimal point"
+                ));
             }
-        } else {
-            s.parse::<i32>().ok()
+            return Token::Int(v as i32);
         }
+        if has_dot && !has_e {
+            warn_literal(&format!(
+                "integer literal {lexeme} contains decimal; using numeric value"
+            ));
+        } else {
+            warn_literal(&format!(
+                "non-integer value {lexeme} qualified with L; using numeric value"
+            ));
+        }
+        Token::Number(v)
     }
 
     fn read_raw_string(&mut self) -> Token {
@@ -611,6 +676,15 @@ impl std::error::Error for ParseError {}
 /// `in "<context>"` suffix.
 const PARSE_CONTEXT_WINDOW: usize = 256;
 
+/// Emit one of the literal-suffix warnings from gram.y's `NumericValue`
+/// (e.g. "non-integer value 0x1p1024L qualified with L; using numeric
+/// value").
+fn warn_literal(message: &str) {
+    if let Ok(c) = CString::new(message) {
+        unsafe { crate::main::errors::Rf_warning(c.as_ptr()) };
+    }
+}
+
 /// How a token appears in an upstream "unexpected X" parse error, per
 /// gram.y's `yytname_translations` table (constants and symbols in prose,
 /// operators and keywords as quoted source text).
@@ -622,6 +696,7 @@ fn token_display(tok: &Token) -> String {
         Token::LeftAssign => "assignment".to_string(),
         Token::Newline => "end of line".to_string(),
         Token::Eof => "end of input".to_string(),
+        Token::Invalid => "input".to_string(),
         Token::Percent(op) => format!("'{op}'"),
         Token::Plus => "'+'".to_string(),
         Token::Minus => "'-'".to_string(),
@@ -640,6 +715,7 @@ fn token_display(tok: &Token) -> String {
         Token::Or2 => "'||'".to_string(),
         Token::Not => "'!'".to_string(),
         Token::Pipe => "'|>'".to_string(),
+        Token::PipeBind => "'=>'".to_string(),
         Token::Placeholder => "'_'".to_string(),
         Token::Assign => "'='".to_string(),
         Token::RightAssign => "'->'".to_string(),
@@ -686,6 +762,54 @@ fn symbol_name_string(sym: SEXP) -> String {
                 .to_string_lossy()
                 .into_owned()
         }
+    }
+}
+
+/// Upstream's `StringTrue`: the accepted spellings of a true envvar value.
+fn string_true(value: &str) -> bool {
+    matches!(value, "T" | "True" | "TRUE" | "true")
+}
+
+/// gram.y `xxpipebind`'s feature gate: `_R_USE_PIPEBIND_` must hold a true
+/// value for `=>` to parse. Upstream caches the lookup in a function-local
+/// static that short-circuits once it has seen a true value; the flag
+/// below reproduces that sticky-true behavior process-wide.
+fn pipebind_enabled() -> bool {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static USE_PIPEBIND: AtomicI32 = AtomicI32::new(0);
+    if USE_PIPEBIND.load(Ordering::Relaxed) == 1 {
+        return true;
+    }
+    let enabled = std::env::var("_R_USE_PIPEBIND_")
+        .map(|v| string_true(&v))
+        .unwrap_or(false);
+    if enabled {
+        USE_PIPEBIND.store(1, Ordering::Relaxed);
+    }
+    enabled
+}
+
+/// gram.y `checkForPipeBind`: whether a `=>` call survived anywhere in the
+/// expression tree (recursing through language object CARs only).
+fn expr_contains_pipebind(expr: SEXP) -> bool {
+    if expr.is_null() {
+        return false;
+    }
+    unsafe {
+        if TYPEOF(expr) != SEXPTYPE::LANGSXP {
+            return false;
+        }
+        let pipebind_sym = Rf_install(c"=>".as_ptr());
+        let nil = R_NilValue();
+        let mut cur = expr;
+        while cur != nil {
+            let car = CAR(cur);
+            if car == pipebind_sym || expr_contains_pipebind(car) {
+                return true;
+            }
+            cur = CDR(cur);
+        }
+        false
     }
 }
 
@@ -764,6 +888,10 @@ pub struct Parser<'arena> {
     /// the post-parse scan. One node per parser keeps identity comparisons
     /// valid while user `"_"` string literals remain distinct objects.
     placeholder: SEXP,
+    /// Whether the lexer produced any `=>` (PIPEBIND) token. gram.y's
+    /// `HavePipeBind`: it arms the post-parse "invalid use of pipe bind
+    /// symbol" scan so inputs without `=>` skip it entirely.
+    have_pipebind: bool,
 }
 
 impl<'arena> Parser<'arena> {
@@ -771,11 +899,16 @@ impl<'arena> Parser<'arena> {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         let mut spans = Vec::new();
+        let mut have_pipebind = false;
         loop {
-            let start = lexer.pos;
             let tok = lexer.next_token();
             let end = lexer.pos;
+            // True token start (post-whitespace), like upstream yylloc.
+            let start = lexer.last_token_start;
             let is_eof = tok == Token::Eof;
+            if tok == Token::PipeBind {
+                have_pipebind = true;
+            }
             tokens.push(tok);
             spans.push((start, end));
             if is_eof {
@@ -789,6 +922,7 @@ impl<'arena> Parser<'arena> {
             pos: 0,
             arena,
             placeholder: std::ptr::null_mut(),
+            have_pipebind,
         }
     }
 
@@ -930,6 +1064,64 @@ impl<'arena> Parser<'arena> {
         }
     }
 
+    /// 1-based line and 0-based column of a char offset in the source.
+    /// Upstream counts columns in first-bytes (like chars) and snaps tabs
+    /// to 8-column stops; plain char counting matches it off tab runs.
+    fn line_col(&self, offset: usize) -> (usize, usize) {
+        let offset = offset.min(self.source.len());
+        let mut line = 1usize;
+        let mut col = 0usize;
+        for &ch in &self.source[..offset] {
+            if ch == '\n' {
+                line += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+        (line, col)
+    }
+
+    /// Render `<msg> (<input>:line:col)` for a token index. Upstream
+    /// captures the location right after SkipSpace consumed the token's
+    /// first character (gram.y token()), so the reported column is one
+    /// past the token's first character.
+    fn token_position_error(&self, index: usize, msg: &str) -> ParseError {
+        let (start, _) = self
+            .spans
+            .get(index)
+            .copied()
+            .unwrap_or((self.source.len(), self.source.len()));
+        let (line, col) = self.line_col(start);
+        ParseError(format!("{msg} (<input>:{line}:{})", col + 1))
+    }
+
+    /// Position for the post-parse per-expression checks (gram.y's
+    /// R_Parse1 handler): the parser's lookahead is reported there. A
+    /// consumed newline resets the column to 0 (the Status-3 line
+    /// adjustment then restores the expression's last line), and EOF
+    /// behaves the same way since upstream parses a virtual trailing
+    /// newline; any other terminator reports its own position with the
+    /// same +1 quirk as `token_position_error`.
+    fn pipebind_position_error(&self, msg: &str) -> ParseError {
+        let index = self.pos;
+        let (start, _) = self
+            .spans
+            .get(index)
+            .copied()
+            .unwrap_or((self.source.len(), self.source.len()));
+        let (line, _) = self.line_col(start);
+        match self.tokens.get(index) {
+            Some(Token::Newline) | Some(Token::Eof) | None => {
+                ParseError(format!("{msg} (<input>:{line}:0)"))
+            }
+            _ => {
+                let (_, col) = self.line_col(start);
+                ParseError(format!("{msg} (<input>:{line}:{})", col + 1))
+            }
+        }
+    }
+
     /// Skip newlines (but not semicolons).
     fn skip_newlines(&mut self) {
         while self.peek() == &Token::Newline {
@@ -960,6 +1152,12 @@ impl<'arena> Parser<'arena> {
             // rewrite: nested placeholders or `_` used outside a pipe.
             if self.expr_contains_placeholder(expr) {
                 return Err(ParseError("invalid use of pipe placeholder".to_string()));
+            }
+            // gram.y's checkForPipeBind: any `=>` call that survived the
+            // pipe rewrite (i.e. `=>` anywhere but a pipe's direct RHS)
+            // is an invalid pipe bind. Armed only when the lexer saw `=>`.
+            if self.have_pipebind && expr_contains_pipebind(expr) {
+                return Err(self.pipebind_position_error("invalid use of pipe bind symbol"));
             }
             exprs.push(expr);
             self.skip_terminators();
@@ -1207,26 +1405,67 @@ impl<'arena> Parser<'arena> {
     /// `(2 |> f()) * 10` and `x |> f() |> g()` as `g(f(x))`, while
     /// `1:3 %% 2` still groups the colon first.
     fn parse_special(&mut self) -> Result<SEXP, ParseError> {
-        let mut left = self.parse_colon()?;
+        let mut left = self.parse_pipebind()?;
         loop {
             match self.peek() {
                 Token::Percent(name) => {
                     let op_name = name.clone();
                     self.advance();
                     self.skip_newlines();
-                    let right = self.parse_colon()?;
+                    let right = self.parse_pipebind()?;
                     let op = self.install_symbol(&op_name)?;
                     left = self.lang3(op, left, right);
                 }
                 Token::Pipe => {
                     self.advance();
                     self.skip_newlines();
-                    let right = self.parse_colon()?;
-                    left = self.build_pipe(left, right)?;
+                    let rhs_start = self.pos;
+                    let right = self.parse_pipebind()?;
+                    left = self.build_pipe(left, right, rhs_start)?;
                 }
                 _ => return Ok(left),
             }
         }
+    }
+
+    /// The `=>` pipe-bind operator: gram.y's `expr PIPEBIND expr`, a
+    /// %left tier between SPECIAL/PIPE and `:` — tighter than `|>`, so
+    /// `x |> y => log(y)` groups as `x |> (y => log(y))`, and looser than
+    /// `+`, so the bind's RHS stops at the first additive operator.
+    /// Left-associative: `a => b => c` nests leftward.
+    fn parse_pipebind(&mut self) -> Result<SEXP, ParseError> {
+        let mut left = self.parse_colon()?;
+        while self.peek() == &Token::PipeBind {
+            let op_index = self.pos;
+            self.advance();
+            self.skip_newlines();
+            let right = self.parse_colon()?;
+            left = self.build_pipebind(left, right, op_index)?;
+        }
+        Ok(left)
+    }
+
+    /// Build the call for `lhs => rhs`, porting gram.y's `xxpipebind()`:
+    /// a plain `=>(lhs, rhs)` binary call, gated by the
+    /// `_R_USE_PIPEBIND_` envvar. Only the `|>` rewrite in `build_pipe`
+    /// ever consumes such a call; anything left over fails the post-parse
+    /// "invalid use of pipe bind symbol" scan.
+    fn build_pipebind(
+        &mut self,
+        lhs: SEXP,
+        rhs: SEXP,
+        op_index: usize,
+    ) -> Result<SEXP, ParseError> {
+        if !pipebind_enabled() {
+            // Reported at the `=>` token (gram.y passes &@2). Upstream's
+            // location points one past the token's first character.
+            return Err(self.token_position_error(
+                op_index,
+                "'=>' is disabled; set '_R_USE_PIPEBIND_' envvar to a true value to enable it",
+            ));
+        }
+        let op = self.install_symbol("=>")?;
+        Ok(self.lang3(op, lhs, rhs))
     }
 
     /// Build the call for `lhs |> rhs`, porting gram.y's `xxpipe()`.
@@ -1238,11 +1477,44 @@ impl<'arena> Parser<'arena> {
     ///   placeholder must be named and may only appear once, and
     /// - an extractor chain like `_[i]`, `_$col`, `_[[i]]`, `_@slot` has
     ///   its placeholder head replaced (R 4.5+).
-    fn build_pipe(&mut self, lhs: SEXP, rhs: SEXP) -> Result<SEXP, ParseError> {
+    ///
+    /// A pipe-bind RHS (`x |> y => expr`) rewrites instead into
+    /// `(function(y) expr)(x)`; `rhs_start` is the token index where the
+    /// pipe's RHS began, for the "RHS variable must be a symbol" location.
+    fn build_pipe(&mut self, lhs: SEXP, rhs: SEXP, rhs_start: usize) -> Result<SEXP, ParseError> {
         if unsafe { TYPEOF(rhs) } != SEXPTYPE::LANGSXP {
             return Err(ParseError(
                 "The pipe operator requires a function call as RHS".to_string(),
             ));
+        }
+
+        // xxpipe's pipe-bind branch, checked before everything else: rewrite
+        // `lhs |> var => expr` into `(function(var) expr)(lhs)`.
+        let pipebind_sym = self.install_symbol("=>")?;
+        if unsafe { CAR(rhs) } == pipebind_sym {
+            let var = unsafe { CADR(rhs) };
+            let body = unsafe { crate::sexp::accessors::CADDR(rhs) };
+            if var.is_null() || unsafe { TYPEOF(var) } != SEXPTYPE::SYMSXP {
+                return Err(self.token_position_error(rhs_start, "RHS variable must be a symbol"));
+            }
+            let nil = unsafe { R_NilValue() };
+            // alist = list1(R_MissingArg); SET_TAG(alist, var)
+            let formal_cell = self.cons(unsafe { crate::sexp::globals::R_MissingArg() }, nil);
+            unsafe {
+                crate::sexp::accessors::SETTAG(formal_cell, var);
+            }
+            // fun = lang4(function, alist, expr, R_NilValue)
+            let body_cell = self.cons(body, nil);
+            let formals_cell = self.cons(formal_cell, body_cell);
+            let fun_sym = self.install_symbol("function")?;
+            let fun = self.cons(fun_sym, formals_cell);
+            if !fun.is_null() {
+                unsafe {
+                    (*fun).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+            }
+            // lang2(fun, lhs): call the fresh closure on the pipe LHS.
+            return Ok(self.lang2(fun, lhs));
         }
 
         let placeholder = self.placeholder;

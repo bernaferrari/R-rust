@@ -1,0 +1,16 @@
+1 |> y => log(y)               => ERR: '=>' is disabled; set '_R_USE_PIPEBIND_' envvar to a true value to enable it (<input>:1:8)
+a => b                         => ERR: '=>' is disabled; set '_R_USE_PIPEBIND_' envvar to a true value to enable it (<input>:1:3)
+f@x => OK: 1
+f@missing => ERR: no slot of name "missing" for this object of class "Foo"
+slot(f, "missing") => ERR: no slot of name "missing" for this object of class "Foo"
+slot(1, "x") => ERR: cannot get a slot ("x") from an object of type "double"
+1@x => ERR: no applicable method for `@` applied to an object of class "numeric"
+"s"@x => ERR: no applicable method for `@` applied to an object of class "character"
+NULL@x => ERR: no applicable method for `@` applied to an object of class "NULL"
+slot(matrix(1, 1), "zz") => ERR: cannot get a slot ("zz") from an object of type "double"
+slot(list(a = 1), "a") => ERR: cannot get a slot ("a") from an object of type "list"
+f@.Data => OK: NULL
+slot(f, "names") => ERR: no slot of name "names" for this object of class "Foo"
+slot(f, NA) => ERR: invalid type or length for slot name
+slot(f, 5) => ERR: invalid type or length for slot name
+f@x + 1 => OK: 2

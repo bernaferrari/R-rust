@@ -7,7 +7,7 @@
 //! dotted-pair list but using Rust-native storage.
 
 use std::collections::HashMap;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -500,6 +500,16 @@ pub unsafe fn GetOption(name: *const c_char) -> SEXP {
             Err(_) => return R_NilValue(),
         };
         GetOptionByName(name_str)
+    }
+}
+
+/// Read a logical option by name: true iff the option is set and its value
+/// is `TRUE` — the `asLogical(GetOption1(install(name)))` probe used
+/// throughout R's C code (e.g. the warnPartialMatch* option readers).
+pub(crate) unsafe fn logical_option_enabled(name: &CStr) -> bool {
+    unsafe {
+        let s = GetOption1(Rf_install(name.as_ptr()));
+        !s.is_null() && s != R_NilValue() && crate::mainutils::coerce::asLogical(s) == 1
     }
 }
 

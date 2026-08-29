@@ -517,14 +517,24 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
         (*cptr).conexit = R_NilValue();
 
         let rho = (*cptr).cloenv;
+        // Upstream context.c R_run_onexits PROTECTs the chain head and keeps
+        // the context's conexit pointing at the not-yet-run remainder while
+        // each handler is evaluated: an on.exit expression may allocate, run
+        // gc(), or register further on.exit expressions. Protect the head for
+        // the whole loop and route the remainder through (*cptr).conexit so
+        // the context keeps it rooted — the collector rewrites the field when
+        // nodes move, hence the re-read after every evaluation.
+        let chain_guard = crate::sexp::protect::protect(conexit);
         let mut current = conexit;
         while !isNull(current) {
             let expr = CAR(current);
+            (*cptr).conexit = CDR(current);
             if !isNull(expr) {
                 let _ = super::eval::Rf_eval(expr, rho);
             }
-            current = CDR(current);
+            current = (*cptr).conexit;
         }
+        drop(chain_guard);
     }
 }
 

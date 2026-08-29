@@ -626,7 +626,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let parsed = if value == "NA" {
                     NA_REAL
                 } else {
-                    value.parse::<f64>().unwrap_or_else(|_| {
+                    crate::mainutils::coerce::parse_double_str(value).unwrap_or_else(|| {
                         scan_error(format!("scan() expected a real, got '{value}'"))
                     })
                 };
@@ -1002,13 +1002,26 @@ pub unsafe fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-/// R's `suppressWarnings(expr)` — evaluate expr with captured diagnostics suppressed.
+/// R's `suppressWarnings(expr)` — evaluate expr with warnings suppressed.
+///
+/// Two mechanisms: stderr produced inside is dropped (covers the R-level
+/// `warning()` builtin), and the errors-machinery suppress depth is raised so
+/// C-level warnings (`Rf_warning` → collection) are dropped before collection,
+/// matching upstream's muffle restart.
 pub unsafe fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
+        struct DepthGuard;
+        impl Drop for DepthGuard {
+            fn drop(&mut self) {
+                crate::mainutils::errors::exit_suppress_warnings();
+            }
+        }
+        crate::mainutils::errors::enter_suppress_warnings();
+        let _depth_guard = DepthGuard;
         crate::sexp::output::start_capture();
         let result = crate::eval::eval::Rf_eval(expr, rho);
         let captured = crate::sexp::output::stop_capture();

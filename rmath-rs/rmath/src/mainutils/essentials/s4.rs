@@ -489,40 +489,266 @@ pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-/// R's `slot(object, name)` — get the value of a slot.
+/// R's `slot(object, name)` — `.Call(C_R_get_slot, object, name)`.
+///
+/// Upstream funnels `slot()` and the `@` operator through `R_do_slot()`
+/// (main/attrib.c). Port S4 objects store their slots as named vector
+/// elements rather than attributes, so the lookup adapts that
+/// representation while keeping upstream's exact error behavior.
 pub unsafe fn do_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let object = CAR(args);
-        let name_arg = CAR(CDR(args));
-        if object.is_null()
-            || object == R_NilValue()
-            || name_arg.is_null()
-            || name_arg == R_NilValue()
-        {
+        let name_arg = CADR(args);
+        R_do_slot(object, name_arg)
+    }
+}
+
+/// Port-side `data_part()`: the `.Data` slot of an object extending a
+/// basic type; `NULL` when there is no data part.
+unsafe fn R_data_part(obj: SEXP) -> SEXP {
+    unsafe {
+        if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
+            if let Some(value) = s4_named_slot(obj, ".Data") {
+                return value;
+            }
             return R_NilValue();
         }
-        let slot_name = elt_to_string(name_arg, 0);
-        // Look up by names attribute
-        if TYPEOF(object) == SEXPTYPE::VECSXP {
-            let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
-            let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
-            if !names_val.is_null() && names_val != R_NilValue() {
-                let n = LENGTH(names_val);
-                for i in 0..n {
-                    let ns = crate::sexp::accessors::STRING_ELT(names_val, i as R_xlen_t);
-                    if !ns.is_null() {
-                        let s = crate::sexp::accessors::CHAR(ns);
-                        if !s.is_null() {
-                            let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                            if name_str == slot_name {
-                                return crate::sexp::accessors::VECTOR_ELT(object, i as R_xlen_t);
-                            }
-                        }
-                    }
-                }
+        let data_sym = Rf_install(c".Data".as_ptr());
+        crate::sexp::attrib_core::getAttrib(obj, data_sym)
+    }
+}
+
+/// Look up a slot stored as a named vector element (port S4
+/// representation). Exact, non-partial name matching.
+unsafe fn s4_named_slot(obj: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        if obj.is_null() || TYPEOF(obj) != SEXPTYPE::VECSXP {
+            return None;
+        }
+        let names_sym = Rf_install(c"names".as_ptr());
+        let names = crate::sexp::attrib_core::getAttrib(obj, names_sym);
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let n = LENGTH(names);
+        for i in 0..n {
+            let s = STRING_ELT(names, i as R_xlen_t);
+            if s.is_null() || s == crate::sexp::globals::R_NaString() {
+                continue;
+            }
+            let cs = CHAR(s);
+            if cs.is_null() {
+                continue;
+            }
+            let current = std::ffi::CStr::from_ptr(cs);
+            if current.to_bytes() == name.as_bytes() {
+                return Some(VECTOR_ELT(obj, i as R_xlen_t));
             }
         }
-        R_NilValue()
+        None
+    }
+}
+
+/// Slot name as text: a symbol's print name, or a non-NA scalar string's
+/// first element; `None` for anything else (mirrors the R_SLOT_INIT
+/// acceptance test in upstream's R_do_slot / do_AT).
+pub(crate) unsafe fn name_of(name: SEXP) -> Option<String> {
+    unsafe {
+        if name.is_null() || name == R_NilValue() {
+            return None;
+        }
+        if TYPEOF(name) == SEXPTYPE::SYMSXP {
+            let chars = CHAR(PRINTNAME(name));
+            if chars.is_null() {
+                return Some(String::new());
+            }
+            return Some(
+                std::ffi::CStr::from_ptr(chars)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        if TYPEOF(name) == SEXPTYPE::STRSXP
+            && LENGTH(name) == 1
+            && STRING_ELT(name, 0) != crate::sexp::globals::R_NaString()
+        {
+            let chars = crate::sexp::accessors::translateChar(STRING_ELT(name, 0));
+            if chars.is_null() {
+                return Some(String::new());
+            }
+            return Some(
+                std::ffi::CStr::from_ptr(chars)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        None
+    }
+}
+
+/// The class name do_AT reports for a non-S4 object: the class
+/// attribute's first element when present, else the computed implicit
+/// class (main/attrib.c uses R_data_class for that fallback).
+pub(crate) unsafe fn first_class_display(obj: SEXP) -> String {
+    unsafe {
+        let klass =
+            crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
+        if !klass.is_null()
+            && klass != R_NilValue()
+            && TYPEOF(klass) == SEXPTYPE::STRSXP
+            && LENGTH(klass) > 0
+        {
+            let cs = STRING_ELT(klass, 0);
+            if !cs.is_null() {
+                let chars = crate::sexp::accessors::translateChar(cs);
+                if !chars.is_null() {
+                    return std::ffi::CStr::from_ptr(chars)
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+            return String::new();
+        }
+        // Implicit class (R_data_class): NILSXP is "NULL", closures are
+        // "function", pairlists and VECSXP are "list", etc.
+        let implicit = match TYPEOF(obj) {
+            t if t == SEXPTYPE::NILSXP => "NULL",
+            t if t == SEXPTYPE::LGLSXP => "logical",
+            t if t == SEXPTYPE::INTSXP => "integer",
+            t if t == SEXPTYPE::REALSXP => "numeric",
+            t if t == SEXPTYPE::CPLXSXP => "complex",
+            t if t == SEXPTYPE::STRSXP => "character",
+            t if t == SEXPTYPE::RAWSXP => "raw",
+            t if t == SEXPTYPE::LISTSXP => "list",
+            t if t == SEXPTYPE::VECSXP => "list",
+            t if t == SEXPTYPE::CLOSXP => "function",
+            t if t == SEXPTYPE::SPECIALSXP => "function",
+            t if t == SEXPTYPE::BUILTINSXP => "function",
+            _ => return String::new(),
+        };
+        implicit.to_string()
+    }
+}
+
+/// Raise upstream's R_do_slot miss errors: the class attribute, when
+/// present, produces "no slot of name ... for this object of class ...";
+/// otherwise the TYPEOF-based "cannot get a slot ..." message.
+unsafe fn raise_slot_miss(obj: SEXP, name: &str) -> ! {
+    unsafe {
+        let class_string =
+            crate::sexp::attrib_core::getAttrib(obj, crate::sexp::attrib_core::R_ClassSymbol());
+        let has_class = !class_string.is_null()
+            && class_string != R_NilValue()
+            && TYPEOF(class_string) == SEXPTYPE::STRSXP
+            && LENGTH(class_string) > 0;
+        let msg = if has_class {
+            let cs = STRING_ELT(class_string, 0);
+            let class_str = if cs.is_null() {
+                String::new()
+            } else {
+                let chars = crate::sexp::accessors::translateChar(cs);
+                if chars.is_null() {
+                    String::new()
+                } else {
+                    std::ffi::CStr::from_ptr(chars)
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            };
+            format!(
+                "no slot of name \"{}\" for this object of class \"{}\"",
+                name, class_str
+            )
+        } else {
+            let type_ptr =
+                crate::mainutils::printvector::type2str_nowarn(TYPEOF(obj) as std::os::raw::c_int);
+            let type_str = std::ffi::CStr::from_ptr(type_ptr).to_string_lossy();
+            format!(
+                "cannot get a slot (\"{}\") from an object of type \"{}\"",
+                name, type_str
+            )
+        };
+        std::panic::panic_any(RError { message: msg })
+    }
+}
+
+/// R_do_slot (main/attrib.c) — shared accessor behind `slot()` and `@`.
+///
+/// The name must be a symbol or a non-NA scalar string. Attribute-stored
+/// slots satisfy the lookup first, then port S4 named-element slots;
+/// `.Data` resolves through the data part, `.S3Class` defaults to the
+/// computed class. Missing slots raise upstream's exact error messages.
+pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
+    unsafe {
+        // R_SLOT_INIT: symbol or non-NA scalar string, else upstream's
+        // "invalid type or length for slot name".
+        let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::SYMSXP {
+            let chars = CHAR(PRINTNAME(name));
+            if chars.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(chars)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        } else if !name.is_null()
+            && TYPEOF(name) == SEXPTYPE::STRSXP
+            && LENGTH(name) == 1
+            && STRING_ELT(name, 0) != crate::sexp::globals::R_NaString()
+        {
+            let chars = crate::sexp::accessors::translateChar(STRING_ELT(name, 0));
+            if chars.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(chars)
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        } else {
+            let msg = "invalid type or length for slot name".to_string();
+            std::panic::panic_any(RError { message: msg });
+        };
+
+        if name_str == ".Data" {
+            return R_data_part(obj);
+        }
+
+        if crate::mainutils::coerce::IS_S4_OBJECT(obj) != FALSE {
+            // Port S4: slots live as named vector elements.
+            if let Some(value) = s4_named_slot(obj, &name_str) {
+                return value;
+            }
+            // Upstream's only other storage is attributes; "names" never
+            // resolves for S4 objects (S4SXP in upstream, and the names
+            // attribute here merely lists the slot names).
+            if name_str != "names" {
+                let name_sym =
+                    Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
+                let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
+                if !value.is_null() && value != R_NilValue() {
+                    return value;
+                }
+            }
+            if name_str == ".S3Class" {
+                return crate::eval::attrib_core::R_data_class(obj);
+            }
+            raise_slot_miss(obj, &name_str);
+        }
+
+        // Non-S4: upstream stores everything in attributes.
+        let name_sym = Rf_install(CString::new(name_str.as_str()).unwrap_or_default().as_ptr());
+        let value = crate::sexp::attrib_core::getAttrib(obj, name_sym);
+        if !value.is_null() && value != R_NilValue() {
+            return value;
+        }
+        if name_str == ".S3Class" {
+            return crate::eval::attrib_core::R_data_class(obj);
+        }
+        if name_str == "names" && TYPEOF(obj) == SEXPTYPE::VECSXP {
+            // needed for the namedList class
+            return R_NilValue();
+        }
+        raise_slot_miss(obj, &name_str);
     }
 }
 

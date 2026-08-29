@@ -49,7 +49,9 @@ rmath-rs/rmath/src/sexp/session.rs	r-source/src/main/memory.c	R_InitMemory, Rf_i
 rmath-rs/rmath/src/sexp/protect.rs	r-source/src/main/memory.c	PROTECT, UNPROTECT, R_PreserveObject	rust-shaped	Protect/preserve stacks are scoped to RInstance.
 rmath-rs/rmath/src/sexp/gengc.rs	r-source/src/main/memory.c	R_gc_internal	known-gap	Arena ownership currently avoids full moving/mark-sweep GC parity; lifetime discipline is the safety boundary.
 rmath-rs/rmath/src/sexp/attrib_core.rs	r-source/src/main/attrib.c	setAttrib, getAttrib, namesgets	rust-shaped	Attribute manipulation is shared by typed Sexp APIs and compatibility shims.
-rmath-rs/rmath/src/mainutils/essentials.rs	r-source/src/main/builtin.c	do_c, do_list, do_seq	rust-shaped	Curated Android-essential builtin surface; C-shaped dispatch delegates to safer helpers.
+rmath-rs/rmath/src/mainutils/essentials/vectors.rs	r-source/src/main/bind.c	do_c	rust-shaped	Essentials c() surface; C-shaped dispatch delegates to safer helpers.
+rmath-rs/rmath/src/mainutils/essentials/functional.rs	r-source/src/main/builtin.c	do_makelist	rust-shaped	Essentials list() surface; C-shaped dispatch delegates to safer helpers.
+rmath-rs/rmath/src/mainutils/seq.rs	r-source/src/main/seq.c	do_seq	faithful	Sequence generation ported from seq.c (seq, seq.int, seq_len, seq_along).
 rmath-rs/rmath/src/mainutils/subset.rs	r-source/src/main/subset.c	do_subset, do_subset2, R_DispatchOrEvalSP	faithful	Subsetting with S3/S4 dispatch via DispatchOrEval on objects.
 rmath-rs/rmath/src/mainutils/subassign.rs	r-source/src/main/subassign.c	do_subassign, R_DispatchOrEvalSP	faithful	Replacement/subassignment with object method dispatch.
 rmath-rs/rmath/src/mainutils/subscript.rs	r-source/src/main/subscript.c	makeSubscript, integerSubscript	faithful	Index coercion, negative/zero/NA handling maps to upstream.

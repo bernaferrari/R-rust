@@ -540,7 +540,12 @@ mod tests {
                 }
                 tail
             };
-            let res = do_readDCF(std::ptr::null_mut(), std::ptr::null_mut(), args, std::ptr::null_mut());
+            let res = do_readDCF(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
             assert_eq!(TYPEOF(res), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(res), 2);
             // column-major: 1 row, 2 fields
@@ -548,10 +553,8 @@ mod tests {
             assert_eq!(char_elt(res, 1), "caf<e9> ok");
 
             // dim attribute is 1 x 2
-            let dim = crate::eval::attrib_core::getAttrib(
-                res,
-                crate::eval::attrib_core::R_DimSymbol(),
-            );
+            let dim =
+                crate::eval::attrib_core::getAttrib(res, crate::eval::attrib_core::R_DimSymbol());
             assert_eq!(*INTEGER(dim), 1);
             assert_eq!(*INTEGER(dim).add(1), 2);
         }

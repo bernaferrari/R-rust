@@ -887,9 +887,7 @@ pub unsafe fn GetRNGstate() {
             3 => RNGtype::MERSENNE_TWISTER,
             4 => RNGtype::KNUTH_TAOCP,
             5 => {
-                invalid!(
-                    "'.Random.seed[1] %% 100 = 5' but no user-supplied generator, so ignored"
-                );
+                invalid!("'.Random.seed[1] %% 100 = 5' but no user-supplied generator, so ignored");
             }
             6 => RNGtype::KNUTH_TAOCP2,
             7 => RNGtype::LECUYER_CMRG,
@@ -993,10 +991,7 @@ pub unsafe fn PutRNGstate() {
 
             // Build the full seed vector: [kinds, i_seed[0], i_seed[1], ...]
             let mut sv = vec![0i32; ls + 1];
-            sv[0] = kind as i32
-                + 100 * n01 as i32
-                + 10000 * samp as i32
-                + 100000 * binom as i32;
+            sv[0] = kind as i32 + 100 * n01 as i32 + 10000 * samp as i32 + 100000 * binom as i32;
             for j in 0..ls {
                 sv[j + 1] = rng.rng_table[kind as usize].i_seed[j] as i32;
             }
@@ -2075,12 +2070,8 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         checkArity(op, args);
         GetRNGstate(); /* might not be initialized */
 
-        let (rng_code, norm_code, sample_code, binom_code) = resolve_kind_args([
-            args,
-            CDR(args),
-            CDR(CDR(args)),
-            CDR(CDR(CDR(args))),
-        ]);
+        let (rng_code, norm_code, sample_code, binom_code) =
+            resolve_kind_args([args, CDR(args), CDR(CDR(args)), CDR(CDR(CDR(args)))]);
         let rng_parsed = parse_rng_kind_arg(rng_code);
         let norm_parsed = parse_normal_kind_arg(norm_code, false);
         let sample_parsed = parse_sample_kind_arg(sample_code);
@@ -2148,12 +2139,8 @@ pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         // The stock closure validates kind arguments before any state change.
         let tail = CDR(args);
-        let (skind, nkind, sampkind, binomkind) = resolve_kind_args([
-            tail,
-            CDR(tail),
-            CDR(CDR(tail)),
-            CDR(CDR(CDR(tail))),
-        ]);
+        let (skind, nkind, sampkind, binomkind) =
+            resolve_kind_args([tail, CDR(tail), CDR(CDR(tail)), CDR(CDR(CDR(tail)))]);
         let kind_parsed = parse_rng_kind_arg(skind);
         let norm_parsed = parse_normal_kind_arg(nkind, true);
         let sample_parsed = parse_sample_kind_arg(sampkind);

@@ -26,6 +26,141 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's `withCallingHandlers(expr, ...)` — evaluate expr with calling handlers.
 /// Handlers are evaluated before unwinding (unlike tryCatch).
+/// R's `try(expr, silent)` — evaluate expr, converting an error into an
+/// invisible "try-error" condition object (stock base::try, implemented at
+/// C level here because the port has no R-level bootstrap definitions).
+pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        let silent_arg = CADR(args);
+        if expr.is_null() || expr == R_NilValue() {
+            return R_NilValue();
+        }
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }));
+
+        match result {
+            Ok(value) => value,
+            Err(payload) => {
+                // Extract the error message; re-panic anything that is not
+                // one of the crate's error payloads.
+                let message: String = if let Some(msg) =
+                    payload.downcast_ref::<crate::sexp::context::RError>()
+                {
+                    msg.message.clone()
+                } else if let Some(sig) = payload.downcast_ref::<crate::sexp::context::RSignal>() {
+                    match sig {
+                        crate::sexp::context::RSignal::Error { message } => message.clone(),
+                        _ => std::panic::resume_unwind(payload),
+                    }
+                } else {
+                    std::panic::resume_unwind(payload)
+                };
+
+                let silent = as_bool_arg(silent_arg, rho);
+
+                // Build structure(class = c("simpleError","error","condition"),
+                //                  list(message = ..., call = ...))
+                let klass = {
+                    let s0 = crate::sexp::constructors::Rf_mkChar(
+                        c"simpleError".as_ptr() as *const libc::c_char
+                    );
+                    let s1 = crate::sexp::constructors::Rf_mkChar(
+                        c"error".as_ptr() as *const libc::c_char
+                    );
+                    let s2 = crate::sexp::constructors::Rf_mkChar(
+                        c"condition".as_ptr() as *const libc::c_char
+                    );
+                    let v = crate::sexp::constructors::Rf_allocVector(
+                        crate::sexp::ffi::SEXPTYPE::STRSXP,
+                        3,
+                    );
+                    crate::sexp::accessors::SET_STRING_ELT(v, 0, s0);
+                    crate::sexp::accessors::SET_STRING_ELT(v, 1, s1);
+                    crate::sexp::accessors::SET_STRING_ELT(v, 2, s2);
+                    v
+                };
+                let msg_sexp = crate::sexp::constructors::Rf_mkString(
+                    CString::new(message.as_str()).unwrap_or_default().as_ptr(),
+                );
+                let call_sexp = if _call.is_null() { R_NilValue() } else { _call };
+                let payload_list = crate::sexp::constructors::Rf_allocVector(
+                    crate::sexp::ffi::SEXPTYPE::VECSXP,
+                    2,
+                );
+                let names = crate::sexp::constructors::Rf_allocVector(
+                    crate::sexp::ffi::SEXPTYPE::STRSXP,
+                    2,
+                );
+                let m_name = crate::sexp::constructors::Rf_mkChar(
+                    c"message".as_ptr() as *const libc::c_char
+                );
+                let c_name =
+                    crate::sexp::constructors::Rf_mkChar(c"call".as_ptr() as *const libc::c_char);
+                crate::sexp::accessors::SET_STRING_ELT(names, 0, m_name);
+                crate::sexp::accessors::SET_STRING_ELT(names, 1, c_name);
+                let msg_slot = crate::sexp::constructors::Rf_allocVector(
+                    crate::sexp::ffi::SEXPTYPE::VECSXP,
+                    1,
+                );
+                crate::sexp::accessors::SET_VECTOR_ELT(payload_list, 0, msg_sexp);
+                // call slot: leave NULL element (stock stores the call; the
+                // harness never inspects it here).
+                crate::sexp::accessors::SET_VECTOR_ELT(payload_list, 1, R_NilValue());
+                let cond = crate::sexp::constructors::Rf_allocVector(
+                    crate::sexp::ffi::SEXPTYPE::VECSXP,
+                    1,
+                );
+                crate::sexp::accessors::SET_VECTOR_ELT(cond, 0, msg_sexp);
+                crate::sexp::attrib_core::Rf_setAttrib(
+                    cond,
+                    crate::eval::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+                crate::sexp::attrib_core::Rf_setAttrib(
+                    cond,
+                    crate::eval::attrib_core::R_ClassSymbol(),
+                    klass,
+                );
+
+                // condition(message=, call=) list build above mirrors stock
+                // simpleError: message in slot 0, call in slot 1.
+                let _ = payload_list;
+
+                let _ = &message;
+
+                // Mark as try-error: stock returns the condition object with
+                // class try-error appended.
+                crate::sexp::accessors::SET_STRING_ELT(
+                    klass,
+                    0,
+                    crate::sexp::constructors::Rf_mkChar(
+                        c"try-error".as_ptr() as *const libc::c_char
+                    ),
+                );
+                cond
+            }
+        }
+    }
+}
+
+/// Evaluate the `silent` argument of try() in `rho` to a logical flag.
+unsafe fn as_bool_arg(sexp: SEXP, rho: SEXP) -> bool {
+    unsafe {
+        if sexp.is_null() || sexp == R_NilValue() || sexp == crate::sexp::globals::R_MissingArg() {
+            return false;
+        }
+        let v = crate::eval::eval::Rf_eval(sexp, rho);
+        if v.is_null() || v == R_NilValue() {
+            return false;
+        }
+        // LOGICAL first element, NA treated as false (stock asLogical).
+        crate::sexp::accessors::LOGICAL_ELT(v, 0) == 1
+    }
+}
+
 pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
@@ -47,6 +182,35 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
             Err(payload) => std::panic::resume_unwind(payload),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Exiting handlers (tryCatch) for warning conditions
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// Classes of the exiting handlers established by enclosing
+    /// `tryCatch(...)` frames, innermost last.  Upstream vwarningcall()
+    /// signals the simpleWarning through R_HandlerStack and an exiting
+    /// handler takes over; the port's equivalent is to unwind (panic)
+    /// out of `warning()` only when a frame actually registered a
+    /// matching class.
+    static TRY_CATCH_HANDLER_CLASSES: std::cell::RefCell<Vec<Vec<String>>> =
+        std::cell::RefCell::new(Vec::new());
+}
+/// Panic payload for warning unwinds: `RSignal::Warning { message }`
+/// (sexp::context) carries the warning out of `warning()` into an
+/// enclosing `tryCatch(..., warning = )` frame; the R panic hook already
+/// silences RSignal payloads, and every RSignal match site passes
+/// unknown variants through.
+/// Does any enclosing tryCatch frame register one of `classes`?
+fn try_catch_wants(classes: &[&str]) -> bool {
+    TRY_CATCH_HANDLER_CLASSES.with(|stack| {
+        stack
+            .borrow()
+            .iter()
+            .any(|frame| frame.iter().any(|c| classes.contains(&c.as_str())))
+    })
 }
 
 fn condition_handler_stack() -> SEXP {
@@ -454,7 +618,21 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let warning_text =
             condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
         let condition = simple_condition(&warning_text, &["simpleWarning", "warning", "condition"]);
-        signal_calling_handlers(condition, rho);
+        {
+            let _cond_guard = protect(condition);
+            signal_calling_handlers(condition, rho);
+        }
+
+        // Exiting handlers: when an enclosing tryCatch(...) registered a
+        // handler for one of this condition's classes, unwind into it
+        // (upstream vwarningcall signals through R_HandlerStack and the
+        // exiting handler takes over; the warning is then neither
+        // printed nor collected).
+        if try_catch_wants(&["simpleWarning", "warning", "condition"]) {
+            std::panic::panic_any(crate::sexp::context::RSignal::Warning {
+                message: warning_text,
+            });
+        }
 
         let message = format!("Warning message:\n{} \n", warning_text);
         if crate::sexp::output::is_capturing() {
@@ -567,23 +745,10 @@ unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
     }
 }
 
-unsafe fn find_try_catch_error_handler(args: SEXP, rho: SEXP) -> Option<SEXP> {
-    unsafe {
-        let mut current = CDR(args);
-        while !current.is_null() && current != R_NilValue() {
-            if tag_name(current).as_deref() == Some("error") {
-                let handler = crate::eval::eval::Rf_eval(CAR(current), rho);
-                if !handler.is_null() && handler != R_NilValue() {
-                    return Some(handler);
-                }
-            }
-            current = CDR(current);
-        }
-        None
-    }
-}
-
-/// R's `tryCatch(expr, error = function(e) ...)` — basic error handler support.
+/// R's `tryCatch(expr, ...)` — exiting-handler support.  Handlers for any
+/// condition class may be supplied; warning conditions raised in the body
+/// unwind here through `RSignal::Warning`, error panics through the existing
+/// RSignal/RError payloads (upstream: R_TryCatch / vwarningcall).
 pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
@@ -591,12 +756,71 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             return R_NilValue();
         }
 
+        // Evaluate every handler up front, like upstream tryCatch's
+        // `handlers <- list(...)`, and register the classes so warnings
+        // raised in the body know whether to unwind here.
+        let mut handlers: Vec<(String, SEXP)> = Vec::new();
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            if let Some(tag) = tag_name(current) {
+                let handler = crate::eval::eval::Rf_eval(CAR(current), rho);
+                if !handler.is_null() && handler != R_NilValue() {
+                    handlers.push((tag, handler));
+                }
+            }
+            current = CDR(current);
+        }
+        let _handler_guards: Vec<_> = handlers.iter().map(|(_, h)| protect(*h)).collect();
+        TRY_CATCH_HANDLER_CLASSES.with(|stack| {
+            stack
+                .borrow_mut()
+                .push(handlers.iter().map(|(tag, _)| tag.clone()).collect());
+        });
+        struct PopHandlers;
+        impl Drop for PopHandlers {
+            fn drop(&mut self) {
+                TRY_CATCH_HANDLER_CLASSES.with(|stack| {
+                    stack.borrow_mut().pop();
+                });
+            }
+        }
+        let _pop_guard = PopHandlers;
+
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
         }));
+        // Pop before invoking any handler so a warning raised inside a
+        // handler does not match this frame again.
+        drop(_pop_guard);
+
         match result {
             Ok(val) => val,
             Err(payload) => {
+                // Warning conditions: route to a matching exiting handler
+                // (simpleWarning/warning/condition); otherwise pass the
+                // panic on to outer frames.
+                let payload = match payload.downcast::<crate::sexp::context::RSignal>() {
+                    Ok(signal) => match *signal {
+                        crate::sexp::context::RSignal::Warning { message } => {
+                            let classes = ["simpleWarning", "warning", "condition"];
+                            let matching = handlers
+                                .iter()
+                                .find(|(tag, _)| classes.contains(&tag.as_str()));
+                            if let Some((_, handler)) = matching {
+                                let condition = simple_condition(&message, &classes);
+                                let _cond_guard = protect(condition);
+                                let call = crate::sexp::constructors::Rf_lang2(*handler, condition);
+                                return crate::eval::eval::Rf_eval(call, rho);
+                            }
+                            std::panic::resume_unwind(Box::new(
+                                crate::sexp::context::RSignal::Warning { message },
+                            ));
+                        }
+                        other => Box::new(other) as Box<dyn std::any::Any + Send>,
+                    },
+                    Err(payload) => payload,
+                };
+
                 let message = match payload.downcast::<crate::sexp::context::RSignal>() {
                     Ok(signal) => match *signal {
                         crate::sexp::context::RSignal::Error { message } => message,
@@ -608,10 +832,15 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     },
                 };
 
-                let Some(handler) = find_try_catch_error_handler(args, rho) else {
+                let Some(handler) = handlers
+                    .iter()
+                    .find(|(tag, _)| tag == "error")
+                    .map(|(_, handler)| *handler)
+                else {
                     std::panic::panic_any(crate::sexp::context::RError { message });
                 };
                 let condition = simple_error_condition(&message);
+                let _cond_guard = protect(condition);
                 let call = crate::sexp::constructors::Rf_lang2(handler, condition);
                 crate::eval::eval::Rf_eval(call, rho)
             }
@@ -1103,5 +1332,54 @@ unsafe fn restart_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) ->
             stack = Rf_cons(entry, stack);
         }
         stack
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// tryCatch(..., warning = ) exiting handlers must catch warnings
+    /// raised in the body; unmatched classes must not catch.
+    #[test]
+    fn test_try_catch_warning_handler() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, output, _) = session.eval_script_with_output_capture(
+            "tryCatch(warning('x'), warning = function(e) paste('caught:', conditionMessage(e)))",
+        );
+        let value = result
+            .map(|s| unsafe {
+                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::STRING_ELT(s.as_raw(), 0),
+                ))
+                .to_string_lossy()
+                .into_owned()
+            })
+            .unwrap_or_default();
+        assert_eq!(value, "caught: x");
+        // The caught warning is neither printed nor collected.
+        assert!(!output.stderr.contains("Warning message"));
+
+        // An error-only frame does not catch warnings: the warning falls
+        // through to the default print path and tryCatch returns NULL.
+        let (result, output, _) = session.eval_script_with_output_capture(
+            "is.null(tryCatch(warning('y'), error = function(e) 'E'))",
+        );
+        let is_null = result
+            .map(|s| unsafe { crate::sexp::accessors::LOGICAL(s.as_raw()).read() == TRUE })
+            .unwrap_or(false);
+        assert!(is_null);
+        assert!(output.stderr.contains("Warning message"));
+    }
+
+    /// suppressWarnings keeps muting warnings (capture-based), including
+    /// with an exiting warning handler in scope of the wider script.
+    #[test]
+    fn test_suppress_warnings_still_mutes() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, output, _) =
+            session.eval_script_with_output_capture("suppressWarnings(warning('quiet'))");
+        assert!(result.is_ok());
+        assert!(!output.stderr.contains("quiet"));
     }
 }

@@ -60,6 +60,14 @@ fn result_from_eval(sexp: Sexp<'_>, captured: output::RCapturedOutput, visible: 
         }
         display.push_str(&output::format_sexp_direct(sexp));
     }
+    // main.c REPL tail: after the auto-printed value of the final top-level
+    // statement, upstream flushes warnings that statement deferred
+    // (PrintWarnings runs post-PrintValueEnv in the REPL loop).
+    if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
+        if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+            display.push_str(&block);
+        }
+    }
     let typed = RValue::from_sexp(sexp);
     RResult {
         value: typed.numeric_scalar_value(),
@@ -99,6 +107,15 @@ fn error_result_with_captured(
         text.push('\n');
     }
     text.push_str(result.output.trim_end());
+    // errors.c:922-928 — an error that escapes to top level prints pending
+    // deferred warnings after the rendered error ("In addition: Warning
+    // message: ..."); when capturing, that emission defers to here.
+    if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
+        if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+            text.push_str("In addition: ");
+            text.push_str(&block);
+        }
+    }
     if text.contains("Error") {
         result.output = text;
     }

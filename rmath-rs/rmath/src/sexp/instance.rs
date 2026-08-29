@@ -37,6 +37,10 @@ pub(crate) struct ErrorState {
     pub in_warning: c_int,
     pub in_print_warnings: c_int,
     pub immediate_warning: bool,
+    /// Depth of active `suppressWarnings()` frames: C-level warnings raised
+    /// inside are dropped before collection, matching upstream where the
+    /// muffle restart prevents `vwarningcall_dflt` from ever running.
+    pub suppress_warnings: c_int,
     pub no_break_warning: bool,
     pub interrupts_suspended: bool,
     pub interrupts_pending: bool,
@@ -67,6 +71,7 @@ impl Default for ErrorState {
             in_warning: 0,
             in_print_warnings: 0,
             immediate_warning: false,
+            suppress_warnings: 0,
             no_break_warning: false,
             interrupts_suspended: false,
             interrupts_pending: false,

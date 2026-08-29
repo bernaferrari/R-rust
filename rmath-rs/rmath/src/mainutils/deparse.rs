@@ -933,14 +933,25 @@ unsafe fn parenthesizeCaller(s: SEXP) -> bool {
             } // %foo%
             let sym = SYMVALUE(op);
             let t = TYPEOF(sym);
-            if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-                let pp = getPPinfo(sym);
-                return !(pp.prec >= PREC_SUBSET
-                    || pp.kind == PP_FUNCALL
-                    || pp.kind == PP_PAREN
-                    || pp.kind == PP_CURLY);
+            let pp = if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+                Some(getPPinfo(sym))
+            } else {
+                // This port dispatches language specials by name rather
+                // than binding them into the symbol table, so `function`
+                // (and friends) are unbound here even though stock R
+                // resolves them to SPECIALSXPs. The funtab carries the
+                // same PPINFO trunk uses — look it up by name.
+                getPPinfo_for_symbol(op)
+            };
+            match pp {
+                Some(pp) => {
+                    !(pp.prec >= PREC_SUBSET
+                        || pp.kind == PP_FUNCALL
+                        || pp.kind == PP_PAREN
+                        || pp.kind == PP_CURLY)
+                }
+                None => false, // regular function call
             }
-            return false; // regular function call
         } else if TYPEOF(op) == SEXPTYPE::CLOSXP {
             return true;
         } else {

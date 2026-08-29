@@ -47,6 +47,7 @@ pub fn dhyper_inner(x: f64, r: f64, b: f64, n: f64, give_log: bool) -> f64 {
     // R_D_nonint_check(x):
     if r_nonint(x) {
         ml_warning(ME_DOMAIN, "");
+        return r_d__0(give_log);
     }
 
     let x = r_forceint(x);
@@ -661,12 +662,15 @@ mod tests {
         let mut session = TestSession::new();
         session.with_protected(|| {
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> = (0..8).map(|_| rhyper_inner(30.0, 40.0, 12.0) as i32).collect();
+            let got: Vec<i32> = (0..8)
+                .map(|_| rhyper_inner(30.0, 40.0, 12.0) as i32)
+                .collect();
             assert_eq!(got, [3, 7, 5, 4, 10, 3, 5, 9]);
 
             crate::rng::set_seed(1234, 5678);
-            let got: Vec<i32> =
-                (0..8).map(|_| rhyper_inner(100.0, 200.0, 50.0) as i32).collect();
+            let got: Vec<i32> = (0..8)
+                .map(|_| rhyper_inner(100.0, 200.0, 50.0) as i32)
+                .collect();
             assert_eq!(got, [16, 17, 17, 20, 16, 18, 16, 21]);
         });
     }

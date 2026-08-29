@@ -19,7 +19,8 @@ use std::os::raw::c_int;
 use crate::mainutils::coerce::asLogical;
 use crate::sexp::accessors::{
     ATTRIB, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, OBJECT, PRINTNAME, RAW, REAL,
-    SET_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    SET_OBJECT, SET_S4_OBJECT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF,
+    UNSET_S4_OBJECT, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
@@ -1097,28 +1098,6 @@ pub unsafe fn do_aperm(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Copy all other attributes as documented (names/dim/dimnames excluded).
         copyMostAttrib(x, result);
         result
-    }
-}
-
-/// Set the S4 bit on an object (bit 4 of the gp field).
-#[inline]
-unsafe fn SET_S4_OBJECT(x: SEXP) {
-    unsafe {
-        if !x.is_null() {
-            let gp = (*x).sxpinfo.gp() | (1 << 4);
-            (*x).sxpinfo.set_gp(gp);
-        }
-    }
-}
-
-/// Unset the S4 bit on an object (bit 4 of the gp field).
-#[inline]
-unsafe fn UNSET_S4_OBJECT(x: SEXP) {
-    unsafe {
-        if !x.is_null() {
-            let gp = (*x).sxpinfo.gp() & !(1 << 4);
-            (*x).sxpinfo.set_gp(gp);
-        }
     }
 }
 

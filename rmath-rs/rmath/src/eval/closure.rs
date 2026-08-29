@@ -194,6 +194,35 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             crate::eval::eval::Rf_eval(body, newrho)
         }));
 
+        // A `return(v)` unwinds with RSignal::Return(v); extract the value so
+        // it can be rooted before the on.exit expressions run. Non-Return
+        // signals keep unwinding only after the handlers have run, matching
+        // upstream's ordering (on.exits run before the jump).
+        enum BodyOutcome {
+            Value(SEXP),
+            Returned(SEXP),
+            Signal(Box<dyn std::any::Any + Send>),
+        }
+        let outcome = match result {
+            Ok(val) => BodyOutcome::Value(val),
+            Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
+                Ok(signal) => match *signal {
+                    crate::sexp::context::RSignal::Return(val) => BodyOutcome::Returned(val),
+                    other => BodyOutcome::Signal(Box::new(other)),
+                },
+                Err(payload) => BodyOutcome::Signal(payload),
+            },
+        };
+
+        // Upstream eval.c stores the return value in cntxt.returnValue before
+        // endcontext runs the on.exit expressions, implicitly protecting it
+        // against a gc() called from a handler. The collector roots
+        // RCNTXT::returnValue (mark/update in gengc.rs), so parking the value
+        // there keeps it alive for the duration of the handlers.
+        if let BodyOutcome::Value(val) | BodyOutcome::Returned(val) = &outcome {
+            (*ctx).returnValue = *val;
+        }
+
         let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             crate::eval::context::R_run_onexits_for_context(ctx);
         }));
@@ -201,9 +230,14 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             return crate::sexp::context::handle_closure_signal(payload);
         }
 
-        match result {
-            Ok(val) => unsafe { super::jit::handle_exec_continuation(val) },
-            Err(payload) => crate::sexp::context::handle_closure_signal(payload),
+        // Re-read through the context: a handler's gc() may have moved the
+        // value, and gengc.rs rewrote (*ctx).returnValue to the new location.
+        match outcome {
+            BodyOutcome::Value(_) => unsafe {
+                super::jit::handle_exec_continuation((*ctx).returnValue)
+            },
+            BodyOutcome::Returned(_) => (*ctx).returnValue,
+            BodyOutcome::Signal(payload) => crate::sexp::context::handle_closure_signal(payload),
         }
     }
 }

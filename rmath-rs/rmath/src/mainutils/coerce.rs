@@ -739,17 +739,17 @@ pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex
                 imag_str
             };
 
-            if let (Ok(r), Ok(i)) = (real_str.parse::<f64>(), imag_body.parse::<f64>()) {
+            if let (Some(r), Some(i)) = (parse_double_str(real_str), parse_double_str(imag_body)) {
                 return Rcomplex { r, i: sign * i };
             }
         } else if let Some(body) = str.strip_suffix('i') {
             // Pure imaginary: "3i"
-            if let Ok(i) = body.parse::<f64>() {
+            if let Some(i) = parse_double_str(body) {
                 return Rcomplex { r: 0.0, i };
             }
         } else {
             // Pure real
-            if let Ok(r) = str.parse::<f64>() {
+            if let Some(r) = parse_double_str(str) {
                 return Rcomplex { r, i: 0.0 };
             }
         }
@@ -3059,6 +3059,27 @@ pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 unsafe extern "C" {
     fn strtod(s: *const c_char, endptr: *mut *mut c_char) -> c_double;
+}
+
+/// Parse a full Rust string as a double via libc `strtod` (the same
+/// conversion family as R's `R_strtod`: correctly rounded decimals, C99
+/// hex floats such as "0x1p3", surrounding C whitespace allowed).
+///
+/// Returns `None` when the (whitespace-trimmed) string is not fully
+/// consumed, mirroring the "rest is not blank" NA rule in
+/// `RealFromString`/`ComplexFromString`.
+pub(crate) unsafe fn parse_double_str(s: &str) -> Option<c_double> {
+    let trimmed =
+        s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r'));
+    let Ok(cstr) = std::ffi::CString::new(trimmed) else {
+        return None;
+    };
+    let mut endp: *mut c_char = ptr::null_mut();
+    let v = unsafe { strtod(cstr.as_ptr(), &mut endp) };
+    if endp.is_null() || unsafe { *endp } != 0 {
+        return None;
+    }
+    Some(v)
 }
 
 // ---------------------------------------------------------------------------

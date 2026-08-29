@@ -159,6 +159,20 @@ fn set_immediate_warning(val: bool) {
     with_error_state(|state| state.immediate_warning = val);
 }
 
+/// Depth of active `suppressWarnings()` frames (see
+/// `ErrorState::suppress_warnings`).
+pub(crate) fn suppress_warnings_depth() -> c_int {
+    with_error_state(|state| state.suppress_warnings)
+}
+
+pub(crate) fn enter_suppress_warnings() {
+    with_error_state(|state| state.suppress_warnings += 1);
+}
+
+pub(crate) fn exit_suppress_warnings() {
+    with_error_state(|state| state.suppress_warnings -= 1);
+}
+
 fn set_no_break_warning(val: bool) {
     with_error_state(|state| state.no_break_warning = val);
 }
@@ -200,7 +214,9 @@ pub(crate) fn last_collected_warning_message() -> String {
         if cs.is_null() {
             return String::new();
         }
-        CStr::from_ptr(translateChar(cs)).to_string_lossy().into_owned()
+        CStr::from_ptr(translateChar(cs))
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
@@ -1252,8 +1268,14 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
                 // w = 0 — default, handled below
             }
         }
-
         if w < 0 || in_warning() != 0 || in_error() != 0 {
+            return;
+        }
+
+        // suppressWarnings(): upstream muffles through a calling-handler
+        // restart so the warning never reaches collection or printing; the
+        // port tracks the same with a depth counter around the expression.
+        if suppress_warnings_depth() > 0 {
             return;
         }
 
@@ -1278,9 +1300,10 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
         } else if w == 1 || immediate_warning() {
             // Print warnings immediately
             let dcall = if !call.is_null() && isNull(call) == 0 {
-                "<call>" // Simplified — full version needs deparse1s
+                // errors.c:496 deparses with deparse1s()
+                warning_dcall(call)
             } else {
-                ""
+                String::new()
             };
 
             if dcall.is_empty() {
@@ -1529,21 +1552,31 @@ pub unsafe fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // PrintWarnings
 // ---------------------------------------------------------------------------
 
-/// Print collected warnings.
-/// Ported from R's `PrintWarnings()` in errors.c.
-#[allow(clippy::if_same_then_else)]
-pub unsafe fn PrintWarnings() {
+/// Render the collected-warnings block exactly like errors.c `PrintWarnings()`
+/// and consume the collection state (including the truncated `last.warning`
+/// install). Returns `None` when there is nothing to print.
+///
+/// Callers own the emission channel: `PrintWarnings()` writes the block to
+/// stderr like upstream REprintf, while the script-loop flush routes it into
+/// the session output stream to keep Rscript's terminal interleaving.
+///
+/// Rendering (errors.c:615-673): a single warning prints
+/// `Warning message:` then `In <dcall> : <msg>` (or `<msg> ` without a call);
+/// two to ten print `Warning messages:` with an `N: ` prefix; longer counts
+/// collapse to a summary line. `dcall` is `deparse1s()` of the stored call,
+/// and a first line that would exceed LONGWARN (6/10 + dcall + msgline1)
+/// wraps with `\n ` before the one-space-indented message.
+pub(crate) unsafe fn take_warnings_block() -> Option<String> {
     unsafe {
         let cw = collect_warnings();
         if cw == 0 {
-            return;
+            return None;
         }
 
         if in_print_warnings() != 0 {
             set_collect_warnings(0);
             set_warnings_ptr(ptr::null_mut());
-            eprintln!("Lost warning messages");
-            return;
+            return Some("Lost warning messages\n".to_string());
         }
 
         set_in_print_warnings(1);
@@ -1551,59 +1584,158 @@ pub unsafe fn PrintWarnings() {
         let warnings_ptr = warnings_ptr();
         if warnings_ptr.is_null() || TYPEOF(warnings_ptr) != SEXPTYPE::VECSXP {
             set_in_print_warnings(0);
-            return;
+            return None;
         }
 
         let names = CAR(ATTRIB(warnings_ptr));
+        let msg_of = |i: R_xlen_t| -> String {
+            if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+                return String::new();
+            }
+            let msg = CHAR_local(STRING_ELT(names, i));
+            CStr::from_ptr(msg).to_str().unwrap_or("").to_string()
+        };
+
+        let mut block = String::new();
 
         if cw == 1 {
-            eprintln!("Warning message:");
-            if !isNull(VECTOR_ELT(warnings_ptr, 0)) != 0 {
-                if !names.is_null() {
-                    let msg = CHAR_local(STRING_ELT(names, 0));
-                    let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-                    eprintln!("{}", msg_str);
-                }
+            block.push_str("Warning message:\n");
+            let call = VECTOR_ELT(warnings_ptr, 0);
+            let msg = msg_of(0);
+            if isNull(call) != 0 {
+                // REprintf("%s \n", msg)
+                block.push_str(&msg);
+                block.push_str(" \n");
             } else {
-                if !names.is_null() {
-                    let msg = CHAR_local(STRING_ELT(names, 0));
-                    let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-                    eprintln!("{}", msg_str);
+                let dcall = warning_dcall(call);
+                block.push_str("In ");
+                block.push_str(&dcall);
+                block.push_str(" :");
+                let msgline1 = msg.split('\n').next().map_or(0, str::len);
+                if 6 + dcall.len() + msgline1 > LONGWARN {
+                    block.push_str("\n ");
                 }
+                block.push(' ');
+                block.push_str(&msg);
+                block.push('\n');
             }
         } else if cw <= 10 {
-            eprintln!("Warning messages:");
-            for i in 0..cw {
-                let call = VECTOR_ELT(warnings_ptr, i as R_xlen_t);
-                if !names.is_null() {
-                    let msg = CHAR_local(STRING_ELT(names, i as R_xlen_t));
-                    let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-                    if isNull(call) != 0 {
-                        eprintln!("{}: {}", i + 1, msg_str);
-                    } else {
-                        eprintln!("{}: In <call> : {}", i + 1, msg_str);
+            block.push_str("Warning messages:\n");
+            for i in 0..cw as R_xlen_t {
+                let call = VECTOR_ELT(warnings_ptr, i);
+                let msg = msg_of(i);
+                if isNull(call) != 0 {
+                    block.push_str(&format!("{}: {} \n", i + 1, msg));
+                } else {
+                    let dcall = warning_dcall(call);
+                    block.push_str(&format!("{}: In {} :", i + 1, dcall));
+                    let msgline1 = msg.split('\n').next().map_or(0, str::len);
+                    if 10 + dcall.len() + msgline1 > LONGWARN {
+                        block.push_str("\n ");
                     }
+                    block.push(' ');
+                    block.push_str(&msg);
+                    block.push('\n');
                 }
             }
         } else {
             let nw = nwarnings();
             if cw < nw {
-                eprintln!("There were {} warnings (use warnings() to see them)\n", cw);
+                block.push_str(&format!(
+                    "There were {} warnings (use warnings() to see them)\n",
+                    cw
+                ));
             } else {
-                eprintln!(
+                block.push_str(&format!(
                     "There were {} or more warnings (use warnings() to see the first {})\n",
                     nw, nw
-                );
+                ));
             }
         }
 
-        // Set last.warning
+        // Truncate and install last.warning (errors.c:685-695): exactly the
+        // collected entries, not the spare-capacity collection vector.
         let sym = Rf_install(b"last.warning\0".as_ptr() as *const c_char);
-        SET_SYMVALUE(sym, warnings_ptr);
+        let last = Rf_allocVector(SEXPTYPE::VECSXP, cw);
+        let _last_guard = protect(last);
+        let last_names = Rf_allocVector(SEXPTYPE::STRSXP, cw);
+        let _names_guard = protect(last_names);
+        for i in 0..cw as R_xlen_t {
+            SET_VECTOR_ELT(last, i, VECTOR_ELT(warnings_ptr, i));
+            if names.is_null() || TYPEOF(names) != SEXPTYPE::STRSXP {
+                SET_STRING_ELT(last_names, i, Rf_mkChar(b"\0".as_ptr() as *const c_char));
+            } else {
+                SET_STRING_ELT(last_names, i, STRING_ELT(names, i));
+            }
+        }
+        setAttrib_wrap(last, R_NamesSymbol(), last_names);
+        SET_SYMVALUE(sym, last);
 
         set_in_print_warnings(0);
         set_collect_warnings(0);
         set_warnings_ptr(ptr::null_mut());
+        Some(block)
+    }
+}
+
+/// `deparse1s()` of a stored warning call as a Rust string (errors.c uses the
+/// same rendering for the `In <call> :` header). Falls back to `<call>` when
+/// the deparse yields nothing usable, mirroring the error renderer above.
+unsafe fn warning_dcall(call: SEXP) -> String {
+    unsafe {
+        let dcall_sexp = crate::mainutils::deparse::deparse1s(call);
+        if dcall_sexp.is_null()
+            || dcall_sexp == globals::R_NilValue()
+            || TYPEOF(dcall_sexp) != SEXPTYPE::STRSXP
+            || XLENGTH(dcall_sexp) == 0
+        {
+            return "<call>".to_string();
+        }
+        let cs = STRING_ELT(dcall_sexp, 0);
+        if cs.is_null() {
+            return "<call>".to_string();
+        }
+        let cptr = translateChar(cs);
+        if cptr.is_null() {
+            return "<call>".to_string();
+        }
+        CStr::from_ptr(cptr).to_string_lossy().into_owned()
+    }
+}
+
+/// Print collected warnings to stderr — upstream's channel (REprintf).
+pub unsafe fn PrintWarnings() {
+    unsafe {
+        if let Some(block) = take_warnings_block() {
+            eprint!("{}", block);
+        }
+    }
+}
+
+/// Flush collected warnings at a top-level statement boundary — the port of
+/// main.c's REPL loop tail (`if (R_CollectWarnings) PrintWarnings();` after
+/// each evaluated expression). Upstream writes to stderr and the terminal
+/// interleaves it with stdout in real time; the session model keeps one
+/// output stream, so the block is appended to the interleaved stdout capture
+/// (falling back to real stdout when no capture is active). Deliberately
+/// bypasses `sink()` diversion — warnings are stderr in upstream.
+pub unsafe fn print_warnings_at_statement_boundary() {
+    unsafe {
+        let Some(block) = take_warnings_block() else {
+            return;
+        };
+        let routed = instance::with_current_instance(|inst| {
+            let mut capture = inst.output_capture.borrow_mut();
+            if capture.is_capturing() {
+                capture.capture_stdout_bypassing_sink(&block);
+                true
+            } else {
+                false
+            }
+        });
+        if routed != Some(true) {
+            print!("{}", block);
+        }
     }
 }
 
@@ -3089,7 +3221,9 @@ unsafe fn partial_match_text(x: SEXP) -> String {
                 .to_string_lossy()
                 .into_owned()
         } else if !x.is_null() {
-            CStr::from_ptr(translateChar(x)).to_string_lossy().into_owned()
+            CStr::from_ptr(translateChar(x))
+                .to_string_lossy()
+                .into_owned()
         } else {
             "?".to_string()
         }
@@ -3166,18 +3300,8 @@ pub unsafe fn R_makePartialArgumentMatchWarningCondition(
             c_msg.as_ptr(),
         );
         let _cond_guard = protect(cond);
-        R_setConditionField(
-            cond,
-            2,
-            b"argument\0".as_ptr() as *const c_char,
-            argument,
-        );
-        R_setConditionField(
-            cond,
-            3,
-            b"formal\0".as_ptr() as *const c_char,
-            formal,
-        );
+        R_setConditionField(cond, 2, b"argument\0".as_ptr() as *const c_char, argument);
+        R_setConditionField(cond, 3, b"formal\0".as_ptr() as *const c_char, formal);
         // ideally we would want the function/object in a field also
         cond
     }

@@ -264,24 +264,13 @@ unsafe fn length(x: SEXP) -> c_int {
 #[inline(always)]
 pub(crate) unsafe fn R_warn_partial_match_args(call: SEXP, btag: SEXP, ftag: SEXP) {
     unsafe {
-        if !warn_partial_match_args_enabled() {
+        if !crate::mainutils::options::logical_option_enabled(c"warnPartialMatchArgs") {
             return;
         }
         let cond =
             crate::mainutils::errors::R_makePartialArgumentMatchWarningCondition(call, btag, ftag);
         let _cond_guard = protect(cond);
         crate::mainutils::errors::R_signalWarningCondition(cond);
-    }
-}
-
-/// Read `options(warnPartialMatchArgs)` (C's `R_warn_partial_match_args`).
-#[inline(always)]
-unsafe fn warn_partial_match_args_enabled() -> bool {
-    unsafe {
-        let s = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
-            b"warnPartialMatchArgs\0".as_ptr() as *const c_char,
-        ));
-        !s.is_null() && s != R_NilValue() && asLogical(s) == 1
     }
 }
 

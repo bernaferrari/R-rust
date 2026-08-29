@@ -1,6 +1,5 @@
 # path	unsafe_op_in_unsafe_fn_warnings	policy	notes
 # Generated from scripts/unsafe_op_report.sh on 2026-04-25 before moving the crate-level allow into module-level legacy allow entries.
-rmath-rs/rmath/src/mainutils/essentials.rs	5676	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 rmath-rs/rmath/src/library/grid/grid.rs	1558	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 rmath-rs/rmath/src/modules/lapack/lapack_impl.rs	1059	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.
 rmath-rs/rmath/src/library/stats/fexact.rs	1036	legacy-module-allow	Temporary audited C-port boundary; remove by wrapping unsafe operations or replacing with safe facades.

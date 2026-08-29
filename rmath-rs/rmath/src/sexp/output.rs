@@ -60,6 +60,16 @@ impl OutputCaptureState {
             stderr.push_str(msg);
         }
     }
+
+    /// Append to the captured stdout buffer, bypassing any active output
+    /// sink. The deferred-warning flush uses this: upstream warnings are
+    /// stderr traffic and are not diverted by `sink()`, but the session's
+    /// single interleaved output stream is the stdout buffer.
+    pub(crate) fn capture_stdout_bypassing_sink(&mut self, msg: &str) {
+        if let Some(stdout) = self.stdout.as_mut() {
+            stdout.push_str(msg);
+        }
+    }
 }
 
 /// Start capturing R output.

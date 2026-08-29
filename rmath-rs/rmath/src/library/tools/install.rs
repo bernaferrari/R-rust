@@ -131,24 +131,35 @@ const APPENDBUFSIZE: usize = if cfg!(target_os = "windows") {
 };
 
 /// Append code from f2 files to f1 file.
-pub unsafe fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
+///
+/// Port of `codeFilesAppend` in tools/src/install.c. Synced with the
+/// upstream window change: the new `enc` argument names the collation
+/// encoding; when it is "UTF-8" a leading UTF-8 BOM on each appended file
+/// is consumed instead of copied, keeping collated sources BOM-free.
+pub unsafe fn codeFilesAppend(f1: SEXP, f2: SEXP, enc: SEXP) -> SEXP {
     unsafe {
-        if f1.is_null() || f2.is_null() {
+        if f1.is_null() || f2.is_null() || enc.is_null() {
             return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
-        let n1 = if Rf_isString(f1) != 0 { LENGTH(f1) } else { 0 };
-        if Rf_isString(f1) == 0 || n1 != 1 {
+        if Rf_isString(f1) == 0 || LENGTH(f1) != 1 {
             crate::main::errors::Rf_error(b"invalid 'file1' argument\0".as_ptr() as *const _);
         }
         if Rf_isString(f2) == 0 {
             crate::main::errors::Rf_error(b"invalid 'file2' argument\0".as_ptr() as *const _);
             return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
+        if Rf_isString(enc) == 0 || LENGTH(enc) != 1 {
+            crate::main::errors::Rf_error(b"invalid 'enc' argument\0".as_ptr() as *const _);
+            return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
+        }
+        let enc_elt = STRING_ELT(enc, 0);
+        let is_utf8 = enc_elt != crate::sexp::globals::R_NaString()
+            && char_to_string(enc_elt).is_some_and(|name| name.as_bytes().starts_with(b"UTF-8"));
         let n2 = LENGTH(f2);
         if n2 < 1 {
             return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
-        let n = if n1 > n2 { n1 } else { n2 };
+        let n = n2;
 
         let ans = Rf_allocVector(SEXPTYPE::LGLSXP, n);
         let _ans_guard = protect(ans);
@@ -194,13 +205,32 @@ pub unsafe fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
                 }
             };
 
-            let fp2_file = match std::fs::File::open(&f2_path) {
-                Ok(f) => BufReader::new(f),
+            let mut file = match std::fs::File::open(&f2_path) {
+                Ok(f) => f,
                 Err(_) => {
-                    *LOGICAL(ans).add(i) = status;
+                    *LOGICAL(ans).add(i as usize) = status;
                     continue;
                 }
             };
+            // UTF-8 collation: consume a leading BOM instead of copying it
+            // (install.c: fread 3 bytes, rewind when they are not a BOM).
+            if is_utf8 {
+                use std::io::Read;
+                let mut bom = [0u8; 3];
+                let mut read = 0;
+                while read < 3 {
+                    match file.read(&mut bom[read..]) {
+                        Ok(0) => break,
+                        Ok(k) => read += k,
+                        Err(_) => break,
+                    }
+                }
+                if read != 3 || bom != [0xEF, 0xBB, 0xBF] {
+                    use std::io::Seek;
+                    let _ = file.rewind();
+                }
+            }
+            let fp2_file = BufReader::new(file);
 
             let line_directive = format!("#line 1 \"{}\"\n", f2_path);
             if fp1.write_all(line_directive.as_bytes()).is_err() {

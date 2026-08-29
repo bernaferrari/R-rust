@@ -380,6 +380,13 @@ pub enum RSignal {
     Break,
     Next,
     Return(SEXP),
+    /// Warning condition unwinding into an enclosing tryCatch(...)
+    /// exiting handler (port equivalent of upstream's vwarningcall
+    /// unwinding through R_HandlerStack).  Only the message text crosses
+    /// the unwind boundary; the catcher rebuilds the condition object.
+    Warning {
+        message: String,
+    },
     /// Non-local return from `invokeRestart()` to the matching `withRestarts()`.
     Restart(SEXP),
     /// Targeted context jump for exiting handlers (tryCatch/withCallingHandlers).

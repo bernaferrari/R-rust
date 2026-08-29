@@ -571,7 +571,8 @@ impl RSession {
                 .collect();
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
-            for &raw_expr in &expressions {
+            let last_index = expressions.len().saturating_sub(1);
+            for (index, &raw_expr) in expressions.iter().enumerate() {
                 let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
                     Ok(expr) => expr,
                     Err(err) => {
@@ -586,10 +587,20 @@ impl RSession {
                     // not evaluated and the script fails. Errors caught inside
                     // the expression (tryCatch/withCallingHandlers) never
                     // surface here, so local condition handling still resumes
-                    // normally.
+                    // normally. Warnings deferred by the failing statement
+                    // print with the error in the embedding layer instead.
                     break;
                 }
                 let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+                // main.c REPL tail: after each top-level expression, upstream
+                // flushes deferred warnings so they interleave with printed
+                // output like Rscript's stderr. The final statement defers to
+                // result assembly, which prints the auto-rendered value first.
+                if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
+                    unsafe {
+                        crate::mainutils::errors::print_warnings_at_statement_boundary();
+                    }
+                }
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
             let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
@@ -653,7 +664,8 @@ impl RSession {
                 .collect();
             let mut result: RResult<Sexp<'session>> =
                 Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
-            for &raw_expr in &expressions {
+            let last_index = expressions.len().saturating_sub(1);
+            for (index, &raw_expr) in expressions.iter().enumerate() {
                 let expr = match self.owned_sexp(expr_or_nil(raw_expr), "parsed expression") {
                     Ok(expr) => expr,
                     Err(err) => {
@@ -668,6 +680,13 @@ impl RSession {
                     break;
                 }
                 let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+                // Same main.c REPL-tail flush as the plain script loop; the
+                // final statement's warnings flush at result assembly.
+                if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {
+                    unsafe {
+                        crate::mainutils::errors::print_warnings_at_statement_boundary();
+                    }
+                }
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
             let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));

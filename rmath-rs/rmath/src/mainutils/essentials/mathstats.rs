@@ -1794,7 +1794,7 @@ pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
                 *INTEGER(result).add(i as usize) = s.parse::<i64>().unwrap_or(0) as c_int;
             }
             result
-        } else if first.parse::<f64>().is_ok() {
+        } else if crate::mainutils::coerce::parse_double_str(&first).is_some() {
             let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             if result.is_null() {
                 return x;
@@ -1802,7 +1802,8 @@ pub unsafe fn do_type_convert(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             let _p = protect(result);
             for i in 0..n {
                 let s = elt_to_string(x, i);
-                *REAL(result).add(i as usize) = s.parse::<f64>().unwrap_or(NA_REAL);
+                *REAL(result).add(i as usize) =
+                    crate::mainutils::coerce::parse_double_str(&s).unwrap_or(NA_REAL);
             }
             result
         } else {

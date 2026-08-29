@@ -111,7 +111,10 @@ unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
             errorcall(call, msg.as_ptr() as *const c_char);
             return;
         }
-        if !supplied.is_empty() && supplied.len() < formal.len() && warn_partial_match_args() {
+        if !supplied.is_empty()
+            && supplied.len() < formal.len()
+            && crate::mainutils::options::logical_option_enabled(c"warnPartialMatchArgs")
+        {
             let fsym = Rf_install_stub(name);
             let cond = crate::mainutils::errors::R_makePartialArgumentMatchWarningCondition(
                 call, tag, fsym,
@@ -119,16 +122,6 @@ unsafe fn check1arg(args: SEXP, call: SEXP, name: *const c_char) {
             let _cond_guard = crate::sexp::protect::protect(cond);
             crate::mainutils::errors::R_signalWarningCondition(cond);
         }
-    }
-}
-
-/// R_warn_partial_match_args — read options(warnPartialMatchArgs).
-unsafe fn warn_partial_match_args() -> bool {
-    unsafe {
-        let s = crate::mainutils::options::GetOption1(Rf_install_stub(
-            b"warnPartialMatchArgs\0".as_ptr() as *const c_char,
-        ));
-        !s.is_null() && s != R_NilValue() && asLogical(s) == 1
     }
 }
 
@@ -3519,14 +3512,12 @@ mod tests {
             // Non-matching tag errors (upstream: supplied argument name
             // '%s' does not match '%s').
             SETTAG(args, Rf_install_stub(b"bogus\0".as_ptr() as *const c_char));
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                unsafe {
-                    check1arg(
-                        args,
-                        ptr::null_mut(),
-                        b"length.out\0".as_ptr() as *const c_char,
-                    );
-                }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                check1arg(
+                    args,
+                    ptr::null_mut(),
+                    b"length.out\0".as_ptr() as *const c_char,
+                );
             }));
             let err = result.unwrap_err();
             let payload = err

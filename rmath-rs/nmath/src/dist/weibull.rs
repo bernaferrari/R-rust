@@ -200,7 +200,10 @@ mod tests {
         assert_eq!(pweibull_inner(-1.0, 3.0, 1.0, false, true), 0.0);
         assert_eq!(pweibull_inner(0.0, 3.0, 1.0, false, false), 1.0);
         assert_eq!(pweibull_inner(f64::INFINITY, 3.0, 1.0, false, false), 0.0);
-        assert_eq!(pweibull_inner(f64::INFINITY, 3.0, 1.0, false, true), f64::NEG_INFINITY);
+        assert_eq!(
+            pweibull_inner(f64::INFINITY, 3.0, 1.0, false, true),
+            f64::NEG_INFINITY
+        );
         assert_eq!(pweibull_inner(-1.0, 3.0, 1.0, true, false), 0.0);
     }
 
@@ -232,9 +235,7 @@ mod tests {
         crate::rng::set_seed(1234, 5678);
         let got: Vec<f64> = (0..12).map(|_| rweibull_inner(0.0, 1.0)).collect();
         let inf = f64::INFINITY;
-        let want = [
-            inf, 0.0, 0.0, inf, 0.0, inf, 0.0, 0.0, 0.0, 0.0, 0.0, inf,
-        ];
+        let want = [inf, 0.0, 0.0, inf, 0.0, inf, 0.0, 0.0, 0.0, 0.0, 0.0, inf];
         assert_eq!(got, want.to_vec(), "rweibull(shape=0) stream changed");
         // scale == 0 short-circuits to 0 for any shape.
         assert_eq!(rweibull_inner(2.0, 0.0), 0.0);
