@@ -2,95 +2,26 @@
 
 #![allow(unused_doc_comments)]
 #![allow(unused_attributes)]
-
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+// Minimal per-package lint allowances: the C-transliterated package ports
+// still trip exactly these rustc lints (verified per package with
+// `cargo clippy -p rmath --all-targets`); everything else is lint-clean.
+#[allow(unused_imports, unused_variables, unused_mut, unused_assignments)]
 pub mod graphics;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports, unused_variables, unused_mut, unused_assignments)]
 pub mod grdevices;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports, unused_variables, unused_mut, unused_assignments)]
 pub mod grid;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports)]
 pub mod methods;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports, unused_assignments)]
 pub mod parallel;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
 pub mod splines;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports, unused_variables, unused_mut, unused_assignments)]
 pub mod stats;
 #[cfg(not(target_os = "android"))]
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports)]
 pub mod tcltk;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports, unused_mut, unused_assignments)]
 pub mod tools;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
+#[allow(unused_imports, unused_variables, unused_mut, unused_assignments)]
 pub mod utils;

@@ -1182,19 +1182,48 @@ pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// R's `abs(x)` — absolute value of numeric vector.
 ///
-/// Preserves integer/logical inputs as integer vectors and real inputs as real vectors.
-pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// Preserves integer/logical inputs as integer vectors and real inputs as
+/// real vectors. Non-numeric arguments (and factors, via Math.factor)
+/// error like stock Math1.
+unsafe fn math_factor_error(call: SEXP, name: &str) -> ! {
+    unsafe {
+        let method_call = crate::sexp::constructors::Rf_lang2(
+            Rf_install(c"Math.factor".as_ptr()),
+            CAR(CDR(call)),
+        );
+        let _guard = protect(method_call);
+        crate::mainutils::errors::errorcall_str(
+            method_call,
+            &format!("'{name}' not meaningful for factors"),
+        );
+    }
+}
+
+fn math_nonnum_error() -> ! {
+    std::panic::panic_any(RError {
+        message: "non-numeric argument to mathematical function".to_string(),
+    })
+}
+
+pub unsafe fn do_abs(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = CAR(args);
-        if x_arg.is_null() || x_arg == R_NilValue() {
+        if x_arg.is_null() {
             return R_NilValue();
+        }
+        if x_arg == R_NilValue() {
+            // stock Math1: NULL is not numeric and errors
+            math_nonnum_error();
+        }
+        if sexp_has_class(x_arg, "factor") {
+            math_factor_error(call, "abs");
         }
         let t = TYPEOF(x_arg);
         if t == SEXPTYPE::CPLXSXP {
             return crate::eval::complex_arith::complex_abs_vec(x_arg);
         }
         if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
-            return R_NilValue();
+            math_nonnum_error();
         }
         let n = XLENGTH(x_arg);
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
@@ -1240,15 +1269,27 @@ pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `sign(x)` — sign of numeric vector (-1, 0, or 1).
 ///
 /// Returns REALSXP. Preserves NA and NaN.
-pub unsafe fn do_sign(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_sign(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = CAR(args);
-        if x_arg.is_null() || x_arg == R_NilValue() {
+        if x_arg.is_null() {
             return R_NilValue();
         }
+        if x_arg == R_NilValue() {
+            // stock Math1: NULL is not numeric and errors
+            math_nonnum_error();
+        }
+        if sexp_has_class(x_arg, "factor") {
+            math_factor_error(call, "sign");
+        }
         let t = TYPEOF(x_arg);
+        if t == SEXPTYPE::CPLXSXP {
+            std::panic::panic_any(RError {
+                message: "unimplemented complex function".to_string(),
+            });
+        }
         if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
-            return R_NilValue();
+            math_nonnum_error();
         }
         let n = XLENGTH(x_arg);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);

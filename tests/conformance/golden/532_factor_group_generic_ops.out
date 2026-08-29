@@ -1,0 +1,27 @@
+[1] NA
+Warning message:
+In Ops.factor(f, 1) : '+' not meaningful for factors
+[1] NA NA
+Warning message:
+In Ops.factor(1, fv) : '+' not meaningful for factors
+[1] NA NA
+Warning message:
+In Ops.factor(fv, c(1, 2)) : '-' not meaningful for factors
+[1] NA
+Warning message:
+In Ops.ordered(fo, 2) : '*' is not meaningful for ordered factors
+[1] NA
+Warning message:
+In Ops.factor(f) : '-' not meaningful for factors
+[1] NA
+Warning message:
+In Ops.ordered(fo) : '-' is not meaningful for ordered factors
+[1] TRUE
+[1] FALSE
+[1] FALSE
+[1] FALSE FALSE
+[1] NA
+[1]  TRUE FALSE
+[1] NA
+Warning message:
+In Ops.factor(f, factor("b")) : '<' not meaningful for factors

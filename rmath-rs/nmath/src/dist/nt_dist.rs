@@ -194,7 +194,8 @@ pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
         /* repeat until convergence or iteration limit */
         let mut it: i32 = 1;
         while it <= itrmax {
-            it += 1;
+            /* stock `for(it = 1; it <= itrmax; it++)`: the body sees the
+            current iteration number; the increment happens last. */
             a += 1.0;
             xodd -= godd;
             xeven -= geven;
@@ -217,9 +218,11 @@ pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
             if fabs(errbd) < errmax {
                 break; /*convergence*/
             }
+            it += 1;
         }
-        // if it > itrmax: non-convergence
-        // (In C there's a warning, we just silently continue)
+        if it > itrmax {
+            crate::error::ml_warning(crate::constants::ME_PRECISION, "pnt");
+        }
     } else {
         /* x = t = 0 */
         tnc = 0.0;

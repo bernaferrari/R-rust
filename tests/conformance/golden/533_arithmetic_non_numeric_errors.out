@@ -1,0 +1,21 @@
+ERR: non-numeric argument to binary operator
+ERR: invalid argument to unary operator
+ERR: invalid argument to unary operator
+ERR: invalid argument to unary operator
+ERR: non-numeric argument to binary operator
+ERR: non-numeric argument to binary operator
+ERR: Non-numeric argument to mathematical function
+ERR: argument "x" is missing, with no default
+ERR: argument "size" is missing, with no default
+ERR: argument "prob" is missing, with no default
+ERR: 'prob' and 'mu' both specified
+ERR: Non-numeric argument to mathematical function
+ERR: non-numeric argument to binary operator
+ERR: specify 'rate' or 'scale' but not both
+ERR: non-numeric argument to mathematical function
+ERR: non-numeric argument to mathematical function
+ERR: non-numeric argument to mathematical function
+ERR: comparison of these types is not implemented
+ERR: invalid comparison with complex values
+ERR: level sets of factors are different
+arithmetic errors ok

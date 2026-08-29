@@ -14,12 +14,14 @@ use std::ffi::{CStr, CString};
 
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, INTEGER_ELT, LENGTH, PRINTNAME, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF,
+    XLENGTH,
 };
 use crate::sexp::attrib_core::{
     R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_mkChar,
+    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_lang2,
+    Rf_lang3, Rf_mkChar,
 };
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
@@ -51,6 +53,17 @@ fn poll_vector_cancellation(i: R_xlen_t) {
 /// Integer overflow produces NA_INTEGER.
 pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
+        if sa.is_null() || sb.is_null() {
+            return R_NilValue();
+        }
+        // stock arithmetic.c: NULL coerces to a zero-length numeric vector;
+        // any other non-numeric operand raises the binary-operator error.
+        if sa == R_NilValue() || sb == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        if !is_numeric_operand(sa) || !is_numeric_operand(sb) {
+            arithmetic_error("non-numeric argument to binary operator");
+        }
         let Some(a) = NumericVector::from_raw(sa) else {
             return R_NilValue();
         };
@@ -144,10 +157,10 @@ fn binary_arithmetic_value(op: &str, x: f64, y: f64) -> f64 {
 unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         let Some(a) = NumericVector::from_raw(sa) else {
-            return R_NilValue();
+            arithmetic_error("comparison of these types is not implemented");
         };
         let Some(b) = NumericVector::from_raw(sb) else {
-            return R_NilValue();
+            arithmetic_error("comparison of these types is not implemented");
         };
         let n = a.recycled_len_with(b);
         if n == 0 {
@@ -803,9 +816,291 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level dispatch functions (called by the evaluator)
+// Factor operands and stock group-generic behavior
 // ---------------------------------------------------------------------------
 
+/// True for logical/integer/real vectors — stock's `isNumeric` minus NULL.
+fn is_numeric_operand(x: SEXP) -> bool {
+    unsafe {
+        let t = TYPEOF(x);
+        t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP
+    }
+}
+
+/// An unordered factor: carries the "factor" class but not "ordered".
+fn is_plain_factor(x: SEXP) -> bool {
+    unsafe { has_class(x, "factor") && !has_class(x, "ordered") }
+}
+
+/// Emit a group-generic warning attributed to the S3 method call the way
+/// stock dispatch does (`In Ops.factor(e1, e2) : ...`). `e1`/`e2` are the
+/// unevaluated operand expressions of the applied call.
+unsafe fn factor_not_meaningful_warning(method: &'static str, message: &str, e1: SEXP, e2: SEXP) {
+    unsafe {
+        // method is a fixed interned name; Rf_install needs a NUL suffix
+        let f = if method == "Ops.ordered" {
+            Rf_install(c"Ops.ordered".as_ptr())
+        } else {
+            Rf_install(c"Ops.factor".as_ptr())
+        };
+        let method_call = if e2.is_null() || e2 == R_NilValue() {
+            Rf_lang2(f, e1)
+        } else {
+            Rf_lang3(f, e1, e2)
+        };
+        let _call_guard = protect(method_call);
+        let c_msg = std::ffi::CString::new(message).unwrap_or_default();
+        crate::mainutils::errors::Rf_warningcall1(method_call, c_msg.as_ptr());
+    }
+}
+
+/// `rep.int(NA, max(length(e1), if (!missing(e2)) length(e2)))` — the
+/// logical NA vector stock Ops.factor/Ops.ordered return for operators
+/// that are not meaningful for factors.
+unsafe fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
+    unsafe {
+        let n1 = if e1.is_null() || e1 == R_NilValue() {
+            0
+        } else {
+            XLENGTH(e1)
+        };
+        let n2 = if e2.is_null() || e2 == R_NilValue() {
+            0
+        } else {
+            XLENGTH(e2)
+        };
+        let n = n1.max(n2);
+        let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        let _result_guard = protect(result_raw);
+        for i in 0..n {
+            result.set_logical_elt(i, NA_LOGICAL);
+        }
+        result_raw
+    }
+}
+
+/// Handle factor/ordered operands for arithmetic the way stock's Ops group
+/// dispatch does: warn via the method call and return logical NAs. The
+/// unevaluated operand expressions come from `call` so the warning is
+/// attributed exactly like stock. Returns None when neither operand is a
+/// factor.
+unsafe fn factor_arith(op: &str, call: SEXP, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_factor = has_class(a, "factor");
+        let b_factor = has_class(b, "factor");
+        if !a_factor && !b_factor {
+            return None;
+        }
+        let ordered = has_class(a, "ordered") || has_class(b, "ordered");
+        let message = if ordered {
+            format!("'{op}' is not meaningful for ordered factors")
+        } else {
+            format!("'{op}' not meaningful for factors")
+        };
+        let method = if ordered { "Ops.ordered" } else { "Ops.factor" };
+        let e1_expr = CAR(CDR(call));
+        let e2_expr = CAR(CDR(CDR(call)));
+        factor_not_meaningful_warning(method, &message, e1_expr, e2_expr);
+        Some(factor_na_result(a, b))
+    }
+}
+
+/// as.character(<factor>): level strings by 1-based code; NA and 0 codes
+/// stay NA.
+unsafe fn factor_as_character(f: SEXP) -> SEXP {
+    unsafe {
+        let n = XLENGTH(f);
+        let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if out.is_null() {
+            return R_NilValue();
+        }
+        let _out_guard = protect(out);
+        let levels = getAttrib(f, Rf_install(c"levels".as_ptr()));
+        let levels_ok =
+            !levels.is_null() && levels != R_NilValue() && TYPEOF(levels) == SEXPTYPE::STRSXP;
+        let n_levels = if levels_ok { LENGTH(levels) } else { 0 };
+        for i in 0..n {
+            let code = INTEGER_ELT(f, i as i32);
+            let s = if code == NA_INTEGER || code <= 0 || code as R_xlen_t > n_levels as R_xlen_t {
+                R_NaString()
+            } else {
+                STRING_ELT(levels, (code - 1) as i64)
+            };
+            SET_STRING_ELT(out, i as i64, s);
+        }
+        out
+    }
+}
+
+/// Coerce a relop operand to character following the stock ladder; only
+/// logical/integer/real/complex/raw make it (the rest error like stock's
+/// final else).
+unsafe fn relop_operand_to_character(x: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            return x;
+        }
+        if is_numeric_operand(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP || TYPEOF(x) == SEXPTYPE::RAWSXP
+        {
+            return crate::mainutils::coerce::coerceVector(x, SEXPTYPE::STRSXP.into());
+        }
+        arithmetic_error("comparison of these types is not implemented")
+    }
+}
+
+/// stock Ops.factor for unordered factors: `==`/`!=` compare level strings
+/// (with the scalar-character fast paths and the level-set check stock
+/// applies when both sides are converted), any other operator warns and
+/// returns logical NAs. Returns None when neither operand is an unordered
+/// factor.
+unsafe fn unordered_factor_compare(op: &str, call: SEXP, sa: SEXP, sb: SEXP) -> Option<SEXP> {
+    unsafe {
+        let a_factor = is_plain_factor(sa);
+        let b_factor = is_plain_factor(sb);
+        if !a_factor && !b_factor {
+            return None;
+        }
+        if op != "==" && op != "!=" {
+            let e1_expr = CAR(CDR(call));
+            let e2_expr = CAR(CDR(CDR(call)));
+            factor_not_meaningful_warning(
+                "Ops.factor",
+                &format!("'{op}' not meaningful for factors"),
+                e1_expr,
+                e2_expr,
+            );
+            return Some(factor_na_result(sa, sb));
+        }
+
+        // stock converts the left factor to its level strings first; when
+        // the right side is then a factor with no NA levels and the
+        // converted left is a scalar string, the levels table is compared
+        // directly (bypassing the level-set check, like stock).
+        let scalar_string = |s: SEXP| -> Option<String> {
+            if TYPEOF(s) == SEXPTYPE::STRSXP && LENGTH(s) == 1 {
+                charsxp_to_string(STRING_ELT(s, 0))
+            } else {
+                None
+            }
+        };
+        let levels_of = |f: SEXP| -> SEXP { getAttrib(f, Rf_install(c"levels".as_ptr())) };
+        let levels_have_no_na = |l: SEXP| -> bool {
+            (0..LENGTH(l) as R_xlen_t).all(|i| {
+                let s = STRING_ELT(l, i as i64);
+                !s.is_null() && s != R_NaString()
+            })
+        };
+        let levels_vec = |l: SEXP| -> Option<Vec<String>> {
+            let mut out = Vec::with_capacity(LENGTH(l) as usize);
+            for i in 0..LENGTH(l) as R_xlen_t {
+                out.push(charsxp_to_string(STRING_ELT(l, i as i64))?);
+            }
+            Some(out)
+        };
+
+        let a_cmp = if a_factor {
+            factor_as_character(sa)
+        } else {
+            relop_operand_to_character(sa)
+        };
+        if b_factor {
+            let b_levels = levels_of(sb);
+            if TYPEOF(b_levels) == SEXPTYPE::STRSXP && levels_have_no_na(b_levels) {
+                if let Some(other) = scalar_string(a_cmp) {
+                    if let Some(levels) = levels_vec(b_levels) {
+                        return Some(factor_scalar_string_compare(op, sb, &levels, &other));
+                    }
+                }
+            }
+        }
+        let b_cmp = if b_factor {
+            factor_as_character(sb)
+        } else {
+            relop_operand_to_character(sb)
+        };
+        if a_factor && b_factor {
+            // stock: when both sides convert, the level sets must match
+            let mut la = factor_levels(sa).unwrap_or_default();
+            let mut lb = factor_levels(sb).unwrap_or_default();
+            la.sort();
+            lb.sort();
+            if la != lb {
+                arithmetic_error("level sets of factors are different");
+            }
+        }
+        Some(character_compare(op, a_cmp, b_cmp))
+    }
+}
+
+/// stock fastpath: `leq <- (levels == other)` indexed by the factor codes.
+unsafe fn factor_scalar_string_compare(op: &str, f: SEXP, levels: &[String], other: &str) -> SEXP {
+    unsafe {
+        let n = XLENGTH(f);
+        let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        let _result_guard = protect(result_raw);
+        for i in 0..n {
+            let code = INTEGER_ELT(f, i as i32);
+            let value = if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
+                NA_LOGICAL
+            } else {
+                let eq = levels[(code - 1) as usize] == other;
+                if (op == "==") == eq { TRUE } else { FALSE }
+            };
+            result.set_logical_elt(i, value);
+        }
+        result_raw
+    }
+}
+
+/// Unary minus for complex values (stock `-(z)`).
+fn complex_negate(c: Rcomplex) -> Rcomplex {
+    Rcomplex { r: -c.r, i: -c.i }
+}
+
+/// stock complex_relop: only `==`/`!=` are defined; ordering comparisons
+/// error. Equality compares component-wise with NA propagation.
+unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+    unsafe {
+        if op != "==" && op != "!=" {
+            arithmetic_error("invalid comparison with complex values");
+        }
+        let a = crate::mainutils::coerce::coerceVector(sa, SEXPTYPE::CPLXSXP.into());
+        let b = crate::mainutils::coerce::coerceVector(sb, SEXPTYPE::CPLXSXP.into());
+        let _a_guard = protect(a);
+        let _b_guard = protect(b);
+        let n1 = XLENGTH(a);
+        let n2 = XLENGTH(b);
+        let n = n1.max(n2);
+        let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        let _result_guard = protect(result_raw);
+        for i in 0..n {
+            let x = crate::sexp::accessors::COMPLEX_ELT(a, i as i32);
+            let y = crate::sexp::accessors::COMPLEX_ELT(b, i as i32);
+            // stock ISNAN covers both NA and NaN components
+            let value = if x.r.is_nan() || x.i.is_nan() || y.r.is_nan() || y.i.is_nan() {
+                NA_LOGICAL
+            } else {
+                let eq = x.r == y.r && x.i == y.i;
+                if (op == "==") == eq { TRUE } else { FALSE }
+            };
+            result.set_logical_elt(i, value);
+        }
+        result_raw
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Top-level dispatch functions (called by the evaluator)
+// ---------------------------------------------------------------------------
 /// Handle binary arithmetic: +, -, *, /, ^, %%, %/%
 pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -813,21 +1108,35 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         match op_name {
             "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" => {
                 let a = CAR(args);
-                if a.is_null() || a == R_NilValue() {
+                if a.is_null() {
                     return R_NilValue();
                 }
                 let b_cdr = CDR(args);
                 if b_cdr.is_null() || b_cdr == R_NilValue() {
                     // Unary +/-
-                    if op_name == "-" {
+                    if op_name == "-" || op_name == "+" {
+                        if let Some(result) = factor_arith(op_name, call, a, R_NilValue()) {
+                            return result;
+                        }
+                        if TYPEOF(a) == SEXPTYPE::CPLXSXP {
+                            if op_name == "-" {
+                                return super::complex_arith::complex_unary_vec(a, complex_negate);
+                            }
+                            return a;
+                        }
+                        // stock: unary +/- require a numeric argument
+                        // (NULL included); anything else errors.
+                        if !is_numeric_operand(a) {
+                            arithmetic_error("invalid argument to unary operator");
+                        }
+                        if op_name == "+" {
+                            return a;
+                        }
                         let result = unary_minus(a);
                         if crate::mainutils::essentials::sexp_has_class(a, "difftime") {
                             set_difftime_attributes(result, &difftime_units(a));
                         }
                         return result;
-                    }
-                    if op_name == "+" {
-                        return a;
                     }
                     return R_NilValue();
                 }
@@ -839,6 +1148,9 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return result;
                 }
                 if let Some(result) = difftime_binary_arithmetic(op_name, a, b) {
+                    return result;
+                }
+                if let Some(result) = factor_arith(op_name, call, a, b) {
                     return result;
                 }
                 if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
@@ -862,6 +1174,10 @@ pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if a.is_null() || b.is_null() {
                     return R_NilValue();
                 }
+                // stock relop.c: either operand NULL yields logical(0)
+                if a == R_NilValue() || b == R_NilValue() {
+                    return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+                }
                 if let Some(result) = date_binary_comparison(op_name, a, b) {
                     return result;
                 }
@@ -874,8 +1190,52 @@ pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if let Some(result) = ordered_factor_compare(op_name, a, b) {
                     return result;
                 }
-                if TYPEOF(a) == SEXPTYPE::STRSXP && TYPEOF(b) == SEXPTYPE::STRSXP {
+                if let Some(result) = unordered_factor_compare(op_name, call, a, b) {
+                    return result;
+                }
+                // stock relop.c: symbols and calls deparse to strings first
+                let a = if TYPEOF(a) == SEXPTYPE::SYMSXP || TYPEOF(a) == SEXPTYPE::LANGSXP {
+                    crate::mainutils::deparse::deparse1s(a)
+                } else {
+                    a
+                };
+                let b = if TYPEOF(b) == SEXPTYPE::SYMSXP || TYPEOF(b) == SEXPTYPE::LANGSXP {
+                    crate::mainutils::deparse::deparse1s(b)
+                } else {
+                    b
+                };
+                // stock coercion ladder: string involvement compares as
+                // character, then complex, then raw/numeric coercion.
+                let a_str = TYPEOF(a) == SEXPTYPE::STRSXP;
+                let b_str = TYPEOF(b) == SEXPTYPE::STRSXP;
+                if a_str || b_str {
+                    let a = if a_str {
+                        a
+                    } else {
+                        relop_operand_to_character(a)
+                    };
+                    let b = if b_str {
+                        b
+                    } else {
+                        relop_operand_to_character(b)
+                    };
                     return character_compare(op_name, a, b);
+                }
+                if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
+                    return complex_relop(op_name, a, b);
+                }
+                if TYPEOF(a) == SEXPTYPE::RAWSXP || TYPEOF(b) == SEXPTYPE::RAWSXP {
+                    let a = if TYPEOF(a) == SEXPTYPE::RAWSXP {
+                        crate::mainutils::coerce::coerceVector(a, SEXPTYPE::REALSXP.into())
+                    } else {
+                        a
+                    };
+                    let b = if TYPEOF(b) == SEXPTYPE::RAWSXP {
+                        crate::mainutils::coerce::coerceVector(b, SEXPTYPE::REALSXP.into())
+                    } else {
+                        b
+                    };
+                    return binary_compare(op_name, a, b);
                 }
                 binary_compare(op_name, a, b)
             }
@@ -1118,14 +1478,136 @@ fn compare_strings(op: &str, a: &str, b: &str) -> bool {
     }
 }
 
+/// stock `math2(x, base, logbase)`: `log(x)/log(base)` with Math2
+/// recycling, zero-length handling, attributes, and NaN warnings.
+unsafe fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
+    unsafe {
+        let x = NumericVector::from_raw(sx);
+        let base = NumericVector::from_raw(sbase);
+        let (Some(x), Some(base)) = (x, base) else {
+            return R_NilValue();
+        };
+        let nx = x.len();
+        let nb = base.len();
+        if nx == 0 {
+            // SETUP_Math2: empty x gives an empty result with x's attributes
+            let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            if empty.is_null() {
+                return R_NilValue();
+            }
+            copy_all_attrib(empty, sx);
+            return empty;
+        }
+        let n = nx.max(nb);
+        let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        let _result_guard = protect(result_raw);
+        warn_if_non_multiple_recycling(nx, nb);
+        let mut naflag = false;
+        for i in 0..n {
+            let xv = x.real_at(i % nx);
+            let bv = base.real_at(i % nb);
+            // if_NA_Math2_set: NA in -> NA, NaN in -> NaN
+            let out = if xv.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || bv.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            {
+                crate::sexp::ffi::NA_REAL
+            } else if xv.is_nan() || bv.is_nan() {
+                f64::NAN
+            } else {
+                let v = libm::log(xv) / libm::log(bv);
+                if v.is_nan() {
+                    naflag = true;
+                }
+                v
+            };
+            result.set_real_elt(i, out);
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
+        }
+        // FINISH_Math2: attributes from the first operand of length n
+        if n == nx {
+            copy_all_attrib(result_raw, sx);
+        } else if n == nb {
+            copy_all_attrib(result_raw, sbase);
+        }
+        result_raw
+    }
+}
+
+/// stock complex_math2 `logbase`: `Clog(x) / Clog(base)` element-wise.
+unsafe fn complex_log_with_base(sx: SEXP, sbase: SEXP) -> SEXP {
+    unsafe {
+        let lx = super::complex_arith::complex_unary_vec(sx, super::complex_arith::complex_log);
+        let _lx_guard = protect(lx);
+        let lb = super::complex_arith::complex_unary_vec(sbase, super::complex_arith::complex_log);
+        let _lb_guard = protect(lb);
+        super::complex_arith::complex_binary("/", lx, lb)
+    }
+}
+
+/// SHALLOW_DUPLICATE_ATTRIB: copy every attribute of `src` onto `dst`.
+unsafe fn copy_all_attrib(dst: SEXP, src: SEXP) {
+    unsafe {
+        if src.is_null() || src == R_NilValue() {
+            return;
+        }
+        let mut attr = crate::sexp::accessors::ATTRIB(src);
+        while !attr.is_null() && attr != R_NilValue() {
+            setAttrib(dst, TAG(attr), CAR(attr));
+            attr = CDR(attr);
+        }
+    }
+}
+
 /// Handle unary math functions: abs, sqrt, log, log2, log10, exp,
 /// ceiling, floor, trunc, round, sign.
 pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let op_name = get_op_name(call);
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() {
+        if x.is_null() {
             return R_NilValue();
+        }
+        if x == R_NilValue() {
+            // stock Math1: NULL is not numeric and errors
+            arithmetic_error("non-numeric argument to mathematical function");
+        }
+        if has_class(x, "factor") {
+            // stock Math.factor stops, attributed to the method call
+            let f = Rf_install(c"Math.factor".as_ptr());
+            let method_call = Rf_lang2(f, CAR(CDR(call)));
+            let _method_guard = protect(method_call);
+            crate::mainutils::errors::errorcall_str(
+                method_call,
+                &format!("'{op_name}' not meaningful for factors"),
+            );
+        }
+        // stock do_log: `log(x, base)` recycles both arguments
+        if op_name == "log" {
+            let rest = CDR(args);
+            if !rest.is_null() && rest != R_NilValue() {
+                let mut base = CAR(rest);
+                if base == crate::sexp::globals::R_MissingArg() {
+                    base = Rf_ScalarReal(std::f64::consts::E);
+                }
+                if x == crate::sexp::globals::R_MissingArg() {
+                    arithmetic_error("argument \"x\" is missing, with no default");
+                }
+                if XLENGTH(base) == 0 {
+                    arithmetic_error("invalid argument 'base' of length 0");
+                }
+                if TYPEOF(x) == SEXPTYPE::CPLXSXP || TYPEOF(base) == SEXPTYPE::CPLXSXP {
+                    return complex_log_with_base(x, base);
+                }
+                if !is_numeric_operand(x) || !is_numeric_operand(base) {
+                    arithmetic_error("non-numeric argument to mathematical function");
+                }
+                return log_with_base(call, x, base);
+            }
         }
         if TYPEOF(x) == SEXPTYPE::CPLXSXP {
             return match op_name {
@@ -1147,8 +1629,49 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 "tanh" => {
                     super::complex_arith::complex_unary_vec(x, super::complex_arith::complex_tanh)
                 }
-                _ => R_NilValue(),
+                "abs" => {
+                    // stock Math1: complex abs is Mod, returned as double
+                    let n = XLENGTH(x);
+                    let out = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+                    let Some(result) = Sexp::from_raw(out) else {
+                        return R_NilValue();
+                    };
+                    let _out_guard = protect(out);
+                    for i in 0..n {
+                        let c = crate::sexp::accessors::COMPLEX_ELT(x, i as i32);
+                        let value = if c.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                            || c.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                        {
+                            crate::sexp::ffi::NA_REAL
+                        } else {
+                            libm::sqrt(c.r * c.r + c.i * c.i)
+                        };
+                        result.set_real_elt(i, value);
+                    }
+                    return out;
+                }
+                "log10" => super::complex_arith::complex_unary_vec(x, |c| {
+                    let l = super::complex_arith::complex_log(c);
+                    Rcomplex {
+                        r: l.r * std::f64::consts::LOG10_E,
+                        i: l.i * std::f64::consts::LOG10_E,
+                    }
+                }),
+                "log2" => super::complex_arith::complex_unary_vec(x, |c| {
+                    let l = super::complex_arith::complex_log(c);
+                    Rcomplex {
+                        r: l.r * std::f64::consts::LOG2_E,
+                        i: l.i * std::f64::consts::LOG2_E,
+                    }
+                }),
+                _ => arithmetic_error("unimplemented complex function"),
             };
+        }
+
+        // stock Math1: non-numeric arguments error (lowercase message from
+        // arithmetic.c, unlike the capital-N distn.c variant).
+        if !is_numeric_operand(x) {
+            arithmetic_error("non-numeric argument to mathematical function");
         }
 
         let f: fn(f64) -> f64 = match op_name {
@@ -1970,6 +2493,7 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
             "is.logical",
             "is.character",
             "is.null",
+            "(",
         ];
 
         let frame = (*env).data.envsxp.frame;
@@ -1996,7 +2520,6 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "=",
             "if",
             "{",
-            "(",
             "function",
             "while",
             "for",

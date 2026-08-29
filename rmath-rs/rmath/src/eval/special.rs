@@ -29,6 +29,15 @@ pub unsafe fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
     unsafe {
         let offset = crate::sexp::accessors::PRIMOFFSET(op);
 
+        // Value-based resolution: the bound primitive's canonical R_FunTab
+        // identity names the form, so an aliased head (`h <- `[`; h(x, 2)`)
+        // dispatches on the function value like upstream funtab dispatch
+        // instead of failing on the renamed call-head symbol.
+        if let Some(entry) = crate::eval::primitive::fun_tab_descriptor(offset) {
+            let name = crate::eval::primitive::fun_tab_name(entry.name);
+            return dispatch_special_by_name(name, call, op, args, rho);
+        }
+
         // Match by symbol name
         let fun_sym = CAR(call);
         if TYPEOF(fun_sym) == SEXPTYPE::SYMSXP {
@@ -619,6 +628,24 @@ pub unsafe fn do_begin(args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 // do_paren — the ( ) grouping expression
 // ---------------------------------------------------------------------------
+
+/// Builtin entry point for `(`.
+///
+/// Current R installs `(` as a BUILTINSXP whose PRIMFUN is do_paren:
+/// arity-checked, it returns its single (already evaluated) argument. The
+/// unevaluated special-form path (`do_paren`) keeps serving the name-based
+/// dispatch fallback.
+pub unsafe extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let _ = call;
+        let _ = rho;
+        crate::mainutils::relop::checkArity(op, args);
+        if args.is_null() || crate::sexp::accessors::Rf_isNull(args) != 0 {
+            return R_NilValue();
+        }
+        CAR(args)
+    }
+}
 
 /// Implement the `(` special form (parenthesized expression).
 unsafe fn do_paren(args: SEXP, rho: SEXP) -> SEXP {

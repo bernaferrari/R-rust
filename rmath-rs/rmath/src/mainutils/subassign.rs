@@ -472,11 +472,6 @@ pub unsafe fn VectorToPairList(x: SEXP) -> SEXP {
     }
 }
 
-/// GetOption1: get an option value by symbol.
-unsafe fn GetOption1(_tag: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
-}
-
 /// coerceVector: coerce a vector to a different type.
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     unsafe { crate::mainutils::coerce::coerceVector(x, type_) }

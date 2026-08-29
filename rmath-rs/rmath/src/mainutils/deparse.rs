@@ -438,6 +438,41 @@ unsafe fn getPPinfo_for_symbol(sym: SEXP) -> Option<PPinfo> {
     }
 }
 
+/// Resolve the `[` vs `[[` discriminator for a PP_SUBSET call.
+///
+/// Upstream deparse.c renders the brackets from `PRIMVAL(SYMVALUE(op))` — the
+/// `R_FunTab` code of the primitive installed in the call-head symbol's value
+/// slot (`installFunTab` binds every funtab name that way). Resolve the same
+/// code value-first, then fall back to the funtab entry found by the
+/// call-head name, mirroring the name-based PPinfo fallback in deparse2buff
+/// (the port's symbol value slots stay unbound unless InitNames ran).
+unsafe fn subset_primval(op: SEXP, symval: SEXP) -> c_int {
+    unsafe {
+        let t = TYPEOF(symval);
+        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
+            if let Some(entry) = crate::eval::primitive::fun_tab_descriptor(PRIMOFFSET(symval)) {
+                return entry.offset;
+            }
+        }
+        if isSymbol(op) {
+            let pn = PRINTNAME(op);
+            if !pn.is_null() {
+                let name = CHAR(pn);
+                if !name.is_null() {
+                    let name_bytes = std::ffi::CStr::from_ptr(name).to_bytes_with_nul();
+                    if let Some(entry) = crate::mainutils::names::R_FunTab
+                        .iter()
+                        .find(|entry| entry.name == name_bytes)
+                    {
+                        return entry.offset;
+                    }
+                }
+            }
+        }
+        0
+    }
+}
+
 /// Get PPinfo for an argument to needsparens (takes kind/prec/rightassoc directly).
 unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
     unsafe {
@@ -2229,7 +2264,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 print2buff(b")\0".as_ptr() as *const c_char, d);
                             }
                             // Determine [ or [[
-                            let primval = crate::mainutils::relop::PRIMVAL(symval);
+                            let primval = subset_primval(op, symval);
                             if primval == 1 {
                                 print2buff(b"[\0".as_ptr() as *const c_char, d);
                             } else {

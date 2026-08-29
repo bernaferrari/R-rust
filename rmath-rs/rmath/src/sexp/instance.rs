@@ -335,10 +335,18 @@ pub struct RInstance {
     /// Per-instance environment hash side tables.
     pub(crate) env_hash_tables: hashbrown::HashMap<usize, hashbrown::HashMap<usize, SEXP>>,
     /// Per-instance locked environments keyed by raw environment address.
+    /// GC contract: entries whose keyed environment is collected are swept by
+    /// the `gengc` reference-update pass (the address would otherwise alias a
+    /// recycled node).
     pub(crate) locked_environments: HashSet<usize>,
-    /// Per-instance locked bindings keyed by (environment address, symbol address).
+    /// Per-instance locked bindings keyed by (environment address, symbol
+    /// address). GC contract: entries whose keyed env or symbol is collected
+    /// are swept by the `gengc` reference-update pass.
     pub(crate) locked_bindings: HashSet<(usize, usize)>,
-    /// Per-instance active bindings keyed by (environment address, symbol address).
+    /// Per-instance active bindings keyed by (environment address, symbol
+    /// address). GC contract: values are traced as roots, and entries whose
+    /// keyed env or symbol is collected are swept by the `gengc`
+    /// reference-update pass.
     pub(crate) active_bindings: HashMap<(usize, usize), SEXP>,
     /// Per-session nmath math state (sampler caches and rank memo tables).
     pub(crate) math_state: rmath_nmath::MathState,
@@ -361,6 +369,8 @@ pub struct RInstance {
     /// Per-instance file creation mask used by `Sys.umask()`.
     pub(crate) file_creation_umask: u32,
     /// Per-instance cache of pure-R package namespaces keyed by package name.
+    /// GC contract: the cached namespace env is traced as a root by `gengc`
+    /// (it may have no other referee) and remapped on reference updates.
     pub(crate) package_namespace_cache: HashMap<String, (std::path::PathBuf, SEXP)>,
     /// Per-instance headless graphics device registry.
     pub(crate) graphics_device_registry: crate::library::grdevices::device_registry::DeviceRegistry,

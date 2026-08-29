@@ -283,6 +283,20 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
             mark_reachable(value);
         }
     }
+    // Namespace cache values may be reachable only through the cache: a
+    // pure-R package namespace has no other root once attach-time references
+    // die. Untraced, a collection swept the namespace env and left a dangling
+    // raw pointer in the cache.
+    for &(_, namespace) in instance.package_namespace_cache.values() {
+        mark_reachable(namespace);
+    }
+    // Active-binding functions must live as long as their entry. The (env,
+    // symbol) key addresses are deliberately not marked: bindings belong to
+    // their environment, so entries whose keyed node is reclaimed this cycle
+    // are swept in update_instance_roots_in instead of pinning the env.
+    for value in instance.active_bindings.values() {
+        mark_reachable(*value);
+    }
 
     for finalizer in &instance.memory_state.pending_finalizers {
         if finalizer.is_ready() {
@@ -716,6 +730,32 @@ fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &Has
             (remap_addr(env, old_to_new), table)
         })
         .collect();
+    let old_cache = std::mem::take(&mut instance.package_namespace_cache);
+    instance.package_namespace_cache = old_cache
+        .into_iter()
+        .map(|(package, (dir, mut namespace))| {
+            update_field(&mut namespace, old_to_new);
+            (package, (dir, namespace))
+        })
+        .collect();
+
+    // The binding tables are keyed by raw node addresses. Entries whose keyed
+    // node was reclaimed this cycle must be dropped before `free_node` puts
+    // the address back on the LIFO free list — a recycled address would
+    // otherwise alias the stale entry (a fresh environment reporting locks or
+    // active bindings it never had). `old_to_new` maps exactly the reclaimed
+    // addresses to R_NilValue, so key membership identifies them; live keys
+    // keep their address (the collector never moves nodes).
+    instance.active_bindings.retain(|key, value| {
+        update_field(value, old_to_new);
+        !old_to_new.contains_key(&key.0) && !old_to_new.contains_key(&key.1)
+    });
+    instance
+        .locked_environments
+        .retain(|env| !old_to_new.contains_key(env));
+    instance
+        .locked_bindings
+        .retain(|(env, symbol)| !old_to_new.contains_key(env) && !old_to_new.contains_key(symbol));
 
     for finalizer in &mut instance.memory_state.pending_finalizers {
         update_field(finalizer.obj_mut(), old_to_new);
@@ -2390,5 +2430,235 @@ mod tests {
         assert_eq!(inst.gc_state.remembered_set.len(), 1);
         inst.gc_state.remembered_set.add(old);
         assert_eq!(inst.gc_state.remembered_set.len(), 2);
+    }
+
+    fn make_detached_env() -> SEXP {
+        with_arena(|arena| {
+            let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+            unsafe {
+                (*env).data.envsxp.frame = crate::sexp::globals::R_NilValue();
+                (*env).data.envsxp.enclos = crate::sexp::globals::R_NilValue();
+            }
+            env
+        })
+    }
+
+    /// The package namespace cache is the only root for a pure-R package
+    /// namespace once attach-time references die. Untraced, a collection
+    /// swept the namespace env and left a dangling raw SEXP in the cache.
+    #[test]
+    fn test_package_namespace_cache_value_is_traced() {
+        let _session = RSession::new();
+
+        let payload = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        unsafe {
+            *crate::sexp::accessors::INTEGER(payload) = 4242;
+        }
+        let namespace = make_detached_env();
+        unsafe {
+            (*namespace).data.envsxp.frame = payload;
+        }
+        instance::with_required_current_instance(|inst| {
+            inst.package_namespace_cache.insert(
+                "gcProbePkg".to_string(),
+                (std::path::PathBuf::from("/gc-probe"), namespace),
+            );
+        });
+
+        // The namespace env and its frame are reachable only through the
+        // cache; both cycles must keep them, not just the first.
+        for _ in 0..2 {
+            full_gc();
+            assert!(
+                with_arena(|arena| arena.contains(namespace)),
+                "cached namespace env swept"
+            );
+            assert!(
+                with_arena(|arena| arena.contains(payload)),
+                "cached namespace frame swept"
+            );
+            assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(payload) }, 4242);
+        }
+    }
+
+    /// Active-binding values must be traced while their entry exists, and an
+    /// entry keyed by a collected env/symbol must be swept before the LIFO
+    /// free list recycles the address onto a new node.
+    #[test]
+    fn test_active_bindings_traced_and_dead_entries_swept() {
+        let _session = RSession::new();
+
+        let sym =
+            unsafe { crate::sexp::symbol::Rf_install(b"active_probe\0".as_ptr() as *const _) };
+        let env = make_detached_env();
+        // The binding function is reachable only through the side table.
+        let fun = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        unsafe {
+            *crate::sexp::accessors::INTEGER(fun) = 7;
+        }
+        instance::with_required_current_instance(|inst| {
+            inst.active_bindings
+                .insert((env as usize, sym as usize), fun);
+        });
+
+        full_gc();
+        assert!(
+            with_arena(|arena| arena.contains(fun)),
+            "active binding value swept while its entry was still live"
+        );
+        assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(fun) }, 7);
+
+        // The env is held only by a raw local the collector does not scan, so
+        // this cycle reclaims it and the side-table entry must go with it.
+        let env_addr = env as usize;
+        full_gc();
+        assert!(!with_arena(|arena| arena.contains(env)));
+        instance::with_required_current_instance(|inst| {
+            assert!(
+                !inst.active_bindings.contains_key(&(env_addr, sym as usize)),
+                "stale active binding entry survived the keyed env sweep"
+            );
+        });
+
+        // Recycle the reclaimed address: the stale entry must not alias the
+        // new node (a fresh env reporting an active binding it never had).
+        let mut recycled = std::ptr::null_mut();
+        for _ in 0..1024 {
+            recycled = with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP));
+            if recycled as usize == env_addr {
+                break;
+            }
+        }
+        assert_eq!(recycled as usize, env_addr, "address never recycled");
+        assert!(!crate::sexp::envir::binding_is_active_raw(recycled, sym));
+    }
+
+    /// Locked-environment and locked-binding entries die with their keyed
+    /// nodes; entries whose keys stay live must survive collections.
+    #[test]
+    fn test_locked_tables_swept_with_dead_keys_live_keys_kept() {
+        let _session = RSession::new();
+
+        let sym = unsafe { crate::sexp::symbol::Rf_install(b"lock_probe\0".as_ptr() as *const _) };
+        let live_env = make_detached_env();
+        let dead_env = make_detached_env();
+        crate::sexp::envir::lock_environment_raw(dead_env);
+        crate::sexp::envir::lock_environment_raw(live_env);
+        crate::sexp::envir::lock_binding_raw(dead_env, sym);
+        crate::sexp::envir::lock_binding_raw(live_env, sym);
+
+        // Root only live_env across the collection.
+        instance::with_required_current_instance(|inst| push_protect_in(inst, live_env));
+
+        full_gc();
+
+        assert!(with_arena(|arena| arena.contains(live_env)));
+        assert!(!with_arena(|arena| arena.contains(dead_env)));
+        assert!(crate::sexp::envir::environment_is_locked_raw(live_env));
+        assert!(crate::sexp::envir::binding_is_locked_raw(live_env, sym));
+        instance::with_required_current_instance(|inst| {
+            assert!(inst.locked_environments.contains(&(live_env as usize)));
+            assert!(
+                !inst.locked_environments.contains(&(dead_env as usize)),
+                "locked-environment entry survived the keyed env sweep"
+            );
+            assert!(
+                inst.locked_bindings
+                    .contains(&(live_env as usize, sym as usize))
+            );
+            assert!(
+                !inst
+                    .locked_bindings
+                    .contains(&(dead_env as usize, sym as usize)),
+                "locked-binding entry survived the keyed env sweep"
+            );
+        });
+    }
+
+    /// Session-locality style churn: many envs with active and locked
+    /// bindings, interleaved allocation churn with both collector flavours;
+    /// rooted envs keep resolving and swept envs leave no stale entries.
+    #[test]
+    fn test_binding_tables_resolve_across_gc_churn() {
+        let _session = RSession::new();
+
+        let sym_active =
+            unsafe { crate::sexp::symbol::Rf_install(b"churn_active\0".as_ptr() as *const _) };
+        let sym_locked =
+            unsafe { crate::sexp::symbol::Rf_install(b"churn_locked\0".as_ptr() as *const _) };
+
+        let mut rooted = Vec::new();
+        let mut transient = Vec::new();
+        for i in 0..32usize {
+            let env = make_detached_env();
+            let fun = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+            unsafe {
+                *crate::sexp::accessors::INTEGER(fun) = i as i32;
+            }
+            crate::sexp::envir::make_active_binding_raw(env, sym_active, fun);
+            crate::sexp::envir::lock_binding_raw(env, sym_locked);
+            if i % 2 == 0 {
+                rooted.push((env, fun));
+            } else {
+                transient.push(env);
+            }
+        }
+        instance::with_required_current_instance(|inst| {
+            for &(env, _) in &rooted {
+                push_protect_in(inst, env);
+            }
+        });
+
+        for round in 0..8usize {
+            for _ in 0..64 {
+                with_arena(|arena| {
+                    let scratch = arena.alloc_vector(SEXPTYPE::INTSXP, 8);
+                    unsafe {
+                        *crate::sexp::accessors::INTEGER(scratch) = round as i32;
+                    }
+                });
+            }
+            if round % 2 == 0 {
+                minor_gc();
+            } else {
+                full_gc();
+            }
+        }
+
+        // Rooted envs still resolve: entries intact, values readable.
+        for (i, &(env, fun)) in rooted.iter().enumerate() {
+            assert!(
+                with_arena(|arena| arena.contains(env)),
+                "rooted env {i} swept"
+            );
+            assert!(crate::sexp::envir::binding_is_active_raw(env, sym_active));
+            assert!(crate::sexp::envir::binding_is_locked_raw(env, sym_locked));
+            assert!(with_arena(|arena| arena.contains(fun)));
+            // rooted holds only even i, so enumerate index i maps to
+            // original loop value 2*i.
+            assert_eq!(
+                unsafe { *crate::sexp::accessors::INTEGER(fun) },
+                (i * 2) as i32
+            );
+        }
+
+        // Transient envs were reclaimed without leaving stale entries that a
+        // recycled address could alias.
+        for &env in &transient {
+            assert!(!with_arena(|arena| arena.contains(env)));
+            instance::with_required_current_instance(|inst| {
+                assert!(
+                    !inst
+                        .active_bindings
+                        .contains_key(&(env as usize, sym_active as usize))
+                );
+                assert!(
+                    !inst
+                        .locked_bindings
+                        .contains(&(env as usize, sym_locked as usize))
+                );
+                assert!(!inst.locked_environments.contains(&(env as usize)));
+            });
+        }
     }
 }

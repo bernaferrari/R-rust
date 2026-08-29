@@ -1693,7 +1693,13 @@ impl<'arena> Parser<'arena> {
             }
             Token::Plus => {
                 self.advance();
-                self.parse_unary()
+                let operand = self.parse_unary()?;
+                unsafe {
+                    // stock R keeps the call: `+"a"` errors at runtime
+                    // ("invalid argument to unary operator")
+                    let op = Rf_install(c"+".as_ptr());
+                    Ok(self.lang2(op, operand))
+                }
             }
             Token::Not => {
                 self.advance();

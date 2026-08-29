@@ -244,7 +244,14 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         PPinfo::new(PP_ASSIGN2, PREC_LEFT, 1),
     ),
     FunTabEntry::new(b"{\0", None, 0, 200, -1, PPinfo::new(PP_CURLY, PREC_FN, 0)),
-    FunTabEntry::new(b"(\0", None, 0, 1, 1, PPinfo::new(PP_PAREN, PREC_FN, 0)),
+    FunTabEntry::new(
+        b"(\0",
+        Some(crate::eval::special::do_paren_builtin),
+        0,
+        1,
+        1,
+        PPinfo::new(PP_PAREN, PREC_FN, 0),
+    ),
     FunTabEntry::new(
         b".subset\0",
         None,

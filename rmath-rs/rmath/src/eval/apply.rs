@@ -469,4 +469,26 @@ mod tests {
             assert!(err.contains("builtin function 'not_ported_builtin' is not implemented"));
         }
     }
+
+    #[test]
+    fn aliased_special_dispatches_through_bound_value() {
+        let _session = RSession::new();
+        unsafe {
+            let mut arena = RArena::new();
+            let env = Sexp::from_raw_unchecked(crate::eval::runtime::global_env());
+
+            // h <- `[` binds the subset primitive under an unrelated name;
+            // h(x, 2) must dispatch on that bound value (upstream dispatches
+            // the primitive's funtab entry), not on the call-head name.
+            let binding = parser::parse("h <- `[`", &mut arena).expect("parse alias binding");
+            eval_safe(Sexp::from_raw_unchecked(binding), env).expect("bind alias");
+
+            let call =
+                parser::parse("h(c(10, 20, 30), 2)", &mut arena).expect("parse aliased call");
+            let result = eval_safe(Sexp::from_raw_unchecked(call), env)
+                .expect("aliased subset call dispatches");
+
+            assert_eq!(*crate::sexp::accessors::REAL(result.as_raw()), 20.0);
+        }
+    }
 }
