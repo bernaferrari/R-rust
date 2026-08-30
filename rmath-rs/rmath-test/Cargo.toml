@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 rmath = { path = "../rmath" }
-libm = "0.1"
+libm = "0.2"

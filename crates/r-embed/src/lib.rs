@@ -1237,7 +1237,7 @@ mod tests {
     fn decode_png_rgba(png_bytes: &[u8]) -> DecodedPng {
         let decoder = png::Decoder::new(Cursor::new(png_bytes));
         let mut reader = decoder.read_info().expect("png reader");
-        let mut buffer = vec![0; reader.output_buffer_size()];
+        let mut buffer = vec![0; reader.output_buffer_size().expect("png output size")];
         let info = reader.next_frame(&mut buffer).expect("png frame");
         let bytes = &buffer[..info.buffer_size()];
         let rgba = match info.color_type {

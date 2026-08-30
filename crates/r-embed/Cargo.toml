@@ -10,6 +10,6 @@ thiserror = { workspace = true }
 rmath = { path = "../../rmath-rs/rmath", features = ["renderplot-device"] }
 r-graphics-engine = { path = "../r-graphics-engine" }
 r-device-android-headless = { path = "../r-device-android-headless" }
-png = "0.17.13"  # for encoding captured native rasters from real R graphics devices to PNG
+png = "0.18.1"  # for encoding captured native rasters from real R graphics devices to PNG
 
 [dev-dependencies]

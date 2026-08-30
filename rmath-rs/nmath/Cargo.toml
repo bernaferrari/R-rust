@@ -5,4 +5,4 @@ edition = "2024"
 license = "GPL-2.0-or-later"
 
 [dependencies]
-libm = "0.1"
+libm = "0.2"

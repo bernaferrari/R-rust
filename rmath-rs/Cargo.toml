@@ -3,7 +3,7 @@ members = ["rmath", "rmath-test"]
 resolver = "2"
 
 [workspace.dependencies]
-hashbrown = "0.14"
+hashbrown = "0.17"
 
 [profile.release]
 opt-level = 2
