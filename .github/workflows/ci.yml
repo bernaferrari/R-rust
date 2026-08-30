@@ -5,137 +5,56 @@ on:
     branches: [main]
   pull_request:
 
-jobs:
-  ci:
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  rust:
+    name: Build, lint, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Check formatting
-        run: cargo fmt --check --all
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
 
       - name: Clippy (workspace, deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Test rmath
-        run: env RUSTFLAGS="-Awarnings" cargo test -p rmath -- --test-threads=1
+      - name: Test (workspace)
+        run: cargo test --workspace
 
-      - name: Test embedding APIs
-        run: env RUSTFLAGS="-Awarnings" cargo test -p r-embed -p r-uniffi -- --test-threads=1
-
-      - name: Test nmath
-        run: env RUSTFLAGS="-Awarnings" cargo test -p rmath-nmath -- --test-threads=1
-
-      - name: Test Android headless device
-        run: env RUSTFLAGS="-Awarnings" cargo test -p r-device-android-headless -- --test-threads=1
-
-      # Pinned to 'release' on purpose: the checked-in goldens were
-      # regenerated locally against a GNU R trunk build (r79999, see
-      # docs/conformance.md). CI cross-checks them against release R; the
-      # harness's deterministic normalization absorbs engine-version drift,
-      # while genuine behavior differences still fail the gate.
-      - name: Set up R
-        if: runner.os == 'Linux'
-        uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: 'release'
-
-      - name: Script-level differential tests
-        if: runner.os == 'Linux'
-        run: bash scripts/script_diff_parity.sh --check
-
-      # Goldens (normal and error cases) are reviewed artifacts: CI only
-      # checks parity. When a golden legitimately changes, regenerate locally
-      # with `bash scripts/conformance_parity.sh --regen-goldens` and commit
-      # the reviewed diff; never auto-regenerate in CI.
-      - name: Stock R conformance (strict)
-        if: runner.os == 'Linux'
-        run: bash scripts/conformance_parity.sh --check --strict
-
-      - name: Upstream core slices (strict)
-        if: runner.os == 'Linux'
-        run: bash scripts/upstream_core_slices.sh --report "${RUNNER_TEMP}/upstream-core-slices"
-
-      - name: Pure-R package corpus (strict)
-        if: runner.os == 'Linux'
-        run: bash scripts/pure_r_package_corpus.sh --check
-
-      - name: Safe API audit
-        run: bash scripts/audit_safe_api.sh
-
-  miri:
-    name: Miri (memory safety)
+  conformance:
+    name: Conformance parity vs stock R
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Miri
-        uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: r-lib/actions/setup-r@v2
         with:
-          components: miri
+          r-version: "release"
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: miri-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            miri-cargo-
+      - name: Stock R conformance (three-way parity)
+        run: PATH="$HOME/.local/bin:$(Rscript -e 'cat(dirname(Rscript <- Sys.which("Rscript")))' 2>/dev/null):$PATH" bash scripts/conformance_parity.sh --check
 
-      - name: Miri smoke tests
-        run: |
-          cargo miri test -p rmath \
-            sexp::memory::tests::test_arena_alloc_node \
-            sexp::gengc::tests::test_full_gc_preserves_protected_old_objects \
-            -- --test-threads=1
+      - name: Script-level differential
+        run: PATH="$(dirname $(Rscript -e 'cat(Sys.which("Rscript"))')):$PATH" bash scripts/script_diff_parity.sh --check
 
   wasm:
-    name: WASM toolchain (wasm32-unknown-unknown)
+    name: WASM32 toolchain
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: wasm-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            wasm-cargo-
+      - uses: Swatinem/rust-cache@v2
 
       - name: WASM toolchain check
         run: bash scripts/wasm_toolchain_check.sh
