@@ -1,0 +1,25 @@
+R-rust is released under the GNU General Public License, version 2 or
+any later version (GPL-2.0-or-later). The full license text is in the
+COPYING file at the root of this repository.
+
+Upstream provenance
+-------------------
+
+This project is an independent Rust translation of selected components
+of GNU R (https://www.r-project.org), Copyright (C) The R Foundation for
+Statistical Computing / The R Core Team. GNU R is licensed under
+GPL-2.0-or-later, and this port keeps that license accordingly.
+
+The vendored upstream C source used as the diff-and-verify reference is
+not part of the crate build and is not distributed in this repository;
+it can be reproduced exactly from the pinned commit with:
+
+    ./scripts/fetch-r-source.sh
+
+That tree retains the R Core Team copyright and its original licensing.
+See README.md ("License and provenance") for details.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See COPYING for
+details.
