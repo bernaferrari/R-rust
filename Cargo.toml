@@ -17,8 +17,8 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Project contributors"]
 license = "GPL-2.0-or-later"
-repository = "https://github.com/rport/rport"
-homepage = "https://rport.dev"
+repository = "https://github.com/bernaferrari/R-rust"
+homepage = "https://github.com/bernaferrari/R-rust"
 
 [workspace.dependencies]
 thiserror = "2.0"
