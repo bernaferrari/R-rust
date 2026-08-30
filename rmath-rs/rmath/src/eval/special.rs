@@ -457,6 +457,8 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
         });
 
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+        // eval.c do_while: loop results are invisible (R_Visible = FALSE).
+        super::runtime::set_visible(FALSE);
         R_NilValue()
     }
 }
@@ -566,8 +568,9 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                 i.set(i.get() + 1);
             },
         );
-
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+        // eval.c do_for: loop results are invisible (R_Visible = FALSE).
+        super::runtime::set_visible(FALSE);
         R_NilValue()
     }
 }
@@ -607,6 +610,8 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
         }
 
         crate::sexp::gengc::maybe_collect_at_eval_safe_point();
+        // eval.c do_repeat: loop results are invisible (R_Visible = FALSE).
+        super::runtime::set_visible(FALSE);
         R_NilValue()
     }
 }

@@ -382,7 +382,7 @@ pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, 
         for i in 0..n {
             let si = *x.add(i as usize);
             let l;
-            if si.is_null() {
+            if si.is_null() || (!si.is_null() && si == crate::sexp::globals::R_NaString()) {
                 // NA_STRING
                 l = if quote != 0 {
                     current_R_print().na_width

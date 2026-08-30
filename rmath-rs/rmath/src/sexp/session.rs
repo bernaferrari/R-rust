@@ -607,6 +607,21 @@ impl RSession {
                     break;
                 }
                 let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+                // main.c REPL loop: upstream auto-prints EVERY visible
+                // top-level expression (PrintValueEnv), not just the final
+                // one. Intermediate values render through the same formatter
+                // result assembly uses for the final value, written into the
+                // captured stream so print() side effects, sink diversion,
+                // and auto-printed values interleave in statement order. The
+                // final statement keeps its caller-side render path, which
+                // also flushes that statement's deferred warnings after the
+                // value.
+                if index != last_index && self.instance.eval_state.visible != 0 {
+                    if let Ok(value) = result.as_ref() {
+                        let rendered = super::output::format_sexp_direct(*value);
+                        super::output::capture_stdout(&format!("{rendered}\n"));
+                    }
+                }
                 // main.c REPL tail: after each top-level expression, upstream
                 // flushes deferred warnings so they interleave with printed
                 // output like Rscript's stderr. The final statement defers to
@@ -698,6 +713,17 @@ impl RSession {
                     break;
                 }
                 let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+                // Same per-expression auto-print as the plain script loop
+                // above: every visible non-final top-level statement renders
+                // into the captured stream, preserving print()/auto-print
+                // interleaving; the final statement renders at result
+                // assembly.
+                if index != last_index && self.instance.eval_state.visible != 0 {
+                    if let Ok(value) = result.as_ref() {
+                        let rendered = super::output::format_sexp_direct(*value);
+                        super::output::capture_stdout(&format!("{rendered}\n"));
+                    }
+                }
                 // Same main.c REPL-tail flush as the plain script loop; the
                 // final statement's warnings flush at result assembly.
                 if index != last_index && crate::mainutils::errors::collect_warnings() > 0 {

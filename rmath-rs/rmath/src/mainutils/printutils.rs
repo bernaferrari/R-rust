@@ -865,6 +865,13 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
                 }
                 buffer.push(b'N');
                 buffer.push(b'A');
+                // Left-adjustment appends the remaining padding (stock pads
+                // the NA text to the field width like any other element).
+                if b > 0 && justify == Rprt_adj::left {
+                    for _ in 0..b {
+                        buffer.push(b' ');
+                    }
+                }
                 buffer.push(0);
                 buffer.as_ptr() as *const c_char
             });

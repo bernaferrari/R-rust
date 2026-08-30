@@ -183,6 +183,20 @@ pub(crate) fn exit_suppress_warnings() {
     with_error_state(|state| state.suppress_warnings -= 1);
 }
 
+/// Depth of active `suppressMessages()` frames (see
+/// `ErrorState::suppress_messages`).
+pub(crate) fn suppress_messages_depth() -> c_int {
+    with_error_state(|state| state.suppress_messages)
+}
+
+pub(crate) fn enter_suppress_messages() {
+    with_error_state(|state| state.suppress_messages += 1);
+}
+
+pub(crate) fn exit_suppress_messages() {
+    with_error_state(|state| state.suppress_messages -= 1);
+}
+
 fn set_no_break_warning(val: bool) {
     with_error_state(|state| state.no_break_warning = val);
 }

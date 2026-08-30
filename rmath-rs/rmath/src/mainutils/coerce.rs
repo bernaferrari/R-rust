@@ -1787,7 +1787,13 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
 
         let ans = match TYPEOF(v) {
             t if t == SEXPTYPE::SYMSXP => coerceSymbol(v, target),
-            t if t == SEXPTYPE::NILSXP || t == SEXPTYPE::LISTSXP => {
+            t if t == SEXPTYPE::NILSXP => {
+                // Trunk coerceVector: NULL coerces to a zero-length vector of
+                // the target type (needed for `NULL[2] <- 'z'` growth, where
+                // do_subassign_dflt coerces the NULL LHS to TYPEOF(y)).
+                Rf_allocVector3(target, 0)
+            }
+            t if t == SEXPTYPE::LISTSXP => {
                 if type_ == SEXPTYPE::LISTSXP {
                     v // already pairlist
                 } else {

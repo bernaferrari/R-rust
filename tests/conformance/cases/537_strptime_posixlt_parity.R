@@ -18,10 +18,12 @@ cat(is.na(strptime("100", "%OS3")$sec), "\n", sep = "")
 cat(is.na(strptime("999", "%OS3")$sec), "\n", sep = "")
 z <- strptime("Inf", "%OS")
 cat(is.na(z$sec), is.infinite(z$sec), z$isdst, "\n", sep = "|")
-## PR#19124: strptime("0", "%w") works in valid cases in a C locale
-w <- strptime("0", "%w")
+## PR#19124: strptime("0", "%w") works in valid cases in a C locale.
+## A full date is supplied so the recomputed wday does not depend on the
+## date the case is run (a bare %w leaves y/m/d for glibc_fix to fill
+## from the current time).
+w <- strptime("0 2020-02-01", "%w %Y-%m-%d")
 cat(w$wday, "\n", sep = "")
-
 ## %j day-of-year fills mon/mday; 366 is valid in a leap year
 d <- strptime("2020-060", "%Y-%j")
 cat(d$year + 1900, d$mon + 1, d$mday, d$yday, "\n", sep = "|")
@@ -33,7 +35,10 @@ u1 <- strptime("0 1", "%U %w")
 w1 <- strptime("0 1", "%W %w")
 cat(u1$mon + 1, u1$mday, u1$yday, "\n", sep = "|")
 cat(w1$mon + 1, w1$mday, w1$yday, "\n", sep = "|")
-u2 <- strptime("10 1", "%W %w")
+## %U/%W week parity with %w; the year is pinned (2020, a leap year)
+## because a year-less %W leaves the year to glibc_fix/current time,
+## which flips mon/mday between leap and non-leap years.
+u2 <- strptime("2020 10 1", "%Y %W %w")
 cat(u2$mon + 1, u2$mday, u2$yday, "\n", sep = "|")
 u3 <- strptime("2020 05 3", "%Y %U %w")
 w3 <- strptime("2020 05 3", "%Y %W %w")
@@ -45,7 +50,9 @@ oz <- strptime("2020-02-01 05:00:00 +0800", "%Y-%m-%d %H:%M:%S %z")
 cat(oz$hour, oz$min, oz$gmtoff, "\n", sep = "|")
 
 ## Name matching, %p, %% literals and whitespace handling
-cat(strptime("Saturday", "%A")$wday, "\n", sep = "")
+## %A with a pinned date: a bare %A parse would have mon/mday/year
+## filled from the current time (wday then tracks the run date).
+cat(strptime("Saturday 2020-02-01", "%A %Y-%m-%d")$wday, "\n", sep = "")
 s1 <- strptime("Sun 2020-02-01", "%a %Y-%m-%d")
 cat(s1$wday, s1$year + 1900, s1$mon + 1, s1$mday, "\n", sep = "|")
 s4 <- strptime("2020-02-01x%", "%Y-%m-%dx%%")

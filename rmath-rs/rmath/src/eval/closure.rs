@@ -223,9 +223,16 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             (*ctx).returnValue = *val;
         }
 
+        // Stock endcontext (context.c) saves R_Visible before running the
+        // on.exit expressions and restores it afterwards, so the visibility
+        // of the body's/handler's return value travels with
+        // (*ctx).returnValue even when an on.exit expression evaluates (and
+        // would otherwise clobber the flag). Mirror that save/restore here.
+        let saved_visible = super::runtime::visible();
         let onexit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             crate::eval::context::R_run_onexits_for_context(ctx);
         }));
+        super::runtime::set_visible(saved_visible);
         if let Err(payload) = onexit {
             return crate::sexp::context::handle_closure_signal(payload);
         }

@@ -11,7 +11,9 @@ use crate::sexp::object::Sexp;
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
 use super::eval::eval_safe;
-use super::primitive::{PrimitiveDescriptor, get_primfun, primitive_controls_visibility};
+use super::primitive::{
+    PrimitiveDescriptor, get_primfun, internal_result_invisible, primitive_controls_visibility,
+};
 
 /// Safe closure application.
 pub(crate) fn apply_closure_safe<'a>(
@@ -134,7 +136,9 @@ fn finish_application<'a>(
     let should_restore = match restore {
         VisibilityRestore::Always => flag < 2,
         VisibilityRestore::UnlessPrimitiveControlsIt => {
-            flag < 2 && !primitive_controls_visibility(op_name)
+            flag < 2
+                && !primitive_controls_visibility(op_name)
+                && !internal_result_invisible(op_name)
         }
     };
     if should_restore {
@@ -204,11 +208,16 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     let call = frame.call;
     let args = frame.args;
     let rho = frame.rho;
-
     if let Some(handler) = super::builtin::evaluated_builtin_handler(op_name) {
-        return crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+        let result = crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
             handler(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         });
+        // Stock clears R_Visible for these .Internal results (funtab eval
+        // column); the REPL-level auto-print depends on the exact flag.
+        if internal_result_invisible(op_name) {
+            super::runtime::set_visible(crate::sexp::ffi::FALSE);
+        }
+        return result;
     }
 
     // Try S3/S4 dispatch for primitive names that are not handled directly.

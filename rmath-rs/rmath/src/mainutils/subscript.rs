@@ -771,6 +771,16 @@ unsafe fn logicalSubscript(
 ) -> SEXP {
     unsafe {
         let _ = call;
+        // Trunk semantics: entry value > 0 means stretching is allowed; when
+        // the logical subscript is longer than x, the caller must grow x to
+        // `ns` (not merely to the count of TRUEs, which could leave the
+        // returned indices out of range of the grown vector).
+        let canstretch = *stretch > 0;
+        if !canstretch && ns > nx {
+            error("(subscript) logical subscript too long");
+        }
+        *stretch = if ns > nx { ns } else { 0 };
+
         if ns <= 0 {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
@@ -803,11 +813,6 @@ unsafe fn logicalSubscript(
                 *ap.add(j as usize) = NA_INTEGER;
                 j += 1;
             }
-        }
-
-        // Update stretch
-        if !stretch.is_null() {
-            *stretch = count;
         }
 
         ans
@@ -909,33 +914,41 @@ unsafe fn integerSubscript(
     x: SEXP,
 ) -> SEXP {
     unsafe {
-        let _ = (call, x);
-        // Check for negative values
-        let mut has_neg = false;
-        let mut has_pos = false;
-        let mut has_na = false;
+        // Trunk semantics (subscript.c): the entry value of *stretch > 0 means
+        // the caller allows growth; on return *stretch is 0, or the new
+        // required length of x when the largest positive index exceeds nx.
+        let canstretch = *stretch > 0;
+        *stretch = 0;
+        let mut max: c_int = 0;
+        let mut isna = false;
+        let mut neg = false;
         for i in 0..ns {
-            let v = INTEGER_ELT(s, i as c_int);
-            if v == NA_INTEGER {
-                has_na = true;
-                continue;
+            let ii = INTEGER_ELT(s, i as c_int);
+            if ii < 0 {
+                if ii == NA_INTEGER {
+                    isna = true;
+                } else {
+                    neg = true;
+                }
+            } else if ii > max {
+                max = ii;
             }
-            if v < 0 {
-                has_neg = true;
-            } else if v == 0 { /* zero is ignored */
+        }
+        let umax = max as R_xlen_t;
+        if umax > nx {
+            if canstretch {
+                *stretch = umax;
             } else {
-                has_pos = true;
+                ECALL_OutOfBounds(x, -1, umax, call);
             }
         }
-
-        if has_neg && (has_pos || has_na) {
-            error("only 0's may be mixed with negative subscripts");
+        if neg {
+            if max == 0 && !isna {
+                return negativeSubscript(s, ns, nx, ptr::null_mut());
+            } else {
+                error("only 0's may be mixed with negative subscripts");
+            }
         }
-
-        if has_neg {
-            return negativeSubscript(s, ns, nx, ptr::null_mut());
-        }
-
         return positiveSubscript(s, ns, nx);
     }
 }
@@ -957,54 +970,97 @@ unsafe fn realSubscript(
     x: SEXP,
 ) -> SEXP {
     unsafe {
-        let _ = (call, x);
-        // Convert real to integer first, then use integerSubscript
-        // Check for negative values in real subscript
-        let mut has_neg = false;
+        // Trunk semantics (subscript.c realSubscript): entry *stretch > 0
+        // allows growth; fractional/finite values truncate, NA/NaN/Inf map to
+        // NA indices. May return a REALSXP index vector when any value
+        // exceeds INT_MAX.
+        let canstretch = *stretch > 0;
+        *stretch = 0;
+        let mut min = 0.0f64;
+        let mut max = 0.0f64;
+        let mut isna = false;
         for i in 0..ns {
-            let v = REAL_ELT(s, i as c_int);
-            if !v.is_nan() && v < 0.0 {
-                has_neg = true;
-            }
-        }
-
-        // Convert to integer vector
-        let int_s = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
-        let ip = INTEGER(int_s);
-        for i in 0..ns as usize {
-            let v = REAL_ELT(s, i as c_int);
-            if v.is_nan() {
-                *ip.add(i) = NA_INTEGER;
-            } else if has_neg && v < 0.0 {
-                *ip.add(i) = v as c_int;
+            let ii = REAL_ELT(s, i as c_int);
+            if ii.is_finite() {
+                if ii < min {
+                    min = ii;
+                }
+                if ii > max {
+                    max = ii;
+                }
             } else {
-                *ip.add(i) = v as c_int;
+                isna = true;
             }
         }
-
-        // Check for negative after conversion
-        let mut conv_has_neg = false;
-        let mut conv_has_pos = false;
-        for i in 0..ns as usize {
-            let v = *ip.add(i);
-            if v == NA_INTEGER { /* skip */
-            } else if v < 0 {
-                conv_has_neg = true;
-            } else if v == 0 { /* zero ignored */
+        if max >= nx as f64 + 1.0 {
+            if canstretch {
+                *stretch = max as R_xlen_t;
             } else {
-                conv_has_pos = true;
+                ECALL_OutOfBounds(x, -1, max as R_xlen_t, call);
             }
         }
-
-        if conv_has_neg && conv_has_pos {
-            error("only 0's may be mixed with negative subscripts");
+        if min <= -1.0 {
+            if max < 1.0 && !isna {
+                let mut stretch2: R_xlen_t = 0;
+                let indx = Rf_allocVector3(SEXPTYPE::LGLSXP, nx);
+                let pindx = LOGICAL(indx);
+                for i in 0..nx as usize {
+                    *pindx.add(i) = 1;
+                }
+                for i in 0..ns {
+                    let dx = REAL_ELT(s, i as c_int);
+                    if dx.is_finite() && dx <= -1.0 && -dx < nx as f64 + 1.0 {
+                        let ix = (-dx - 1.0) as R_xlen_t;
+                        *pindx.add(ix as usize) = 0;
+                    }
+                }
+                return logicalSubscript(indx, nx, nx, &mut stretch2, call);
+            } else {
+                error("only 0's may be mixed with negative subscripts");
+            }
         }
-
-        if conv_has_neg {
-            return negativeSubscript(int_s, ns, nx, ptr::null_mut());
+        // Positive path: return a REALSXP index only if needed.
+        let mut int_ok = true;
+        let mut cnt: R_xlen_t = 0;
+        for i in 0..ns {
+            let ds = REAL_ELT(s, i as c_int);
+            if ds.is_finite() && ds > c_int::MAX as f64 {
+                int_ok = false;
+            }
+            if !ds.is_finite() || (ds as R_xlen_t) != 0 {
+                cnt += 1;
+            }
         }
-
-        return positiveSubscript(int_s, ns, nx);
+        if int_ok {
+            let indx = Rf_allocVector3(SEXPTYPE::INTSXP, cnt);
+            let pindx = INTEGER(indx);
+            let mut j: R_xlen_t = 0;
+            for i in 0..ns {
+                let ds = REAL_ELT(s, i as c_int);
+                let ia: c_int = if !ds.is_finite() {
+                    NA_INTEGER
+                } else {
+                    ds as c_int
+                };
+                if ia != 0 {
+                    *pindx.add(j as usize) = ia;
+                    j += 1;
+                }
+            }
+            indx
+        } else {
+            let indx = Rf_allocVector3(SEXPTYPE::REALSXP, cnt);
+            let pindx = REAL(indx);
+            let mut j: R_xlen_t = 0;
+            for i in 0..ns {
+                let ds = REAL_ELT(s, i as c_int);
+                if !ds.is_finite() || (ds as R_xlen_t) != 0 {
+                    *pindx.add(j as usize) = ds;
+                    j += 1;
+                }
+            }
+            indx
+        }
     }
 }
 
@@ -1029,81 +1085,119 @@ unsafe fn stringSubscript(
 ) -> SEXP {
     unsafe {
         let _ = (call, dim);
-        if nx == 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
+        // Trunk semantics (subscript.c stringSubscript): unmatched names are
+        // an error unless stretching is allowed; when stretching, the new
+        // names are returned as the "use.names" attribute (a VECSXP) of the
+        // generated subscript vector, and *stretch becomes the new required
+        // length of x. VectorAssign consumes it to name the new elements.
+        let canstretch = *stretch > 0;
+        *stretch = 0;
 
-        let slen = if ns > nx { nx } else { ns };
-        let mut count: R_xlen_t = 0;
-
-        // Match each string against names
-        let mut indices: Vec<c_int> = Vec::with_capacity(slen as usize);
-
-        for i in 0..slen {
-            let elt = STRING_ELT(s, i);
-            if elt.is_null() || elt == R_NilValue() {
-                // NA in string subscript: return all-NA
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
-                let ap = INTEGER(ans);
-                for j in 0..ns as usize {
-                    *ap.add(j) = NA_INTEGER;
-                }
-                if !stretch.is_null() {
-                    *stretch = ns;
-                }
-                return ans;
+        let is_non_null_string = |elt: SEXP| -> bool {
+            unsafe {
+                !elt.is_null() && elt != R_NilValue() && elt != crate::sexp::globals::R_NaString()
             }
+        };
 
-            let pname = CHAR(elt);
-            if pname.is_null() {
-                indices.push(NA_INTEGER);
-                count += 1;
-                continue;
-            }
-
-            let target = std::ffi::CStr::from_ptr(pname);
-            let target_bytes = target.to_bytes();
-
-            // Linear search through names
-            let mut found = false;
-            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && LENGTH(names) >= nx as c_int
-            {
-                for j in 0..nx as usize {
-                    let name_elt = STRING_ELT(names, j as R_xlen_t);
-                    if name_elt.is_null() || name_elt == R_NilValue() {
-                        continue;
-                    }
-                    let name_ptr = CHAR(name_elt);
-                    if name_ptr.is_null() {
-                        continue;
-                    }
-                    let name_str = std::ffi::CStr::from_ptr(name_ptr);
-                    if name_str.to_bytes() == target_bytes {
-                        indices.push((j + 1) as c_int);
-                        count += 1;
-                        found = true;
-                        break;
+        // First pass: match against the names on x. Unmatched entries stay 0.
+        // (Trunk only hashes for large inputs; linear matching is equivalent.)
+        let indx = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
+        let _indx_guard = protect(indx);
+        let mut guards: Vec<_> = Vec::new();
+        let pindx = INTEGER(indx);
+        for i in 0..ns {
+            let mut sub: R_xlen_t = 0;
+            let si = STRING_ELT(s, i);
+            if is_non_null_string(si) {
+                let sbytes = std::ffi::CStr::from_ptr(CHAR(si)).to_bytes();
+                if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                    for j in 0..nx {
+                        let name_j = STRING_ELT(names, j);
+                        if is_non_null_string(name_j) {
+                            let nbytes =
+                                unsafe { std::ffi::CStr::from_ptr(CHAR(name_j)) }.to_bytes();
+                            if nbytes == sbytes {
+                                sub = j + 1;
+                                break;
+                            }
+                        }
                     }
                 }
             }
+            *pindx.add(i as usize) = sub as c_int;
+        }
 
-            if !found {
-                indices.push(NA_INTEGER);
-                count += 1;
+        // Second pass: resolve unmatched entries against earlier subscripts
+        // (duplicates of an already-seen new name share its slot); genuinely
+        // new names extend the vector when allowed.
+        let nnames = nx;
+        let mut extra = nnames;
+        let mut indexnames: SEXP = R_NilValue();
+        let mut sindx: SEXP = R_NilValue();
+        for i in 0..ns {
+            let mut sub = *pindx.add(i as usize) as R_xlen_t;
+            if sub == 0 {
+                let si = STRING_ELT(s, i);
+                if is_non_null_string(si) {
+                    if indexnames.is_null() || indexnames == R_NilValue() {
+                        // match(s, s, 0): first-occurrence index of each element
+                        sindx = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
+                        guards.push(protect(sindx));
+                        let ps = INTEGER(sindx);
+                        for a in 0..ns {
+                            let ea = STRING_ELT(s, a);
+                            let mut found: R_xlen_t = 0;
+                            if is_non_null_string(ea) {
+                                let abytes = std::ffi::CStr::from_ptr(CHAR(ea)).to_bytes();
+                                for b in 0..a {
+                                    let eb = STRING_ELT(s, b);
+                                    if is_non_null_string(eb) {
+                                        let bbytes = std::ffi::CStr::from_ptr(CHAR(eb)).to_bytes();
+                                        if bbytes == abytes {
+                                            found = b + 1;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            *ps.add(a as usize) = found as c_int;
+                        }
+                        indexnames = Rf_allocVector3(SEXPTYPE::VECSXP, ns);
+                        guards.push(protect(indexnames));
+                        for z in 0..ns {
+                            SET_VECTOR_ELT(indexnames, z, R_NilValue());
+                        }
+                    }
+                    let j = *INTEGER(sindx).add(i as usize) as R_xlen_t;
+                    if j >= 1 {
+                        sub = *pindx.add((j - 1) as usize) as R_xlen_t;
+                        SET_VECTOR_ELT(indexnames, i, STRING_ELT(s, j - 1));
+                    }
+                }
+            }
+            if sub == 0 {
+                if !canstretch {
+                    ECALL_OutOfBoundsCHAR(x, dim, STRING_ELT(s, i), call);
+                }
+                extra += 1;
+                sub = extra;
+                SET_VECTOR_ELT(indexnames, i, STRING_ELT(s, i));
+            }
+            *pindx.add(i as usize) = sub as c_int;
+        }
+
+        if extra != nnames {
+            use crate::eval::attrib_core::setAttrib;
+            setAttrib(
+                indx,
+                crate::eval::attrib_core::R_UseNamesSymbol(),
+                indexnames,
+            );
+            if canstretch {
+                *stretch = extra;
             }
         }
-
-        // Create result
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
-        let ap = INTEGER(ans);
-        for i in 0..ns as usize {
-            *ap.add(i) = indices[i];
-        }
-
-        if !stretch.is_null() {
-            *stretch = count;
-        }
-        ans
+        indx
     }
 }
 

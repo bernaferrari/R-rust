@@ -133,6 +133,11 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     Rf_install(c"condition".as_ptr() as *const libc::c_char),
                     condition,
                 );
+                // Stock try() ends its error handler with
+                // `invisible(structure(class = "try-error", ...))`, so the
+                // try-error value must not auto-print even when the failed
+                // expression left R_Visible set.
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
                 msg_sexp
             }
         }
@@ -627,42 +632,22 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             });
         }
 
-        // Stock defers printing and renders via PrintWarnings()
-        // (errors.c:615-631): header "Warning message:", then either
-        // "In <dcall> : <msg>" (warning attributed to the enclosing call —
-        // stock findCall(); R_getCurrentCall() is the builtin-call
-        // equivalent here, R_NilValue at top level) with the LONGWARN
-        // one-space wrap, or "<msg> " without a call. The port emits at
-        // signal time into the stderr capture so builtin warning() output
-        // stays in signal order with message() output (case 372); C-internal
-        // warningcall() sites keep the deferred collection path.
+        // Stock defers printing: the warning enters the collection buffer
+        // (errors.c vwarningcall_dflt, warn == 0) and the REPL loop renders
+        // it via PrintWarnings() at the statement boundary — after that
+        // statement's auto-printed value, before the next statement's
+        // output. Routing the builtin through the same warningcall()
+        // collection path as C-internal warning sites keeps one deferral
+        // model: the script loop's boundary flush (and result assembly's
+        // tail flush for the final statement) positions the rendered block
+        // correctly between print() side effects and auto-printed values,
+        // while message() output stays in signal order with it (case 372).
         let wcall = crate::mainutils::errors::R_getCurrentCall();
-        let call_ok = !wcall.is_null() && wcall != R_NilValue();
-        let mut text = String::from("Warning message:\n");
-        if call_ok {
-            let dcall = crate::mainutils::errors::warning_dcall(wcall);
-            text.push_str("In ");
-            text.push_str(&dcall);
-            text.push_str(" :");
-            let msgline1 = warning_text.split('\n').next().map_or(0, str::len);
-            if 6 + dcall.len() + msgline1 > 75 {
-                text.push('\n');
-                text.push(' ');
-            }
-            text.push(' ');
-        }
-        text.push_str(&warning_text);
-        text.push(if call_ok { '\n' } else { ' ' });
-        text.push('\n');
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stderr(&text);
-        } else {
-            eprint!("{text}");
-        }
+        let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
+        crate::mainutils::errors::warningcall(wcall, c_msg.as_ptr());
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         // Stock returns the message string (the R closure wraps it in
         // invisible()); print(warning("w")) therefore renders `[1] "w"`.
-        let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
         Rf_mkString(c_msg.as_ptr())
     }
 }
@@ -674,11 +659,15 @@ pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let message = format!("{}\n", text);
         let condition = simple_condition(&message, &["simpleMessage", "message", "condition"]);
         signal_calling_handlers(condition, rho);
-
-        if crate::sexp::output::is_capturing() {
-            crate::sexp::output::capture_stderr(&message);
-        } else {
-            eprint!("{message}");
+        // suppressMessages() gates signal-time emission via a depth counter
+        // (mirroring suppressWarnings' warning gate): the muffled message
+        // never reaches the output stream.
+        if crate::mainutils::errors::suppress_messages_depth() == 0 {
+            // Signal-time emission into the session's single interleaved
+            // output stream (sink-diversion-free, like upstream stderr
+            // traffic): keeps message() output in signal order with deferred
+            // warnings and auto-printed values (case 372).
+            crate::sexp::output::capture_interleaved(&message);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()
@@ -1446,7 +1435,13 @@ mod tests {
             .map(|s| unsafe { crate::sexp::accessors::LOGICAL(s.as_raw()).read() == TRUE })
             .unwrap_or(false);
         assert!(identical);
-        assert!(output.stderr.contains("Warning message"));
+        // The uncaught warning is deferred into the collection buffer
+        // (rendered by the REPL tail / result assembly, not the captured
+        // streams of this raw session API) — it must be pending, with the
+        // rendered block available, and the buffer must be drained after.
+        assert!(unsafe { crate::mainutils::errors::collect_warnings() } > 0);
+        let block = unsafe { crate::mainutils::errors::take_warnings_block() };
+        assert!(block.is_some_and(|b| b.contains("Warning message")));
     }
 
     /// suppressWarnings keeps muting warnings (capture-based), including

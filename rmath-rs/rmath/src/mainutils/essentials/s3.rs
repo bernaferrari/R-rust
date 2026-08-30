@@ -16,7 +16,7 @@ use crate::sexp::constructors::{
     Rf_mkString,
 };
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -1063,16 +1063,251 @@ pub unsafe fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
     }
 }
 
-/// R's `complex(length = 0)` constructor.
+/// R's `complex(length.out = 0, real = numeric(), imaginary = numeric(),
+/// modulus = 1, argument = 0)` constructor.
+///
+/// Stock base is a closure: with neither `modulus` nor `argument` supplied
+/// it calls `.Internal(complex(length.out, real, imaginary))` (main/complex.c
+/// do_complex — zero-fill then recycle `pans[i].r = re[i %% nr]`,
+/// `pans[i].i = im[i %% ni]`, `n = max(asInteger(length.out), nr, ni)`);
+/// otherwise it builds `rep_len(modulus, n) * exp(1i * rep_len(argument, n))`
+/// with `n = max(length.out, length(argument), length(modulus))`.
 pub unsafe fn do_complex_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_typed_vector_constructor(args, SEXPTYPE::CPLXSXP) }
+    unsafe {
+        let supplied = match_complex_formals(args);
+
+        // Wrapper: `if (missing(modulus) && missing(argument))`.
+        if supplied[3].is_none() && supplied[4].is_none() {
+            return complex_from_real_imaginary(&supplied);
+        }
+        complex_from_polar(&supplied)
+    }
+}
+
+/// Formals of base's `complex` closure, in positional order.
+const COMPLEX_FORMALS: [&str; 5] = ["length.out", "real", "imaginary", "modulus", "argument"];
+
+/// Closure-style argument match for `complex`: tagged arguments are matched
+/// first (partial matching — the five formals start with distinct letters, so
+/// a prefix matches one formal or none), then positional arguments fill the
+/// remaining slots in order.
+unsafe fn match_complex_formals(args: SEXP) -> [Option<SEXP>; 5] {
+    unsafe {
+        let mut slots: [Option<SEXP>; 5] = [None; 5];
+        let mut positionals: Vec<SEXP> = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            match tag_name(cell).as_deref() {
+                Some(tag) => {
+                    let slot = match COMPLEX_FORMALS.iter().position(|f| f.starts_with(tag)) {
+                        Some(slot) => slot,
+                        None => base_error(format!(
+                            "unused argument ({} = {})",
+                            tag,
+                            described_constructor_arg(CAR(cell))
+                        )),
+                    };
+                    if slots[slot].is_some() {
+                        base_error(format!(
+                            "formal argument \"{}\" matched by multiple actual arguments",
+                            COMPLEX_FORMALS[slot]
+                        ));
+                    }
+                    slots[slot] = Some(CAR(cell));
+                }
+                None => positionals.push(CAR(cell)),
+            }
+            cell = CDR(cell);
+        }
+        let mut next = 0;
+        for value in positionals {
+            while next < slots.len() && slots[next].is_some() {
+                next += 1;
+            }
+            if next == slots.len() {
+                base_error(format!(
+                    "unused argument ({})",
+                    described_constructor_arg(value)
+                ));
+            }
+            slots[next] = Some(value);
+        }
+        slots
+    }
+}
+
+/// Render a constructor argument for an error message.
+unsafe fn described_constructor_arg(value: SEXP) -> String {
+    unsafe {
+        let deparsed = crate::mainutils::deparse::deparse_symbolic(value, true);
+        if deparsed.is_null() || deparsed == R_NilValue() {
+            return "...".to_string();
+        }
+        let _guard = protect(deparsed);
+        if XLENGTH(deparsed) > 0 {
+            elt_to_string(deparsed, 0)
+        } else {
+            "...".to_string()
+        }
+    }
+}
+
+/// Coerce a constructor argument to REALSXP (stock coerceVector returns the
+/// input unchanged when it is already real; NULL coerces to an empty real).
+unsafe fn complex_real_part(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        }
+        if TYPEOF(x) == SEXPTYPE::REALSXP {
+            return x;
+        }
+        crate::mainutils::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
+    }
+}
+
+/// `.Internal(complex(length.out, real, imaginary))`.
+unsafe fn complex_from_real_imaginary(supplied: &[Option<SEXP>; 5]) -> SEXP {
+    unsafe {
+        let na = crate::mainutils::coerce::asInteger(match supplied[0] {
+            Some(v) => v,
+            None => Rf_ScalarInteger(0), // wrapper default `length.out = 0L`
+        });
+        if na == NA_INTEGER || na < 0 {
+            base_error("invalid length");
+        }
+        let re = complex_real_part(supplied[1].unwrap_or(R_NilValue()));
+        let _re_guard = protect(re);
+        let im = complex_real_part(supplied[2].unwrap_or(R_NilValue()));
+        let _im_guard = protect(im);
+        let nr = XLENGTH(re);
+        let ni = XLENGTH(im);
+        let mut n = na as R_xlen_t;
+        if nr > n {
+            n = nr;
+        }
+        if ni > n {
+            n = ni;
+        }
+
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+        if ans.is_null() {
+            return R_NilValue();
+        }
+        let _ans_guard = protect(ans);
+        let pans = COMPLEX(ans);
+        for i in 0..n {
+            *pans.add(i as usize) = Rcomplex { r: 0.0, i: 0.0 };
+        }
+        if n > 0 && nr > 0 {
+            let pre = REAL(re);
+            for i in 0..n {
+                (*pans.add(i as usize)).r = *pre.add((i % nr) as usize);
+            }
+        }
+        if n > 0 && ni > 0 {
+            let pim = REAL(im);
+            for i in 0..n {
+                (*pans.add(i as usize)).i = *pim.add((i % ni) as usize);
+            }
+        }
+        ans
+    }
+}
+
+/// Wrapper's polar branch:
+/// `n <- max(length.out, length(argument), length(modulus));
+///  rep_len(modulus, n) * exp(1i * rep_len(argument, n))`.
+unsafe fn complex_from_polar(supplied: &[Option<SEXP>; 5]) -> SEXP {
+    unsafe {
+        let m = complex_real_part(match supplied[3] {
+            Some(v) => v,               // supplied `modulus`
+            None => Rf_ScalarReal(1.0), // wrapper default `modulus = 1`
+        });
+        let _m_guard = protect(m);
+        let a = complex_real_part(match supplied[4] {
+            Some(v) => v,               // supplied `argument`
+            None => Rf_ScalarReal(0.0), // wrapper default `argument = 0`
+        });
+        let _a_guard = protect(a);
+
+        // max(<length.out elements>, length(argument), length(modulus));
+        // any NA in length.out propagates (na.rm = FALSE).
+        let lo = complex_real_part(supplied[0].unwrap_or(R_NilValue()));
+        let _lo_guard = protect(lo);
+        let mut lo_max = f64::NEG_INFINITY;
+        let lo_n = XLENGTH(lo);
+        for i in 0..lo_n {
+            let e = *REAL(lo).add(i as usize);
+            if e.is_nan() {
+                lo_max = f64::NAN;
+                break;
+            }
+            if e > lo_max {
+                lo_max = e;
+            }
+        }
+        let n = if lo_n == 0 {
+            (XLENGTH(a) as f64).max(XLENGTH(m) as f64)
+        } else if lo_max.is_nan() {
+            // max(na.rm = FALSE): an NA in length.out propagates. f64::max
+            // would silently swallow it.
+            f64::NAN
+        } else {
+            lo_max.max(XLENGTH(a) as f64).max(XLENGTH(m) as f64)
+        };
+
+        // do_rep_len: length.out goes through asInteger (with its coercion
+        // warning), and NA/negative lengths error.
+        let n_len = crate::mainutils::coerce::asInteger(Rf_ScalarReal(n));
+        if n_len == NA_INTEGER || n_len < 0 {
+            base_error("invalid 'length.out' value");
+        }
+        if n_len == 0 {
+            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
+        }
+
+        let n = n_len as R_xlen_t;
+        let mlen = XLENGTH(m);
+        let alen = XLENGTH(a);
+        let pm = REAL(m);
+        let pa = REAL(a);
+
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+        if ans.is_null() {
+            return R_NilValue();
+        }
+        let _ans_guard = protect(ans);
+        let pans = COMPLEX(ans);
+        for i in 0..n {
+            // rep_len: an empty operand rep_len's to NA.
+            let mv = if mlen == 0 {
+                NA_REAL
+            } else {
+                *pm.add((i % mlen) as usize)
+            };
+            let av = if alen == 0 {
+                NA_REAL
+            } else {
+                *pa.add((i % alen) as usize)
+            };
+            // exp(1i * av) is (cos, sin); the full C99 complex multiply by
+            // (mv, 0) reproduces stock edge cases (modulus=Inf, argument=0
+            // gives Inf+NaNi, an all-NA operand gives NA).
+            let (ct, st) = (av.cos(), av.sin());
+            *pans.add(i as usize) = Rcomplex {
+                r: mv * ct - 0.0 * st,
+                i: mv * st + 0.0 * ct,
+            };
+        }
+        ans
+    }
 }
 
 /// R's `character(length = 0)` constructor.
 pub unsafe fn do_character_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_typed_vector_constructor(args, SEXPTYPE::STRSXP) }
 }
-
 /// R's `raw(length = 0)` constructor.
 pub unsafe fn do_raw_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { do_typed_vector_constructor(args, SEXPTYPE::RAWSXP) }

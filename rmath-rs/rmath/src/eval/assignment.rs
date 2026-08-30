@@ -426,7 +426,11 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
                 let replacement = match TYPEOF(value) {
                     vt if vt == SEXPTYPE::REALSXP => REAL_ELT(value, 0),
                     vt if vt == SEXPTYPE::INTSXP || vt == SEXPTYPE::LGLSXP => {
-                        let v = INTEGER_ELT(value, 0);
+                        let v = if vt == SEXPTYPE::INTSXP {
+                            INTEGER_ELT(value, 0)
+                        } else {
+                            LOGICAL_ELT(value, 0)
+                        };
                         if v == crate::sexp::ffi::NA_INTEGER {
                             crate::sexp::ffi::NA_REAL
                         } else {
@@ -440,7 +444,8 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
             }
             t if t == SEXPTYPE::INTSXP => {
                 let replacement = match TYPEOF(value) {
-                    vt if vt == SEXPTYPE::INTSXP || vt == SEXPTYPE::LGLSXP => INTEGER_ELT(value, 0),
+                    vt if vt == SEXPTYPE::INTSXP => INTEGER_ELT(value, 0),
+                    vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
                     _ => return None,
                 };
                 SET_INTEGER_ELT(target, index as i32, replacement);

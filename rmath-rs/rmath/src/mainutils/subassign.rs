@@ -506,6 +506,7 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 /// and S4 object bit.
 unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
     unsafe {
+        use crate::eval::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
         if isNull(src) || isNull(dest) {
             return;
         }
@@ -513,9 +514,18 @@ unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
         if isNull(src_attr) {
             return;
         }
-        let new_attr = crate::mainutils::duplicate::duplicate(src_attr);
-        let _new_attr_guard = protect(new_attr);
-        SET_ATTRIB(dest, new_attr);
+        // Copy every attribute except dim, dimnames and names: those are
+        // handled separately (EnlargeVector already fixed up `names`, and
+        // grown vectors lose their shape). Overwriting the whole attribute
+        // list here would clobber the enlarged names attribute.
+        let mut attr = src_attr;
+        while !isNull(attr) {
+            let tag = TAG(attr);
+            if tag != R_NamesSymbol() && tag != R_DimSymbol() && tag != R_DimNamesSymbol() {
+                setAttrib(dest, tag, CAR(attr));
+            }
+            attr = CDR(attr);
+        }
         SET_OBJECT(dest, OBJECT(src));
         if IS_S4_OBJECT(src) != 0 {
             SET_S4_OBJECT(dest);
@@ -653,7 +663,7 @@ unsafe fn R_CurrentExpression() -> SEXP {
 
 /// NA_STRING: get the NA string.
 unsafe fn NA_STRING() -> SEXP {
-    unsafe { crate::mainutils::relop::NA_STRING() }
+    unsafe { crate::sexp::globals::R_NaString() }
 }
 
 /// R_BlankString: get the blank string.
@@ -704,7 +714,7 @@ unsafe fn getNames(x: SEXP) -> SEXP {
         let mut attr = ATTRIB(x);
         while !isNull(attr) {
             if TAG(attr) == R_DimSymbol() {
-                return getAttrib(x, R_NamesSym());
+                return getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
             }
             attr = CDR(attr);
         }
@@ -712,7 +722,7 @@ unsafe fn getNames(x: SEXP) -> SEXP {
         // Don't use getAttrib since that would mark as immutable
         attr = ATTRIB(x);
         while !isNull(attr) {
-            if TAG(attr) == R_NamesSym() {
+            if TAG(attr) == crate::eval::attrib_core::R_NamesSymbol() {
                 return CAR(attr);
             }
             attr = CDR(attr);
@@ -810,7 +820,7 @@ unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
         let names = getNames(x);
         if !isNull(names) {
             let enlarged = EnlargeNames(names, len, newlen);
-            setAttrib(newx, R_NamesSym(), enlarged);
+            setAttrib(newx, crate::eval::attrib_core::R_NamesSymbol(), enlarged);
         }
         copyMostAttrib(x, newx);
         newx
@@ -1030,7 +1040,7 @@ unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
             }
         }
 
-        let xnames = getAttrib(x, R_NamesSym());
+        let xnames = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
         let _xnames_guard = protect(xnames);
         if !isNull(xnames) {
             let xnewnames = Rf_allocVector3(STRSXP, ii);
@@ -1042,7 +1052,7 @@ unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
                     k += 1;
                 }
             }
-            setAttrib(xnew, R_NamesSym(), xnewnames);
+            setAttrib(xnew, crate::eval::attrib_core::R_NamesSymbol(), xnewnames);
         }
         copyMostAttrib(x, xnew);
         xnew
@@ -1182,6 +1192,7 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
             1010 | 1310 | 1313 => {
                 // logical <- logical, integer <- logical, integer <- integer
                 let px = INTEGER(x);
+                let y_is_int = TYPEOF(y) == SEXPTYPE::INTSXP;
                 let mut iny: R_xlen_t = 0;
                 for idx in 0..n {
                     let ii = gi(indx, idx);
@@ -1189,7 +1200,39 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
                         continue;
                     }
                     let ii = ii - 1;
-                    *px.add(ii as usize) = INTEGER_ELT(y, iny as c_int);
+                    *px.add(ii as usize) = if y_is_int {
+                        INTEGER_ELT(y, iny as c_int)
+                    } else {
+                        LOGICAL_ELT(y, iny as c_int)
+                    };
+                    iny += 1;
+                    if iny >= ny {
+                        iny = 0;
+                    }
+                }
+            }
+
+            1410 | 1413 => {
+                // real <- logical/integer
+                let px = REAL(x);
+                let y_is_int = TYPEOF(y) == SEXPTYPE::INTSXP;
+                let mut iny: R_xlen_t = 0;
+                for idx in 0..n {
+                    let ii = gi(indx, idx);
+                    if ii == NA_INTEGER as R_xlen_t {
+                        continue;
+                    }
+                    let ii = ii - 1;
+                    let iy = if y_is_int {
+                        INTEGER_ELT(y, iny as c_int)
+                    } else {
+                        LOGICAL_ELT(y, iny as c_int)
+                    };
+                    if iy == NA_INTEGER {
+                        *px.add(ii as usize) = NA_REAL;
+                    } else {
+                        *px.add(ii as usize) = iy as c_double;
+                    }
                     iny += 1;
                     if iny >= ny {
                         iny = 0;
@@ -1248,7 +1291,11 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
                         continue;
                     }
                     let ii = ii - 1;
-                    let iy = INTEGER_ELT(y, iny as c_int);
+                    let iy = if TYPEOF(y) == SEXPTYPE::INTSXP {
+                        INTEGER_ELT(y, iny as c_int)
+                    } else {
+                        LOGICAL_ELT(y, iny as c_int)
+                    };
                     if iy == NA_INTEGER {
                         (*px.add(ii as usize)).r = NA_REAL;
                         (*px.add(ii as usize)).i = 0.0;
@@ -1390,7 +1437,44 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
         }
 
         // Check for additional named elements.
-        // Note: R_UseNamesSymbol not fully implemented; skip for now.
+        // Note makeSubscript passes the additional names back as the
+        // use.names attribute (a vector list) of the generated subscript
+        // vector (see trunk subassign.c VectorAssign tail).
+        let newnames = getAttrib(indx, crate::eval::attrib_core::R_UseNamesSymbol());
+        if !isNull(newnames) {
+            let mut oldnames = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
+            if !isNull(oldnames) {
+                for i in 0..n {
+                    if !VECTOR_ELT(newnames, i).is_null() && VECTOR_ELT(newnames, i) != R_NilValue()
+                    {
+                        let mut ii = gi(indx, i);
+                        if ii == NA_INTEGER as R_xlen_t {
+                            continue;
+                        }
+                        ii -= 1;
+                        SET_STRING_ELT(oldnames, ii, VECTOR_ELT(newnames, i));
+                    }
+                }
+            } else {
+                oldnames = Rf_allocVector3(SEXPTYPE::STRSXP, nx);
+                let _oldnames_guard = protect(oldnames);
+                for i in 0..nx {
+                    SET_STRING_ELT(oldnames, i, R_BlankString());
+                }
+                for i in 0..n {
+                    if !VECTOR_ELT(newnames, i).is_null() && VECTOR_ELT(newnames, i) != R_NilValue()
+                    {
+                        let mut ii = gi(indx, i);
+                        if ii == NA_INTEGER as R_xlen_t {
+                            continue;
+                        }
+                        ii -= 1;
+                        SET_STRING_ELT(oldnames, ii, VECTOR_ELT(newnames, i));
+                    }
+                }
+                setAttrib(x, crate::eval::attrib_core::R_NamesSymbol(), oldnames);
+            }
+        }
 
         x
     }
@@ -1952,7 +2036,7 @@ unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
                     k += 1;
                 }
             }
-            let xnames = getAttrib(x, R_NamesSym());
+            let xnames = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
             let _xnames_guard = protect(xnames);
             if !isNull(xnames) {
                 let ynames = Rf_allocVector3(STRSXP, n - 1);
@@ -1964,7 +2048,7 @@ unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
                         k += 1;
                     }
                 }
-                setAttrib(y, R_NamesSym(), ynames);
+                setAttrib(y, crate::eval::attrib_core::R_NamesSymbol(), ynames);
             }
             copyMostAttrib(x, y);
             y
@@ -2500,12 +2584,12 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 
             // If stretched, handle new name
             if stretch > 0 && !isNull(newname) {
-                let names = getAttrib(x, R_NamesSym());
+                let names = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
                 if isNull(names) {
                     let names_new = Rf_allocVector3(STRSXP, Rf_length(x) as R_xlen_t);
                     let _names_new_guard = protect(names_new);
                     SET_STRING_ELT(names_new, offset, newname);
-                    setAttrib(x, R_NamesSym(), names_new);
+                    setAttrib(x, crate::eval::attrib_core::R_NamesSymbol(), names_new);
                 } else {
                     SET_STRING_ELT(names, offset, newname);
                 }
@@ -2719,7 +2803,7 @@ pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> 
                 x = coerceVector(x, VECSXP);
             }
 
-            let names = getAttrib(x, R_NamesSym());
+            let names = getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
             let nlist_name = PRINTNAME(nlist);
 
             if isNull(val) {
@@ -2743,7 +2827,7 @@ pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> 
                                 ii += 1;
                             }
                         }
-                        setAttrib(ans, R_NamesSym(), ansnames);
+                        setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), ansnames);
                         copyMostAttrib(x, ans);
                         x = ans;
                     }
@@ -2782,7 +2866,7 @@ pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> 
                     }
                     SET_VECTOR_ELT(ans, nx, val);
                     SET_STRING_ELT(ansnames, nx, nlist_name);
-                    setAttrib(ans, R_NamesSym(), ansnames);
+                    setAttrib(ans, crate::eval::attrib_core::R_NamesSymbol(), ansnames);
                     copyMostAttrib(x, ans);
                     x = ans;
                 }

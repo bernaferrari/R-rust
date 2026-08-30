@@ -1,0 +1,46 @@
+[1] 2+0i
+[1] 1+2i
+[1] 0+0i 0+0i 0+0i
+[1] 1+4i 2+5i 3+6i
+[1] 1+1i
+complex(0)
+[1] 4+0i 4+0i
+[1] 1+2i
+[1] 1+5i 2+5i 1+5i
+[1] 0+0i
+[1] 0+0i 0+0i
+[1] 0+0i 0+0i 0+0i
+[1] 2
+[1] 0
+[1] 2.632748+1.438277i
+[1] 1+0i 2+0i
+[1] 1+0i 2+0i 3+0i
+[1] -1+1.224647e-16i
+[1]  1.0806046+1.682942i -0.8322937+1.818595i -1.9799850+0.282240i
+[1]  1+0.000000e+00i -1+1.224647e-16i
+[1]   1+  0i Inf+NaNi
+[1] 1.134649-3.835697i
+[1] 1+0i 1+0i
+[1] NA
+[1] 1+2i
+[1] 0+0i 0+0i 0+0i
+[1] 1+3i   NA
+[1] 1+1i 1+1i
+E: invalid length
+E: invalid length
+E: invalid length
+E: invalid 'length.out' value
+E: unused argument (zzz = 1)
+E: unused argument (6)
+[1] "expression(1 + 1)"
+[1] "expression(1 + 1, 2 + 2)"
+[1] "if (a) b else c"
+ language f(1)
+ symbol ab
+  expression(1 + 1)
+  expression(1 + 1, 2 + 2)
+ language f(1, 2, 3)
+ language {  a; b }
+ language `weird name` + 1
+ symbol x
+[1] TRUE

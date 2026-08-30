@@ -353,65 +353,6 @@ pub fn complex_tanh(z: Rcomplex) -> Rcomplex {
 }
 
 // ---------------------------------------------------------------------------
-// do_complex: handle complex(re, im) built-in
-// ---------------------------------------------------------------------------
-
-/// Handle `complex(real, imaginary)` — creates a complex vector from real parts.
-pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let re = crate::sexp::accessors::CAR(args);
-        let im = crate::sexp::accessors::CAR(crate::sexp::accessors::CDR(args));
-        if re.is_null() {
-            return R_NilValue();
-        }
-
-        let n = XLENGTH(re);
-        let im_n = if im.is_null() { 0 } else { XLENGTH(im) };
-
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = COMPLEX(result);
-
-        for i in 0..n {
-            let r = elt_real_coerce(re, i);
-            let im_val = if im_n > 0 {
-                elt_real_coerce(im, i)
-            } else {
-                0.0
-            };
-            *dst.add(i as usize) = Rcomplex { r, i: im_val };
-        }
-
-        result
-    }
-}
-
-/// Get a real value from any numeric SEXP at index i with recycling.
-#[inline]
-unsafe fn elt_real_coerce(x: SEXP, i: R_xlen_t) -> f64 {
-    unsafe {
-        let t = TYPEOF(x);
-        let n = XLENGTH(x);
-        let idx = if n == 0 { 0 } else { i % n };
-        if t == SEXPTYPE::REALSXP {
-            *REAL(x).add(idx as usize)
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let v = *INTEGER(x).add(idx as usize);
-            if v == NA_INTEGER {
-                crate::sexp::ffi::NA_REAL
-            } else {
-                v as f64
-            }
-        } else {
-            crate::sexp::ffi::NA_REAL
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

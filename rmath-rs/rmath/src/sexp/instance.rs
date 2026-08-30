@@ -41,6 +41,10 @@ pub(crate) struct ErrorState {
     /// inside are dropped before collection, matching upstream where the
     /// muffle restart prevents `vwarningcall_dflt` from ever running.
     pub suppress_warnings: c_int,
+    /// Depth of active `suppressMessages()` frames: message emission inside
+    /// is dropped, mirroring the suppress_warnings design for the port's
+    /// signal-time message path.
+    pub suppress_messages: c_int,
     pub no_break_warning: bool,
     pub interrupts_suspended: bool,
     pub interrupts_pending: bool,
@@ -73,11 +77,12 @@ impl Default for ErrorState {
             show_error_messages: true,
             show_error_calls: false,
             show_warn_calls: false,
-            in_error: 0,
+            suppress_warnings: 0,
+            suppress_messages: 0,
             in_warning: 0,
+            in_error: 0,
             in_print_warnings: 0,
             immediate_warning: false,
-            suppress_warnings: 0,
             no_break_warning: false,
             interrupts_suspended: false,
             interrupts_pending: false,

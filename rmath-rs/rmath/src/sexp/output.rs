@@ -118,6 +118,24 @@ pub(crate) fn capture_stdout_in(inst: &mut RInstance, msg: &str) {
     print!("{msg}");
 }
 
+/// Append to the session's single interleaved output stream — the stdout
+/// capture buffer, bypassing any `sink()` diversion — falling back to real
+/// stderr when no capture is active. Signal-time message() emission uses
+/// this: upstream writes messages to stderr and the terminal interleaves
+/// the two streams in real time; the session model keeps one ordered stream
+/// so the text lands in statement order between print() side effects,
+/// deferred warnings, and auto-printed values.
+pub(crate) fn capture_interleaved(msg: &str) {
+    super::instance::with_current_instance(|inst| {
+        if inst.output_capture.borrow().stdout.is_some() {
+            inst.output_capture
+                .borrow_mut()
+                .capture_stdout_bypassing_sink(msg);
+        } else {
+            eprint!("{msg}");
+        }
+    });
+}
 /// Append to captured stderr. Called by the REprintf hook.
 pub fn capture_stderr(msg: &str) {
     super::instance::with_current_instance(|inst| capture_stderr_in(inst, msg));
@@ -1556,7 +1574,14 @@ pub fn print_value(x: Sexp<'_>) {
         return;
     }
     match x.typeof_() {
-        SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP => {
+        SEXPTYPE::SYMSXP
+        | SEXPTYPE::LANGSXP
+        | SEXPTYPE::CLOSXP
+        | SEXPTYPE::SPECIALSXP
+        | SEXPTYPE::BUILTINSXP => {
+            // print.c PrintValueRec deparses these language objects: a
+            // closure prints as `function (x) ...`, a primitive as
+            // `.Primitive("sin")`.
             emit(&format!("{}\n", deparse_expression_one(x.as_raw())));
         }
         SEXPTYPE::NILSXP => {
@@ -1811,7 +1836,11 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         }
         SEXPTYPE::VECSXP => format_list(x),
         SEXPTYPE::EXPRSXP => format_expression_vector(x),
-        SEXPTYPE::SYMSXP | SEXPTYPE::LANGSXP => deparse_expression_one(x.as_raw()),
+        SEXPTYPE::SYMSXP
+        | SEXPTYPE::LANGSXP
+        | SEXPTYPE::CLOSXP
+        | SEXPTYPE::SPECIALSXP
+        | SEXPTYPE::BUILTINSXP => deparse_expression_one(x.as_raw()),
         SEXPTYPE::ENVSXP => format_environment(x),
         tp => {
             let type_name = match tp {
@@ -2138,12 +2167,15 @@ mod tests {
                 sexp.try_set_string_elt(0, value).expect("set string");
                 sexp.try_set_string_elt(1, missing).expect("set string");
 
-                assert_eq!(format_sexp_direct(sexp), "[1] \"a\" NA");
+                assert_eq!(format_sexp_direct(sexp), "[1] \"a\" NA ");
 
                 start_capture();
                 print_value(sexp);
                 let output = stop_capture();
-                assert_eq!(output.stdout, "[1] \"a\" NA\n");
+                // Stock R pads the final NA to the field width even in last
+                // position (verified against R: `print(c("a", NA))` emits
+                // "[1] \"a\" NA \n" with the trailing space).
+                assert_eq!(output.stdout, "[1] \"a\" NA \n");
             })
             .unwrap();
     }

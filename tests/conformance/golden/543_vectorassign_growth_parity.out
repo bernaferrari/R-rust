@@ -1,0 +1,24 @@
+[1] 1 2 7
+[1]  1  2 NA  7
+[1] NA  "z"
+[1] NA NA
+[1] 3.5
+[1]   NA   NA TRUE
+[1] TRUE TRUE   NA TRUE
+[1] 1+2i   NA 0+5i
+[1] FALSE FALSE  TRUE FALSE
+[1] "d"
+[1]  1 NA  3  4 NA NA  9
+[1] 4
+logical(0)
+[1] 9
+a b c 
+1 2 3 
+[1] "a" "b" "c"
+p q r 
+1 2 5 
+[1]  1  2  8 NA  9
+[1] 1 2 4
+[1] NA NA  1
+[1] TRUE
+[1]  2 NA  1

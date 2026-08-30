@@ -3169,6 +3169,9 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 message: format!("cannot open compressed file '{}': {err}", file_path),
             });
         }
+        // Stock saveRDS() returns invisible NULL; the top-level auto-print
+        // depends on the exact flag.
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
 
         R_NilValue()
     }

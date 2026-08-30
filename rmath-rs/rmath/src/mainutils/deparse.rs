@@ -3011,6 +3011,24 @@ pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     }
 }
 
+/// Deparse a symbolic object (call, expression, symbol) with the R-level
+/// `deparse()` defaults: cutoff 60, keepNA/keepInteger/niceNames/
+/// showAttributes. `backtick` selects symbol-name quoting — format.default
+/// deparses calls/expressions with backtick=TRUE and names with
+/// backtick=FALSE, while str.default's deParse always uses the default.
+pub unsafe fn deparse_symbolic(call: SEXP, backtick: bool) -> SEXP {
+    unsafe {
+        deparse1WithCutoff(
+            call,
+            false,
+            DEFAULT_CUTOFF,
+            backtick,
+            DEFAULT_USER_DEPARSE,
+            0,
+        )
+    }
+}
+
 // ---------------------------------------------------------------------------
 // deparse1m — deparse looking at getOption("deparse.max.lines")
 // ---------------------------------------------------------------------------

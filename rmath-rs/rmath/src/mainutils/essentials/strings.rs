@@ -646,6 +646,16 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
         }
+        // format.default formats symbolic objects by deparse:
+        // call/expression/"function"/"(" -> deparse(x, backtick=TRUE),
+        // name -> deparse(x, backtick=FALSE). Reaching the vector path with
+        // a LANGSXP/SYMSXP walks garbage pairlist memory (XLENGTH is only
+        // meaningful for vectors).
+        let x_type = TYPEOF(x);
+        if x_type == SEXPTYPE::LANGSXP || x_type == SEXPTYPE::EXPRSXP || x_type == SEXPTYPE::SYMSXP
+        {
+            return crate::mainutils::deparse::deparse_symbolic(x, x_type != SEXPTYPE::SYMSXP);
+        }
         let nsmall = if nsmall_arg.is_null() || nsmall_arg == R_NilValue() {
             0usize
         } else {

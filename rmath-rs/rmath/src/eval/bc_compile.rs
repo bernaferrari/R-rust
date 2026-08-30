@@ -160,6 +160,9 @@ impl BytecodeCompiler {
             self.emit_operand(opcodes::OP_GOTO, test_label);
             let end_label = self.code.len() as c_int;
             self.code[brif_idx as usize + 1] = end_label;
+            // Upstream's compiler wraps while-loop results in INVISIBLE
+            // (the loop's NULL result never auto-prints at top level).
+            self.emit(opcodes::OPinvisible);
             true
         }
     }

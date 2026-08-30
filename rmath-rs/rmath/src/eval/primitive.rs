@@ -143,6 +143,13 @@ pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
         .unwrap_or("unknown")
 }
 
+/// Primitives that leave R_Visible in the state their (last evaluated)
+/// argument/body/handler expression produced. Stock R implements these as
+/// closures or funtab `eval` flag-2 entries: the flag is untouched at return,
+/// so `eval(parse(text="5"))` inherits the inner expression's visibility and
+/// `tryCatch(x, err = function(e) cat(...))` stays invisible when the handler
+/// ends in `cat()`. The interpreter must NOT restore a print flag after these
+/// run.
 pub fn primitive_controls_visibility(name: &str) -> bool {
     matches!(
         name,
@@ -163,6 +170,9 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "warning"
             | "message"
             | "stopifnot"
+            | "options"
+            | "par"
+            | "data"
             | "library"
             | "require"
             | "system"
@@ -170,6 +180,56 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "suppressMessages"
             | "set.seed"
             | "RNGkind"
+            // Flow-through evaluation: the result's visibility is whatever
+            // the wrapped expression / handler evaluation left behind.
+            | "eval"
+            | "try"
+            | "tryCatch"
+            | "withCallingHandlers"
+            | "withRestarts"
+    )
+}
+
+/// .Internal functions whose results stock R marks invisible (the funtab
+/// eval column, or a trailing `invisible()` in the stock R closure wrapper).
+/// The interpreter auto-prints every visible top-level expression, so these
+/// must clear R_Visible after the handler runs — previously the flag was
+/// left at the pre-call value and the leak only surfaced once per-statement
+/// auto-printing matched Rscript.
+pub fn internal_result_invisible(name: &str) -> bool {
+    matches!(
+        name,
+        "assign"
+            | "rm"
+            | "save"
+            | "saveRDS"
+            | "load"
+            | ".libPaths"
+            | "pushBack"
+            | "sys.source"
+            | "writeLines"
+            | "writeBin"
+            | "writeChar"
+            | "write.table"
+            | "write.csv2"
+            | "close"
+            | "flush"
+            | "sink"
+            | "unlink"
+            | "dir.create"
+            | "Sys.setenv"
+            | "Sys.unsetenv"
+            | "setClass"
+            | "setGeneric"
+            | "setMethod"
+            | "unlockBinding"
+            | "lockBinding"
+            | "lockEnvironment"
+            | "makeActiveBinding"
+            | "attach"
+            | "detach"
+            | "source"
+            | "layout"
     )
 }
 

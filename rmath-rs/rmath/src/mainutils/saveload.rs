@@ -1377,7 +1377,11 @@ pub unsafe fn do_save_user(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         if ascii.is_null() || ascii == R_NilValue() {
             error("save() requires ascii = TRUE in this runtime");
         }
-        save_ascii_objects(list, file, ascii, envir)
+        let result = save_ascii_objects(list, file, ascii, envir);
+        // Stock save() returns invisible NULL/names; the top-level
+        // auto-print depends on the exact flag.
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        result
     }
 }
 

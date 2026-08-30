@@ -1082,12 +1082,18 @@ pub unsafe fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP
         if expr.is_null() || expr == R_NilValue() {
             return R_NilValue();
         }
-        crate::sexp::output::start_capture();
-        let result = crate::eval::eval::Rf_eval(expr, rho);
-        let captured = crate::sexp::output::stop_capture();
-        if !captured.stdout.is_empty() {
-            crate::sexp::output::capture_stdout(&captured.stdout);
+        // Depth-gated suppression of signal-time message emission (the
+        // capture-based approach cannot muffle messages once they ride the
+        // interleaved stdout stream alongside print output).
+        struct DepthGuard;
+        impl Drop for DepthGuard {
+            fn drop(&mut self) {
+                crate::mainutils::errors::exit_suppress_messages();
+            }
         }
+        crate::mainutils::errors::enter_suppress_messages();
+        let _depth_guard = DepthGuard;
+        let result = crate::eval::eval::Rf_eval(expr, rho);
         result
     }
 }

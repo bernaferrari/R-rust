@@ -4946,9 +4946,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
                 handler(s, internal_val, evaluated_args, env)
             });
-            if flag < 2 {
-                crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
-            }
+            resolve_internal_visibility(name, flag);
             return ans;
         }
 
@@ -4956,9 +4954,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             let ans = crate::mainutils::errors::attribute_handler_errors(s, || {
                 handler(s, internal_val, evaluated_args, env)
             });
-            if flag < 2 {
-                crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
-            }
+            resolve_internal_visibility(name, flag);
             return ans;
         }
 
@@ -4975,12 +4971,27 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             });
         };
 
-        // Reset visibility if flag < 2
-        if flag < 2 {
-            crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
-        }
+        resolve_internal_visibility(name, flag);
 
         ans
+    }
+}
+
+/// Post-call visibility for .Internal dispatch. Handlers may set R_Visible
+/// explicitly (options/par mode-dependent, message/warning); those escape
+/// the flag restore. Internals whose results stock marks invisible (funtab
+/// eval column) are forced invisible so top-level auto-printing matches
+/// Rscript.
+fn resolve_internal_visibility(name: &str, flag: c_int) {
+    if crate::eval::primitive::internal_result_invisible(name) {
+        crate::sexp::globals::set_R_Visible(0);
+        return;
+    }
+    if crate::eval::primitive::primitive_controls_visibility(name) {
+        return;
+    }
+    if flag < 2 {
+        crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
     }
 }
 

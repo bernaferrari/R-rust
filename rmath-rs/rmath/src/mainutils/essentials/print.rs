@@ -367,6 +367,16 @@ pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP)
     }
 }
 
+/// Emit a str() line through the session output capture when one is active,
+/// so interleaving with captured print output stays in order.
+fn str_emit_line(line: &str) {
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&format!("{line}\n"));
+    } else {
+        println!("{line}");
+    }
+}
+
 /// R's `str(x)` — compact structure display.
 pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -377,6 +387,85 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let t = TYPEOF(x);
         let n = XLENGTH(x);
+
+        // str.default for is.language && !is.expression: prints
+        // " language "/" symbol " followed by the deparsed object
+        // (braced blocks collapsed to "{ ... }" on one line). The generic
+        // vector path below must not see these: XLENGTH of a pairlist node
+        // is garbage.
+        if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::SYMSXP || t == SEXPTYPE::EXPRSXP {
+            // str.default for expressions: "  expression(...)" with at most
+            // three elements shown (round(0.75 * vec.len)) and " ..." when
+            // truncated.
+            if t == SEXPTYPE::EXPRSXP {
+                let n_expr = XLENGTH(x);
+                let show = n_expr.min(3);
+                let sub_guard;
+                let deparse_target = if show == n_expr {
+                    x
+                } else {
+                    let sub = Rf_allocVector3(SEXPTYPE::EXPRSXP, show);
+                    sub_guard = protect(sub);
+                    for i in 0..show {
+                        SET_VECTOR_ELT(sub, i, VECTOR_ELT(x, i));
+                    }
+                    sub
+                };
+                let deparsed = crate::mainutils::deparse::deparse_symbolic(deparse_target, true);
+                let _deparsed_guard = protect(deparsed);
+                let mut text = String::new();
+                for i in 0..XLENGTH(deparsed) {
+                    if i > 0 {
+                        text.push(' ');
+                    }
+                    text.push_str(&elt_to_string(deparsed, i));
+                }
+                if show < n_expr {
+                    text.push_str(" ...");
+                }
+                str_emit_line(&format!("  {text}"));
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                return x;
+            }
+            let deparsed = crate::mainutils::deparse::deparse_symbolic(x, true);
+            let _deparsed_guard = protect(deparsed);
+            let mut lines: Vec<String> = (0..XLENGTH(deparsed))
+                .map(|i| elt_to_string(deparsed, i))
+                .collect();
+            let last = lines.len().saturating_sub(1);
+            if t == SEXPTYPE::LANGSXP
+                && lines.len() > 1
+                && lines[0].trim() == "{"
+                && lines[last].trim() == "}"
+                && lines.len() >= 3
+            {
+                // str.default: trimEnds each middle line (leading space run
+                // becomes a single space, trailing spaces stripped) and join
+                // with ";".
+                let middles: Vec<String> = lines[1..last]
+                    .iter()
+                    .map(|l| {
+                        let body = l.trim_start_matches(' ');
+                        let lead = l.len() - body.len();
+                        let trimmed = if lead > 0 {
+                            format!(" {body}")
+                        } else {
+                            body.to_string()
+                        };
+                        trimmed.trim_end_matches(' ').to_string()
+                    })
+                    .collect();
+                lines = vec![lines[0].clone(), middles.join(";"), lines[last].clone()];
+            }
+            let prefix = if t == SEXPTYPE::LANGSXP {
+                "language"
+            } else {
+                "symbol"
+            };
+            str_emit_line(&format!(" {} {}", prefix, lines.join(" ")));
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
 
         if t == SEXPTYPE::VECSXP {
             // List

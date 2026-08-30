@@ -57,6 +57,17 @@ pub unsafe fn R_LevelsSymbol() -> SEXP {
     }
 }
 
+/// Get the "use.names" symbol.
+pub unsafe fn R_UseNamesSymbol() -> SEXP {
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("use.names")
+                .unwrap_or_default()
+                .as_ptr(),
+        )
+    }
+}
+
 /// Get the "tsp" symbol.
 pub unsafe fn R_TspSymbol() -> SEXP {
     unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap_or_default().as_ptr()) }
