@@ -25,7 +25,7 @@ impl<'a> Sexp<'a> {
         if self.clone().is_nil() {
             return Ok(SexpView::Nil);
         }
-        match self.clone().typeof_(){
+        match self.clone().typeof_() {
             SEXPTYPE::LGLSXP => Ok(SexpView::Logical(self.try_as_logical_slice()?)),
             SEXPTYPE::INTSXP => Ok(SexpView::Integer(self.try_as_integer_slice()?)),
             SEXPTYPE::REALSXP => Ok(SexpView::Real(self.try_as_real_slice()?)),

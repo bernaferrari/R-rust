@@ -23,7 +23,7 @@ impl<'a> NumericVector<'a> {
     }
 
     pub(crate) fn new(sexp: Sexp<'a>) -> Option<Self> {
-        match sexp.clone().typeof_(){
+        match sexp.clone().typeof_() {
             SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => Some(Self { sexp }),
             _ => None,
         }
@@ -65,7 +65,7 @@ impl<'a> NumericVector<'a> {
         let Some(idx) = self.clone().recycled_index(i) else {
             return NA_REAL;
         };
-        match self.clone().typeof_(){
+        match self.clone().typeof_() {
             SEXPTYPE::REALSXP => self.sexp.real_elt(idx).unwrap_or(NA_REAL),
             SEXPTYPE::INTSXP => match self.sexp.integer_elt(idx) {
                 Some(NA_INTEGER) | None => NA_REAL,
@@ -84,7 +84,7 @@ impl<'a> NumericVector<'a> {
         let Some(idx) = self.clone().recycled_index(i) else {
             return NA_INTEGER;
         };
-        match self.clone().typeof_(){
+        match self.clone().typeof_() {
             SEXPTYPE::INTSXP => self.sexp.integer_elt(idx).unwrap_or(NA_INTEGER),
             SEXPTYPE::LGLSXP => self.sexp.logical_elt(idx).unwrap_or(NA_INTEGER),
             _ => NA_INTEGER,

@@ -335,13 +335,20 @@ pub fn find_var_in_frame_result<'a>(
     // The pairlist frame is authoritative. Hash tables are a write-through cache
     // and can retain stale values across GC if frame cells were remapped first.
     let frame = rho
-        .clone().try_frame().clone().map_err(|err| sexp_err("environment frame lookup", err))?;
+        .clone()
+        .try_frame()
+        .clone()
+        .map_err(|err| sexp_err("environment frame lookup", err))?;
 
     for cell in PairlistIter::new(frame) {
         let tag = cell
-            .clone().try_tag().clone().map_err(|err| sexp_err("binding tag lookup", err))?;
+            .clone()
+            .try_tag()
+            .clone()
+            .map_err(|err| sexp_err("binding tag lookup", err))?;
         if symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()) {
-            if let Some(fun) = active_binding_fun_raw(rho.clone().as_raw(), symbol.clone().as_raw()) {
+            if let Some(fun) = active_binding_fun_raw(rho.clone().as_raw(), symbol.clone().as_raw())
+            {
                 return Sexp::try_from_raw(call_active_binding(rho.as_raw(), fun, None))
                     .map(Some)
                     .map_err(|err| sexp_err("active binding value", err));
@@ -432,23 +439,30 @@ pub fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
 
 /// Checked promise forcing.
 pub fn force_promise_result(prom: Sexp<'_>) -> EnvResult<LookupResult<'_>> {
-    if prom.clone().typeof_()!= SEXPTYPE::PROMSXP {
+    if prom.clone().typeof_() != SEXPTYPE::PROMSXP {
         return Ok(Some(prom));
     }
 
     let val = prom
-        .clone().try_prvalue().clone().map_err(|err| sexp_err("promise value lookup", err))?;
-    if val.clone().as_raw()!= unsafe { R_UnboundValue() } {
+        .clone()
+        .try_prvalue()
+        .clone()
+        .map_err(|err| sexp_err("promise value lookup", err))?;
+    if val.clone().as_raw() != unsafe { R_UnboundValue() } {
         return Ok(Some(val));
     }
 
     let expr = prom
-        .clone().try_prcode().clone().map_err(|err| sexp_err("promise code lookup", err))?;
-    if expr.clone().as_raw()== unsafe { R_MissingArg() } {
+        .clone()
+        .try_prcode()
+        .clone()
+        .map_err(|err| sexp_err("promise code lookup", err))?;
+    if expr.clone().as_raw() == unsafe { R_MissingArg() } {
         return Ok(Some(expr));
     }
     let env = prom
-        .clone().try_prenv()
+        .clone()
+        .try_prenv()
         .map_err(|err| sexp_err("promise environment lookup", err))?;
 
     unsafe {
@@ -487,13 +501,17 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
 
     for cell in PairlistIter::new(frame.clone()) {
         if cell
-            .clone().try_tag().clone().ok()
+            .clone()
+            .try_tag()
+            .clone()
+            .ok()
             .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()))
         {
             if binding_is_locked_raw(rho.clone().as_raw(), symbol.clone().as_raw()) {
                 binding_error("cannot change value of locked binding");
             }
-            if let Some(fun) = active_binding_fun_raw(rho.clone().as_raw(), symbol.clone().as_raw()) {
+            if let Some(fun) = active_binding_fun_raw(rho.clone().as_raw(), symbol.clone().as_raw())
+            {
                 call_active_binding(rho.as_raw(), fun, Some(value.as_raw()));
                 return true;
             }
@@ -576,7 +594,9 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
                 if binding_is_locked_raw(current.clone().as_raw(), symbol.clone().as_raw()) {
                     binding_error("cannot change value of locked binding");
                 }
-                if let Some(fun) = active_binding_fun_raw(current.clone().as_raw(), symbol.clone().as_raw()) {
+                if let Some(fun) =
+                    active_binding_fun_raw(current.clone().as_raw(), symbol.clone().as_raw())
+                {
                     call_active_binding(current.as_raw(), fun, Some(value.as_raw()));
                     return;
                 }
@@ -624,7 +644,7 @@ pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupR
         }
 
         if let Some(val) = find_var_in_frame_result(current.clone(), symbol.clone())? {
-            let val = if val.clone().typeof_()== SEXPTYPE::PROMSXP {
+            let val = if val.clone().typeof_() == SEXPTYPE::PROMSXP {
                 let forced = unsafe { forcePromise(val.clone().as_raw()) };
                 Sexp::from_raw(forced).unwrap_or(val)
             } else {
@@ -656,7 +676,6 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Option<Sexp<'a>
 
 /// Checked argument matching.
 pub fn match_args_result<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
-
     if !formals.clone().is_pairlist() {
         return Ok(Some(args));
     }
@@ -675,7 +694,8 @@ pub fn match_args_result<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> EnvResult<Loo
             tag => tag,
         };
 
-        let matched = PairlistIter::new(args.clone()).find(|a|a.clone().try_tag().ok() == Some(ftag.clone()));
+        let matched = PairlistIter::new(args.clone())
+            .find(|a| a.clone().try_tag().ok() == Some(ftag.clone()));
 
         let car_val = match matched {
             Some(m) => m
@@ -727,7 +747,7 @@ pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
         return true;
     }
 
-    if val.clone().typeof_()== SEXPTYPE::PROMSXP
+    if val.clone().typeof_() == SEXPTYPE::PROMSXP
         && let Ok(expr) = val.try_prcode()
         && expr == missing_arg
     {
@@ -755,11 +775,14 @@ pub fn dd_find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a>
 
     for cell in PairlistIter::new(dots_val) {
         if cell
-            .clone().try_tag().clone().ok()
+            .clone()
+            .try_tag()
+            .clone()
+            .ok()
             .is_some_and(|tag| symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()))
         {
             let val = cell.try_car().ok()?;
-            if val.clone().typeof_()== SEXPTYPE::PROMSXP {
+            if val.clone().typeof_() == SEXPTYPE::PROMSXP {
                 return force_promise_safe(val);
             }
             return Some(val);
@@ -1350,7 +1373,11 @@ mod tests {
                 return;
             };
 
-            assert!(define_var_safe(sexp_sym.clone(), sexp_val, sexp_env.clone()));
+            assert!(define_var_safe(
+                sexp_sym.clone(),
+                sexp_val,
+                sexp_env.clone()
+            ));
 
             let result = find_var_in_frame_safe(sexp_env, sexp_sym);
             assert!(result.is_some());
@@ -1375,7 +1402,9 @@ mod tests {
             let value = Sexp::from_raw(value).expect("value");
 
             assert!(!env.clone().exists_in_frame(sym.clone()));
-            env.clone().define(sym.clone(), value).expect("define through facade");
+            env.clone()
+                .define(sym.clone(), value)
+                .expect("define through facade");
             assert!(env.clone().exists_in_frame(sym.clone()));
 
             let found = env
@@ -1418,7 +1447,10 @@ mod tests {
                 return;
             };
 
-            assert!(!exists_var_in_frame_safe(sexp_env.clone(), sexp_sym.clone()));
+            assert!(!exists_var_in_frame_safe(
+                sexp_env.clone(),
+                sexp_sym.clone()
+            ));
 
             let value = Rf_ScalarInteger(10);
             let Some(sexp_val) = Sexp::from_raw(value) else {

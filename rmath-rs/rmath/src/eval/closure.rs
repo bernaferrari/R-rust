@@ -47,9 +47,15 @@ pub fn apply_closure_safe<'a>(
     }
 
     let formals = closure
-        .clone().try_formals().clone().map_err(|err| sexp_err("closure formals lookup", err))?;
+        .clone()
+        .try_formals()
+        .clone()
+        .map_err(|err| sexp_err("closure formals lookup", err))?;
     let body = closure
-        .clone().try_body().clone().map_err(|err| sexp_err("closure body lookup", err))?;
+        .clone()
+        .try_body()
+        .clone()
+        .map_err(|err| sexp_err("closure body lookup", err))?;
     let cloenv = closure
         .try_cloenv()
         .map_err(|err| sexp_err("closure environment lookup", err))?;
@@ -62,11 +68,17 @@ pub fn apply_closure_safe<'a>(
 
     // Bind the matched arguments into the new environment
     let frame = new_env
-        .clone().try_frame().clone().map_err(|err| sexp_err("new closure environment frame lookup", err))?;
+        .clone()
+        .try_frame()
+        .clone()
+        .map_err(|err| sexp_err("new closure environment frame lookup", err))?;
     let new_env_bindings = Environment::new(new_env.clone())?;
     for cell in PairlistIter::new(frame) {
         let sym = cell
-            .clone().try_tag().clone().map_err(|err| sexp_err("matched argument tag lookup", err))?;
+            .clone()
+            .try_tag()
+            .clone()
+            .map_err(|err| sexp_err("matched argument tag lookup", err))?;
         if !sym.clone().is_nil() {
             let val = cell
                 .try_car()
@@ -286,8 +298,8 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                 };
 
                 let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
-                let matched =
-                    match_closure_args(formals.clone().as_raw(), promised_args).unwrap_or_else(|message| {
+                let matched = match_closure_args(formals.clone().as_raw(), promised_args)
+                    .unwrap_or_else(|message| {
                         std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
                     });
 

@@ -7,6 +7,35 @@
 //! are only referenced by local variables. In this Rust port the stack is owned
 //! by the active `RInstance`; new Rust code should protect owner-scoped
 //! [`Sexp`](super::object::Sexp) handles instead of raw pointers.
+//!
+//! # Ownership model
+//!
+//! * [`Sexp`] handles are **non-`Copy`**: assigning a handle moves it, and
+//!   aliasing the same R object requires an explicit [`Clone`](Sexp::clone)
+//!   (a cheap second handle over identical memory, never a deep copy).
+//! * Holding a handle alone does **not** root the object: the non-moving /
+//!   generational GC may collect anything only reachable from Rust locals
+//!   once an R evaluation re-enters. To retain a value across a GC point,
+//!   push it on the protect stack.
+//! * [`RootedSexp`] is the ergonomic RAII rooting layer: it clones the
+//!   handle, protects it on creation, and unprotects on [`Drop`], exposing
+//!   reads through [`Deref`]. Lower-level callers can use
+//!   [`protect_sexp`]/[`ProtectGuard`] or the replaceable-slot
+//!   [`protect_sexp_with_index`]/[`IndexedProtectGuard`] directly.
+//! * Handles to objects that may be *replaced* during evaluation (grown
+//!   vectors, PROMSXP re-promises) must be refreshed through the write
+//!   barrier — re-derive the handle from its owner or use
+//!   [`IndexedProtectGuard::reprotect_sexp`] on a slot-protected value —
+//!   never by mutating a raw pointer in place.
+//!
+//! # Drop-order contract
+//!
+//! The protect stack is a plain `Vec` and slot release (`Vec::remove`)
+//! shifts later indices, so guards — including [`RootedSexp`] — must be
+//! released in **reverse creation order** (the natural order for RAII
+//! scopes). Roadmap: a generation-based handle table would pin slots
+//! permanently and remove this LIFO constraint; until then the stack
+//! semantics stay as upstream R's.
 
 use super::ffi::SEXP;
 use super::instance::{RInstance, with_required_current_instance};
@@ -484,6 +513,105 @@ impl Drop for IndexedProtectGuard {
     }
 }
 
+/// An owner-scoped [`Sexp`] handle kept alive on the protect stack.
+///
+/// `RootedSexp` is the ergonomic rooting layer over the protection stack:
+/// [`RootedSexp::root`] clones the (non-`Copy`) handle, protects the cloned
+/// SEXP on creation, and unprotects it when the root is dropped, so callers
+/// never juggle `protect_sexp`/`unprotect` bookkeeping by hand. Reads go
+/// through [`Deref`] to the guarded handle.
+///
+/// Roots use a slot-protected stack entry (see [`protect_sexp_with_index`])
+/// so an individual root's stack slot is stable across evaluations that push
+/// and pop other protections. Like every guard over this `Vec`-backed stack,
+/// roots should still be dropped in reverse creation order; see the module
+/// docs for the ownership model and the planned generation-based handle
+/// table that would remove that constraint.
+///
+/// ```rust,ignore
+/// use rmath::sexp::protect::RootedSexp;
+///
+/// let root = RootedSexp::root(some_sexp.clone());
+/// run_gc_point(); // the rooted value survives collection
+/// let n = root.length(); // deref read through the rooted handle
+/// drop(root); // stack slot released
+/// ```
+pub struct RootedSexp<'a> {
+    value: Sexp<'a>,
+    guard: IndexedProtectGuard,
+}
+
+impl std::fmt::Debug for RootedSexp<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RootedSexp").finish_non_exhaustive()
+    }
+}
+
+impl<'a> RootedSexp<'a> {
+    /// Protect a clone of `sexp` until the returned root is dropped.
+    ///
+    /// # Panics
+    /// Panics if `sexp` is not owner-scoped (see [`try_root`]).
+    ///
+    /// [`try_root`]: RootedSexp::try_root
+    pub fn root(sexp: Sexp<'a>) -> Self {
+        Self::try_root(sexp).expect("RootedSexp::root requires an owner-scoped Sexp")
+    }
+
+    /// Like [`root`](RootedSexp::root), but reports unowned handles as
+    /// [`ProtectError::UnownedHandle`] instead of panicking.
+    pub fn try_root(sexp: Sexp<'a>) -> Result<Self, ProtectError> {
+        ensure_owner_scoped(sexp.clone(), "RootedSexp::root")?;
+        let guard = protect_sexp_with_index(sexp.clone());
+        Ok(Self { value: sexp, guard })
+    }
+
+    /// Read the rooted handle.
+    pub fn get(&self) -> &Sexp<'a> {
+        &self.value
+    }
+
+    /// The underlying protection slot, for callers that need to reprotect
+    /// the rooted value in place (write barrier).
+    pub fn slot(&self) -> ProtectionSlot {
+        self.guard.slot()
+    }
+
+    /// Replace the rooted value through the write barrier: the stack slot
+    /// now protects `value` and the guarded handle is updated to alias it.
+    ///
+    /// # Panics
+    /// Panics if `value` is not owner-scoped.
+    pub fn reprotect(&mut self, value: Sexp<'a>) {
+        self.try_reprotect(value)
+            .expect("RootedSexp::reprotect requires an owner-scoped Sexp");
+    }
+
+    /// Non-panicking variant of [`reprotect`](RootedSexp::reprotect).
+    pub fn try_reprotect(&mut self, value: Sexp<'a>) -> Result<(), ProtectError> {
+        ensure_owner_scoped(value.clone(), "RootedSexp::reprotect")?;
+        self.guard.reprotect_sexp(value.clone());
+        self.value = value;
+        Ok(())
+    }
+
+    /// Consume the root, returning the guarded handle. The protection is
+    /// released; the caller owns the returned handle without a stack root.
+    pub fn unroot(self) -> Sexp<'a> {
+        let Self { value, guard } = self;
+        drop(guard);
+        value
+    }
+}
+
+impl<'a> std::ops::Deref for RootedSexp<'a> {
+    type Target = Sexp<'a>;
+
+    fn deref(&self) -> &Sexp<'a> {
+        &self.value
+    }
+}
+
 /// Protect an owner-scoped SEXP handle in a replaceable stack slot.
 pub fn protect_sexp_with_index(value: Sexp<'_>) -> IndexedProtectGuard {
     try_protect_sexp_with_index(value)
@@ -707,6 +835,59 @@ mod tests {
             assert_eq!(R_ProtectCount(), depth_before + 1);
             with_protected_objects(|objects| assert_eq!(objects, &[value.as_raw()]));
             drop(guard);
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
+    }
+
+    #[test]
+    fn test_rooted_sexp_roots_and_unroots() {
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = session.sexp(value).expect("value belongs to session");
+
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
+            let root = RootedSexp::root(value.clone());
+            assert_eq!(R_ProtectCount(), depth_before + 1);
+            with_protected_objects(|objects| assert_eq!(objects, &[value.clone().as_raw()]));
+            // Deref exposes the guarded handle.
+            let readback = root.get().clone();
+            assert_eq!(readback, value);
+            let sexp = root.unroot();
+            assert_eq!(sexp.as_raw(), value.clone().as_raw());
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
+    }
+
+    #[test]
+    fn test_rooted_sexp_reprotect_and_nested_lifo_drop() {
+        let mut session = RSession::new();
+        let (raw_first, raw_second) = session
+            .with_arena(|arena| {
+                (
+                    arena.alloc_node(SEXPTYPE::INTSXP),
+                    arena.alloc_node(SEXPTYPE::REALSXP),
+                )
+            })
+            .expect("session should be active");
+        let first = session.sexp(raw_first).expect("value belongs to session");
+        let second = session.sexp(raw_second).expect("value belongs to session");
+
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
+            let mut outer = RootedSexp::root(first.clone());
+            {
+                let inner = RootedSexp::root(first.clone());
+                assert!(inner.slot().is_active());
+            }
+            // LIFO release of the inner root left exactly one entry.
+            assert_eq!(R_ProtectCount(), depth_before + 1);
+            outer.reprotect(second.clone());
+            with_protected_objects(|objects| assert_eq!(objects, &[second.clone().as_raw()]));
+            assert_eq!(outer.get().clone(), second);
+            drop(outer);
             assert_eq!(R_ProtectCount(), depth_before);
         });
     }

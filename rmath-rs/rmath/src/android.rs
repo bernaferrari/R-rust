@@ -591,7 +591,7 @@ impl From<SexpComplex> for RComplexValue {
 
 impl RValue {
     pub fn from_sexp(sexp: Sexp<'_>) -> Self {
-        match sexp.clone().to_owned_value().clone(){
+        match sexp.clone().to_owned_value().clone() {
             Ok(value) => RValue::from_owned_value(value),
             Err(_error) => RValue::Unsupported {
                 type_name: format!("invalid {}", sexp.typeof_().0),
@@ -1230,19 +1230,28 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let mut arena = crate::sexp::memory::RArena::new();
         let vector = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)).expect("vector");
-        vector.clone().try_set_integer_elt(0, 1).expect("set integer");
-        vector.clone().try_set_integer_elt(1, 2).expect("set integer");
+        vector
+            .clone()
+            .try_set_integer_elt(0, 1)
+            .expect("set integer");
+        vector
+            .clone()
+            .try_set_integer_elt(1, 2)
+            .expect("set integer");
 
         let names = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)).expect("names");
-        names.clone()
+        names
+            .clone()
             .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name"))
             .expect("set name");
-        names.clone()
+        names
+            .clone()
             .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name"))
             .expect("set name");
 
         let class = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)).expect("class");
-        class.clone()
+        class
+            .clone()
             .try_set_string_elt(
                 0,
                 Sexp::from_raw(arena.alloc_charsxp(b"foo")).expect("class"),
@@ -1287,10 +1296,12 @@ mod tests {
         let mut arena = crate::sexp::memory::RArena::new();
         let complex = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)).unwrap();
         complex
-            .clone().try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
+            .clone()
+            .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
             .unwrap();
         complex
-            .clone().try_set_complex_elt(
+            .clone()
+            .try_set_complex_elt(
                 1,
                 crate::sexp::Rcomplex {
                     r: crate::sexp::NA_REAL,

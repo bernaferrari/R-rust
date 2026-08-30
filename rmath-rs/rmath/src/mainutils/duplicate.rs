@@ -13,9 +13,9 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
 #[cfg(feature = "altrep")]
 use crate::sexp::constructors::Rf_isVector;
+use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::with_arena;

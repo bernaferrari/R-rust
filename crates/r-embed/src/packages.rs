@@ -107,9 +107,7 @@ fn description_fields(description: &str) -> BTreeMap<String, String> {
 }
 /// Return metadata for every package directory with a DESCRIPTION file in the
 /// given library paths, deduplicated by package name and sorted by name.
-pub(crate) fn installed_packages_from_library_paths(
-    library_paths: &[String],
-) -> Vec<RPackageInfo> {
+pub(crate) fn installed_packages_from_library_paths(library_paths: &[String]) -> Vec<RPackageInfo> {
     let mut packages: Vec<RPackageInfo> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for library_path in library_paths {

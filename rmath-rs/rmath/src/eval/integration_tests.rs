@@ -802,7 +802,8 @@ fn test_eval_math_builtins() {
         assert!(result.is_ok(), "eval '{}' failed: {:?}", code, result);
         let val = must(result);
         let v = val
-            .clone().real_elt(0)
+            .clone()
+            .real_elt(0)
             .or_else(|| val.integer_elt(0).map(|i| i as f64))
             .unwrap_or(f64::NAN);
         assert!(

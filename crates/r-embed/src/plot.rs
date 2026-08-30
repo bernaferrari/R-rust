@@ -1,6 +1,5 @@
 //! Parsing and drawing of simple `plot()` calls on the headless renderer.
 
-
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
 

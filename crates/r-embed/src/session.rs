@@ -1,13 +1,15 @@
 //! The embedded R session facade: evaluation, configuration, and rendering.
 
-use std::path::PathBuf;
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, RenderPlot};
 use rmath::android::{RArenaStats, RResourceLimits, RRuntimeInfo, RValue};
+use std::path::PathBuf;
 
-use crate::packages::{installed_packages_from_library_paths, package_info_from_path, RPackageInfo};
-use crate::plot::{draw_series, numeric_series, parse_plot_call, PlotSeries};
 use crate::RSessionError;
+use crate::packages::{
+    RPackageInfo, installed_packages_from_library_paths, package_info_from_path,
+};
+use crate::plot::{PlotSeries, draw_series, numeric_series, parse_plot_call};
 
 /// An embedded R session.
 ///

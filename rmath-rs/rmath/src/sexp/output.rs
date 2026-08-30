@@ -230,7 +230,9 @@ fn format_real_value_for_vector(v: f64, force_decimal_for_whole: bool) -> String
 }
 
 fn format_real_vector_values(x: Sexp<'_>, limit: R_xlen_t) -> Vec<String> {
-    let values: Vec<_> = (0..x.clone().len().min(limit)).map(|i| x.clone().try_real_elt(i)).collect();
+    let values: Vec<_> = (0..x.clone().len().min(limit))
+        .map(|i| x.clone().try_real_elt(i))
+        .collect();
     let force_decimal_for_whole = values
         .iter()
         .filter_map(|value| value.as_ref().ok().copied())
@@ -429,9 +431,11 @@ fn matrix_dimnames(
         if dimnames.clone().typeof_() != SEXPTYPE::VECSXP || dimnames.clone().len() < 2 {
             return (None, None);
         }
-        let row_names =
-            string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.clone().as_raw(), 0))
-                .filter(|names| names.len() == nrow);
+        let row_names = string_vector_values(crate::sexp::accessors::VECTOR_ELT(
+            dimnames.clone().as_raw(),
+            0,
+        ))
+        .filter(|names| names.len() == nrow);
         let col_names =
             string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
                 .filter(|names| names.len() == ncol);
@@ -568,9 +572,12 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
         SEXPTYPE::CPLXSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
             format_complex_element(x.clone(), (r + c * nrow) as i64)
         })),
-        SEXPTYPE::STRSXP => Some(format_character_matrix_with(x.clone(), nrow, ncol, |r, c| {
-            format_string_element(x.clone(), (r + c * nrow) as i64)
-        })),
+        SEXPTYPE::STRSXP => Some(format_character_matrix_with(
+            x.clone(),
+            nrow,
+            ncol,
+            |r, c| format_string_element(x.clone(), (r + c * nrow) as i64),
+        )),
         _ => None,
     }
 }
@@ -771,7 +778,8 @@ fn format_difftime_vector(x: Sexp<'_>) -> String {
 fn format_factor(x: Sexp<'_>) -> Option<String> {
     let levels = factor_levels(x.clone())?;
     let vals: Vec<String> = x
-        .clone().iter_integer()
+        .clone()
+        .iter_integer()
         .take(10)
         .map(|code| {
             if code == NA_INTEGER {
@@ -827,8 +835,12 @@ fn table_title(x: Sexp<'_>) -> Option<String> {
 fn format_table(x: Sexp<'_>) -> Option<String> {
     let names = table_names(x.clone())?;
     let values: Vec<String> = match x.clone().typeof_() {
-        SEXPTYPE::INTSXP => (0..x.clone().len()).map(|i| format_integer_element(x.clone(), i)).collect(),
-        SEXPTYPE::REALSXP => (0..x.clone().len()).map(|i| format_real_element(x.clone(), i)).collect(),
+        SEXPTYPE::INTSXP => (0..x.clone().len())
+            .map(|i| format_integer_element(x.clone(), i))
+            .collect(),
+        SEXPTYPE::REALSXP => (0..x.clone().len())
+            .map(|i| format_real_element(x.clone(), i))
+            .collect(),
         _ => return None,
     };
     if let Some(title) = table_title(x) {
@@ -878,7 +890,8 @@ fn format_summary_default(x: Sexp<'_>) -> Option<String> {
         SEXPTYPE::REALSXP => (0..x.clone().len())
             .map(|i| {
                 if matches!(names.get(i as usize).map(String::as_str), Some("NAs")) {
-                    x.clone().as_real_slice()
+                    x.clone()
+                        .as_real_slice()
                         .map(|values| format!("{}", values[i as usize] as i64))
                         .unwrap_or_else(|| format_summary_real_value(x.clone(), i))
                 } else {
@@ -2144,7 +2157,10 @@ mod tests {
                 let sexp = Sexp::from_raw(ptr).expect("logical vector allocation failed");
                 assert!(sexp.clone().set_logical_elt(0, 0));
                 assert!(sexp.clone().set_logical_elt(1, 1));
-                assert!(sexp.clone().set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL));
+                assert!(
+                    sexp.clone()
+                        .set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL)
+                );
 
                 start_capture();
                 print_value(sexp);
@@ -2164,8 +2180,12 @@ mod tests {
                 let value = Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("CHARSXP");
                 let missing = Sexp::from_raw(unsafe { crate::sexp::globals::R_NaString() })
                     .expect("NA_STRING");
-                sexp.clone().try_set_string_elt(0, value).expect("set string");
-                sexp.clone().try_set_string_elt(1, missing).expect("set string");
+                sexp.clone()
+                    .try_set_string_elt(0, value)
+                    .expect("set string");
+                sexp.clone()
+                    .try_set_string_elt(1, missing)
+                    .expect("set string");
 
                 assert_eq!(format_sexp_direct(sexp.clone()), "[1] \"a\" NA ");
 
@@ -2188,7 +2208,9 @@ mod tests {
                 let real = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1))
                     .expect("real vector allocation failed");
 
-                assert!(format_integer_element(real.clone(), 0).contains("expected integer vector"));
+                assert!(
+                    format_integer_element(real.clone(), 0).contains("expected integer vector")
+                );
                 assert!(format_real_element(real, 2).contains("outside vector length"));
             })
             .unwrap();
@@ -2220,7 +2242,10 @@ mod tests {
                 sexp.clone().try_set_real_elt(1, 80200.0).expect("set real");
                 sexp.clone().try_set_real_elt(2, 100.5).expect("set real");
 
-                assert_eq!(format_sexp_direct(sexp.clone()), "[1]   200.0 80200.0   100.5");
+                assert_eq!(
+                    format_sexp_direct(sexp.clone()),
+                    "[1]   200.0 80200.0   100.5"
+                );
 
                 start_capture();
                 print_value(sexp);

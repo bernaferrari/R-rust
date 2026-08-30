@@ -338,7 +338,6 @@ pub unsafe fn dpotrf_(
             return;
         }
 
-
         let mat = read_mat_f64(a, n, n, lda);
         let side = if uplo_byte == b'U' || uplo_byte == b'u' {
             Side::Upper
@@ -427,8 +426,6 @@ pub unsafe fn dpotri_(
             *info = 0;
             return;
         }
-
-
 
         // Reconstruct A from Cholesky factor, then compute inverse
         let chol = read_mat_f64(a, n, n, lda);

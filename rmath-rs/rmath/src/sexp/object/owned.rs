@@ -24,7 +24,10 @@ impl<'a> Sexp<'a> {
     // (non-Copy by design); the value itself is cloned internally as needed.
     #[allow(clippy::wrong_self_convention)]
     pub(super) fn to_owned_value_inner(self, depth: usize) -> SexpResult<SexpValue> {
-        let value = self.clone().to_owned_value_without_attributes(depth).clone()?;
+        let value = self
+            .clone()
+            .to_owned_value_without_attributes(depth)
+            .clone()?;
         if depth >= OWNED_VALUE_ATTRIBUTE_DEPTH_LIMIT {
             return Ok(value);
         }
@@ -44,7 +47,7 @@ impl<'a> Sexp<'a> {
     #[allow(clippy::wrong_self_convention)]
     fn to_owned_value_without_attributes(self, depth: usize) -> SexpResult<SexpValue> {
         let len = self.clone().len();
-        match self.clone().typeof_(){
+        match self.clone().typeof_() {
             SEXPTYPE::NILSXP => Ok(SexpValue::Null),
             SEXPTYPE::LGLSXP => {
                 let values = self.try_logical_values()?;
@@ -78,7 +81,11 @@ impl<'a> Sexp<'a> {
             SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
                 let mut values = Vec::with_capacity(len as usize);
                 for i in 0..len {
-                    values.push(self.clone().try_vector_elt(i)?.to_owned_value_inner(depth + 1)?);
+                    values.push(
+                        self.clone()
+                            .try_vector_elt(i)?
+                            .to_owned_value_inner(depth + 1)?,
+                    );
                 }
                 Ok(SexpValue::List(values))
             }
@@ -110,7 +117,10 @@ impl<'a> Sexp<'a> {
                 "names" => metadata.names = value.clone().try_string_values().clone().ok(),
                 "dim" => {
                     metadata.dim = value
-                        .clone().try_integer_values().clone().ok()
+                        .clone()
+                        .try_integer_values()
+                        .clone()
+                        .ok()
                         .and_then(|values| values.into_iter().collect());
                 }
                 "class" => metadata.class = value.clone().try_string_values().clone().ok(),
@@ -136,7 +146,7 @@ impl<'a> Sexp<'a> {
         if tag.clone().is_nil() {
             return Ok(None);
         }
-        if tag.clone().typeof_()!= SEXPTYPE::SYMSXP {
+        if tag.clone().typeof_() != SEXPTYPE::SYMSXP {
             return Ok(None);
         }
 
@@ -192,7 +202,8 @@ impl<'a> Sexp<'a> {
         let len = self.clone().len();
         (0..len)
             .map(|i| {
-                self.clone().try_string_text_elt(i)
+                self.clone()
+                    .try_string_text_elt(i)
                     .map(|value| value.map(str::to_string))
             })
             .collect()

@@ -2471,7 +2471,7 @@ pub fn is_vector_type_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<c_int,
     } else if s == "numeric" {
         is_numeric_safe(x.clone()) != 0 && is_logical_safe(x.clone()) == 0
     } else {
-        let type_name = match x.clone().typeof_(){
+        let type_name = match x.clone().typeof_() {
             SEXPTYPE::LGLSXP => "logical",
             SEXPTYPE::INTSXP => "integer",
             SEXPTYPE::REALSXP => "double",
@@ -2522,7 +2522,7 @@ fn is_numeric_safe(x: Sexp) -> c_int {
 }
 
 fn is_logical_safe(x: Sexp) -> c_int {
-    (x.clone().typeof_()== SEXPTYPE::LGLSXP && x.is_vector()) as c_int
+    (x.clone().typeof_() == SEXPTYPE::LGLSXP && x.is_vector()) as c_int
 }
 
 fn is_function_safe(x: Sexp) -> c_int {
@@ -2579,7 +2579,10 @@ pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let args_s =
             Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let x = args_s
-            .clone().try_pairlist_arg(0).clone().unwrap_or_else(|err| errorcall(call, &err.to_string()));
+            .clone()
+            .try_pairlist_arg(0)
+            .clone()
+            .unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let mode_str = match args_s.try_pairlist_arg(1) {
             Ok(s) => s,
             Err(_) => return x.as_raw(),
@@ -2684,7 +2687,7 @@ pub unsafe fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             Ok(s) => s,
             Err(_) => return Rf_ScalarLogical(0),
         };
-        let x = match args_s.clone().try_pairlist_arg(0).clone(){
+        let x = match args_s.clone().try_pairlist_arg(0).clone() {
             Ok(s) => s,
             Err(_) => return Rf_ScalarLogical(0),
         };
@@ -3118,7 +3121,10 @@ pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let args_s =
             Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let x = args_s
-            .clone().try_pairlist_arg(0).clone().unwrap_or_else(|err| errorcall(call, &err.to_string()));
+            .clone()
+            .try_pairlist_arg(0)
+            .clone()
+            .unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let mode_str = match args_s.try_pairlist_arg(1) {
             Ok(s) => s,
             Err(_) => return x.as_raw(),

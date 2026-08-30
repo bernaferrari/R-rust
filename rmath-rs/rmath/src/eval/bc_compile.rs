@@ -400,7 +400,11 @@ mod tests {
         let env = session.global_env().expect("global env");
 
         unsafe {
-            defineVar(Rf_install(c"x".as_ptr()), Rf_ScalarInteger(9), env.clone().as_raw());
+            defineVar(
+                Rf_install(c"x".as_ptr()),
+                Rf_ScalarInteger(9),
+                env.clone().as_raw(),
+            );
             let sym = Rf_install(c"x".as_ptr());
             let bcode = compile_expr(sym, env.clone().as_raw()).expect("symbol should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
@@ -414,7 +418,11 @@ mod tests {
         let env = session.global_env().expect("global env");
 
         unsafe {
-            defineVar(Rf_install(c"x".as_ptr()), Rf_ScalarInteger(5), env.clone().as_raw());
+            defineVar(
+                Rf_install(c"x".as_ptr()),
+                Rf_ScalarInteger(5),
+                env.clone().as_raw(),
+            );
             let call = Rf_cons(
                 Rf_install(c"+".as_ptr()),
                 Rf_cons(

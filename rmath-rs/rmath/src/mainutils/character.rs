@@ -498,29 +498,29 @@ unsafe fn make_charsxp(bytes: &[u8]) -> SEXP {
 pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP, String> {
     let na = unsafe { get_na_string() };
 
-    if old.clone().typeof_()!= SEXPTYPE::STRSXP {
+    if old.clone().typeof_() != SEXPTYPE::STRSXP {
         return Err("invalid 'old' argument".into());
     }
     if old.clone().is_empty() {
         return Err("invalid 'old' argument".into());
     }
     let old_first = old.string_elt(0).ok_or("invalid 'old' argument")?;
-    if old_first.clone().as_raw()== na {
+    if old_first.clone().as_raw() == na {
         return Err("invalid 'old' argument".into());
     }
 
-    if new.clone().typeof_()!= SEXPTYPE::STRSXP {
+    if new.clone().typeof_() != SEXPTYPE::STRSXP {
         return Err("invalid 'new' argument".into());
     }
     if new.clone().is_empty() {
         return Err("invalid 'new' argument".into());
     }
     let new_first = new.string_elt(0).ok_or("invalid 'new' argument")?;
-    if new_first.clone().as_raw()== na {
+    if new_first.clone().as_raw() == na {
         return Err("invalid 'new' argument".into());
     }
 
-    if x.clone().typeof_()!= SEXPTYPE::STRSXP {
+    if x.clone().typeof_() != SEXPTYPE::STRSXP {
         return Err("invalid 'x' argument".into());
     }
 
@@ -561,7 +561,7 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
 
     for i in 0..i64::from(n) {
         let el = x.clone().string_elt(i).ok_or("missing string element")?;
-        if el.clone().as_raw()== na {
+        if el.clone().as_raw() == na {
             unsafe { SET_STRING_ELT(y, i, na) };
         } else {
             let xi_bytes = unsafe { charsxp_bytes(el.as_raw()) };
@@ -588,11 +588,11 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             Ok(s) => s,
             Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let old = match args_s.clone().try_pairlist_arg(0).clone(){
+        let old = match args_s.clone().try_pairlist_arg(0).clone() {
             Ok(s) => s,
             Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let new = match args_s.clone().try_pairlist_arg(1).clone(){
+        let new = match args_s.clone().try_pairlist_arg(1).clone() {
             Ok(s) => s,
             Err(_) => return crate::sexp::globals::R_NilValue(),
         };
@@ -677,7 +677,7 @@ pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
     let na = unsafe { get_na_string() };
 
-    if x.clone().typeof_()!= SEXPTYPE::STRSXP {
+    if x.clone().typeof_() != SEXPTYPE::STRSXP {
         return Err("non-character argument".into());
     }
 
@@ -687,7 +687,7 @@ fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
 
     for i in 0..i64::from(n) {
         let el = x.clone().string_elt(i).ok_or("missing string element")?;
-        if el.clone().as_raw()== na {
+        if el.clone().as_raw() == na {
             unsafe { SET_STRING_ELT(y, i, na) };
         } else {
             let xi_bytes = unsafe { charsxp_bytes(el.as_raw()) };
@@ -728,7 +728,7 @@ pub fn nchar_safe(
 ) -> Result<SEXP, String> {
     let na = unsafe { get_na_string() };
 
-    if x.clone().typeof_()!= SEXPTYPE::STRSXP {
+    if x.clone().typeof_() != SEXPTYPE::STRSXP {
         return Err("'nchar' requires a character vector".into());
     }
 
@@ -744,7 +744,7 @@ pub fn nchar_safe(
 
     for i in 0..len {
         let sxi = x.clone().string_elt(i).ok_or("missing string element")?;
-        if sxi.clone().as_raw()== na {
+        if sxi.clone().as_raw() == na {
             let val = if keep_na {
                 crate::sexp::ffi::NA_INTEGER
             } else {
@@ -795,12 +795,12 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 Err(_) => return crate::sexp::globals::R_NilValue(),
             };
 
-            let x_arg = match args_s.clone().try_pairlist_arg(0).clone(){
+            let x_arg = match args_s.clone().try_pairlist_arg(0).clone() {
                 Ok(s) => s,
                 Err(_) => return crate::sexp::globals::R_NilValue(),
             };
 
-            let stype = match args_s.clone().try_pairlist_arg(1).clone(){
+            let stype = match args_s.clone().try_pairlist_arg(1).clone() {
                 Ok(s) => s,
                 Err(_) => return crate::sexp::globals::R_NilValue(),
             };
@@ -828,7 +828,7 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 return crate::sexp::globals::R_NilValue();
             };
 
-            let allow_na_arg = match args_s.clone().try_pairlist_arg(2).clone(){
+            let allow_na_arg = match args_s.clone().try_pairlist_arg(2).clone() {
                 Ok(s) => s,
                 Err(_) => return crate::sexp::globals::R_NilValue(),
             };
@@ -879,7 +879,7 @@ pub fn substr_safe<'a>(
     let na = unsafe { get_na_string() };
     let blank = unsafe { blank_string() };
 
-    if x.clone().typeof_()!= SEXPTYPE::STRSXP {
+    if x.clone().typeof_() != SEXPTYPE::STRSXP {
         return Err("extracting substrings from a non-character object".into());
     }
 
@@ -902,7 +902,8 @@ pub fn substr_safe<'a>(
     let _s_guard = protect(s);
 
     for i in 0..len {
-        let start = starts.clone()
+        let start = starts
+            .clone()
             .integer_elt((i as R_xlen_t) % k)
             .unwrap_or(crate::sexp::ffi::NA_INTEGER);
         let stop = stops
@@ -912,7 +913,7 @@ pub fn substr_safe<'a>(
 
         let el = x.clone().string_elt(i).ok_or("missing string element")?;
 
-        if el.clone().as_raw()== na
+        if el.clone().as_raw() == na
             || start == crate::sexp::ffi::NA_INTEGER
             || stop == crate::sexp::ffi::NA_INTEGER
         {
@@ -969,12 +970,12 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
-        let x = match args_s.clone().try_pairlist_arg(0).clone(){
+        let x = match args_s.clone().try_pairlist_arg(0).clone() {
             Ok(s) => s,
             Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
-        let sa = match args_s.clone().try_pairlist_arg(1).clone(){
+        let sa = match args_s.clone().try_pairlist_arg(1).clone() {
             Ok(s) => s,
             Err(_) => return crate::sexp::globals::R_NilValue(),
         };

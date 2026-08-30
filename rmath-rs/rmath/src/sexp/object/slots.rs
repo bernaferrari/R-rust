@@ -21,7 +21,9 @@ impl<'a> Sexp<'a> {
     /// Get the formal parameters of a closure with typed error reporting.
     #[inline]
     pub fn try_formals(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::CLOSXP, "closure").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::CLOSXP, "closure")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.closxp.formals })
     }
 
@@ -40,7 +42,9 @@ impl<'a> Sexp<'a> {
     /// Get the body of a closure with typed error reporting.
     #[inline]
     pub fn try_body(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::CLOSXP, "closure").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::CLOSXP, "closure")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.closxp.body })
     }
 
@@ -59,7 +63,9 @@ impl<'a> Sexp<'a> {
     /// Get the environment of a closure with typed error reporting.
     #[inline]
     pub fn try_cloenv(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::CLOSXP, "closure").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::CLOSXP, "closure")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.closxp.env })
     }
 
@@ -80,7 +86,9 @@ impl<'a> Sexp<'a> {
     /// Get the frame of an environment with typed error reporting.
     #[inline]
     pub fn try_frame(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::ENVSXP, "environment").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::ENVSXP, "environment")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.envsxp.frame })
     }
 
@@ -99,7 +107,9 @@ impl<'a> Sexp<'a> {
     /// Get the enclosing environment with typed error reporting.
     #[inline]
     pub fn try_enclos(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::ENVSXP, "environment").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::ENVSXP, "environment")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.envsxp.enclos })
     }
 
@@ -118,7 +128,9 @@ impl<'a> Sexp<'a> {
     /// Get the hash table of an environment with typed error reporting.
     #[inline]
     pub fn try_hashtab(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::ENVSXP, "environment").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::ENVSXP, "environment")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.envsxp.hashtab })
     }
 
@@ -129,7 +141,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a promise or the value is null.
     #[inline]
     pub fn prvalue(self) -> Option<Sexp<'a>> {
-        if self.clone().typeof_()== SEXPTYPE::PROMSXP {
+        if self.clone().typeof_() == SEXPTYPE::PROMSXP {
             Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.value })
         } else {
             None
@@ -139,7 +151,9 @@ impl<'a> Sexp<'a> {
     /// Get the value of a promise with typed error reporting.
     #[inline]
     pub fn try_prvalue(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::PROMSXP, "promise").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::PROMSXP, "promise")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.promsxp.value })
     }
 
@@ -148,7 +162,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a promise or the code is null.
     #[inline]
     pub fn prcode(self) -> Option<Sexp<'a>> {
-        if self.clone().typeof_()== SEXPTYPE::PROMSXP {
+        if self.clone().typeof_() == SEXPTYPE::PROMSXP {
             Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.expr })
         } else {
             None
@@ -158,7 +172,9 @@ impl<'a> Sexp<'a> {
     /// Get the code/expression of a promise with typed error reporting.
     #[inline]
     pub fn try_prcode(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::PROMSXP, "promise").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::PROMSXP, "promise")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.promsxp.expr })
     }
 
@@ -167,7 +183,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a promise or the environment is null.
     #[inline]
     pub fn prenv(self) -> Option<Sexp<'a>> {
-        if self.clone().typeof_()== SEXPTYPE::PROMSXP {
+        if self.clone().typeof_() == SEXPTYPE::PROMSXP {
             Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.env })
         } else {
             None
@@ -177,7 +193,9 @@ impl<'a> Sexp<'a> {
     /// Get the environment of a promise with typed error reporting.
     #[inline]
     pub fn try_prenv(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::PROMSXP, "promise").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::PROMSXP, "promise")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.promsxp.env })
     }
 
@@ -188,7 +206,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a symbol or the value is null.
     #[inline]
     pub fn symvalue(self) -> Option<Sexp<'a>> {
-        if self.clone().typeof_()== SEXPTYPE::SYMSXP {
+        if self.clone().typeof_() == SEXPTYPE::SYMSXP {
             Sexp::from_raw(unsafe { (*self.ptr).data.symsxp.internal })
         } else {
             None
@@ -198,7 +216,9 @@ impl<'a> Sexp<'a> {
     /// Get the value of a symbol binding with typed error reporting.
     #[inline]
     pub fn try_symvalue(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::SYMSXP, "symbol").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::SYMSXP, "symbol")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.symsxp.internal })
     }
 
@@ -207,7 +227,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a symbol or the print name is null.
     #[inline]
     pub fn printname(self) -> Option<Sexp<'a>> {
-        if self.clone().typeof_()== SEXPTYPE::SYMSXP {
+        if self.clone().typeof_() == SEXPTYPE::SYMSXP {
             Sexp::from_raw(unsafe { (*self.ptr).data.symsxp.pname })
         } else {
             None
@@ -217,7 +237,9 @@ impl<'a> Sexp<'a> {
     /// Get the print name of a symbol with typed error reporting.
     #[inline]
     pub fn try_printname(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::SYMSXP, "symbol").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::SYMSXP, "symbol")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.symsxp.pname })
     }
 
@@ -262,7 +284,9 @@ impl<'a> Sexp<'a> {
 
     /// Return the CHARSXP byte length with typed error reporting.
     pub fn try_char_len(self) -> SexpResult<R_xlen_t> {
-        self.clone().expect_type(SEXPTYPE::CHARSXP, "character scalar").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::CHARSXP, "character scalar")
+            .clone()?;
         Ok(unsafe { (*self.ptr).data.charsxp_truelen })
     }
 
@@ -272,7 +296,9 @@ impl<'a> Sexp<'a> {
 
     /// Return the CHARSXP bytes with typed error reporting.
     pub fn try_as_bytes(self) -> SexpResult<&'a [u8]> {
-        self.clone().expect_type(SEXPTYPE::CHARSXP, "character scalar").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::CHARSXP, "character scalar")
+            .clone()?;
         let len = unsafe { (*self.ptr).data.charsxp_truelen } as usize;
         let data = unsafe { (*self.ptr).gengc_next_node as *const u8 };
         if len == 0 {
@@ -303,7 +329,10 @@ impl<'a> Sexp<'a> {
 
     /// Set the i-th complex value with typed error reporting.
     pub fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
-        let data = self.clone().try_typed_data_mut::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector").clone()?;
+        let data = self
+            .clone()
+            .try_typed_data_mut::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")
+            .clone()?;
         let i = self.try_index(i)?;
         unsafe { *data.add(i) = v };
         Ok(())
@@ -355,7 +384,9 @@ impl<'a> Sexp<'a> {
     ///
     /// A null external pointer payload is a valid R value and is returned as-is.
     pub fn try_extptr_ptr(self) -> SexpResult<*mut c_void> {
-        self.clone().expect_type(SEXPTYPE::EXTPTRSXP, "external pointer").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")
+            .clone()?;
         Ok(unsafe { (*self.ptr).data.extptr[0] })
     }
 
@@ -369,7 +400,9 @@ impl<'a> Sexp<'a> {
 
     /// Get the external pointer tag with typed error reporting.
     pub fn try_extptr_tag(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::EXTPTRSXP, "external pointer").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.extptr[1] as SEXP })
     }
 
@@ -383,7 +416,9 @@ impl<'a> Sexp<'a> {
 
     /// Get the external pointer protected value with typed error reporting.
     pub fn try_extprot(self) -> SexpResult<Sexp<'a>> {
-        self.clone().expect_type(SEXPTYPE::EXTPTRSXP, "external pointer").clone()?;
+        self.clone()
+            .expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")
+            .clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.extptr[2] as SEXP })
     }
 
@@ -431,7 +466,7 @@ impl<'a> Sexp<'a> {
     /// Get the raw data pointer for vector-like objects with typed errors.
     #[inline]
     pub fn try_data_ptr(self) -> SexpResult<*mut c_void> {
-        if self.clone().typeof_().is_vector_type() || self.clone().typeof_()== SEXPTYPE::CHARSXP {
+        if self.clone().typeof_().is_vector_type() || self.clone().typeof_() == SEXPTYPE::CHARSXP {
             let ptr = unsafe { (*self.ptr).gengc_next_node as *mut c_void };
             if ptr.is_null() {
                 Err(SexpError::MissingData {

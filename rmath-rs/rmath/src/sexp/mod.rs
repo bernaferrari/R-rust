@@ -82,9 +82,8 @@ mod no_altrep_guards {
     #[test]
     fn default_build_never_produces_altrep_objects() {
         let _session = crate::sexp::session::RSession::new();
-        let sym = unsafe {
-            crate::sexp::symbol::Rf_install(b"no_altrep_probe\0".as_ptr() as *const _)
-        };
+        let sym =
+            unsafe { crate::sexp::symbol::Rf_install(b"no_altrep_probe\0".as_ptr() as *const _) };
         let outer = with_arena(|arena| arena.alloc_vector(SEXPTYPE::VECSXP, 2));
         let inner = with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 4));
         unsafe {
@@ -97,10 +96,7 @@ mod no_altrep_guards {
             assert_eq!(ALTREP(inner), 0);
             assert_eq!(*((*outer).gengc_next_node as *mut SEXP), inner);
             assert_eq!(
-                crate::sexp::envir::R_findVarInFrame(
-                    crate::sexp::globals::R_GlobalEnv(),
-                    sym
-                ),
+                crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym),
                 outer
             );
         }

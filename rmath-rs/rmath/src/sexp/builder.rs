@@ -914,7 +914,8 @@ mod tests {
     fn test_pairlist_builder() {
         let mut arena = crate::sexp::memory::RArena::new();
         let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
-        let list = some(PairlistBuilder::from_untagged_values([nil.clone(), nil]).build_in(&mut arena));
+        let list =
+            some(PairlistBuilder::from_untagged_values([nil.clone(), nil]).build_in(&mut arena));
         assert!(list.clone().is_pairlist());
         assert!(list.clone().car().is_some());
         assert!(list.cdr().is_some());

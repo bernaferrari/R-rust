@@ -736,7 +736,8 @@ unsafe fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> 
                     .collect();
                 let (units, scale) = auto_difftime_units(&values);
                 for i in 0..result_sexp.clone().len() {
-                    if let Ok(value) = result_sexp.clone().try_real_elt(i).clone()&& value.to_bits() != R_NA_BIT_PATTERN
+                    if let Ok(value) = result_sexp.clone().try_real_elt(i).clone()
+                        && value.to_bits() != R_NA_BIT_PATTERN
                     {
                         result_sexp.clone().set_real_elt(i, value / scale);
                     }
@@ -1251,7 +1252,7 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
             return R_NilValue();
         };
         let n = input.clone().len();
-        let result_type = if input.clone().typeof_()== SEXPTYPE::REALSXP {
+        let result_type = if input.clone().typeof_() == SEXPTYPE::REALSXP {
             SEXPTYPE::REALSXP
         } else {
             SEXPTYPE::INTSXP
@@ -1323,7 +1324,9 @@ unsafe fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
         for i in 0..n {
             let lhs = ordered_operand_code(sa, i % a_len, &levels);
             let rhs = ordered_operand_code(sb, i % b_len, &levels);
-            result.clone().set_logical_elt(i, ordered_code_compare(op, lhs, rhs));
+            result
+                .clone()
+                .set_logical_elt(i, ordered_code_compare(op, lhs, rhs));
         }
 
         Some(result_raw)
@@ -1870,7 +1873,7 @@ unsafe fn summary_logical_arg(x: SEXP) -> bool {
         if arg.clone().len() == 0 {
             summary_error("invalid 'na.rm' value");
         }
-        match arg.clone().typeof_(){
+        match arg.clone().typeof_() {
             SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => {
                 let value = arg.int_at(0);
                 if value == NA_INTEGER {
@@ -2217,14 +2220,12 @@ unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
                 );
             }
             SEXPTYPE::INTSXP => {
-                result_view.clone().set_integer_elt(
-                    0,
-                    min_value.clone().integer_elt(0).unwrap_or(NA_INTEGER),
-                );
-                result_view.clone().set_integer_elt(
-                    1,
-                    max_value.clone().integer_elt(0).unwrap_or(NA_INTEGER),
-                );
+                result_view
+                    .clone()
+                    .set_integer_elt(0, min_value.clone().integer_elt(0).unwrap_or(NA_INTEGER));
+                result_view
+                    .clone()
+                    .set_integer_elt(1, max_value.clone().integer_elt(0).unwrap_or(NA_INTEGER));
             }
             _ => {}
         }
@@ -2274,10 +2275,10 @@ unsafe fn logical_arg_is_true(x: SEXP) -> bool {
         let Some(arg) = NumericVector::from_raw(x) else {
             return false;
         };
-unsafe fn logical_arg_is_true(x: SEXP) -> bool {
+        unsafe fn logical_arg_is_true(x: SEXP) -> bool {
             return false;
         }
-        match arg.clone().typeof_(){
+        match arg.clone().typeof_() {
             SEXPTYPE::LGLSXP => arg.int_at(0) == TRUE,
             SEXPTYPE::INTSXP => {
                 let value = arg.int_at(0);

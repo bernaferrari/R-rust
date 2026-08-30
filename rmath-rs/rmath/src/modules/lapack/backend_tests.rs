@@ -1301,7 +1301,17 @@ fn apply_ipiv(a: &[f64], m: usize, n: usize, ipiv: &[i32]) -> Vec<f64> {
 fn verify_rectangular_lu(a_orig: &[f64], a: &[f64], m: usize, n: usize, ipiv: &[i32]) {
     let k = m.min(n);
     let l: Vec<f64> = (0..k)
-        .flat_map(|j| (0..m).map(move |i| if i == j { 1.0 } else if i > j { a[i + j * m] } else { 0.0 }))
+        .flat_map(|j| {
+            (0..m).map(move |i| {
+                if i == j {
+                    1.0
+                } else if i > j {
+                    a[i + j * m]
+                } else {
+                    0.0
+                }
+            })
+        })
         .collect();
     let u: Vec<f64> = (0..n)
         .flat_map(|j| (0..k).map(move |i| if i <= j { a[i + j * m] } else { 0.0 }))
@@ -1309,7 +1319,11 @@ fn verify_rectangular_lu(a_orig: &[f64], a: &[f64], m: usize, n: usize, ipiv: &[
     let lu = mat_mul(&l, &u, m, k, n);
     let pa = apply_ipiv(a_orig, m, n, ipiv);
     for (i, (&x, &y)) in lu.iter().zip(&pa).enumerate() {
-        assert_close(x, y, &format!("rectangular LU P·A ≈ L·U [{i}] (m={m}, n={n})"));
+        assert_close(
+            x,
+            y,
+            &format!("rectangular LU P·A ≈ L·U [{i}] (m={m}, n={n})"),
+        );
     }
 }
 
@@ -1445,41 +1459,37 @@ fn test_dlange_frobenius_scaled_extremes() {
     // 2×2 identity scaled by 1e150: unscaled sum of squares would overflow.
     let big = vec![1e150, 0.0, 0.0, 1e150];
     let (m, n) = (2i32, 2i32);
-    let r = unsafe {
-        backend::dlange_(
-            &b'F',
-            &m,
-            &n,
-            big.as_ptr(),
-            &m,
-            std::ptr::null_mut(),
-        )
-    };
+    let r = unsafe { backend::dlange_(&b'F', &m, &n, big.as_ptr(), &m, std::ptr::null_mut()) };
     assert!(r.is_finite(), "scaled Frobenius must not overflow: {r}");
     assert_close(r, 1e150 * std::f64::consts::SQRT_2, "Frobenius 1e150 scale");
 
     // Underflow guard: 1e-160 entries would square to zero.
     let tiny = vec![1e-160, 0.0, 0.0, 1e-160];
     let r2 = unsafe {
-        backend::dlange_(&b'F', &m, &n, tiny.as_ptr(), &m, &uplo_unused as *const u8 as *mut f64)
+        backend::dlange_(
+            &b'F',
+            &m,
+            &n,
+            tiny.as_ptr(),
+            &m,
+            &uplo_unused as *const u8 as *mut f64,
+        )
     };
     assert!(r2 > 0.0, "scaled Frobenius must not underflow to 0: {r2}");
-    assert_close(r2, 1e-160 * std::f64::consts::SQRT_2, "Frobenius 1e-160 scale");
+    assert_close(
+        r2,
+        1e-160 * std::f64::consts::SQRT_2,
+        "Frobenius 1e-160 scale",
+    );
 
     // NaN propagates; Inf dominates.
     let nan_mat = vec![f64::NAN, 1.0, 2.0, 3.0];
-    let r3 = unsafe {
-        backend::dlange_(&b'F', &m, &n, nan_mat.as_ptr(), &m, std::ptr::null_mut())
-    };
+    let r3 = unsafe { backend::dlange_(&b'F', &m, &n, nan_mat.as_ptr(), &m, std::ptr::null_mut()) };
     assert!(r3.is_nan(), "Frobenius NaN propagation");
     let inf_mat = vec![f64::INFINITY, 1.0, 2.0, 3.0];
-    let r4 = unsafe {
-        backend::dlange_(&b'F', &m, &n, inf_mat.as_ptr(), &m, std::ptr::null_mut())
-    };
+    let r4 = unsafe { backend::dlange_(&b'F', &m, &n, inf_mat.as_ptr(), &m, std::ptr::null_mut()) };
     assert!(r4.is_infinite(), "Frobenius Inf propagation");
-    let r5 = unsafe {
-        backend::dlange_(&b'M', &m, &n, nan_mat.as_ptr(), &m, std::ptr::null_mut())
-    };
+    let r5 = unsafe { backend::dlange_(&b'M', &m, &n, nan_mat.as_ptr(), &m, std::ptr::null_mut()) };
     assert!(r5.is_nan(), "max-norm NaN propagation");
 }
 
@@ -1489,7 +1499,14 @@ fn test_zero_dimension_matrices() {
     let n0 = 0i32;
     let m0 = 0i32;
     unsafe {
-        backend::dgetrf_(&m0, &n0, std::ptr::null_mut(), &m0, std::ptr::null_mut(), &mut info);
+        backend::dgetrf_(
+            &m0,
+            &n0,
+            std::ptr::null_mut(),
+            &m0,
+            std::ptr::null_mut(),
+            &mut info,
+        );
     }
     assert_eq!(info, 0, "dgetrf 0-dim info");
     let mut uplo = b'U';
@@ -1505,16 +1522,20 @@ fn test_zero_dimension_matrices() {
     let mut nrhs = 0i32;
     unsafe {
         backend::dgesv_(
-            &n0, &nrhs, std::ptr::null_mut(), &n0, std::ptr::null_mut(),
-            std::ptr::null_mut(), &n0, &mut info,
+            &n0,
+            &nrhs,
+            std::ptr::null_mut(),
+            &n0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &n0,
+            &mut info,
         );
     }
     assert_eq!(info, 0, "dgesv 0-dim info");
     nrhs = 1;
     let z = 0.0f64;
-    let r = unsafe {
-        backend::dlange_(&b'F', &m0, &nrhs, &z, &m0, std::ptr::null_mut())
-    };
+    let r = unsafe { backend::dlange_(&b'F', &m0, &nrhs, &z, &m0, std::ptr::null_mut()) };
     assert_eq!(r, 0.0, "dlange 0-dim norm");
 }
 

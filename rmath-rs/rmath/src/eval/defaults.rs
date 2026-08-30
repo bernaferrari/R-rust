@@ -338,7 +338,7 @@ pub unsafe fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
             let Some(value) = Sexp::from_raw(s) else {
                 return NA_INTEGER;
             };
-            match value.clone().typeof_(){
+            match value.clone().typeof_() {
                 SEXPTYPE::LGLSXP => {
                     logical_scalar_no_na(value.logical_elt(0).unwrap_or(NA_INTEGER))
                 }

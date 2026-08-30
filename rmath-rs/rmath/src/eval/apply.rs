@@ -69,7 +69,10 @@ pub(crate) fn apply_special_safe<'a>(
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
-    let flag = primitive.clone().map(|primitive| primitive.print_flag).unwrap_or(0);
+    let flag = primitive
+        .clone()
+        .map(|primitive| primitive.print_flag)
+        .unwrap_or(0);
     let op_name = primitive_call_name(primitive.clone(), call.clone());
     set_visibility_for_print_flag(flag);
 
@@ -156,7 +159,10 @@ pub(crate) fn apply_builtin_safe<'a>(
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
-    let flag = primitive.clone().map(|primitive| primitive.print_flag).unwrap_or(0);
+    let flag = primitive
+        .clone()
+        .map(|primitive| primitive.print_flag)
+        .unwrap_or(0);
     set_visibility_for_print_flag(flag);
 
     let frame = PrimitiveCall {
@@ -186,15 +192,17 @@ fn apply_unevaluated_builtin<'a>(
     op_name: &str,
 ) -> Option<(SEXP, VisibilityRestore)> {
     let builtin = super::builtin::unevaluated_builtin_handler(op_name)?;
-    let result =
-        crate::mainutils::errors::attribute_handler_errors(frame.call.clone().as_raw(), || unsafe {
+    let result = crate::mainutils::errors::attribute_handler_errors(
+        frame.call.clone().as_raw(),
+        || unsafe {
             (builtin.handler)(
                 frame.call.as_raw(),
                 frame.fun.as_raw(),
                 frame.args.as_raw(),
                 frame.rho.as_raw(),
             )
-        });
+        },
+    );
     let restore = if builtin.restore_visibility_always {
         VisibilityRestore::Always
     } else {
@@ -209,9 +217,10 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     let args = frame.args;
     let rho = frame.rho;
     if let Some(handler) = super::builtin::evaluated_builtin_handler(op_name) {
-        let result = crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
-            handler(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
-        });
+        let result =
+            crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
+                handler(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+            });
         // Stock clears R_Visible for these .Internal results (funtab eval
         // column); the REPL-level auto-print depends on the exact flag.
         if internal_result_invisible(op_name) {
@@ -221,9 +230,23 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     }
 
     // Try S3/S4 dispatch for primitive names that are not handled directly.
-    if let Some(s3_result) = try_s3_dispatch(op_name, fun.clone(), call.clone(), args.clone(), rho.clone(), evaled_args) {
+    if let Some(s3_result) = try_s3_dispatch(
+        op_name,
+        fun.clone(),
+        call.clone(),
+        args.clone(),
+        rho.clone(),
+        evaled_args,
+    ) {
         s3_result
-    } else if let Some(s4_result) = try_s4_dispatch(op_name, fun.clone(), call.clone(), args, rho.clone(), evaled_args) {
+    } else if let Some(s4_result) = try_s4_dispatch(
+        op_name,
+        fun.clone(),
+        call.clone(),
+        args,
+        rho.clone(),
+        evaled_args,
+    ) {
         s4_result
     } else if let Some(primfun) = unsafe { get_primfun(fun.clone().as_raw()) } {
         crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
@@ -285,7 +308,8 @@ fn try_s3_dispatch<'a>(
         let defrho = if TYPEOF(fun.clone().as_raw()) == SEXPTYPE::CLOSXP {
             CLOENV(fun.as_raw())
         } else {
-            rho.clone().as_raw()};
+            rho.clone().as_raw()
+        };
         let method_match = crate::mainutils::objects::lookup_s3_method_for_classes(
             op_name,
             klass,

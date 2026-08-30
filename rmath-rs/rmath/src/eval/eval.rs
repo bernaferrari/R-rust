@@ -254,12 +254,20 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
 
 /// Safe evaluation of a language object (function call).
 pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let fun = e.clone().try_car().clone().map_err(|err| sexp_err("empty call", err))?;
-    let args = e.clone().try_cdr().clone().map_err(|err| sexp_err("missing args", err))?;
+    let fun = e
+        .clone()
+        .try_car()
+        .clone()
+        .map_err(|err| sexp_err("empty call", err))?;
+    let args = e
+        .clone()
+        .try_cdr()
+        .clone()
+        .map_err(|err| sexp_err("missing args", err))?;
 
     // R uses function-position lookup for symbolic call heads: non-function
     // bindings are skipped while walking enclosing environments.
-    let fun_val = if fun.clone().typeof_()== SEXPTYPE::SYMSXP {
+    let fun_val = if fun.clone().typeof_() == SEXPTYPE::SYMSXP {
         match find_fun_result(fun.clone(), rho.clone())? {
             Some(value) => value,
             None => match primitive_for_symbol(fun.clone()) {
@@ -282,7 +290,7 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
     };
 
     // Dispatch based on function type
-    match fun_val.clone().typeof_(){
+    match fun_val.clone().typeof_() {
         SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, e, args, rho),
         SEXPTYPE::SPECIALSXP => apply_special_safe(fun_val, e, args, rho),
         SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
@@ -348,19 +356,25 @@ pub(crate) fn find_var_result<'a>(
             return Ok(None);
         }
         let frame = current
-            .clone().try_frame().clone().map_err(|err| sexp_err("environment frame lookup", err))?;
+            .clone()
+            .try_frame()
+            .clone()
+            .map_err(|err| sexp_err("environment frame lookup", err))?;
         for cell in PairlistIter::new(frame) {
             let tag = cell
-                .clone().try_tag().clone().map_err(|err| sexp_err("binding tag lookup", err))?;
+                .clone()
+                .try_tag()
+                .clone()
+                .map_err(|err| sexp_err("binding tag lookup", err))?;
             if symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()) {
                 let val = cell
                     .try_car()
                     .map_err(|err| sexp_err("binding value lookup", err))?;
-                if val.clone().as_raw()== unsafe { R_MissingArg() } {
+                if val.clone().as_raw() == unsafe { R_MissingArg() } {
                     let name = unsafe { get_symbol_name(symbol.as_raw()) };
                     missing_arg_error(&name);
                 }
-                if val.clone().typeof_()== SEXPTYPE::PROMSXP {
+                if val.clone().typeof_() == SEXPTYPE::PROMSXP {
                     let forced = unsafe { forcePromise(val.as_raw()) };
                     if forced == unsafe { R_MissingArg() } {
                         let name = unsafe { get_symbol_name(symbol.as_raw()) };
@@ -383,8 +397,11 @@ pub(crate) fn find_var_result<'a>(
 fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // If already evaluated, return the value
     let val = prom
-        .clone().try_prvalue().clone().map_err(|err| sexp_err("promise value lookup", err))?;
-    if val.clone().as_raw()!= unsafe { R_UnboundValue() } {
+        .clone()
+        .try_prvalue()
+        .clone()
+        .map_err(|err| sexp_err("promise value lookup", err))?;
+    if val.clone().as_raw() != unsafe { R_UnboundValue() } {
         return Ok(val);
     }
 

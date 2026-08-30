@@ -1853,7 +1853,7 @@ impl<'arena> Parser<'arena> {
 
     /// Parse a member name after $ or @ — can be identifier or backtick name.
     fn parse_member_name(&mut self) -> Result<SEXP, ParseError> {
-        match self.peek().clone(){
+        match self.peek().clone() {
             Token::Ident(name) => {
                 let name = name.clone();
                 self.advance();
@@ -1922,7 +1922,7 @@ impl<'arena> Parser<'arena> {
     // -----------------------------------------------------------------------
 
     fn parse_primary(&mut self) -> Result<SEXP, ParseError> {
-        match self.peek().clone(){
+        match self.peek().clone() {
             // Keywords
             Token::KwIf => self.parse_if(),
             Token::KwFor => self.parse_for(),
@@ -2124,7 +2124,7 @@ impl<'arena> Parser<'arena> {
 
         loop {
             self.skip_newlines();
-            match self.peek().clone(){
+            match self.peek().clone() {
                 Token::DotDotDot => {
                     self.advance();
                     pairs.push(("...".to_string(), unsafe { R_NilValue() }));
@@ -2216,7 +2216,7 @@ impl<'arena> Parser<'arena> {
         // EatLines): `1 +\n2` continues on the next line and `1 +\n` runs
         // out of input, exactly like upstream.
         self.skip_newlines();
-        match self.peek().clone(){
+        match self.peek().clone() {
             Token::Number(n) => {
                 self.advance();
                 Ok(self.scalar_real(n))
@@ -2311,7 +2311,7 @@ impl<'arena> Parser<'arena> {
     }
 
     fn parse_arg(&mut self) -> Result<(Option<String>, SEXP), ParseError> {
-        match self.peek().clone(){
+        match self.peek().clone() {
             Token::Ident(name) => {
                 let saved = self.pos;
                 let name = name.clone();
