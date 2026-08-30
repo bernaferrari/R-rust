@@ -120,8 +120,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 604 |
-| Passing | 604 |
+| Total parity cases | 607 |
+| Passing | 607 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -132,8 +132,8 @@ Current domain coverage:
 | --- | ---: | --- |
 | Parser and scalar basics | 30 | Arithmetic, scalar values, comments, infix continuation, parse/deparse/dput/bquote/RDS/unname/expression/mode/storage-mode/tsp/comment-attribute/attr/attributes/dim/length-replacement, repetition helpers, tabulation, findInterval boundary options including single-break edges, serialize version/ascii/xdr header and payload handling including ASCII string escapes, shape-helper, array-creation, and broad parser/runtime smoke cases |
 | Evaluator, closures, and control flow | 25 | Closures, lexical scope, lazy/default args, missing args, loops, and evaluator visibility/control-flow checks |
-| Vectors, lists, attributes, and objects | 168 | Vectors, typed vector constructors, lists, names, name-preserving repetition, list/complex repetition, named and ordered mixed-list unlisting, recursive unlist control, typed rle/inverse.rle, raw-vector serialization roundtrips including ASCII hex-byte payloads, subsetting, factors, explicit missing factor levels, generated factors, factor coercion, factor summaries, interval cutting, ordered factors, ordered comparisons, interaction factors, releveling, droplevels, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
-| Base functions, conditions, and platform helpers | 176 | Sorting/set helpers, output capture, conditions, search-path/environment helpers, options, file/temp/path helpers, connections, platform state, `.Internal` dispatch, non-GNU alias absence semantics, live environment-variable read/write parity with `Sys.setenv`/`Sys.getenv` and `scan(text=)` parsing, and stock `as.character` double formatting at 15 significant digits with condition print rendering |
+| Vectors, lists, attributes, and objects | 169 | Vectors, typed vector constructors, lists, names, name-preserving repetition, list/complex repetition, named and ordered mixed-list unlisting, recursive unlist control, typed rle/inverse.rle, raw-vector serialization roundtrips including ASCII hex-byte payloads, subsetting, factors, explicit missing factor levels, generated factors, factor coercion, factor summaries, interval cutting, ordered factors, ordered comparisons, interaction factors, releveling, droplevels, class/attribute replacement, matrices, data frames, S4 slots, and grouped object helpers |
+| Base functions, conditions, and platform helpers | 178 | Sorting/set helpers, output capture, conditions, search-path/environment helpers, options, file/temp/path helpers, connections, platform state, `.Internal` dispatch, non-GNU alias absence semantics, live environment-variable read/write parity with `Sys.setenv`/`Sys.getenv` and `scan(text=)` parsing, and stock `as.character` double formatting at 15 significant digits with condition print rendering |
 | Stats, math, and RNG | 124 | Numeric summaries, distributions, beta/F TOMS 708 branches, beta tail/log flags and quantile/CDF roundtrips, arithmetic edge cases, complex hyperbolics, `sample`/`sample.int`, pmin/pmax missing-value and character coercion semantics, typed cumulative extrema, typed cumulative sum/product NA semantics, typed `diff()` integer/logical and overflow semantics, array margin summaries, aggregate/tapply/by grouped summaries, and summary-vector parity |
 | Packages, namespaces, and S3 | 10 | Package namespace and S3 fixtures, `system.file()`, S3 method-export absence, and the pure-R package corpus gate |
 | Graphics and Android embedding | 4 | Base graphics layout state and external graphics dispatch smoke; broader graphics parity remains tracked separately |

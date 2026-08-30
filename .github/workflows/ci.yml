@@ -19,6 +19,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Ensure rustfmt component
+        run: rustup component add rustfmt || true
       - uses: Swatinem/rust-cache@v2
 
       - name: rustfmt (workspace)
@@ -33,6 +35,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Ensure clippy component
+        run: rustup component add clippy || true
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy (workspace, deny warnings)
