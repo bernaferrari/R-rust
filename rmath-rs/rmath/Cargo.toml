@@ -17,6 +17,13 @@ rust-backend = ["faer"]
 # Enable RenderPlot-backed GE device for high-quality skia output inside real R graphics (plot, grid, etc.)
 # Pulls r-graphics-engine (kept optional so pure-math WASM builds stay small).
 renderplot-device = ["r-graphics-engine"]
+# ALTREP (alternative representations) is OFF by default and MUST stay off:
+# the current representation stores ordinary Rust heap pointers
+# (`*const AltrepClass`, `Box<AltrepData>`) in SEXP payload slots that the
+# generational GC traces as SEXP references, which corrupts the heap under
+# collection. Enable only for development of the external-pointer redesign.
+# Dependents (r-embed, r-uniffi) do not enable this feature.
+altrep = []
 
 [dependencies]
 rmath-nmath = { path = "../nmath" }

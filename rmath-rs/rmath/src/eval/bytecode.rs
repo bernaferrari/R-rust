@@ -120,8 +120,7 @@ fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate logical scalar".to_string());
     }
     let sexp = Sexp::from_raw(lgl).ok_or_else(|| "invalid logical scalar pointer".to_string())?;
-    sexp.try_set_logical_elt(0, val)
-        .map_err(|err| sexp_err("failed to initialize logical scalar", err))?;
+    sexp.clone().try_set_logical_elt(0, val).clone().map_err(|err| sexp_err("failed to initialize logical scalar", err))?;
     unsafe {
         (*lgl).sxpinfo.set_scalar(true);
     }
@@ -134,8 +133,7 @@ fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate real scalar".to_string());
     }
     let sexp = Sexp::from_raw(real).ok_or_else(|| "invalid real scalar pointer".to_string())?;
-    sexp.try_set_real_elt(0, val)
-        .map_err(|err| sexp_err("failed to initialize real scalar", err))?;
+    sexp.clone().try_set_real_elt(0, val).clone().map_err(|err| sexp_err("failed to initialize real scalar", err))?;
     unsafe {
         (*real).sxpinfo.set_scalar(true);
     }
@@ -148,8 +146,7 @@ fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate integer scalar".to_string());
     }
     let sexp = Sexp::from_raw(int).ok_or_else(|| "invalid integer scalar pointer".to_string())?;
-    sexp.try_set_integer_elt(0, val)
-        .map_err(|err| sexp_err("failed to initialize integer scalar", err))?;
+    sexp.clone().try_set_integer_elt(0, val).clone().map_err(|err| sexp_err("failed to initialize integer scalar", err))?;
     unsafe {
         (*int).sxpinfo.set_scalar(true);
     }
@@ -167,7 +164,7 @@ fn scalar_real(value: Sexp<'_>, context: &str) -> Result<c_double, String> {
 }
 
 fn scalar_f64_or_zero(value: Sexp<'_>, context: &str) -> Result<c_double, String> {
-    match value.typeof_() {
+    match value.clone().typeof_(){
         SEXPTYPE::REALSXP => scalar_real(value, context),
         SEXPTYPE::INTSXP => scalar_int(value, context).map(c_double::from),
         SEXPTYPE::LGLSXP => value
@@ -179,7 +176,7 @@ fn scalar_f64_or_zero(value: Sexp<'_>, context: &str) -> Result<c_double, String
 }
 
 fn scalar_bool_or_false(value: Sexp<'_>, context: &str) -> Result<bool, String> {
-    match value.typeof_() {
+    match value.clone().typeof_(){
         SEXPTYPE::LGLSXP => value
             .try_logical_elt(0)
             .map(|value| value != 0)
@@ -200,11 +197,11 @@ where
     FR: Fn(c_double, c_double) -> c_double,
     FI: Fn(c_int, c_int) -> c_int,
 {
-    if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
+    if a.clone().typeof_()== SEXPTYPE::REALSXP && b.clone().typeof_()== SEXPTYPE::REALSXP {
         let av = scalar_real(a, "left real operand")?;
         let bv = scalar_real(b, "right real operand")?;
         make_real(real_op(av, bv))
-    } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
+    } else if a.clone().typeof_()== SEXPTYPE::INTSXP && b.clone().typeof_()== SEXPTYPE::INTSXP {
         let av = scalar_int(a, "left integer operand")?;
         let bv = scalar_int(b, "right integer operand")?;
         make_int(int_op(av, bv))
@@ -219,11 +216,11 @@ fn apply_comparison<'a, F>(a: Sexp<'a>, b: Sexp<'a>, cmp: F) -> Result<Sexp<'a>,
 where
     F: Fn(c_double, c_double) -> bool,
 {
-    let result = if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
+    let result = if a.clone().typeof_()== SEXPTYPE::REALSXP && b.clone().typeof_()== SEXPTYPE::REALSXP {
         let av = scalar_real(a, "left real comparison operand")?;
         let bv = scalar_real(b, "right real comparison operand")?;
         if cmp(av, bv) { 1 } else { 0 }
-    } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
+    } else if a.clone().typeof_()== SEXPTYPE::INTSXP && b.clone().typeof_()== SEXPTYPE::INTSXP {
         let av = scalar_int(a, "left integer comparison operand")? as c_double;
         let bv = scalar_int(b, "right integer comparison operand")? as c_double;
         if cmp(av, bv) { 1 } else { 0 }
@@ -237,8 +234,7 @@ where
 
 pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let bytecode = code
-        .try_as_integer_slice()
-        .map_err(|err| sexp_err("invalid bytecode vector", err))?;
+        .clone().try_as_integer_slice().clone().map_err(|err| sexp_err("invalid bytecode vector", err))?;
     let mut pc: usize = 0;
     let mut stack: Vec<Sexp<'a>> = Vec::new();
     let constants = code.attrib();
@@ -265,14 +261,14 @@ fn eval_bytecode_loop<'a>(
             }
             BCgvar | BCsvar => {
                 let idx = read_operand_index(bytecode, pc, "variable")?;
-                let sym = get_constant(constants, idx)?;
-                let val = crate::eval::eval::find_var_result(sym, env)?
+                let sym = get_constant(constants.clone(), idx)?;
+                let val = crate::eval::eval::find_var_result(sym, env.clone())?
                     .ok_or_else(|| "variable not found".to_string())?;
                 stack.push(val);
             }
             BCint | BCreal | BCstring => {
                 let idx = read_operand_index(bytecode, pc, "constant")?;
-                let val = get_constant(constants, idx)?;
+                let val = get_constant(constants.clone(), idx)?;
                 stack.push(val);
             }
             BCtrue => {
@@ -356,12 +352,12 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on mod".to_string())?;
-                if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
+                if a.clone().typeof_()== SEXPTYPE::REALSXP && b.clone().typeof_()== SEXPTYPE::REALSXP {
                     stack.push(make_real(
                         scalar_real(a, "left real modulo operand")?
                             % scalar_real(b, "right real modulo operand")?,
                     )?);
-                } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
+                } else if a.clone().typeof_()== SEXPTYPE::INTSXP && b.clone().typeof_()== SEXPTYPE::INTSXP {
                     let bv = scalar_int(b, "right integer modulo operand")?;
                     if bv != 0 {
                         stack.push(make_int(
@@ -460,18 +456,18 @@ fn eval_bytecode_loop<'a>(
                     }
                 }
                 args_vec.reverse();
-                let fun = get_constant(constants, idx)?;
+                let fun = get_constant(constants.clone(), idx)?;
 
-                if fun.typeof_() == SEXPTYPE::CLOSXP {
+                if fun.clone().typeof_()== SEXPTYPE::CLOSXP {
                     let mut arg_list =
                         unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
                     for arg in args_vec.into_iter().rev() {
-                        let cell = with_arena(|arena| {
-                            arena.cons(arg.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                        let cell = with_arena(|arena|{
+                            arena.cons(arg.as_raw(), arg_list.clone().as_raw(), std::ptr::null_mut())
                         });
                         arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
                     }
-                    let result = crate::eval::closure::apply_closure_safe(fun, arg_list, env)
+                    let result = crate::eval::closure::apply_closure_safe(fun, arg_list, env.clone())
                         .map_err(|e| format!("closure call failed: {e}"))?;
                     stack.push(result);
                 } else {
@@ -480,22 +476,22 @@ fn eval_bytecode_loop<'a>(
             }
             BCpush => {
                 let idx = read_operand_index(bytecode, pc, "push")?;
-                stack.push(get_constant(constants, idx)?);
+                stack.push(get_constant(constants.clone(), idx)?);
             }
             BCpop => {
                 stack.pop();
             }
             BCdup => {
                 if let Some(top) = stack.last() {
-                    stack.push(*top);
+                    stack.push(top.clone());
                 }
             }
             BCprint => {
                 if let Some(top) = stack.last() {
-                    let output = if top.typeof_() == SEXPTYPE::EXPRSXP {
-                        unsafe { format_expression_vector(top.as_raw()) }
+                    let output = if top.clone().typeof_() == SEXPTYPE::EXPRSXP {
+                        unsafe { format_expression_vector(top.clone().as_raw()) }
                     } else {
-                        let type_name = match top.typeof_() {
+                        let type_name = match top.clone().typeof_() {
                             SEXPTYPE::NILSXP => "NULL",
                             SEXPTYPE::INTSXP => "integer",
                             SEXPTYPE::REALSXP => "double",
@@ -519,7 +515,7 @@ fn eval_bytecode_loop<'a>(
                             SEXPTYPE::OBJSXP => "object",
                             _ => "unknown",
                         };
-                        format!("[{}; length={}]", type_name, top.len())
+                        format!("[{}; length={}]", type_name, top.clone().len())
                     };
                     if crate::sexp::output::is_capturing() {
                         crate::sexp::output::capture_stdout(&output);
@@ -568,21 +564,21 @@ fn eval_bytecode_loop<'a>(
                 let body_offset = read_jump_target(bytecode, pc, "for body")?;
                 let end_offset = read_jump_target(bytecode, pc, "for end")?;
 
-                let var_sym = get_constant(constants, var_idx)?;
-                let seq_val = get_constant(constants, seq_idx)?;
-                let len = seq_val.len();
+                let var_sym = get_constant(constants.clone(), var_idx)?;
+                let seq_val = get_constant(constants.clone(), seq_idx)?;
+                let len = seq_val.clone().len();
 
                 for i in 0..len as usize {
-                    let idx_val = if seq_val.typeof_() == SEXPTYPE::INTSXP {
+                    let idx_val = if seq_val.clone().typeof_()== SEXPTYPE::INTSXP {
                         make_int(
                             seq_val
-                                .try_integer_elt(i as i64)
+                                .clone().try_integer_elt(i as i64)
                                 .map_err(|err| sexp_err("for-loop integer sequence", err))?,
                         )?
-                    } else if seq_val.typeof_() == SEXPTYPE::REALSXP {
+                    } else if seq_val.clone().typeof_()== SEXPTYPE::REALSXP {
                         make_real(
                             seq_val
-                                .try_real_elt(i as i64)
+                                .clone().try_real_elt(i as i64)
                                 .map_err(|err| sexp_err("for-loop real sequence", err))?,
                         )?
                     } else {
@@ -591,16 +587,16 @@ fn eval_bytecode_loop<'a>(
 
                     unsafe {
                         crate::sexp::envir::defineVar(
-                            var_sym.as_raw(),
-                            idx_val.as_raw(),
-                            env.as_raw(),
+                            var_sym.clone().as_raw(),
+                            idx_val.clone().as_raw(),
+                            env.clone().as_raw(),
                         );
                     }
                     stack.push(idx_val);
 
                     let mut loop_pc = body_offset;
                     let (_, control) =
-                        eval_bytecode_loop(bytecode, &mut loop_pc, stack, constants, env)?;
+                        eval_bytecode_loop(bytecode, &mut loop_pc, stack, constants.clone(), env.clone())?;
 
                     if control == ControlFlow::Break {
                         *pc = end_offset;
@@ -617,7 +613,7 @@ fn eval_bytecode_loop<'a>(
                 loop {
                     let mut cond_pc = cond_offset;
                     let (cond_result, cond_control) =
-                        eval_bytecode_loop(bytecode, &mut cond_pc, stack, constants, env)?;
+                        eval_bytecode_loop(bytecode, &mut cond_pc, stack, constants.clone(), env.clone())?;
                     if cond_control != ControlFlow::Normal {
                         return Ok((cond_result, cond_control));
                     }
@@ -629,7 +625,7 @@ fn eval_bytecode_loop<'a>(
 
                     let mut body_pc = body_offset;
                     let (body_result, body_control) =
-                        eval_bytecode_loop(bytecode, &mut body_pc, stack, constants, env)?;
+                        eval_bytecode_loop(bytecode, &mut body_pc, stack, constants.clone(), env.clone())?;
 
                     if body_control == ControlFlow::Break {
                         *pc = end_offset;
@@ -644,7 +640,7 @@ fn eval_bytecode_loop<'a>(
                 loop {
                     let mut body_pc = body_offset;
                     let (body_result, body_control) =
-                        eval_bytecode_loop(bytecode, &mut body_pc, stack, constants, env)?;
+                        eval_bytecode_loop(bytecode, &mut body_pc, stack, constants.clone(), env.clone())?;
 
                     if body_control == ControlFlow::Break {
                         *pc = end_offset;
@@ -669,14 +665,14 @@ fn eval_bytecode_loop<'a>(
                     }
                 }
                 args_vec.reverse();
-                let fun = get_constant(constants, idx)?;
+                let fun = get_constant(constants.clone(), idx)?;
 
-                if fun.typeof_() == SEXPTYPE::SPECIALSXP || fun.typeof_() == SEXPTYPE::BUILTINSXP {
+                if fun.clone().typeof_()== SEXPTYPE::SPECIALSXP || fun.clone().typeof_()== SEXPTYPE::BUILTINSXP {
                     let mut arg_list =
                         unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
                     for arg in args_vec.into_iter().rev() {
-                        let cell = with_arena(|arena| {
-                            arena.cons(arg.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                        let cell = with_arena(|arena|{
+                            arena.cons(arg.as_raw(), arg_list.clone().as_raw(), std::ptr::null_mut())
                         });
                         arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
                     }
@@ -686,7 +682,7 @@ fn eval_bytecode_loop<'a>(
                     });
                     let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
 
-                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env)
+                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env.clone())
                         .map_err(|e| format!("special call failed: {e}"))?;
                     stack.push(result);
                 } else {
@@ -704,14 +700,14 @@ fn eval_bytecode_loop<'a>(
                     }
                 }
                 args_vec.reverse();
-                let fun = get_constant(constants, idx)?;
+                let fun = get_constant(constants.clone(), idx)?;
 
-                if fun.typeof_() == SEXPTYPE::BUILTINSXP || fun.typeof_() == SEXPTYPE::SPECIALSXP {
+                if fun.clone().typeof_()== SEXPTYPE::BUILTINSXP || fun.clone().typeof_()== SEXPTYPE::SPECIALSXP {
                     let mut arg_list =
                         unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
                     for arg in args_vec.into_iter().rev() {
-                        let cell = with_arena(|arena| {
-                            arena.cons(arg.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                        let cell = with_arena(|arena|{
+                            arena.cons(arg.as_raw(), arg_list.clone().as_raw(), std::ptr::null_mut())
                         });
                         arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
                     }
@@ -721,7 +717,7 @@ fn eval_bytecode_loop<'a>(
                     });
                     let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
 
-                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env)
+                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env.clone())
                         .map_err(|e| format!("builtin call failed: {e}"))?;
                     stack.push(result);
                 } else {
@@ -732,9 +728,9 @@ fn eval_bytecode_loop<'a>(
                 let val = stack
                     .pop()
                     .ok_or_else(|| "empty stack on neg".to_string())?;
-                if val.typeof_() == SEXPTYPE::REALSXP {
+                if val.clone().typeof_()== SEXPTYPE::REALSXP {
                     stack.push(make_real(-scalar_real(val, "real negation operand")?)?);
-                } else if val.typeof_() == SEXPTYPE::INTSXP {
+                } else if val.clone().typeof_()== SEXPTYPE::INTSXP {
                     stack.push(make_int(-scalar_int(val, "integer negation operand")?)?);
                 } else {
                     stack.push(val);
@@ -742,7 +738,7 @@ fn eval_bytecode_loop<'a>(
             }
             BCclosure => {
                 let idx = read_operand_index(bytecode, pc, "closure")?;
-                stack.push(get_constant(constants, idx)?);
+                stack.push(get_constant(constants.clone(), idx)?);
             }
             _ => {
                 return Err(format!("unknown bytecode opcode: {opcode}"));

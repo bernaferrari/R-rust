@@ -13,12 +13,18 @@ impl<'a> Sexp<'a> {
     /// variants. Other atomic vectors remain vectors. Missing R values are
     /// represented as `None`, and nested generic/expression vectors are
     /// recursively projected.
+    // Owning receiver is intentional: projection consumes the handle
+    // (non-Copy by design); the value itself is cloned internally as needed.
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_owned_value(self) -> SexpResult<SexpValue> {
         self.to_owned_value_inner(0)
     }
 
+    // Owning receiver is intentional: projection consumes the handle
+    // (non-Copy by design); the value itself is cloned internally as needed.
+    #[allow(clippy::wrong_self_convention)]
     pub(super) fn to_owned_value_inner(self, depth: usize) -> SexpResult<SexpValue> {
-        let value = self.to_owned_value_without_attributes(depth)?;
+        let value = self.clone().to_owned_value_without_attributes(depth).clone()?;
         if depth >= OWNED_VALUE_ATTRIBUTE_DEPTH_LIMIT {
             return Ok(value);
         }
@@ -33,9 +39,12 @@ impl<'a> Sexp<'a> {
         })
     }
 
+    // Owning receiver is intentional: projection consumes the handle
+    // (non-Copy by design); the value itself is cloned internally as needed.
+    #[allow(clippy::wrong_self_convention)]
     fn to_owned_value_without_attributes(self, depth: usize) -> SexpResult<SexpValue> {
-        let len = self.len();
-        match self.typeof_() {
+        let len = self.clone().len();
+        match self.clone().typeof_(){
             SEXPTYPE::NILSXP => Ok(SexpValue::Null),
             SEXPTYPE::LGLSXP => {
                 let values = self.try_logical_values()?;
@@ -69,7 +78,7 @@ impl<'a> Sexp<'a> {
             SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
                 let mut values = Vec::with_capacity(len as usize);
                 for i in 0..len {
-                    values.push(self.try_vector_elt(i)?.to_owned_value_inner(depth + 1)?);
+                    values.push(self.clone().try_vector_elt(i)?.to_owned_value_inner(depth + 1)?);
                 }
                 Ok(SexpValue::List(values))
             }
@@ -79,31 +88,33 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    // Owning receiver is intentional: projection consumes the handle
+    // (non-Copy by design); the value itself is cloned internally as needed.
+    #[allow(clippy::wrong_self_convention)]
     fn to_owned_metadata(self, depth: usize) -> SexpResult<Option<SexpMetadata>> {
         let Some(attrib) = self.attrib() else {
             return Ok(None);
         };
-        if attrib.is_nil() {
+        if attrib.clone().is_nil() {
             return Ok(None);
         }
 
         let mut metadata = SexpMetadata::default();
         for cell in PairlistIter::new(attrib) {
-            let Some(name) = cell.attribute_name()? else {
+            let Some(name) = cell.clone().attribute_name().clone()? else {
                 continue;
             };
             let value = cell.try_car()?;
 
             match name.as_str() {
-                "names" => metadata.names = value.try_string_values().ok(),
+                "names" => metadata.names = value.clone().try_string_values().clone().ok(),
                 "dim" => {
                     metadata.dim = value
-                        .try_integer_values()
-                        .ok()
+                        .clone().try_integer_values().clone().ok()
                         .and_then(|values| values.into_iter().collect());
                 }
-                "class" => metadata.class = value.try_string_values().ok(),
-                "levels" => metadata.levels = value.try_string_values().ok(),
+                "class" => metadata.class = value.clone().try_string_values().clone().ok(),
+                "levels" => metadata.levels = value.clone().try_string_values().clone().ok(),
                 _ => {}
             }
 
@@ -122,20 +133,23 @@ impl<'a> Sexp<'a> {
 
     fn attribute_name(self) -> SexpResult<Option<String>> {
         let tag = self.try_tag()?;
-        if tag.is_nil() {
+        if tag.clone().is_nil() {
             return Ok(None);
         }
-        if tag.typeof_() != SEXPTYPE::SYMSXP {
+        if tag.clone().typeof_()!= SEXPTYPE::SYMSXP {
             return Ok(None);
         }
 
         Ok(Some(tag.try_printname()?.try_as_str()?.to_string()))
     }
 
+    // Ownership: element accessors consume the handle, so each element read
+    // clones the handle; the clones alias the same R object (no deep copy).
     fn try_logical_values(self) -> SexpResult<Vec<Option<bool>>> {
-        (0..self.len())
+        let len = self.clone().len();
+        (0..len)
             .map(|i| {
-                self.try_logical_elt(i).map(|value| match value {
+                self.clone().try_logical_elt(i).map(|value| match value {
                     NA_LOGICAL => None,
                     0 => Some(false),
                     _ => Some(true),
@@ -145,9 +159,10 @@ impl<'a> Sexp<'a> {
     }
 
     fn try_integer_values(self) -> SexpResult<Vec<Option<i32>>> {
-        (0..self.len())
+        let len = self.clone().len();
+        (0..len)
             .map(|i| {
-                self.try_integer_elt(i).map(|value| {
+                self.clone().try_integer_elt(i).map(|value| {
                     if value == NA_INTEGER {
                         None
                     } else {
@@ -159,9 +174,10 @@ impl<'a> Sexp<'a> {
     }
 
     fn try_real_values(self) -> SexpResult<Vec<Option<f64>>> {
-        (0..self.len())
+        let len = self.clone().len();
+        (0..len)
             .map(|i| {
-                self.try_real_elt(i).map(|value| {
+                self.clone().try_real_elt(i).map(|value| {
                     if value.to_bits() == R_NA_BIT_PATTERN {
                         None
                     } else {
@@ -173,18 +189,20 @@ impl<'a> Sexp<'a> {
     }
 
     fn try_string_values(self) -> SexpResult<Vec<Option<String>>> {
-        (0..self.len())
+        let len = self.clone().len();
+        (0..len)
             .map(|i| {
-                self.try_string_text_elt(i)
+                self.clone().try_string_text_elt(i)
                     .map(|value| value.map(str::to_string))
             })
             .collect()
     }
 
     fn try_complex_values(self) -> SexpResult<Vec<Option<SexpComplex>>> {
-        (0..self.len())
+        let len = self.clone().len();
+        (0..len)
             .map(|i| {
-                self.try_complex_elt(i).map(|value| {
+                self.clone().try_complex_elt(i).map(|value| {
                     if value.r.to_bits() == R_NA_BIT_PATTERN
                         || value.i.to_bits() == R_NA_BIT_PATTERN
                     {

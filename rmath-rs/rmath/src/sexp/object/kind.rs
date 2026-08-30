@@ -22,10 +22,10 @@ pub(crate) fn raw_is_vector(ptr: SEXP) -> bool {
 impl<'a> Sexp<'a> {
     /// Return a Rust-shaped borrowed view for this SEXP.
     pub fn view(self) -> SexpResult<SexpView<'a>> {
-        if self.is_nil() {
+        if self.clone().is_nil() {
             return Ok(SexpView::Nil);
         }
-        match self.typeof_() {
+        match self.clone().typeof_(){
             SEXPTYPE::LGLSXP => Ok(SexpView::Logical(self.try_as_logical_slice()?)),
             SEXPTYPE::INTSXP => Ok(SexpView::Integer(self.try_as_integer_slice()?)),
             SEXPTYPE::REALSXP => Ok(SexpView::Real(self.try_as_real_slice()?)),
@@ -55,7 +55,7 @@ impl<'a> Sexp<'a> {
     /// Returns 0 for non-vector types.
     #[inline]
     pub fn len(self) -> R_xlen_t {
-        if self.typeof_().is_vector_type() {
+        if self.clone().typeof_().is_vector_type() {
             unsafe { (*self.ptr).vecsxp_length() }
         } else {
             0

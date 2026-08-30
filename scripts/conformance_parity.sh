@@ -88,6 +88,14 @@ if ! command -v Rscript >/dev/null 2>&1; then
     fi
 fi
 
+
+# Engine version: goldens are generated from R trunk, but CI's r-lib
+# release R (and contributor machines) can run older engines whose
+# internals legitimately differ (e.g. the R 4.7 .Random.seed kind-word
+# layout). Detect major.minor once so version-sensitive cases become
+# expected skips instead of hard failures.
+R_MAJ_MIN="$(env LC_ALL=C LANG=C Rscript --vanilla -e 'cat(as.character(getRversion()))' | awk -F. '{ print $1"."$2 }')"
+
 if [[ ! -d "$CASES_DIR" ]]; then
     echo "ERROR: missing cases directory: $CASES_DIR" >&2
     exit 1
@@ -244,6 +252,12 @@ regen_normal_goldens() {
     local case_file case_name golden_file raw_out count=0
     for case_file in "${cases[@]}"; do
         case_name="$(basename "$case_file" .R)"
+        local reason=""
+        if reason="$(engine_skip_reason "$case_name")"; then
+            echo "SKIP REGEN ${case_name}: ${reason}; golden left unchanged." >&2
+            continue
+        fi
+
         golden_file="$GOLDEN_DIR/${case_name}.out"
         raw_out="$(mktemp "${TMPDIR:-/tmp}/rport-regen.XXXXXX")"
         if ! env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$raw_out" 2>&1; then
@@ -306,6 +320,40 @@ is_xfail() {
         "$XFAIL_FILE"
 }
 
+version_lt() {
+    # Numeric dotted compare: true when $1 < $2 (components padded to 3).
+    awk -v a="$1" -v b="$2" 'BEGIN {
+        split(a, A, "."); split(b, B, ".")
+        for (i = 1; i <= 3; i++) {
+            x = A[i] + 0; y = B[i] + 0
+            if (x < y) exit 0
+            if (x > y) exit 1
+        }
+        exit 1
+    }'
+}
+
+# Engine-version-sensitive cases: each entry maps a case name to the
+# minimum R major.minor whose engine layout its golden encodes. On older
+# engines the case is an expected skip (never counted as FAIL) and its
+# golden is left untouched by --regen-goldens. Extend the case statement
+# only for goldens that pin engine-version-specific internals.
+engine_skip_reason() {
+    local case_name="$1"
+    if ! version_lt "$R_MAJ_MIN" "4.7"; then
+        return 1
+    fi
+    case "$case_name" in
+        534_mersenne_twister_default_stream)
+            echo "engine R ${R_MAJ_MIN} predates the 4.7 .Random.seed layout; golden pins the trunk 110403 kind word"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
 record_result() {
     local case_name="$1"
     local kind="$2"
@@ -336,7 +384,8 @@ json_path = pathlib.Path(sys.argv[2]) if sys.argv[2] else None
 markdown_path = pathlib.Path(sys.argv[3]) if sys.argv[3] else None
 xfail_path = pathlib.Path(sys.argv[4])
 
-STATUS_ORDER = ("pass", "fail", "xfail", "xpass")
+STATUS_ORDER = ("pass", "fail", "xfail", "xpass", "skip")
+
 DOMAIN_ORDER = (
     "Parser and scalar basics",
     "Evaluator, closures, and control flow",
@@ -489,6 +538,7 @@ report = {
     "failed": totals.get("fail", 0),
     "expected_failures": totals.get("xfail", 0),
     "unexpected_passes": totals.get("xpass", 0),
+    "skipped": totals.get("skip", 0),
     "status_counts": totals,
     "domains": list(domains.values()),
     "xfails": xfails,
@@ -512,18 +562,20 @@ if markdown_path:
         f"| Failing | {report['failed']} |",
         f"| Expected failures | {report['expected_failures']} |",
         f"| Unexpected passes | {report['unexpected_passes']} |",
+        f"| Engine-version skips | {report['skipped']} |",
         "",
         "## Domains",
         "",
-        "| Domain | Pass | Fail | XFail | XPass | Total |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Domain | Pass | Fail | XFail | XPass | Skip | Total |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for domain in report["domains"]:
         lines.append(
             f"| {domain['domain']} | {domain.get('pass', 0)} | {domain.get('fail', 0)} | "
-            f"{domain.get('xfail', 0)} | {domain.get('xpass', 0)} | {domain['total']} |"
+            f"{domain.get('xfail', 0)} | {domain.get('xpass', 0)} | {domain.get('skip', 0)} | {domain['total']} |"
         )
-    failing = [row for row in rows if row["status"] in {"fail", "xfail", "xpass"}]
+    failing = [row for row in rows if row["status"] in {"fail", "xfail", "xpass", "skip"}]
+
     lines.extend(["", "## Non-Passing Cases", ""])
     if failing:
         lines.extend(["| Case | Domain | Status | Detail |", "| --- | --- | --- | --- |"])
@@ -540,6 +592,8 @@ if markdown_path:
         "- `fail`: behavior differs and must be fixed or moved to `tests/conformance/xfail.tsv` with an owner bead.",
         "- `xfail`: known accepted gap with an owner bead.",
         "- `xpass`: behavior now passes despite being listed as expected-fail; remove the stale xfail entry.",
+        "- `skip`: engine-version-sensitive case not runnable on this R engine (see reason); rerun on the golden-generating engine for the full proof.",
+
         "",
     ])
     markdown_path.write_text("\n".join(lines))
@@ -671,6 +725,8 @@ main() {
     local xfailed=0
     local xpassed=0
     local failed=0
+    local skipped=0
+
 
     check_unique_case_numbers
 
@@ -694,6 +750,14 @@ main() {
         total=$((total + 1))
         local case_name
         case_name="$(basename "$case_file" .R)"
+        local skip_reason=""
+        if skip_reason="$(engine_skip_reason "$case_name")"; then
+            echo "SKIP ${case_name}: ${skip_reason}"
+            record_result "$case_name" "normal" "skip" "$skip_reason"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
         if run_case "$case_file"; then
             if is_xfail "$case_name"; then
                 echo "XPASS ${case_name}: remove from $XFAIL_FILE or fix the owner bead"
@@ -722,6 +786,14 @@ main() {
         total=$((total + 1))
         local case_name
         case_name="$(basename "$case_file" .R)"
+        local skip_reason=""
+        if skip_reason="$(engine_skip_reason "$case_name")"; then
+            echo "SKIP ${case_name}: ${skip_reason}"
+            record_result "$case_name" "error" "skip" "$skip_reason"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
         if run_error_case "$case_file"; then
             if is_xfail "$case_name"; then
                 echo "XPASS ${case_name}: remove from $XFAIL_FILE or fix the owner bead"
@@ -742,9 +814,13 @@ main() {
         fi
     done
 
-    echo "Summary: ${passed}/${total} cases passed, ${xfailed} expected failures"
+    echo "Summary: ${passed}/${total} cases passed, ${xfailed} expected failures, ${skipped} engine-version skips"
+
     if (( xpassed > 0 )); then
         echo "Unexpected passes: ${xpassed}"
+    fi
+    if [[ "$STRICT" -eq 1 && "$skipped" -gt 0 ]]; then
+        echo "Strict mode: ${skipped} engine-version skips did not run on R ${R_MAJ_MIN}; full parity proof needs R >= 4.7."
     fi
     if [[ "$STRICT" -eq 1 && "$xfailed" -gt 0 ]]; then
         echo "Strict mode: ${xfailed} expected failures remain; fix them or remove --strict."

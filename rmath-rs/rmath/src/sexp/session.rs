@@ -606,7 +606,7 @@ impl RSession {
                     // print with the error in the embedding layer instead.
                     break;
                 }
-                let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+                let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(value.clone()));
                 // main.c REPL loop: upstream auto-prints EVERY visible
                 // top-level expression (PrintValueEnv), not just the final
                 // one. Intermediate values render through the same formatter
@@ -618,7 +618,7 @@ impl RSession {
                 // value.
                 if index != last_index && self.instance.eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        let rendered = super::output::format_sexp_direct(*value);
+                        let rendered = super::output::format_sexp_direct(value.clone());
                         super::output::capture_stdout(&format!("{rendered}\n"));
                     }
                 }
@@ -633,7 +633,7 @@ impl RSession {
                 }
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
-            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(value.clone()));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.instance.eval_state.visible != 0;
             let output = self.instance.output_capture.borrow_mut().stop();
@@ -712,7 +712,7 @@ impl RSession {
                     // an uncaught error stops remaining expressions.
                     break;
                 }
-                let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+                let _expr_guard = result.as_ref().ok().map(|value| protect_sexp(value.clone()));
                 // Same per-expression auto-print as the plain script loop
                 // above: every visible non-final top-level statement renders
                 // into the captured stream, preserving print()/auto-print
@@ -720,7 +720,7 @@ impl RSession {
                 // assembly.
                 if index != last_index && self.instance.eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        let rendered = super::output::format_sexp_direct(*value);
+                        let rendered = super::output::format_sexp_direct(value.clone());
                         super::output::capture_stdout(&format!("{rendered}\n"));
                     }
                 }
@@ -733,7 +733,7 @@ impl RSession {
                 }
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
-            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(value.clone()));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.instance.eval_state.visible != 0;
             let output = self.instance.output_capture.borrow_mut().stop();
@@ -790,7 +790,7 @@ impl RSession {
             let _toplevel_no_guard = ToplevelExprNoGuard;
             crate::mainutils::errors::set_toplevel_expr_no(1);
             let result = self.eval_sexp(expr);
-            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(*value));
+            let _result_guard = result.as_ref().ok().map(|value| protect_sexp(value.clone()));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.instance.eval_state.visible != 0;
             let output = self.instance.output_capture.borrow_mut().stop();
@@ -846,8 +846,8 @@ impl RSession {
             let symbol = self.sexp(install_symbol(name)?)?;
             let env = Environment::new(self.global_env()?).ok()?;
             let result = env.find(symbol).ok().flatten()?;
-            if result.as_raw() == unsafe { R_UnboundValue() }
-                || result.as_raw() == unsafe { R_NilValue() }
+            if result.clone().as_raw()== unsafe { R_UnboundValue() }
+                || result.clone().as_raw()== unsafe { R_NilValue() }
             {
                 None
             } else {
@@ -1202,7 +1202,7 @@ mod tests {
             .eval_sexp(expr)
             .expect("self-evaluating scalar should evaluate");
 
-        assert_eq!(result.integer_elt(0), Some(7));
+        assert_eq!(result.clone().integer_elt(0), Some(7));
         assert!(result.is_owner_scoped());
     }
 
@@ -1456,7 +1456,7 @@ mod tests {
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
             .expect("session should be active");
         let expr = session.sexp(expr).expect("expr belongs to session");
-        assert!(expr.set_integer_elt(0, 7));
+        assert!(expr.clone().set_integer_elt(0, 7));
         let env = session.global_env().expect("session has global env");
 
         let result = session.with_active(|| {

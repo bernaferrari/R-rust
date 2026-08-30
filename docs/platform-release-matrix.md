@@ -2,15 +2,34 @@
 
 This repository tracks the release gaps with executable checks instead of prose-only status.
 
+## GitHub Workflows
+
+Two workflows carry the automated release bar (all Rust jobs install the
+pinned toolchain from `rust-toolchain.toml`):
+
+| Workflow | Jobs | Notes |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | `fmt`, `clippy`, `test`, `conformance`, `wasm` | PR gate. Conformance runs against r-lib release R; engine-version-sensitive cases (e.g. the R 4.7 `.Random.seed` layout, case 534) are expected skips there, not failures. |
+| `.github/workflows/nightly.yml` | `miri`, `gc-torture` | Nightly: Miri over the `sexp::` safe-layer test subset, plus a GC-torture differential (`scripts/gc_torture_stress.sh`) that runs stock R and the Rust runner through the same allocation-heavy case under `gctorture(TRUE)`. |
+
+The former `parity-gate.yml`, `android-baseline.yml`, and
+`desktop-host-smoke.yml` workflows were removed as superseded: their checks
+live in `scripts/release_gate.sh` (local signoff) and in the CI jobs above.
+Android packaging coverage belongs in a nightly workflow if/when it needs a
+scheduled runner; today it stays a local release-gate check.
+
 ## Desktop Host
 
 | Tracker | Coverage | Command |
 | --- | --- | --- |
-| `rport-899` | macOS host parity | `scripts/desktop_host_smoke.sh` on `macos-latest` |
-| `rport-z03` | Windows host parity | `scripts/desktop_host_smoke.sh` on `windows-latest` |
-| `rport-wxy` | Desktop conformance matrix and CI smoke runs | `.github/workflows/desktop-host-smoke.yml` |
+| `rport-899` | macOS host parity | `scripts/desktop_host_smoke.sh` (local) |
+| `rport-z03` | Windows host parity | `scripts/desktop_host_smoke.sh` (local) |
 
-The smoke script launches the desktop CLI, verifies the banner, and confirms a clean shutdown from `q()`.
+The dedicated desktop-host-smoke CI workflow was removed. The smoke script
+launches the desktop CLI, verifies the banner, and confirms a clean shutdown
+from `q()`; host-parity signoff is a local gate step, not a PR-blocking CI
+run.
+
 
 ## Android Baseline
 

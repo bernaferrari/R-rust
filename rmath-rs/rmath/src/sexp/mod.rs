@@ -12,6 +12,7 @@
 //! - `symbol` submodule: symbol table and interning
 
 pub(crate) mod accessors;
+#[cfg(feature = "altrep")]
 pub mod altrep;
 pub mod attrib_core;
 pub mod builder;
@@ -40,6 +41,7 @@ pub use ffi::{
     Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo, Symsxp, TRUE, Vecsxp,
 };
 
+#[cfg(feature = "altrep")]
 pub use altrep::{
     AltrepBuilder, AltrepClass, AltrepData, REPEAT_CLASS, SEQUENCE_CLASS, altrep_as_integer_slice,
     altrep_as_real_slice, altrep_class, altrep_dataptr, altrep_elt, altrep_length,
@@ -56,3 +58,51 @@ pub use object::{
     SexpView,
 };
 pub use session::{CancellationToken, RSession};
+
+/// Default-build guards for the ALTREP feature gate.
+///
+/// `sexp::altrep`, `mainutils::altrep`, and `mainutils::altclasses` are all
+/// `#[cfg(feature = "altrep")]`: in the default build they do not exist, and
+/// any code referencing them fails to compile. These tests pin the observable
+/// side of that contract.
+#[cfg(all(test, not(feature = "altrep")))]
+mod no_altrep_guards {
+    use crate::sexp::accessors::ALTREP;
+    use crate::sexp::ffi::{SEXP, SEXPTYPE};
+    use crate::sexp::memory::with_arena;
+
+    #[test]
+    fn altrep_feature_is_off_in_default_build() {
+        assert!(!cfg!(feature = "altrep"));
+    }
+
+    /// With every ALTREP constructor compiled out, no public path can set the
+    /// ALT bit; a plain VECSXP holding a REALSXP survives a full collection
+    /// through the general payload tracing, unmarked and uncorrupted.
+    #[test]
+    fn default_build_never_produces_altrep_objects() {
+        let _session = crate::sexp::session::RSession::new();
+        let sym = unsafe {
+            crate::sexp::symbol::Rf_install(b"no_altrep_probe\0".as_ptr() as *const _)
+        };
+        let outer = with_arena(|arena| arena.alloc_vector(SEXPTYPE::VECSXP, 2));
+        let inner = with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 4));
+        unsafe {
+            *((*outer).gengc_next_node as *mut SEXP) = inner;
+            crate::sexp::envir::defineVar(sym, outer, crate::sexp::globals::R_GlobalEnv());
+        }
+        crate::sexp::gengc::full_gc();
+        unsafe {
+            assert_eq!(ALTREP(outer), 0);
+            assert_eq!(ALTREP(inner), 0);
+            assert_eq!(*((*outer).gengc_next_node as *mut SEXP), inner);
+            assert_eq!(
+                crate::sexp::envir::R_findVarInFrame(
+                    crate::sexp::globals::R_GlobalEnv(),
+                    sym
+                ),
+                outer
+            );
+        }
+    }
+}

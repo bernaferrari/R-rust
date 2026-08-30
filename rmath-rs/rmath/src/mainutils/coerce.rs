@@ -2134,7 +2134,7 @@ pub unsafe fn do_asCharacterFactor(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// Parses the mode string from the second argument and coerces the input
 /// SEXP to the target type. Returns `Result<SEXP, String>` for error handling.
 pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, String> {
-    if mode_str.typeof_() != SEXPTYPE::STRSXP || mode_str.len() != 1 {
+    if mode_str.clone().typeof_() != SEXPTYPE::STRSXP || mode_str.clone().len() != 1 {
         return Err("invalid 'mode' argument".to_string());
     }
     let mode_chars = mode_str.string_elt(0).ok_or("invalid 'mode' argument")?;
@@ -2267,7 +2267,7 @@ pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
 /// Coerces to a vector of the specified mode, stripping attributes for
 /// atomic types but preserving them for list/expression/pairlist types.
 pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, String> {
-    if mode_str.typeof_() != SEXPTYPE::STRSXP || mode_str.len() != 1 {
+    if mode_str.clone().typeof_() != SEXPTYPE::STRSXP || mode_str.clone().len() != 1 {
         return Err("invalid 'mode' argument".to_string());
     }
     let mode_chars = mode_str.string_elt(0).ok_or("invalid 'mode' argument")?;
@@ -2357,7 +2357,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         0 => is_null_safe(x),
         10 => (x.typeof_() == SEXPTYPE::LGLSXP) as c_int,
         13 => {
-            let t = x.typeof_();
+            let t = x.clone().typeof_();
             if t == SEXPTYPE::INTSXP {
                 let x_raw = x.as_raw();
                 unsafe {
@@ -2454,7 +2454,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
 /// Checks whether the SEXP is a vector of the specified mode, and whether
 /// it has only a "names" attribute (no other attributes).
 pub fn is_vector_type_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<c_int, String> {
-    if mode_str.typeof_() != SEXPTYPE::STRSXP || mode_str.len() != 1 {
+    if mode_str.clone().typeof_() != SEXPTYPE::STRSXP || mode_str.clone().len() != 1 {
         return Err("invalid 'mode' argument".to_string());
     }
     let mode_chars = mode_str.string_elt(0).ok_or("invalid 'mode' argument")?;
@@ -2467,11 +2467,11 @@ pub fn is_vector_type_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<c_int,
     };
 
     let is_vec = if s == "any" {
-        x.is_vector()
+        x.clone().is_vector()
     } else if s == "numeric" {
-        is_numeric_safe(x) != 0 && is_logical_safe(x) == 0
+        is_numeric_safe(x.clone()) != 0 && is_logical_safe(x.clone()) == 0
     } else {
-        let type_name = match x.typeof_() {
+        let type_name = match x.clone().typeof_(){
             SEXPTYPE::LGLSXP => "logical",
             SEXPTYPE::INTSXP => "integer",
             SEXPTYPE::REALSXP => "double",
@@ -2513,7 +2513,7 @@ fn is_null_safe(x: Sexp) -> c_int {
 }
 
 fn is_numeric_safe(x: Sexp) -> c_int {
-    let t = x.typeof_();
+    let t = x.clone().typeof_();
     if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && x.is_vector() {
         1
     } else {
@@ -2522,7 +2522,7 @@ fn is_numeric_safe(x: Sexp) -> c_int {
 }
 
 fn is_logical_safe(x: Sexp) -> c_int {
-    (x.typeof_() == SEXPTYPE::LGLSXP && x.is_vector()) as c_int
+    (x.clone().typeof_()== SEXPTYPE::LGLSXP && x.is_vector()) as c_int
 }
 
 fn is_function_safe(x: Sexp) -> c_int {
@@ -2579,8 +2579,7 @@ pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let args_s =
             Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let x = args_s
-            .try_pairlist_arg(0)
-            .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+            .clone().try_pairlist_arg(0).clone().unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let mode_str = match args_s.try_pairlist_arg(1) {
             Ok(s) => s,
             Err(_) => return x.as_raw(),
@@ -2685,7 +2684,7 @@ pub unsafe fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             Ok(s) => s,
             Err(_) => return Rf_ScalarLogical(0),
         };
-        let x = match args_s.try_pairlist_arg(0) {
+        let x = match args_s.clone().try_pairlist_arg(0).clone(){
             Ok(s) => s,
             Err(_) => return Rf_ScalarLogical(0),
         };
@@ -3119,8 +3118,7 @@ pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let args_s =
             Sexp::try_from_raw(args).unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let x = args_s
-            .try_pairlist_arg(0)
-            .unwrap_or_else(|err| errorcall(call, &err.to_string()));
+            .clone().try_pairlist_arg(0).clone().unwrap_or_else(|err| errorcall(call, &err.to_string()));
         let mode_str = match args_s.try_pairlist_arg(1) {
             Ok(s) => s,
             Err(_) => return x.as_raw(),

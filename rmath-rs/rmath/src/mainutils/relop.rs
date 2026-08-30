@@ -169,8 +169,7 @@ pub unsafe fn checkArity(op: SEXP, args: SEXP) {
         };
         let expected = entry
             .op
-            .try_primoffset()
-            .ok()
+            .clone().try_primoffset().clone().ok()
             .and_then(crate::eval::primitive::fun_tab_descriptor)
             .map(|entry| entry.arity)
             .unwrap_or(-1);

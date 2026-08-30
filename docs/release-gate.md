@@ -4,11 +4,17 @@
 collects the checks that matter for the Android-first Rust port into one
 repeatable gate with subsystem labels in the output.
 
-The GitHub workflows use the same policy split: formatting, strict clippy,
-focused tests, Android and WASM checks, conformance parity, artifact validation, Android
-showcase artifacts, and the safe API audit are the default release bar. The gate
-also checks the upstream port map so C-to-Rust traceability does not decay as
-modules are rewritten.
+The GitHub workflows carry the always-on slice of the same policy split:
+`.github/workflows/ci.yml` runs formatting, strict clippy, workspace tests,
+stock-R conformance parity, and the WASM build surface as five independent
+jobs on the toolchain pinned in `rust-toolchain.toml`; the conformance job
+uses r-lib release R, where engine-version-sensitive cases (the R 4.7
+`.Random.seed` layout) are expected skips rather than failures.
+`.github/workflows/nightly.yml` adds the deeper sweeps: Miri over the sexp
+safe-layer test subset and a GC-torture differential stress run. Everything
+else below — Android checks, packaging, showcase artifacts, and the safe API
+audit — remains the local release-gate bar.
+
 
 ## Commands
 

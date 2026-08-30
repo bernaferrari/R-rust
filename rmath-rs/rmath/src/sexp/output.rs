@@ -230,7 +230,7 @@ fn format_real_value_for_vector(v: f64, force_decimal_for_whole: bool) -> String
 }
 
 fn format_real_vector_values(x: Sexp<'_>, limit: R_xlen_t) -> Vec<String> {
-    let values: Vec<_> = (0..x.len().min(limit)).map(|i| x.try_real_elt(i)).collect();
+    let values: Vec<_> = (0..x.clone().len().min(limit)).map(|i| x.clone().try_real_elt(i)).collect();
     let force_decimal_for_whole = values
         .iter()
         .filter_map(|value| value.as_ref().ok().copied())
@@ -397,14 +397,14 @@ fn format_with_printable_attributes(base: String, x: Sexp<'_>) -> String {
 fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::attrib_core::R_DimSymbol(),
         );
         let dim = Sexp::from_raw(dim)?;
-        if dim.typeof_() != SEXPTYPE::INTSXP || dim.len() != 2 {
+        if dim.clone().typeof_() != SEXPTYPE::INTSXP || dim.clone().len() != 2 {
             return None;
         }
-        let nrow = dim.integer_elt(0)? as usize;
+        let nrow = dim.clone().integer_elt(0)? as usize;
         let ncol = dim.integer_elt(1)? as usize;
         if nrow.checked_mul(ncol)? > x.len() as usize {
             return None;
@@ -426,11 +426,11 @@ fn matrix_dimnames(
         let Some(dimnames) = Sexp::from_raw(dimnames) else {
             return (None, None);
         };
-        if dimnames.typeof_() != SEXPTYPE::VECSXP || dimnames.len() < 2 {
+        if dimnames.clone().typeof_() != SEXPTYPE::VECSXP || dimnames.clone().len() < 2 {
             return (None, None);
         }
         let row_names =
-            string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 0))
+            string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.clone().as_raw(), 0))
                 .filter(|names| names.len() == nrow);
         let col_names =
             string_vector_values(crate::sexp::accessors::VECTOR_ELT(dimnames.as_raw(), 1))
@@ -554,22 +554,22 @@ where
 }
 
 fn format_matrix(x: Sexp<'_>) -> Option<String> {
-    let (nrow, ncol) = matrix_dims(x)?;
-    match x.typeof_() {
-        SEXPTYPE::INTSXP => Some(format_matrix_with(x, nrow, ncol, |r, c| {
-            format_integer_element(x, (r + c * nrow) as i64)
+    let (nrow, ncol) = matrix_dims(x.clone())?;
+    match x.clone().typeof_() {
+        SEXPTYPE::INTSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+            format_integer_element(x.clone(), (r + c * nrow) as i64)
         })),
-        SEXPTYPE::REALSXP => Some(format_matrix_with(x, nrow, ncol, |r, c| {
-            format_real_element(x, (r + c * nrow) as i64)
+        SEXPTYPE::REALSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+            format_real_element(x.clone(), (r + c * nrow) as i64)
         })),
-        SEXPTYPE::LGLSXP => Some(format_matrix_with(x, nrow, ncol, |r, c| {
-            format_logical_element(x, (r + c * nrow) as i64)
+        SEXPTYPE::LGLSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+            format_logical_element(x.clone(), (r + c * nrow) as i64)
         })),
-        SEXPTYPE::CPLXSXP => Some(format_matrix_with(x, nrow, ncol, |r, c| {
-            format_complex_element(x, (r + c * nrow) as i64)
+        SEXPTYPE::CPLXSXP => Some(format_matrix_with(x.clone(), nrow, ncol, |r, c| {
+            format_complex_element(x.clone(), (r + c * nrow) as i64)
         })),
-        SEXPTYPE::STRSXP => Some(format_character_matrix_with(x, nrow, ncol, |r, c| {
-            format_string_element(x, (r + c * nrow) as i64)
+        SEXPTYPE::STRSXP => Some(format_character_matrix_with(x.clone(), nrow, ncol, |r, c| {
+            format_string_element(x.clone(), (r + c * nrow) as i64)
         })),
         _ => None,
     }
@@ -578,7 +578,7 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
 fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::attrib_core::R_ClassSymbol(),
         );
         if !string_vector_contains(class, "factor") {
@@ -601,24 +601,24 @@ fn string_vector_contains(x: SEXP, needle: &str) -> bool {
 
 fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
     let sexp = Sexp::from_raw(x)?;
-    if sexp.typeof_() != SEXPTYPE::STRSXP {
+    if sexp.clone().typeof_() != SEXPTYPE::STRSXP {
         return None;
     }
-    let mut values = Vec::with_capacity(sexp.len() as usize);
-    for i in 0..sexp.len() {
-        values.push(string_element_text(sexp, i).flatten()?.to_string());
+    let mut values = Vec::with_capacity(sexp.clone().len() as usize);
+    for i in 0..sexp.clone().len() {
+        values.push(string_element_text(sexp.clone(), i).flatten()?.to_string());
     }
     Some(values)
 }
 
 fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
     let sexp = Sexp::from_raw(x)?;
-    if sexp.typeof_() != SEXPTYPE::STRSXP {
+    if sexp.clone().typeof_() != SEXPTYPE::STRSXP {
         return None;
     }
-    let mut values = Vec::with_capacity(sexp.len() as usize);
-    for i in 0..sexp.len() {
-        values.push(match string_element_text(sexp, i) {
+    let mut values = Vec::with_capacity(sexp.clone().len() as usize);
+    for i in 0..sexp.clone().len() {
+        values.push(match string_element_text(sexp.clone(), i) {
             Some(Some(value)) => value.to_string(),
             Some(None) | None => "<NA>".to_string(),
         });
@@ -629,7 +629,7 @@ fn string_vector_labels(x: SEXP) -> Option<Vec<String>> {
 fn vector_print_names(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
         let names = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::attrib_core::R_NamesSymbol(),
         );
         let names = string_vector_labels(names)?;
@@ -674,11 +674,11 @@ fn escape_printed_string(value: &str) -> String {
 }
 
 fn format_string_vector(x: Sexp<'_>) -> String {
-    if x.len() == 0 {
+    if x.clone().len() == 0 {
         return "character(0)".to_string();
     }
-    let vals: Vec<String> = (0..x.len().min(10))
-        .map(|i| format_string_element(x, i))
+    let vals: Vec<String> = (0..x.clone().len().min(10))
+        .map(|i| format_string_element(x.clone(), i))
         .collect();
     let suffix = if x.len() > 10 { " ..." } else { "" };
     format!("[1] {}{}", vals.join(" "), suffix)
@@ -693,13 +693,13 @@ fn format_date_element(x: Sexp<'_>, i: R_xlen_t) -> String {
 }
 
 fn format_date_vector(x: Sexp<'_>) -> String {
-    if x.len() == 0 {
+    if x.clone().len() == 0 {
         return "Date of length 0".to_string();
     }
-    let vals: Vec<String> = (0..x.len().min(10))
-        .map(|i| format_date_element(x, i))
+    let vals: Vec<String> = (0..x.clone().len().min(10))
+        .map(|i| format_date_element(x.clone(), i))
         .collect();
-    let suffix = if x.len() > 10 { " ..." } else { "" };
+    let suffix = if x.clone().len() > 10 { " ..." } else { "" };
     format_named_atomic_vector(x, vals.clone())
         .map(|output| format!("{output}{suffix}"))
         .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
@@ -718,22 +718,22 @@ fn format_posixct_element(x: Sexp<'_>, i: R_xlen_t, include_tz: bool, force_time
 }
 
 fn posixct_vector_needs_time(x: Sexp<'_>) -> bool {
-    (0..x.len()).any(|i| {
-        x.try_real_elt(i).ok().is_some_and(|seconds| {
+    (0..x.clone().len()).any(|i| {
+        x.clone().try_real_elt(i).ok().is_some_and(|seconds| {
             !R_IsNA(seconds) && seconds.is_finite() && seconds.floor() as i64 % 86_400 != 0
         })
     })
 }
 
 fn format_posixct_vector(x: Sexp<'_>, include_tz: bool) -> String {
-    if x.len() == 0 {
+    if x.clone().len() == 0 {
         return "POSIXct of length 0".to_string();
     }
-    let force_time = posixct_vector_needs_time(x);
-    let vals: Vec<String> = (0..x.len().min(10))
-        .map(|i| format_posixct_element(x, i, include_tz, force_time))
+    let force_time = posixct_vector_needs_time(x.clone());
+    let vals: Vec<String> = (0..x.clone().len().min(10))
+        .map(|i| format_posixct_element(x.clone(), i, include_tz, force_time))
         .collect();
-    let suffix = if x.len() > 10 { " ..." } else { "" };
+    let suffix = if x.clone().len() > 10 { " ..." } else { "" };
     format_named_atomic_vector(x, vals.clone())
         .map(|output| format!("{output}{suffix}"))
         .unwrap_or_else(|| format!("[1] {}{}", vals.join(" "), suffix))
@@ -746,8 +746,8 @@ fn difftime_units(x: Sexp<'_>) -> String {
             crate::sexp::symbol::Rf_install(c"units".as_ptr()),
         );
         if let Some(units) = Sexp::from_raw(units)
-            && units.typeof_() == SEXPTYPE::STRSXP
-            && units.len() > 0
+            && units.clone().typeof_() == SEXPTYPE::STRSXP
+            && units.clone().len() > 0
             && let Some(Some(value)) = string_element_text(units, 0)
         {
             return value.to_string();
@@ -757,8 +757,8 @@ fn difftime_units(x: Sexp<'_>) -> String {
 }
 
 fn format_difftime_vector(x: Sexp<'_>) -> String {
-    let units = difftime_units(x);
-    if x.len() == 0 {
+    let units = difftime_units(x.clone());
+    if x.clone().len() == 0 {
         return format!("Time difference of 0 {units}");
     }
     let value = x
@@ -769,9 +769,9 @@ fn format_difftime_vector(x: Sexp<'_>) -> String {
 }
 
 fn format_factor(x: Sexp<'_>) -> Option<String> {
-    let levels = factor_levels(x)?;
+    let levels = factor_levels(x.clone())?;
     let vals: Vec<String> = x
-        .iter_integer()
+        .clone().iter_integer()
         .take(10)
         .map(|code| {
             if code == NA_INTEGER {
@@ -796,14 +796,14 @@ fn format_factor(x: Sexp<'_>) -> Option<String> {
 fn table_names(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::attrib_core::R_ClassSymbol(),
         );
         if !string_vector_contains(class, "table") {
             return None;
         }
         let names = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::attrib_core::R_NamesSymbol(),
         );
         string_vector_values(names).filter(|names| names.len() == x.len() as usize)
@@ -817,7 +817,7 @@ fn table_title(x: Sexp<'_>) -> Option<String> {
             crate::sexp::symbol::Rf_install(c"table.name".as_ptr()),
         );
         let title = Sexp::from_raw(title)?;
-        if title.typeof_() != SEXPTYPE::STRSXP || title.len() == 0 {
+        if title.clone().typeof_() != SEXPTYPE::STRSXP || title.clone().len() == 0 {
             return None;
         }
         string_element_text(title, 0).flatten().map(str::to_string)
@@ -825,10 +825,10 @@ fn table_title(x: Sexp<'_>) -> Option<String> {
 }
 
 fn format_table(x: Sexp<'_>) -> Option<String> {
-    let names = table_names(x)?;
-    let values: Vec<String> = match x.typeof_() {
-        SEXPTYPE::INTSXP => (0..x.len()).map(|i| format_integer_element(x, i)).collect(),
-        SEXPTYPE::REALSXP => (0..x.len()).map(|i| format_real_element(x, i)).collect(),
+    let names = table_names(x.clone())?;
+    let values: Vec<String> = match x.clone().typeof_() {
+        SEXPTYPE::INTSXP => (0..x.clone().len()).map(|i| format_integer_element(x.clone(), i)).collect(),
+        SEXPTYPE::REALSXP => (0..x.clone().len()).map(|i| format_real_element(x.clone(), i)).collect(),
         _ => return None,
     };
     if let Some(title) = table_title(x) {
@@ -870,37 +870,37 @@ fn format_summary_real_value(x: Sexp<'_>, i: R_xlen_t) -> String {
 }
 
 fn format_summary_default(x: Sexp<'_>) -> Option<String> {
-    if !has_class(x, "summaryDefault") || !has_class(x, "table") {
+    if !has_class(x.clone(), "summaryDefault") || !has_class(x.clone(), "table") {
         return None;
     }
-    let names = table_names(x)?;
-    let values: Vec<String> = match x.typeof_() {
-        SEXPTYPE::REALSXP => (0..x.len())
+    let names = table_names(x.clone())?;
+    let values: Vec<String> = match x.clone().typeof_() {
+        SEXPTYPE::REALSXP => (0..x.clone().len())
             .map(|i| {
                 if matches!(names.get(i as usize).map(String::as_str), Some("NAs")) {
-                    x.as_real_slice()
+                    x.clone().as_real_slice()
                         .map(|values| format!("{}", values[i as usize] as i64))
-                        .unwrap_or_else(|| format_summary_real_value(x, i))
+                        .unwrap_or_else(|| format_summary_real_value(x.clone(), i))
                 } else {
-                    format_summary_real_value(x, i)
+                    format_summary_real_value(x.clone(), i)
                 }
             })
             .collect(),
-        SEXPTYPE::INTSXP => (0..x.len())
+        SEXPTYPE::INTSXP => (0..x.clone().len())
             .map(|i| {
                 if matches!(
                     names.get(i as usize).map(String::as_str),
                     Some("Min.nchar" | "Max.nchar")
-                ) && format_integer_element(x, i) == "NA"
+                ) && format_integer_element(x.clone(), i) == "NA"
                 {
                     String::new()
                 } else {
-                    format_integer_element(x, i)
+                    format_integer_element(x.clone(), i)
                 }
             })
             .collect(),
-        SEXPTYPE::STRSXP => (0..x.len())
-            .map(|i| match string_element_text(x, i) {
+        SEXPTYPE::STRSXP => (0..x.clone().len())
+            .map(|i| match string_element_text(x.clone(), i) {
                 Some(Some(value)) => value.to_string(),
                 Some(None) | None => "NA".to_string(),
             })
@@ -955,12 +955,12 @@ fn has_class(x: Sexp<'_>, class_name: &str) -> bool {
 fn data_frame_nrows(x: Sexp<'_>) -> R_xlen_t {
     unsafe {
         let row_names = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
         );
         if let Some(row_names) = Sexp::from_raw(row_names)
-            && row_names.typeof_() == SEXPTYPE::INTSXP
-            && row_names.len() == 2
+            && row_names.clone().typeof_() == SEXPTYPE::INTSXP
+            && row_names.clone().len() == 2
             && let Some(values) = row_names.as_integer_slice()
             && values[0] == NA_INTEGER
             && values[1] < 0
@@ -972,11 +972,11 @@ fn data_frame_nrows(x: Sexp<'_>) -> R_xlen_t {
 }
 
 fn format_data_frame_cell(x: Sexp<'_>, row: R_xlen_t) -> String {
-    if x.len() == 0 {
+    if x.clone().len() == 0 {
         return "NA".to_string();
     }
-    let i = row % x.len();
-    match x.typeof_() {
+    let i = row % x.clone().len();
+    match x.clone().typeof_() {
         SEXPTYPE::INTSXP => format_integer_element(x, i),
         SEXPTYPE::REALSXP => format_real_element(x, i),
         SEXPTYPE::LGLSXP => format_logical_element(x, i),
@@ -989,11 +989,11 @@ fn format_data_frame_cell(x: Sexp<'_>, row: R_xlen_t) -> String {
 }
 
 fn format_data_frame(x: Sexp<'_>) -> Option<String> {
-    if !has_class(x, "data.frame") {
+    if !has_class(x.clone(), "data.frame") {
         return None;
     }
-    let names = list_names(x);
-    let nrow = data_frame_nrows(x);
+    let names = list_names(x.clone());
+    let nrow = data_frame_nrows(x.clone());
     let columns: Vec<Sexp<'_>> = x.iter_vector().collect();
     let row_width = nrow.to_string().len().max(1);
     let widths: Vec<usize> = columns
@@ -1002,7 +1002,7 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
         .map(|(i, col)| {
             let name_width = names.get(i).map(String::len).unwrap_or(0);
             let value_width = (0..nrow)
-                .map(|row| format_data_frame_cell(*col, row).len())
+                .map(|row| format_data_frame_cell(col.clone(), row).len())
                 .max()
                 .unwrap_or(0);
             name_width.max(value_width)
@@ -1025,7 +1025,7 @@ fn format_data_frame(x: Sexp<'_>) -> Option<String> {
         let cells = columns
             .iter()
             .zip(&widths)
-            .map(|(col, width)| format!("{:>width$}", format_data_frame_cell(*col, row)))
+            .map(|(col, width)| format!("{:>width$}", format_data_frame_cell(col.clone(), row)))
             .collect::<Vec<_>>()
             .join(" ");
         lines.push(format!("{row_name} {cells}"));
@@ -1041,12 +1041,12 @@ fn list_element_header(index: usize, names: &[String]) -> String {
 }
 
 fn format_list(x: Sexp<'_>) -> String {
-    if x.len() == 0 {
+    if x.clone().len() == 0 {
         return "list()".to_string();
     }
 
-    let names = list_names(x);
-    let mut sections = Vec::with_capacity(x.len() as usize);
+    let names = list_names(x.clone());
+    let mut sections = Vec::with_capacity(x.clone().len() as usize);
     for (index, elem) in x.iter_vector().enumerate() {
         sections.push(format!(
             "{}\n{}",
@@ -1324,7 +1324,7 @@ unsafe fn encode_element_adj(
 /// Stock printVector: unnamed vector with "[i]" index labels, wrapping at
 /// options("width"). Every element occupies the common field width.
 pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String {
-    let raw = x.as_raw();
+    let raw = x.clone().as_raw();
     let tp = x.typeof_();
     let (print_width, gap, _max) = vector_print_settings();
     let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
@@ -1393,7 +1393,7 @@ pub(crate) unsafe fn print_named_vector_stock(
     quote: bool,
     n_pr: R_xlen_t,
 ) -> String {
-    let raw = x.as_raw();
+    let raw = x.clone().as_raw();
     let names_raw = names.as_raw();
     let tp = x.typeof_();
     let (print_width, gap, _max) = vector_print_settings();
@@ -1501,7 +1501,7 @@ pub(crate) unsafe fn print_named_vector_stock(
 /// through printNamedVector, others through printVector with index labels;
 /// both honour options("max.print") truncation.
 pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
-    let n = x.len();
+    let n = x.clone().len();
     if n == 0 {
         // stock printVector PRINT_V_0. Callers own the final newline,
         // exactly like the non-empty paths (whose closing newline is
@@ -1522,7 +1522,7 @@ pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
     } else {
         max as R_xlen_t
     };
-    let mut out = match names_sexp(x) {
+    let mut out = match names_sexp(x.clone()) {
         Some(names) => print_named_vector_stock(x, names, quote, n_pr),
         None => print_vector_stock(x, quote, n_pr),
     };
@@ -1544,11 +1544,11 @@ pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
 fn names_sexp(x: Sexp<'_>) -> Option<Sexp<'_>> {
     unsafe {
         let names = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::attrib_core::R_NamesSymbol(),
         );
         let names = Sexp::from_raw(names)?;
-        if names.typeof_() == SEXPTYPE::STRSXP && names.len() == x.len() {
+        if names.clone().typeof_() == SEXPTYPE::STRSXP && names.clone().len() == x.len() {
             Some(names)
         } else {
             None
@@ -1565,15 +1565,15 @@ pub fn print_value(x: Sexp<'_>) {
     // Objects of class "try-error" print per stock print.default: the
     // message string as a character vector plus class/condition attrs.
     // Condition objects print via print.condition.
-    if has_class(x, "try-error") {
+    if has_class(x.clone(), "try-error") {
         unsafe { emit(&format!("{}\n", format_try_error(x))) };
         return;
     }
-    if has_class(x, "condition") {
+    if has_class(x.clone(), "condition") {
         unsafe { emit(&format!("{}\n", format_condition(x))) };
         return;
     }
-    match x.typeof_() {
+    match x.clone().typeof_() {
         SEXPTYPE::SYMSXP
         | SEXPTYPE::LANGSXP
         | SEXPTYPE::CLOSXP
@@ -1588,8 +1588,8 @@ pub fn print_value(x: Sexp<'_>) {
             emit("NULL\n");
         }
         SEXPTYPE::INTSXP => {
-            if x.len() == 0 {
-                let empty = if has_names_attribute(x) {
+            if x.clone().len() == 0 {
+                let empty = if has_names_attribute(x.clone()) {
                     "named integer(0)"
                 } else {
                     "integer(0)"
@@ -1600,30 +1600,30 @@ pub fn print_value(x: Sexp<'_>) {
                 ));
                 return;
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if let Some(output) = format_summary_default(x) {
+            if let Some(output) = format_summary_default(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if let Some(output) = format_table(x) {
+            if let Some(output) = format_table(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if let Some(output) = format_factor(x) {
+            if let Some(output) = format_factor(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::REALSXP => {
-            if x.len() == 0
-                && !has_class(x, "difftime")
-                && !has_class(x, "POSIXct")
-                && !has_class(x, "Date")
+            if x.clone().len() == 0
+                && !has_class(x.clone(), "difftime")
+                && !has_class(x.clone(), "POSIXct")
+                && !has_class(x.clone(), "Date")
             {
                 emit(&format!(
                     "{}\n",
@@ -1631,88 +1631,88 @@ pub fn print_value(x: Sexp<'_>) {
                 ));
                 return;
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if let Some(output) = format_summary_default(x) {
+            if let Some(output) = format_summary_default(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if let Some(output) = format_table(x) {
+            if let Some(output) = format_table(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if has_class(x, "difftime") {
+            if has_class(x.clone(), "difftime") {
                 emit(&format!("{}\n", format_difftime_vector(x)));
                 return;
             }
-            if has_class(x, "POSIXct") {
+            if has_class(x.clone(), "POSIXct") {
                 emit(&format!("{}\n", format_posixct_vector(x, true)));
                 return;
             }
-            if has_class(x, "Date") {
+            if has_class(x.clone(), "Date") {
                 emit(&format!("{}\n", format_date_vector(x)));
                 return;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::LGLSXP => {
-            if x.len() == 0 {
+            if x.clone().len() == 0 {
                 emit(&format!(
                     "{}\n",
                     format_with_printable_attributes("logical(0)".to_string(), x)
                 ));
                 return;
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::CPLXSXP => {
-            if x.len() == 0 {
+            if x.clone().len() == 0 {
                 emit(&format!(
                     "{}\n",
                     format_with_printable_attributes("complex(0)".to_string(), x)
                 ));
                 return;
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::STRSXP => {
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            if let Some(output) = format_summary_default(x) {
+            if let Some(output) = format_summary_default(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::RAWSXP => {
-            if x.len() == 0 {
+            if x.clone().len() == 0 {
                 emit(&format!(
                     "{}\n",
                     format_with_printable_attributes("raw(0)".to_string(), x)
                 ));
                 return;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             emit(&format!("{}\n", format_with_printable_attributes(base, x)));
         }
         SEXPTYPE::VECSXP => {
-            if let Some(output) = format_data_frame(x) {
+            if let Some(output) = format_data_frame(x.clone()) {
                 emit(&format!("{output}\n"));
                 return;
             }
@@ -1758,80 +1758,80 @@ fn emit(msg: &str) {
 }
 
 pub fn format_sexp_direct(x: Sexp<'_>) -> String {
-    if has_class(x, "try-error") {
+    if has_class(x.clone(), "try-error") {
         return unsafe { format_try_error(x) };
     }
-    if has_class(x, "condition") {
+    if has_class(x.clone(), "condition") {
         return unsafe { format_condition(x) };
     }
-    match x.typeof_() {
+    match x.clone().typeof_() {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
-            if x.len() == 0 {
-                let empty = if has_names_attribute(x) {
+            if x.clone().len() == 0 {
+                let empty = if has_names_attribute(x.clone()) {
                     "named integer(0)"
                 } else {
                     "integer(0)"
                 };
                 return format_with_printable_attributes(empty.to_string(), x);
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 return output;
             }
-            if let Some(output) = format_factor(x) {
+            if let Some(output) = format_factor(x.clone()) {
                 return output;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::REALSXP => {
-            if has_class(x, "difftime") {
+            if has_class(x.clone(), "difftime") {
                 return format_difftime_vector(x);
             }
-            if has_class(x, "POSIXct") {
+            if has_class(x.clone(), "POSIXct") {
                 return format_posixct_vector(x, true);
             }
-            if has_class(x, "Date") {
+            if has_class(x.clone(), "Date") {
                 return format_date_vector(x);
             }
-            if x.len() == 0 {
+            if x.clone().len() == 0 {
                 return format_with_printable_attributes("numeric(0)".to_string(), x);
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 return output;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::LGLSXP => {
-            if x.len() == 0 {
+            if x.clone().len() == 0 {
                 return format_with_printable_attributes("logical(0)".to_string(), x);
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 return output;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::CPLXSXP => {
-            if x.len() == 0 {
+            if x.clone().len() == 0 {
                 return format_with_printable_attributes("complex(0)".to_string(), x);
             }
-            if let Some(output) = format_matrix(x) {
+            if let Some(output) = format_matrix(x.clone()) {
                 return output;
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::STRSXP => {
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::RAWSXP => {
-            if x.len() == 0 {
+            if x.clone().len() == 0 {
                 return format_with_printable_attributes("raw(0)".to_string(), x);
             }
-            let base = unsafe { format_vector_stock(x, true) };
+            let base = unsafe { format_vector_stock(x.clone(), true) };
             format_with_printable_attributes(base, x)
         }
         SEXPTYPE::VECSXP => format_list(x),
@@ -1863,7 +1863,7 @@ unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
             crate::sexp::attrib_core::R_ClassSymbol(),
         );
         let klass = Sexp::from_raw(klass)?;
-        if klass.typeof_() != SEXPTYPE::STRSXP || klass.len() == 0 {
+        if klass.clone().typeof_() != SEXPTYPE::STRSXP || klass.clone().len() == 0 {
             return None;
         }
         let s = crate::sexp::accessors::STRING_ELT(klass.as_raw(), 0);
@@ -1884,15 +1884,15 @@ unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
 /// Stock print.condition: `<class: msg>` or `<class in <deparsed call>: msg>`.
 /// Conditions are `list(message, call, ...)` per R_makeErrorCondition.
 unsafe fn format_condition(x: Sexp<'_>) -> String {
-    let raw = x.as_raw();
-    let class = first_class_string(x).unwrap_or_else(|| "condition".to_string());
+    let raw = x.clone().as_raw();
+    let class = first_class_string(x.clone()).unwrap_or_else(|| "condition".to_string());
     let mut message = String::new();
     let mut call_text = String::new();
-    if x.typeof_() == SEXPTYPE::VECSXP && x.len() >= 1 {
+    if x.clone().typeof_() == SEXPTYPE::VECSXP && x.clone().len() >= 1 {
         let msg = crate::sexp::accessors::VECTOR_ELT(raw, 0);
         if !msg.is_null() && msg != crate::sexp::globals::R_NilValue() {
             if let Some(sexp) = Sexp::from_raw(msg) {
-                if sexp.typeof_() == SEXPTYPE::STRSXP && sexp.len() >= 1 {
+                if sexp.clone().typeof_() == SEXPTYPE::STRSXP && sexp.clone().len() >= 1 {
                     let elt = crate::sexp::accessors::STRING_ELT(sexp.as_raw(), 0);
                     if !elt.is_null() {
                         let chars = crate::sexp::accessors::CHAR(elt);
@@ -1929,26 +1929,26 @@ unsafe fn format_condition(x: Sexp<'_>) -> String {
 /// Stock print.default on a try-error object: the message string rendered as
 /// a character vector, then the class and condition attributes.
 unsafe fn format_try_error(x: Sexp<'_>) -> String {
-    let mut out = if x.typeof_() == SEXPTYPE::STRSXP {
-        format_vector_stock(x, true)
+    let mut out = if x.clone().typeof_() == SEXPTYPE::STRSXP {
+        format_vector_stock(x.clone(), true)
     } else {
-        format!("{}\n", format_sexp_direct(x))
+        format!("{}\n", format_sexp_direct(x.clone()))
     };
     out.push('\n');
     unsafe {
         let klass = crate::sexp::attrib_core::getAttrib(
-            x.as_raw(),
+            x.clone().as_raw(),
             crate::sexp::attrib_core::R_ClassSymbol(),
         );
         let has_condition = {
             let cond_sym = crate::sexp::symbol::Rf_install(
                 b"condition\0".as_ptr() as *const std::os::raw::c_char
             );
-            let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
+            let cond = crate::sexp::attrib_core::getAttrib(x.clone().as_raw(), cond_sym);
             !cond.is_null() && cond != R_NilValue()
         };
         if let Some(klass) = Sexp::from_raw(klass) {
-            if klass.typeof_() == SEXPTYPE::STRSXP {
+            if klass.clone().typeof_() == SEXPTYPE::STRSXP {
                 out.push_str("attr(,\"class\")\n");
                 out.push_str(&format_vector_stock(klass, true));
                 // print_value owns the final newline; add the separator
@@ -1962,7 +1962,7 @@ unsafe fn format_try_error(x: Sexp<'_>) -> String {
             crate::sexp::symbol::Rf_install(b"condition\0".as_ptr() as *const std::os::raw::c_char);
         let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
         if let Some(cond) = Sexp::from_raw(cond) {
-            if cond.typeof_() != SEXPTYPE::NILSXP {
+            if cond.clone().typeof_() != SEXPTYPE::NILSXP {
                 out.push_str("attr(,\"condition\")\n");
                 out.push_str(&format_condition(cond));
             }
@@ -1991,10 +1991,10 @@ fn format_environment(x: Sexp<'_>) -> String {
 pub fn print_structure(x: Sexp<'_>, indent: usize) {
     let prefix = "  ".repeat(indent);
 
-    match x.typeof_() {
+    match x.clone().typeof_() {
         SEXPTYPE::INTSXP => {
-            let vals: Vec<_> = x.iter_integer().take(10).collect();
-            let suffix = if x.len() > 10 { ", ..." } else { "" };
+            let vals: Vec<_> = x.clone().iter_integer().take(10).collect();
+            let suffix = if x.clone().len() > 10 { ", ..." } else { "" };
             let output = format!("{}int [{}]: {:?}{}", prefix, x.len(), vals, suffix);
             if is_capturing() {
                 capture_stdout(&output);
@@ -2004,8 +2004,8 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
             }
         }
         SEXPTYPE::REALSXP => {
-            let vals: Vec<_> = x.iter_real().take(10).collect();
-            let suffix = if x.len() > 10 { ", ..." } else { "" };
+            let vals: Vec<_> = x.clone().iter_real().take(10).collect();
+            let suffix = if x.clone().len() > 10 { ", ..." } else { "" };
             let output = format!("{}double [{}]: {:?}{}", prefix, x.len(), vals, suffix);
             if is_capturing() {
                 capture_stdout(&output);
@@ -2024,7 +2024,7 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
             }
         }
         SEXPTYPE::VECSXP => {
-            let output = format!("{}list [{}]", prefix, x.len());
+            let output = format!("{}list [{}]", prefix, x.clone().len());
             if is_capturing() {
                 capture_stdout(&output);
                 capture_stdout("\n");
@@ -2142,9 +2142,9 @@ mod tests {
             .with_arena(|arena| {
                 let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 3);
                 let sexp = Sexp::from_raw(ptr).expect("logical vector allocation failed");
-                assert!(sexp.set_logical_elt(0, 0));
-                assert!(sexp.set_logical_elt(1, 1));
-                assert!(sexp.set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL));
+                assert!(sexp.clone().set_logical_elt(0, 0));
+                assert!(sexp.clone().set_logical_elt(1, 1));
+                assert!(sexp.clone().set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL));
 
                 start_capture();
                 print_value(sexp);
@@ -2164,10 +2164,10 @@ mod tests {
                 let value = Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("CHARSXP");
                 let missing = Sexp::from_raw(unsafe { crate::sexp::globals::R_NaString() })
                     .expect("NA_STRING");
-                sexp.try_set_string_elt(0, value).expect("set string");
-                sexp.try_set_string_elt(1, missing).expect("set string");
+                sexp.clone().try_set_string_elt(0, value).expect("set string");
+                sexp.clone().try_set_string_elt(1, missing).expect("set string");
 
-                assert_eq!(format_sexp_direct(sexp), "[1] \"a\" NA ");
+                assert_eq!(format_sexp_direct(sexp.clone()), "[1] \"a\" NA ");
 
                 start_capture();
                 print_value(sexp);
@@ -2188,7 +2188,7 @@ mod tests {
                 let real = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1))
                     .expect("real vector allocation failed");
 
-                assert!(format_integer_element(real, 0).contains("expected integer vector"));
+                assert!(format_integer_element(real.clone(), 0).contains("expected integer vector"));
                 assert!(format_real_element(real, 2).contains("outside vector length"));
             })
             .unwrap();
@@ -2216,11 +2216,11 @@ mod tests {
             .with_arena(|arena| {
                 let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
                 let sexp = Sexp::from_raw(ptr).expect("real vector allocation failed");
-                sexp.try_set_real_elt(0, 200.0).expect("set real");
-                sexp.try_set_real_elt(1, 80200.0).expect("set real");
-                sexp.try_set_real_elt(2, 100.5).expect("set real");
+                sexp.clone().try_set_real_elt(0, 200.0).expect("set real");
+                sexp.clone().try_set_real_elt(1, 80200.0).expect("set real");
+                sexp.clone().try_set_real_elt(2, 100.5).expect("set real");
 
-                assert_eq!(format_sexp_direct(sexp), "[1]   200.0 80200.0   100.5");
+                assert_eq!(format_sexp_direct(sexp.clone()), "[1]   200.0 80200.0   100.5");
 
                 start_capture();
                 print_value(sexp);

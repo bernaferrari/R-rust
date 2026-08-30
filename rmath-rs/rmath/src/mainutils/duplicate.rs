@@ -13,7 +13,9 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::{Rf_allocVector3, Rf_cons, Rf_isVector};
+use crate::sexp::constructors::{Rf_allocVector3, Rf_cons};
+#[cfg(feature = "altrep")]
+use crate::sexp::constructors::Rf_isVector;
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::with_arena;
@@ -42,6 +44,7 @@ const GROWABLE_BIT_MASK: u16 = 1 << 5;
 // Local helpers and entry points
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "altrep")]
 unsafe fn ALTREP_DUPLICATE_EX(s: SEXP, deep: c_int) -> SEXP {
     unsafe {
         let _ = deep;
@@ -49,6 +52,7 @@ unsafe fn ALTREP_DUPLICATE_EX(s: SEXP, deep: c_int) -> SEXP {
     }
 }
 
+#[cfg(feature = "altrep")]
 unsafe fn R_tryWrap(x: SEXP) -> SEXP {
     x
 }
@@ -189,6 +193,7 @@ unsafe fn GROWABLE_BIT_SET(x: SEXP) -> c_int {
 
 /// Check ALTREP bit (same as R's ALTREP() macro on the sxpinfo alt flag).
 #[inline]
+#[cfg(feature = "altrep")]
 unsafe fn ALTREP_CHECK(x: SEXP) -> c_int {
     unsafe { ALTREP(x) }
 }
@@ -457,6 +462,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
         }
 
         // ALTREP: try class-specific duplicate when the alt bit is set
+        #[cfg(feature = "altrep")]
         if ALTREP_CHECK(s) != 0 {
             let ans = ALTREP_DUPLICATE_EX(s, deep);
             if !ans.is_null() {
@@ -1246,6 +1252,7 @@ pub unsafe fn xfillVectorMatrixWithRecycle(
 // ---------------------------------------------------------------------------
 
 /// Threshold for trying ALTREP wrapping (stub: always falls through).
+#[cfg(feature = "altrep")]
 const WRAP_THRESHOLD: R_xlen_t = 64;
 
 /// Internal: duplicate for attribute modification.
@@ -1258,6 +1265,7 @@ unsafe fn duplicate_attr(x: SEXP, deep: c_int) -> SEXP {
             return x;
         }
         // Check if vector and large enough
+        #[cfg(feature = "altrep")]
         if Rf_isVector(x) != 0 && XLENGTH(x) >= WRAP_THRESHOLD {
             let val = R_tryWrap(x);
             if !val.is_null() && val != x {

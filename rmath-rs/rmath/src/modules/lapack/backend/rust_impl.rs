@@ -143,7 +143,10 @@ pub unsafe fn dlange_(
                 let mut max_val: f64 = 0.0;
                 for j in 0..n {
                     for i in 0..m {
-                        max_val = max_val.max((*a.add(i + j * lda)).abs());
+                        let v = (*a.add(i + j * lda)).abs();
+                        if v.is_nan() || v > max_val {
+                            max_val = v;
+                        }
                     }
                 }
                 max_val
@@ -171,15 +174,25 @@ pub unsafe fn dlange_(
                 row_sums.into_iter().fold(0.0f64, f64::max)
             }
             b'F' | b'f' | b'E' | b'e' => {
-                // Frobenius norm
-                let mut sum_sq: f64 = 0.0;
+                // Frobenius norm, accumulated with DLANGE-style scaling
+                // (scale/ssq) so that very large or very small entries neither
+                // overflow nor underflow the running sum of squares.
+                let mut scale: f64 = 0.0;
+                let mut ssq: f64 = 1.0;
                 for j in 0..n {
                     for i in 0..m {
-                        let v = *a.add(i + j * lda);
-                        sum_sq += v * v;
+                        let v = (*a.add(i + j * lda)).abs();
+                        if v != 0.0 {
+                            if scale < v {
+                                ssq = 1.0 + ssq * (scale / v) * (scale / v);
+                                scale = v;
+                            } else {
+                                ssq += (v / scale) * (v / scale);
+                            }
+                        }
                     }
                 }
-                sum_sq.sqrt()
+                scale * ssq.sqrt()
             }
             _ => 0.0,
         }
@@ -213,18 +226,23 @@ pub unsafe fn dgetrf_(
 
         // Write combined L\U matrix back to a
         let k = m.min(n);
+        // Write the combined L\U factor back to a, LAPACK-style:
+        //   strict lower triangle: L (M x k), k = min(M, N)
+        //   diagonal and strict upper: U (k x N)
+        // This handles M != N: in the tall case (M > N) rows i >= N below column
+        // j < N still carry L entries; in the wide case (N > M) columns j >= M
+        // carry only U entries.
+        let u_ncols = u.ncols();
         for j in 0..n {
             for i in 0..m {
                 let val = if i > j {
                     // Strict lower triangle: from L
-                    if i < k && j < k { l[(i, j)] } else { 0.0 }
-                } else {
+                    if j < k { l[(i, j)] } else { 0.0 }
+                } else if i < k && j < u_ncols {
                     // Upper triangle (including diagonal): from U
-                    if j < u.ncols() && i < u.nrows() {
-                        u[(i, j)]
-                    } else {
-                        0.0
-                    }
+                    u[(i, j)]
+                } else {
+                    0.0
                 };
                 *a.add(i + j * lda) = val;
             }
@@ -313,6 +331,13 @@ pub unsafe fn dpotrf_(
             *info = 0;
             return;
         }
+        // Stock DPOTF2 flags a non-positive OR NaN pivot: report the first
+        // NaN diagonal element as the failing minor (1-based column).
+        if let Some(i) = (0..n).find(|&i| (*a.add(i + i * lda)).is_nan()) {
+            *info = (i + 1) as libc::c_int;
+            return;
+        }
+
 
         let mat = read_mat_f64(a, n, n, lda);
         let side = if uplo_byte == b'U' || uplo_byte == b'u' {
@@ -353,7 +378,33 @@ pub unsafe fn dpotrf_(
                 *info = 0;
             }
             Err(_) => {
-                *info = 1;
+                // The matrix is not positive definite. Reproduce the factorization
+                // manually to identify the exact 1-based failing minor, as stock
+                // DPOTRF does: info = i when the leading principal minor of order i
+                // is not positive definite (i.e. the computed diagonal would be <= 0).
+                let upper = matches!(uplo_byte, b'U' | b'u');
+                let mut l = Mat::zeros(n, n);
+                let mut failed = 0usize;
+                'outer: for i in 0..n {
+                    for j in 0..=i {
+                        let mut s = 0.0;
+                        for kk in 0..j {
+                            s += l[(i, kk)] * l[(j, kk)];
+                        }
+                        let aij = if upper { mat[(j, i)] } else { mat[(i, j)] };
+                        if i == j {
+                            let d = aij - s;
+                            if !(d > 0.0) {
+                                failed = i + 1;
+                                break 'outer;
+                            }
+                            l[(i, i)] = d.sqrt();
+                        } else {
+                            l[(i, j)] = (aij - s) / l[(j, j)];
+                        }
+                    }
+                }
+                *info = failed as libc::c_int;
             }
         }
     }
@@ -377,9 +428,22 @@ pub unsafe fn dpotri_(
             return;
         }
 
+
+
         // Reconstruct A from Cholesky factor, then compute inverse
         let chol = read_mat_f64(a, n, n, lda);
         let mut reconstructed = Mat::zeros(n, n);
+        // Stock DPOTRI (via DTRTRI/DLAUUM) reports info = i (1-based) when the
+        // i-th diagonal element of the triangular factor is exactly zero: the
+        // factor is singular and the inverse cannot be computed. Only the
+        // triangle selected by `uplo` is written on exit; the opposite triangle
+        // is left unreferenced, matching the Fortran contract.
+        for i in 0..n {
+            if chol[(i, i)] == 0.0 {
+                *info = (i + 1) as libc::c_int;
+                return;
+            }
+        }
 
         match uplo_byte {
             b'U' | b'u' => {
@@ -415,7 +479,6 @@ pub unsafe fn dpotri_(
         // Compute inverse via LU
         let a_inv = reconstructed.partial_piv_lu().inverse();
 
-        // Write result to the specified triangle
         match uplo_byte {
             b'U' | b'u' => {
                 for j in 0..n {

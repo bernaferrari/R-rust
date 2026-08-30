@@ -42,46 +42,42 @@ pub fn apply_closure_safe<'a>(
     args: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
-    if !closure.is_closure() {
+    if !closure.clone().is_closure() {
         return Err("not a closure".to_string());
     }
 
     let formals = closure
-        .try_formals()
-        .map_err(|err| sexp_err("closure formals lookup", err))?;
+        .clone().try_formals().clone().map_err(|err| sexp_err("closure formals lookup", err))?;
     let body = closure
-        .try_body()
-        .map_err(|err| sexp_err("closure body lookup", err))?;
+        .clone().try_body().clone().map_err(|err| sexp_err("closure body lookup", err))?;
     let cloenv = closure
         .try_cloenv()
         .map_err(|err| sexp_err("closure environment lookup", err))?;
 
     // Match arguments to formals
-    let matched = match_args_safe(formals, args)?;
+    let matched = match_args_safe(formals.clone(), args.clone())?;
 
     // Create new environment with matched arguments
     let new_env = create_env_safe(matched, cloenv)?;
 
     // Bind the matched arguments into the new environment
     let frame = new_env
-        .try_frame()
-        .map_err(|err| sexp_err("new closure environment frame lookup", err))?;
-    let new_env_bindings = Environment::new(new_env)?;
+        .clone().try_frame().clone().map_err(|err| sexp_err("new closure environment frame lookup", err))?;
+    let new_env_bindings = Environment::new(new_env.clone())?;
     for cell in PairlistIter::new(frame) {
         let sym = cell
-            .try_tag()
-            .map_err(|err| sexp_err("matched argument tag lookup", err))?;
-        if !sym.is_nil() {
+            .clone().try_tag().clone().map_err(|err| sexp_err("matched argument tag lookup", err))?;
+        if !sym.clone().is_nil() {
             let val = cell
                 .try_car()
                 .map_err(|err| sexp_err("matched argument value lookup", err))?;
-            new_env_bindings.define(sym, val)?;
+            new_env_bindings.clone().define(sym, val).clone()?;
         }
     }
 
     // Add missing arguments
     unsafe {
-        addMissingVarsToNewEnv(formals.as_raw(), args.as_raw(), new_env.as_raw());
+        addMissingVarsToNewEnv(formals.as_raw(), args.as_raw(), new_env.clone().as_raw());
     }
 
     // Evaluate body in new environment.
@@ -95,7 +91,7 @@ pub fn apply_closure_safe<'a>(
 /// Matches actual arguments to formal parameters, building a new
 /// pairlist with the matched values.
 pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    if formals.is_nil() {
+    if formals.clone().is_nil() {
         return Ok(args);
     }
 
@@ -276,11 +272,11 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
             Sexp::from_raw(rho),
         ) {
             (Some(closure), Some(args), Some(env)) => {
-                if !closure.is_closure() {
+                if !closure.clone().is_closure() {
                     return R_NilValue();
                 }
 
-                let formals = match closure.try_formals() {
+                let formals = match closure.clone().try_formals() {
                     Ok(f) => f,
                     Err(_) => return R_NilValue(),
                 };
@@ -291,7 +287,7 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
 
                 let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
                 let matched =
-                    match_closure_args(formals.as_raw(), promised_args).unwrap_or_else(|message| {
+                    match_closure_args(formals.clone().as_raw(), promised_args).unwrap_or_else(|message| {
                         std::panic::panic_any(crate::sexp::context::RSignal::Error { message })
                     });
 
@@ -300,7 +296,7 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                     Err(_) => return R_NilValue(),
                 };
 
-                install_default_promises(formals.as_raw(), matched, new_env.as_raw());
+                install_default_promises(formals.as_raw(), matched, new_env.clone().as_raw());
 
                 new_env.as_raw()
             }

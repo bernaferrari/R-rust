@@ -68,17 +68,17 @@ pub(crate) fn apply_special_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
-    let primitive = PrimitiveDescriptor::from_sexp(fun);
-    let flag = primitive.map(|primitive| primitive.print_flag).unwrap_or(0);
-    let op_name = primitive_call_name(primitive, call);
+    let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
+    let flag = primitive.clone().map(|primitive| primitive.print_flag).unwrap_or(0);
+    let op_name = primitive_call_name(primitive.clone(), call.clone());
     set_visibility_for_print_flag(flag);
 
     let tmp = if let Some(primfun) = primitive.and_then(|primitive| primitive.fun) {
-        crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+        crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
             primfun(call.as_raw(), fun.as_raw(), args.as_raw(), rho.as_raw())
         })
     } else {
-        crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+        crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
             super::special::do_special_dispatch(
                 call.as_raw(),
                 fun.as_raw(),
@@ -96,7 +96,7 @@ pub(crate) fn apply_special_safe<'a>(
     )
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct PrimitiveCall<'a> {
     fun: Sexp<'a>,
     call: Sexp<'a>,
@@ -155,23 +155,23 @@ pub(crate) fn apply_builtin_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
-    let primitive = PrimitiveDescriptor::from_sexp(fun);
-    let flag = primitive.map(|primitive| primitive.print_flag).unwrap_or(0);
+    let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
+    let flag = primitive.clone().map(|primitive| primitive.print_flag).unwrap_or(0);
     set_visibility_for_print_flag(flag);
 
     let frame = PrimitiveCall {
         fun,
-        call,
+        call: call.clone(),
         args,
         rho,
     };
     let op_name = primitive_call_name(primitive, call);
 
-    if let Some((result, restore)) = apply_unevaluated_builtin(frame, &op_name) {
+    if let Some((result, restore)) = apply_unevaluated_builtin(frame.clone(), &op_name) {
         return finish_application(result, flag, &op_name, restore);
     }
 
-    let evaled_args = frame.eval_args();
+    let evaled_args = frame.clone().eval_args();
     let result = apply_evaluated_builtin(frame, &op_name, evaled_args);
     finish_application(
         result,
@@ -187,7 +187,7 @@ fn apply_unevaluated_builtin<'a>(
 ) -> Option<(SEXP, VisibilityRestore)> {
     let builtin = super::builtin::unevaluated_builtin_handler(op_name)?;
     let result =
-        crate::mainutils::errors::attribute_handler_errors(frame.call.as_raw(), || unsafe {
+        crate::mainutils::errors::attribute_handler_errors(frame.call.clone().as_raw(), || unsafe {
             (builtin.handler)(
                 frame.call.as_raw(),
                 frame.fun.as_raw(),
@@ -209,7 +209,7 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     let args = frame.args;
     let rho = frame.rho;
     if let Some(handler) = super::builtin::evaluated_builtin_handler(op_name) {
-        let result = crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+        let result = crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
             handler(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         });
         // Stock clears R_Visible for these .Internal results (funtab eval
@@ -221,12 +221,12 @@ fn apply_evaluated_builtin<'a>(frame: PrimitiveCall<'a>, op_name: &str, evaled_a
     }
 
     // Try S3/S4 dispatch for primitive names that are not handled directly.
-    if let Some(s3_result) = try_s3_dispatch(op_name, fun, call, args, rho, evaled_args) {
+    if let Some(s3_result) = try_s3_dispatch(op_name, fun.clone(), call.clone(), args.clone(), rho.clone(), evaled_args) {
         s3_result
-    } else if let Some(s4_result) = try_s4_dispatch(op_name, fun, call, args, rho, evaled_args) {
+    } else if let Some(s4_result) = try_s4_dispatch(op_name, fun.clone(), call.clone(), args, rho.clone(), evaled_args) {
         s4_result
-    } else if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
-        crate::mainutils::errors::attribute_handler_errors(call.as_raw(), || unsafe {
+    } else if let Some(primfun) = unsafe { get_primfun(fun.clone().as_raw()) } {
+        crate::mainutils::errors::attribute_handler_errors(call.clone().as_raw(), || unsafe {
             primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         })
     } else {
@@ -282,16 +282,15 @@ fn try_s3_dispatch<'a>(
             return None;
         }
 
-        let defrho = if TYPEOF(fun.as_raw()) == SEXPTYPE::CLOSXP {
+        let defrho = if TYPEOF(fun.clone().as_raw()) == SEXPTYPE::CLOSXP {
             CLOENV(fun.as_raw())
         } else {
-            rho.as_raw()
-        };
+            rho.clone().as_raw()};
         let method_match = crate::mainutils::objects::lookup_s3_method_for_classes(
             op_name,
             klass,
-            rho.as_raw(),
-            rho.as_raw(),
+            rho.clone().as_raw(),
+            rho.clone().as_raw(),
             defrho,
             false,
         )?;
@@ -380,7 +379,7 @@ fn do_parent_frame_impl(n: c_int, rho: SEXP) -> SEXP {
         let mut current = env;
         for _ in 0..n {
             match current.try_enclos() {
-                Ok(enclos) if enclos.is_environment() => current = enclos,
+                Ok(enclos) if enclos.clone().is_environment() => current = enclos,
                 _ => return super::runtime::global_env(),
             }
         }
@@ -428,7 +427,7 @@ fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
                                 let expr = CAR(current);
                                 if !expr.is_null() {
                                     let sexp_expr = Sexp::from_raw_unchecked(expr);
-                                    last_result = eval_safe(sexp_expr, env)
+                                    last_result = eval_safe(sexp_expr, env.clone())
                                         .map_err(|e| format!("error in '{}': {}", file_path, e))?
                                         .as_raw();
                                 }
@@ -490,7 +489,7 @@ mod tests {
             // h(x, 2) must dispatch on that bound value (upstream dispatches
             // the primitive's funtab entry), not on the call-head name.
             let binding = parser::parse("h <- `[`", &mut arena).expect("parse alias binding");
-            eval_safe(Sexp::from_raw_unchecked(binding), env).expect("bind alias");
+            eval_safe(Sexp::from_raw_unchecked(binding), env.clone()).expect("bind alias");
 
             let call =
                 parser::parse("h(c(10, 20, 30), 2)", &mut arena).expect("parse aliased call");

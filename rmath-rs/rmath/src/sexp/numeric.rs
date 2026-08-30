@@ -11,7 +11,7 @@ use super::object::Sexp;
 ///
 /// It centralizes exact type checks, recycling, and NA coercion. Callers still
 /// decide operation-specific result types and NA propagation semantics.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct NumericVector<'a> {
     sexp: Sexp<'a>,
 }
@@ -23,7 +23,7 @@ impl<'a> NumericVector<'a> {
     }
 
     pub(crate) fn new(sexp: Sexp<'a>) -> Option<Self> {
-        match sexp.typeof_() {
+        match sexp.clone().typeof_(){
             SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => Some(Self { sexp }),
             _ => None,
         }
@@ -33,8 +33,8 @@ impl<'a> NumericVector<'a> {
         self.sexp.len()
     }
 
-    pub(crate) fn is_empty(self) -> bool {
-        self.len() == 0
+    pub(crate) fn is_empty(&self) -> bool {
+        self.sexp.clone().len() == 0
     }
 
     pub(crate) fn typeof_(self) -> SEXPTYPE {
@@ -62,10 +62,10 @@ impl<'a> NumericVector<'a> {
 
     /// Read an element using R's integer/logical-to-real coercion.
     pub(crate) fn real_at(self, i: R_xlen_t) -> f64 {
-        let Some(idx) = self.recycled_index(i) else {
+        let Some(idx) = self.clone().recycled_index(i) else {
             return NA_REAL;
         };
-        match self.typeof_() {
+        match self.clone().typeof_(){
             SEXPTYPE::REALSXP => self.sexp.real_elt(idx).unwrap_or(NA_REAL),
             SEXPTYPE::INTSXP => match self.sexp.integer_elt(idx) {
                 Some(NA_INTEGER) | None => NA_REAL,
@@ -81,10 +81,10 @@ impl<'a> NumericVector<'a> {
 
     /// Read an integer-like element from integer or logical vectors.
     pub(crate) fn int_at(self, i: R_xlen_t) -> i32 {
-        let Some(idx) = self.recycled_index(i) else {
+        let Some(idx) = self.clone().recycled_index(i) else {
             return NA_INTEGER;
         };
-        match self.typeof_() {
+        match self.clone().typeof_(){
             SEXPTYPE::INTSXP => self.sexp.integer_elt(idx).unwrap_or(NA_INTEGER),
             SEXPTYPE::LGLSXP => self.sexp.logical_elt(idx).unwrap_or(NA_INTEGER),
             _ => NA_INTEGER,
@@ -113,17 +113,17 @@ mod tests {
         let _session = RSession::new();
         unsafe {
             let ints = Sexp::from_raw(Rf_allocVector3(SEXPTYPE::INTSXP, 2)).unwrap();
-            ints.set_integer_elt(0, 10);
-            ints.set_integer_elt(1, NA_INTEGER);
+            ints.clone().set_integer_elt(0, 10);
+            ints.clone().set_integer_elt(1, NA_INTEGER);
             let ints = NumericVector::new(ints).unwrap();
-            assert_eq!(ints.real_at(0), 10.0);
+            assert_eq!(ints.clone().real_at(0), 10.0);
             assert_eq!(ints.real_at(1).to_bits(), NA_REAL.to_bits());
 
             let logicals = Sexp::from_raw(Rf_allocVector3(SEXPTYPE::LGLSXP, 2)).unwrap();
-            logicals.set_logical_elt(0, TRUE);
-            logicals.set_logical_elt(1, FALSE);
+            logicals.clone().set_logical_elt(0, TRUE);
+            logicals.clone().set_logical_elt(1, FALSE);
             let logicals = NumericVector::new(logicals).unwrap();
-            assert_eq!(logicals.real_at(0), 1.0);
+            assert_eq!(logicals.clone().real_at(0), 1.0);
             assert_eq!(logicals.real_at(1), 0.0);
         }
     }
@@ -136,9 +136,9 @@ mod tests {
             let b = NumericVector::from_raw(Rf_allocVector3(SEXPTYPE::REALSXP, 1)).unwrap();
             let empty = NumericVector::from_raw(Rf_allocVector3(SEXPTYPE::INTSXP, 0)).unwrap();
 
-            assert_eq!(a.recycled_len_with(b), 3);
-            assert_eq!(a.recycled_index(4), Some(1));
-            assert_eq!(a.recycled_len_with(empty), 0);
+            assert_eq!(a.clone().recycled_len_with(b), 3);
+            assert_eq!(a.clone().recycled_index(4), Some(1));
+            assert_eq!(a.recycled_len_with(empty.clone()), 0);
             assert!(empty.recycled_index(0).is_none());
         }
     }

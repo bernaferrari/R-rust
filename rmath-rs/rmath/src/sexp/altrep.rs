@@ -1,3 +1,4 @@
+#![cfg(feature = "altrep")]
 //! ALTREP (Alternative Representations) support.
 //!
 //! ALTREP allows R vectors to compute elements on demand rather than
@@ -486,7 +487,7 @@ pub fn altrep_as_integer_vec(x: SEXP) -> Option<Vec<c_int>> {
             return None;
         }
         let sexp = Sexp::from_raw(elt)?;
-        match sexp.typeof_() {
+        match sexp.clone().typeof_() {
             SEXPTYPE::INTSXP => {
                 result.push(sexp.integer_elt(0).unwrap_or(0));
             }
@@ -516,7 +517,7 @@ pub fn altrep_as_real_vec(x: SEXP) -> Option<Vec<c_double>> {
             return None;
         }
         let sexp = Sexp::from_raw(elt)?;
-        match sexp.typeof_() {
+        match sexp.clone().typeof_() {
             SEXPTYPE::REALSXP => {
                 result.push(sexp.real_elt(0).unwrap_or(0.0));
             }

@@ -42,7 +42,7 @@ pub struct RSession {
 }
 
 fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
-    let typed = RValue::from_sexp(sexp);
+    let typed = RValue::from_sexp(sexp.clone());
     RResult {
         value: typed.numeric_scalar_value(),
         typed,
@@ -58,7 +58,7 @@ fn result_from_eval(sexp: Sexp<'_>, captured: output::RCapturedOutput, visible: 
         if !display.is_empty() && !display.ends_with('\n') {
             display.push('\n');
         }
-        display.push_str(&output::format_sexp_direct(sexp));
+        display.push_str(&output::format_sexp_direct(sexp.clone()));
     }
     // main.c REPL tail: after the auto-printed value of the final top-level
     // statement, upstream flushes warnings that statement deferred
@@ -591,7 +591,7 @@ impl From<SexpComplex> for RComplexValue {
 
 impl RValue {
     pub fn from_sexp(sexp: Sexp<'_>) -> Self {
-        match sexp.to_owned_value() {
+        match sexp.clone().to_owned_value().clone(){
             Ok(value) => RValue::from_owned_value(value),
             Err(_error) => RValue::Unsupported {
                 type_name: format!("invalid {}", sexp.typeof_().0),
@@ -1230,19 +1230,19 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let mut arena = crate::sexp::memory::RArena::new();
         let vector = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)).expect("vector");
-        vector.try_set_integer_elt(0, 1).expect("set integer");
-        vector.try_set_integer_elt(1, 2).expect("set integer");
+        vector.clone().try_set_integer_elt(0, 1).expect("set integer");
+        vector.clone().try_set_integer_elt(1, 2).expect("set integer");
 
         let names = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)).expect("names");
-        names
+        names.clone()
             .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name"))
             .expect("set name");
-        names
+        names.clone()
             .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name"))
             .expect("set name");
 
         let class = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)).expect("class");
-        class
+        class.clone()
             .try_set_string_elt(
                 0,
                 Sexp::from_raw(arena.alloc_charsxp(b"foo")).expect("class"),
@@ -1256,7 +1256,7 @@ mod tests {
         let names_cell = arena.cons(names.as_raw(), class_cell, unsafe {
             crate::sexp::symbol::Rf_install(c"names".as_ptr())
         });
-        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.as_raw(), names_cell) };
+        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
 
         let typed = RValue::from_sexp(vector);
         let RValue::Attributed { value, metadata } = typed else {
@@ -1287,10 +1287,10 @@ mod tests {
         let mut arena = crate::sexp::memory::RArena::new();
         let complex = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)).unwrap();
         complex
-            .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
+            .clone().try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
             .unwrap();
         complex
-            .try_set_complex_elt(
+            .clone().try_set_complex_elt(
                 1,
                 crate::sexp::Rcomplex {
                     r: crate::sexp::NA_REAL,

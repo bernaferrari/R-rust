@@ -4,7 +4,9 @@ pub mod CommandLineArgs;
 pub mod Rmain;
 pub mod agrep;
 pub mod alloca;
+#[cfg(feature = "altrep")]
 pub mod altclasses;
+#[cfg(feature = "altrep")]
 pub mod altrep;
 pub mod apply;
 pub mod arithmetic;

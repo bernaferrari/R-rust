@@ -91,6 +91,7 @@ fn main() {
             .unwrap()
     });
 
+    #[cfg(feature = "altrep")]
     run("altrep_intseq_create", iterations, || unsafe {
         let mut session = RSession::new();
         session
@@ -101,10 +102,13 @@ fn main() {
             .unwrap()
     });
 
+    #[cfg(feature = "altrep")]
     let mut int_seq_session = RSession::new();
+    #[cfg(feature = "altrep")]
     let int_seq = int_seq_session
         .with_arena(|_| unsafe { rmath::mainutils::altrep::R_compact_intseq(1, 1000) })
         .unwrap();
+    #[cfg(feature = "altrep")]
     run("altrep_intseq_access", iterations, || unsafe {
         int_seq_session
             .with_arena(|_| {
@@ -115,6 +119,7 @@ fn main() {
             .unwrap()
     });
 
+    #[cfg(feature = "altrep")]
     run("altrep_realseq_create", iterations, || unsafe {
         let mut session = RSession::new();
         session
@@ -125,10 +130,13 @@ fn main() {
             .unwrap()
     });
 
+    #[cfg(feature = "altrep")]
     let mut real_seq_session = RSession::new();
+    #[cfg(feature = "altrep")]
     let real_seq = real_seq_session
         .with_arena(|_| unsafe { rmath::mainutils::altrep::R_compact_realseq(0.0, 1.0, 1000) })
         .unwrap();
+    #[cfg(feature = "altrep")]
     run("altrep_realseq_access", iterations, || unsafe {
         real_seq_session
             .with_arena(|_| {

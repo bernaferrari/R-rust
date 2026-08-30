@@ -22,7 +22,7 @@ impl<'a> Sexp<'a> {
     }
 
     pub fn primoffset(self) -> Option<c_int> {
-        if self.is_primitive() {
+        if self.clone().is_primitive() {
             Some(unsafe { (*self.ptr).data.primsxp.offset })
         } else {
             None
@@ -31,10 +31,10 @@ impl<'a> Sexp<'a> {
 
     /// Get the primitive table index with typed error reporting.
     pub fn try_primoffset(self) -> SexpResult<c_int> {
-        self.expect_any_type(
+        self.clone().expect_any_type(
             "special or builtin primitive",
             &[SEXPTYPE::SPECIALSXP, SEXPTYPE::BUILTINSXP],
-        )?;
+        ).clone()?;
         Ok(unsafe { (*self.ptr).data.primsxp.offset })
     }
 }

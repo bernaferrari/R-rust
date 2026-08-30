@@ -3,6 +3,12 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    let backend = if env::var_os("CARGO_FEATURE_FORTRAN_BACKEND").is_some() {
+        "system-fortran"
+    } else {
+        "faer-pure-rust"
+    };
+    println!("cargo:rustc-env=RUST_LAPACK_BACKEND={backend}");
 
     // After building, copy librmath.a -> libRmath.a for C compatibility
     let target_dir = env::var("CARGO_TARGET_DIR")

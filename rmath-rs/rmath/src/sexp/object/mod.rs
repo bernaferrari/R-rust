@@ -95,8 +95,8 @@ pub enum SexpOwner {
 /// let sexp = arena
 ///     .alloc_vector_sexp(SEXPTYPE::INTSXP, 3)
 ///     .expect("arena allocation failed");
+/// assert!(sexp.clone().is_vector()); // accessors consume the handle: clone to keep it
 /// assert_eq!(sexp.len(), 3);
-/// assert!(sexp.is_vector());
 /// ```
 ///
 /// # Pointer Equality
@@ -104,11 +104,54 @@ pub enum SexpOwner {
 /// `Sexp` implements `PartialEq`, `Eq`, and `Hash` based on pointer
 /// identity, not structural equality. Two `Sexp` values are equal if
 /// and only if they point to the same memory address.
-#[derive(Clone, Copy, Debug)]
+///
+/// # Intentionally Not `Copy`
+///
+/// `Sexp` deliberately does not implement `Copy`. A `Copy` handle would let
+/// a stale alias legally survive an in-place mutation of the same R object
+/// reached through another handle (`SET_*` element writes, attribute
+/// assignment, environment rebinding) — precisely the aliasing-undefined-
+/// behavior class this crate forbids. Handles therefore move by default;
+/// clone explicitly (see the [`Clone`] impl) when a second handle is
+/// actually intended:
+///
+/// ```compile_fail
+/// use rmath::sexp::{Sexp, SEXPTYPE};
+/// use rmath::sexp::memory::RArena;
+///
+/// let mut arena = RArena::new();
+/// let sexp = arena
+///     .alloc_vector_sexp(SEXPTYPE::INTSXP, 3)
+///     .expect("arena allocation failed");
+/// let alias = sexp; // moves the handle into `alias`
+/// let _ = sexp.len(); // ERROR: use-after-move; clone explicitly instead
+/// ```
+#[derive(Debug)]
 pub struct Sexp<'a> {
     ptr: SEXP,
     owner: SexpOwner,
     _marker: std::marker::PhantomData<&'a SexprecCore>,
+}
+
+/// Duplicate this handle; the clone aliases the same R object, it does not
+/// deep-copy it.
+///
+/// A cloned [`Sexp`] is a second lightweight handle (same raw `SEXP`
+/// pointer, same [`SexpOwner`] token) over identical R memory. Cloning is
+/// cheap and never touches R's heap, but every clone is an alias and the
+/// aliasing discipline that forbids `Copy` applies to it: never retain a
+/// clone across an in-place mutation of the object reached through another
+/// handle. Where a clone exists merely to keep an earlier handle alive,
+/// prefer re-deriving the handle from its owner instead.
+impl Clone for Sexp<'_> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            ptr: self.ptr,
+            owner: self.owner,
+            _marker: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<'a> Sexp<'a> {
@@ -254,7 +297,7 @@ impl<'a> Sexp<'a> {
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<*const T> {
-        self.expect_type(expected, expected_name)?;
+        self.clone().expect_type(expected, expected_name).clone()?;
         let data = unsafe { (*self.ptr).gengc_next_node as *const T };
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
@@ -265,7 +308,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn expect_type(self, expected: SEXPTYPE, expected_name: &'static str) -> SexpResult<()> {
-        if self.typeof_() != expected {
+        if self.clone().typeof_()!= expected {
             Err(SexpError::TypeMismatch {
                 expected: expected_name,
                 actual: self.typeof_(),
@@ -300,7 +343,7 @@ impl<'a> Sexp<'a> {
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<*mut T> {
-        self.expect_type(expected, expected_name)?;
+        self.clone().expect_type(expected, expected_name).clone()?;
         let data = unsafe { (*self.ptr).gengc_next_node as *mut T };
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
@@ -321,8 +364,8 @@ impl<'a> Sexp<'a> {
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<&'a [T]> {
-        self.expect_type(expected, expected_name)?;
-        let len = self.len() as usize;
+        self.clone().expect_type(expected, expected_name)?;
+        let len = self.clone().len() as usize;
         if len == 0 {
             return Ok(&[]);
         }
@@ -347,7 +390,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn try_vector_sexp_data(self) -> SexpResult<*const SEXP> {
-        if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
+        if !matches!(self.clone().typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
             return Err(SexpError::TypeMismatch {
                 expected: "generic or expression vector",
                 actual: self.typeof_(),
@@ -370,7 +413,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn try_vector_sexp_data_mut(self) -> SexpResult<*mut SEXP> {
-        if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
+        if !matches!(self.clone().typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
             return Err(SexpError::TypeMismatch {
                 expected: "generic or expression vector",
                 actual: self.typeof_(),
@@ -402,7 +445,7 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn try_pairlist(self) -> SexpResult<()> {
-        if self.is_pairlist() {
+        if self.clone().is_pairlist() {
             Ok(())
         } else {
             Err(SexpError::TypeMismatch {
@@ -426,10 +469,10 @@ impl<'a> Sexp<'a> {
     /// empty vectors report [`SexpError::OutOfBounds`]. Other values are true,
     /// matching R's broad truthiness at this wrapper layer.
     pub fn try_to_bool(self) -> SexpResult<bool> {
-        if self.is_nil() {
+        if self.clone().is_nil() {
             return Ok(false);
         }
-        match self.typeof_() {
+        match self.clone().typeof_() {
             SEXPTYPE::LGLSXP => self.try_logical_elt(0).map(|value| value != 0),
             SEXPTYPE::INTSXP => self.try_integer_elt(0).map(|value| value != 0),
             SEXPTYPE::REALSXP => self.try_real_elt(0).map(|value| value != 0.0),
@@ -446,7 +489,7 @@ impl<'a> Sexp<'a> {
 
     /// Convert the first logical/integer/real element to `f64`.
     pub fn try_as_f64(self) -> SexpResult<f64> {
-        match self.typeof_() {
+        match self.clone().typeof_(){
             SEXPTYPE::REALSXP => self.try_real_elt(0),
             SEXPTYPE::INTSXP => self.try_integer_elt(0).map(|value| value as f64),
             SEXPTYPE::LGLSXP => self.try_logical_elt(0).map(|value| value as f64),
@@ -464,7 +507,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a pairlist or the CAR is null.
     #[inline]
     pub fn car(self) -> Option<Sexp<'a>> {
-        if self.is_pairlist() {
+        if self.clone().is_pairlist() {
             Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.carval })
         } else {
             None
@@ -474,7 +517,7 @@ impl<'a> Sexp<'a> {
     /// Get the CAR with typed error reporting.
     #[inline]
     pub fn try_car(self) -> SexpResult<Sexp<'a>> {
-        self.try_pairlist()?;
+        self.clone().try_pairlist().clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.listsxp.carval })
     }
 
@@ -483,7 +526,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a pairlist or the CDR is null.
     #[inline]
     pub fn cdr(self) -> Option<Sexp<'a>> {
-        if self.is_pairlist() {
+        if self.clone().is_pairlist() {
             Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.cdrval })
         } else {
             None
@@ -493,7 +536,7 @@ impl<'a> Sexp<'a> {
     /// Get the CDR with typed error reporting.
     #[inline]
     pub fn try_cdr(self) -> SexpResult<Sexp<'a>> {
-        self.try_pairlist()?;
+        self.clone().try_pairlist().clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.listsxp.cdrval })
     }
 
@@ -502,7 +545,7 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a pairlist or the TAG is null.
     #[inline]
     pub fn tag(self) -> Option<Sexp<'a>> {
-        if self.is_pairlist() {
+        if self.clone().is_pairlist() {
             Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.tagval })
         } else {
             None
@@ -512,7 +555,7 @@ impl<'a> Sexp<'a> {
     /// Get the TAG with typed error reporting.
     #[inline]
     pub fn try_tag(self) -> SexpResult<Sexp<'a>> {
-        self.try_pairlist()?;
+        self.clone().try_pairlist().clone()?;
         Self::checked_child(unsafe { (*self.ptr).data.listsxp.tagval })
     }
 
@@ -520,7 +563,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub(crate) fn try_next_pairlist_cell(self) -> SexpResult<Option<Sexp<'a>>> {
         let next = self.try_cdr()?;
-        if next.is_nil() {
+        if next.clone().is_nil() {
             Ok(None)
         } else {
             Ok(Some(next))
@@ -530,13 +573,13 @@ impl<'a> Sexp<'a> {
     /// Return the value at the `index`th pairlist cell.
     pub(crate) fn try_pairlist_arg(mut self, index: usize) -> SexpResult<Sexp<'a>> {
         for _ in 0..index {
-            if self.is_nil() {
+            if self.clone().is_nil() {
                 return Err(SexpError::MissingArgument { index });
             }
             self = self.try_cdr()?;
         }
 
-        if self.is_nil() {
+        if self.clone().is_nil() {
             Err(SexpError::MissingArgument { index })
         } else {
             self.try_car()
@@ -549,13 +592,13 @@ impl<'a> Sexp<'a> {
         index: usize,
     ) -> SexpResult<Option<Sexp<'a>>> {
         for _ in 0..index {
-            if self.is_nil() {
+            if self.clone().is_nil() {
                 return Ok(None);
             }
             self = self.try_cdr()?;
         }
 
-        if self.is_nil() {
+        if self.clone().is_nil() {
             Ok(None)
         } else {
             self.try_car().map(Some)
@@ -568,7 +611,7 @@ impl<'a> Sexp<'a> {
     /// do not match.
     pub(crate) fn try_tag_name_eq(self, name: &[u8]) -> SexpResult<bool> {
         let tag = self.try_tag()?;
-        if tag.is_nil() || tag.typeof_() != SEXPTYPE::SYMSXP {
+        if tag.clone().is_nil() || tag.clone().typeof_() != SEXPTYPE::SYMSXP {
             return Ok(false);
         }
 
@@ -605,8 +648,8 @@ impl std::hash::Hash for Sexp<'_> {
 
 impl std::fmt::Display for Sexp<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let t = self.typeof_();
-        write!(f, "Sexp({:?}, len={})", t.0, self.len())
+        let t = self.clone().typeof_();
+        write!(f, "Sexp({:?}, len={})", t.0, self.clone().len())
     }
 }
 
@@ -642,14 +685,14 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
         let sexp = some(Sexp::from_raw(ptr));
-        assert_eq!(sexp.owner(), SexpOwner::Unknown);
+        assert_eq!(sexp.clone().owner(), SexpOwner::Unknown);
         assert!(!sexp.is_owner_scoped());
     }
 
     #[test]
     fn test_nil_has_static_owner() {
         let nil = Sexp::nil();
-        assert_eq!(nil.owner(), SexpOwner::Static);
+        assert_eq!(nil.clone().owner(), SexpOwner::Static);
         assert!(nil.is_owner_scoped());
     }
 
@@ -658,8 +701,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
         let sexp = arena.sexp(ptr).expect("arena-owned pointer should wrap");
-        assert!(matches!(sexp.owner(), SexpOwner::Arena(_)));
-        assert!(sexp.is_owner_scoped());
+        assert!(matches!(sexp.clone().owner(), SexpOwner::Arena(_)));
+        assert!(sexp.clone().is_owner_scoped());
         assert!(sexp.belongs_to_arena(&arena));
     }
 
@@ -668,8 +711,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_node(SEXPTYPE::SYMSXP);
         let sexp = some(Sexp::from_raw(ptr));
-        assert_eq!(sexp.len(), 0);
-        assert!(sexp.is_empty());
+        assert_eq!(sexp.clone().len(), 0);
+        assert!(sexp.clone().is_empty());
         assert!(sexp.is_symbol());
     }
 
@@ -678,8 +721,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
         let sexp = some(Sexp::from_raw(ptr));
-        assert_eq!(sexp.len(), 5);
-        assert!(!sexp.is_empty());
+        assert_eq!(sexp.clone().len(), 5);
+        assert!(!sexp.clone().is_empty());
         assert!(sexp.is_vector());
     }
 
@@ -688,9 +731,9 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.integer_elt(5).is_none());
-        assert!(sexp.integer_elt(-1).is_none());
-        assert!(sexp.integer_elt(0).is_some());
+        assert!(sexp.clone().integer_elt(5).is_none());
+        assert!(sexp.clone().integer_elt(-1).is_none());
+        assert!(sexp.clone().integer_elt(0).is_some());
         assert!(sexp.integer_elt(2).is_some());
     }
 
@@ -726,8 +769,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.set_integer_elt(0, 42));
-        assert!(sexp.set_integer_elt(5, 99) == false);
+        assert!(sexp.clone().set_integer_elt(0, 42));
+        assert!(sexp.clone().set_integer_elt(5, 99) == false);
         assert_eq!(sexp.integer_elt(0), Some(42));
     }
 
@@ -736,8 +779,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.set_real_elt(0, 3.14));
-        assert!(sexp.set_real_elt(5, 99.0) == false);
+        assert!(sexp.clone().set_real_elt(0, 3.14));
+        assert!(sexp.clone().set_real_elt(5, 99.0) == false);
         assert_eq!(sexp.real_elt(0), Some(3.14));
     }
 
@@ -746,8 +789,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.set_raw_elt(0, 0xFF));
-        assert!(sexp.set_raw_elt(5, 0xAA) == false);
+        assert!(sexp.clone().set_raw_elt(0, 0xFF));
+        assert!(sexp.clone().set_raw_elt(5, 0xAA) == false);
         assert_eq!(sexp.raw_elt(0), Some(0xFF));
     }
 
@@ -827,7 +870,7 @@ mod tests {
         let a = some(Sexp::from_raw(p1));
         let b = some(Sexp::from_raw(p2));
         let mut set = HashSet::new();
-        set.insert(a);
+        set.insert(a.clone());
         assert!(set.contains(&a));
         assert!(!set.contains(&b));
     }
@@ -846,14 +889,14 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert_eq!(sexp.integer_elt(0), Some(0));
-        assert!(sexp.set_integer_elt(0, 42));
-        assert!(sexp.set_integer_elt(1, -7));
-        assert!(sexp.set_integer_elt(2, 99));
-        assert_eq!(sexp.integer_elt(0), Some(42));
-        assert_eq!(sexp.integer_elt(1), Some(-7));
-        assert_eq!(sexp.integer_elt(2), Some(99));
-        assert!(!sexp.set_integer_elt(5, 0));
+        assert_eq!(sexp.clone().integer_elt(0), Some(0));
+        assert!(sexp.clone().set_integer_elt(0, 42));
+        assert!(sexp.clone().set_integer_elt(1, -7));
+        assert!(sexp.clone().set_integer_elt(2, 99));
+        assert_eq!(sexp.clone().integer_elt(0), Some(42));
+        assert_eq!(sexp.clone().integer_elt(1), Some(-7));
+        assert_eq!(sexp.clone().integer_elt(2), Some(99));
+        assert!(!sexp.clone().set_integer_elt(5, 0));
         assert!(sexp.integer_elt(5).is_none());
     }
 
@@ -862,11 +905,11 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.set_real_elt(0, 1.5));
-        assert!(sexp.set_real_elt(1, 2.5));
-        assert!(sexp.set_real_elt(2, 3.5));
-        assert_eq!(sexp.real_elt(0), Some(1.5));
-        assert_eq!(sexp.real_elt(1), Some(2.5));
+        assert!(sexp.clone().set_real_elt(0, 1.5));
+        assert!(sexp.clone().set_real_elt(1, 2.5));
+        assert!(sexp.clone().set_real_elt(2, 3.5));
+        assert_eq!(sexp.clone().real_elt(0), Some(1.5));
+        assert_eq!(sexp.clone().real_elt(1), Some(2.5));
         assert_eq!(sexp.real_elt(2), Some(3.5));
     }
 
@@ -875,10 +918,10 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 4);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.set_integer_elt(0, 10));
-        assert!(sexp.set_integer_elt(1, 20));
-        assert!(sexp.set_integer_elt(2, 30));
-        assert!(sexp.set_integer_elt(3, 40));
+        assert!(sexp.clone().set_integer_elt(0, 10));
+        assert!(sexp.clone().set_integer_elt(1, 20));
+        assert!(sexp.clone().set_integer_elt(2, 30));
+        assert!(sexp.clone().set_integer_elt(3, 40));
         let slice = some(sexp.as_integer_slice());
         assert_eq!(slice, &[10, 20, 30, 40]);
     }
@@ -888,9 +931,9 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.set_real_elt(0, 1.1));
-        assert!(sexp.set_real_elt(1, 2.2));
-        assert!(sexp.set_real_elt(2, 3.3));
+        assert!(sexp.clone().set_real_elt(0, 1.1));
+        assert!(sexp.clone().set_real_elt(1, 2.2));
+        assert!(sexp.clone().set_real_elt(2, 3.3));
         let slice = some(sexp.as_real_slice());
         assert!((slice[0] - 1.1).abs() < f64::EPSILON);
         assert!((slice[1] - 2.2).abs() < f64::EPSILON);
@@ -903,7 +946,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
         let sexp = some(Sexp::from_raw(ptr));
         for i in 0..5 {
-            sexp.set_integer_elt(i, (i * 10) as i32);
+            sexp.clone().set_integer_elt(i, (i * 10) as i32);
         }
         let values: Vec<_> = sexp.iter_integer().collect();
         assert_eq!(values, vec![0, 10, 20, 30, 40]);
@@ -915,7 +958,7 @@ mod tests {
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
         let sexp = some(Sexp::from_raw(ptr));
         for i in 0..4 {
-            sexp.set_real_elt(i, i as f64 * 0.5);
+            sexp.clone().set_real_elt(i, i as f64 * 0.5);
         }
         let values: Vec<_> = sexp.iter_real().collect();
         assert!((values[0] - 0.0).abs() < f64::EPSILON);
@@ -929,10 +972,10 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 4);
         let sexp = some(Sexp::from_raw(ptr));
-        assert!(sexp.set_raw_elt(0, 0xDE));
-        assert!(sexp.set_raw_elt(1, 0xAD));
-        assert!(sexp.set_raw_elt(2, 0xBE));
-        assert!(sexp.set_raw_elt(3, 0xEF));
+        assert!(sexp.clone().set_raw_elt(0, 0xDE));
+        assert!(sexp.clone().set_raw_elt(1, 0xAD));
+        assert!(sexp.clone().set_raw_elt(2, 0xBE));
+        assert!(sexp.clone().set_raw_elt(3, 0xEF));
         let slice = some(sexp.as_raw_slice());
         assert_eq!(slice, &[0xDE, 0xAD, 0xBE, 0xEF]);
     }
@@ -942,12 +985,12 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
         let sexp = some(Sexp::from_raw(ptr));
-        sexp.try_set_integer_elt(0, 10).expect("set integer");
-        sexp.try_set_integer_elt(1, 20).expect("set integer");
+        sexp.clone().try_set_integer_elt(0, 10).expect("set integer");
+        sexp.clone().try_set_integer_elt(1, 20).expect("set integer");
 
-        assert_eq!(sexp.try_integer_elt(1), Ok(20));
+        assert_eq!(sexp.clone().try_integer_elt(1), Ok(20));
         assert!(matches!(
-            sexp.try_integer_elt(2),
+            sexp.clone().try_integer_elt(2),
             Err(SexpError::OutOfBounds { index: 2, len: 2 })
         ));
         assert!(matches!(
@@ -961,8 +1004,8 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 2);
         let sexp = some(Sexp::from_raw(ptr));
-        sexp.try_set_real_elt(0, 1.5).expect("set real");
-        sexp.try_set_real_elt(1, 2.5).expect("set real");
+        sexp.clone().try_set_real_elt(0, 1.5).expect("set real");
+        sexp.clone().try_set_real_elt(1, 2.5).expect("set real");
 
         match sexp.view().expect("view") {
             SexpView::Real(values) => assert_eq!(values, &[1.5, 2.5]),
@@ -974,20 +1017,20 @@ mod tests {
     fn test_to_owned_value_maps_atomic_na_values() {
         let mut arena = RArena::new();
         let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 3)));
-        logical.try_set_logical_elt(0, 1).expect("set logical");
-        logical.try_set_logical_elt(1, 0).expect("set logical");
+        logical.clone().try_set_logical_elt(0, 1).expect("set logical");
+        logical.clone().try_set_logical_elt(1, 0).expect("set logical");
         logical
-            .try_set_logical_elt(2, NA_LOGICAL)
+            .clone().try_set_logical_elt(2, NA_LOGICAL)
             .expect("set logical");
 
         let integer = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
-        integer.try_set_integer_elt(0, 10).expect("set integer");
+        integer.clone().try_set_integer_elt(0, 10).expect("set integer");
         integer
-            .try_set_integer_elt(1, NA_INTEGER)
+            .clone().try_set_integer_elt(1, NA_INTEGER)
             .expect("set integer");
 
         let real = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1)));
-        real.try_set_real_elt(0, NA_REAL).expect("set real");
+        real.clone().try_set_real_elt(0, NA_REAL).expect("set real");
 
         assert_eq!(
             logical.to_owned_value().expect("logical value"),
@@ -1009,29 +1052,29 @@ mod tests {
         let strings = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
         let hello = some(Sexp::from_raw(arena.alloc_charsxp(b"hello")));
         let na_string = some(Sexp::from_raw(unsafe { R_NaString() }));
-        strings.try_set_string_elt(0, hello).expect("set string");
+        strings.clone().try_set_string_elt(0, hello).expect("set string");
         strings
-            .try_set_string_elt(1, na_string)
+            .clone().try_set_string_elt(1, na_string)
             .expect("set string");
-        assert_eq!(strings.try_string_text_elt(0).expect("text"), Some("hello"));
-        assert_eq!(strings.try_string_text_elt(1).expect("NA text"), None);
+        assert_eq!(strings.clone().try_string_text_elt(0).expect("text"), Some("hello"));
+        assert_eq!(strings.clone().try_string_text_elt(1).expect("NA text"), None);
 
         let raw = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::RAWSXP, 2)));
-        raw.try_set_raw_elt(0, 0x41).expect("set raw");
-        raw.try_set_raw_elt(1, 0x5a).expect("set raw");
+        raw.clone().try_set_raw_elt(0, 0x41).expect("set raw");
+        raw.clone().try_set_raw_elt(1, 0x5a).expect("set raw");
 
         let complex = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)));
         complex
-            .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 })
+            .clone().try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 })
             .expect("set complex");
         complex
-            .try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 })
+            .clone().try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 })
             .expect("set complex");
 
         let list = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::VECSXP, 3)));
-        list.try_set_vector_elt(0, strings).expect("set list");
-        list.try_set_vector_elt(1, raw).expect("set list");
-        list.try_set_vector_elt(2, complex).expect("set list");
+        list.clone().try_set_vector_elt(0, strings).expect("set list");
+        list.clone().try_set_vector_elt(1, raw).expect("set list");
+        list.clone().try_set_vector_elt(2, complex).expect("set list");
 
         assert_eq!(
             list.to_owned_value().expect("list value"),
@@ -1054,23 +1097,23 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         let mut arena = RArena::new();
         let vector = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
-        vector.try_set_integer_elt(0, 10).expect("set integer");
-        vector.try_set_integer_elt(1, 20).expect("set integer");
+        vector.clone().try_set_integer_elt(0, 10).expect("set integer");
+        vector.clone().try_set_integer_elt(1, 20).expect("set integer");
 
         let names = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
-        names
+        names.clone()
             .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a"))))
             .expect("set name");
-        names
+        names.clone()
             .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b"))))
             .expect("set name");
 
         let dim = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
-        dim.try_set_integer_elt(0, 1).expect("set dim");
-        dim.try_set_integer_elt(1, 2).expect("set dim");
+        dim.clone().try_set_integer_elt(0, 1).expect("set dim");
+        dim.clone().try_set_integer_elt(1, 2).expect("set dim");
 
         let class = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)));
-        class
+        class.clone()
             .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix"))))
             .expect("set class");
 
@@ -1084,7 +1127,7 @@ mod tests {
         let names_cell = arena.cons(names.as_raw(), dim_cell, unsafe {
             crate::sexp::symbol::Rf_install(c"names".as_ptr())
         });
-        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.as_raw(), names_cell) };
+        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.clone().as_raw(), names_cell) };
 
         let value = vector.to_owned_value().expect("owned value");
         let SexpValue::Attributed { value, metadata } = value else {
@@ -1106,14 +1149,14 @@ mod tests {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
         let sexp = some(Sexp::from_raw(ptr));
-        sexp.try_set_integer_elt(0, 7).expect("set integer");
+        sexp.clone().try_set_integer_elt(0, 7).expect("set integer");
 
-        assert_eq!(sexp.try_as_f64(), Ok(7.0));
-        assert_eq!(sexp.try_to_bool(), Ok(true));
-        assert_eq!(sexp.try_attrib().expect("attribute").as_raw(), unsafe {
+        assert_eq!(sexp.clone().try_as_f64(), Ok(7.0));
+        assert_eq!(sexp.clone().try_to_bool(), Ok(true));
+        assert_eq!(sexp.clone().try_attrib().expect("attribute").as_raw(), unsafe {
             R_NilValue()
         });
-        assert!(sexp.try_data_ptr().is_ok());
+        assert!(sexp.clone().try_data_ptr().is_ok());
         assert!(matches!(
             sexp.try_formals(),
             Err(SexpError::TypeMismatch { expected, .. }) if expected == "closure"
@@ -1126,9 +1169,9 @@ mod tests {
         ));
 
         let extptr = some(Sexp::from_raw(arena.alloc_node(SEXPTYPE::EXTPTRSXP)));
-        assert!(extptr.try_extptr_ptr().expect("external pointer").is_null());
+        assert!(extptr.clone().try_extptr_ptr().expect("external pointer").is_null());
         assert_eq!(
-            extptr.try_extptr_tag().expect("external tag").as_raw(),
+            extptr.clone().try_extptr_tag().expect("external tag").as_raw(),
             unsafe { R_NilValue() }
         );
         assert_eq!(
@@ -1173,10 +1216,10 @@ mod tests {
             tag_val,
         );
         let sexp = some(Sexp::from_raw(cell));
-        assert!(sexp.car().is_some());
-        assert!(sexp.cdr().is_some());
-        assert!(sexp.tag().is_some());
-        assert!(some(sexp.car()).is_symbol() == false);
+        assert!(sexp.clone().car().is_some());
+        assert!(sexp.clone().cdr().is_some());
+        assert!(sexp.clone().tag().is_some());
+        assert!(some(sexp.clone().car()).is_symbol() == false);
         assert!(some(sexp.tag()).is_symbol());
     }
 
@@ -1194,19 +1237,19 @@ mod tests {
         let first = some(Sexp::from_raw(first_cell));
         let second = some(Sexp::from_raw(second_cell));
 
-        assert_eq!(first.try_pairlist_arg(0).unwrap().as_raw(), first_value);
-        assert_eq!(first.try_pairlist_arg(1).unwrap().as_raw(), second_value);
+        assert_eq!(first.clone().try_pairlist_arg(0).unwrap().as_raw(), first_value);
+        assert_eq!(first.clone().try_pairlist_arg(1).unwrap().as_raw(), second_value);
         assert!(matches!(
-            first.try_pairlist_arg(2),
+            first.clone().try_pairlist_arg(2),
             Err(SexpError::MissingArgument { index: 2 })
         ));
-        assert!(first.try_optional_pairlist_arg(2).unwrap().is_none());
-        assert!(first.try_optional_pairlist_arg(10).unwrap().is_none());
+        assert!(first.clone().try_optional_pairlist_arg(2).unwrap().is_none());
+        assert!(first.clone().try_optional_pairlist_arg(10).unwrap().is_none());
         assert_eq!(
-            first.try_next_pairlist_cell().unwrap().unwrap().as_raw(),
+            first.clone().try_next_pairlist_cell().unwrap().unwrap().as_raw(),
             second_cell
         );
-        assert!(second.try_next_pairlist_cell().unwrap().is_none());
+        assert!(second.clone().try_next_pairlist_cell().unwrap().is_none());
         assert!(first.try_tag_name_eq(b"na.rm").unwrap());
         assert!(!second.try_tag_name_eq(b"na.rm").unwrap());
     }
@@ -1224,9 +1267,9 @@ mod tests {
             (*closure).data.closxp.env = env;
         }
         let sexp = some(Sexp::from_raw(closure));
-        assert!(sexp.is_closure());
-        assert!(sexp.formals().is_some());
-        assert!(sexp.body().is_some());
+        assert!(sexp.clone().is_closure());
+        assert!(sexp.clone().formals().is_some());
+        assert!(sexp.clone().body().is_some());
         assert!(sexp.cloenv().is_some());
     }
 
@@ -1242,8 +1285,8 @@ mod tests {
             (*env).data.envsxp.hashtab = ptr::null_mut();
         }
         let sexp = some(Sexp::from_raw(env));
-        assert!(sexp.is_environment());
-        assert!(sexp.frame().is_some());
+        assert!(sexp.clone().is_environment());
+        assert!(sexp.clone().frame().is_some());
         assert!(sexp.enclos().is_some());
     }
 
@@ -1252,8 +1295,8 @@ mod tests {
         let mut arena = RArena::new();
         let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
         let sexp = some(Sexp::from_raw(sym));
-        assert!(sexp.as_integer_slice().is_none());
-        assert!(sexp.as_real_slice().is_none());
+        assert!(sexp.clone().as_integer_slice().is_none());
+        assert!(sexp.clone().as_real_slice().is_none());
         assert!(sexp.as_raw_slice().is_none());
     }
 
@@ -1264,19 +1307,19 @@ mod tests {
         let int = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
         let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 2)));
 
-        assert!(real.integer_elt(0).is_none());
-        assert!(real.set_integer_elt(0, 1) == false);
-        assert!(real.as_integer_slice().is_none());
+        assert!(real.clone().integer_elt(0).is_none());
+        assert!(real.clone().set_integer_elt(0, 1) == false);
+        assert!(real.clone().as_integer_slice().is_none());
         assert!(real.iter_integer().next().is_none());
 
-        assert!(int.real_elt(0).is_none());
-        assert!(int.set_real_elt(0, 1.0) == false);
-        assert!(int.as_real_slice().is_none());
+        assert!(int.clone().real_elt(0).is_none());
+        assert!(int.clone().set_real_elt(0, 1.0) == false);
+        assert!(int.clone().as_real_slice().is_none());
         assert!(int.iter_real().next().is_none());
 
-        assert!(logical.integer_elt(0).is_none());
-        assert!(logical.set_integer_elt(0, 1) == false);
-        assert!(logical.as_integer_slice().is_none());
+        assert!(logical.clone().integer_elt(0).is_none());
+        assert!(logical.clone().set_integer_elt(0, 1) == false);
+        assert!(logical.clone().as_integer_slice().is_none());
         assert_eq!(logical.as_logical_slice(), Some(&[0, 0][..]));
     }
 
@@ -1285,9 +1328,9 @@ mod tests {
         let mut arena = RArena::new();
         let strings = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)));
         let ch = some(Sexp::from_raw(arena.alloc_charsxp(b"x")));
-        assert!(strings.set_string_elt(0, ch));
-        assert!(strings.string_elt(0).is_some());
-        assert!(strings.vector_elt(0).is_none());
+        assert!(strings.clone().set_string_elt(0, ch));
+        assert!(strings.clone().string_elt(0).is_some());
+        assert!(strings.clone().vector_elt(0).is_none());
         assert!(strings.iter_vector().next().is_none());
     }
 
@@ -1299,9 +1342,9 @@ mod tests {
             (*special).data.primsxp.offset = 42;
         }
         let sexp = some(Sexp::from_raw(special));
-        assert!(sexp.is_special());
-        assert!(sexp.is_primitive());
-        assert!(!sexp.is_builtin());
+        assert!(sexp.clone().is_special());
+        assert!(sexp.clone().is_primitive());
+        assert!(!sexp.clone().is_builtin());
         assert_eq!(sexp.primoffset(), Some(42));
 
         let builtin = arena.alloc_node(SEXPTYPE::BUILTINSXP);
@@ -1309,14 +1352,14 @@ mod tests {
             (*builtin).data.primsxp.offset = 7;
         }
         let sexp2 = some(Sexp::from_raw(builtin));
-        assert!(sexp2.is_builtin());
-        assert!(sexp2.is_primitive());
-        assert!(!sexp2.is_special());
+        assert!(sexp2.clone().is_builtin());
+        assert!(sexp2.clone().is_primitive());
+        assert!(!sexp2.clone().is_special());
         assert_eq!(sexp2.primoffset(), Some(7));
 
         let other = arena.alloc_node(SEXPTYPE::INTSXP);
         let sexp3 = some(Sexp::from_raw(other));
-        assert!(!sexp3.is_primitive());
+        assert!(!sexp3.clone().is_primitive());
         assert_eq!(sexp3.primoffset(), None);
     }
 
@@ -1325,15 +1368,15 @@ mod tests {
         let mut arena = RArena::new();
         let charsxp = arena.alloc_charsxp(b"hello world");
         let sexp = some(Sexp::from_raw(charsxp));
-        assert!(sexp.is_charsxp());
-        assert_eq!(sexp.char_len(), Some(11));
-        assert_eq!(sexp.as_bytes(), Some(&b"hello world"[..]));
+        assert!(sexp.clone().is_charsxp());
+        assert_eq!(sexp.clone().char_len(), Some(11));
+        assert_eq!(sexp.clone().as_bytes(), Some(&b"hello world"[..]));
         assert_eq!(sexp.as_str(), Some("hello world"));
 
         let other = arena.alloc_node(SEXPTYPE::INTSXP);
         let sexp2 = some(Sexp::from_raw(other));
-        assert!(!sexp2.is_charsxp());
-        assert!(sexp2.as_bytes().is_none());
+        assert!(!sexp2.clone().is_charsxp());
+        assert!(sexp2.clone().as_bytes().is_none());
         assert!(sexp2.as_str().is_none());
     }
 
@@ -1347,16 +1390,16 @@ mod tests {
         let c2 = Rcomplex { r: 3.0, i: 4.0 };
         let c3 = Rcomplex { r: 5.0, i: 6.0 };
 
-        assert!(sexp.set_complex_elt(0, c1));
-        assert!(sexp.set_complex_elt(1, c2));
-        assert!(sexp.set_complex_elt(2, c3));
-        assert!(!sexp.set_complex_elt(3, c1)); // out of bounds
+        assert!(sexp.clone().set_complex_elt(0, c1));
+        assert!(sexp.clone().set_complex_elt(1, c2));
+        assert!(sexp.clone().set_complex_elt(2, c3));
+        assert!(!sexp.clone().set_complex_elt(3, c1)); // out of bounds
 
-        assert_eq!(sexp.complex_elt(0), Some(c1));
-        assert_eq!(sexp.complex_elt(1), Some(c2));
-        assert_eq!(sexp.complex_elt(2), Some(c3));
+        assert_eq!(sexp.clone().complex_elt(0), Some(c1));
+        assert_eq!(sexp.clone().complex_elt(1), Some(c2));
+        assert_eq!(sexp.clone().complex_elt(2), Some(c3));
 
-        let slice = some(sexp.as_complex_slice());
+        let slice = some(sexp.clone().as_complex_slice());
         assert_eq!(slice.len(), 3);
         assert_eq!(slice[0].r, 1.0);
         assert_eq!(slice[2].i, 6.0);
@@ -1371,7 +1414,7 @@ mod tests {
 
         let dots = arena.alloc_node(SEXPTYPE::DOTSXP);
         let sexp = some(Sexp::from_raw(dots));
-        assert!(sexp.is_dots());
+        assert!(sexp.clone().is_dots());
 
         let bc = arena.alloc_node(SEXPTYPE::BCODESXP);
         let sexp2 = some(Sexp::from_raw(bc));
@@ -1386,8 +1429,8 @@ mod tests {
             ];
         }
         let sexp3 = some(Sexp::from_raw(ext));
-        assert!(sexp3.is_extptr());
-        assert!(sexp3.extptr_ptr().is_some());
+        assert!(sexp3.clone().is_extptr());
+        assert!(sexp3.clone().extptr_ptr().is_some());
         assert!(sexp3.extptr_tag().is_none());
 
         let wr = arena.alloc_node(SEXPTYPE::WEAKREFSXP);

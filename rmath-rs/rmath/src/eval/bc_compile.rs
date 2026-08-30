@@ -387,7 +387,7 @@ mod tests {
         let env = session.global_env().expect("global env");
 
         unsafe {
-            let bcode = compile_expr(expr, env.as_raw()).expect("constant should compile");
+            let bcode = compile_expr(expr, env.clone().as_raw()).expect("constant should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 42);
@@ -400,9 +400,9 @@ mod tests {
         let env = session.global_env().expect("global env");
 
         unsafe {
-            defineVar(Rf_install(c"x".as_ptr()), Rf_ScalarInteger(9), env.as_raw());
+            defineVar(Rf_install(c"x".as_ptr()), Rf_ScalarInteger(9), env.clone().as_raw());
             let sym = Rf_install(c"x".as_ptr());
-            let bcode = compile_expr(sym, env.as_raw()).expect("symbol should compile");
+            let bcode = compile_expr(sym, env.clone().as_raw()).expect("symbol should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(*INTEGER(result), 9);
         }
@@ -414,7 +414,7 @@ mod tests {
         let env = session.global_env().expect("global env");
 
         unsafe {
-            defineVar(Rf_install(c"x".as_ptr()), Rf_ScalarInteger(5), env.as_raw());
+            defineVar(Rf_install(c"x".as_ptr()), Rf_ScalarInteger(5), env.clone().as_raw());
             let call = Rf_cons(
                 Rf_install(c"+".as_ptr()),
                 Rf_cons(
@@ -423,7 +423,7 @@ mod tests {
                 ),
             );
             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            let bcode = compile_expr(call, env.as_raw()).expect("addition should compile");
+            let bcode = compile_expr(call, env.clone().as_raw()).expect("addition should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(*INTEGER(result), 6);
         }
@@ -450,7 +450,7 @@ mod tests {
             );
             (*block).sxpinfo.set_type(SEXPTYPE::LANGSXP);
 
-            assert!(compile_expr(assign, env.as_raw()).is_none());
+            assert!(compile_expr(assign, env.clone().as_raw()).is_none());
             assert!(compile_expr(block, env.as_raw()).is_none());
         }
     }

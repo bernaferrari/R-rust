@@ -19,7 +19,7 @@ impl<'a> Sexp<'a> {
     /// Get the i-th logical value with typed error reporting.
     #[inline]
     pub fn try_logical_elt(self, i: R_xlen_t) -> SexpResult<c_int> {
-        let data = self.try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
+        let data = self.clone().try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector").clone()?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -36,7 +36,7 @@ impl<'a> Sexp<'a> {
     /// Get the i-th integer value with typed error reporting.
     #[inline]
     pub fn try_integer_elt(self, i: R_xlen_t) -> SexpResult<c_int> {
-        let data = self.try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
+        let data = self.clone().try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector").clone()?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -53,7 +53,7 @@ impl<'a> Sexp<'a> {
     /// Get the i-th real value with typed error reporting.
     #[inline]
     pub fn try_real_elt(self, i: R_xlen_t) -> SexpResult<c_double> {
-        let data = self.try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
+        let data = self.clone().try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector").clone()?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -70,7 +70,7 @@ impl<'a> Sexp<'a> {
     /// Get the i-th raw byte with typed error reporting.
     #[inline]
     pub fn try_raw_elt(self, i: R_xlen_t) -> SexpResult<Rbyte> {
-        let data = self.try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
+        let data = self.clone().try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector").clone()?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -87,7 +87,7 @@ impl<'a> Sexp<'a> {
     /// Get the i-th complex value with typed error reporting.
     #[inline]
     pub fn try_complex_elt(self, i: R_xlen_t) -> SexpResult<Rcomplex> {
-        let data = self.try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
+        let data = self.clone().try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector").clone()?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -104,7 +104,7 @@ impl<'a> Sexp<'a> {
     /// Get the i-th string element with typed error reporting.
     #[inline]
     pub fn try_string_elt(self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
-        let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
+        let data = self.clone().try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector").clone()?;
         let i = self.try_index(i)?;
         Self::checked_child(unsafe { *data.add(i) })
     }
@@ -117,7 +117,7 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn try_string_text_elt(self, i: R_xlen_t) -> SexpResult<Option<&'a str>> {
         let chars = self.try_string_elt(i)?;
-        if chars.as_raw() == unsafe { R_NaString() } {
+        if chars.clone().as_raw()== unsafe { R_NaString() } {
             Ok(None)
         } else {
             chars.try_as_str().map(Some)
@@ -145,7 +145,7 @@ impl<'a> Sexp<'a> {
     /// Get the i-th generic/expression vector element with typed error reporting.
     #[inline]
     pub fn try_vector_elt(self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
-        let data = self.try_vector_sexp_data()?;
+        let data = self.clone().try_vector_sexp_data().clone()?;
         let i = self.try_index(i)?;
         Self::checked_child(unsafe { *data.add(i) })
     }
@@ -161,7 +161,7 @@ impl<'a> Sexp<'a> {
 
     /// Set the i-th logical value with typed error reporting.
     pub fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
-        let data = self.try_typed_data_mut::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
+        let data = self.clone().try_typed_data_mut::<c_int>(SEXPTYPE::LGLSXP, "logical vector").clone()?;
         let i = self.try_index(i)?;
         unsafe {
             *data.add(i) = v;
@@ -178,7 +178,7 @@ impl<'a> Sexp<'a> {
 
     /// Set the i-th integer value with typed error reporting.
     pub fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
-        let data = self.try_typed_data_mut::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
+        let data = self.clone().try_typed_data_mut::<c_int>(SEXPTYPE::INTSXP, "integer vector").clone()?;
         let i = self.try_index(i)?;
         unsafe {
             *data.add(i) = v;
@@ -195,7 +195,7 @@ impl<'a> Sexp<'a> {
 
     /// Set the i-th real value with typed error reporting.
     pub fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
-        let data = self.try_typed_data_mut::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
+        let data = self.clone().try_typed_data_mut::<c_double>(SEXPTYPE::REALSXP, "real vector").clone()?;
         let i = self.try_index(i)?;
         unsafe {
             *data.add(i) = v;
@@ -212,7 +212,7 @@ impl<'a> Sexp<'a> {
 
     /// Set the i-th raw byte with typed error reporting.
     pub fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
-        let data = self.try_typed_data_mut::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
+        let data = self.clone().try_typed_data_mut::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector").clone()?;
         let i = self.try_index(i)?;
         unsafe {
             *data.add(i) = v;
@@ -230,8 +230,8 @@ impl<'a> Sexp<'a> {
 
     /// Set the i-th string element with typed error reporting.
     pub fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
-        v.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
-        let data = self.try_typed_data_mut::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
+        v.clone().expect_type(SEXPTYPE::CHARSXP, "character scalar").clone()?;
+        let data = self.clone().try_typed_data_mut::<SEXP>(SEXPTYPE::STRSXP, "string vector").clone()?;
         let i = self.try_index(i)?;
         unsafe {
             *data.add(i) = v.as_raw();
@@ -249,7 +249,7 @@ impl<'a> Sexp<'a> {
 
     /// Set the i-th generic/expression vector element with typed error reporting.
     pub fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
-        let data = self.try_vector_sexp_data_mut()?;
+        let data = self.clone().try_vector_sexp_data_mut().clone()?;
         let i = self.try_index(i)?;
         unsafe {
             *data.add(i) = v.as_raw();
@@ -334,7 +334,7 @@ impl<'a> Sexp<'a> {
     ///
     /// Null elements are replaced with `R_NilValue`.
     pub fn iter_vector(self) -> impl Iterator<Item = Sexp<'a>> + 'a {
-        let data = self.vector_sexp_data();
+        let data = self.clone().vector_sexp_data();
         let len = if data.is_some() {
             self.len() as usize
         } else {

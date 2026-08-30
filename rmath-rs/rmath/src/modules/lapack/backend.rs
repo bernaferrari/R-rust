@@ -8,6 +8,11 @@
 //! to remain almost unchanged regardless of which backend is active. Only the
 //! import path switches from `super::lapack::` to `super::backend::`.
 
+#[cfg(all(feature = "fortran-backend", feature = "rust-backend"))]
+compile_error!(
+    "features `fortran-backend` and `rust-backend` are mutually exclusive; enable exactly one"
+);
+
 pub(crate) use super::lapack::{
     La_norm_type, La_rcond_type, La_valid_uplo, Rcomplex as LapRcomplex, fort_char, fort_str,
     unscramble,
@@ -30,3 +35,12 @@ pub use rust_impl::{
     dpstrf_, dsyevr_, dtrcon_, dtrtrs_, zgecon_, zgeev_, zgeqp3_, zgesdd_, zgesv_, zgetrf_, zheev_,
     zlange_, ztrcon_, ztrtrs_, zunmqr_,
 };
+
+/// Identity of the active LAPACK backend.
+pub fn backend_name() -> &'static str {
+    if cfg!(feature = "fortran-backend") {
+        "system-fortran"
+    } else {
+        "faer-pure-rust"
+    }
+}

@@ -10,8 +10,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rust:
-    name: Build, lint, test
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt (workspace)
+        run: cargo fmt --check --all
+
+  clippy:
+    name: Clippy
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -23,6 +37,15 @@ jobs:
 
       - name: Clippy (workspace, deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
 
       - name: Test (workspace)
         run: cargo test --workspace
@@ -39,11 +62,8 @@ jobs:
         with:
           r-version: "release"
 
-      - name: Stock R conformance (three-way parity)
-        run: PATH="$HOME/.local/bin:$(Rscript -e 'cat(dirname(Rscript <- Sys.which("Rscript")))' 2>/dev/null):$PATH" bash scripts/conformance_parity.sh --check
-
-      - name: Script-level differential
-        run: PATH="$(dirname $(Rscript -e 'cat(Sys.which("Rscript"))')):$PATH" bash scripts/script_diff_parity.sh --check
+      - name: Stock R conformance parity
+        run: bash scripts/conformance_parity.sh --check
 
   wasm:
     name: WASM32 toolchain

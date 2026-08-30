@@ -80,7 +80,7 @@ const OBJSXP: c_int = SEXPTYPE::OBJSXP.as_c_int();
 /// This is the preferred entrypoint for Rust code. It keeps expression and
 /// environment ownership in the type system; raw `SEXP` pointers should only
 /// reach this layer after an arena or session has wrapped them as `Sexp`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct EvalContext<'a> {
     env: Sexp<'a>,
 }
@@ -98,10 +98,10 @@ impl<'a> EvalContext<'a> {
 
     /// Evaluate an expression in this context.
     pub fn eval(self, expr: Sexp<'a>) -> Result<Sexp<'a>, String> {
-        if !self.env.is_owner_scoped() {
+        if !self.env.clone().is_owner_scoped() {
             return Err("eval context environment is not owner-scoped".to_string());
         }
-        if !expr.is_owner_scoped() {
+        if !expr.clone().is_owner_scoped() {
             return Err("eval expression is not owner-scoped".to_string());
         }
         eval_expr(expr, self.env)
@@ -118,7 +118,7 @@ pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
     crate::sexp::instance::check_cancellation();
     super::runtime::set_visible(TRUE);
 
-    match eval_safe(expr, env) {
+    match eval_safe(expr.clone(), env) {
         Ok(result) => Ok(result),
         Err(message) if is_simple_warning_hook_call(expr) => {
             Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
@@ -161,11 +161,11 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 }
 
 fn symbol_name_for_error(expr: Sexp<'_>) -> String {
-    if let Some(name) = symbol_name_from_ptr(expr.as_raw()) {
+    if let Some(name) = symbol_name_from_ptr(expr.clone().as_raw()) {
         return name;
     }
     unsafe {
-        if TYPEOF(expr.as_raw()) == SEXPTYPE::SYMSXP {
+        if TYPEOF(expr.clone().as_raw()) == SEXPTYPE::SYMSXP {
             let pname = PRINTNAME(expr.as_raw());
             if !pname.is_null() {
                 let bytes = CHAR(pname);
@@ -181,13 +181,13 @@ fn symbol_name_for_error(expr: Sexp<'_>) -> String {
 }
 
 fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    match classify_expr(expr) {
+    match classify_expr(expr.clone()) {
         EvalKind::SelfEvaluating => Ok(expr),
         EvalKind::Symbol => {
-            if let Some(value) = find_var_result(expr, env)? {
+            if let Some(value) = find_var_result(expr.clone(), env)? {
                 return Ok(value);
             }
-            match primitive_for_symbol(expr) {
+            match primitive_for_symbol(expr.clone()) {
                 Some(primitive) => Ok(primitive),
                 None => Err(format!(
                     "object '{}' not found",
@@ -254,15 +254,15 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
 
 /// Safe evaluation of a language object (function call).
 pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let fun = e.try_car().map_err(|err| sexp_err("empty call", err))?;
-    let args = e.try_cdr().map_err(|err| sexp_err("missing args", err))?;
+    let fun = e.clone().try_car().clone().map_err(|err| sexp_err("empty call", err))?;
+    let args = e.clone().try_cdr().clone().map_err(|err| sexp_err("missing args", err))?;
 
     // R uses function-position lookup for symbolic call heads: non-function
     // bindings are skipped while walking enclosing environments.
-    let fun_val = if fun.typeof_() == SEXPTYPE::SYMSXP {
-        match find_fun_result(fun, rho)? {
+    let fun_val = if fun.clone().typeof_()== SEXPTYPE::SYMSXP {
+        match find_fun_result(fun.clone(), rho.clone())? {
             Some(value) => value,
-            None => match primitive_for_symbol(fun) {
+            None => match primitive_for_symbol(fun.clone()) {
                 Some(primitive) => primitive,
                 None => {
                     // Upstream findFun3 raises R_FunctionNotFoundError with
@@ -278,11 +278,11 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
             },
         }
     } else {
-        eval_safe(fun, rho)?
+        eval_safe(fun, rho.clone())?
     };
 
     // Dispatch based on function type
-    match fun_val.typeof_() {
+    match fun_val.clone().typeof_(){
         SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, e, args, rho),
         SEXPTYPE::SPECIALSXP => apply_special_safe(fun_val, e, args, rho),
         SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
@@ -344,25 +344,23 @@ pub(crate) fn find_var_result<'a>(
     // Walk environment chain
     let mut current = rho;
     loop {
-        if !current.is_environment() {
+        if !current.clone().is_environment() {
             return Ok(None);
         }
         let frame = current
-            .try_frame()
-            .map_err(|err| sexp_err("environment frame lookup", err))?;
+            .clone().try_frame().clone().map_err(|err| sexp_err("environment frame lookup", err))?;
         for cell in PairlistIter::new(frame) {
             let tag = cell
-                .try_tag()
-                .map_err(|err| sexp_err("binding tag lookup", err))?;
-            if symbol_name_bytes_equal(tag.as_raw(), symbol.as_raw()) {
+                .clone().try_tag().clone().map_err(|err| sexp_err("binding tag lookup", err))?;
+            if symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()) {
                 let val = cell
                     .try_car()
                     .map_err(|err| sexp_err("binding value lookup", err))?;
-                if val.as_raw() == unsafe { R_MissingArg() } {
+                if val.clone().as_raw()== unsafe { R_MissingArg() } {
                     let name = unsafe { get_symbol_name(symbol.as_raw()) };
                     missing_arg_error(&name);
                 }
-                if val.typeof_() == SEXPTYPE::PROMSXP {
+                if val.clone().typeof_()== SEXPTYPE::PROMSXP {
                     let forced = unsafe { forcePromise(val.as_raw()) };
                     if forced == unsafe { R_MissingArg() } {
                         let name = unsafe { get_symbol_name(symbol.as_raw()) };
@@ -385,9 +383,8 @@ pub(crate) fn find_var_result<'a>(
 fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // If already evaluated, return the value
     let val = prom
-        .try_prvalue()
-        .map_err(|err| sexp_err("promise value lookup", err))?;
-    if val.as_raw() != unsafe { R_UnboundValue() } {
+        .clone().try_prvalue().clone().map_err(|err| sexp_err("promise value lookup", err))?;
+    if val.clone().as_raw()!= unsafe { R_UnboundValue() } {
         return Ok(val);
     }
 
@@ -510,7 +507,7 @@ fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
     let Ok(fun) = expr.try_car() else {
         return false;
     };
-    if !fun.is_symbol() {
+    if !fun.clone().is_symbol() {
         return false;
     }
     matches!(

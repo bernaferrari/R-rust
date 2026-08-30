@@ -72,7 +72,7 @@ pub fn protect_sexp(value: Sexp<'_>) -> ProtectGuard {
 
 /// Try to protect an owner-scoped SEXP handle.
 pub fn try_protect_sexp(value: Sexp<'_>) -> Result<ProtectGuard, ProtectError> {
-    ensure_owner_scoped(value, "protect_sexp")?;
+    ensure_owner_scoped(value.clone(), "protect_sexp")?;
     Ok(protect_raw(value.as_raw()))
 }
 
@@ -191,7 +191,7 @@ pub fn preserve_sexp(value: Sexp<'_>) -> PreserveGuard {
 
 /// Try to preserve an owner-scoped SEXP handle until the returned guard is dropped.
 pub fn try_preserve_sexp(value: Sexp<'_>) -> Result<PreserveGuard, ProtectError> {
-    ensure_owner_scoped(value, "preserve_sexp")?;
+    ensure_owner_scoped(value.clone(), "preserve_sexp")?;
     let raw = value.as_raw();
     if raw.is_null() {
         return Ok(PreserveGuard {
@@ -467,7 +467,7 @@ impl IndexedProtectGuard {
     }
 
     pub fn try_reprotect_sexp(&mut self, value: Sexp<'_>) -> Result<(), ProtectError> {
-        ensure_owner_scoped(value, "reprotect_sexp")?;
+        ensure_owner_scoped(value.clone(), "reprotect_sexp")?;
         self.reprotect_raw(value.as_raw());
         Ok(())
     }
@@ -492,7 +492,7 @@ pub fn protect_sexp_with_index(value: Sexp<'_>) -> IndexedProtectGuard {
 
 /// Try to protect an owner-scoped SEXP handle in a replaceable stack slot.
 pub fn try_protect_sexp_with_index(value: Sexp<'_>) -> Result<IndexedProtectGuard, ProtectError> {
-    ensure_owner_scoped(value, "protect_sexp_with_index")?;
+    ensure_owner_scoped(value.clone(), "protect_sexp_with_index")?;
     Ok(protect_with_index_raw(
         value.as_raw(),
         "protect_sexp_with_index",
@@ -556,7 +556,7 @@ pub(crate) unsafe fn R_ReleaseObject(s: SEXP) {
 }
 
 fn ensure_owner_scoped(value: Sexp<'_>, api: &'static str) -> Result<(), ProtectError> {
-    if value.is_owner_scoped() {
+    if value.clone().is_owner_scoped() {
         Ok(())
     } else {
         Err(ProtectError::UnownedHandle {
@@ -703,7 +703,7 @@ mod tests {
 
         session.with_protected(|| {
             let depth_before = R_ProtectCount();
-            let guard = protect_sexp(value);
+            let guard = protect_sexp(value.clone());
             assert_eq!(R_ProtectCount(), depth_before + 1);
             with_protected_objects(|objects| assert_eq!(objects, &[value.as_raw()]));
             drop(guard);
@@ -733,14 +733,14 @@ mod tests {
 
         session.with_protected(|| {
             assert!(matches!(
-                try_protect_sexp(value),
+                try_protect_sexp(value.clone()),
                 Err(ProtectError::UnownedHandle {
                     api: "protect_sexp",
                     owner: SexpOwner::Unknown,
                 })
             ));
             assert!(matches!(
-                try_preserve_sexp(value),
+                try_preserve_sexp(value.clone()),
                 Err(ProtectError::UnownedHandle {
                     api: "preserve_sexp",
                     owner: SexpOwner::Unknown,
@@ -765,7 +765,7 @@ mod tests {
         let value = session.sexp(value).expect("value belongs to session");
 
         session.with_protected(|| {
-            let guard = preserve_sexp(value);
+            let guard = preserve_sexp(value.clone());
             with_preserved_objects(|objects| assert_eq!(objects, &[value.as_raw()]));
             drop(guard);
             with_preserved_objects(|objects| assert!(objects.is_empty()));
@@ -791,7 +791,7 @@ mod tests {
             let mut guard = protect_sexp_with_index(first);
             assert!(guard.slot().is_active());
             assert_eq!(R_ProtectCount(), depth_before + 1);
-            guard.reprotect_sexp(second);
+            guard.reprotect_sexp(second.clone());
             with_protected_objects(|objects| assert_eq!(objects, &[second.as_raw()]));
             drop(guard);
             assert_eq!(R_ProtectCount(), depth_before);

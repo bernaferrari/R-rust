@@ -1277,3 +1277,257 @@ fn test_dtrtrs_lower_transpose() {
     assert_close(b[1], 1.25, "dtrtrs Lᵀ x[1]");
     assert_close(b[2], 5.0, "dtrtrs Lᵀ x[2]");
 }
+
+// ════════════════════════════════════════════════════════════════
+// Contract tests: rectangular LU, failing minors, scaled norms,
+// zero dimensions, NaN/Inf propagation
+// ════════════════════════════════════════════════════════════════
+
+/// Apply LAPACK's sequential row interchanges (ipiv) to A (column-major, m×n).
+fn apply_ipiv(a: &[f64], m: usize, n: usize, ipiv: &[i32]) -> Vec<f64> {
+    let mut p = a.to_vec();
+    for (i, &piv) in ipiv.iter().enumerate().take(m.min(n)) {
+        let j = (piv - 1) as usize;
+        if i != j {
+            for c in 0..n {
+                p.swap(i + c * m, j + c * m);
+            }
+        }
+    }
+    p
+}
+
+/// Verify P·A ≈ L·U for a dgetrf output (L unit-lower M×k, U k×N, k = min(M,N)).
+fn verify_rectangular_lu(a_orig: &[f64], a: &[f64], m: usize, n: usize, ipiv: &[i32]) {
+    let k = m.min(n);
+    let l: Vec<f64> = (0..k)
+        .flat_map(|j| (0..m).map(move |i| if i == j { 1.0 } else if i > j { a[i + j * m] } else { 0.0 }))
+        .collect();
+    let u: Vec<f64> = (0..n)
+        .flat_map(|j| (0..k).map(move |i| if i <= j { a[i + j * m] } else { 0.0 }))
+        .collect();
+    let lu = mat_mul(&l, &u, m, k, n);
+    let pa = apply_ipiv(a_orig, m, n, ipiv);
+    for (i, (&x, &y)) in lu.iter().zip(&pa).enumerate() {
+        assert_close(x, y, &format!("rectangular LU P·A ≈ L·U [{i}] (m={m}, n={n})"));
+    }
+}
+
+#[test]
+fn test_dgetrf_rectangular_tall_m5n3() {
+    let (m, n) = (5usize, 3usize);
+    let a_orig = seed_matrix(m, n, 900);
+    let mut a = a_orig.clone();
+    let mut ipiv = vec![0i32; n];
+    let mut info = 0i32;
+    unsafe {
+        backend::dgetrf_(
+            &m as *const usize as *const libc::c_int,
+            &n as *const usize as *const libc::c_int,
+            a.as_mut_ptr(),
+            &m as *const usize as *const libc::c_int,
+            ipiv.as_mut_ptr(),
+            &mut info,
+        );
+    }
+    assert_eq!(info, 0, "dgetrf 5×3 info");
+    verify_rectangular_lu(&a_orig, &a, m, n, &ipiv);
+}
+
+#[test]
+fn test_dgetrf_rectangular_wide_m3n5() {
+    let (m, n) = (3usize, 5usize);
+    let a_orig = seed_matrix(m, n, 901);
+    let mut a = a_orig.clone();
+    let mut ipiv = vec![0i32; m];
+    let mut info = 0i32;
+    unsafe {
+        backend::dgetrf_(
+            &m as *const usize as *const libc::c_int,
+            &n as *const usize as *const libc::c_int,
+            a.as_mut_ptr(),
+            &m as *const usize as *const libc::c_int,
+            ipiv.as_mut_ptr(),
+            &mut info,
+        );
+    }
+    assert_eq!(info, 0, "dgetrf 3×5 info");
+    verify_rectangular_lu(&a_orig, &a, m, n, &ipiv);
+}
+
+#[test]
+fn test_dpotrf_failing_minor_exact_info() {
+    // Trunk R: chol() → "the leading minor of order 2 is not positive"
+    let mut a = vec![1.0, 2.0, 2.0, 1.0]; // column-major 2×2
+    let n = 2i32;
+    let mut info = 0i32;
+    let uplo = b'U';
+    unsafe {
+        backend::dpotrf_(&uplo, &n, a.as_mut_ptr(), &n, &mut info);
+    }
+    assert_eq!(info, 2, "dpotrf 2×2 failing minor");
+
+    // Trunk R: "the leading minor of order 3 is not positive"
+    let mut a3 = vec![4.0, 1.0, 2.0, 1.0, 4.0, 1.0, 2.0, 1.0, 1.0];
+    let n3 = 3i32;
+    let mut info3 = 0i32;
+    unsafe {
+        backend::dpotrf_(&uplo, &n3, a3.as_mut_ptr(), &n3, &mut info3);
+    }
+    assert_eq!(info3, 3, "dpotrf 3×3 failing minor");
+}
+
+#[test]
+fn test_dpotrf_nan_diag_exact_info() {
+    // Stock DPOTF2 flags a NaN pivot like a non-positive one.
+    let mut a = vec![4.0, 0.0, 0.0, 0.0, f64::NAN, 1.0, 0.0, 1.0, 4.0];
+    let n = 3i32;
+    let mut info = 0i32;
+    let uplo = b'L';
+    unsafe {
+        backend::dpotrf_(&uplo, &n, a.as_mut_ptr(), &n, &mut info);
+    }
+    assert_eq!(info, 2, "dpotrf NaN diagonal info");
+}
+
+#[test]
+fn test_dpotri_singular_factor_exact_info() {
+    // U = [[2, 1], [0, 0]] (upper, column-major): second diagonal is zero.
+    let mut a = vec![2.0, 7.5, 1.0, 0.0];
+    let n = 2i32;
+    let mut info = 0i32;
+    let uplo = b'U';
+    unsafe {
+        backend::dpotri_(&uplo, &n, a.as_mut_ptr(), &n, &mut info);
+    }
+    assert_eq!(info, 2, "dpotri singular factor info");
+    // Opposite triangle must stay unreferenced.
+    assert_eq!(a[1], 7.5, "dpotri lower triangle untouched");
+}
+
+#[test]
+fn test_dpotri_inverse_residual() {
+    let n = 4usize;
+    let a_spd = make_spd(n, 950);
+    let mut a = a_spd.clone();
+    let nn = n as i32;
+    let mut info = 0i32;
+    let uplo = b'U';
+    unsafe {
+        backend::dpotrf_(&uplo, &nn, a.as_mut_ptr(), &nn, &mut info);
+    }
+    assert_eq!(info, 0, "dpotrf for dpotri residual");
+    unsafe {
+        backend::dpotri_(&uplo, &nn, a.as_mut_ptr(), &nn, &mut info);
+    }
+    assert_eq!(info, 0, "dpotri info");
+
+    // Symmetrize the upper triangle into a full inverse, then A·A⁻¹ ≈ I.
+    let mut ainv = vec![0.0; n * n];
+    for j in 0..n {
+        for i in 0..=j {
+            ainv[i + j * n] = a[i + j * n];
+            ainv[j + i * n] = a[i + j * n];
+        }
+    }
+    let prod = mat_mul(&a_spd, &ainv, n, n, n);
+    for i in 0..n {
+        for j in 0..n {
+            let want = if i == j { 1.0 } else { 0.0 };
+            assert_close(prod[i + j * n], want, &format!("dpotri A·A⁻¹[{i},{j}]"));
+        }
+    }
+}
+
+#[test]
+fn test_dlange_frobenius_scaled_extremes() {
+    let uplo_unused = 0u8;
+    // 2×2 identity scaled by 1e150: unscaled sum of squares would overflow.
+    let big = vec![1e150, 0.0, 0.0, 1e150];
+    let (m, n) = (2i32, 2i32);
+    let r = unsafe {
+        backend::dlange_(
+            &b'F',
+            &m,
+            &n,
+            big.as_ptr(),
+            &m,
+            std::ptr::null_mut(),
+        )
+    };
+    assert!(r.is_finite(), "scaled Frobenius must not overflow: {r}");
+    assert_close(r, 1e150 * std::f64::consts::SQRT_2, "Frobenius 1e150 scale");
+
+    // Underflow guard: 1e-160 entries would square to zero.
+    let tiny = vec![1e-160, 0.0, 0.0, 1e-160];
+    let r2 = unsafe {
+        backend::dlange_(&b'F', &m, &n, tiny.as_ptr(), &m, &uplo_unused as *const u8 as *mut f64)
+    };
+    assert!(r2 > 0.0, "scaled Frobenius must not underflow to 0: {r2}");
+    assert_close(r2, 1e-160 * std::f64::consts::SQRT_2, "Frobenius 1e-160 scale");
+
+    // NaN propagates; Inf dominates.
+    let nan_mat = vec![f64::NAN, 1.0, 2.0, 3.0];
+    let r3 = unsafe {
+        backend::dlange_(&b'F', &m, &n, nan_mat.as_ptr(), &m, std::ptr::null_mut())
+    };
+    assert!(r3.is_nan(), "Frobenius NaN propagation");
+    let inf_mat = vec![f64::INFINITY, 1.0, 2.0, 3.0];
+    let r4 = unsafe {
+        backend::dlange_(&b'F', &m, &n, inf_mat.as_ptr(), &m, std::ptr::null_mut())
+    };
+    assert!(r4.is_infinite(), "Frobenius Inf propagation");
+    let r5 = unsafe {
+        backend::dlange_(&b'M', &m, &n, nan_mat.as_ptr(), &m, std::ptr::null_mut())
+    };
+    assert!(r5.is_nan(), "max-norm NaN propagation");
+}
+
+#[test]
+fn test_zero_dimension_matrices() {
+    let mut info = 0i32;
+    let n0 = 0i32;
+    let m0 = 0i32;
+    unsafe {
+        backend::dgetrf_(&m0, &n0, std::ptr::null_mut(), &m0, std::ptr::null_mut(), &mut info);
+    }
+    assert_eq!(info, 0, "dgetrf 0-dim info");
+    let mut uplo = b'U';
+    unsafe {
+        backend::dpotrf_(&uplo, &n0, std::ptr::null_mut(), &n0, &mut info);
+    }
+    assert_eq!(info, 0, "dpotrf 0-dim info");
+    unsafe {
+        backend::dpotri_(&uplo, &n0, std::ptr::null_mut(), &n0, &mut info);
+    }
+    assert_eq!(info, 0, "dpotri 0-dim info");
+    uplo = b'U';
+    let mut nrhs = 0i32;
+    unsafe {
+        backend::dgesv_(
+            &n0, &nrhs, std::ptr::null_mut(), &n0, std::ptr::null_mut(),
+            std::ptr::null_mut(), &n0, &mut info,
+        );
+    }
+    assert_eq!(info, 0, "dgesv 0-dim info");
+    nrhs = 1;
+    let z = 0.0f64;
+    let r = unsafe {
+        backend::dlange_(&b'F', &m0, &nrhs, &z, &m0, std::ptr::null_mut())
+    };
+    assert_eq!(r, 0.0, "dlange 0-dim norm");
+}
+
+#[test]
+fn test_backend_identity() {
+    let expected = if cfg!(feature = "fortran-backend") {
+        "system-fortran"
+    } else {
+        "faer-pure-rust"
+    };
+    assert_eq!(backend::backend_name(), expected);
+    // Build-script env mirror, when present, must agree.
+    if let Some(env_name) = option_env!("RUST_LAPACK_BACKEND") {
+        assert_eq!(env_name, expected, "RUST_LAPACK_BACKEND vs backend_name()");
+    }
+}

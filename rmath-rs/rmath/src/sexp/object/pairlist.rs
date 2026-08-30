@@ -46,13 +46,13 @@ impl<'a> Iterator for PairlistIter<'a> {
     type Item = Sexp<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let current = self.current?;
-        if current.is_nil() {
+        let current = self.current.clone()?.clone();
+        if current.clone().is_nil() {
             self.current = None;
             return None;
         }
         let item = current;
-        self.current = item.cdr();
+        self.current = item.clone().cdr().clone();
         Some(item)
     }
 }

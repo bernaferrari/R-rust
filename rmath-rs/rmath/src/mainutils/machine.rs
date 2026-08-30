@@ -234,14 +234,14 @@ mod tests {
                 .expect(".Machine lookup")
                 .expect(".Machine binding");
 
-            assert_eq!(machine.len(), 19);
+            assert_eq!(machine.clone().len(), 19);
 
             let names = Sexp::from_raw(crate::eval::attrib_core::getAttrib(
                 machine.as_raw(),
                 crate::eval::attrib_core::R_NamesSymbol(),
             ))
             .expect("names attribute");
-            assert_eq!(names.len(), 19);
+            assert_eq!(names.clone().len(), 19);
             assert_eq!(
                 names
                     .string_elt(0)

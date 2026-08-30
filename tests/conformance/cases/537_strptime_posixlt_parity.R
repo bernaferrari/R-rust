@@ -31,8 +31,12 @@ d2 <- strptime("2020-366", "%Y-%j")
 cat(d2$mon + 1, d2$mday, d2$yday, "\n", sep = "|")
 
 ## %U/%W week parity with %w (week reconciliation, r90447 yday fix)
-u1 <- strptime("0 1", "%U %w")
-w1 <- strptime("0 1", "%W %w")
+## Week and year are pinned: a year-less %U/%W leaves mon/mday/yday to
+## glibc_fix from the current time, and the week-0 + wday reconciliation
+## only exists in trunk (4.6.1 yields NA), so neither shape is
+## version-stable. Week 10 with weekday 0 agrees on 4.6.1 and trunk.
+u1 <- strptime("2020 10 0", "%Y %U %w")
+w1 <- strptime("2020 10 0", "%Y %W %w")
 cat(u1$mon + 1, u1$mday, u1$yday, "\n", sep = "|")
 cat(w1$mon + 1, w1$mday, w1$yday, "\n", sep = "|")
 ## %U/%W week parity with %w; the year is pinned (2020, a leap year)

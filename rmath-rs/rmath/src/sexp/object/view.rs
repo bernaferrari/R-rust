@@ -4,7 +4,7 @@ use super::super::ffi::{Rbyte, Rcomplex};
 use super::Sexp;
 
 /// Borrowed, type-directed view over a `Sexp`.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum SexpView<'a> {
     Nil,
     Logical(&'a [c_int]),

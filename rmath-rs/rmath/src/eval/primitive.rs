@@ -18,7 +18,7 @@ pub type PrimFun = unsafe extern "C" fn(
 ) -> SEXP;
 
 /// Rust-shaped view over an R primitive descriptor.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PrimitiveDescriptor<'a> {
     pub op: Sexp<'a>,
     pub table_index: c_int,
@@ -31,15 +31,15 @@ pub struct PrimitiveDescriptor<'a> {
 
 impl<'a> PrimitiveDescriptor<'a> {
     pub fn from_sexp(op: Sexp<'a>) -> Option<Self> {
-        if !op.is_primitive() {
+        if !op.clone().is_primitive() {
             return None;
         }
 
-        let table_index = op.try_primoffset().ok()?;
+        let table_index = op.clone().try_primoffset().ok()?;
         let entry = fun_tab_descriptor(table_index)?;
 
         Some(Self {
-            op,
+            op: op.clone(),
             table_index,
             operation_code: entry.offset,
             kind: op.typeof_().as_c_int(),

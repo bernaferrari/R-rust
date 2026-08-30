@@ -122,8 +122,8 @@ fn test_eval_integer_vector() {
         assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::INTSXP);
 
         let s = some(Sexp::from_raw(result));
-        assert_eq!(s.len(), 5);
-        assert_eq!(s.integer_elt(0), Some(10));
+        assert_eq!(s.clone().len(), 5);
+        assert_eq!(s.clone().integer_elt(0), Some(10));
         assert_eq!(s.integer_elt(4), Some(50));
     }
 }
@@ -144,8 +144,8 @@ fn test_eval_real_vector() {
         assert!(!result.is_null());
 
         let s = some(Sexp::from_raw(result));
-        assert_eq!(s.len(), 3);
-        assert!((some(s.real_elt(0)) - 1.1).abs() < 1e-10);
+        assert_eq!(s.clone().len(), 3);
+        assert!((some(s.clone().real_elt(0)) - 1.1).abs() < 1e-10);
         assert!((some(s.real_elt(2)) - 3.3).abs() < 1e-10);
     }
 }
@@ -178,6 +178,7 @@ fn test_eval_null_via_safe() {
     assert_eq!(must(result).typeof_(), SEXPTYPE::NILSXP);
 }
 
+#[cfg(feature = "altrep")]
 #[test]
 fn test_altrep_compact_intseq() {
     let _session = crate::sexp::session::RSession::new();
@@ -193,6 +194,7 @@ fn test_altrep_compact_intseq() {
     }
 }
 
+#[cfg(feature = "altrep")]
 #[test]
 fn test_altrep_compact_realseq() {
     let _session = crate::sexp::session::RSession::new();
@@ -208,6 +210,7 @@ fn test_altrep_compact_realseq() {
     }
 }
 
+#[cfg(feature = "altrep")]
 #[test]
 fn test_altrep_new_altrep_data_roundtrip() {
     let _session = crate::sexp::session::RSession::new();
@@ -325,8 +328,8 @@ fn test_arena_alloc_and_eval() {
         assert!(!result.is_null());
 
         let s = Sexp::from_raw_unchecked(result);
-        assert_eq!(s.len(), 4);
-        assert!((some(s.real_elt(0)) - 0.0).abs() < 1e-10);
+        assert_eq!(s.clone().len(), 4);
+        assert!((some(s.clone().real_elt(0)) - 0.0).abs() < 1e-10);
         assert!((some(s.real_elt(3)) - 6.0).abs() < 1e-10);
     }
 }
@@ -341,7 +344,7 @@ fn test_cons_and_car_cdr() {
         assert!(!cell.is_null());
 
         let s = Sexp::from_raw_unchecked(cell);
-        let car = some(s.car());
+        let car = some(s.clone().car());
         let cdr = some(s.cdr());
 
         assert_eq!(car.integer_elt(0), Some(10));
@@ -733,12 +736,12 @@ fn test_eval_abs_debug() {
     }
 
     let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
-    let result = eval_safe(e, env);
+    let result = eval_safe(e, env.clone());
     eprintln!(
         "result: {:?}",
         result
             .as_ref()
-            .map(|v| format!("{:?} len={}", v.typeof_(), v.len()))
+            .map(|v| format!("{:?} len={}", v.clone().typeof_(), v.clone().len()))
     );
 
     let inner_expr = unsafe { CAR(CDR(expr)) };
@@ -749,9 +752,9 @@ fn test_eval_abs_debug() {
         "inner_result: {:?}",
         inner_result.as_ref().map(|v| format!(
             "{:?} len={} real={:?}",
-            v.typeof_(),
-            v.len(),
-            v.real_elt(0)
+            v.clone().typeof_(),
+            v.clone().len(),
+            v.clone().real_elt(0)
         ))
     );
 
@@ -795,11 +798,11 @@ fn test_eval_math_builtins() {
     for (code, expected) in cases {
         let expr = must(parser::parse(code, &mut arena));
         let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
-        let result = eval_safe(e, env);
+        let result = eval_safe(e, env.clone());
         assert!(result.is_ok(), "eval '{}' failed: {:?}", code, result);
         let val = must(result);
         let v = val
-            .real_elt(0)
+            .clone().real_elt(0)
             .or_else(|| val.integer_elt(0).map(|i| i as f64))
             .unwrap_or(f64::NAN);
         assert!(

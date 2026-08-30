@@ -338,7 +338,7 @@ pub unsafe fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
             let Some(value) = Sexp::from_raw(s) else {
                 return NA_INTEGER;
             };
-            match value.typeof_() {
+            match value.clone().typeof_(){
                 SEXPTYPE::LGLSXP => {
                     logical_scalar_no_na(value.logical_elt(0).unwrap_or(NA_INTEGER))
                 }
@@ -375,11 +375,11 @@ mod tests {
         unsafe {
             let seq = seq_int(2, 5);
             let seq = Sexp::from_raw(seq).expect("sequence should allocate");
-            assert_eq!(seq.typeof_(), SEXPTYPE::INTSXP);
-            assert_eq!(seq.len(), 4);
-            assert_eq!(seq.integer_elt(0), Some(2));
-            assert_eq!(seq.integer_elt(1), Some(3));
-            assert_eq!(seq.integer_elt(2), Some(4));
+            assert_eq!(seq.clone().typeof_(), SEXPTYPE::INTSXP);
+            assert_eq!(seq.clone().len(), 4);
+            assert_eq!(seq.clone().integer_elt(0), Some(2));
+            assert_eq!(seq.clone().integer_elt(1), Some(3));
+            assert_eq!(seq.clone().integer_elt(2), Some(4));
             assert_eq!(seq.integer_elt(3), Some(5));
         }
     }
@@ -390,11 +390,11 @@ mod tests {
         unsafe {
             let seq = seq_int(3, 0);
             let seq = Sexp::from_raw(seq).expect("sequence should allocate");
-            assert_eq!(seq.typeof_(), SEXPTYPE::INTSXP);
-            assert_eq!(seq.len(), 4);
-            assert_eq!(seq.integer_elt(0), Some(3));
-            assert_eq!(seq.integer_elt(1), Some(2));
-            assert_eq!(seq.integer_elt(2), Some(1));
+            assert_eq!(seq.clone().typeof_(), SEXPTYPE::INTSXP);
+            assert_eq!(seq.clone().len(), 4);
+            assert_eq!(seq.clone().integer_elt(0), Some(3));
+            assert_eq!(seq.clone().integer_elt(1), Some(2));
+            assert_eq!(seq.clone().integer_elt(2), Some(1));
             assert_eq!(seq.integer_elt(3), Some(0));
         }
     }

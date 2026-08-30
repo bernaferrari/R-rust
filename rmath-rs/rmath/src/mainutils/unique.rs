@@ -448,10 +448,10 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
 ///
 /// Returns `Ok(SEXP)` on success, `Err` on invalid input.
 fn duplicated_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
-    if !x.is_vector() {
+    if !x.clone().is_vector() {
         return Err("duplicated requires a vector");
     }
-    let n = x.len();
+    let n = x.clone().len();
     if n == 0 {
         return Ok(unsafe { Rf_allocVector3(SEXPTYPE::LGLSXP, 0) });
     }
@@ -466,10 +466,10 @@ fn duplicated_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, 
 ///
 /// Returns `Ok(SEXP)` with unique elements on success.
 fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
-    if !x.is_vector() {
+    if !x.clone().is_vector() {
         return Err("unique requires a vector");
     }
-    let n = x.len();
+    let n = x.clone().len();
     if n == 0 {
         return Ok(unsafe { Rf_allocVector3(TYPEOF(x.as_raw()), 0) });
     }
@@ -565,11 +565,11 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
 /// Returns `TRUE`, `FALSE`, or `NA_LOGICAL`.
 /// `op`: 1 = all, 2 = any
 fn check_values_safe(x: Sexp<'_>, op: i32, na_rm: bool) -> Result<i32, String> {
-    let n = x.len();
+    let n = x.clone().len();
     let mut has_na = false;
 
     for i in 0..n {
-        let xi = x.try_logical_elt(i).map_err(|err| err.to_string())?;
+        let xi = x.clone().try_logical_elt(i).map_err(|err| err.to_string())?;
         if !na_rm && xi == NA_LOGICAL {
             has_na = true;
         } else {
@@ -597,13 +597,15 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, String> {
     let mut has_na = false;
     let mut na_rm = false;
 
-    let mut arg_list = if args.is_nil() { None } else { Some(args) };
+    // Ownership: `args` is walked twice (na.rm scan, then value scan). The old
+    // implicit Copy kept one handle alive across both passes; each pass now
+    // consumes its own clone of the same underlying SEXP (no R-level copy).
+    let mut arg_list = if args.clone().is_nil() { None } else { Some(args.clone()) };
     while let Some(current) = arg_list {
         if current
-            .try_tag_name_eq(b"na.rm")
-            .map_err(|err| err.to_string())?
+            .clone().try_tag_name_eq(b"na.rm").map_err(|err| err.to_string())?
         {
-            let na_val = current.try_car().map_err(|err| err.to_string())?;
+            let na_val = current.clone().try_car().clone().map_err(|err| err.to_string())?;
             if let Ok(nrm) = na_val.try_logical_elt(0) {
                 na_rm = nrm == 1;
             }
@@ -613,11 +615,13 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, String> {
             .map_err(|err| err.to_string())?;
     }
 
-    let mut s = if args.is_nil() { None } else { Some(args) };
+
+    // Second pass over the same list: `args` was already consumed by the
+    // na.rm scan above, so this pass gets its own clone of the handle.
+        let mut s = if args.clone().is_nil() { None } else { Some(args.clone()) };
     while let Some(current) = s {
         if current
-            .try_tag_name_eq(b"na.rm")
-            .map_err(|err| err.to_string())?
+            .clone().try_tag_name_eq(b"na.rm").map_err(|err| err.to_string())?
         {
             s = current
                 .try_next_pairlist_cell()
@@ -625,8 +629,9 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, String> {
             continue;
         }
 
-        let t = current.try_car().map_err(|err| err.to_string())?;
-        let n = t.len();
+        let t = current.clone().try_car().map_err(|err| err.to_string())?;
+        let n = t.clone().len();
+
         if n > 0 {
             let cv = check_values_safe(t, 2, na_rm)?;
             if cv != NA_LOGICAL {
@@ -661,13 +666,12 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
     let mut has_na = false;
     let mut na_rm = false;
 
-    let mut arg_list = if args.is_nil() { None } else { Some(args) };
+    let mut arg_list = if args.clone().is_nil() { None } else { Some(args.clone()) };
     while let Some(current) = arg_list {
         if current
-            .try_tag_name_eq(b"na.rm")
-            .map_err(|err| err.to_string())?
+            .clone().try_tag_name_eq(b"na.rm").map_err(|err| err.to_string())?
         {
-            let na_val = current.try_car().map_err(|err| err.to_string())?;
+            let na_val = current.clone().try_car().clone().map_err(|err| err.to_string())?;
             if let Ok(nrm) = na_val.try_logical_elt(0) {
                 na_rm = nrm == 1;
             }
@@ -677,11 +681,10 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
             .map_err(|err| err.to_string())?;
     }
 
-    let mut s = if args.is_nil() { None } else { Some(args) };
+    let mut s = if args.clone().is_nil() { None } else { Some(args.clone()) };
     while let Some(current) = s {
         if current
-            .try_tag_name_eq(b"na.rm")
-            .map_err(|err| err.to_string())?
+            .clone().try_tag_name_eq(b"na.rm").map_err(|err| err.to_string())?
         {
             s = current
                 .try_next_pairlist_cell()
@@ -689,8 +692,9 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
             continue;
         }
 
-        let t = current.try_car().map_err(|err| err.to_string())?;
-        let n = t.len();
+        let t = current.clone().try_car().map_err(|err| err.to_string())?;
+        let n = t.clone().len();
+
         if n > 0 {
             let cv = check_values_safe(t, 1, na_rm)?;
             if cv != NA_LOGICAL {

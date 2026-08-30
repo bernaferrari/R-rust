@@ -1,3 +1,4 @@
+#![cfg(feature = "altrep")]
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Port of R's src/main/altclasses.c — ALTREP class implementations.

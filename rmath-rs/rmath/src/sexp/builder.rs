@@ -779,10 +779,10 @@ mod tests {
     fn test_int_vector_builder() {
         let mut arena = RArena::new();
         let vec = some(IntVector::new(&[1, 2, 3]).build_in(&mut arena));
-        assert!(vec.is_vector());
-        assert_eq!(vec.len(), 3);
-        assert_eq!(vec.integer_elt(0), Some(1));
-        assert_eq!(vec.integer_elt(1), Some(2));
+        assert!(vec.clone().is_vector());
+        assert_eq!(vec.clone().len(), 3);
+        assert_eq!(vec.clone().integer_elt(0), Some(1));
+        assert_eq!(vec.clone().integer_elt(1), Some(2));
         assert_eq!(vec.integer_elt(2), Some(3));
     }
 
@@ -790,9 +790,9 @@ mod tests {
     fn test_int_vector_zeros() {
         let mut arena = RArena::new();
         let vec = some(IntVector::zeros(5).build_in(&mut arena));
-        assert_eq!(vec.len(), 5);
+        assert_eq!(vec.clone().len(), 5);
         for i in 0..5 {
-            assert_eq!(vec.integer_elt(i as R_xlen_t), Some(0));
+            assert_eq!(vec.clone().integer_elt(i as R_xlen_t), Some(0));
         }
     }
 
@@ -800,10 +800,10 @@ mod tests {
     fn test_int_vector_na() {
         let mut arena = RArena::new();
         let vec = some(IntVector::with_na(3).build_in(&mut arena));
-        assert_eq!(vec.len(), 3);
+        assert_eq!(vec.clone().len(), 3);
         for i in 0..3 {
             assert_eq!(
-                vec.integer_elt(i as R_xlen_t),
+                vec.clone().integer_elt(i as R_xlen_t),
                 Some(super::super::ffi::NA_INTEGER)
             );
         }
@@ -813,15 +813,15 @@ mod tests {
     fn test_int_vector_sequence() {
         let mut arena = RArena::new();
         let asc = some(some(IntVector::sequence(2, 4)).build_in(&mut arena));
-        assert_eq!(asc.len(), 3);
-        assert_eq!(asc.integer_elt(0), Some(2));
-        assert_eq!(asc.integer_elt(1), Some(3));
+        assert_eq!(asc.clone().len(), 3);
+        assert_eq!(asc.clone().integer_elt(0), Some(2));
+        assert_eq!(asc.clone().integer_elt(1), Some(3));
         assert_eq!(asc.integer_elt(2), Some(4));
 
         let desc = some(some(IntVector::sequence(1, -1)).build_in(&mut arena));
-        assert_eq!(desc.len(), 3);
-        assert_eq!(desc.integer_elt(0), Some(1));
-        assert_eq!(desc.integer_elt(1), Some(0));
+        assert_eq!(desc.clone().len(), 3);
+        assert_eq!(desc.clone().integer_elt(0), Some(1));
+        assert_eq!(desc.clone().integer_elt(1), Some(0));
         assert_eq!(desc.integer_elt(2), Some(-1));
     }
 
@@ -829,9 +829,9 @@ mod tests {
     fn test_real_vector_builder() {
         let mut arena = RArena::new();
         let vec = some(RealVector::new(&[1.5, 2.5, 3.5]).build_in(&mut arena));
-        assert_eq!(vec.len(), 3);
-        assert!((some(vec.real_elt(0)) - 1.5).abs() < f64::EPSILON);
-        assert!((some(vec.real_elt(1)) - 2.5).abs() < f64::EPSILON);
+        assert_eq!(vec.clone().len(), 3);
+        assert!((some(vec.clone().real_elt(0)) - 1.5).abs() < f64::EPSILON);
+        assert!((some(vec.clone().real_elt(1)) - 2.5).abs() < f64::EPSILON);
         assert!((some(vec.real_elt(2)) - 3.5).abs() < f64::EPSILON);
     }
 
@@ -839,8 +839,8 @@ mod tests {
     fn test_real_vector_seq() {
         let mut arena = RArena::new();
         let vec = some(RealVector::seq(0.0, 1.0, 0.25).build_in(&mut arena));
-        assert_eq!(vec.len(), 5);
-        assert!((some(vec.real_elt(0)) - 0.0).abs() < f64::EPSILON);
+        assert_eq!(vec.clone().len(), 5);
+        assert!((some(vec.clone().real_elt(0)) - 0.0).abs() < f64::EPSILON);
         assert!((some(vec.real_elt(4)) - 1.0).abs() < f64::EPSILON);
     }
 
@@ -848,9 +848,9 @@ mod tests {
     fn test_logical_vector_builder() {
         let mut arena = RArena::new();
         let vec = some(LogicalVector::new(&[true, false, true]).build_in(&mut arena));
-        assert_eq!(vec.len(), 3);
-        assert_eq!(vec.logical_elt(0), Some(1));
-        assert_eq!(vec.logical_elt(1), Some(0));
+        assert_eq!(vec.clone().len(), 3);
+        assert_eq!(vec.clone().logical_elt(0), Some(1));
+        assert_eq!(vec.clone().logical_elt(1), Some(0));
         assert_eq!(vec.logical_elt(2), Some(1));
     }
 
@@ -858,10 +858,10 @@ mod tests {
     fn test_raw_vector_builder() {
         let mut arena = RArena::new();
         let vec = some(RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build_in(&mut arena));
-        assert_eq!(vec.len(), 4);
-        assert_eq!(vec.raw_elt(0), Some(0xDE));
-        assert_eq!(vec.raw_elt(1), Some(0xAD));
-        assert_eq!(vec.raw_elt(2), Some(0xBE));
+        assert_eq!(vec.clone().len(), 4);
+        assert_eq!(vec.clone().raw_elt(0), Some(0xDE));
+        assert_eq!(vec.clone().raw_elt(1), Some(0xAD));
+        assert_eq!(vec.clone().raw_elt(2), Some(0xBE));
         assert_eq!(vec.raw_elt(3), Some(0xEF));
     }
 
@@ -869,8 +869,8 @@ mod tests {
     fn test_string_vector_builder() {
         let mut arena = RArena::new();
         let vec = some(StringVector::new(&["hello", "world"]).build_in(&mut arena));
-        assert_eq!(vec.len(), 2);
-        assert!(vec.string_elt(0).is_some());
+        assert_eq!(vec.clone().len(), 2);
+        assert!(vec.clone().string_elt(0).is_some());
         assert!(vec.string_elt(1).is_some());
     }
 
@@ -878,9 +878,9 @@ mod tests {
     fn test_generic_vector_builder() {
         let mut arena = RArena::new();
         let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
-        let vec = some(GenericVector::from_values([nil, nil]).build_in(&mut arena));
-        assert_eq!(vec.len(), 2);
-        assert!(vec.vector_elt(0).is_some());
+        let vec = some(GenericVector::from_values([nil.clone(), nil]).build_in(&mut arena));
+        assert_eq!(vec.clone().len(), 2);
+        assert!(vec.clone().vector_elt(0).is_some());
         assert!(vec.vector_elt(1).is_some());
     }
 
@@ -893,7 +893,7 @@ mod tests {
                 .set_value(0, nil)
                 .build_in(&mut arena),
         );
-        assert_eq!(vec.len(), 1);
+        assert_eq!(vec.clone().len(), 1);
         assert!(vec.vector_elt(0).is_some_and(Sexp::is_nil));
     }
 
@@ -901,7 +901,7 @@ mod tests {
     fn test_generic_vector_typed_set_reports_bounds() {
         let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
         let builder = GenericVector::with_length(1)
-            .try_set_value(0, nil)
+            .try_set_value(0, nil.clone())
             .expect("in-bounds typed set should succeed");
 
         assert!(matches!(
@@ -914,9 +914,9 @@ mod tests {
     fn test_pairlist_builder() {
         let mut arena = crate::sexp::memory::RArena::new();
         let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
-        let list = some(PairlistBuilder::from_untagged_values([nil, nil]).build_in(&mut arena));
-        assert!(list.is_pairlist());
-        assert!(list.car().is_some());
+        let list = some(PairlistBuilder::from_untagged_values([nil.clone(), nil]).build_in(&mut arena));
+        assert!(list.clone().is_pairlist());
+        assert!(list.clone().car().is_some());
         assert!(list.cdr().is_some());
     }
 
@@ -930,7 +930,7 @@ mod tests {
                 .build_in(&mut arena),
         );
 
-        assert!(list.is_pairlist());
+        assert!(list.clone().is_pairlist());
         assert!(list.car().is_some());
     }
 
@@ -965,7 +965,7 @@ mod tests {
     fn test_scalar_constructors() {
         let mut arena = RArena::new();
         let si = some(scalar_integer_in(&mut arena, 42));
-        assert_eq!(si.integer_elt(0), Some(42));
+        assert_eq!(si.clone().integer_elt(0), Some(42));
         assert_eq!(si.len(), 1);
 
         let mut arena = RArena::new();
@@ -982,7 +982,7 @@ mod tests {
 
         let mut arena = RArena::new();
         let ss = some(scalar_string_in(&mut arena, "hello"));
-        assert_eq!(ss.len(), 1);
+        assert_eq!(ss.clone().len(), 1);
         assert!(ss.string_elt(0).is_some());
 
         let mut arena = RArena::new();
@@ -996,8 +996,8 @@ mod tests {
     fn test_mk_char() {
         let mut arena = RArena::new();
         let c = some(mk_char_in(&mut arena, b"hello"));
-        assert!(c.is_charsxp());
-        assert_eq!(c.as_str(), Some("hello"));
+        assert!(c.clone().is_charsxp());
+        assert_eq!(c.clone().as_str(), Some("hello"));
         assert_eq!(c.as_bytes(), Some(&b"hello"[..]));
     }
 
@@ -1018,7 +1018,7 @@ mod tests {
             some(Sexp::from_raw(cdr)),
             None,
         ));
-        assert!(cell.is_pairlist());
+        assert!(cell.clone().is_pairlist());
         assert!(some(cell.car()).is_vector());
     }
 
@@ -1032,7 +1032,7 @@ mod tests {
             some(Sexp::from_raw(arg.as_raw()))
         };
 
-        let call = some(lang2_in(&mut arena, fun, arg));
+        let call = some(lang2_in(&mut arena, fun.clone(), arg.clone()));
         assert!(call.is_pairlist());
 
         let arg2 = {
@@ -1040,7 +1040,7 @@ mod tests {
             some(Sexp::from_raw(arg2.as_raw()))
         };
         let call3 = some(lang3_in(&mut arena, fun, arg, arg2));
-        assert!(call3.is_pairlist());
+        assert!(call3.clone().is_pairlist());
         assert!(call3.car().is_some());
     }
 }
