@@ -1,6 +1,5 @@
 /target
 **/target/
-Cargo.lock
 *.o
 *.a
 *.so
@@ -14,6 +13,7 @@ Cargo.lock
 *~
 
 # Beads / Dolt files (added by bd init)
+.beads/
 .dolt/
 *.db
 .beads-credential-key
@@ -23,3 +23,6 @@ Rplots.pdf
 .Rhistory
 .RData
 .tmp/
+
+# Internal work notes (upstream-sync diffs stay tracked)
+/plans/*.md
