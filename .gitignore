@@ -19,3 +19,7 @@ Cargo.lock
 .beads-credential-key
 r-source/
 Rplots.pdf
+.R
+.Rhistory
+.RData
+.tmp/
