@@ -1,185 +1,155 @@
-# Rport
+# R-rust
 
-Rport is a Rust-first port of core R runtime pieces with an Android embedding
-target. The goal is not a C FFI wrapper around GNU R. The goal is a faithful,
-session-owned Rust runtime that can eventually power an RStudio-like Android
-app while keeping enough source-shape discipline that upstream R behavior can be
-reapplied and compared.
+A Rust port of GNU R's core runtime — parser, evaluator, object model,
+base/stat semantics, and the `nmath` numerical library — aimed at
+embeddable, session-isolated R execution (Android first, desktop and
+WASM supported).
 
-Current release proof: **583/583 stock C R conformance cases pass** in the local
-parity suite, plus **15/15 curated upstream GNU R core slices**, with focused unit
-coverage for packages, S3 registration, multi-session isolation, UniFFI, and
-Android plot rendering. The goal is **full GNU R fidelity** over time; remaining
-gaps (GC, natives, graphics/devices, compiler/lazyload, package trees) are
-tracked as `known-gap` / `policy` rows in `docs/upstream-port-map.tsv` and beads.
+**Not a C FFI wrapper.** Every semantic surface is translated Rust,
+kept source-shaped against the vendored upstream C so that upstream
+behavior can be diffed, ported, and verified hunk-by-hunk.
 
-## Architecture
+## Status
 
-```mermaid
-flowchart TD
-    RSource["upstream R source shape"] --> Compat["raw compatibility shims\nSEXP, Rf_*, .Internal"]
-    Compat --> Core["rmath core\nparser, evaluator, base/stats pieces"]
-    Core --> Session["RSession / RInstance\narena, environments, RNG, paths,\nprotect stack, output, cancellation"]
-    Session --> Embed["r-embed\nowned Rust values and PNG plots"]
-    Embed --> UniFFI["r-uniffi\nKotlin/Swift-safe records and RSession object"]
-    Embed --> Host["r-host-cli / desktop smoke"]
-    UniFFI --> Android["Android Compose sample\n2 tabs, packages, S3, plots, cancel"]
-    Session --> Graphics["r-graphics-engine\nandroid headless renderer"]
-    Graphics --> Android
-```
-
-## Crate Map
-
-| Path | Purpose |
+| Gate | Result |
 | --- | --- |
-| `rmath-rs/rmath` | Core translated/runtime implementation: parser, evaluator, SEXP arena, base/stats/math slices, Android-safe session API. |
-| `crates/r-embed` | Public Rust embedding wrapper. Returns owned `RValue`, output strings, runtime info, package metadata, and PNG plot bytes. |
-| `crates/r-uniffi` | UniFFI binding surface for Android and other hosts. No raw `SEXP` crosses this boundary. |
-| `crates/r-graphics-engine` | Small device-independent plotting primitives. |
-| `crates/r-device-android-headless` | PNG renderer used by Android plot previews. |
-| `crates/r-host-cli` | Host smoke executable for interactive desktop checks. |
+| Conformance parity vs **R trunk 4.7.0-dev** (r79999, built locally) | **607/607 cases, three-way** (stock C output vs checked-in golden vs Rust output) |
+| Script-level differential vs stock R | 10/10 |
+| Workspace tests | 2357+ green |
+| Clippy (`--workspace --all-targets`, warnings denied in CI) | clean |
+| WASM32 toolchain check | passes |
 
-## Safety Model
+The conformance corpus is regenerated from a locally built trunk R
+binary, so the parity contract is anchored to **upstream development
+itself**, not a release snapshot.
 
-- Mutable interpreter state is owned by `RSession`/`RInstance`: arena, global
-  environment, RNG, protect/preserve stacks, output capture, path policy,
-  graphics state, and cancellation.
-- `Sexp<'a>` is an owner-scoped handle over internal pointers. New Rust-facing
-  APIs should prefer `Sexp<'_>` or owned values over raw pointers.
-- Android and UniFFI APIs return owned records: `RValue`, `EvalResult`,
-  `PackageInfo`, `RuntimeInfo`, `Vec<u8>`/`ByteArray` PNGs.
-- Multiple R sessions can run in parallel by giving each tab/worker its own
-  `RSession`. Sharing one live session across worker threads is outside the
-  current contract.
-- Mutable process globals are audited by `scripts/check_android_globals.sh` and
-  documented in `docs/android-platform-globals.md`.
+## What works
 
-## What Works Today
+- **Parser** — full grammar per `gram.y`: precedence tiers (`^`
+  right-associative above unary minus, `%special%` tier, non-associative
+  comparisons), native pipe `|>` with `_` placeholder and `=>` pipebind,
+  hex/octal literals with overflow semantics, subscript grammar
+  (empty slots, `[[i,j]]`, tagged `drop=`/`exact=` args), upstream-shaped
+  parse errors (`unexpected ')' in "..."`).
+- **Evaluator** — closures with faithful `matchArgs_NR` argument matching
+  (exact/partial/positional, stock error messages), lazy `&&`/`||`,
+  `tryCatch`/`withRestarts`/`withCallingHandlers` including warning
+  handlers, `on.exit` with GC-rooted return values, `data.frame` subsetting
+  and `[.data.frame` emulation, vector-growth assignment, recursive `[[`,
+  `UseMethod`/`NextMethod` S3 dispatch, S4 classes with `setGeneric`/
+  `setMethod`/`slot`/`@`, group-generic `Ops`/`Math`/`Summary` semantics.
+- **Rscript semantics** — per-expression auto-print with visibility
+  propagation (invisible internals table, handler-decided cases),
+  `stop()` halting scripts, deferred warning collection, message
+  interleaving, `show.error.locations` markers, call-attributed
+  errors/warnings via `deparse1s`.
+- **RNG** — Mersenne-Twister default (bit-identical streams to stock:
+  `set.seed(1); runif(3)` → `0.2655087 0.3721239 0.5728534`), Inversion
+  normals, Rejection sampling, BTPE binomials, `binom.kind` encoding,
+  `.Random.seed` in the stock 626-word layout, session-owned isolation,
+  Walker alias sampling for >200 categories. Marsaglia-MultiCarry and
+  Wichmann-Hill remain selectable.
+- **nmath** — faithful translations of the distribution families with
+  stream-parity golden tests (`rbinom` bit-identical to stock under the
+  same seed; `rbeta` within documented ulp-level libm residuals),
+  TOMS 708, Bessel functions (trunk-parity matrix ≤ 1e-15), `fround`/
+  `fprec`/`R_pow`/`R_pow_di` with stock fast paths.
+- **Base semantics** — dpq vector recycling per `SETUP_MathN`, factor
+  group-generic `Ops`/`Math`, `format`/`print` with common-decimal
+  encoding, named-vector padding, `sprintf` incl. complex/Inf handling,
+  `strptime` ported from `Rstrptime.h` (not libc), `Sys.setenv` via
+  libc, `scan(text=)`, `data()` listings, deferred warnings, dump/deparse
+  attribute forms.
+- **Embedding** — session-owned everything (arena, GC, RNG, paths,
+  cancellation), Android/UniFFI facade with owned values, headless
+  plot rendering through the portable device registry.
 
-- Parser/evaluator basics: arithmetic, control flow, functions, lazy/default
-  args, missing args, vectors/lists, subsetting, attributes, and S3 dispatch
-  slices.
-- Base/stat/math slices covered by the conformance dashboard, including
-  summaries, set operations, output capture, conditions, platform helpers,
-  distributions, tail/log flags, and `sample` behavior.
-- Pure-R packages from configured Android library paths, including DESCRIPTION
-  metadata, NAMESPACE exports/imports, `exportPattern`, and S3 methods.
-- Android embedding paths for `.libPaths()`, `find.package()`, `library()`,
-  `require()`, `tempdir()`, and `tempfile()`.
-- Headless Android plot rendering for simple numeric `plot(...)` calls with
-  points/lines/both, labels, colors, `lwd`, and `cex`.
-- Cooperative cancellation of long-running evals.
+## Layout
 
-## Known Limits
-
-- This is not a full R implementation yet. The parity suite is strong in the
-  covered surface but is not a whole-CRAN compatibility claim.
-- Native package loading through `useDynLib()` and direct native entrypoints
-  (`.Call`, `.C`, `.Fortran`, `.External`, `dyn.load`, and `library.dynam`) is
-  intentionally rejected until an Android host-owned native-library policy
-  exists. Pure-R packages remain the supported Android package scope.
-- Graphics are useful for demos but not yet a full R graphics device.
-- Exact byte-for-byte `.Random.seed` stream parity is not claimed; RNG state is
-  session-owned and behavior fixtures assert shape/type/error contracts.
-- Some core code remains C-shaped internally to preserve upstream reviewability.
-  New public Rust and Android APIs should stay Rust-shaped and owned.
-
-## Android Demo
-
-The Compose sample is in `samples/android-compose`. It demonstrates two
-independent R sessions/tabs, eval output, typed result kind, PNG plots, package
-listing/loading, S3 dispatch from a bundled pure-R package, and cancellation.
-
-```bash
-scripts/generate_uniffi_bindings.sh --out-dir samples/android-compose/app/generated
-cargo ndk -t arm64-v8a -o samples/android-compose/app/src/main/jniLibs build -p r-uniffi --release
-rstudio-mobile/gradlew -p samples/android-compose :app:assembleDebug
+```
+rmath-rs/
+  nmath/            standalone libRmath.a-shaped crate (dist, special,
+                    dpq, rng facade, MathState) — no SEXP dependencies
+  rmath/            the runtime crate
+    src/eval/       parser, evaluator, bytecode, closure matching,
+                    dispatch
+    src/sexp/       object model, arena GC (persistent-root marks,
+                    remembered set, card-free write barriers), protect
+    src/mainutils/  builtins: essentials/ (16 domain modules + name
+                    registry), subset/subassign, seq, errors, print,
+                    serialize, io, rstrptime, ...
+    src/library/    stats, methods, graphics, grDevices, grid, utils
+  rmath-test/       cross-crate numerical parity suites
+crates/
+  r-embed/          safe embedding facade (owned values, no raw SEXP)
+  r-uniffi/         Kotlin/Swift bindings surface
+  r-graphics-engine/  portable plotting primitives
+  r-device-android-headless/  PNG device backend
+tests/conformance/  607 stock-golden cases + differential runner
+scripts/            parity, slices, corpus, release gates
+r-source/           vendored upstream C (not part of the crate build)
 ```
 
-For host-side reproducible artifacts without an emulator:
+## Build and verify
 
 ```bash
-scripts/android_showcase_artifacts.sh --check
+cargo build --workspace
+cargo test --workspace                 # includes stream-parity goldens
+cargo clippy --workspace --all-targets # zero warnings expected
+
+# Conformance vs a local R (release or trunk build on PATH):
+PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --check
+PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --regen-goldens
+./scripts/wasm_toolchain_check.sh
 ```
 
-That writes:
+## Upstream sync workflow
 
-- `target/android-showcase/showcase-transcript.txt`
-- `target/android-showcase/line-plot.png`
-- `target/android-showcase/point-plot.png`
+1. `git -C r-source fetch origin trunk` and count the delta.
+2. `git -C r-source diff HEAD origin/trunk -- src/main src/nmath` per
+   file → per-file patches under `plans/upstream-sync-<date>/`.
+3. Port each behavioral hunk into the Rust mirror (cosmetic C churn —
+   const-cleanup, Makefiles, copyright years — is dispositioned, not
+   ported).
+4. Regenerate goldens from a trunk build; the three-way parity run
+   proves Rust ≡ trunk.
 
-## Release Proof
+The last sync landed 273 upstream commits (warning-condition classes,
+`binom.kind`, `dim2total`, strptime fixes, deparse attribute forms,
+`fprec`/`R_pow` alignment — full disposition in
+`plans/upstream-sync-2026-08/`).
 
-Run the local release gate before claiming a shippable slice:
+## Known gaps
 
-```bash
-scripts/release_gate.sh
-```
+Honest ledger, each scoped with a reproduction:
 
-For Android Gradle packaging too:
+- Mersenne-Twister is the only *stream-parity* engine; the alternative
+  kinds run but their streams are not bit-verified against stock.
+- A few samplers (`rbeta`, `rnorm` under some shapes) differ from stock
+  by ≤ 3 ulps from libm `exp`/`log` rounding — consumption order is
+  identical, verified against a standalone compiled C reference.
+- Trunk's own decimal parser (`R_strtod5`) is inexact; this port parses
+  decimals correctly-rounded instead (documented choice; identical for
+  ≤ 16 significant digits).
+- `srcref`-level error locations are not implemented;
+  `show.error.locations` works at the expression level.
+- ALTREP wrapper classes, `serialize` format versions beyond the
+  implemented surface, and `memory.profile` column fidelity are
+  known-gap rows in `docs/upstream-port-map.tsv`.
+- `sprintf` on language objects, `str()`/`format()` of calls, and
+  condition-object printing are implemented; exotic corner formats
+  (`%OS<n>` on some locales) may lag trunk.
 
-```bash
-scripts/release_gate.sh --android-package
-```
+## Docs
 
-For the slowest local pass, including desktop smoke and generated UniFFI
-bindings:
+- `docs/conformance.md` — corpus, normalization, regeneration
+- `docs/upstream-port-map.tsv` — C file ↔ Rust module map with sync mode
+- `docs/rust-r-port-architecture.md` — crate architecture
+- `docs/android-security-policy.md`, `docs/release-gate.md` — embedding
+  constraints and release process
 
-```bash
-scripts/release_gate.sh --full
-```
+## License
 
-The gate covers formatting, strict clippy, Rust tests, Android aarch64 checks,
-mutable-global scanning, stock C R conformance parity, generated conformance
-artifacts, the public safe API audit, optional Android packaging, and whitespace
-validation.
-
-Focused adversarial checks for parser/eval/namespace/memory-facing owned values:
-
-```bash
-scripts/adversarial_safety_checks.sh --check
-scripts/adversarial_safety_checks.sh --long
-```
-
-Performance and memory snapshots:
-
-```bash
-scripts/performance_report.sh --quick --check
-```
-
-Local release bundle:
-
-```bash
-scripts/package_release_artifacts.sh --check
-```
-
-Conformance reports are written to:
-
-- `target/release-gate/conformance/summary.json`
-- `target/release-gate/conformance/summary.md`
-
-See `docs/conformance.md`, `docs/release-gate.md`,
-`docs/release-packaging.md`, `docs/adversarial-testing.md`, `docs/performance.md`,
-`docs/upstream-port-map.md`, and `docs/rust-r-port-architecture.md` for the
-detailed policy.
-
-## Upstream Porting Discipline
-
-1. Find or add the target row in `docs/upstream-port-map.tsv`.
-2. Compare the target upstream C/R behavior under `r-source`.
-3. Keep raw compatibility modules close to R when that improves future diffs.
-4. Move mutable state, allocation, paths, output, RNG, and cancellation into
-   `RSession`/`RInstance`.
-5. Add a Rust-shaped typed entrypoint first, then make C-shaped shims delegate.
-6. Add stock-R conformance fixtures for user-visible semantics when possible.
-7. Run the release gate before committing.
-
-## Roadmap
-
-- Expand conformance fixtures for packages/S3 and graphics beyond unit smoke.
-- Add parser/eval fuzzing and property tests.
-- Build benchmark and memory-profile baselines for arena/session changes.
-- Keep shrinking raw public surface and moving remaining mutable state behind
-  explicit sessions.
-- Package a repeatable Android release artifact with generated bindings and
-  native libraries.
+GPL-2.0-or-later, matching upstream R. The vendored `r-source/` tree
+retains the R Core Team copyright and is used solely as the
+diff-and-verify reference.
