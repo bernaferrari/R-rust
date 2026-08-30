@@ -2700,8 +2700,11 @@ fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, val
 /// Mirrors stock `base::gc`: the value is the `.Internal(gc(...))` counters
 /// shaped into a 2x7 matrix — rows Ncells/Vcells, columns
 /// `used (Mb) gc trigger (Mb) limit (Mb) max used (Mb)` — with the (Mb)
-/// cells rounded up to 0.1 Mb. The port imposes no cell limits, so the
-/// `limit (Mb)` column is all-NA and dropped, yielding the stock 2x6 table.
+/// cells rounded up to 0.1 Mb. The `limit (Mb)` column reports the node
+/// and vector-heap ceilings (NA where unset — upstream `R_MaxNSize` /
+/// `R_MaxVSize`); on macOS the vector pool carries a startup default
+/// (max(physical memory, 16 Gb)), so the column usually renders there.
+/// stock `base::gc` drops the column when it is all-NA.
 /// Unlike the old port, the result is *visible* (stock prints it).
 pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -2726,6 +2729,23 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         // R rounds the (Mb) columns up to 0.1 Mb.
         let mb = |bytes: usize| 0.1 * (10.0 * bytes_to_mb(bytes)).ceil();
 
+        // Cell limits for the `limit (Mb)` column (memory.c do_gc): NA
+        // unless a ceiling is set; Ncells counts nodes, Vcells is bytes.
+        let max_n = crate::mainutils::memory_main::R_GetMaxNSize_memory();
+        let max_v = crate::mainutils::memory_main::R_GetMaxVSize_memory();
+        let limit = (
+            if max_n == u64::MAX {
+                NA_REAL
+            } else {
+                mb((max_n.saturating_mul(node_size as u64)) as usize)
+            },
+            if max_v == u64::MAX {
+                NA_REAL
+            } else {
+                mb(max_v as usize)
+            },
+        );
+
         // Full stock layout, column-major with 2 rows:
         //   used | (Mb) | gc trigger | (Mb) | limit (Mb) | max used | (Mb)
         let full: [(f64, f64); 7] = [
@@ -2739,7 +2759,7 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
                 mb(ncell_trigger.saturating_mul(node_size)),
                 mb(vcell_trigger_bytes),
             ),
-            (NA_REAL, NA_REAL), // no cell limits in this port
+            limit,
             (ncell_peak as f64, vcell_peak as f64),
             (
                 mb(ncell_peak.saturating_mul(node_size)),

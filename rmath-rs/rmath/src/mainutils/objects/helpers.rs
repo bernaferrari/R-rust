@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -13,7 +19,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// Check if x is a character vector (STRSXP).
-unsafe fn isString(x: SEXP) -> c_int {
+pub(crate) unsafe fn isString(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return FALSE;
@@ -41,7 +47,7 @@ unsafe fn isEnvironment(x: SEXP) -> c_int {
 }
 
 /// Check if x is a logical vector.
-unsafe fn isLogical(x: SEXP) -> c_int {
+pub(crate) unsafe fn isLogical(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return FALSE;
@@ -55,7 +61,7 @@ unsafe fn isLogical(x: SEXP) -> c_int {
 }
 
 /// Check if x is a function (closure, builtin, or special).
-unsafe fn isFunction(x: SEXP) -> c_int {
+pub(crate) unsafe fn isFunction(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return FALSE;
@@ -70,7 +76,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 }
 
 /// Check if x is a primitive (builtin or special).
-unsafe fn isPrimitive(x: SEXP) -> c_int {
+pub(crate) unsafe fn isPrimitive(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return FALSE;
@@ -85,7 +91,7 @@ unsafe fn isPrimitive(x: SEXP) -> c_int {
 }
 
 /// Check if x is a closure.
-unsafe fn isClosure(x: SEXP) -> c_int {
+pub(crate) unsafe fn isClosure(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return FALSE;
@@ -99,7 +105,7 @@ unsafe fn isClosure(x: SEXP) -> c_int {
 }
 
 /// Check if a string is valid and non-empty.
-unsafe fn isValidString(x: SEXP) -> c_int {
+pub(crate) unsafe fn isValidString(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP || LENGTH(x) != 1 {
             return FALSE;
@@ -119,20 +125,20 @@ unsafe fn isValidString(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
+pub(crate) unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asRbool(x, call) }
 }
 
-unsafe fn asLogical(x: SEXP) -> c_int {
+pub(crate) unsafe fn asLogical(x: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asLogical(x) }
 }
 
-unsafe fn asInteger(x: SEXP) -> c_int {
+pub(crate) unsafe fn asInteger(x: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
 /// isNull check.
-unsafe fn isNull(x: SEXP) -> c_int {
+pub(crate) unsafe fn isNull(x: SEXP) -> c_int {
     unsafe { Rf_isNull(x) }
 }
 
@@ -150,7 +156,7 @@ pub(crate) unsafe fn asChar(x: SEXP) -> SEXP {
 }
 
 /// Get the length of an object.
-unsafe fn length(x: SEXP) -> c_int {
+pub(crate) unsafe fn length(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -196,7 +202,7 @@ unsafe fn PRVALUE(x: SEXP) -> SEXP {
 }
 
 /// Check if two CHARSXP values are equal (Seql).
-unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
+pub(crate) unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
     unsafe {
         if a == b {
             return TRUE;
@@ -224,7 +230,7 @@ unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
 /// Find the position of string `what` in character vector `klass`.
 /// Returns the 0-based index, or -1 if not found.
 /// This is the Rust equivalent of R's `stringPositionTr()`.
-unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
+pub(crate) unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
     unsafe {
         if klass.is_null() || what.is_null() {
             return -1;
@@ -248,7 +254,7 @@ unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Return a new character vector consisting of elements klass[pos..].
-unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
+pub(crate) unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
     unsafe {
         if klass.is_null() || pos < 0 {
             return R_NilValue();
@@ -283,7 +289,7 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 /// Get the class of an object, with S4 awareness.
 /// For S4 objects, uses extends() to compute the full class vector.
 /// For S3 objects, falls back to R_data_class.
-unsafe fn R_data_class2(x: SEXP) -> SEXP {
+pub(crate) unsafe fn R_data_class2(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() {
             return R_NilValue();
@@ -308,7 +314,7 @@ unsafe fn R_data_class2(x: SEXP) -> SEXP {
 
 /// Find the top-level environment by walking ENCLOS.
 /// If `what` is not R_NilValue, search for it starting from `env`.
-unsafe fn topenv(_what: SEXP, env: SEXP) -> SEXP {
+pub(crate) unsafe fn topenv(_what: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if env.is_null() {
             return R_NilValue();
@@ -334,7 +340,7 @@ unsafe fn topenv(_what: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Append list `s` to the end of list `t`. Returns t (modified in place).
-unsafe fn listAppend(t: SEXP, s: SEXP) -> SEXP {
+pub(crate) unsafe fn listAppend(t: SEXP, s: SEXP) -> SEXP {
     unsafe {
         if t.is_null() || t == R_NilValue() {
             return s;
@@ -359,7 +365,7 @@ unsafe fn listAppend(t: SEXP, s: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get R_BlankScalarString (a blank character scalar).
-unsafe fn R_BlankScalarString_placeholder() -> SEXP {
+pub(crate) unsafe fn R_BlankScalarString_placeholder() -> SEXP {
     unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
 }
 
@@ -368,7 +374,7 @@ unsafe fn R_BlankScalarString_placeholder() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Mutable access to INTEGER_ELT. Used for setting values in integer vectors.
-unsafe fn INTEGER_ELT_mut(x: SEXP, i: c_int) -> *mut c_int {
+pub(crate) unsafe fn INTEGER_ELT_mut(x: SEXP, i: c_int) -> *mut c_int {
     unsafe {
         if x.is_null() {
             return ptr::null_mut();
@@ -380,4 +386,3 @@ unsafe fn INTEGER_ELT_mut(x: SEXP, i: c_int) -> *mut c_int {
         base.offset(i as isize)
     }
 }
-

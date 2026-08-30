@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -359,4 +365,3 @@ pub unsafe fn R_possible_dispatch(
 unsafe fn get_primitive_methods(op: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_primitive_methods(op) }
 }
-

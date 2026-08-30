@@ -193,6 +193,13 @@ fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
             let mut sum: f64 = aa * empal * emp2al / em;
             let mut nend: i32 = n - nb;
 
+            /* C control flow: `nb <= 1` => goto L230; `n == 1` after
+            storing BI[NB-1] => goto L220; otherwise (and also when
+            N < NB, which takes no goto) fall through to the
+            difference-equation tail ahead of L220. */
+            let mut goto_l220 = false;
+            let mut goto_l230 = false;
+
             if nend < 0 {
                 // N < NB, so store BI[N] and set higher orders to 0.
                 bi[(n - 1) as usize] = aa;
@@ -233,14 +240,14 @@ fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
                 bi[(n - 1) as usize] = aa;
                 if nb <= 1 {
                     sum = sum + sum + aa;
-                    // goto L230
+                    goto_l230 = true;
                 } else {
                     // Calculate and Store BI[NB-1]
                     n -= 1;
                     en -= 2.0;
                     bi[(n - 1) as usize] = en * aa / x + bb;
                     if n == 1 {
-                        // goto L220
+                        goto_l220 = true;
                     } else {
                         em -= 1.0;
                         if n == 2 {
@@ -250,54 +257,57 @@ fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
                         }
                         empal -= 1.0;
                         sum = (sum + bi[(n - 1) as usize] * empal) * emp2al / em;
-
-                        nend = n - 2;
-                        if nend > 0 {
-                            // Calculate via difference equation
-                            // and store BI[N], until N = 2.
-                            for _l in 1..=nend {
-                                n -= 1;
-                                en -= 2.0;
-                                bi[(n - 1) as usize] =
-                                    en * bi[n as usize] / x + bi[(n + 1) as usize];
-                                em -= 1.0;
-                                if n == 2 {
-                                    emp2al = 1.0;
-                                } else {
-                                    emp2al -= 1.0;
-                                }
-                                empal -= 1.0;
-                                sum = (sum + bi[(n - 1) as usize] * empal) * emp2al / em;
-                            }
-                        }
-                        // Calculate BI[1]
-                        bi[0] = 2.0 * empal * bi[1] / x + bi[2];
-                    }
-                    // L220:
-                    sum = sum + sum + bi[0];
-                }
-
-                // L230:
-                // Normalize. Divide all BI[N] by sum.
-                if nu != 0.0 {
-                    sum *= gammafn(1.0 + nu) * pow(x * 0.5, -nu);
-                }
-                if ize == 1 {
-                    sum *= exp(-x);
-                }
-                let mut aa2 = ENMTEN_BESS;
-                if sum > 1.0 {
-                    aa2 *= sum;
-                }
-                for i in 0..(nb as usize) {
-                    if bi[i] < aa2 {
-                        bi[i] = 0.0;
-                    } else {
-                        bi[i] /= sum;
                     }
                 }
-                return ncalc;
             }
+
+            if !goto_l220 && !goto_l230 {
+                // Calculate via difference equation
+                // and store BI[N], until N = 2.
+                nend = n - 2;
+                if nend > 0 {
+                    for _l in 1..=nend {
+                        n -= 1;
+                        en -= 2.0;
+                        bi[(n - 1) as usize] = en * bi[n as usize] / x + bi[(n + 1) as usize];
+                        em -= 1.0;
+                        if n == 2 {
+                            emp2al = 1.0;
+                        } else {
+                            emp2al -= 1.0;
+                        }
+                        empal -= 1.0;
+                        sum = (sum + bi[(n - 1) as usize] * empal) * emp2al / em;
+                    }
+                }
+                // Calculate BI[1]
+                bi[0] = 2.0 * empal * bi[1] / x + bi[2];
+            }
+            if !goto_l230 {
+                // L220:
+                sum = sum + sum + bi[0];
+            }
+
+            // L230:
+            // Normalize. Divide all BI[N] by sum.
+            if nu != 0.0 {
+                sum *= gammafn(1.0 + nu) * pow(x * 0.5, -nu);
+            }
+            if ize == 1 {
+                sum *= exp(-x);
+            }
+            let mut aa2 = ENMTEN_BESS;
+            if sum > 1.0 {
+                aa2 *= sum;
+            }
+            for i in 0..(nb as usize) {
+                if bi[i] < aa2 {
+                    bi[i] = 0.0;
+                } else {
+                    bi[i] /= sum;
+                }
+            }
+            return ncalc;
         } else {
             // small x < 1e-4
             // Two-term ascending series for small X.

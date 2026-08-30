@@ -229,10 +229,10 @@ pub fn ptukey_inner(
 
     // integrate over each subinterval
     let mut ans = 0.0;
-    let mut otsum_last = 0.0;
+    let mut otsum = 0.0;
 
     for i in 1..=50 {
-        let mut otsum = 0.0;
+        otsum = 0.0;
 
         // legendre quadrature with order = nlegq
         let twa1 = (2 * i - 1) as f64 * ulen;
@@ -264,15 +264,16 @@ pub fn ptukey_inner(
         // if integral for interval i < 1e-14, then stop.
         // However, at least 1/ulen intervals are calculated.
         if (i as f64) * ulen >= 1.0 && otsum <= EPS2 {
-            ans += otsum;
             break;
         }
 
-        otsum_last = otsum;
         ans += otsum;
     }
 
-    if otsum_last > EPS2 {
+    // Trunk checks the interval sum at loop exit: on an early break it is
+    // the converged (<= EPS2) interval, so no warning; only a run of all 50
+    // intervals whose final sum still exceeds EPS2 warns.
+    if otsum > EPS2 {
         // not converged
         ml_warning(ME_PRECISION, "ptukey");
     }

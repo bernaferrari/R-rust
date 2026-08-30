@@ -8,7 +8,11 @@ fn fmt(v: f64) -> String {
     if v.is_nan() {
         "NaN".to_string()
     } else if v.is_infinite() {
-        if v > 0.0 { "Inf".to_string() } else { "-Inf".to_string() }
+        if v > 0.0 {
+            "Inf".to_string()
+        } else {
+            "-Inf".to_string()
+        }
     } else {
         format!("{v:.17e}")
     }
@@ -17,7 +21,8 @@ fn fmt(v: f64) -> String {
 #[test]
 fn probe() {
     let data = std::fs::read_to_string("/tmp/bessel_probe/trunk.csv").unwrap();
-    let mut out = std::io::BufWriter::new(std::fs::File::create("/tmp/bessel_probe/rust.csv").unwrap());
+    let mut out =
+        std::io::BufWriter::new(std::fs::File::create("/tmp/bessel_probe/rust.csv").unwrap());
     writeln!(out, "fn,expo,x,nu,val_trunk,val_rust").unwrap();
     for (n, line) in data.lines().enumerate() {
         if n == 0 {

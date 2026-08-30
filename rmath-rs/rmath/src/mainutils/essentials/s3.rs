@@ -1072,8 +1072,17 @@ pub unsafe fn do_single_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
 /// `pans[i].i = im[i %% ni]`, `n = max(asInteger(length.out), nr, ni)`);
 /// otherwise it builds `rep_len(modulus, n) * exp(1i * rep_len(argument, n))`
 /// with `n = max(length.out, length(argument), length(modulus))`.
-pub unsafe fn do_complex_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_complex_constructor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        // Upstream evaluates this inside base::complex's closure, so
+        // coercion warnings raised here attribute to that call ("In
+        // complex(...) : NAs introduced by coercion"). The port folds the
+        // wrapper into one builtin with no closure context of its own, so
+        // install the call as the warning attribution override for the
+        // handler body; the guard restores the previous value even when a
+        // base_error panic unwinds through.
+        let previous = crate::mainutils::errors::set_warning_call_override(call);
+        let _restore = RestoreWarningCall(previous);
         let supplied = match_complex_formals(args);
 
         // Wrapper: `if (missing(modulus) && missing(argument))`.
@@ -1081,6 +1090,18 @@ pub unsafe fn do_complex_constructor(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
             return complex_from_real_imaginary(&supplied);
         }
         complex_from_polar(&supplied)
+    }
+}
+
+/// Drop guard restoring the warning-call attribution override on scope
+/// exit, including panic unwinds through `attribute_handler_errors`.
+struct RestoreWarningCall(SEXP);
+
+impl Drop for RestoreWarningCall {
+    fn drop(&mut self) {
+        unsafe {
+            crate::mainutils::errors::set_warning_call_override(self.0);
+        }
     }
 }
 

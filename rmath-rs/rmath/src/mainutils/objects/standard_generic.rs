@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -220,4 +226,3 @@ pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -
         dispatch(arg, env, fdef)
     }
 }
-

@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -8,7 +14,7 @@ use super::*;
 
 /// Get the object argument for method dispatch from the calling context.
 /// This examines the generic function's formals and matched arguments.
-unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
+pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
     unsafe {
         if cptr.is_null() {
             return R_NilValue();
@@ -127,7 +133,13 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
 
 /// Apply a method (SPECIALSXP, BUILTINSXP, or CLOSXP) with given arguments.
 /// Note: This is a simplified version. Full implementation requires eval infrastructure.
-unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, newvars: SEXP) -> SEXP {
+pub(crate) unsafe fn applyMethod(
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    newvars: SEXP,
+) -> SEXP {
     unsafe {
         if op.is_null() || op == R_NilValue() {
             return R_NilValue();
@@ -201,7 +213,7 @@ unsafe fn patch_argument(supplied_slot: SEXP, name: SEXP, farg: *mut fstype_t, c
 /// Creates a shallow copy of supplied args and patches them into promises
 /// referencing the closure environment's formals.
 /// Ported from match.c:440-559.
-unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEXP {
+pub(crate) unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let nfarg = length(formals).max(1) as usize;
         let mut farg = vec![fstype_t::Unmatched; nfarg];
@@ -324,7 +336,7 @@ unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEX
 
 /// Destructive matching of arguments: named elements of newargs replace
 /// matching elements in oldargs; the two resulting lists are appended.
-unsafe fn newintoold(new: SEXP, old: SEXP) -> SEXP {
+pub(crate) unsafe fn newintoold(new: SEXP, old: SEXP) -> SEXP {
     unsafe {
         if new.is_null() || new == R_NilValue() {
             return R_NilValue();
@@ -347,7 +359,7 @@ unsafe fn newintoold(new: SEXP, old: SEXP) -> SEXP {
 }
 
 /// Match method arguments: merge old and new argument lists.
-unsafe fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
+pub(crate) unsafe fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
     unsafe {
         let merged = newintoold(newargs, oldargs);
         listAppend(oldargs, merged)
@@ -361,7 +373,7 @@ unsafe fn matchmethargs(oldargs: SEXP, newargs: SEXP) -> SEXP {
 /// Fix up the call when arguments to the function may have changed.
 /// For now we only worry about tagged args, appending them if they
 /// are not already there.
-unsafe fn fixcall(call: SEXP, args: SEXP) -> SEXP {
+pub(crate) unsafe fn fixcall(call: SEXP, args: SEXP) -> SEXP {
     unsafe {
         if call.is_null() || args.is_null() {
             return call;
@@ -401,7 +413,7 @@ unsafe fn fixcall(call: SEXP, args: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Find a function in the environment chain from rho to target.
-unsafe fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
+pub(crate) unsafe fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
     unsafe {
         let mut current_rho = rho;
         while !current_rho.is_null() && current_rho != R_EmptyEnv() {
@@ -425,7 +437,7 @@ unsafe fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
 }
 
 /// Find a function, searching the global env, then base env.
-unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut current_rho = rho;
         while !current_rho.is_null() && current_rho != R_EmptyEnv() {
@@ -478,7 +490,7 @@ pub unsafe fn R_has_methods_attached() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Prepend a named variable to the S3 dispatch variable list.
-unsafe fn addS3Var(vars: SEXP, name: SEXP, value: SEXP) -> SEXP {
+pub(crate) unsafe fn addS3Var(vars: SEXP, name: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let res = Rf_cons(value, vars);
         SETTAG(res, name);
@@ -507,4 +519,3 @@ pub unsafe fn createS3Vars(
         v
     }
 }
-

@@ -282,9 +282,20 @@ fn test_gc_reports_session_memory_counters() {
         );
         assert!(!dim.is_null());
         assert_eq!(*INTEGER(dim), 2);
-        // Stock base::gc drops the all-NA `limit (Mb)` column (the port has
-        // no cell limits), so the visible table is 2x6.
-        assert_eq!(*INTEGER(dim).add(1), 6);
+        // Stock base::gc prints a `limit (Mb)` column: NA for Ncells (no
+        // node limit) and the platform vector-pool ceiling for Vcells
+        // (macOS startup default: max(physical, 16 Gb) = 32768 Mb here),
+        // so the visible table is 2x7. When no ceiling applies the
+        // all-NA column is dropped and the table is 2x6.
+        let vlimit = crate::mainutils::memory_main::R_GetMaxVSize_memory();
+        if vlimit == u64::MAX {
+            assert_eq!(*INTEGER(dim).add(1), 6);
+        } else {
+            // limit (Mb) for Vcells sits at row 2, col 5 (index 4) of the
+            // flattened table: Ncells row is cols 0-3, Vcells row cols 4-6.
+            let data = REAL(result);
+            assert!(*data.add(4) > 0.0, "Vcells limit should be reported");
+        }
 
         let data = REAL(result);
         assert!(*data > 0.0, "Ncells used should reflect active arena nodes");

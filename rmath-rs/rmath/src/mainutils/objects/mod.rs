@@ -13,7 +13,9 @@ pub(crate) use std::ffi::{CStr, CString};
 pub(crate) use std::os::raw::{c_char, c_int};
 pub(crate) use std::ptr;
 
-pub(crate) use crate::eval::attrib_core::{R_ClassSymbol, R_data_class, getAttrib, isObject, setAttrib};
+pub(crate) use crate::eval::attrib_core::{
+    R_ClassSymbol, R_data_class, getAttrib, isObject, setAttrib,
+};
 pub(crate) use crate::eval::eval::Rf_eval;
 pub(crate) use crate::sexp::accessors::*;
 pub(crate) use crate::sexp::constructors::*;
@@ -24,24 +26,24 @@ pub(crate) use crate::sexp::memory_ext::allocList;
 pub(crate) use crate::sexp::protect::protect;
 pub(crate) use crate::sexp::symbol::Rf_install;
 
-mod state;
-mod helpers;
 mod apply_args;
-mod usemethod;
-mod nextmethod;
 mod class_prims;
-mod standard_generic;
+mod helpers;
+mod nextmethod;
 mod primitive_methods;
 mod s4;
+mod standard_generic;
+mod state;
 #[cfg(test)]
 mod tests;
+mod usemethod;
 
-pub use self::state::*;
-pub use self::helpers::*;
 pub use self::apply_args::*;
-pub use self::usemethod::*;
-pub use self::nextmethod::*;
 pub use self::class_prims::*;
-pub use self::standard_generic::*;
+pub use self::helpers::*;
+pub use self::nextmethod::*;
 pub use self::primitive_methods::*;
 pub use self::s4::*;
+pub use self::standard_generic::*;
+pub use self::state::*;
+pub use self::usemethod::*;

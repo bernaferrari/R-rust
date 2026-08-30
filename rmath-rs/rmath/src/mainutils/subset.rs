@@ -362,14 +362,14 @@ unsafe fn errorcallMissingSubs(_x: SEXP, _call: SEXP) {
 /// Report out-of-bounds error (integer index).
 unsafe fn errorcallOutOfBounds(_x: SEXP, _subscript: c_int, _index: R_xlen_t, _call: SEXP) {
     std::panic::panic_any(RError {
-        message: format!("subscript out of bounds (dimension {})", _subscript),
+        message: "subscript out of bounds".to_string(),
     });
 }
 
 /// Report out-of-bounds error (SEXP index).
 unsafe fn errorcallOutOfBoundsSEXP(_x: SEXP, _subscript: c_int, _sindex: SEXP, _call: SEXP) {
     std::panic::panic_any(RError {
-        message: format!("subscript out of bounds (dimension {})", _subscript),
+        message: "subscript out of bounds".to_string(),
     });
 }
 

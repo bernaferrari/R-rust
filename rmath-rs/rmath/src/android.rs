@@ -107,11 +107,18 @@ fn error_result_with_captured(
         text.push('\n');
     }
     text.push_str(result.output.trim_end());
+    // Trunk ends the rendered error line before the deferred-warning
+    // block ("Error: ...\nIn addition: ..."). The separator is pushed
+    // lazily so the output never carries a trailing newline when no
+    // deferred warnings follow.
     // errors.c:922-928 — an error that escapes to top level prints pending
     // deferred warnings after the rendered error ("In addition: Warning
     // message: ..."); when capturing, that emission defers to here.
     if unsafe { crate::mainutils::errors::collect_warnings() } > 0 {
         if let Some(block) = unsafe { crate::mainutils::errors::take_warnings_block() } {
+            if !text.is_empty() {
+                text.push('\n');
+            }
             text.push_str("In addition: ");
             text.push_str(&block);
         }
@@ -526,6 +533,8 @@ impl RResult {
                     }
                     _ => format!("Error: {message}"),
                 }
+                .trim_end()
+                .to_string()
             };
         }
         self

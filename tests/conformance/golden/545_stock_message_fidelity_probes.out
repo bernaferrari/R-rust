@@ -1,0 +1,21 @@
+oob-vec: subscript out of bounds
+oob-mat: subscript out of bounds
+parse-if: input: TRUE line: FALSE
+parse-if-nl: input: TRUE line: FALSE
+parse-plus: input: TRUE line: FALSE
+parse-if-cond: input: TRUE line: FALSE
+[1] 3.151064
+[1] 1.684477
+[1] 0.8123301
+cx-len: invalid length
+Warning message:
+In complex("x") : NAs introduced by coercion
+[1] NA
+Warning message:
+In complex(real = "x") : NAs introduced by coercion
+[1] 2 7
+[1] "used"       "(Mb)"       "gc trigger" "(Mb)"       "limit (Mb)"
+[6] "max used"   "(Mb)"
+[1] "Ncells" "Vcells"
+[1] NA
+[1] 32768

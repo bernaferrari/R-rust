@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -6,7 +12,7 @@ use super::*;
 // S4 class infrastructure
 // ---------------------------------------------------------------------------
 
-unsafe fn sexp_to_string(x: SEXP) -> Option<String> {
+pub(crate) unsafe fn sexp_to_string(x: SEXP) -> Option<String> {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return None;
@@ -55,7 +61,7 @@ unsafe fn make_string_vector(values: &[String]) -> SEXP {
     }
 }
 
-unsafe fn named_vec_elt(x: SEXP, name: &str) -> SEXP {
+pub(crate) unsafe fn named_vec_elt(x: SEXP, name: &str) -> SEXP {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::VECSXP {
             return R_NilValue();
@@ -381,4 +387,3 @@ pub unsafe fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
         asS4(object, flag, complete)
     }
 }
-

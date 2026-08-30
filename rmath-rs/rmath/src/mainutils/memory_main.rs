@@ -98,6 +98,29 @@ impl PendingFinalizer {
     }
 }
 
+/// Startup default for the vector-heap limit, mirroring upstream
+/// startup.c: on macOS the vector pool is capped at max(physical memory,
+/// 16 Gb) to avoid R being killed by memory overcommit; other platforms
+/// start unlimited. `R_MAX_VSIZE` (upstream's override) is not consulted.
+#[cfg(target_os = "macos")]
+fn default_max_v_size() -> u64 {
+    // 16 Gb, upstream's `MinMaxVSize` floor.
+    const MIN_MAX_V_SIZE: u64 = 17179869184;
+    let pages = unsafe { libc::sysconf(libc::_SC_PHYS_PAGES) };
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) };
+    if pages <= 0 || page_size <= 0 {
+        return MIN_MAX_V_SIZE;
+    }
+    let sysmem = (pages as u64) * (page_size as u64);
+    sysmem.max(MIN_MAX_V_SIZE)
+}
+
+/// Startup default for the vector-heap limit (unlimited off macOS).
+#[cfg(not(target_os = "macos"))]
+fn default_max_v_size() -> u64 {
+    u64::MAX
+}
+
 pub(crate) struct MemoryRuntimeState {
     pub in_gc: c_int,
     pub gc_reporting: c_int,
@@ -118,7 +141,7 @@ impl Default for MemoryRuntimeState {
             gc_count: 0,
             gc_force_gap: 0,
             gc_force_wait: 0,
-            max_v_size: u64::MAX,
+            max_v_size: default_max_v_size(),
             max_n_size: u64::MAX,
             running_finalizers: false,
             pending_finalizers: Vec::new(),
@@ -1781,10 +1804,12 @@ mod tests {
     fn test_memory_limits_are_session_local_and_enforced() {
         let left = RSession::new();
         let right = RSession::new();
+        let mut left_v_limit = 0u64;
+        let mut left_n_limit = 0u64;
 
         left.with_protected(|| unsafe {
-            let left_v_limit = current_vector_heap_size().saturating_add(1_048_576);
-            let left_n_limit = current_node_heap_size().saturating_add(100);
+            left_v_limit = current_vector_heap_size().saturating_add(1_048_576);
+            left_n_limit = current_node_heap_size().saturating_add(100);
             assert_eq!(R_SetMaxVSize(left_v_limit), crate::sexp::ffi::TRUE);
             assert_eq!(R_SetMaxNSize(left_n_limit), crate::sexp::ffi::TRUE);
             assert_eq!(R_GetMaxVSize_memory(), left_v_limit);
@@ -1800,8 +1825,16 @@ mod tests {
         });
 
         right.with_protected(|| unsafe {
-            assert_eq!(R_GetMaxVSize_memory(), u64::MAX);
-            assert_eq!(R_GetMaxNSize_memory(), u64::MAX);
+            // The macOS startup default caps the vector pool at
+            // max(physical memory, 16 Gb); assert session locality (left's
+            // tighter limit must not leak) rather than the sentinel value.
+            let right_v = R_GetMaxVSize_memory();
+            assert_ne!(right_v, left_v_limit, "v limit leaked across sessions");
+            assert_ne!(
+                R_GetMaxNSize_memory(),
+                left_n_limit,
+                "n limit leaked across sessions"
+            );
         });
     }
 

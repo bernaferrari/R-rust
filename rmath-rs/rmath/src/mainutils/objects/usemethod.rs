@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -96,7 +102,7 @@ unsafe fn frame_args_for_method(formals: SEXP, env: SEXP) -> SEXP {
     }
 }
 
-unsafe fn simple_next_method_dispatch(
+pub(crate) unsafe fn simple_next_method_dispatch(
     current_call: SEXP,
     generic: SEXP,
     klass: SEXP,
@@ -194,7 +200,7 @@ unsafe fn simple_next_method_dispatch(
 
 /// Compare "signature" with "left.right" for S3 method name matching.
 /// Returns TRUE if signature == "left.right", FALSE otherwise.
-unsafe fn equalS3Signature(
+pub(crate) unsafe fn equalS3Signature(
     signature: *const c_char,
     left: *const c_char,
     right: *const c_char,
@@ -242,7 +248,7 @@ unsafe fn equalS3Signature(
 // ---------------------------------------------------------------------------
 
 /// Get the primitive (BUILTINSXP or SPECIALSXP) bound to a symbol.
-unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
+pub(crate) unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
     unsafe {
         if symbol.is_null() {
             return R_NilValue();
@@ -727,4 +733,3 @@ pub(crate) unsafe fn DispatchOrEval_objects(
         0
     }
 }
-

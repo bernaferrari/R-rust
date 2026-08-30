@@ -68,6 +68,12 @@ pub(crate) struct ErrorState {
     /// in for upstream's most-recent-known srcref (`R_Srcref`): the
     /// `show.error.locations` render uses it as the `(from #n)` location.
     pub toplevel_expr_no: usize,
+    /// Call attributed to warnings raised while it is set (null = no
+    /// override). Base closures that wrap `.Internal` entry points (e.g.
+    /// `base::complex`) are single builtins in this port, so a warning
+    /// raised inside them has no closure context to attribute through;
+    /// handlers install their own call here for the handler's duration.
+    pub warning_call: SEXP,
 }
 
 impl Default for ErrorState {
@@ -87,9 +93,10 @@ impl Default for ErrorState {
             interrupts_suspended: false,
             interrupts_pending: false,
             collect_warnings: 0,
+            toplevel_expr_no: 0,
             nwarnings: 50,
             last_rendered_message: None,
-            toplevel_expr_no: 0,
+            warning_call: std::ptr::null_mut(),
             warnings: std::ptr::null_mut(),
             handler_stack: std::ptr::null_mut(),
             restart_stack: std::ptr::null_mut(),

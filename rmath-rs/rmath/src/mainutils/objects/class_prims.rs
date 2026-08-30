@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -7,7 +13,7 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// R's unclass() primitive. Removes the class attribute from an object.
-unsafe fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub(crate) unsafe fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
@@ -76,7 +82,7 @@ pub unsafe fn inherits2(x: SEXP, what: *const c_char) -> c_int {
 ///
 /// If which is false, returns a single logical TRUE or FALSE.
 /// If which is true, returns an integer vector of length(what).
-unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
+pub(crate) unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || what.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -187,7 +193,7 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
 /// R's class() function. Returns the class attribute of an object.
 /// Note: canonical version lives in print.rs
-unsafe fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub(crate) unsafe fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -206,7 +212,7 @@ unsafe fn do_class_objects(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
 /// R's is.object() function. Returns TRUE if the object has an explicit class.
 /// Note: canonical version lives in attrib.rs
-unsafe fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub(crate) unsafe fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -403,4 +409,3 @@ pub unsafe fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho
 pub unsafe fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
     unsafe { R_check_class_and_super(x, valid, ptr::null_mut()) }
 }
-

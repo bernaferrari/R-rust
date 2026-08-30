@@ -1988,6 +1988,7 @@ impl<'arena> Parser<'arena> {
     /// if (cond) expr [else expr]
     fn parse_if(&mut self) -> Result<SEXP, ParseError> {
         self.advance(); // consume 'if'
+        self.skip_newlines();
         self.expect(&Token::LParen)?;
         let cond = self.parse_expr()?;
         self.expect(&Token::RParen)?;
@@ -2025,6 +2026,7 @@ impl<'arena> Parser<'arena> {
     /// for (var in seq) body
     fn parse_for(&mut self) -> Result<SEXP, ParseError> {
         self.advance(); // consume 'for'
+        self.skip_newlines();
         self.expect(&Token::LParen)?;
 
         // var must be an identifier
@@ -2058,6 +2060,7 @@ impl<'arena> Parser<'arena> {
     /// while (cond) body
     fn parse_while(&mut self) -> Result<SEXP, ParseError> {
         self.advance(); // consume 'while'
+        self.skip_newlines();
         self.expect(&Token::LParen)?;
         let cond = self.parse_expr()?;
         self.expect(&Token::RParen)?;
@@ -2091,6 +2094,7 @@ impl<'arena> Parser<'arena> {
             }
             _ => {}
         }
+        self.skip_newlines();
         self.expect(&Token::LParen)?;
         let formals = self.parse_formals()?;
         self.expect(&Token::RParen)?;

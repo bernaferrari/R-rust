@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unused_imports)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unused_imports
+)]
 
 use super::*;
 
@@ -8,7 +14,7 @@ use super::*;
 
 /// Check whether the S4 object bit is set on an SEXP.
 /// The S4 bit is gp bit 4 (value 16) in R's SxpInfo.
-unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
+pub(crate) unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return FALSE;
@@ -47,14 +53,14 @@ pub(crate) unsafe fn S3MethodsTable_symbol() -> SEXP {
     unsafe { Rf_install(b".__S3MethodsTable__.\x00".as_ptr() as *const c_char) }
 }
 
-unsafe fn error(msg: &str) -> ! {
+pub(crate) unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
 }
 
 /// Install a named symbol, caching the result.
-unsafe fn sym(name: &str) -> SEXP {
+pub(crate) unsafe fn sym(name: &str) -> SEXP {
     unsafe {
         let cstr = std::ffi::CString::new(name).unwrap_or_default();
         Rf_install(cstr.as_ptr())
@@ -245,7 +251,7 @@ fn s4_extends_registered(
         .any(|parent| parent == class2 || s4_extends_registered(classes, parent, class2, visited))
 }
 
-unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
+pub(crate) unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
     unsafe {
         if op.is_null()
             || (TYPEOF(op) != SEXPTYPE::BUILTINSXP && TYPEOF(op) != SEXPTYPE::SPECIALSXP)
@@ -260,4 +266,3 @@ unsafe fn primitive_offset(op: SEXP) -> Option<usize> {
         }
     }
 }
-
