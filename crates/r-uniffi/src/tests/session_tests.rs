@@ -10,6 +10,7 @@ use crate::uniffi::conversion::{
     android_runtime_paths,
 };
 use crate::uniffi::error::RError;
+use crate::uniffi::operation::{OperationResult, OperationStatus};
 use crate::uniffi::session::RSession;
 
 #[test]
@@ -445,64 +446,110 @@ fn async_operations_report_callbacks_and_recover_after_cancel() {
     let (callback, events) = RecordingCallback::new();
     session.set_callback(Box::new(callback));
 
-    assert_eq!(session.eval_async("1 + 1".to_string()).expect("eval id"), 0);
+    let eval_id = session.eval_async("1 + 1".to_string()).expect("eval id");
+    assert_eq!(eval_id, 0);
     match wait_for_callback(
         &events,
-        |event| matches!(event, CallbackEvent::EvalComplete { output, .. } if output == "[1] 2"),
+        |event| matches!(event, CallbackEvent::EvalComplete { operation_id, output, .. } if *operation_id == eval_id && output == "[1] 2"),
     ) {
-        CallbackEvent::EvalComplete { kind, .. } => assert_eq!(kind, RValueKind::Real),
+        CallbackEvent::EvalComplete {
+            operation_id, kind, ..
+        } => {
+            assert_eq!(operation_id, eval_id);
+            assert_eq!(kind, RValueKind::Real);
+        }
         event => panic!("unexpected callback event: {event:?}"),
+    }
+    match session.take_result(eval_id) {
+        OperationStatus::Succeeded {
+            result: OperationResult::Eval { result },
+        } => assert_eq!(result.output, "[1] 2"),
+        status => panic!("expected retained eval result, got {status:?}"),
     }
     match wait_for_callback(
         &events,
-        |event| matches!(event, CallbackEvent::Output(line) if line == "[1] 2"),
+        |event| matches!(event, CallbackEvent::Output { operation_id, line } if *operation_id == eval_id && line == "[1] 2"),
     ) {
-        CallbackEvent::Output(line) => assert_eq!(line, "[1] 2"),
+        CallbackEvent::Output { operation_id, line } => {
+            assert_eq!(operation_id, eval_id);
+            assert_eq!(line, "[1] 2");
+        }
         event => panic!("unexpected callback event: {event:?}"),
     }
 
-    assert_eq!(
-        session
-            .render_async(
-                "plot(c(1, 2, 3), c(3, 1, 4), col = \"green\", type = \"p\")".to_string(),
-                240,
-                180,
-            )
-            .expect("render id"),
-        1
-    );
+    let render_id = session
+        .render_async(
+            "plot(c(1, 2, 3), c(3, 1, 4), col = \"green\", type = \"p\")".to_string(),
+            240,
+            180,
+        )
+        .expect("render id");
+    assert_eq!(render_id, 1);
     match wait_for_callback(&events, |event| {
         matches!(
             event,
             CallbackEvent::PlotReady {
+                operation_id,
                 width: 240,
                 height: 180,
                 bytes
-            } if *bytes > 256
+            } if *operation_id == render_id && *bytes > 256
         )
     }) {
-        CallbackEvent::PlotReady { bytes, .. } => assert!(bytes > 256),
+        CallbackEvent::PlotReady {
+            operation_id,
+            bytes,
+            ..
+        } => {
+            assert_eq!(operation_id, render_id);
+            assert!(bytes > 256);
+        }
         event => panic!("unexpected callback event: {event:?}"),
     }
+    match session.take_result(render_id) {
+        OperationStatus::Succeeded {
+            result: OperationResult::Render { result },
+        } => {
+            assert_eq!((result.width, result.height), (240, 180));
+            assert!(result.png_bytes.len() > 256);
+        }
+        status => panic!("expected retained render result, got {status:?}"),
+    }
 
-    assert_eq!(
-        session
-            .eval_async("repeat { 1 + 1 }".to_string())
-            .expect("cancelled eval id"),
-        2
-    );
+    let cancelled_id = session
+        .eval_async("repeat { 1 + 1 }".to_string())
+        .expect("cancelled eval id");
+    assert_eq!(cancelled_id, 2);
     std::thread::sleep(Duration::from_millis(10));
     session.cancel_current_operation();
     match wait_for_callback(
         &events,
-        |event| matches!(event, CallbackEvent::Error(message) if message.contains("cancelled")),
+        |event| matches!(event, CallbackEvent::Error { operation_id, message } if *operation_id == cancelled_id && message.contains("cancelled")),
     ) {
-        CallbackEvent::Error(message) => assert!(message.contains("cancelled")),
+        CallbackEvent::Error {
+            operation_id,
+            message,
+        } => {
+            assert_eq!(operation_id, cancelled_id);
+            assert!(message.contains("cancelled"));
+        }
         event => panic!("unexpected callback event: {event:?}"),
     }
 
-    assert_eq!(
-        session.eval("2 + 2".to_string()).expect("recovered eval"),
-        "[1] 4"
-    );
+    let rerun_id = session
+        .eval_async("2 + 2".to_string())
+        .expect("rerun after cancellation");
+    match wait_for_callback(
+        &events,
+        |event| matches!(event, CallbackEvent::EvalComplete { operation_id, output, .. } if *operation_id == rerun_id && output == "[1] 4"),
+    ) {
+        CallbackEvent::EvalComplete { operation_id, .. } => assert_eq!(operation_id, rerun_id),
+        event => panic!("unexpected rerun callback: {event:?}"),
+    }
+    assert!(matches!(
+        session.take_result(rerun_id),
+        OperationStatus::Succeeded {
+            result: OperationResult::Eval { .. }
+        }
+    ));
 }

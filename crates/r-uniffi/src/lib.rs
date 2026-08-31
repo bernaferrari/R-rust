@@ -23,17 +23,17 @@
 //! * **Callbacks off the interpreter thread** — host callbacks fire on a
 //!   dedicated dispatcher thread, never on the interpreter thread
 //!   (`uniffi::worker::CallbackDispatcher` documents the policy).
-//! * **Operation state machine** — `Queued → Running → Succeeded | Failed |
-//!   Cancelled`, with FIFO retention of the last 100 completed async
+//! * **Operation state machine** — `Queued → Running → Cancelling → Succeeded |
+//!   Failed | Cancelled`, with FIFO retention of the last 100 completed async
 //!   operations (`uniffi::operation`), `take_result` consumption, and
 //!   `Expired` tombstones for evicted results.
 
 mod uniffi;
 
 pub use crate::uniffi::{
-    AndroidRuntimePaths, EvalResult, OperationStatus, PackageInfo, PlotResult, ProgressUpdate,
-    RAttribute, RComplexValue, RError, RMetadata, RSession, RValue, RValueKind, ResourceLimits,
-    RuntimeInfo, SessionCallback, android_runtime_paths,
+    AndroidRuntimePaths, EvalResult, OperationResult, OperationStatus, PackageInfo, PlotResult,
+    ProgressUpdate, RAttribute, RComplexValue, RError, RMetadata, RSession, RValue, RValueKind,
+    ResourceLimits, RuntimeInfo, SessionCallback, android_runtime_paths,
 };
 
 #[cfg(test)]

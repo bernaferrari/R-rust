@@ -16,7 +16,7 @@ use super::conversion::{
     ResourceLimits, RuntimeInfo, null_eval_result,
 };
 use super::error::RError;
-use super::operation::{OpOutcome, OperationTable};
+use super::operation::{OpOutcome, OperationResult, OperationTable};
 use super::plot::PlotResult;
 
 /// Capacity of the bounded command queue between API callers and the
@@ -37,12 +37,17 @@ const CALLBACK_JOIN_TIMEOUT: Duration = Duration::from_secs(2);
 // ---------------------------------------------------------------------------
 
 #[uniffi::export(callback_interface)]
+/// Ordered operation notifications delivered away from the interpreter
+/// thread. `operation_id` is the id returned by `eval_async` or
+/// `render_async`; hosts must ignore notifications that do not match their
+/// current session and operation identity. Terminal payloads remain
+/// recoverable through `take_result`, so callbacks are never the sole owner.
 pub trait SessionCallback: Send + Sync + 'static {
-    fn on_progress(&self, update: ProgressUpdate);
-    fn on_output(&self, line: String);
-    fn on_plot_ready(&self, plot: PlotResult);
-    fn on_eval_complete(&self, result: EvalResult);
-    fn on_error(&self, error: String);
+    fn on_progress(&self, operation_id: u64, update: ProgressUpdate);
+    fn on_output(&self, operation_id: u64, line: String);
+    fn on_plot_ready(&self, operation_id: u64, plot: PlotResult);
+    fn on_eval_complete(&self, operation_id: u64, result: EvalResult);
+    fn on_error(&self, operation_id: u64, error: String);
 }
 
 // ---------------------------------------------------------------------------
@@ -77,21 +82,27 @@ struct DispatcherInner {
 /// Small event queued from the worker thread to the callback dispatcher.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum SessionEvent {
-    Progress(ProgressUpdate),
-    Output(String),
-    PlotReady(PlotResult),
-    EvalComplete(EvalResult),
-    Error(String),
+    Progress(u64, ProgressUpdate),
+    Output(u64, String),
+    PlotReady(u64, PlotResult),
+    EvalComplete(u64, EvalResult),
+    Error(u64, String),
 }
 
 impl SessionEvent {
     fn deliver(self, callback: &dyn SessionCallback) {
         match self {
-            SessionEvent::Progress(update) => callback.on_progress(update),
-            SessionEvent::Output(line) => callback.on_output(line),
-            SessionEvent::PlotReady(plot) => callback.on_plot_ready(plot),
-            SessionEvent::EvalComplete(result) => callback.on_eval_complete(result),
-            SessionEvent::Error(message) => callback.on_error(message),
+            SessionEvent::Progress(operation_id, update) => {
+                callback.on_progress(operation_id, update)
+            }
+            SessionEvent::Output(operation_id, line) => callback.on_output(operation_id, line),
+            SessionEvent::PlotReady(operation_id, plot) => {
+                callback.on_plot_ready(operation_id, plot)
+            }
+            SessionEvent::EvalComplete(operation_id, result) => {
+                callback.on_eval_complete(operation_id, result)
+            }
+            SessionEvent::Error(operation_id, message) => callback.on_error(operation_id, message),
         }
     }
 }
@@ -314,7 +325,7 @@ pub(crate) fn spawn_worker(
                     // execute_operation is panic-free by construction; this is
                     // the belt-and-braces record if that ever changes.
                     if let Err(err) = executed {
-                        dispatcher.dispatch(SessionEvent::Error(err.to_string()));
+                        dispatcher.dispatch(SessionEvent::Error(op_id, err.to_string()));
                         lock(&table).complete(op_id, OpOutcome::Failed(err.to_string()));
                     }
                 }
@@ -410,10 +421,13 @@ fn execute_operation(
             settle(op, result, table, dispatcher, reply, null_eval_result(""));
         }
         OpKind::Eval { code, reply } => {
-            dispatcher.dispatch(SessionEvent::Progress(ProgressUpdate {
-                progress: 0.0,
-                message: "Evaluating...".to_string(),
-            }));
+            dispatcher.dispatch(SessionEvent::Progress(
+                op.id,
+                ProgressUpdate {
+                    progress: 0.0,
+                    message: "Evaluating...".to_string(),
+                },
+            ));
             let result = run_guarded(|| {
                 session
                     .eval_result_cancellable(&code, &op.token)
@@ -425,15 +439,23 @@ fn execute_operation(
             });
             match result {
                 Ok(eval_result) => {
-                    dispatcher.dispatch(SessionEvent::Progress(ProgressUpdate {
-                        progress: 1.0,
-                        message: "Complete".to_string(),
-                    }));
+                    dispatcher.dispatch(SessionEvent::Progress(
+                        op.id,
+                        ProgressUpdate {
+                            progress: 1.0,
+                            message: "Complete".to_string(),
+                        },
+                    ));
                     for line in eval_result.output.lines() {
-                        dispatcher.dispatch(SessionEvent::Output(line.to_string()));
+                        dispatcher.dispatch(SessionEvent::Output(op.id, line.to_string()));
                     }
-                    dispatcher.dispatch(SessionEvent::EvalComplete(eval_result.clone()));
-                    lock(table).complete(op.id, OpOutcome::Succeeded(eval_result.clone()));
+                    dispatcher.dispatch(SessionEvent::EvalComplete(op.id, eval_result.clone()));
+                    lock(table).complete(
+                        op.id,
+                        OpOutcome::Succeeded(OperationResult::Eval {
+                            result: eval_result.clone(),
+                        }),
+                    );
                     fire_reply(reply, Ok(eval_result));
                 }
                 Err(err) => settle_error(op, err, table, dispatcher, reply),
@@ -477,7 +499,12 @@ fn execute_operation(
             });
             match result {
                 Ok(page) => {
-                    lock(table).complete(op.id, OpOutcome::Succeeded(null_eval_result("")));
+                    lock(table).complete(
+                        op.id,
+                        OpOutcome::Succeeded(OperationResult::Eval {
+                            result: null_eval_result(""),
+                        }),
+                    );
                     fire_reply(reply, Ok(page));
                 }
                 Err(err) => settle_error(op, err, table, dispatcher, reply),
@@ -489,10 +516,13 @@ fn execute_operation(
             height,
             reply,
         } => {
-            dispatcher.dispatch(SessionEvent::Progress(ProgressUpdate {
-                progress: 0.0,
-                message: "Rendering...".to_string(),
-            }));
+            dispatcher.dispatch(SessionEvent::Progress(
+                op.id,
+                ProgressUpdate {
+                    progress: 0.0,
+                    message: "Rendering...".to_string(),
+                },
+            ));
             // Rendering has no mid-flight cancellation hook: honor a token
             // that is already cancelled, otherwise run to completion.
             let result = if op.token.is_cancelled() {
@@ -509,16 +539,30 @@ fn execute_operation(
                         .map_err(|err| RError::RenderError(err.to_string()))
                 })
             };
+            // Rendering cannot currently be interrupted mid-device call, but
+            // a cancellation requested while it was running still wins at
+            // the operation seam: discard the late plot instead of reporting
+            // a cancelled operation as successful.
+            let result = if op.token.is_cancelled() {
+                Err(RError::Cancelled)
+            } else {
+                result
+            };
             match result {
                 Ok(plot) => {
-                    dispatcher.dispatch(SessionEvent::Progress(ProgressUpdate {
-                        progress: 1.0,
-                        message: "Complete".to_string(),
-                    }));
-                    dispatcher.dispatch(SessionEvent::PlotReady(plot.clone()));
+                    dispatcher.dispatch(SessionEvent::Progress(
+                        op.id,
+                        ProgressUpdate {
+                            progress: 1.0,
+                            message: "Complete".to_string(),
+                        },
+                    ));
+                    dispatcher.dispatch(SessionEvent::PlotReady(op.id, plot.clone()));
                     lock(table).complete(
                         op.id,
-                        OpOutcome::Succeeded(null_eval_result("render complete")),
+                        OpOutcome::Succeeded(OperationResult::Render {
+                            result: plot.clone(),
+                        }),
                     );
                     fire_reply(reply, Ok(plot));
                 }
@@ -570,7 +614,12 @@ fn settle<T>(
 ) {
     match result {
         Ok(value) => {
-            lock(table).complete(op.id, OpOutcome::Succeeded(success_payload));
+            lock(table).complete(
+                op.id,
+                OpOutcome::Succeeded(OperationResult::Eval {
+                    result: success_payload,
+                }),
+            );
             fire_reply(reply, Ok(value));
         }
         Err(err) => settle_error(op, err, table, dispatcher, reply),
@@ -585,7 +634,7 @@ fn settle_error<T>(
     reply: Reply<T>,
 ) {
     lock(table).complete(op.id, failed_outcome(&err));
-    dispatcher.dispatch(SessionEvent::Error(err.to_string()));
+    dispatcher.dispatch(SessionEvent::Error(op.id, err.to_string()));
     fire_reply(reply, Err(err));
 }
 
