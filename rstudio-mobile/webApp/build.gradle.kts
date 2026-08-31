@@ -27,6 +27,9 @@ kotlin {
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-wasm-js:1.9.0")
             implementation(npm("webr", "0.6.0"))
         }
+        wasmJsTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
 

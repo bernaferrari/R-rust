@@ -199,20 +199,20 @@ fun main() {
           <section class="workspace-grid">
             <section class="workspace">
               <nav id="document-tabs" class="document-tabs" aria-label="Open documents"></nav>
-              <div class="editor-toolbar"><span id="status">Ready</span><span class="spacer"></span><button id="run-selection">Run selection</button><button id="run-file">Run file</button><button id="render-plot">Plot</button><button id="report">Report</button></div>
+              <div class="editor-toolbar"><span id="status" role="status" aria-live="polite">Ready</span><span class="spacer"></span><button id="run-selection">Run selection</button><button id="run-file">Run file</button><button id="render-plot">Plot</button><button id="report">Report</button></div>
               <textarea id="editor" spellcheck="false" aria-label="R script editor"></textarea>
-              <section class="console-section"><div class="section-heading"><strong>Console</strong><button id="clear-console">Clear</button></div><pre id="console"></pre><div class="console-input"><span>&gt;</span><input id="console-command" placeholder="Type an R command and press Enter" autocomplete="off"><button id="console-run">Run</button></div></section>
+              <section class="console-section"><div class="section-heading"><strong>Console</strong><button id="clear-console">Clear</button></div><pre id="console" role="log" aria-live="polite" aria-label="R console output"></pre><div class="console-input"><span aria-hidden="true">&gt;</span><label class="visually-hidden" for="console-command">R console command</label><input id="console-command" type="text" placeholder="Type an R command and press Enter" spellcheck="false" autocomplete="off"><button id="console-run">Run command</button></div></section>
             </section>
             <aside class="side-panel">
-              <nav class="panel-tabs" aria-label="Workbench panels"><button data-panel="environment" class="active">Environment</button><button data-panel="data">Data</button><button data-panel="plots">Plots</button><button data-panel="packages">Packages</button><button data-panel="help">Help</button></nav>
-              <section id="panel-environment" class="panel"><div class="section-heading"><strong>Environment</strong><button id="refresh-environment">Refresh</button></div><div id="environment-list" class="list">Loading…</div><div class="inline"><input id="inspect-name" placeholder="Object name"><button id="inspect">Inspect</button></div><pre id="inspection">Select an object to inspect it.</pre></section>
-              <section id="panel-data" class="panel" hidden><div class="section-heading"><strong id="data-title">Data viewer</strong><button id="refresh-data">Refresh</button></div><div id="data-viewer" class="table-wrap">Select a data frame in Environment.</div><div class="inline"><button id="previous-page">Previous</button><button id="next-page">Next</button></div></section>
-              <section id="panel-plots" class="panel" hidden><div class="section-heading"><strong>Plots</strong><button id="download-plot">Download</button></div><div id="plot-gallery" class="plot-gallery">Run plotting code or press Plot.</div></section>
-              <section id="panel-packages" class="panel" hidden><div class="section-heading"><strong>Packages</strong><button id="refresh-packages">Refresh</button></div><div class="inline"><input id="install-name" placeholder="Package name"><button id="install">Install</button></div><div id="packages-list" class="list">Loading…</div></section>
-              <section id="panel-help" class="panel" hidden><div class="inline"><input id="help-topic" placeholder="Function or topic"><button id="help">Search</button></div><pre id="help-result">Search R documentation.</pre></section>
+              <nav class="panel-tabs" role="tablist" aria-label="Workbench panels"><button id="panel-tab-environment" role="tab" aria-controls="panel-environment" aria-selected="true" tabindex="0" data-panel="environment" class="active">Environment</button><button id="panel-tab-data" role="tab" aria-controls="panel-data" aria-selected="false" tabindex="-1" data-panel="data">Data</button><button id="panel-tab-plots" role="tab" aria-controls="panel-plots" aria-selected="false" tabindex="-1" data-panel="plots">Plots</button><button id="panel-tab-packages" role="tab" aria-controls="panel-packages" aria-selected="false" tabindex="-1" data-panel="packages">Packages</button><button id="panel-tab-help" role="tab" aria-controls="panel-help" aria-selected="false" tabindex="-1" data-panel="help">Help</button></nav>
+              <section id="panel-environment" class="panel" role="tabpanel" aria-labelledby="panel-tab-environment"><div class="section-heading"><strong>Environment</strong><button id="refresh-environment">Refresh</button></div><div id="environment-list" class="list">Loading…</div><div class="inline"><label class="visually-hidden" for="inspect-name">Object name</label><input id="inspect-name" type="text" placeholder="Object name" spellcheck="false" autocomplete="off"><button id="inspect">Inspect object</button></div><pre id="inspection">Select an object to inspect it.</pre></section>
+              <section id="panel-data" class="panel" role="tabpanel" aria-labelledby="panel-tab-data" hidden><div class="section-heading"><strong id="data-title">Data viewer</strong><button id="refresh-data">Refresh</button></div><div id="data-viewer" class="table-wrap">Select a data frame in Environment.</div><div class="inline"><button id="previous-page">Previous</button><button id="next-page">Next</button></div></section>
+              <section id="panel-plots" class="panel" role="tabpanel" aria-labelledby="panel-tab-plots" hidden><div class="section-heading"><strong>Plots</strong><button id="download-plot">Download</button></div><div id="plot-gallery" class="plot-gallery">Run plotting code or press Plot.</div></section>
+              <section id="panel-packages" class="panel" role="tabpanel" aria-labelledby="panel-tab-packages" hidden><div class="section-heading"><strong>Packages</strong><button id="refresh-packages">Refresh</button></div><div class="inline"><label class="visually-hidden" for="install-name">Package name</label><input id="install-name" type="text" placeholder="Package name" spellcheck="false" autocomplete="off"><button id="install">Install package</button></div><div id="packages-list" class="list">Loading…</div></section>
+              <section id="panel-help" class="panel" role="tabpanel" aria-labelledby="panel-tab-help" hidden><div class="inline"><label class="visually-hidden" for="help-topic">R help topic</label><input id="help-topic" type="search" placeholder="Function or topic" spellcheck="false" autocomplete="off"><button id="help">Search help</button></div><pre id="help-result">Search R documentation.</pre></section>
             </aside>
           </section>
-          <footer class="statusbar"><span id="runtime-status">R session ready</span><span>Local browser workspace</span></footer>
+          <footer class="statusbar"><span id="runtime-status" role="status" aria-live="polite">R session ready</span><span>Local browser workspace</span></footer>
         </main>
     """.trimIndent()
 
@@ -236,6 +236,7 @@ fun main() {
     var selectedDataName: String? = null
     var dataOffset = 0
     val plotSvgs = mutableListOf<String>()
+    val panelNavigation = WorkbenchPanelNavigation()
 
     fun activeDocument(): BrowserDocument = documents.first { it.id == activeDocumentId }
     lateinit var renderTabs: () -> Unit
@@ -274,12 +275,7 @@ fun main() {
         runtimeStatus.textContent = message
     }
     fun showPanel(panel: String) {
-        listOf("environment", "data", "plots", "packages", "help").forEach { name ->
-            document.getElementById("panel-$name")?.setAttribute("hidden", if (name == panel) "false" else "true")
-        }
-        document.querySelectorAll("[data-panel]").asElements().forEach { button ->
-            if (button.getAttribute("data-panel") == panel) button.classList.add("active") else button.classList.remove("active")
-        }
+        panelNavigation.select(panel)
     }
     fun renderEnvironment(items: List<EnvironmentEntryModel>) {
         environmentList.innerHTML = if (items.isEmpty()) "<span class=\"muted\">No objects</span>" else items.joinToString("") { item ->
@@ -489,7 +485,7 @@ fun main() {
         val topic = input.value.trim()
         if (topic.isNotEmpty()) scope.launch { setBusy(true, "Searching help…"); val result = backend.help(topic); helpResult.textContent = result.output.ifBlank { result.error ?: "No documentation found" }; showPanel("help"); setBusy(false, "Ready") }
     })
-    document.querySelectorAll("[data-panel]").asElements().forEach { button -> button.addEventListener("click", { showPanel(button.getAttribute("data-panel") ?: "environment") }) }
+    panelNavigation.bind()
 }
 
 private fun encodeUri(value: String): String = js("encodeURIComponent(value)")
