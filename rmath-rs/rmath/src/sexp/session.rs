@@ -1285,6 +1285,32 @@ mod tests {
     }
 
     #[test]
+    fn test_session_malformed_script_has_no_prefix_side_effects() {
+        let mut session = RSession::new();
+
+        for (name, malformed) in [
+            ("unterminated_string_side_effect", "\"unterminated"),
+            ("unknown_input_side_effect", "\0"),
+        ] {
+            let script = format!("{name} <- 1; {malformed}");
+            let (result, output, visible) = session.eval_script_with_output_capture(&script);
+            assert!(result.is_err(), "malformed script unexpectedly succeeded");
+            assert!(output.stdout.is_empty());
+            assert!(!visible);
+
+            let probe = format!("exists(\"{name}\")");
+            let (result, _, _) = session.eval_script_with_output_capture(&probe);
+            assert_eq!(
+                result
+                    .expect("existence probe should evaluate")
+                    .logical_elt(0),
+                Some(crate::sexp::ffi::FALSE),
+                "valid prefix mutated the session before the parse failure"
+            );
+        }
+    }
+
+    #[test]
     fn test_session_close() {
         let mut session = RSession::new();
         assert!(session.is_active());

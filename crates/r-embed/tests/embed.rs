@@ -1190,3 +1190,19 @@ fn cancellation_does_not_poison_sessions() {
     assert_eq!(other_session.eval("1 + 1").unwrap(), "[1] 2");
     assert_eq!(cancelled_session.eval("2 + 2").unwrap(), "[1] 4");
 }
+
+#[test]
+fn malformed_script_is_atomic_at_embed_boundary() {
+    let mut session = RSession::new().expect("session");
+
+    let error = session
+        .eval("embed_atomic_side_effect <- 1; \"unterminated")
+        .expect_err("malformed script must fail");
+    assert!(error.to_string().contains("unexpected"), "{error}");
+    assert_eq!(
+        session
+            .eval("exists(\"embed_atomic_side_effect\")")
+            .expect("session should remain usable"),
+        "[1] FALSE"
+    );
+}

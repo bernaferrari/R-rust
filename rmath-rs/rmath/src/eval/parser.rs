@@ -375,7 +375,10 @@ impl Lexer {
                     Token::Ident(".".to_string())
                 }
             }
-            _ => Token::Eof,
+            // Never reinterpret an unrecognized source character as EOF:
+            // doing so silently accepts the valid prefix of a malformed
+            // script and lets its side effects run.
+            _ => Token::Invalid,
         }
     }
 
@@ -493,7 +496,9 @@ impl Lexer {
             return Token::Invalid;
         }
 
-        let v: f64 = s.parse().unwrap_or(0.0);
+        let Ok(v) = s.parse::<f64>() else {
+            return Token::Invalid;
+        };
         if self.peek_char() == Some('i') {
             self.advance();
             return Token::Complex(v);
@@ -537,43 +542,48 @@ impl Lexer {
         let quote = match self.advance() {
             Some('"') => '"',
             Some('\'') => '\'',
-            _ => '"',
+            _ => return Token::Invalid,
         };
 
-        // R's r"(...)" form: opening quote is immediately followed by '(' and
-        // the string ends at ')"' (parens are delimiters, not part of content).
-        if quote == '"' && self.peek_char() == Some('(') {
-            self.advance();
-            let mut s = String::new();
-            loop {
-                match self.advance() {
-                    Some(')') if self.peek_char() == Some('"') => {
-                        self.advance();
-                        break;
-                    }
-                    Some(c) => s.push(c),
-                    None => break,
-                }
-            }
-            return Token::Str(s);
+        // Raw constants use matching (), [] or {} delimiters and may put the
+        // same number of dashes on both sides. Keep accepting the historical
+        // single-quote spelling, while applying the same strict termination
+        // rule to it.
+        let mut dashes = 0usize;
+        while self.peek_char_at(dashes) == Some('-') {
+            dashes += 1;
         }
-
+        let Some(open) = self.peek_char_at(dashes) else {
+            return Token::Invalid;
+        };
+        let close = match open {
+            '(' => ')',
+            '[' => ']',
+            '{' => '}',
+            _ => return Token::Invalid,
+        };
+        for _ in 0..=dashes {
+            self.advance();
+        }
         let mut s = String::new();
         loop {
             match self.advance() {
-                Some(c) if c == quote => {
-                    if self.peek_char() == Some(quote) {
-                        s.push(quote);
+                Some(c) if c == close => {
+                    let matching_dashes =
+                        (0..dashes).all(|offset| self.peek_char_at(offset) == Some('-'));
+                    if matching_dashes && self.peek_char_at(dashes) == Some(quote) {
+                        for _ in 0..dashes {
+                            self.advance();
+                        }
                         self.advance();
-                    } else {
-                        break;
+                        return Token::Str(s);
                     }
+                    s.push(c);
                 }
                 Some(c) => s.push(c),
-                None => break,
+                None => return Token::Invalid,
             }
         }
-        Token::Str(s)
     }
 
     fn read_string(&mut self) -> Token {
@@ -593,11 +603,11 @@ impl Lexer {
                         s.push('\\');
                         s.push(c);
                     }
-                    None => break,
+                    None => return Token::Invalid,
                 },
                 Some(c) if c == quote => break,
                 Some(c) => s.push(c),
-                None => break,
+                None => return Token::Invalid,
             }
         }
         Token::Str(s)
@@ -610,7 +620,7 @@ impl Lexer {
             match self.advance() {
                 Some('`') => break,
                 Some(c) => s.push(c),
-                None => break,
+                None => return Token::Invalid,
             }
         }
         Token::Ident(s)
@@ -927,84 +937,109 @@ impl<'arena> Parser<'arena> {
     }
 
     /// The shared placeholder node for `_`, allocated on first use.
-    fn placeholder_node(&mut self) -> SEXP {
+    fn placeholder_node(&mut self) -> Result<SEXP, ParseError> {
         if self.placeholder.is_null() {
-            self.placeholder = self.scalar_string("_");
+            self.placeholder = self.scalar_string("_")?;
         }
-        self.placeholder
+        Ok(self.placeholder)
     }
 
     fn install_symbol(&self, name: &str) -> Result<SEXP, ParseError> {
         let c_name =
             CString::new(name).map_err(|_| ParseError(format!("symbol contains NUL: {name:?}")))?;
-        Ok(unsafe { Rf_install(c_name.as_ptr()) })
-    }
-
-    fn cons(&mut self, car: SEXP, cdr: SEXP) -> SEXP {
-        self.arena.cons(car, cdr, std::ptr::null_mut())
-    }
-
-    fn lang2(&mut self, car: SEXP, arg: SEXP) -> SEXP {
-        let nil = unsafe { R_NilValue() };
-        let arg_cell = self.cons(arg, nil);
-        let call = self.cons(car, arg_cell);
-        if !call.is_null() {
-            unsafe {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            }
+        let symbol = unsafe { Rf_install(c_name.as_ptr()) };
+        if symbol.is_null() {
+            Err(self.allocation_error())
+        } else {
+            Ok(symbol)
         }
-        call
     }
 
-    fn lang3(&mut self, car: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP {
-        let nil = unsafe { R_NilValue() };
-        let arg2_cell = self.cons(arg2, nil);
-        let arg1_cell = self.cons(arg1, arg2_cell);
-        let call = self.cons(car, arg1_cell);
-        if !call.is_null() {
-            unsafe {
-                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            }
+    fn allocation_error(&self) -> ParseError {
+        self.token_position_error(
+            self.pos.saturating_sub(1),
+            "parser allocation failed: arena resource limit exceeded",
+        )
+    }
+
+    fn cons(&mut self, car: SEXP, cdr: SEXP) -> Result<SEXP, ParseError> {
+        let cell = self.arena.cons(car, cdr, std::ptr::null_mut());
+        if cell.is_null() {
+            Err(self.allocation_error())
+        } else {
+            Ok(cell)
         }
-        call
     }
 
-    fn scalar_real(&mut self, value: f64) -> SEXP {
-        scalar_real_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    fn lang2(&mut self, car: SEXP, arg: SEXP) -> Result<SEXP, ParseError> {
+        let nil = unsafe { R_NilValue() };
+        let arg_cell = self.cons(arg, nil)?;
+        let call = self.cons(car, arg_cell)?;
+        unsafe {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        Ok(call)
     }
 
-    fn scalar_complex(&mut self, imaginary: f64) -> SEXP {
-        scalar_complex_in(self.arena, 0.0, imaginary).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    fn lang3(&mut self, car: SEXP, arg1: SEXP, arg2: SEXP) -> Result<SEXP, ParseError> {
+        let nil = unsafe { R_NilValue() };
+        let arg2_cell = self.cons(arg2, nil)?;
+        let arg1_cell = self.cons(arg1, arg2_cell)?;
+        let call = self.cons(car, arg1_cell)?;
+        unsafe {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        Ok(call)
     }
 
-    fn scalar_complex_parts(&mut self, real: f64, imaginary: f64) -> SEXP {
-        scalar_complex_in(self.arena, real, imaginary).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    fn scalar_real(&mut self, value: f64) -> Result<SEXP, ParseError> {
+        scalar_real_in(self.arena, value)
+            .map(|s| s.as_raw())
+            .ok_or_else(|| self.allocation_error())
     }
 
-    fn scalar_integer(&mut self, value: i32) -> SEXP {
-        scalar_integer_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    fn scalar_complex(&mut self, imaginary: f64) -> Result<SEXP, ParseError> {
+        scalar_complex_in(self.arena, 0.0, imaginary)
+            .map(|s| s.as_raw())
+            .ok_or_else(|| self.allocation_error())
     }
 
-    fn scalar_logical(&mut self, value: i32) -> SEXP {
-        scalar_logical_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    fn scalar_complex_parts(&mut self, real: f64, imaginary: f64) -> Result<SEXP, ParseError> {
+        scalar_complex_in(self.arena, real, imaginary)
+            .map(|s| s.as_raw())
+            .ok_or_else(|| self.allocation_error())
     }
 
-    fn scalar_string(&mut self, value: &str) -> SEXP {
-        scalar_string_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    fn scalar_integer(&mut self, value: i32) -> Result<SEXP, ParseError> {
+        scalar_integer_in(self.arena, value)
+            .map(|s| s.as_raw())
+            .ok_or_else(|| self.allocation_error())
     }
 
-    fn scalar_na_string(&mut self) -> SEXP {
+    fn scalar_logical(&mut self, value: i32) -> Result<SEXP, ParseError> {
+        scalar_logical_in(self.arena, value)
+            .map(|s| s.as_raw())
+            .ok_or_else(|| self.allocation_error())
+    }
+
+    fn scalar_string(&mut self, value: &str) -> Result<SEXP, ParseError> {
+        scalar_string_in(self.arena, value)
+            .map(|s| s.as_raw())
+            .ok_or_else(|| self.allocation_error())
+    }
+
+    fn scalar_na_string(&mut self) -> Result<SEXP, ParseError> {
         let Some(strings) = self.arena.alloc_vector_sexp(SEXPTYPE::STRSXP, 1) else {
-            return std::ptr::null_mut();
+            return Err(self.allocation_error());
         };
         let data = unsafe { (*strings.clone().as_raw()).gengc_next_node as *mut SEXP };
         if data.is_null() {
-            return std::ptr::null_mut();
+            return Err(self.allocation_error());
         }
         unsafe {
             *data = R_NaString();
         }
-        strings.as_raw()
+        Ok(strings.as_raw())
     }
 
     fn peek(&self) -> &Token {
@@ -1182,12 +1217,12 @@ impl<'arena> Parser<'arena> {
         unsafe {
             let brace_sym = Rf_install(c"{".as_ptr());
             let nil = R_NilValue();
-            let mut list = self.cons(exprs.pop().unwrap_or(nil), nil);
+            let mut list = self.cons(exprs.pop().unwrap_or(nil), nil)?;
             while let Some(e) = exprs.pop() {
-                let cell = self.cons(e, list);
+                let cell = self.cons(e, list)?;
                 list = cell;
             }
-            let call = self.cons(brace_sym, list);
+            let call = self.cons(brace_sym, list)?;
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
@@ -1218,7 +1253,7 @@ impl<'arena> Parser<'arena> {
                         Token::LeftSuper => Rf_install(c"<<-".as_ptr()),
                         _ => Rf_install(c"<-".as_ptr()),
                     };
-                    Ok(self.lang3(op_sym, left, right))
+                    self.lang3(op_sym, left, right)
                 }
             }
             Token::RightAssign => {
@@ -1232,7 +1267,7 @@ impl<'arena> Parser<'arena> {
                     // x -> y is equivalent to y <- x
                     unsafe {
                         let op_sym = Rf_install(c"<-".as_ptr());
-                        value = self.lang3(op_sym, target, value);
+                        value = self.lang3(op_sym, target, value)?;
                     }
                 }
                 Ok(value)
@@ -1249,7 +1284,7 @@ impl<'arena> Parser<'arena> {
             let right = self.parse_or()?;
             unsafe {
                 let op = Rf_install(c"~".as_ptr());
-                return Ok(self.lang2(op, right));
+                return self.lang2(op, right);
             }
         }
 
@@ -1261,7 +1296,7 @@ impl<'arena> Parser<'arena> {
                 let right = self.parse_or()?;
                 unsafe {
                     let op = Rf_install(c"~".as_ptr());
-                    left = self.lang3(op, left, right);
+                    left = self.lang3(op, left, right)?;
                 }
             } else {
                 break;
@@ -1280,7 +1315,7 @@ impl<'arena> Parser<'arena> {
                     let right = self.parse_and()?;
                     unsafe {
                         let op = Rf_install(c"||".as_ptr());
-                        left = self.lang3(op, left, right);
+                        left = self.lang3(op, left, right)?;
                     }
                 }
                 Token::Or => {
@@ -1289,7 +1324,7 @@ impl<'arena> Parser<'arena> {
                     let right = self.parse_and()?;
                     unsafe {
                         let op = Rf_install(c"|".as_ptr());
-                        left = self.lang3(op, left, right);
+                        left = self.lang3(op, left, right)?;
                     }
                 }
                 _ => return Ok(left),
@@ -1307,7 +1342,7 @@ impl<'arena> Parser<'arena> {
                     let right = self.parse_not()?;
                     unsafe {
                         let op = Rf_install(c"&&".as_ptr());
-                        left = self.lang3(op, left, right);
+                        left = self.lang3(op, left, right)?;
                     }
                 }
                 Token::And => {
@@ -1316,7 +1351,7 @@ impl<'arena> Parser<'arena> {
                     let right = self.parse_not()?;
                     unsafe {
                         let op = Rf_install(c"&".as_ptr());
-                        left = self.lang3(op, left, right);
+                        left = self.lang3(op, left, right)?;
                     }
                 }
                 _ => return Ok(left),
@@ -1330,7 +1365,7 @@ impl<'arena> Parser<'arena> {
             let operand = self.parse_comparison()?;
             unsafe {
                 let op = Rf_install(c"!".as_ptr());
-                Ok(self.lang2(op, operand))
+                self.lang2(op, operand)
             }
         } else {
             self.parse_comparison()
@@ -1355,7 +1390,7 @@ impl<'arena> Parser<'arena> {
         self.skip_newlines();
         let right = self.parse_addition()?;
         let op = self.install_symbol(op_name)?;
-        left = self.lang3(op, left, right);
+        left = self.lang3(op, left, right)?;
         if matches!(
             self.peek(),
             Token::Lt | Token::Gt | Token::Le | Token::Ge | Token::Eq | Token::Ne
@@ -1379,7 +1414,7 @@ impl<'arena> Parser<'arena> {
             self.skip_newlines();
             let right = self.parse_multiplication()?;
             let op = self.install_symbol(op_name)?;
-            left = self.lang3(op, left, right);
+            left = self.lang3(op, left, right)?;
         }
     }
 
@@ -1395,7 +1430,7 @@ impl<'arena> Parser<'arena> {
             self.skip_newlines();
             let right = self.parse_special()?;
             let op = self.install_symbol(&op_name)?;
-            left = self.lang3(op, left, right);
+            left = self.lang3(op, left, right)?;
         }
     }
     /// Percent-delimited special operators (`%%`, `%/%`, `%in%`, `%*%`,
@@ -1414,7 +1449,7 @@ impl<'arena> Parser<'arena> {
                     self.skip_newlines();
                     let right = self.parse_pipebind()?;
                     let op = self.install_symbol(&op_name)?;
-                    left = self.lang3(op, left, right);
+                    left = self.lang3(op, left, right)?;
                 }
                 Token::Pipe => {
                     self.advance();
@@ -1465,7 +1500,7 @@ impl<'arena> Parser<'arena> {
             ));
         }
         let op = self.install_symbol("=>")?;
-        Ok(self.lang3(op, lhs, rhs))
+        self.lang3(op, lhs, rhs)
     }
 
     /// Build the call for `lhs |> rhs`, porting gram.y's `xxpipe()`.
@@ -1499,22 +1534,22 @@ impl<'arena> Parser<'arena> {
             }
             let nil = unsafe { R_NilValue() };
             // alist = list1(R_MissingArg); SET_TAG(alist, var)
-            let formal_cell = self.cons(unsafe { crate::sexp::globals::R_MissingArg() }, nil);
+            let formal_cell = self.cons(unsafe { crate::sexp::globals::R_MissingArg() }, nil)?;
             unsafe {
                 crate::sexp::accessors::SETTAG(formal_cell, var);
             }
             // fun = lang4(function, alist, expr, R_NilValue)
-            let body_cell = self.cons(body, nil);
-            let formals_cell = self.cons(formal_cell, body_cell);
+            let body_cell = self.cons(body, nil)?;
+            let formals_cell = self.cons(formal_cell, body_cell)?;
             let fun_sym = self.install_symbol("function")?;
-            let fun = self.cons(fun_sym, formals_cell);
+            let fun = self.cons(fun_sym, formals_cell)?;
             if !fun.is_null() {
                 unsafe {
                     (*fun).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
             }
             // lang2(fun, lhs): call the fresh closure on the pipe LHS.
-            return Ok(self.lang2(fun, lhs));
+            return self.lang2(fun, lhs);
         }
 
         let placeholder = self.placeholder;
@@ -1581,8 +1616,8 @@ impl<'arena> Parser<'arena> {
             }
 
             // Default: prepend the LHS as the first argument.
-            let args = self.cons(lhs, CDR(rhs));
-            let call = self.cons(fun, args);
+            let args = self.cons(lhs, CDR(rhs))?;
+            let call = self.cons(fun, args)?;
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
@@ -1653,7 +1688,7 @@ impl<'arena> Parser<'arena> {
             let exp = self.parse_unary()?;
             unsafe {
                 let op = Rf_install(c"^".as_ptr());
-                Ok(self.lang3(op, base, exp))
+                self.lang3(op, base, exp)
             }
         } else {
             Ok(base)
@@ -1672,7 +1707,7 @@ impl<'arena> Parser<'arena> {
                 let right = self.parse_unary()?;
                 unsafe {
                     let op = Rf_install(c":".as_ptr());
-                    left = self.lang3(op, left, right);
+                    left = self.lang3(op, left, right)?;
                 }
             } else {
                 break;
@@ -1688,7 +1723,7 @@ impl<'arena> Parser<'arena> {
                 let operand = self.parse_unary()?;
                 unsafe {
                     let op = Rf_install(c"-".as_ptr());
-                    Ok(self.lang2(op, operand))
+                    self.lang2(op, operand)
                 }
             }
             Token::Plus => {
@@ -1698,7 +1733,7 @@ impl<'arena> Parser<'arena> {
                     // stock R keeps the call: `+"a"` errors at runtime
                     // ("invalid argument to unary operator")
                     let op = Rf_install(c"+".as_ptr());
-                    Ok(self.lang2(op, operand))
+                    self.lang2(op, operand)
                 }
             }
             Token::Not => {
@@ -1706,7 +1741,7 @@ impl<'arena> Parser<'arena> {
                 let operand = self.parse_unary()?;
                 unsafe {
                     let op = Rf_install(c"!".as_ptr());
-                    Ok(self.lang2(op, operand))
+                    self.lang2(op, operand)
                 }
             }
             _ => self.parse_power(),
@@ -1734,14 +1769,14 @@ impl<'arena> Parser<'arena> {
                         let nil = R_NilValue();
                         let mut arg_list = nil;
                         for (name, val) in args.into_iter().rev() {
-                            let cell = self.cons(val, arg_list);
+                            let cell = self.cons(val, arg_list)?;
                             if let Some(n) = name {
                                 let sym = self.install_symbol(&n)?;
                                 crate::sexp::accessors::SETTAG(cell, sym);
                             }
                             arg_list = cell;
                         }
-                        let call = self.cons(expr, arg_list);
+                        let call = self.cons(expr, arg_list)?;
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -1760,15 +1795,15 @@ impl<'arena> Parser<'arena> {
                         let nil = R_NilValue();
                         let mut arg_list = nil;
                         for (name, val) in slots.into_iter().rev() {
-                            let cell = self.cons(val, arg_list);
+                            let cell = self.cons(val, arg_list)?;
                             if let Some(n) = name {
                                 let sym = self.install_symbol(&n)?;
                                 crate::sexp::accessors::SETTAG(cell, sym);
                             }
                             arg_list = cell;
                         }
-                        arg_list = self.cons(expr, arg_list);
-                        let call = self.cons(bracket_sym, arg_list);
+                        arg_list = self.cons(expr, arg_list)?;
+                        let call = self.cons(bracket_sym, arg_list)?;
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -1787,15 +1822,15 @@ impl<'arena> Parser<'arena> {
                         let nil = R_NilValue();
                         let mut arg_list = nil;
                         for (name, val) in slots.into_iter().rev() {
-                            let cell = self.cons(val, arg_list);
+                            let cell = self.cons(val, arg_list)?;
                             if let Some(n) = name {
                                 let sym = self.install_symbol(&n)?;
                                 crate::sexp::accessors::SETTAG(cell, sym);
                             }
                             arg_list = cell;
                         }
-                        arg_list = self.cons(expr, arg_list);
-                        let call = self.cons(dbracket_sym, arg_list);
+                        arg_list = self.cons(expr, arg_list)?;
+                        let call = self.cons(dbracket_sym, arg_list)?;
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -1809,9 +1844,9 @@ impl<'arena> Parser<'arena> {
                     unsafe {
                         let dollar_sym = Rf_install(c"$".as_ptr());
                         let nil = R_NilValue();
-                        let name_cell = self.cons(name, nil);
-                        let args = self.cons(expr, name_cell);
-                        let call = self.cons(dollar_sym, args);
+                        let name_cell = self.cons(name, nil)?;
+                        let args = self.cons(expr, name_cell)?;
+                        let call = self.cons(dollar_sym, args)?;
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -1827,7 +1862,7 @@ impl<'arena> Parser<'arena> {
                             Token::TripleColon => Rf_install(c":::".as_ptr()),
                             _ => Rf_install(c"::".as_ptr()),
                         };
-                        expr = self.lang3(op, expr, name);
+                        expr = self.lang3(op, expr, name)?;
                     }
                 }
                 // At: x@name
@@ -1837,9 +1872,9 @@ impl<'arena> Parser<'arena> {
                     unsafe {
                         let at_sym = Rf_install(c"@".as_ptr());
                         let nil = R_NilValue();
-                        let name_cell = self.cons(name, nil);
-                        let args = self.cons(expr, name_cell);
-                        let call = self.cons(at_sym, args);
+                        let name_cell = self.cons(name, nil)?;
+                        let args = self.cons(expr, name_cell)?;
+                        let call = self.cons(at_sym, args)?;
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -1933,14 +1968,14 @@ impl<'arena> Parser<'arena> {
                 self.advance();
                 unsafe {
                     let sym = Rf_install(c"break".as_ptr());
-                    Ok(self.lang2(sym, R_NilValue()))
+                    self.lang2(sym, R_NilValue())
                 }
             }
             Token::KwNext => {
                 self.advance();
                 unsafe {
                     let sym = Rf_install(c"next".as_ptr());
-                    Ok(self.lang2(sym, R_NilValue()))
+                    self.lang2(sym, R_NilValue())
                 }
             }
             Token::KwReturn => {
@@ -1957,7 +1992,7 @@ impl<'arena> Parser<'arena> {
                 };
                 unsafe {
                     let sym = Rf_install(c"return".as_ptr());
-                    Ok(self.lang2(sym, val))
+                    self.lang2(sym, val)
                 }
             }
             // Block: { expr; expr; ... }
@@ -2006,10 +2041,10 @@ impl<'arena> Parser<'arena> {
             unsafe {
                 let if_sym = Rf_install(c"if".as_ptr());
                 let nil = R_NilValue();
-                let alt_cell = self.cons(alt, nil);
-                let body_cell = self.cons(body, alt_cell);
-                let cond_cell = self.cons(cond, body_cell);
-                let call = self.cons(if_sym, cond_cell);
+                let alt_cell = self.cons(alt, nil)?;
+                let body_cell = self.cons(body, alt_cell)?;
+                let cond_cell = self.cons(cond, body_cell)?;
+                let call = self.cons(if_sym, cond_cell)?;
                 if !call.is_null() {
                     (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
@@ -2018,7 +2053,7 @@ impl<'arena> Parser<'arena> {
         } else {
             unsafe {
                 let if_sym = Rf_install(c"if".as_ptr());
-                Ok(self.lang3(if_sym, cond, body))
+                self.lang3(if_sym, cond, body)
             }
         }
     }
@@ -2046,10 +2081,10 @@ impl<'arena> Parser<'arena> {
         unsafe {
             let for_sym = Rf_install(c"for".as_ptr());
             let nil = R_NilValue();
-            let body_cell = self.cons(body, nil);
-            let seq_cell = self.cons(seq, body_cell);
-            let var_cell = self.cons(var, seq_cell);
-            let call = self.cons(for_sym, var_cell);
+            let body_cell = self.cons(body, nil)?;
+            let seq_cell = self.cons(seq, body_cell)?;
+            let var_cell = self.cons(var, seq_cell)?;
+            let call = self.cons(for_sym, var_cell)?;
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
@@ -2070,7 +2105,7 @@ impl<'arena> Parser<'arena> {
 
         unsafe {
             let while_sym = Rf_install(c"while".as_ptr());
-            Ok(self.lang3(while_sym, cond, body))
+            self.lang3(while_sym, cond, body)
         }
     }
 
@@ -2082,7 +2117,7 @@ impl<'arena> Parser<'arena> {
 
         unsafe {
             let repeat_sym = Rf_install(c"repeat".as_ptr());
-            Ok(self.lang2(repeat_sym, body))
+            self.lang2(repeat_sym, body)
         }
     }
 
@@ -2105,9 +2140,9 @@ impl<'arena> Parser<'arena> {
         unsafe {
             let fn_sym = Rf_install(c"function".as_ptr());
             let nil = R_NilValue();
-            let body_cell = self.cons(body, nil);
-            let formals_cell = self.cons(formals, body_cell);
-            let call = self.cons(fn_sym, formals_cell);
+            let body_cell = self.cons(body, nil)?;
+            let formals_cell = self.cons(formals, body_cell)?;
+            let call = self.cons(fn_sym, formals_cell)?;
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
@@ -2159,7 +2194,7 @@ impl<'arena> Parser<'arena> {
         unsafe {
             let mut list = nil;
             for (name, default) in pairs.into_iter().rev() {
-                let cell = self.cons(default, list);
+                let cell = self.cons(default, list)?;
                 let sym = self.install_symbol(&name)?;
                 crate::sexp::accessors::SETTAG(cell, sym);
                 list = cell;
@@ -2187,22 +2222,22 @@ impl<'arena> Parser<'arena> {
         if exprs.is_empty() {
             unsafe {
                 let brace_sym = Rf_install(c"{".as_ptr());
-                Ok(self.lang2(brace_sym, R_NilValue()))
+                self.lang2(brace_sym, R_NilValue())
             }
         } else if exprs.len() == 1 {
             unsafe {
                 let brace_sym = Rf_install(c"{".as_ptr());
-                Ok(self.lang2(brace_sym, exprs.pop().unwrap_or_else(|| R_NilValue())))
+                self.lang2(brace_sym, exprs.pop().unwrap_or_else(|| R_NilValue()))
             }
         } else {
             unsafe {
                 let brace_sym = Rf_install(c"{".as_ptr());
                 let nil = R_NilValue();
-                let mut list = self.cons(exprs.pop().unwrap_or(nil), nil);
+                let mut list = self.cons(exprs.pop().unwrap_or(nil), nil)?;
                 while let Some(e) = exprs.pop() {
-                    list = self.cons(e, list);
+                    list = self.cons(e, list)?;
                 }
-                let call = self.cons(brace_sym, list);
+                let call = self.cons(brace_sym, list)?;
                 if !call.is_null() {
                     (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
@@ -2223,19 +2258,19 @@ impl<'arena> Parser<'arena> {
         match self.peek().clone() {
             Token::Number(n) => {
                 self.advance();
-                Ok(self.scalar_real(n))
+                self.scalar_real(n)
             }
             Token::Complex(n) => {
                 self.advance();
-                Ok(self.scalar_complex(n))
+                self.scalar_complex(n)
             }
             Token::Int(n) => {
                 self.advance();
-                Ok(self.scalar_integer(n))
+                self.scalar_integer(n)
             }
             Token::Str(s) => {
                 self.advance();
-                Ok(self.scalar_string(&s))
+                self.scalar_string(&s)
             }
             Token::DotDotDot => {
                 self.advance();
@@ -2246,25 +2281,23 @@ impl<'arena> Parser<'arena> {
             }
             Token::Placeholder => {
                 self.advance();
-                Ok(self.placeholder_node())
+                self.placeholder_node()
             }
             Token::Ident(ref name) => {
                 let name = name.clone();
                 self.advance();
                 match name.as_str() {
-                    "TRUE" => Ok(self.scalar_logical(TRUE)),
-                    "FALSE" => Ok(self.scalar_logical(FALSE)),
+                    "TRUE" => self.scalar_logical(TRUE),
+                    "FALSE" => self.scalar_logical(FALSE),
                     "NULL" => unsafe { Ok(R_NilValue()) },
-                    "NA" => Ok(self.scalar_logical(NA_LOGICAL)),
-                    "Inf" => Ok(self.scalar_real(f64::INFINITY)),
-                    "NaN" => Ok(self.scalar_real(f64::NAN)),
-                    "NA_real_" => Ok(self.scalar_real(crate::sexp::ffi::NA_REAL)),
-                    "NA_integer_" => Ok(self.scalar_integer(crate::sexp::ffi::NA_INTEGER)),
-                    "NA_complex_" => Ok(self.scalar_complex_parts(
-                        crate::sexp::ffi::NA_REAL,
-                        crate::sexp::ffi::NA_REAL,
-                    )),
-                    "NA_character_" => Ok(self.scalar_na_string()),
+                    "NA" => self.scalar_logical(NA_LOGICAL),
+                    "Inf" => self.scalar_real(f64::INFINITY),
+                    "NaN" => self.scalar_real(f64::NAN),
+                    "NA_real_" => self.scalar_real(crate::sexp::ffi::NA_REAL),
+                    "NA_integer_" => self.scalar_integer(crate::sexp::ffi::NA_INTEGER),
+                    "NA_complex_" => self
+                        .scalar_complex_parts(crate::sexp::ffi::NA_REAL, crate::sexp::ffi::NA_REAL),
+                    "NA_character_" => self.scalar_na_string(),
                     _ => self.install_symbol(&name),
                 }
             }
@@ -2385,7 +2418,9 @@ pub fn parse_expressions(input: &str, arena: &mut RArena) -> Result<Vec<SEXP>, P
 mod tests {
     use super::*;
 
-    use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, TYPEOF, XLENGTH};
+    use crate::sexp::accessors::{
+        CADR, CAR, CDR, CHAR, COMPLEX, PRINTNAME, STRING_ELT, TYPEOF, XLENGTH,
+    };
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::session::RSession;
@@ -2518,6 +2553,35 @@ mod tests {
         unsafe {
             let result = must(parse_str("\"hello\""));
             assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
+        }
+    }
+
+    #[test]
+    fn test_raw_string_delimiters_and_dashes() {
+        for (input, expected) in [
+            (r#"r"(back\slash)""#, "back\\slash"),
+            (r#"R"--[brackets]--""#, "brackets"),
+            (r#"r"-{braces}-""#, "braces"),
+        ] {
+            let result = must(parse_str(input));
+            unsafe {
+                let chars = CHAR(STRING_ELT(result, 0));
+                assert_eq!(std::ffi::CStr::from_ptr(chars).to_string_lossy(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn test_numeric_overflow_and_malformed_literals_match_supported_r_behavior() {
+        for input in ["1e9999", "0x1p1024"] {
+            let value = must(parse_str(input));
+            unsafe {
+                assert!((*crate::sexp::accessors::REAL(value)).is_infinite());
+            }
+        }
+
+        for input in ["0x", "0x1p", "1e", "1e+"] {
+            assert!(parse_str(input).is_err(), "{input:?} must not become zero");
         }
     }
 
@@ -2779,6 +2843,41 @@ mod tests {
     #[test]
     fn test_error_unexpected_rparen() {
         assert!(parse_str(")").is_err());
+    }
+
+    #[test]
+    fn test_malformed_lexemes_are_explicit_parse_errors() {
+        for input in [
+            "\"unterminated",
+            "'unterminated",
+            "`unterminated",
+            "r\"(unterminated",
+            "1; \u{0}",
+        ] {
+            let error = parse_str(input).expect_err("malformed lexeme must not parse");
+            assert!(
+                error.to_string().contains("unexpected"),
+                "unexpected error for {input:?}: {error}"
+            );
+            assert!(
+                error.to_string().contains(input),
+                "lexical error omitted its source span for {input:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parser_reports_arena_exhaustion_as_resource_error() {
+        let mut session = RSession::new();
+        session.set_arena_budget(crate::sexp::memory::ArenaBudget::new(1, 1));
+
+        let error = session
+            .with_arena(|arena| parse("1 + 2", arena))
+            .expect("session should be active")
+            .expect_err("allocation exhaustion must fail parsing");
+
+        assert!(error.to_string().contains("allocation"), "{error}");
+        assert!(error.to_string().contains("(<input>:1:"), "{error}");
     }
 
     // --- NEW: Control flow ---
