@@ -175,6 +175,19 @@ impl Default for HttpdRuntimeState {
     }
 }
 
+impl HttpdRuntimeState {
+    /// Visit every R object retained by the HTTP server runtime.
+    ///
+    /// The collector uses this single seam for both tracing and reference
+    /// updates, so adding another cached SEXP here cannot silently update only
+    /// one half of the GC contract.
+    pub(crate) fn visit_roots(&mut self, mut visit: impl FnMut(&mut SEXP)) {
+        visit(&mut self.content_type_name);
+        visit(&mut self.handlers_name);
+        visit(&mut self.custom_handlers_env);
+    }
+}
+
 impl Drop for HttpdRuntimeState {
     fn drop(&mut self) {
         unsafe {
