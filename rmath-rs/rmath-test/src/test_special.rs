@@ -92,7 +92,7 @@ pub fn run_tests() -> Result<(), String> {
         return Err(format!("bessel_j(0, 1) = {}, expected ~0", j1_0));
     }
     // Trunk-parity probe matrix (goldens from stock R besselJ, trunk
-    // r79999). Integer orders >= 3 at small/moderate x exercise the
+    // r90451). Integer orders >= 3 at small/moderate x exercise the
     // backward-recurrence branch of J_bessel; fractional orders also
     // exercise gamma_cody normalization; (2, 1e-300) exercises the
     // very_small_nu (2^-800) clamp. Contract: relative difference < 1e-12.
@@ -214,7 +214,7 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(bessel_y(f64::NAN, 0.0), "bessel_y(NaN, 0)");
 
     // Trunk-parity probe matrix for bessel_i (goldens from stock R besselI,
-    // trunk r79999). Contract: relative difference < 1e-12; bit-exact
+    // trunk r90451). Contract: relative difference < 1e-12; bit-exact
     // where libm agrees.
     {
         let probes: &[(f64, f64, f64, f64)] = &[
@@ -294,7 +294,7 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // Trunk-parity probe matrix for bessel_k (goldens from stock R besselK,
-    // trunk r79999). Contract: relative difference < 1e-12; bit-exact
+    // trunk r90451). Contract: relative difference < 1e-12; bit-exact
     // where libm agrees.
     {
         let probes: &[(f64, f64, f64, f64)] = &[
@@ -371,7 +371,7 @@ pub fn run_tests() -> Result<(), String> {
     }
 
     // Trunk-parity probe matrix for bessel_y (goldens from stock R besselY,
-    // trunk r79999). Contract: relative difference < 1e-12; bit-exact
+    // trunk r90451). Contract: relative difference < 1e-12; bit-exact
     // where libm agrees.
     //
     // Asymptotic probes stay at x <= 1000: beyond ~1e6 the arm64 trunk

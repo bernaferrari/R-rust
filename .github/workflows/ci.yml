@@ -60,19 +60,40 @@ jobs:
         run: cargo test --workspace
 
   conformance:
-    name: Conformance parity vs stock R
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    name: Conformance parity vs exact R oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: "release"
 
-      - name: Stock R conformance parity
-        run: bash scripts/conformance_parity.sh --check
+      - name: Validate immutable R oracle manifest
+        id: oracle
+        run: |
+          python3 scripts/validate_r_oracle.py --github-output "$GITHUB_OUTPUT"
+          python3 -m unittest scripts/tests/test_validate_r_oracle.py
+
+      - name: Cache exact R oracle build
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.oracle.outputs.cache_dir }}
+          key: ${{ runner.os }}-r-oracle-${{ steps.oracle.outputs.manifest_sha256 }}
+
+      - name: Install exact R oracle build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran libbz2-dev libcurl4-openssl-dev libicu-dev liblzma-dev libpcre2-dev libreadline-dev libzstd-dev
+
+      - name: Build or restore exact R oracle
+        run: |
+          bash scripts/install_r_oracle.sh
+          echo "${{ steps.oracle.outputs.cache_dir }}/bin" >> "$GITHUB_PATH"
+
+      - name: Exact-oracle conformance parity
+        env:
+          RPORT_REQUIRE_PINNED_ORACLE: "1"
+        run: bash scripts/conformance_parity.sh --check --strict
 
   wasm:
     name: WASM32 toolchain

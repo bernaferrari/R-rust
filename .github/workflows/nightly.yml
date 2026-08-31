@@ -26,16 +26,55 @@ jobs:
         run: "cargo +nightly miri test -p rmath sexp::"
 
   gc-torture:
-    name: GC torture stress
+    name: GC torture stress (exact R oracle)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Validate immutable R oracle manifest
+        id: oracle
+        run: python3 scripts/validate_r_oracle.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Cache exact R oracle build
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.oracle.outputs.cache_dir }}
+          key: ${{ runner.os }}-r-oracle-${{ steps.oracle.outputs.manifest_sha256 }}
+
+      - name: Install exact R oracle build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran libbz2-dev libcurl4-openssl-dev libicu-dev liblzma-dev libpcre2-dev libreadline-dev libzstd-dev
+
+      - name: Build or restore exact R oracle
+        run: |
+          bash scripts/install_r_oracle.sh
+          echo "${{ steps.oracle.outputs.cache_dir }}/bin" >> "$GITHUB_PATH"
+
+      - name: GC torture stress differential
+        env:
+          RPORT_REQUIRE_PINNED_ORACLE: "1"
+        run: bash scripts/gc_torture_stress.sh
+
+  oracle-drift:
+    name: Informational R ${{ matrix.r-version }} drift
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 35
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        r-version: [release, devel]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: "release"
+          r-version: ${{ matrix.r-version }}
 
-      - name: GC torture stress differential
-        run: bash scripts/gc_torture_stress.sh
+      - name: Compare moving channel (informational only)
+        run: bash scripts/conformance_parity.sh --check --strict

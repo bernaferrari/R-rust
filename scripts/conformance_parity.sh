@@ -88,9 +88,13 @@ if ! command -v Rscript >/dev/null 2>&1; then
     fi
 fi
 
+if [[ "${RPORT_REQUIRE_PINNED_ORACLE:-0}" == "1" ]]; then
+    python3 "$ROOT_DIR/scripts/validate_r_oracle.py" \
+        --runtime "$(command -v Rscript)"
+fi
 
-# Engine version: goldens are generated from R trunk, but CI's r-lib
-# release R (and contributor machines) can run older engines whose
+# Engine version: the required CI gate uses the exact pinned oracle. Optional
+# drift probes and contributor machines can run older engines whose
 # internals legitimately differ (e.g. the R 4.7 .Random.seed kind-word
 # layout). Detect major.minor once so version-sensitive cases become
 # expected skips instead of hard failures.

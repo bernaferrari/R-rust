@@ -12,7 +12,7 @@
 # trunk R) sits exactly 273 commits later in the same history:
 #
 #   vendored pin : d4cc5d9e196a144bbb087a798bb945b37121383b
-#   trunk oracle : bac583951b728e97b9786804d3b4081f0fe18df5  (r79999)
+#   trunk oracle : bac583951b728e97b9786804d3b4081f0fe18df5  (r90451)
 #
 # A full (non-shallow) clone is used so the upstream sync workflow
 # (`git -C r-source fetch origin trunk` + history deltas) keeps working.
@@ -59,4 +59,4 @@ if [ -f "$DEST/VERSION" ]; then
   nick="$(tr -d '\n' < "$DEST/VERSION-NICK" 2>/dev/null || true)"
   echo "R version: $version${nick:+ ($nick)}"
 fi
-echo "Trunk oracle for parity runs: r79999 (bac583951b728e97b9786804d3b4081f0fe18df5)"
+echo "Trunk oracle for parity runs: r90451 (bac583951b728e97b9786804d3b4081f0fe18df5)"

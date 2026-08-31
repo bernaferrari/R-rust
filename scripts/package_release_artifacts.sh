@@ -64,6 +64,7 @@ rm -rf "$BUNDLE_DIR"
 rm -rf "$HOST_TARGET_DIR"
 mkdir -p \
     "$BUNDLE_DIR/docs" \
+    "$BUNDLE_DIR/oracle" \
     "$BUNDLE_DIR/bindings" \
     "$BUNDLE_DIR/android/jniLibs/arm64-v8a" \
     "$BUNDLE_DIR/reports"
@@ -80,6 +81,7 @@ fi
 cp -f "$android_so" "$BUNDLE_DIR/android/jniLibs/arm64-v8a/libr_uniffi.so"
 
 cp -f README.md CHANGELOG.md NOTICE.md "$BUNDLE_DIR/"
+cp -f oracle/r-oracle.json "$BUNDLE_DIR/oracle/"
 cp -f \
     docs/android-embedding-api.md \
     docs/conformance.md \
@@ -112,6 +114,7 @@ if [[ "$CHECK" -eq 1 ]]; then
         "$BUNDLE_DIR/README.md"
         "$BUNDLE_DIR/CHANGELOG.md"
         "$BUNDLE_DIR/NOTICE.md"
+        "$BUNDLE_DIR/oracle/r-oracle.json"
         "$BUNDLE_DIR/docs/release-packaging.md"
         "$BUNDLE_DIR/docs/upstream-port-map.tsv"
         "$BUNDLE_DIR/android/jniLibs/arm64-v8a/libr_uniffi.so"

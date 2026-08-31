@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "https://github.com/wch/r-source.git",
+    "commit": "bac583951b728e97b9786804d3b4081f0fe18df5",
+    "archive_url": "https://github.com/wch/r-source/archive/bac583951b728e97b9786804d3b4081f0fe18df5.tar.gz",
+    "archive_sha256": "8ee0845be714a2c457340886a92750c1c5df7a68f72d204cf23ae85447c1a5d0"
+  },
+  "runtime": {
+    "version": "4.7.0 Under development (unstable)",
+    "nickname": "Unsuffered Consequences",
+    "svn_revision": 90451,
+    "source_date": "2026-08-27T09:09:57Z"
+  },
+  "build": {
+    "runner_image": "ubuntu-24.04",
+    "configure_args": [
+      "--without-x",
+      "--without-recommended-packages",
+      "--disable-java",
+      "--without-blas",
+      "--without-lapack"
+    ]
+  }
+}

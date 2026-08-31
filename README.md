@@ -21,7 +21,7 @@ can be diffed, ported, and verified hunk-by-hunk.
 - Embedding surfaces: `r-embed` (owned-value facade), `r-uniffi`
   (Kotlin/Swift bindings), an Android headless PNG device, and a desktop
   CLI/REPL host (`r-host-cli`).
-- A verification rig: a 607-case curated behavioral fixture corpus run
+- A verification rig: a 608-case curated behavioral fixture corpus run
   three-way (stock C output vs checked-in golden vs Rust output),
   a script-level differential harness, and stream-parity RNG goldens.
 
@@ -61,7 +61,7 @@ crates/
   r-uniffi/         Kotlin/Swift bindings surface
   r-graphics-engine/  portable plotting primitives
   r-device-android-headless/  PNG device backend
-tests/conformance/  607 curated fixtures + three-way differential runner
+tests/conformance/  608 curated fixtures + three-way differential runner
 tests/script-diff/  script-level differential vs stock R
 scripts/            parity, slices, corpus, release gates
 r-source/           vendored upstream C reference (fetched, not built,
@@ -91,9 +91,9 @@ module map with per-file sync mode lives in
 All parity claims are **against the exact oracle described below**, on a
 **curated subset** of R behavior — not against R's own test suites:
 
-- **607/607 curated behavioral fixtures pass, three-way** (stock C
+- **608/608 curated behavioral fixtures pass, three-way** (stock C
   output vs checked-in golden vs Rust output). The corpus is a curated
-  subset selected to pin ported upstream hunks; it is *not* "607 of R's
+  subset selected to pin ported upstream hunks; it is *not* "608 of R's
   tests", and passing it does not imply general conformance.
 - Script-level differential vs stock R: 10/10 curated scripts.
 - Workspace tests: 2357+ green. Clippy (`--workspace --all-targets`,
@@ -124,9 +124,15 @@ families with stream-parity goldens (TOMS 708, Bessel matrix ≤ 1e-15);
 The parity contract is anchored to **upstream development itself**, not
 a release snapshot:
 
-- **Oracle binary:** R trunk **r79999** ("Unsuffered Consequences",
-  2026-08-28), built locally, from wch/r-source commit
+- **Oracle binary:** R trunk **r90451** ("Unsuffered Consequences",
+  2026-08-27), built locally, from wch/r-source commit
   `bac583951b728e97b9786804d3b4081f0fe18df5`.
+- **Machine-readable pin:** `oracle/r-oracle.json` records that full commit,
+  the commit archive URL and SHA-256, and the expected runtime identity. CI
+  validates the manifest, hash-verifies and builds that exact source, then
+  rejects any `Rscript` without the matching provenance marker. Moving
+  `release`/`devel` comparisons run separately at night and are informational;
+  they can never satisfy the required exact-oracle gate.
 - **Vendored reference tree:** pinned at the last sync base,
   `d4cc5d9e196a144bbb087a798bb945b37121383b` — exactly 273 commits
   behind the oracle commit. Reproduce it with:
@@ -166,6 +172,7 @@ cargo test --workspace                 # includes stream-parity goldens
 cargo clippy --workspace --all-targets # zero warnings expected
 
 # Conformance vs the trunk oracle (R binary on PATH):
+./scripts/install_r_oracle.sh             # prints the pinned R bin directory
 PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --check
 PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --regen-goldens
 ./scripts/wasm_toolchain_check.sh
@@ -216,7 +223,7 @@ Direction, not promises — ordered by current work:
 1. **Object model rework**: Sexp copy/move semantics and the
    external-pointer redesign; re-enable ALTREP on the new
    representation.
-2. **Broaden the corpus** beyond the curated 607 fixtures toward
+2. **Broaden the corpus** beyond the curated 608 fixtures toward
    sampled real-world R scripts, keeping the three-way methodology.
 3. **Stream-parity for alternative RNG kinds** (Marsaglia-MultiCarry,
    Wichmann-Hill) or explicit stream-difference documentation per kind.

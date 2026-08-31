@@ -6,12 +6,14 @@ repeatable gate with subsystem labels in the output.
 
 The GitHub workflows carry the always-on slice of the same policy split:
 `.github/workflows/ci.yml` runs formatting, strict clippy, workspace tests,
-stock-R conformance parity, and the WASM build surface as five independent
-jobs on the toolchain pinned in `rust-toolchain.toml`; the conformance job
-uses r-lib release R, where engine-version-sensitive cases (the R 4.7
-`.Random.seed` layout) are expected skips rather than failures.
+exact-oracle conformance parity, and the WASM build surface as five independent
+jobs on the toolchain pinned in `rust-toolchain.toml`. The conformance job
+hash-verifies and builds the immutable source in `oracle/r-oracle.json`; the
+local release gate requires the same marked runtime. Floating `release` and
+`devel` engines are nightly, informational drift probes only.
 `.github/workflows/nightly.yml` adds the deeper sweeps: Miri over the sexp
-safe-layer test subset and a GC-torture differential stress run. Everything
+safe-layer test subset and a GC-torture differential stress run against the
+same exact oracle. Everything
 else below — Android checks, packaging, showcase artifacts, and the safe API
 audit — remains the local release-gate bar.
 
@@ -80,7 +82,8 @@ Do not use `--no-wasm` for release signoff. The default gate includes the
 ## Prerequisites
 
 - Rust stable toolchain with `cargo`, `rustfmt`, and the Android/WASM targets
-- Stock C R with `Rscript` for the conformance harness
+- The exact C R oracle installed by `scripts/install_r_oracle.sh`, with its
+  printed `bin` directory prepended to `PATH`
 - Python 3 for conformance artifact validation
 - Android SDK/NDK for the default Android target check
 - Java 17 and Gradle wrapper support for `--full` Android packaging

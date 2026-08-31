@@ -71,12 +71,19 @@ untouched whenever stock R misbehaves (a normal case exiting non-zero, or an
 error case that stops erroring).
 
 Golden provenance: the checked-in goldens are regenerated locally against a
-GNU R trunk build (r79999, "R version 4.7.0 Under development (unstable)").
-That trunk build is not reproducible in CI, so CI pins
-`r-lib/actions/setup-r` to `r-version: 'release'` and cross-checks the same
-goldens against the release engine; the harness's deterministic
-normalization absorbs engine-version drift, and any genuine behavior
-difference still fails the strict gate.
+GNU R trunk build (r90451, "R version 4.7.0 Under development (unstable)").
+The required CI gate builds that exact source from commit
+`bac583951b728e97b9786804d3b4081f0fe18df5`. Its machine-readable manifest is
+`oracle/r-oracle.json`; validation requires a full commit, verifies the source
+archive SHA-256, and records the manifest digest beside the installed runtime.
+The harness rejects a required-oracle run when `Rscript` lacks that provenance
+or reports a different runtime identity. Nightly `release` and `devel`
+comparisons are explicitly informational drift probes and cannot replace or
+weaken the exact-oracle result.
+
+To install the same oracle locally, run `scripts/install_r_oracle.sh`, prepend
+the printed directory to `PATH`, and set `RPORT_REQUIRE_PINNED_ORACLE=1` for a
+provenance-enforced check.
 
 ## Upstream Core Slices
 
@@ -120,8 +127,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 607 |
-| Passing | 607 |
+| Total parity cases | 608 |
+| Passing | 608 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
