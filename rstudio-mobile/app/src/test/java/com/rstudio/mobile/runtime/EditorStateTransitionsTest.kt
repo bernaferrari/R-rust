@@ -1,5 +1,6 @@
 package com.rstudio.mobile.runtime
 
+import com.rstudio.mobile.data.ProjectFile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -126,6 +127,27 @@ class EditorStateTransitionsTest {
         assertTrue(dirty.isCurrent(snapshot))
         assertFalse(dirty.editActiveDocument("a <- 3").isCurrent(snapshot))
         assertFalse(dirty.openEditorDocument(second, "Opened b.R").canClearRecovery(snapshot))
+    }
+
+    @Test
+    fun projectReconciliationUpdatesRenamedOpenDocumentByStableUri() {
+        val state = state(active = "b")
+        val renamed = ProjectFile(
+            uri = "content://b",
+            name = "renamed.R",
+            relativePath = "renamed.R",
+            localPath = "/mirror/renamed.R",
+            mimeType = "text/plain",
+            isDirectory = false,
+            size = 6,
+        )
+
+        val reconciled = state.reconcileProjectDocuments(listOf(renamed))
+
+        assertEquals("b", reconciled.activeDocumentId)
+        assertEquals("renamed.R", reconciled.currentFileName)
+        assertEquals("/mirror/renamed.R", reconciled.currentScriptPath)
+        assertEquals("b <- 1", reconciled.code)
     }
 
     private fun state(active: String): RStudioUiState =

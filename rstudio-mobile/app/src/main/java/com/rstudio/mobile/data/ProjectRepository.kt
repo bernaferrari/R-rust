@@ -30,6 +30,10 @@ data class RecoveredDocument(
     val code: String,
 )
 
+data class CreatedProjectFile(val file: ProjectFile, val project: WorkspaceProject)
+
+data class ImportedFile(val file: File, val project: WorkspaceProject?)
+
 class ProjectRepository(private val context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
@@ -41,7 +45,7 @@ class ProjectRepository(private val context: Context) {
 
     fun restoreProject(): WorkspaceProject? {
         val uri = preferences.getString(KEY_PROJECT_URI, null)?.let(Uri::parse) ?: return null
-        return runCatching { loadProject(uri) }.getOrNull()
+        return loadProject(uri)
     }
 
     fun clearProject() {
@@ -62,7 +66,7 @@ class ProjectRepository(private val context: Context) {
         }
     }
 
-    fun createScript(project: WorkspaceProject, requestedName: String, code: String): ProjectFile {
+    fun createScript(project: WorkspaceProject, requestedName: String, code: String): CreatedProjectFile {
         val root = requireNotNull(DocumentFile.fromTreeUri(context, Uri.parse(project.treeUri))) {
             "The project folder is no longer available"
         }
@@ -74,40 +78,43 @@ class ProjectRepository(private val context: Context) {
             suffix += 1
         }
         val document = requireNotNull(root.createFile("text/x-r-source", name)) { "Could not create $name" }
-        val local = File(project.localRoot, name)
-        writeText(document.uri, local.absolutePath, code)
-        return ProjectFile(
-            uri = document.uri.toString(),
-            name = document.name ?: name,
-            relativePath = document.name ?: name,
-            localPath = local.absolutePath,
-            mimeType = document.type,
-            isDirectory = false,
-            size = code.toByteArray().size.toLong(),
-        )
+        try {
+            writeText(document.uri, null, code, persistAccess = false)
+        } catch (error: Throwable) {
+            document.delete()
+            throw error
+        }
+        val refreshed = loadProject(Uri.parse(project.treeUri))
+        val created = requireNotNull(refreshed.files.firstOrNull { it.uri == document.uri.toString() }) {
+            "Created file is missing after project reconciliation"
+        }
+        return CreatedProjectFile(created, refreshed)
     }
 
-    fun createFolder(project: WorkspaceProject, requestedName: String) {
+    fun createFolder(project: WorkspaceProject, requestedName: String): WorkspaceProject {
         val root = requireNotNull(DocumentFile.fromTreeUri(context, Uri.parse(project.treeUri))) {
             "The project folder is no longer available"
         }
         val name = requestedName.safeFileName()
         require(root.findFile(name) == null) { "$name already exists" }
         requireNotNull(root.createDirectory(name)) { "Could not create folder $name" }
+        return loadProject(Uri.parse(project.treeUri))
     }
 
-    fun rename(uri: Uri, requestedName: String) {
+    fun rename(project: WorkspaceProject, uri: Uri, requestedName: String): WorkspaceProject {
         val document = requireNotNull(DocumentFile.fromSingleUri(context, uri)) { "File is no longer available" }
         require(document.renameTo(requestedName.safeFileName())) { "Could not rename ${document.name}" }
+        return loadProject(Uri.parse(project.treeUri))
     }
 
-    fun delete(uri: Uri) {
+    fun delete(project: WorkspaceProject, uri: Uri): WorkspaceProject {
         val document = requireNotNull(DocumentFile.fromSingleUri(context, uri)) { "File is no longer available" }
         require(document.delete()) { "Could not delete ${document.name}" }
+        return loadProject(Uri.parse(project.treeUri))
     }
 
-    fun writeText(uri: Uri, localPath: String?, code: String) {
-        retainAccess(uri, write = true)
+    fun writeText(uri: Uri, localPath: String?, code: String, persistAccess: Boolean = true) {
+        if (persistAccess) retainAccess(uri, write = true)
         context.contentResolver.openOutputStream(uri, "wt").use { output ->
             requireNotNull(output) { "Could not save the selected document" }
             output.write(code.toByteArray(Charsets.UTF_8))
@@ -115,16 +122,15 @@ class ProjectRepository(private val context: Context) {
         localPath?.let { File(it).apply { parentFile?.mkdirs(); writeText(code, Charsets.UTF_8) } }
     }
 
-    fun importFile(uri: Uri, preferredName: String, project: WorkspaceProject?): File {
-        retainAccess(uri, write = false)
-        val root = project?.let { File(it.localRoot) }
-            ?: File(context.filesDir, "imports").also(File::mkdirs)
+    fun importFile(uri: Uri, preferredName: String, project: WorkspaceProject?): ImportedFile {
+        if (project != null) return importIntoProject(uri, preferredName, project)
+        val root = File(context.filesDir, "imports").also(File::mkdirs)
         val destination = uniqueFile(root, preferredName.safeFileName())
         context.contentResolver.openInputStream(uri).use { input ->
             requireNotNull(input) { "Could not open selected file" }
-            destination.outputStream().use(input::copyTo)
+            destination.outputStream().use { output -> copyWithLimit(input, output, MAX_PROJECT_FILE_BYTES) }
         }
-        return destination
+        return ImportedFile(destination, null)
     }
 
     fun saveRecovery(name: String, sourceUri: String?, code: String) {
@@ -156,9 +162,8 @@ class ProjectRepository(private val context: Context) {
             "The selected folder is no longer available"
         }
         val projectName = rootDocument.name?.takeIf(String::isNotBlank) ?: "Android project"
-        val localRoot = File(context.filesDir, "projects/${stableId(treeUri.toString())}").also(File::mkdirs)
-        val files = ArrayList<ProjectFile>()
-        scan(rootDocument, localRoot, "", files)
+        val localRoot = File(context.filesDir, "projects/${stableId(treeUri.toString())}")
+        val files = ProjectMirrorReconciler().rebuild(localRoot, mirrorEntries(rootDocument))
         return WorkspaceProject(
             name = projectName,
             treeUri = treeUri.toString(),
@@ -167,43 +172,77 @@ class ProjectRepository(private val context: Context) {
         )
     }
 
-    private fun scan(
+    private fun mirrorEntries(
         document: DocumentFile,
-        localRoot: File,
-        relativePath: String,
-        output: MutableList<ProjectFile>,
-    ) {
-        check(output.size < MAX_PROJECT_ENTRIES) { "This folder contains more than $MAX_PROJECT_ENTRIES entries" }
+        relativePath: String = "",
+    ): Sequence<ProjectMirrorEntry> = sequence {
         document.listFiles().forEach { child ->
             val name = child.name?.safeFileName()?.takeIf(String::isNotBlank) ?: return@forEach
             val childRelative = if (relativePath.isBlank()) name else "$relativePath/$name"
-            val local = File(localRoot, childRelative)
-            if (child.isDirectory) {
-                local.mkdirs()
-            } else {
-                local.parentFile?.mkdirs()
-                context.contentResolver.openInputStream(child.uri).use { input ->
-                    requireNotNull(input) { "Could not read $childRelative" }
-                    local.outputStream().use(input::copyTo)
-                }
-            }
-            output += ProjectFile(
+            yield(ProjectMirrorEntry(
                 uri = child.uri.toString(),
-                name = child.name ?: name,
+                displayName = child.name ?: name,
                 relativePath = childRelative,
-                localPath = local.absolutePath,
                 mimeType = child.type,
                 isDirectory = child.isDirectory,
-                size = child.length(),
-            )
-            if (child.isDirectory) scan(child, localRoot, childRelative, output)
+                openInput = if (child.isDirectory) null else ({
+                    requireNotNull(context.contentResolver.openInputStream(child.uri)) {
+                        "Could not read $childRelative"
+                    }
+                }),
+            ))
+            if (child.isDirectory) yieldAll(mirrorEntries(child, childRelative))
         }
+    }
+
+    private fun importIntoProject(
+        sourceUri: Uri,
+        preferredName: String,
+        project: WorkspaceProject,
+    ): ImportedFile {
+        val root = requireNotNull(DocumentFile.fromTreeUri(context, Uri.parse(project.treeUri))) {
+            "The project folder is no longer available"
+        }
+        val requested = preferredName.safeFileName()
+        var name = requested
+        var suffix = 2
+        while (root.findFile(name) != null) {
+            val stem = requested.substringBeforeLast('.', requested)
+            val extension = requested.substringAfterLast('.', "").let { if (it.isBlank()) "" else ".$it" }
+            name = "$stem-$suffix$extension"
+            suffix += 1
+        }
+        val mimeType = context.contentResolver.getType(sourceUri) ?: "application/octet-stream"
+        val document = requireNotNull(root.createFile(mimeType, name)) { "Could not import $name" }
+        try {
+            context.contentResolver.openInputStream(sourceUri).use { input ->
+                requireNotNull(input) { "Could not open selected file" }
+                context.contentResolver.openOutputStream(document.uri, "wt").use { output ->
+                    requireNotNull(output) { "Could not write imported project file" }
+                    copyWithLimit(input, output, MAX_PROJECT_FILE_BYTES)
+                }
+            }
+        } catch (error: Throwable) {
+            document.delete()
+            throw error
+        }
+        val refreshed = loadProject(Uri.parse(project.treeUri))
+        val imported = requireNotNull(refreshed.files.firstOrNull { it.uri == document.uri.toString() }) {
+            "Imported file is missing after project reconciliation"
+        }
+        return ImportedFile(File(imported.localPath), refreshed)
     }
 
     private fun retainAccess(uri: Uri, write: Boolean) {
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
             (if (write) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
-        runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+        val retained = runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+        if (retained.isFailure) {
+            val alreadyRetained = context.contentResolver.persistedUriPermissions.any { permission ->
+                permission.uri == uri && permission.isReadPermission && (!write || permission.isWritePermission)
+            }
+            check(alreadyRetained) { "Persistent access to the selected document was not granted" }
+        }
     }
 
     private fun uniqueFile(root: File, requestedName: String): File {
@@ -231,6 +270,19 @@ class ProjectRepository(private val context: Context) {
         private const val KEY_RECOVERY_NAME = "recovery_name"
         private const val KEY_RECOVERY_URI = "recovery_uri"
         private const val RECOVERY_FILE = "recovery/current.R"
-        private const val MAX_PROJECT_ENTRIES = 5_000
+        private const val MAX_PROJECT_FILE_BYTES = 64L * 1024L * 1024L
+    }
+}
+
+private fun copyWithLimit(input: java.io.InputStream, output: java.io.OutputStream, limit: Long) {
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var copied = 0L
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) return
+        if (count == 0) continue
+        copied += count
+        require(copied <= limit) { "Imported file is larger than $limit bytes" }
+        output.write(buffer, 0, count)
     }
 }

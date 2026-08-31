@@ -1,5 +1,7 @@
 package com.rstudio.mobile.runtime
 
+import com.rstudio.mobile.data.ProjectFile
+
 internal data class EditorSaveSnapshot(
     val documentId: String,
     val code: String,
@@ -116,6 +118,23 @@ internal fun RStudioUiState.isCurrent(snapshot: EditorSaveSnapshot): Boolean =
 
 internal fun RStudioUiState.canClearRecovery(snapshot: EditorSaveSnapshot): Boolean =
     activeDocumentId == snapshot.documentId && isCurrent(snapshot)
+
+internal fun RStudioUiState.reconcileProjectDocuments(files: List<ProjectFile>): RStudioUiState {
+    val byUri = files.associateBy(ProjectFile::uri)
+    val reconciled = documents.map { document ->
+        val file = document.sourceUri?.let(byUri::get) ?: return@map document
+        document.copy(name = file.name, localPath = file.localPath)
+    }
+    val active = reconciled.firstOrNull { it.id == activeDocumentId } ?: return copy(documents = reconciled)
+    return copy(
+        documents = reconciled,
+        code = active.code,
+        currentFileName = active.name,
+        currentScriptPath = active.localPath,
+        currentDocumentUri = active.sourceUri,
+        isDirty = active.isDirty,
+    )
+}
 
 private fun RStudioUiState.activateEditorDocument(
     document: EditorDocument,

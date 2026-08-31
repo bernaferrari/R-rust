@@ -372,16 +372,16 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     it.completeDocumentSave(
                         snapshot = snapshot,
-                        savedName = created.name,
-                        savedSourceUri = created.uri,
-                        savedLocalPath = created.localPath,
-                        status = "Created ${created.name}",
+                        savedName = created.file.name,
+                        savedSourceUri = created.file.uri,
+                        savedLocalPath = created.file.localPath,
+                        status = "Created ${created.file.name}",
                     ).copy(
-                        projectFiles = (it.projectFiles + created).sortedBy(ProjectFile::relativePath),
+                        projectFiles = created.project.files,
                     )
                 }
                 if (clearRecovery) withContext(Dispatchers.IO) { projects.clearRecovery() }
-                appendConsole("Created project script ${created.name}")
+                appendConsole("Created project script ${created.file.name}")
                 return@runTask
             }
             val saved = withContext(Dispatchers.IO) {
@@ -514,8 +514,10 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
 
     fun refreshProject() {
         scope.launch {
-            val project = withContext(Dispatchers.IO) { projects.restoreProject() } ?: return@launch
-            runCatching { activateProject(project) }
+            runCatching {
+                val project = withContext(Dispatchers.IO) { projects.restoreProject() } ?: return@runCatching
+                activateProject(project)
+            }
                 .onFailure { markError("Could not refresh project: ${it.message}") }
         }
     }
@@ -523,23 +525,29 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     fun createProjectFolder(name: String) {
         val project = _state.value.toWorkspaceProject() ?: return
         runTask("Creating folder…") {
-            withContext(Dispatchers.IO) { projects.createFolder(project, name) }
-            refreshProject()
+            val refreshed = withContext(Dispatchers.IO) { projects.createFolder(project, name) }
+            activateProject(refreshed)
         }
     }
 
     fun renameProjectFile(file: ProjectFile, name: String) {
+        val project = _state.value.toWorkspaceProject() ?: return
         runTask("Renaming ${file.name}…") {
-            withContext(Dispatchers.IO) { projects.rename(Uri.parse(file.uri), name) }
-            refreshProject()
+            val refreshed = withContext(Dispatchers.IO) {
+                projects.rename(project, Uri.parse(file.uri), name)
+            }
+            activateProject(refreshed)
         }
     }
 
     fun deleteProjectFile(file: ProjectFile) {
+        val project = _state.value.toWorkspaceProject() ?: return
         runTask("Deleting ${file.name}…") {
-            withContext(Dispatchers.IO) { projects.delete(Uri.parse(file.uri)) }
+            val refreshed = withContext(Dispatchers.IO) {
+                projects.delete(project, Uri.parse(file.uri))
+            }
             if (_state.value.currentDocumentUri == file.uri) newScript()
-            refreshProject()
+            activateProject(refreshed)
         }
     }
 
@@ -617,9 +625,10 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     fun importCsv(uri: Uri) {
         runTask("Importing data…") {
             val name = displayName(uri, "import.csv")
-            val copied = withContext(Dispatchers.IO) {
+            val imported = withContext(Dispatchers.IO) {
                 projects.importFile(uri, name, _state.value.toWorkspaceProject())
             }
+            val copied = imported.file
             val variable = safeName(copied.nameWithoutExtension).ifBlank { "imported_csv" }
             val path = escapeRString(copied.absolutePath)
             val code = when (copied.extension.lowercase()) {
@@ -633,6 +642,7 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
             appendConsole("> import CSV ${copied.name}")
             publishResult(result)
             refreshEnvironmentNow()
+            imported.project?.let { activateProject(it) }
             _state.update {
                 it.copy(
                     importedPath = copied.absolutePath,
@@ -760,7 +770,7 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
 
     fun loadWorkspace(uri: Uri) {
         runTask("Loading workspace…") {
-            val local = withContext(Dispatchers.IO) { projects.importFile(uri, "workspace.RData", null) }
+            val local = withContext(Dispatchers.IO) { projects.importFile(uri, "workspace.RData", null).file }
             withContext(Dispatchers.IO) {
                 session.evalResult("load(\"${escapeRString(local.absolutePath)}\", envir = .GlobalEnv)")
             }
@@ -929,8 +939,10 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
 
     private fun restoreProject() {
         scope.launch {
-            val project = withContext(Dispatchers.IO) { projects.restoreProject() } ?: return@launch
-            runCatching { activateProject(project) }
+            runCatching {
+                val project = withContext(Dispatchers.IO) { projects.restoreProject() } ?: return@runCatching
+                activateProject(project)
+            }
                 .onFailure { error -> markError("Could not restore project: ${error.message}") }
         }
     }
@@ -947,7 +959,7 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
                 projectFiles = project.files,
                 status = "Project: ${project.name}",
                 errorMessage = null,
-            )
+            ).reconcileProjectDocuments(project.files)
         }
     }
 
