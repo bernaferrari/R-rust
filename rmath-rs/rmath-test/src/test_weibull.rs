@@ -8,7 +8,10 @@ pub fn run_tests() -> Result<(), String> {
         dweibull_inner(f64::NAN, 1.0, 1.0, false),
         "dweibull(NaN,...)",
     );
-    assert_nan(dweibull_inner(0.0, 0.0, 1.0, false), "dweibull(0,0,1)");
+    // GNU R trunk accepts shape = 0 (PR#19055): the degenerate density
+    // has a positive-infinite spike at zero and is zero elsewhere.
+    assert_posinf(dweibull_inner(0.0, 0.0, 1.0, false), "dweibull(0,0,1)");
+    assert_equiv(dweibull_inner(1.0, 0.0, 1.0, false), 0.0, "dweibull(1,0,1)");
     assert_nan(dweibull_inner(0.0, -1.0, 1.0, false), "dweibull(0,-1,1)");
     assert_nan(dweibull_inner(0.0, 1.0, 0.0, false), "dweibull(0,1,0)");
     assert_nan(dweibull_inner(0.0, 1.0, -1.0, false), "dweibull(0,1,-1)");
@@ -27,8 +30,9 @@ pub fn run_tests() -> Result<(), String> {
         pweibull_inner(f64::NAN, 1.0, 1.0, true, false),
         "pweibull(NaN,...)",
     );
-    assert_nan(
+    assert_equiv(
         pweibull_inner(0.0, 0.0, 1.0, true, false),
+        0.0,
         "pweibull(0,0,1)",
     );
     assert_nan(
@@ -58,8 +62,9 @@ pub fn run_tests() -> Result<(), String> {
         qweibull_inner(f64::NAN, 1.0, 1.0, true, false),
         "qweibull(NaN,...)",
     );
-    assert_nan(
+    assert_equiv(
         qweibull_inner(0.0, 0.0, 1.0, true, false),
+        0.0,
         "qweibull(0,0,1)",
     );
     assert_nan(
@@ -89,7 +94,9 @@ pub fn run_tests() -> Result<(), String> {
     set_seed(42, 24);
     let r2 = rweibull_inner(1.0, 1.0);
     assert_equiv(r1, r2, "rweibull reproducible");
-    assert_nan(rweibull_inner(0.0, 1.0), "rweibull(0,1)");
+    set_seed(1234, 5678);
+    let shape_zero = rweibull_inner(0.0, 1.0);
+    assert_posinf(shape_zero, "rweibull(0,1)");
     assert_nan(rweibull_inner(-1.0, 1.0), "rweibull(-1,1)");
     assert_equiv(rweibull_inner(1.0, 0.0), 0.0, "rweibull(1,0)");
 
