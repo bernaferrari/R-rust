@@ -1230,7 +1230,10 @@ fn trusted_desktop_host_can_dynload_and_call_native_symbol() {
 
     let mut session = RSession::new().expect("session");
     session.enable_host_process_capabilities();
-    let path = library.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+    let path = library
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
     let result = session
         .eval_result(&format!(
             "dyn.load(\"{path}\"); .Call(\"rport_identity\", 42)"
@@ -1258,5 +1261,21 @@ fn host_process_capabilities_are_session_local() {
     assert!(
         message.contains("disabled by the session capability policy"),
         "unexpected sandbox error: {message}"
+    );
+}
+
+#[test]
+fn malformed_script_is_atomic_at_embed_boundary() {
+    let mut session = RSession::new().expect("session");
+
+    let error = session
+        .eval("embed_atomic_side_effect <- 1; \"unterminated")
+        .expect_err("malformed script must fail");
+    assert!(error.to_string().contains("unexpected"), "{error}");
+    assert_eq!(
+        session
+            .eval("exists(\"embed_atomic_side_effect\")")
+            .expect("session should remain usable"),
+        "[1] FALSE"
     );
 }

@@ -553,3 +553,19 @@ fn async_operations_report_callbacks_and_recover_after_cancel() {
         }
     ));
 }
+
+#[test]
+fn malformed_script_is_atomic_at_uniffi_boundary() {
+    let session = RSession::new().expect("session");
+
+    let error = session
+        .eval("uniffi_atomic_side_effect <- 1; \"unterminated".to_string())
+        .expect_err("malformed script must fail");
+    assert!(error.to_string().contains("unexpected"), "{error}");
+    assert_eq!(
+        session
+            .eval("exists(\"uniffi_atomic_side_effect\")".to_string())
+            .expect("session should remain usable"),
+        "[1] FALSE"
+    );
+}
