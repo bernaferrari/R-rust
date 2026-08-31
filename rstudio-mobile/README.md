@@ -61,6 +61,16 @@ For a browser development server:
 ./gradlew :webApp:wasmJsBrowserDevelopmentRun
 ```
 
+The release build uses the Binaryen version pinned by the Kotlin plugin. Its
+GitHub release repository is declared explicitly in `settings.gradle.kts`, and
+Gradle verifies the distribution archive against the checked-in SHA-256
+metadata. Build the optimized assets and enforce the JavaScript/Wasm budgets
+with:
+
+```bash
+./gradlew :webApp:checkWasmProductionBundleSize
+```
+
 For the release smoke path, run:
 
 ```bash
