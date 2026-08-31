@@ -40,7 +40,6 @@
 use super::ffi::SEXP;
 use super::instance::{RInstance, with_required_current_instance};
 use super::object::{Sexp, SexpOwner};
-use std::ptr::NonNull;
 
 /// Error returned when a safe protection API receives a handle whose owner was
 /// not validated.
@@ -72,21 +71,41 @@ impl std::error::Error for ProtectError {}
 /// // guard automatically unprotects when it goes out of scope
 /// ```
 pub struct ProtectGuard {
-    owner: Option<NonNull<RInstance>>,
+    /// Owning instance address, stored with exposed provenance — see
+    /// [`with_guard_owner`].
+    owner: Option<usize>,
     count: usize,
+}
+
+/// Run `f` with a guard's owning instance.
+///
+/// Guards must act on their OWNING instance even when the ambient current
+/// instance has since switched to another session (see the
+/// `drops_against_original_instance` tests), and a borrow-like tag captured
+/// at creation (the old `NonNull::from(&mut inst)`) is invalidated by every
+/// later `&mut RInstance` re-acquisition from the thread-local. The owner is
+/// therefore stored as an address with exposed provenance and reconstituted
+/// through `ptr::with_exposed_provenance` — the sanctioned wildcard-
+/// provenance escape hatch for ambient instance back-references (permissive
+/// provenance, the mode CI's Miri job runs in). The cleanup helpers take
+/// `&RInstance` — they only touch `RefCell` fields — so the shared wildcard
+/// retag validates against the still-live session root tag.
+fn with_guard_owner<R>(owner: usize, f: impl FnOnce(&RInstance) -> R) -> R {
+    // SAFETY: see the function docs; the owner outlives the guard.
+    unsafe { f(&*std::ptr::with_exposed_provenance::<RInstance>(owner)) }
 }
 
 impl Drop for ProtectGuard {
     fn drop(&mut self) {
-        if let (Some(mut owner), count) = (self.owner, self.count)
+        if let (Some(owner), count) = (self.owner, self.count)
             && count > 0
         {
             // SAFETY: The guard is created only while its owning RInstance is
             // active and the session APIs keep that instance alive across the
             // scoped interpreter call that owns the guard.
-            unsafe {
-                unprotect_count_in(owner.as_mut(), count);
-            }
+            with_guard_owner(owner, |inst| unsafe {
+                unprotect_count_in(inst, count);
+            });
         }
     }
 }
@@ -123,7 +142,7 @@ fn protect_raw(s: SEXP) -> ProtectGuard {
 
     let owner = with_required_current_instance(|inst| {
         push_protect_in(inst, s);
-        NonNull::from(inst)
+        inst as *mut RInstance as usize
     });
 
     ProtectGuard {
@@ -142,7 +161,7 @@ pub(crate) fn protect_n(n: usize) -> ProtectGuard {
             None
         } else {
             Some(with_required_current_instance(|inst| {
-                NonNull::from(&mut *inst)
+                inst as *mut RInstance as usize
             }))
         },
         count: n,
@@ -179,7 +198,7 @@ fn push_preserve(s: SEXP) {
     with_required_current_instance(|inst| push_preserve_in(inst, s));
 }
 
-pub(crate) fn release_preserved_in(inst: &mut RInstance, s: SEXP) {
+pub(crate) fn release_preserved_in(inst: &RInstance, s: SEXP) {
     if s.is_null() {
         return;
     }
@@ -197,18 +216,18 @@ fn release_preserved(s: SEXP) {
 ///
 /// Dropping the guard releases the preserved object from the active session.
 pub struct PreserveGuard {
-    owner: Option<NonNull<RInstance>>,
+    owner: Option<usize>,
     value: SEXP,
 }
 
 impl Drop for PreserveGuard {
     fn drop(&mut self) {
-        if let Some(mut owner) = self.owner {
+        if let Some(owner) = self.owner {
             // SAFETY: See ProtectGuard::drop; preserve guards are scoped to the
             // owning session entrypoint that created them.
-            unsafe {
-                release_preserved_in(owner.as_mut(), self.value);
-            }
+            with_guard_owner(owner, |inst| unsafe {
+                release_preserved_in(inst, self.value);
+            });
         }
     }
 }
@@ -231,7 +250,7 @@ pub fn try_preserve_sexp(value: Sexp<'_>) -> Result<PreserveGuard, ProtectError>
 
     let owner = with_required_current_instance(|inst| {
         push_preserve_in(inst, raw);
-        NonNull::from(inst)
+        inst as *mut RInstance as usize
     });
     Ok(PreserveGuard {
         owner: Some(owner),
@@ -265,7 +284,7 @@ where
     })
 }
 
-pub(crate) fn unprotect_count_in(inst: &mut RInstance, n: usize) {
+pub(crate) fn unprotect_count_in(inst: &RInstance, n: usize) {
     if n == 0 {
         return;
     }
@@ -446,7 +465,7 @@ fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
     with_required_current_instance(|inst| reprotect_slot_in(inst, slot, s));
 }
 
-fn reprotect_slot_in(inst: &mut RInstance, slot: ProtectionSlot, s: SEXP) {
+fn reprotect_slot_in(inst: &RInstance, slot: ProtectionSlot, s: SEXP) {
     let Some(index) = slot.index else {
         return;
     };
@@ -460,7 +479,7 @@ fn release_protect_slot(slot: ProtectionSlot) {
     with_required_current_instance(|inst| release_protect_slot_in(inst, slot));
 }
 
-fn release_protect_slot_in(inst: &mut RInstance, slot: ProtectionSlot) {
+fn release_protect_slot_in(inst: &RInstance, slot: ProtectionSlot) {
     let Some(index) = slot.index else {
         return;
     };
@@ -472,7 +491,7 @@ fn release_protect_slot_in(inst: &mut RInstance, slot: ProtectionSlot) {
 
 /// RAII guard for a replaceable protection stack slot.
 pub struct IndexedProtectGuard {
-    owner: Option<NonNull<RInstance>>,
+    owner: Option<usize>,
     slot: ProtectionSlot,
 }
 
@@ -482,11 +501,11 @@ impl IndexedProtectGuard {
     }
 
     pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
-        if let Some(mut owner) = self.owner {
+        if let Some(owner) = self.owner {
             // SAFETY: See ProtectGuard::drop.
-            unsafe {
-                reprotect_slot_in(owner.as_mut(), self.slot, value);
-            }
+            with_guard_owner(owner, |inst| unsafe {
+                reprotect_slot_in(inst, self.slot, value);
+            });
         }
     }
 
@@ -504,11 +523,11 @@ impl IndexedProtectGuard {
 
 impl Drop for IndexedProtectGuard {
     fn drop(&mut self) {
-        if let Some(mut owner) = self.owner {
+        if let Some(owner) = self.owner {
             // SAFETY: See ProtectGuard::drop.
-            unsafe {
-                release_protect_slot_in(owner.as_mut(), self.slot);
-            }
+            with_guard_owner(owner, |inst| unsafe {
+                release_protect_slot_in(inst, self.slot);
+            });
         }
     }
 }
@@ -640,7 +659,7 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard 
     }
 
     with_required_current_instance(|inst| IndexedProtectGuard {
-        owner: Some(NonNull::from(&mut *inst)),
+        owner: Some(inst as *mut RInstance as usize),
         slot: protect_raw_with_slot_in(inst, s, api),
     })
 }

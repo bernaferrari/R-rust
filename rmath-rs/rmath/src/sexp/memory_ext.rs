@@ -42,12 +42,14 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
 
 pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     unsafe {
-        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::ENVSXP));
-        let env: SEXP = &mut *boxed as *mut _;
+        // Disown the box immediately: deriving a raw pointer first and then
+        // leaking (moving) the box would retag the allocation and invalidate
+        // the returned SEXP under Stacked Borrows.
+        let env: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::ENVSXP)));
         (*env).data.envsxp.frame = frame;
         (*env).data.envsxp.enclos = enclos;
         (*env).data.envsxp.hashtab = hashtab;
-        Box::leak(boxed)
+        env
     }
 }
 

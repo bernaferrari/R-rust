@@ -252,7 +252,14 @@ pub struct RSession {
     /// Whether this session is active.
     active: bool,
     /// The owned R instance with isolated state.
-    instance: Box<RInstance>,
+    ///
+    /// Held as a raw pointer disowned via `Box::into_raw`: the thread-local
+    /// current-instance pointer is the stable borrowing root for this
+    /// allocation, and deriving that pointer from a `Box` field that is
+    /// later moved or reborrowed would retag the allocation out from under
+    /// it (aliasing UB under Stacked Borrows). Reclaimed with
+    /// `Box::from_raw` in `Drop`.
+    instance: *mut RInstance,
     /// Marker that keeps sessions thread-confined at compile time.
     _thread_confined: PhantomData<Rc<()>>,
 }
@@ -266,11 +273,19 @@ impl RSession {
     /// operations restore the previous instance.
     pub fn new() -> Self {
         super::context::install_r_panic_hook();
-        let mut instance = Box::new(RInstance::new());
+        // Disown the box immediately: the thread-local current-instance
+        // pointer must be the stable borrowing root for this allocation.
+        let instance: *mut RInstance = Box::into_raw(Box::new(RInstance::new()));
+        // Expose the session root provenance: protect guards reconstitute
+        // the owning instance from a bare address at drop time (see
+        // `protect::with_guard_owner`), and Miri validates that wildcard
+        // access against this exposed, never-invalidated root tag even
+        // after sibling re-acquisitions popped their own tags.
+        let _session_root_provenance = instance.expose_provenance();
         unsafe {
-            set_current_instance(&mut *instance as *mut RInstance);
-            install_state(&mut instance.math_state as *mut MathState);
-            install_rng(&mut instance.rng_state as *mut RngState);
+            set_current_instance(instance);
+            install_state(&mut (*instance).math_state as *mut MathState);
+            install_rng(&mut (*instance).rng_state as *mut RngState);
             // Route the nmath samplers through the full R-level RNG dispatch
             // (all RNG kinds, `.Random.seed` state). The bridge resolves the
             // *current* instance dynamically, so one installation per thread
@@ -300,17 +315,37 @@ impl RSession {
     pub(crate) fn new_detached() -> Self {
         let previous = unsafe { replace_current_instance(None) };
         let session = Self::new();
-        detach_state(&session.instance.math_state);
-        detach_rng(&session.instance.rng_state);
-        clear_current_instance_if(&*session.instance);
+        detach_state(unsafe { &(*session.instance).math_state });
+        detach_rng(unsafe { &(*session.instance).rng_state });
+        clear_current_instance_if(session.instance);
         unsafe {
             replace_current_instance(previous);
         }
         session
     }
 
+    /// Immutable view of the owned instance (see the field docs for the raw
+    /// ownership discipline).
+    #[inline]
+    fn inst(&self) -> &RInstance {
+        // SAFETY: `instance` is the live `Box::into_raw` allocation owned by
+        // this session; aliasing follows the runtime's ambient-borrow model.
+        unsafe { &*self.instance }
+    }
+
+    /// Mutable view of the owned instance.
+    #[inline]
+    // Deliberate: the session owns the `Box::into_raw` instance and mutable
+    // views are gated by the runtime's borrow-depth discipline, not by `&self`.
+    #[allow(clippy::mut_from_ref)]
+    fn inst_mut(&self) -> &mut RInstance {
+        // SAFETY: see `inst`; mutable views are created only where the
+        // runtime's borrow-depth discipline permits.
+        unsafe { &mut *self.instance }
+    }
+
     fn instance_ptr(&self) -> *mut RInstance {
-        (&*self.instance as *const RInstance).cast_mut()
+        self.instance
     }
 
     fn activate(&self) -> CurrentInstanceGuard {
@@ -357,14 +392,14 @@ impl RSession {
     ///
     /// Returns `None` if the global environment pointer is null.
     pub fn global_env(&self) -> Option<Sexp<'_>> {
-        self.sexp(self.instance.global_env)
+        self.sexp(self.inst().global_env)
     }
 
     /// Get the base environment.
     ///
     /// Returns `None` if the base environment pointer is null.
     pub fn base_env(&self) -> Option<Sexp<'_>> {
-        self.sexp(self.instance.base_env)
+        self.sexp(self.inst().base_env)
     }
 
     /// Wrap a raw pointer if it belongs to this session.
@@ -379,10 +414,10 @@ impl RSession {
         }
         if is_immutable_singleton(ptr) {
             Some(unsafe { Sexp::from_static_raw_unchecked(ptr) })
-        } else if self.instance.arena.contains(ptr) {
-            Sexp::from_arena_raw(ptr, &self.instance.arena).ok()
-        } else if self.instance.owns_sexp(ptr) {
-            Sexp::from_session_raw(ptr, &self.instance).ok()
+        } else if self.inst().arena.contains(ptr) {
+            Sexp::from_arena_raw(ptr, &self.inst().arena).ok()
+        } else if self.inst().owns_sexp(ptr) {
+            Sexp::from_session_raw(ptr, self.inst()).ok()
         } else {
             None
         }
@@ -477,10 +512,10 @@ impl RSession {
             );
         }
         self.with_active(|| {
-            self.instance.output_capture.borrow_mut().start();
+            self.inst().output_capture.borrow_mut().start();
             let result = self.eval_sexp(expr);
-            let visible = self.instance.eval_state.visible != 0;
-            let output = self.instance.output_capture.borrow_mut().stop();
+            let visible = self.inst().eval_state.visible != 0;
+            let output = self.inst().output_capture.borrow_mut().stop();
             (result, output, visible)
         })
     }
@@ -542,7 +577,7 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
-            crate::eval::parser::parse_expressions(code, &mut self.instance.arena)
+            crate::eval::parser::parse_expressions(code, &mut self.inst_mut().arena)
         };
         let expressions = match expressions {
             Ok(exprs) => exprs,
@@ -564,7 +599,7 @@ impl RSession {
         };
 
         self.with_active(|| {
-            self.instance.output_capture.borrow_mut().start();
+            self.inst().output_capture.borrow_mut().start();
             // Stale error-buffer renders from a previous script must not be
             // trusted by this script's top-level error renderer.
             crate::mainutils::errors::clear_last_rendered_message();
@@ -619,7 +654,7 @@ impl RSession {
                 // final statement keeps its caller-side render path, which
                 // also flushes that statement's deferred warnings after the
                 // value.
-                if index != last_index && self.instance.eval_state.visible != 0 {
+                if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
                         let rendered = super::output::format_sexp_direct(value.clone());
                         super::output::capture_stdout(&format!("{rendered}\n"));
@@ -641,8 +676,8 @@ impl RSession {
                 .ok()
                 .map(|value| RootedSexp::root(value.clone()));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
-            let visible = self.instance.eval_state.visible != 0;
-            let output = self.instance.output_capture.borrow_mut().stop();
+            let visible = self.inst().eval_state.visible != 0;
+            let output = self.inst().output_capture.borrow_mut().stop();
             f(result, output, visible)
         })
     }
@@ -670,7 +705,7 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
-            crate::eval::parser::parse_expressions(code, &mut self.instance.arena)
+            crate::eval::parser::parse_expressions(code, &mut self.inst_mut().arena)
         };
         let expressions = match expressions {
             Ok(exprs) => exprs,
@@ -689,8 +724,8 @@ impl RSession {
 
         {
             let _guard = self.activate();
-            let _backend_guard = RenderPlotBackendGuard::install(&mut self.instance, backend);
-            self.instance.output_capture.borrow_mut().start();
+            let _backend_guard = RenderPlotBackendGuard::install(self.inst_mut(), backend);
+            self.inst().output_capture.borrow_mut().start();
             // Same preservation of the remaining parsed statements as the
             // plain script loop above.
             let expression_guards: Vec<_> = expressions
@@ -727,7 +762,7 @@ impl RSession {
                 // into the captured stream, preserving print()/auto-print
                 // interleaving; the final statement renders at result
                 // assembly.
-                if index != last_index && self.instance.eval_state.visible != 0 {
+                if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
                         let rendered = super::output::format_sexp_direct(value.clone());
                         super::output::capture_stdout(&format!("{rendered}\n"));
@@ -747,8 +782,8 @@ impl RSession {
                 .ok()
                 .map(|value| RootedSexp::root(value.clone()));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
-            let visible = self.instance.eval_state.visible != 0;
-            let output = self.instance.output_capture.borrow_mut().stop();
+            let visible = self.inst().eval_state.visible != 0;
+            let output = self.inst().output_capture.borrow_mut().stop();
             f(result, output, visible)
         }
     }
@@ -773,7 +808,7 @@ impl RSession {
 
         let raw_expr = {
             let _guard = self.activate();
-            crate::eval::parser::parse(code, &mut self.instance.arena)
+            crate::eval::parser::parse(code, &mut self.inst_mut().arena)
         };
         let raw_expr = match raw_expr {
             Ok(expr) => expr_or_nil(expr),
@@ -796,7 +831,7 @@ impl RSession {
             }
         };
         self.with_active(|| {
-            self.instance.output_capture.borrow_mut().start();
+            self.inst().output_capture.borrow_mut().start();
             // Single-chunk eval: the parsed expression is script position
             // #1, same location contract as the script loops above.
             let _toplevel_no_guard = ToplevelExprNoGuard;
@@ -807,8 +842,8 @@ impl RSession {
                 .ok()
                 .map(|value| RootedSexp::root(value.clone()));
             crate::sexp::gengc::run_pending_gc_if_quiescent();
-            let visible = self.instance.eval_state.visible != 0;
-            let output = self.instance.output_capture.borrow_mut().stop();
+            let visible = self.inst().eval_state.visible != 0;
+            let output = self.inst().output_capture.borrow_mut().stop();
             f(result, output, visible)
         })
     }
@@ -920,12 +955,12 @@ impl RSession {
             return None;
         }
         let _guard = self.activate();
-        Some(f(&mut self.instance.arena))
+        Some(f(&mut self.inst_mut().arena))
     }
 
     /// Return the current arena budget for this session.
     pub fn arena_budget(&self) -> ArenaBudget {
-        self.instance.arena.budget()
+        self.inst().arena.budget()
     }
 
     /// Set the arena budget for this session.
@@ -933,17 +968,17 @@ impl RSession {
     /// Existing allocations are kept; future allocations fail if retained arena
     /// memory or active node count would exceed the configured limit.
     pub fn set_arena_budget(&mut self, budget: ArenaBudget) {
-        self.instance.arena.set_budget(budget);
+        self.inst_mut().arena.set_budget(budget);
     }
 
     /// Return this session's configured R library search paths.
     pub fn library_paths(&self) -> Vec<std::path::PathBuf> {
-        self.instance.path_policy.library_paths().to_vec()
+        self.inst().path_policy.library_paths().to_vec()
     }
 
     /// Find an installed package in this session's library search paths.
     pub fn find_package_path(&self, package: &str) -> Option<std::path::PathBuf> {
-        self.instance.path_policy.find_package_path(package)
+        self.inst().path_policy.find_package_path(package)
     }
 
     /// Replace this session's R library search paths.
@@ -952,7 +987,7 @@ impl RSession {
         I: IntoIterator<Item = P>,
         P: Into<std::path::PathBuf>,
     {
-        self.instance.path_policy.set_library_paths(paths);
+        self.inst_mut().path_policy.set_library_paths(paths);
     }
 
     /// Configure Android app-private runtime paths for this session.
@@ -966,7 +1001,7 @@ impl RSession {
         cache_dir: impl Into<std::path::PathBuf>,
         bundled_library_dir: Option<impl Into<std::path::PathBuf>>,
     ) -> std::io::Result<()> {
-        self.instance.path_policy = crate::mainutils::paths::RuntimePathPolicy::for_android_app(
+        self.inst_mut().path_policy = crate::mainutils::paths::RuntimePathPolicy::for_android_app(
             app_files_dir,
             cache_dir,
             bundled_library_dir,
@@ -976,7 +1011,7 @@ impl RSession {
 
     /// Return the session-specific temporary directory used by `tempdir()`.
     pub fn temp_dir(&self) -> &std::path::Path {
-        self.instance.path_policy.temp_dir()
+        self.inst().path_policy.temp_dir()
     }
 
     /// Run a function in a protected scope.
@@ -1003,7 +1038,7 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            let _scope = ProtectScope::new(&self.instance.protect_stack);
+            let _scope = ProtectScope::new(&self.inst().protect_stack);
             f()
         })
     }
@@ -1036,7 +1071,7 @@ impl RSession {
     /// remains session-scoped while the synchronization detail stays private.
     pub fn set_cancellation_token(&mut self, token: Option<CancellationToken>) {
         if self.active {
-            self.instance.eval_state.cancellation = token;
+            self.inst_mut().eval_state.cancellation = token;
         }
     }
 
@@ -1050,7 +1085,7 @@ impl RSession {
         token: Option<CancellationToken>,
     ) -> Option<CancellationToken> {
         if self.active {
-            std::mem::replace(&mut self.instance.eval_state.cancellation, token)
+            std::mem::replace(&mut self.inst_mut().eval_state.cancellation, token)
         } else {
             None
         }
@@ -1058,7 +1093,7 @@ impl RSession {
 
     /// Return this session's current evaluation limits.
     pub fn eval_limits(&self) -> crate::eval::eval::EvalLimits {
-        self.instance.eval_state.limits
+        self.inst().eval_state.limits
     }
 
     /// Set this session's evaluation limits.
@@ -1067,7 +1102,7 @@ impl RSession {
     /// current-instance limit accessors.
     pub fn set_eval_limits(&mut self, limits: crate::eval::eval::EvalLimits) {
         if self.active {
-            self.instance.eval_state.limits = limits;
+            self.inst_mut().eval_state.limits = limits;
         }
     }
 
@@ -1078,13 +1113,13 @@ impl RSession {
 
     /// Return this session's capability flags for host-process operations.
     pub fn capabilities(&self) -> super::instance::SessionCapabilities {
-        self.instance.eval_state.capabilities
+        self.inst().eval_state.capabilities
     }
 
     /// Configure which host-process operations this session may invoke.
     pub fn set_capabilities(&mut self, capabilities: super::instance::SessionCapabilities) {
         if self.active {
-            self.instance.eval_state.capabilities = capabilities;
+            self.inst_mut().eval_state.capabilities = capabilities;
         }
     }
 
@@ -1099,9 +1134,9 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            self.instance.output_capture.borrow_mut().start();
+            self.inst().output_capture.borrow_mut().start();
             let value = f();
-            let output = self.instance.output_capture.borrow_mut().stop();
+            let output = self.inst().output_capture.borrow_mut().stop();
             (value, output)
         })
     }
@@ -1111,9 +1146,9 @@ impl RSession {
     /// After closing, [`is_active`](RSession::is_active) returns `false`
     pub fn close(&mut self) {
         self.active = false;
-        detach_state(&self.instance.math_state);
-        detach_rng(&self.instance.rng_state);
-        clear_current_instance_if(&*self.instance);
+        detach_state(&self.inst().math_state);
+        detach_rng(&self.inst().rng_state);
+        clear_current_instance_if(self.instance);
     }
 }
 
@@ -1135,9 +1170,13 @@ impl Default for RSession {
 impl Drop for RSession {
     fn drop(&mut self) {
         if self.active {
-            detach_state(&self.instance.math_state);
-            detach_rng(&self.instance.rng_state);
-            clear_current_instance_if(&*self.instance);
+            detach_state(&self.inst().math_state);
+            detach_rng(&self.inst().rng_state);
+            clear_current_instance_if(self.instance);
+        }
+        // Reclaim the instance disowned via `Box::into_raw` in `new`.
+        unsafe {
+            drop(Box::from_raw(self.instance));
         }
     }
 }
@@ -1322,7 +1361,7 @@ mod tests {
     fn test_session_close_non_current_keeps_current_instance() {
         let mut older = RSession::new();
         let newer = RSession::new();
-        let newer_instance = &*newer.instance as *const RInstance;
+        let newer_instance = newer.instance_ptr();
 
         let previous = unsafe { replace_current_instance(Some(newer.instance_ptr())) };
         older.close();
@@ -1341,7 +1380,7 @@ mod tests {
     fn test_session_drop_non_current_keeps_current_instance() {
         let older = RSession::new();
         let newer = RSession::new();
-        let newer_instance = &*newer.instance as *const RInstance;
+        let newer_instance = newer.instance_ptr();
 
         let previous = unsafe { replace_current_instance(Some(newer.instance_ptr())) };
         drop(older);
@@ -1359,9 +1398,9 @@ mod tests {
     #[test]
     fn test_session_method_activation_restores_previous_instance() {
         let mut older = RSession::new();
-        let older_instance = &*older.instance as *const RInstance;
+        let older_instance = older.instance_ptr();
         let newer = RSession::new();
-        let newer_instance = &*newer.instance as *const RInstance;
+        let newer_instance = newer.instance_ptr();
 
         let previous = unsafe { replace_current_instance(Some(newer.instance_ptr())) };
         assert!(
@@ -1449,13 +1488,13 @@ mod tests {
 
         left.with_active(|| {
             let guard = crate::eval::eval::check_eval_depth().expect("left depth should increment");
-            assert_eq!(left.instance.eval_state.eval_depth, 1);
-            assert_eq!(right.instance.eval_state.eval_depth, 0);
+            assert_eq!(unsafe { (*left.instance).eval_state.eval_depth }, 1);
+            assert_eq!(unsafe { (*right.instance).eval_state.eval_depth }, 0);
 
             let previous = unsafe { replace_current_instance(Some(right.instance_ptr())) };
             drop(guard);
-            assert_eq!(left.instance.eval_state.eval_depth, 0);
-            assert_eq!(right.instance.eval_state.eval_depth, 0);
+            assert_eq!(unsafe { (*left.instance).eval_state.eval_depth }, 0);
+            assert_eq!(unsafe { (*right.instance).eval_state.eval_depth }, 0);
             unsafe {
                 replace_current_instance(previous);
             }
@@ -1469,13 +1508,13 @@ mod tests {
 
         left.with_active(|| {
             let guard = crate::eval::eval::EvalTimerGuard::start_if_needed();
-            assert!(left.instance.eval_state.start_time.is_some());
-            assert!(right.instance.eval_state.start_time.is_none());
+            assert!(unsafe { (*left.instance).eval_state.start_time.is_some() });
+            assert!(unsafe { (*right.instance).eval_state.start_time.is_none() });
 
             let previous = unsafe { replace_current_instance(Some(right.instance_ptr())) };
             drop(guard);
-            assert!(left.instance.eval_state.start_time.is_none());
-            assert!(right.instance.eval_state.start_time.is_none());
+            assert!(unsafe { (*left.instance).eval_state.start_time.is_none() });
+            assert!(unsafe { (*right.instance).eval_state.start_time.is_none() });
             unsafe {
                 replace_current_instance(previous);
             }
@@ -1491,7 +1530,7 @@ mod tests {
             max_alloc_bytes: 0,
         };
         session.set_eval_limits(original_limits);
-        session.instance.eval_state.start_time = Some(std::time::Instant::now());
+        unsafe { (*session.instance).eval_state.start_time = Some(std::time::Instant::now()) };
 
         let expr = session
             .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
@@ -1513,8 +1552,11 @@ mod tests {
         });
         let result = result.expect("self-evaluating vector should evaluate");
         assert_eq!(result.integer_elt(0), Some(7));
-        assert_eq!(session.instance.eval_state.limits, original_limits);
-        assert!(session.instance.eval_state.start_time.is_some());
+        assert_eq!(
+            unsafe { (*session.instance).eval_state.limits },
+            original_limits
+        );
+        assert!(unsafe { (*session.instance).eval_state.start_time.is_some() });
     }
 
     #[test]

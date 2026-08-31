@@ -106,6 +106,11 @@ impl PendingFinalizer {
 fn default_max_v_size() -> u64 {
     // 16 Gb, upstream's `MinMaxVSize` floor.
     const MIN_MAX_V_SIZE: u64 = 17179869184;
+    // Miri does not implement `_SC_PHYS_PAGES` on macOS; fall back to the
+    // floor so Miri sessions can run on macOS dev machines too.
+    if cfg!(miri) {
+        return MIN_MAX_V_SIZE;
+    }
     let pages = unsafe { libc::sysconf(libc::_SC_PHYS_PAGES) };
     let page_size = unsafe { libc::sysconf(libc::_SC_PAGE_SIZE) };
     if pages <= 0 || page_size <= 0 {

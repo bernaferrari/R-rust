@@ -1206,7 +1206,29 @@ fn trusted_desktop_host_can_dynload_and_call_native_symbol() {
     let source = root.join("identity.c");
     std::fs::write(
         &source,
-        "typedef void *SEXP;\nSEXP rport_identity(SEXP value) { return value; }\n",
+        concat!(
+            "typedef void *SEXP;\n",
+            "typedef struct DllInfo DllInfo;\n",
+            "typedef void (*DL_FUNC)(void);\n",
+            "typedef struct { const char *name; DL_FUNC fun; int numArgs; const int *types; } R_CMethodDef;\n",
+            "typedef struct { const char *name; DL_FUNC fun; int numArgs; } R_CallMethodDef;\n",
+            "extern int R_registerRoutines(DllInfo *, const R_CMethodDef *, const R_CallMethodDef *, const void *, const void *);\n",
+            "extern int R_useDynamicSymbols(DllInfo *, int);\n",
+            "SEXP rport_identity(SEXP value) { return value; }\n",
+            "void rport_increment(double *value) { *value += 1.0; }\n",
+            "static const R_CMethodDef c_methods[] = {\n",
+            "  {\"rport_increment\", (DL_FUNC) &rport_increment, 1, 0},\n",
+            "  {0, 0, 0, 0}\n",
+            "};\n",
+            "static const R_CallMethodDef call_methods[] = {\n",
+            "  {\"rport_identity\", (DL_FUNC) &rport_identity, 1},\n",
+            "  {0, 0, 0}\n",
+            "};\n",
+            "void R_init_identity(DllInfo *dll) {\n",
+            "  R_registerRoutines(dll, c_methods, call_methods, 0, 0);\n",
+            "  R_useDynamicSymbols(dll, 0);\n",
+            "}\n",
+        ),
     )
     .expect("native fixture source");
     let library = if cfg!(target_os = "macos") {
@@ -1216,7 +1238,7 @@ fn trusted_desktop_host_can_dynload_and_call_native_symbol() {
     };
     let mut compiler = std::process::Command::new("cc");
     if cfg!(target_os = "macos") {
-        compiler.arg("-dynamiclib");
+        compiler.args(["-dynamiclib", "-undefined", "dynamic_lookup"]);
     } else {
         compiler.args(["-shared", "-fPIC"]);
     }
@@ -1240,6 +1262,10 @@ fn trusted_desktop_host_can_dynload_and_call_native_symbol() {
         ))
         .expect("trusted host native call");
     assert_eq!(result.value, RValue::Real(Some(42.0)));
+    let copied = session
+        .eval_result(".C(\"rport_increment\", as.double(41))[[1]]")
+        .expect("registered .C call");
+    assert_eq!(copied.value, RValue::Real(Some(42.0)));
     session
         .eval(&format!("dyn.unload(\"{path}\")"))
         .expect("native unload");

@@ -24,11 +24,6 @@ fn persistent_charsxp_from_bytes(bytes: &[u8]) -> SEXP {
         use std::alloc::{Layout, alloc};
 
         let len = bytes.len() as R_xlen_t;
-        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
-        boxed.data = SexprecData {
-            charsxp_truelen: len,
-        };
-        let charsxp: SEXP = &mut *boxed as *mut _;
         let total = bytes.len() + 1;
         let Ok(layout) = Layout::from_size_align(total, 1) else {
             return ptr::null_mut();
@@ -39,14 +34,21 @@ fn persistent_charsxp_from_bytes(bytes: &[u8]) -> SEXP {
         }
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
         *data_ptr.add(bytes.len()) = 0;
+        // Disown the box immediately: deriving a raw pointer first and then
+        // leaking (moving) the box would retag the allocation and invalidate
+        // the returned SEXP under Stacked Borrows.
+        let charsxp: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::CHARSXP)));
+        (*charsxp).data = SexprecData {
+            charsxp_truelen: len,
+        };
         (*charsxp).gengc_next_node = data_ptr as SEXP;
-        Box::leak(boxed)
+        charsxp
     }
 }
 
 fn intern_symbol_with_pname<F>(
     symbols: &mut HashMap<String, SEXP>,
-    nodes: &mut Vec<Box<SexprecCore>>,
+    nodes: &mut Vec<*mut SexprecCore>,
     name_str: String,
     make_pname: F,
 ) -> SEXP
@@ -62,7 +64,9 @@ where
         return ptr::null_mut();
     }
 
-    let mut boxed = Box::new(SexprecCore {
+    // Disown the box immediately so the later `nodes.push` move cannot
+    // retag the allocation and invalidate the returned SEXP.
+    let sexp: SEXP = Box::into_raw(Box::new(SexprecCore {
         sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
         attrib: ptr::null_mut(),
         gengc_next_node: ptr::null_mut(),
@@ -74,11 +78,9 @@ where
                 internal: ptr::null_mut(),
             },
         },
-    });
-
-    let sexp: SEXP = &mut *boxed as *mut _;
+    }));
     symbols.insert(name_str, sexp);
-    nodes.push(boxed);
+    nodes.push(sexp);
     sexp
 }
 

@@ -267,8 +267,11 @@ pub struct RInstance {
     /// The empty environment for this instance.
     pub empty_env: SEXP,
     /// Owned environment sentinel nodes for empty/base/global environments.
-    #[allow(clippy::vec_box)]
-    pub(crate) env_nodes: Vec<Box<SexprecCore>>,
+    ///
+    /// Stored as raw pointers (via `Box::into_raw`) rather than `Box` so no
+    /// box move or Rust reference ever retags these allocations; the derived
+    /// SEXPs keep a valid Stacked Borrows tag for the instance's lifetime.
+    pub(crate) env_nodes: Vec<*mut SexprecCore>,
     /// Whether this instance has completed R-level initialization.
     pub(crate) initialized: bool,
     /// The protection stack for this instance.
@@ -335,8 +338,10 @@ pub struct RInstance {
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
-    #[allow(clippy::vec_box)]
-    pub(crate) symbol_nodes: Vec<Box<SexprecCore>>,
+    ///
+    /// Raw pointers via `Box::into_raw` (same discipline as `env_nodes`) so
+    /// the interned SEXPs never lose their borrow-stack tag.
+    pub(crate) symbol_nodes: Vec<*mut SexprecCore>,
     /// Per-instance Marsaglia-MultiCarry RNG seed state.
     /// Per-instance Marsaglia-MultiCarry RNG seed state (shared with nmath samplers).
     pub(crate) rng_state: rmath_nmath::RngState,
@@ -438,8 +443,10 @@ impl RInstance {
     pub fn new() -> Self {
         let nil = unsafe { super::globals::R_NilValue() };
 
-        // Box heap addresses remain stable when the Vec reallocates, so raw
-        // SEXP pointers can form the environment chain safely.
+        // Nodes are kept as raw pointers obtained via `Box::into_raw`: the
+        // heap addresses survive Vec reallocation, and because the Box is
+        // disowned immediately and never moved or referenced again, the
+        // derived SEXPs keep a valid borrow-stack tag for good.
         let mut env_nodes = Vec::with_capacity(3);
         let empty_env = Self::push_env(&mut env_nodes, nil, nil, nil);
         let base_env = Self::push_env(&mut env_nodes, nil, empty_env, nil);
@@ -547,19 +554,21 @@ impl RInstance {
 
     /// Allocate an owned environment node outside the arena.
     fn push_env(
-        env_nodes: &mut Vec<Box<SexprecCore>>,
+        env_nodes: &mut Vec<*mut SexprecCore>,
         frame: SEXP,
         enclos: SEXP,
         hashtab: SEXP,
     ) -> SEXP {
-        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::ENVSXP));
-        let env: SEXP = &mut *boxed as *mut _;
+        // Convert to a raw pointer before anything else touches the box:
+        // moving a `Box` (e.g. into the Vec below) retags it with a fresh
+        // Unique, which invalidates raw pointers derived beforehand.
+        let env: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::ENVSXP)));
         unsafe {
             (*env).data.envsxp.frame = frame;
             (*env).data.envsxp.enclos = enclos;
             (*env).data.envsxp.hashtab = hashtab;
         }
-        env_nodes.push(boxed);
+        env_nodes.push(env);
         env
     }
 
@@ -573,11 +582,11 @@ impl RInstance {
         }
 
         self.arena.contains(ptr)
-            || self.env_nodes.iter().any(|node| std::ptr::eq(&**node, ptr))
+            || self.env_nodes.iter().any(|node| std::ptr::eq(*node, ptr))
             || self
                 .symbol_nodes
                 .iter()
-                .any(|node| std::ptr::eq(&**node, ptr))
+                .any(|node| std::ptr::eq(*node, ptr))
             || self.raw_cons.iter().any(|raw| std::ptr::eq(*raw, ptr))
     }
 
@@ -623,6 +632,14 @@ impl Default for RInstance {
 
 impl Drop for RInstance {
     fn drop(&mut self) {
+        // Persistent sentinel/symbol nodes were disowned via `Box::into_raw`.
+        for ptr in self.env_nodes.drain(..).chain(self.symbol_nodes.drain(..)) {
+            if !ptr.is_null() {
+                unsafe {
+                    drop(Box::from_raw(ptr));
+                }
+            }
+        }
         for ptr in self.raw_cons.drain(..) {
             if !ptr.is_null() {
                 unsafe {
@@ -708,6 +725,12 @@ where
 /// The caller must ensure that `instance` points to a valid, live `RInstance`
 /// and that it is restored or cleared before the pointed-to instance is dropped.
 pub unsafe fn set_current_instance(instance: *mut RInstance) {
+    // Expose the installed root's provenance: protect-guard drops
+    // reconstitute the owning instance from a bare address (see
+    // `protect::with_guard_owner`), and Miri validates that wildcard access
+    // against a still-live exposed tag even after sibling re-acquisitions
+    // popped their own tags.
+    let _root = instance.expose_provenance();
     CURRENT_INSTANCE.with(|ci| {
         *ci.borrow_mut() = Some(instance);
     });
@@ -719,6 +742,11 @@ pub unsafe fn set_current_instance(instance: *mut RInstance) {
 /// pointers; callers remain responsible for ensuring any non-null pointer stays
 /// valid while installed.
 pub unsafe fn replace_current_instance(instance: Option<*mut RInstance>) -> Option<*mut RInstance> {
+    if let Some(installed) = instance {
+        // See `set_current_instance`: exposure backs wildcard
+        // reconstitution in protect-guard drops.
+        let _root = installed.expose_provenance();
+    }
     CURRENT_INSTANCE.with(|ci| {
         let mut current = ci.borrow_mut();
         let previous = *current;

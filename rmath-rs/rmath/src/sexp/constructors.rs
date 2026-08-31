@@ -99,11 +99,6 @@ pub unsafe fn persistent_mkChar(s: *const c_char) -> SEXP {
         }
         let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
         let len = bytes.len() as R_xlen_t;
-        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
-        boxed.data = SexprecData {
-            charsxp_truelen: len,
-        };
-        let charsxp: SEXP = &mut *boxed as *mut _;
         let total = (len as usize) + 1;
         let Ok(layout) = Layout::from_size_align(total, 1) else {
             return ptr::null_mut();
@@ -114,8 +109,15 @@ pub unsafe fn persistent_mkChar(s: *const c_char) -> SEXP {
         }
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
         *data_ptr.add(bytes.len()) = 0;
+        // Disown the box immediately: deriving a raw pointer first and then
+        // leaking (moving) the box would retag the allocation and invalidate
+        // the returned SEXP under Stacked Borrows.
+        let charsxp: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::CHARSXP)));
+        (*charsxp).data = SexprecData {
+            charsxp_truelen: len,
+        };
         (*charsxp).gengc_next_node = data_ptr as SEXP;
-        Box::leak(boxed)
+        charsxp
     }
 }
 
@@ -542,19 +544,17 @@ mod tests {
 
 pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe {
-        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
-        let cell: SEXP = &mut *boxed as *mut _;
+        let cell: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::LISTSXP)));
         (*cell).data.listsxp.carval = car;
         (*cell).data.listsxp.cdrval = cdr;
         (*cell).data.listsxp.tagval = ptr::null_mut();
-        Box::leak(boxed)
+        cell
     }
 }
 
 pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP {
     unsafe {
         use std::alloc::{Layout, alloc};
-        let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 1));
         let Ok(layout) = Layout::from_size_align(4, 4) else {
             return ptr::null_mut();
         };
@@ -563,16 +563,18 @@ pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP {
             return ptr::null_mut();
         }
         *(data_ptr as *mut c_int) = val;
-        let ptr: SEXP = &mut *boxed as *mut _;
-        (*ptr).gengc_next_node = data_ptr as SEXP;
-        Box::leak(boxed)
+        // Disown the box immediately: deriving the raw SEXP first and then
+        // leaking (moving) the box would retag the allocation and invalidate
+        // the returned pointer under Stacked Borrows.
+        let node: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 1)));
+        (*node).gengc_next_node = data_ptr as SEXP;
+        node
     }
 }
 
 pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP {
     unsafe {
         use std::alloc::{Layout, alloc};
-        let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1));
         let Ok(layout) = Layout::from_size_align(4, 4) else {
             return ptr::null_mut();
         };
@@ -581,16 +583,15 @@ pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP {
             return ptr::null_mut();
         }
         *(data_ptr as *mut c_int) = val;
-        let ptr: SEXP = &mut *boxed as *mut _;
-        (*ptr).gengc_next_node = data_ptr as SEXP;
-        Box::leak(boxed)
+        let node: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1)));
+        (*node).gengc_next_node = data_ptr as SEXP;
+        node
     }
 }
 
 pub unsafe fn persistent_scalar_real(val: c_double) -> SEXP {
     unsafe {
         use std::alloc::{Layout, alloc};
-        let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::REALSXP, 1));
         let Ok(layout) = Layout::from_size_align(8, 8) else {
             return ptr::null_mut();
         };
@@ -599,9 +600,9 @@ pub unsafe fn persistent_scalar_real(val: c_double) -> SEXP {
             return ptr::null_mut();
         }
         *(data_ptr as *mut c_double) = val;
-        let ptr: SEXP = &mut *boxed as *mut _;
-        (*ptr).gengc_next_node = data_ptr as SEXP;
-        Box::leak(boxed)
+        let node: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::REALSXP, 1)));
+        (*node).gengc_next_node = data_ptr as SEXP;
+        node
     }
 }
 
@@ -630,8 +631,6 @@ pub unsafe fn persistent_mkstring(s: *const c_char) -> SEXP {
         *char_data.add(bytes.len()) = 0;
         (*charsxp).gengc_next_node = char_data as SEXP;
 
-        let mut str_boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::STRSXP, 1));
-        let str_ptr: SEXP = &mut *str_boxed as *mut _;
         let Ok(str_layout) =
             Layout::from_size_align(std::mem::size_of::<SEXP>(), std::mem::align_of::<SEXP>())
         else {
@@ -642,7 +641,11 @@ pub unsafe fn persistent_mkstring(s: *const c_char) -> SEXP {
             return ptr::null_mut();
         }
         *(str_data as *mut SEXP) = charsxp;
+        // Disown the box immediately: deriving the raw SEXP first and then
+        // leaking (moving) the box would retag the allocation and invalidate
+        // the returned pointer under Stacked Borrows.
+        let str_ptr: SEXP = Box::into_raw(Box::new(SexprecCore::new_vector(SEXPTYPE::STRSXP, 1)));
         (*str_ptr).gengc_next_node = str_data as SEXP;
-        Box::leak(str_boxed)
+        str_ptr
     }
 }

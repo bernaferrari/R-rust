@@ -257,11 +257,11 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     for &obj in instance.symbols.values() {
         mark_reachable(obj);
     }
-    for node in &instance.symbol_nodes {
-        mark_reachable(&**node as *const _ as SEXP);
+    for &node in &instance.symbol_nodes {
+        mark_reachable(node);
     }
-    for node in &instance.env_nodes {
-        mark_reachable(&**node as *const _ as SEXP);
+    for &node in &instance.env_nodes {
+        mark_reachable(node);
     }
     for &obj in &instance.names_state.ddval_symbols {
         mark_reachable(obj);
@@ -705,11 +705,11 @@ fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &Has
     for obj in instance.symbols.values_mut() {
         update_field(obj, old_to_new);
     }
-    for node in &mut instance.symbol_nodes {
-        update_references_in_object(&mut **node as *mut _, old_to_new);
+    for &node in &instance.symbol_nodes {
+        update_references_in_object(node, old_to_new);
     }
-    for node in &mut instance.env_nodes {
-        update_references_in_object(&mut **node as *mut _, old_to_new);
+    for &node in &instance.env_nodes {
+        update_references_in_object(node, old_to_new);
     }
     for obj in &mut instance.names_state.ddval_symbols {
         update_field(obj, old_to_new);
@@ -871,11 +871,15 @@ where
 /// `R_UnboundValue`, `R_MissingArg`, `R_RestartToken`) are deliberately not
 /// touched: they are pre-marked to pin, and none of them traces children.
 fn clear_persistent_node_marks_in(instance: &mut instance::RInstance) {
-    for node in &mut instance.env_nodes {
-        node.sxpinfo.set_mark(false);
+    for &node in &instance.env_nodes {
+        unsafe {
+            (*node).sxpinfo.set_mark(false);
+        }
     }
-    for node in &mut instance.symbol_nodes {
-        node.sxpinfo.set_mark(false);
+    for &node in &instance.symbol_nodes {
+        unsafe {
+            (*node).sxpinfo.set_mark(false);
+        }
     }
     for &node in &instance.raw_cons {
         unsafe {
@@ -893,23 +897,27 @@ pub(crate) fn minor_gc_in(instance: &mut instance::RInstance) -> (usize, usize) 
 const GC_TRIGGER_THRESHOLD: usize = 10_000;
 const GC_BYTE_THRESHOLD: usize = 64 * 1024 * 1024;
 
-/// Request collection during allocation.
+/// Deferred alloc-time GC processing (see `memory::with_arena_in`).
 ///
-/// ALWAYS defers: sets a pending flag. Actual collection only happens at
-/// cooperative safe points ([`maybe_collect_at_eval_safe_point`], called after
-/// loop bodies etc) or after top-level expressions complete
-/// ([`run_pending_gc_if_quiescent`] in session eval paths). This ensures we
-/// never sweep objects that are only reachable via raw SEXP temporaries in
-/// in-flight Rust stack frames mid-evaluation. See review GC soundness fix.
-pub fn maybe_collect_during_alloc() {
-    if let Some(ptr) = instance::current_instance_ptr() {
-        unsafe {
-            (*ptr).gc_state.gc_pending = true;
-        }
+/// Arena allocation methods run under a live `&mut RArena` borrow. Touching
+/// instance state there would mean re-acquiring `&mut RInstance` from the
+/// thread-local while the outer borrow (and the arena `&mut self` further
+/// down) is still live and protected — aliasing UB under Stacked Borrows.
+/// The arena therefore only records that its alloc-time hooks fired
+/// (`alloc_gc_torture_ticks` / `alloc_gc_collect_requested`), and
+/// `with_arena_in` feeds the recorded state through its own live instance
+/// borrow into this function once the allocating closure has returned.
+pub(crate) fn process_deferred_alloc_gc_in(
+    instance: &mut instance::RInstance,
+    torture_ticks: u32,
+    collect_requested: bool,
+) {
+    if collect_requested {
+        instance.gc_state.gc_pending = true;
     }
-    // Never invoke minor_gc directly from alloc. Thresholds in arena will
-    // cause "maybe" to be called; the flag ensures next safe/quiescent point
-    // will collect. This is the quiescence-only GC policy.
+    if torture_ticks > 0 {
+        maybe_torture_gc_in(instance, torture_ticks);
+    }
 }
 
 /// gctorture/gctorture2 support: mirror of upstream `FORCE_GC`
@@ -921,40 +929,38 @@ pub fn maybe_collect_during_alloc() {
 /// collection (`R_gc_internal(0)` upstream), run through the same
 /// environment force-protect preamble `gc()` uses. When a collection is
 /// already in progress the request defers via `gc_pending` (upstream's
-/// `R_in_gc` path) instead of recursing.
-pub fn maybe_torture_gc_during_alloc() {
-    let Some(ptr) = instance::current_instance_ptr() else {
+/// `R_in_gc` path) instead of recursing. `ticks` is the number of deferred
+/// allocation entries consumed since the last processing point; at most one
+/// collection runs per call.
+fn maybe_torture_gc_in(instance: &mut instance::RInstance, ticks: u32) {
+    if instance.memory_state.gc_force_gap <= 0 {
+        // Not armed: default behavior is identical (single branch).
         return;
-    };
-    unsafe {
-        let inst = &mut *ptr;
-        if inst.memory_state.gc_force_gap <= 0 {
-            // Not armed: default behavior is identical (single branch).
-            return;
-        }
-        if inst.gc_state.in_progress || inst.memory_state.in_gc != 0 {
-            // Mirrors upstream's R_in_gc deferral: don't recurse into a
-            // collection from inside one; run it at the next safe point.
-            inst.gc_state.gc_pending = true;
-            return;
-        }
-        // FORCE_GC countdown: `--gc_force_wait` fires when it reaches zero,
-        // then re-arms to `gc_force_gap`.
-        if inst.memory_state.gc_force_wait > 1 {
-            inst.memory_state.gc_force_wait -= 1;
-            return;
-        }
-        inst.memory_state.gc_force_wait = inst.memory_state.gc_force_gap;
-        let start = inst.protect_stack.borrow().len();
-        push_environment_binding_protects(inst);
-        let added = inst.protect_stack.borrow().len().saturating_sub(start);
-        inst.gc_state.gc_pending = false;
-        inst.memory_state.in_gc = 1;
-        inst.memory_state.gc_count = inst.memory_state.gc_count.wrapping_add(1);
-        run_gc_cycle_in(inst, do_torture_mark_sweep_in);
-        inst.memory_state.in_gc = 0;
-        super::protect::unprotect_count_in(inst, added);
     }
+    if instance.gc_state.in_progress || instance.memory_state.in_gc != 0 {
+        // Mirrors upstream's R_in_gc deferral: don't recurse into a
+        // collection from inside one; run it at the next safe point.
+        instance.gc_state.gc_pending = true;
+        return;
+    }
+    // FORCE_GC countdown: `--gc_force_wait` fires when it reaches zero,
+    // then re-arms to `gc_force_gap`. Deferred ticks are consumed in one
+    // step, firing at most one collection per processing point.
+    let ticks: std::os::raw::c_int = ticks.try_into().unwrap_or(std::os::raw::c_int::MAX);
+    if instance.memory_state.gc_force_wait > ticks {
+        instance.memory_state.gc_force_wait -= ticks;
+        return;
+    }
+    instance.memory_state.gc_force_wait = instance.memory_state.gc_force_gap;
+    let start = instance.protect_stack.borrow().len();
+    push_environment_binding_protects(instance);
+    let added = instance.protect_stack.borrow().len().saturating_sub(start);
+    instance.gc_state.gc_pending = false;
+    instance.memory_state.in_gc = 1;
+    instance.memory_state.gc_count = instance.memory_state.gc_count.wrapping_add(1);
+    run_gc_cycle_in(instance, do_torture_mark_sweep_in);
+    instance.memory_state.in_gc = 0;
+    super::protect::unprotect_count_in(instance, added);
 }
 
 fn eval_safe_point_gc_due_in(instance: &instance::RInstance) -> bool {
@@ -1487,7 +1493,11 @@ mod tests {
             instance.eval_state.print.data.env = nil;
             instance.eval_state.print.data.callArgs = nil;
             instance.symbols.clear();
-            instance.symbol_nodes.clear();
+            for node in instance.symbol_nodes.drain(..) {
+                if !node.is_null() {
+                    drop(unsafe { Box::from_raw(node) });
+                }
+            }
             instance.names_state.ddval_symbols.clear();
             instance.bind_state.blank_string = nil;
             instance.options.clear();

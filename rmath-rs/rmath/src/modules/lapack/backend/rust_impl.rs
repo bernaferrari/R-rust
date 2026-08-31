@@ -248,10 +248,13 @@ pub unsafe fn dgetrf_(
             }
         }
 
-        // Write pivot array
+        // Write pivot array. Decompose over the full row permutation, then
+        // write only min(M, N) entries: LAPACK DGETRF's IPIV has dimension
+        // min(M, N), and its swap sequence only covers the column steps —
+        // permutation entries beyond that are identity no-ops.
         let bwd = get_bwd_perm(p);
         let pivots = perm_bwd_to_ipiv(&bwd, m.min(bwd.len()));
-        for (i, &p) in pivots.iter().enumerate() {
+        for (i, &p) in pivots.iter().take(m.min(n)).enumerate() {
             *ipiv.add(i) = p;
         }
         *info = 0;
@@ -1658,8 +1661,10 @@ pub unsafe fn zgetrf_(
         }
 
         let bwd = get_bwd_perm(p);
+        // Same IPIV dimension contract as DGETRF: decompose over the full
+        // row permutation, write only the min(M, N) column-step entries.
         let pivots = perm_bwd_to_ipiv(&bwd, m.min(bwd.len()));
-        for (i, &p) in pivots.iter().enumerate() {
+        for (i, &p) in pivots.iter().take(m.min(n)).enumerate() {
             *ipiv.add(i) = p;
         }
         *info = 0;

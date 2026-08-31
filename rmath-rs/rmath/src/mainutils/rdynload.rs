@@ -1052,6 +1052,7 @@ unsafe fn AddDLL(
     _search_path: *const c_char,
 ) -> *mut DllInfo {
     unsafe {
+        crate::mainutils::registration::retain_native_registration_exports();
         // Check if already loaded — if so, move to end of list (most recent)
         let already_loaded = with_dynload_state(|state| {
             for i in 0..state.loaded_dll.len() {
@@ -1086,6 +1087,22 @@ unsafe fn AddDLL(
             dlopen(path, flag)
         };
 
+        if handle.is_null() {
+            unsafe extern "C" {
+                fn dlerror() -> *mut c_char;
+            }
+            let message = dlerror();
+            with_dynload_state(|state| {
+                state.dll_error.fill(0);
+                if !message.is_null() {
+                    let bytes = CStr::from_ptr(message).to_bytes();
+                    let copy_len = bytes.len().min(state.dll_error.len() - 1);
+                    state.dll_error[..copy_len].copy_from_slice(&bytes[..copy_len]);
+                }
+            });
+            return ptr::null_mut();
+        }
+
         let dpath = strdup(path);
         if dpath.is_null() {
             return ptr::null_mut();
@@ -1110,11 +1127,11 @@ unsafe fn extract_dll_name(path: *mut c_char) -> *mut c_char {
         let path_str = std::ffi::CStr::from_ptr(path).to_bytes();
         let path_str = std::str::from_utf8(path_str).unwrap_or("");
 
-        // Find last '/'
-        let basename = path_str.rsplit('/').next().unwrap_or(path_str);
-
-        // Remove .so extension
-        let name = basename.strip_suffix(".so").unwrap_or(basename);
+        let basename = path_str.rsplit(['/', '\\']).next().unwrap_or(path_str);
+        let name = [".so", ".dylib", ".dll"]
+            .iter()
+            .find_map(|extension| basename.strip_suffix(extension))
+            .unwrap_or(basename);
 
         strdup(CString::new(name).unwrap_or_default().as_ptr())
     }
@@ -1684,13 +1701,20 @@ mod tests {
 
     #[test]
     fn test_extract_dll_name() {
-        unsafe {
-            let path = strdup(b"/usr/lib/libfoo.so\0".as_ptr() as *const c_char);
-            let name = extract_dll_name(path);
-            let name_str = std::ffi::CStr::from_ptr(name).to_str().unwrap_or("");
-            assert_eq!(name_str, "libfoo");
-            libc_free(path as *mut c_void);
-            libc_free(name as *mut c_void);
+        for (path, expected) in [
+            ("/usr/lib/libfoo.so", "libfoo"),
+            ("/usr/lib/libfoo.dylib", "libfoo"),
+            (r"C:\\R\\library\\foo.dll", "foo"),
+        ] {
+            unsafe {
+                let path = CString::new(path).expect("test path");
+                let owned_path = strdup(path.as_ptr());
+                let name = extract_dll_name(owned_path);
+                let name_str = CStr::from_ptr(name).to_str().unwrap_or("");
+                assert_eq!(name_str, expected);
+                libc_free(owned_path.cast());
+                libc_free(name.cast());
+            }
         }
     }
 

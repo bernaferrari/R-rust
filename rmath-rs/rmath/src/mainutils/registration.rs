@@ -5,31 +5,45 @@
 //! Implements `R_init_base` for registering .Call and .Fortran routines
 //! that are accessible from S code via the R executable.
 
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_int;
+
+pub use crate::mainutils::rdynload::{
+    DllInfo, R_CMethodDef, R_CallMethodDef, R_ExternalMethodDef, R_FortranMethodDef,
+};
 
 // ---------------------------------------------------------------------------
 // R_registerRoutines, R_useDynamicSymbols, R_forceSymbols
 // ---------------------------------------------------------------------------
 
-/// Opaque DllInfo type (placeholder).
-#[repr(C)]
-pub struct DllInfo {
-    _private: [u8; 0],
-}
-
-pub unsafe fn R_registerRoutines(
-    _dll: *mut DllInfo,
-    _c: *const c_void,
-    _call: *const c_void,
-    _fortran: *const c_void,
-    _external: *const c_void,
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn R_registerRoutines(
+    dll: *mut DllInfo,
+    c: *const R_CMethodDef,
+    call: *const R_CallMethodDef,
+    fortran: *const R_FortranMethodDef,
+    external: *const R_ExternalMethodDef,
 ) -> c_int {
-    0
+    unsafe { crate::mainutils::rdynload::R_registerRoutines(dll, c, call, fortran, external) }
 }
 
-pub unsafe fn R_useDynamicSymbols(_dll: *mut DllInfo, _value: c_int) {}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn R_useDynamicSymbols(dll: *mut DllInfo, value: c_int) -> c_int {
+    unsafe { crate::mainutils::rdynload::R_useDynamicSymbols(dll, value != 0) as c_int }
+}
 
-pub unsafe fn R_forceSymbols(_dll: *mut DllInfo, _value: c_int) {}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn R_forceSymbols(dll: *mut DllInfo, value: c_int) -> c_int {
+    unsafe { crate::mainutils::rdynload::R_forceSymbols(dll, value != 0) as c_int }
+}
+
+/// Keep the public registration ABI reachable when `rmath` is linked as an
+/// `rlib` into an embedding executable. Native packages resolve these names
+/// through the process loader rather than through Rust references.
+pub(crate) fn retain_native_registration_exports() {
+    std::hint::black_box(R_registerRoutines as *const ());
+    std::hint::black_box(R_useDynamicSymbols as *const ());
+    std::hint::black_box(R_forceSymbols as *const ());
+}
 
 // ---------------------------------------------------------------------------
 // R_init_base

@@ -23,6 +23,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Miri on the sexp safe-layer test subset
+        env:
+          # The runtime deliberately allocates immortal persistent objects
+          # (base symbols, CHARSXP payloads, primitive metadata) that live
+          # until process exit, mirroring upstream R, so Miri's leak check is
+          # disabled. Stacked Borrows checking — the point of this job — is
+          # unaffected.
+          MIRIFLAGS: -Zmiri-ignore-leaks
         run: "cargo +nightly miri test -p rmath sexp::"
 
   gc-torture:

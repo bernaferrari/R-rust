@@ -118,17 +118,40 @@ impl ArenaBudget {
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
 
+
+/// One raw-allocated slab of `NODE_PAGE_SIZE` node slots.
+///
+/// Pages are allocated and freed through the allocator API and are only ever
+/// accessed through raw pointers. The previous `Vec` storage formed Rust
+/// references over the page on every allocation (`push`, indexing), and each
+/// of those retags invalidated the raw SEXPs of all nodes handed out by
+/// earlier allocations — aliasing UB under Stacked Borrows.
+struct SlabPage {
+    base: *mut SexprecCore,
+}
+
+impl Drop for SlabPage {
+    fn drop(&mut self) {
+        if !self.base.is_null() {
+            let layout =
+                Layout::array::<SexprecCore>(NODE_PAGE_SIZE).expect("slab page layout is valid");
+            unsafe { dealloc(self.base.cast(), layout) };
+        }
+    }
+}
+
 /// An arena allocator for R objects.
 ///
 /// Allocates SexprecCore nodes and their associated vector data.
 /// The arena does NOT support individual deallocation -- the entire arena
 /// is freed at once when dropped.
 pub struct RArena {
-    /// Slab pages for SexprecCore nodes. Each page is a Vec reserved to NODE_PAGE_SIZE
-    /// (no reallocs within page -> stable pointers). This eliminates per-node Box
-    /// overhead (allocator metadata + indirection) vs original Vec<Box<...>>.
-    /// Pages never move; new pages appended for growth. Matches spirit of R's NodeClass pages.
-    node_pages: Vec<Vec<SexprecCore>>,
+    /// Slab pages of raw-allocated node slots. Pages never move once
+    /// allocated and are only touched through raw pointers (see [`SlabPage`]):
+    /// node SEXPs handed out to the rest of the interpreter must keep a
+    /// valid borrow-stack tag for the arena's lifetime. Matches spirit of
+    /// R's NodeClass pages.
+    node_pages: Vec<SlabPage>,
     /// Current page index for allocation (last page usually).
     slab_page: usize,
     /// Current offset within the slab_page (0 .. NODE_PAGE_SIZE).
@@ -144,6 +167,11 @@ pub struct RArena {
     free_addrs: HashSet<usize>,
     /// Total bytes allocated for tracking.
     total_bytes_allocated: usize,
+    /// Deferred alloc-time GC hook state (see `with_arena_in`): arena
+    /// methods cannot touch instance state without aliasing the live
+    /// borrow, so hooks record their firings here instead.
+    alloc_gc_torture_ticks: u32,
+    alloc_gc_collect_requested: bool,
     /// Optional budget to limit arena growth.
     budget: ArenaBudget,
 }
@@ -152,8 +180,14 @@ impl RArena {
     /// Allocate a new page in the slab. Reserves exactly to avoid realloc (stable ptrs inside).
     #[inline(always)]
     fn alloc_new_page(&mut self) {
-        let page = Vec::with_capacity(NODE_PAGE_SIZE);
-        self.node_pages.push(page);
+        let layout =
+            Layout::array::<SexprecCore>(NODE_PAGE_SIZE).expect("slab page layout is valid");
+        let base = unsafe { alloc(layout) } as *mut SexprecCore;
+        assert!(
+            !base.is_null(),
+            "arena slab page allocation failed (out of memory)"
+        );
+        self.node_pages.push(SlabPage { base });
         self.slab_page = self.node_pages.len() - 1;
         self.slab_offset = 0;
     }
@@ -169,9 +203,12 @@ impl RArena {
         if self.slab_offset >= NODE_PAGE_SIZE {
             self.alloc_new_page();
         }
-        let page = &mut self.node_pages[self.slab_page];
-        page.push(ctor());
-        let ptr: SEXP = &mut page[self.slab_offset] as *mut _;
+        // SAFETY: slab_offset < NODE_PAGE_SIZE and the page holds exactly
+        // NODE_PAGE_SIZE slots. All page access stays at the raw-pointer
+        // level: forming Rust references over the page would retag the
+        // allocation and invalidate the SEXPs of earlier nodes.
+        let ptr: SEXP = unsafe { self.node_pages[self.slab_page].base.add(self.slab_offset) };
+        unsafe { std::ptr::write(ptr, ctor()) };
         self.slab_offset += 1;
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.register_new_node(ptr)
@@ -188,6 +225,8 @@ impl RArena {
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
+            alloc_gc_torture_ticks: 0,
+            alloc_gc_collect_requested: false,
             budget: ArenaBudget::unlimited(),
         };
         a.alloc_new_page();
@@ -205,6 +244,8 @@ impl RArena {
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
+            alloc_gc_torture_ticks: 0,
+            alloc_gc_collect_requested: false,
             budget,
         };
         a.alloc_new_page();
@@ -291,7 +332,7 @@ impl RArena {
     /// and improve locality (hard problem from review: one alloc per node was bad).
     #[inline(always)]
     pub(crate) fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
-        crate::sexp::gengc::maybe_torture_gc_during_alloc();
+        self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
         if !self.can_activate_node() {
             return ptr::null_mut();
         }
@@ -304,7 +345,7 @@ impl RArena {
         let should_gc =
             active_nodes > GC_TRIGGER_THRESHOLD || self.total_bytes_allocated > GC_BYTE_THRESHOLD;
         if should_gc {
-            crate::sexp::gengc::maybe_collect_during_alloc();
+            self.alloc_gc_collect_requested = true;
             if let Some(ptr) = self.reuse_free_node(sexptype) {
                 return ptr;
             }
@@ -336,10 +377,10 @@ impl RArena {
             return ptr::null_mut();
         }
 
-        crate::sexp::gengc::maybe_torture_gc_during_alloc();
+        self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
         if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
-            crate::sexp::gengc::maybe_collect_during_alloc();
+            self.alloc_gc_collect_requested = true;
         }
 
         let elem_size = sexp_elem_size(sexptype);
@@ -401,7 +442,7 @@ impl RArena {
             return Err(ArenaError::InvalidLength);
         }
 
-        crate::sexp::gengc::maybe_torture_gc_during_alloc();
+        self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
 
         // Check node budget
         if self.budget.max_nodes > 0 {
@@ -442,7 +483,7 @@ impl RArena {
 
         // Run GC if approaching thresholds (same as alloc_vector)
         if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
-            crate::sexp::gengc::maybe_collect_during_alloc();
+            self.alloc_gc_collect_requested = true;
         }
 
         let data = if data_bytes > 0 {
@@ -489,7 +530,7 @@ impl RArena {
     ///
     /// Returns null if allocation fails (OOM safety).
     pub(crate) fn alloc_charsxp(&mut self, s: &[u8]) -> SEXP {
-        crate::sexp::gengc::maybe_torture_gc_during_alloc();
+        self.alloc_gc_torture_ticks = self.alloc_gc_torture_ticks.wrapping_add(1);
         let len = s.len() as R_xlen_t;
         let total_bytes = match (len as usize).checked_add(1) {
             Some(n) => n,
@@ -591,13 +632,10 @@ impl RArena {
         if self.slab_offset >= NODE_PAGE_SIZE {
             self.alloc_new_page();
         }
-        let page = &mut self.node_pages[self.slab_page];
-        // Note: this path is rare/legacy; to keep exact, we could transmute but for safety
-        // we fall back to old style for add_node by pushing the inner. But since we removed Box storage,
-        // extract and push the value (move out of Box).
-        let core = *node; // move out
-        page.push(core);
-        let ptr: SEXP = &mut page[self.slab_offset] as *mut _;
+        // Write through the raw slot pointer; see `allocate_core_in_slab`
+        // for why the page must never be touched through Rust references.
+        let ptr: SEXP = unsafe { self.node_pages[self.slab_page].base.add(self.slab_offset) };
+        unsafe { std::ptr::write(ptr, *node) };
         self.slab_offset += 1;
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.register_new_node(ptr)
@@ -633,7 +671,18 @@ impl RArena {
     pub(crate) fn nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
         self.node_pages
             .iter()
-            .flat_map(|page| page.iter().map(|n| n as *const _ as SEXP))
+            .enumerate()
+            .flat_map(move |(page_idx, page)| {
+                let base = page.base;
+                // Allocation fills pages sequentially: only the current page
+                // can be partially occupied.
+                let used = if page_idx == self.slab_page {
+                    self.slab_offset
+                } else {
+                    NODE_PAGE_SIZE
+                };
+                (0..used).map(move |i| unsafe { base.add(i) } as SEXP)
+            })
     }
 
     /// Iterate over nodes that are currently active, excluding free-list slots.
@@ -767,7 +816,16 @@ pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -
 where
     F: FnOnce(&mut RArena) -> R,
 {
-    f(&mut inst.arena)
+    let result = f(&mut inst.arena);
+    // Deferred alloc-time GC hooks: the arena methods above run under the
+    // live `&mut RArena` borrow and cannot touch instance state without
+    // re-acquiring `&mut RInstance` while this borrow is still live and
+    // protected (aliasing UB under Stacked Borrows), so they only record
+    // their firings. Process them here through this live instance borrow.
+    let torture_ticks = std::mem::take(&mut inst.arena.alloc_gc_torture_ticks);
+    let collect_requested = std::mem::take(&mut inst.arena.alloc_gc_collect_requested);
+    crate::sexp::gengc::process_deferred_alloc_gc_in(inst, torture_ticks, collect_requested);
+    result
 }
 
 /// Reset the active instance evaluation arena, freeing all allocations.

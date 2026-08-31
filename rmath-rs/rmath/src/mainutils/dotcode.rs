@@ -842,7 +842,7 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         );
 
         if ofun.is_none() {
-            errorcall(call, "NULL value passed as symbol address");
+            errorcall(call, &format!("C symbol name \"{}\" not in load table", String::from_utf8_lossy(&buf).trim_end_matches(char::from(0))));
         }
 
         let primval = PRIMVAL(op);
@@ -948,7 +948,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
         check1arg2(args, call, ".NAME");
 
-        let _pruned_args = resolveNativeRoutine(
+        let call_args = resolveNativeRoutine(
             args,
             &mut fun,
             &mut symbol,
@@ -966,7 +966,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Count arguments
         let mut nargs = 0usize;
         let mut have_names = false;
-        let mut pa = args;
+        let mut pa = call_args;
         while !pa.is_null() && pa != R_NilValue() {
             let tag = TAG(pa);
             if !tag.is_null() && tag != R_NilValue() {
@@ -981,7 +981,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if have_names {
             let names = Rf_allocVector(SEXPTYPE::STRSXP, nargs as c_int);
             let mut na = 0usize;
-            pa = args;
+            pa = call_args;
             while !pa.is_null() && pa != R_NilValue() {
                 let tag = TAG(pa);
                 if tag.is_null() || tag == R_NilValue() {
@@ -1001,7 +1001,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Marshal arguments to C types
         let mut cargs: [*mut c_void; MAX_ARGS] = [ptr::null_mut(); MAX_ARGS];
-        pa = args;
+        pa = call_args;
         let mut na = 0usize;
         while !pa.is_null() && pa != R_NilValue() {
             let s = CAR(pa);
@@ -1161,7 +1161,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         dispatch_dotcode(fun, &cargs[..na], call);
 
         // Convert results back from C types to R values
-        pa = args;
+        pa = call_args;
         for na_idx in 0..na {
             let p = cargs[na_idx];
             let arg = CAR(pa);

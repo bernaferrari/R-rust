@@ -86,16 +86,23 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env:
 
         crate::eval::arithmetic::register_special_forms(base_env);
         crate::mainutils::essentials::register_essentials_builtins(base_env);
-        initialize_special_environment_bindings_in(inst, base_env);
+        initialize_special_environment_bindings(base_env);
         initialize_primitive_metadata_in(base_env);
     }
 }
 
-unsafe fn initialize_special_environment_bindings_in(inst: &mut RInstance, base_env: SEXP) {
+/// Bind `.GlobalEnv` inside the fresh base environment.
+///
+/// Deliberately takes no `&mut RInstance`: `defineVar` and the globals
+/// accessors re-acquire the instance from the thread-local, and calling them
+/// from a frame that holds an instance borrow would have that re-acquisition
+/// pop a live protected borrow (aliasing UB under Stacked Borrows). The
+/// current instance at this point is exactly the one being initialized.
+unsafe fn initialize_special_environment_bindings(base_env: SEXP) {
     unsafe {
         defineVar(
             Rf_install_in_current(".GlobalEnv"),
-            inst.global_env,
+            super::globals::R_GlobalEnv(),
             base_env,
         );
     }
