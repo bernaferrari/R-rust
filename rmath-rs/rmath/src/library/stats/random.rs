@@ -1288,8 +1288,7 @@ pub unsafe fn do_rgamma_r(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             let r0 = *REAL(rv).add(0);
             let s0 = *REAL(sv).add(0);
             if (r0 * s0 - 1.0).abs() < 1e-15 {
-                let msg = std::ffi::CString::new("specify 'rate' or 'scale' but not both")
-                    .unwrap_or_default();
+                let msg = c"specify 'rate' or 'scale' but not both";
                 crate::main::errors::Rf_warningcall1(call, msg.as_ptr());
             } else {
                 crate::main::errors::errorcall_str(call, "specify 'rate' or 'scale' but not both");

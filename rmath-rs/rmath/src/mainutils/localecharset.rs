@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_c_locale() {
         unsafe {
-            let c_locale = std::ffi::CString::new("C").unwrap_or_default();
+            let c_locale = c"C";
             let result = CStr::from_ptr(locale2charset(c_locale.as_ptr()));
             assert_eq!(result.to_str().unwrap_or(""), "ASCII");
         }
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn test_posix_locale() {
         unsafe {
-            let locale = std::ffi::CString::new("POSIX").unwrap_or_default();
+            let locale = c"POSIX";
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
             assert_eq!(result.to_str().unwrap_or(""), "ASCII");
         }
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn test_utf8_locale() {
         unsafe {
-            let locale = std::ffi::CString::new("en_US.UTF-8").unwrap_or_default();
+            let locale = c"en_US.UTF-8";
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
             assert_eq!(result.to_str().unwrap_or(""), "UTF-8");
         }
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_macos_locale_no_encoding() {
         unsafe {
-            let locale = std::ffi::CString::new("en_US").unwrap_or_default();
+            let locale = c"en_US";
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
             assert_eq!(result.to_str().unwrap_or(""), "UTF-8");
         }
@@ -212,7 +212,7 @@ mod tests {
     #[test]
     fn test_known_encoding_iso88591() {
         unsafe {
-            let locale = std::ffi::CString::new("en_US.ISO8859-1").unwrap_or_default();
+            let locale = c"en_US.ISO8859-1";
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
             assert_eq!(result.to_str().unwrap_or(""), "ISO8859-1");
         }
@@ -223,13 +223,13 @@ mod tests {
         unsafe {
             let mut first = RInstance::new();
             set_current_instance(&mut first);
-            let first_locale = std::ffi::CString::new("en_US.cp-1252").unwrap_or_default();
+            let first_locale = c"en_US.cp-1252";
             let first_ptr = locale2charset(first_locale.as_ptr());
             assert_eq!(CStr::from_ptr(first_ptr).to_str().unwrap_or(""), "CP1252");
 
             let mut second = RInstance::new();
             set_current_instance(&mut second);
-            let second_locale = std::ffi::CString::new("en_US.cp-932").unwrap_or_default();
+            let second_locale = c"en_US.cp-932";
             let second_ptr = locale2charset(second_locale.as_ptr());
             assert_eq!(CStr::from_ptr(second_ptr).to_str().unwrap_or(""), "CP932");
             assert_ne!(first_ptr, second_ptr);

@@ -132,11 +132,7 @@ pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 
-        let comment_sym = crate::sexp::symbol::Rf_install(
-            std::ffi::CString::new("comment")
-                .unwrap_or_default()
-                .as_ptr(),
-        );
+        let comment_sym = crate::sexp::symbol::Rf_install(c"comment".as_ptr());
 
         if Rf_length(args) == 1 {
             let x = CAR(args);
@@ -160,11 +156,7 @@ pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
         let x = CAR(args);
         let val = CADR(args);
-        let comment_sym = crate::sexp::symbol::Rf_install(
-            std::ffi::CString::new("comment")
-                .unwrap_or_default()
-                .as_ptr(),
-        );
+        let comment_sym = crate::sexp::symbol::Rf_install(c"comment".as_ptr());
         crate::eval::attrib_core::setAttrib(x, comment_sym, val);
         x
     }

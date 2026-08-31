@@ -31,9 +31,9 @@ use crate::sexp::protect::*;
 
 pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let empty = Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
-        let native = Rf_mkString(CString::new("native.enc").unwrap_or_default().as_ptr());
-        let default_method = Rf_mkString(CString::new("default").unwrap_or_default().as_ptr());
+        let empty = Rf_mkString(c"".as_ptr());
+        let native = Rf_mkString(c"native.enc".as_ptr());
+        let default_method = Rf_mkString(c"default".as_ptr());
         let scmd = positional_or(args, 0, empty);
         let sopen = positional_or(args, 1, empty);
         let _enc = positional_or(args, 2, native);
@@ -266,9 +266,9 @@ pub fn flush_xz_conn(conn: &mut RConn) -> io::Result<()> {
 
 pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        let empty = Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
-        let native = Rf_mkString(CString::new("native.enc").unwrap_or_default().as_ptr());
-        let default_method = Rf_mkString(CString::new("default").unwrap_or_default().as_ptr());
+        let empty = Rf_mkString(c"".as_ptr());
+        let native = Rf_mkString(c"native.enc".as_ptr());
+        let default_method = Rf_mkString(c"default".as_ptr());
         let scmd = arg_by_name_or_position(args, 0, &["description"], R_NilValue());
         let sopen = arg_by_name_or_position(args, 1, &["open"], empty);
         let _block = logical_arg_or(

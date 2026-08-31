@@ -940,14 +940,12 @@ impl<'arena> Parser<'arena> {
         for tok in &tokens {
             inside_group.push(depth > 0);
             match tok {
-                Token::LParen
-                | Token::LBracket
-                | Token::LDoubleBracket
-                | Token::LBrace => depth += 1,
-                Token::RParen
-                | Token::RBracket
-                | Token::RDoubleBracket
-                | Token::RBrace => depth = depth.saturating_sub(1),
+                Token::LParen | Token::LBracket | Token::LDoubleBracket | Token::LBrace => {
+                    depth += 1
+                }
+                Token::RParen | Token::RBracket | Token::RDoubleBracket | Token::RBrace => {
+                    depth = depth.saturating_sub(1)
+                }
                 _ => {}
             }
         }

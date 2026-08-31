@@ -815,8 +815,7 @@ pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> S
             format!(".__{}__{}", prefix_c, name_c)
         };
 
-        let c_str = std::ffi::CString::new(res_str)
-            .unwrap_or_else(|_| std::ffi::CString::new("").unwrap_or_default());
+        let c_str = std::ffi::CString::new(res_str).unwrap_or_default();
         Rf_mkString(c_str.as_ptr())
     }
 }

@@ -1,6 +1,5 @@
 use super::*;
 
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -646,7 +645,11 @@ pub unsafe fn SaveSpecialHook(item: SEXP) -> c_int {
 // Internal WriteItem (recursive, writes to BinaryWriter)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mut BinaryWriter) {
+pub unsafe fn WriteItemInternal(
+    s: SEXP,
+    ref_table: &mut WriteHashTable,
+    writer: &mut BinaryWriter,
+) {
     unsafe {
         // Check for special singletons
         let special = SaveSpecialHook(s);

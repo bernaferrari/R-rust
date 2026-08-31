@@ -1,29 +1,5 @@
 //! Transpose/dim helpers: t(), drop(), dim/dimnames<- , nrow/ncol, tsp, aperm-adjacent dimension utilities — extracted verbatim from the former single-file module.
 use super::*;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
-use std::path::Path;
-
-#[allow(unused_imports)]
-use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-};
-#[allow(unused_imports)]
-use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
-};
-use crate::sexp::context::RError;
-use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
-};
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
-
-use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
 
 /// R's `drop(x)` — remove extent-one dimensions from arrays and matrices.
 pub unsafe fn do_drop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -283,10 +259,7 @@ pub unsafe fn do_nrow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if is_data_frame_object(x) {
             return Rf_ScalarInteger(data_frame_row_count(x) as c_int);
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 1 {
             Rf_ScalarInteger(*INTEGER(dim_attr))
         } else {
@@ -305,10 +278,7 @@ pub unsafe fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if is_data_frame_object(x) {
             return Rf_ScalarInteger(XLENGTH(x) as c_int);
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             Rf_ScalarInteger(*INTEGER(dim_attr).add(1))
         } else {
@@ -333,10 +303,7 @@ pub unsafe fn do_dim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *INTEGER(dim).add(1) = XLENGTH(x) as c_int;
             return dim;
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() {
             dim_attr
         } else {
@@ -506,9 +473,6 @@ pub unsafe fn do_dimnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             return R_NilValue();
         }
 
-        crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
-        )
+        crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()))
     }
 }

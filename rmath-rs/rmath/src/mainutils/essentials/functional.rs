@@ -552,10 +552,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Get dimensions
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) < 2 {
             return R_NilValue(); // not a matrix/array
         }
@@ -1072,11 +1069,7 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !dim.is_null() {
             *INTEGER(dim) = nx as c_int;
             *INTEGER(dim).add(1) = ny as c_int;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
         }
 
         result
@@ -1130,10 +1123,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let n = XLENGTH(x);
 
         // Get dimensions
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         let (nrow, ncol) =
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
@@ -1244,11 +1234,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         // Copy dim attribute if present
         if !dim_attr.is_null() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim_attr,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim_attr);
         }
 
         result
@@ -1324,7 +1310,7 @@ pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
                 crate::sexp::attrib_core::setAttrib(
                     result,
-                    Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+                    Rf_install(c"names".as_ptr()),
                     names_vec,
                 );
             }
@@ -2024,10 +2010,7 @@ pub unsafe fn do_is_object(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         Rf_ScalarLogical(if !class.is_null() && class != R_NilValue() {
             TRUE
         } else {
@@ -2272,10 +2255,7 @@ pub unsafe fn do_is_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP && XLENGTH(class) > 0 {
             let cls = elt_to_string(class, 0);
             return Rf_ScalarLogical(if cls == "data.frame" { TRUE } else { FALSE });

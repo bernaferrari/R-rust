@@ -608,18 +608,9 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let dpar = vect(npar);
         let opar = vect(npar);
 
-        let trace = as_integer(getListElement(
-            options,
-            CString::new("trace").unwrap_or_default().as_ptr(),
-        ));
-        (*os_ptr).fnscale = as_real(getListElement(
-            options,
-            CString::new("fnscale").unwrap_or_default().as_ptr(),
-        ));
-        let tmp = getListElement(
-            options,
-            CString::new("parscale").unwrap_or_default().as_ptr(),
-        );
+        let trace = as_integer(getListElement(options, c"trace".as_ptr()));
+        (*os_ptr).fnscale = as_real(getListElement(options, c"fnscale".as_ptr()));
+        let tmp = getListElement(options, c"parscale".as_ptr());
         if LENGTH(tmp) != npar {
             Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
         }
@@ -640,31 +631,11 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _res_guard = protect(res);
         let names = Rf_allocVector(SEXPTYPE::STRSXP, 5);
         let _names_guard = protect(names);
-        SET_STRING_ELT(
-            names,
-            0,
-            Rf_mkChar(CString::new("par").unwrap_or_default().as_ptr()),
-        );
-        SET_STRING_ELT(
-            names,
-            1,
-            Rf_mkChar(CString::new("value").unwrap_or_default().as_ptr()),
-        );
-        SET_STRING_ELT(
-            names,
-            2,
-            Rf_mkChar(CString::new("counts").unwrap_or_default().as_ptr()),
-        );
-        SET_STRING_ELT(
-            names,
-            3,
-            Rf_mkChar(CString::new("convergence").unwrap_or_default().as_ptr()),
-        );
-        SET_STRING_ELT(
-            names,
-            4,
-            Rf_mkChar(CString::new("message").unwrap_or_default().as_ptr()),
-        );
+        SET_STRING_ELT(names, 0, Rf_mkChar(c"par".as_ptr()));
+        SET_STRING_ELT(names, 1, Rf_mkChar(c"value".as_ptr()));
+        SET_STRING_ELT(names, 2, Rf_mkChar(c"counts".as_ptr()));
+        SET_STRING_ELT(names, 3, Rf_mkChar(c"convergence".as_ptr()));
+        SET_STRING_ELT(names, 4, Rf_mkChar(c"message".as_ptr()));
         setAttrib(res, R_NamesSymbol(), names);
 
         let value = Rf_allocVector(SEXPTYPE::REALSXP, 1);
@@ -673,32 +644,15 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _counts_guard = protect(counts);
         let countnames = Rf_allocVector(SEXPTYPE::STRSXP, 2);
         let _countnames_guard = protect(countnames);
-        SET_STRING_ELT(
-            countnames,
-            0,
-            Rf_mkChar(CString::new("function").unwrap_or_default().as_ptr()),
-        );
-        SET_STRING_ELT(
-            countnames,
-            1,
-            Rf_mkChar(CString::new("gradient").unwrap_or_default().as_ptr()),
-        );
+        SET_STRING_ELT(countnames, 0, Rf_mkChar(c"function".as_ptr()));
+        SET_STRING_ELT(countnames, 1, Rf_mkChar(c"gradient".as_ptr()));
         setAttrib(counts, R_NamesSymbol(), countnames);
 
         let conv = Rf_allocVector(SEXPTYPE::INTSXP, 1);
         let _conv_guard = protect(conv);
-        let abstol = as_real(getListElement(
-            options,
-            CString::new("abstol").unwrap_or_default().as_ptr(),
-        ));
-        let reltol = as_real(getListElement(
-            options,
-            CString::new("reltol").unwrap_or_default().as_ptr(),
-        ));
-        let maxit = as_integer(getListElement(
-            options,
-            CString::new("maxit").unwrap_or_default().as_ptr(),
-        ));
+        let abstol = as_real(getListElement(options, c"abstol".as_ptr()));
+        let reltol = as_real(getListElement(options, c"reltol".as_ptr()));
+        let maxit = as_integer(getListElement(options, c"maxit".as_ptr()));
         if maxit == NA_INTEGER {
             Rf_error(b"'maxit' is not an integer\0".as_ptr() as *const _);
         }
@@ -709,18 +663,9 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut val: c_double = 0.0;
 
         if tn == b"Nelder-Mead" {
-            let alpha = as_real(getListElement(
-                options,
-                CString::new("alpha").unwrap_or_default().as_ptr(),
-            ));
-            let beta = as_real(getListElement(
-                options,
-                CString::new("beta").unwrap_or_default().as_ptr(),
-            ));
-            let gamm = as_real(getListElement(
-                options,
-                CString::new("gamma").unwrap_or_default().as_ptr(),
-            ));
+            let alpha = as_real(getListElement(options, c"alpha".as_ptr()));
+            let beta = as_real(getListElement(options, c"beta".as_ptr()));
+            let gamm = as_real(getListElement(options, c"gamma".as_ptr()));
             nmmin(
                 npar,
                 dpar,
@@ -744,19 +689,10 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             grcount = NA_INTEGER;
         } else if tn == b"SANN" {
-            let tmax = as_integer(getListElement(
-                options,
-                CString::new("tmax").unwrap_or_default().as_ptr(),
-            ));
-            let temp = as_real(getListElement(
-                options,
-                CString::new("temp").unwrap_or_default().as_ptr(),
-            ));
+            let tmax = as_integer(getListElement(options, c"tmax".as_ptr()));
+            let temp = as_real(getListElement(options, c"temp".as_ptr()));
             let trace_val = if trace != 0 {
-                as_integer(getListElement(
-                    options,
-                    CString::new("REPORT").unwrap_or_default().as_ptr(),
-                ))
+                as_integer(getListElement(options, c"REPORT".as_ptr()))
             } else {
                 0
             };
@@ -790,10 +726,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             fncount = if npar > 0 { maxit } else { 1 };
             grcount = NA_INTEGER;
         } else if tn == b"BFGS" {
-            let nREPORT = as_integer(getListElement(
-                options,
-                CString::new("REPORT").unwrap_or_default().as_ptr(),
-            ));
+            let nREPORT = as_integer(getListElement(options, c"REPORT".as_ptr()));
             if Rf_isNull(gr) == 0 {
                 if !is_function(gr) {
                     Rf_error(b"'gr' is not a function\0".as_ptr() as *const _);
@@ -801,8 +734,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 (*os_ptr).R_gcall = Rf_lang2(gr, R_NilValue());
             } else {
                 (*os_ptr).R_gcall = R_NilValue();
-                let ndeps =
-                    getListElement(options, CString::new("ndeps").unwrap_or_default().as_ptr());
+                let ndeps = getListElement(options, c"ndeps".as_ptr());
                 if LENGTH(ndeps) != npar {
                     Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
                 }
@@ -840,10 +772,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     *dpar.add(i as usize) * *(*os_ptr).parscale.add(i as usize);
             }
         } else if tn == b"CG" {
-            let type_val = as_integer(getListElement(
-                options,
-                CString::new("type").unwrap_or_default().as_ptr(),
-            ));
+            let type_val = as_integer(getListElement(options, c"type".as_ptr()));
             if Rf_isNull(gr) == 0 {
                 if !is_function(gr) {
                     Rf_error(b"'gr' is not a function\0".as_ptr() as *const _);
@@ -851,8 +780,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 (*os_ptr).R_gcall = Rf_lang2(gr, R_NilValue());
             } else {
                 (*os_ptr).R_gcall = R_NilValue();
-                let ndeps =
-                    getListElement(options, CString::new("ndeps").unwrap_or_default().as_ptr());
+                let ndeps = getListElement(options, c"ndeps".as_ptr());
                 if LENGTH(ndeps) != npar {
                     Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
                 }
@@ -886,22 +814,10 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     *opar.add(i as usize) * *(*os_ptr).parscale.add(i as usize);
             }
         } else if tn == b"L-BFGS-B" {
-            let nREPORT = as_integer(getListElement(
-                options,
-                CString::new("REPORT").unwrap_or_default().as_ptr(),
-            ));
-            let factr = as_real(getListElement(
-                options,
-                CString::new("factr").unwrap_or_default().as_ptr(),
-            ));
-            let pgtol = as_real(getListElement(
-                options,
-                CString::new("pgtol").unwrap_or_default().as_ptr(),
-            ));
-            let lmm = as_integer(getListElement(
-                options,
-                CString::new("lmm").unwrap_or_default().as_ptr(),
-            ));
+            let nREPORT = as_integer(getListElement(options, c"REPORT".as_ptr()));
+            let factr = as_real(getListElement(options, c"factr".as_ptr()));
+            let pgtol = as_real(getListElement(options, c"pgtol".as_ptr()));
+            let lmm = as_integer(getListElement(options, c"lmm".as_ptr()));
             if Rf_isNull(gr) == 0 {
                 if !is_function(gr) {
                     Rf_error(b"'gr' is not a function\0".as_ptr() as *const _);
@@ -909,8 +825,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 (*os_ptr).R_gcall = Rf_lang2(gr, R_NilValue());
             } else {
                 (*os_ptr).R_gcall = R_NilValue();
-                let ndeps =
-                    getListElement(options, CString::new("ndeps").unwrap_or_default().as_ptr());
+                let ndeps = getListElement(options, c"ndeps".as_ptr());
                 if LENGTH(ndeps) != npar {
                     Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
                 }
@@ -1099,14 +1014,8 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         args = CDR(args);
         let options = CAR(args);
 
-        (*os_ptr).fnscale = as_real(getListElement(
-            options,
-            CString::new("fnscale").unwrap_or_default().as_ptr(),
-        ));
-        let tmp = getListElement(
-            options,
-            CString::new("parscale").unwrap_or_default().as_ptr(),
-        );
+        (*os_ptr).fnscale = as_real(getListElement(options, c"fnscale".as_ptr()));
+        let tmp = getListElement(options, c"parscale".as_ptr());
         if LENGTH(tmp) != npar {
             Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
         }
@@ -1135,7 +1044,7 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let _gcall_guard = protect((*os_ptr).R_gcall);
 
-        let ndeps = getListElement(options, CString::new("ndeps").unwrap_or_default().as_ptr());
+        let ndeps = getListElement(options, c"ndeps".as_ptr());
         if LENGTH(ndeps) != npar {
             Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
         }

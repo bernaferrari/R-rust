@@ -1,371 +1,367 @@
 use super::*;
 
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-    use std::ffi::CString;
+#[test]
+fn test_logical_from_integer() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(unsafe { LogicalFromInteger(0, std::ptr::null_mut()) }, 0);
+    assert_eq!(unsafe { LogicalFromInteger(1, std::ptr::null_mut()) }, 1);
+    assert_eq!(unsafe { LogicalFromInteger(42, std::ptr::null_mut()) }, 1);
+    assert_eq!(unsafe { LogicalFromInteger(-1, std::ptr::null_mut()) }, 1);
+    assert_eq!(
+        unsafe { LogicalFromInteger(NA_INTEGER, std::ptr::null_mut()) },
+        NA_LOGICAL
+    );
+}
 
-    #[test]
-    fn test_logical_from_integer() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(unsafe { LogicalFromInteger(0, std::ptr::null_mut()) }, 0);
-        assert_eq!(unsafe { LogicalFromInteger(1, std::ptr::null_mut()) }, 1);
-        assert_eq!(unsafe { LogicalFromInteger(42, std::ptr::null_mut()) }, 1);
-        assert_eq!(unsafe { LogicalFromInteger(-1, std::ptr::null_mut()) }, 1);
-        assert_eq!(
-            unsafe { LogicalFromInteger(NA_INTEGER, std::ptr::null_mut()) },
-            NA_LOGICAL
-        );
-    }
+#[test]
+fn test_logical_from_real() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(unsafe { LogicalFromReal(0.0, std::ptr::null_mut()) }, 0);
+    assert_eq!(unsafe { LogicalFromReal(1.0, std::ptr::null_mut()) }, 1);
+    assert_eq!(unsafe { LogicalFromReal(-0.5, std::ptr::null_mut()) }, 1);
+    assert_eq!(
+        unsafe { LogicalFromReal(f64::NAN, std::ptr::null_mut()) },
+        NA_LOGICAL
+    );
+}
 
-    #[test]
-    fn test_logical_from_real() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(unsafe { LogicalFromReal(0.0, std::ptr::null_mut()) }, 0);
-        assert_eq!(unsafe { LogicalFromReal(1.0, std::ptr::null_mut()) }, 1);
-        assert_eq!(unsafe { LogicalFromReal(-0.5, std::ptr::null_mut()) }, 1);
-        assert_eq!(
-            unsafe { LogicalFromReal(f64::NAN, std::ptr::null_mut()) },
-            NA_LOGICAL
-        );
-    }
+#[test]
+fn test_logical_from_complex() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(
+        unsafe { LogicalFromComplex(Rcomplex { r: 0.0, i: 0.0 }, std::ptr::null_mut()) },
+        0
+    );
+    assert_eq!(
+        unsafe { LogicalFromComplex(Rcomplex { r: 1.0, i: 0.0 }, std::ptr::null_mut()) },
+        1
+    );
+    assert_eq!(
+        unsafe { LogicalFromComplex(Rcomplex { r: 0.0, i: 1.0 }, std::ptr::null_mut()) },
+        1
+    );
+    assert_eq!(
+        unsafe {
+            LogicalFromComplex(
+                Rcomplex {
+                    r: f64::NAN,
+                    i: 0.0,
+                },
+                std::ptr::null_mut(),
+            )
+        },
+        NA_LOGICAL
+    );
+}
 
-    #[test]
-    fn test_logical_from_complex() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(
-            unsafe { LogicalFromComplex(Rcomplex { r: 0.0, i: 0.0 }, std::ptr::null_mut()) },
-            0
-        );
-        assert_eq!(
-            unsafe { LogicalFromComplex(Rcomplex { r: 1.0, i: 0.0 }, std::ptr::null_mut()) },
-            1
-        );
-        assert_eq!(
-            unsafe { LogicalFromComplex(Rcomplex { r: 0.0, i: 1.0 }, std::ptr::null_mut()) },
-            1
-        );
-        assert_eq!(
-            unsafe {
-                LogicalFromComplex(
-                    Rcomplex {
-                        r: f64::NAN,
-                        i: 0.0,
-                    },
-                    std::ptr::null_mut(),
-                )
-            },
-            NA_LOGICAL
-        );
-    }
+#[test]
+fn test_integer_from_logical() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(unsafe { IntegerFromLogical(0, std::ptr::null_mut()) }, 0);
+    assert_eq!(unsafe { IntegerFromLogical(1, std::ptr::null_mut()) }, 1);
+    assert_eq!(
+        unsafe { IntegerFromLogical(NA_LOGICAL, std::ptr::null_mut()) },
+        NA_INTEGER
+    );
+}
 
-    #[test]
-    fn test_integer_from_logical() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(unsafe { IntegerFromLogical(0, std::ptr::null_mut()) }, 0);
-        assert_eq!(unsafe { IntegerFromLogical(1, std::ptr::null_mut()) }, 1);
-        assert_eq!(
-            unsafe { IntegerFromLogical(NA_LOGICAL, std::ptr::null_mut()) },
-            NA_INTEGER
-        );
-    }
+#[test]
+fn test_integer_from_real() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(unsafe { IntegerFromReal(3.7, std::ptr::null_mut()) }, 3);
+    assert_eq!(unsafe { IntegerFromReal(-2.1, std::ptr::null_mut()) }, -2);
+    assert_eq!(
+        unsafe { IntegerFromReal(f64::NAN, std::ptr::null_mut()) },
+        NA_INTEGER
+    );
 
-    #[test]
-    fn test_integer_from_real() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(unsafe { IntegerFromReal(3.7, std::ptr::null_mut()) }, 3);
-        assert_eq!(unsafe { IntegerFromReal(-2.1, std::ptr::null_mut()) }, -2);
-        assert_eq!(
-            unsafe { IntegerFromReal(f64::NAN, std::ptr::null_mut()) },
-            NA_INTEGER
-        );
+    let mut warn: c_int = 0;
+    let result = unsafe { IntegerFromReal(1e20, &mut warn) };
+    assert_eq!(result, NA_INTEGER);
+    assert!(warn & WARN_INT_NA != 0);
+}
 
-        let mut warn: c_int = 0;
-        let result = unsafe { IntegerFromReal(1e20, &mut warn) };
-        assert_eq!(result, NA_INTEGER);
-        assert!(warn & WARN_INT_NA != 0);
-    }
+#[test]
+fn test_integer_from_complex() {
+    let _session = crate::sexp::session::RSession::new();
+    let mut warn: c_int = 0;
+    let result = unsafe { IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, &mut warn) };
+    assert_eq!(result, 3);
+    assert!(warn & WARN_IMAG != 0);
+}
 
-    #[test]
-    fn test_integer_from_complex() {
-        let _session = crate::sexp::session::RSession::new();
-        let mut warn: c_int = 0;
-        let result = unsafe { IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, &mut warn) };
-        assert_eq!(result, 3);
-        assert!(warn & WARN_IMAG != 0);
-    }
+#[test]
+fn test_real_from_logical() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(unsafe { RealFromLogical(0, std::ptr::null_mut()) }, 0.0);
+    assert_eq!(unsafe { RealFromLogical(1, std::ptr::null_mut()) }, 1.0);
+    let result = unsafe { RealFromLogical(NA_LOGICAL, std::ptr::null_mut()) };
+    assert!(result.is_nan());
+}
 
-    #[test]
-    fn test_real_from_logical() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(unsafe { RealFromLogical(0, std::ptr::null_mut()) }, 0.0);
-        assert_eq!(unsafe { RealFromLogical(1, std::ptr::null_mut()) }, 1.0);
-        let result = unsafe { RealFromLogical(NA_LOGICAL, std::ptr::null_mut()) };
-        assert!(result.is_nan());
-    }
+#[test]
+fn test_real_from_integer() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(unsafe { RealFromInteger(42, std::ptr::null_mut()) }, 42.0);
+    let result = unsafe { RealFromInteger(NA_INTEGER, std::ptr::null_mut()) };
+    assert!(result.is_nan());
+}
 
-    #[test]
-    fn test_real_from_integer() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(unsafe { RealFromInteger(42, std::ptr::null_mut()) }, 42.0);
-        let result = unsafe { RealFromInteger(NA_INTEGER, std::ptr::null_mut()) };
-        assert!(result.is_nan());
-    }
+#[test]
+fn test_complex_from_logical() {
+    let _session = crate::sexp::session::RSession::new();
+    let z = unsafe { ComplexFromLogical(1, std::ptr::null_mut()) };
+    assert_eq!(z.r, 1.0);
+    assert_eq!(z.i, 0.0);
 
-    #[test]
-    fn test_complex_from_logical() {
-        let _session = crate::sexp::session::RSession::new();
-        let z = unsafe { ComplexFromLogical(1, std::ptr::null_mut()) };
-        assert_eq!(z.r, 1.0);
-        assert_eq!(z.i, 0.0);
+    let z_na = unsafe { ComplexFromLogical(NA_LOGICAL, std::ptr::null_mut()) };
+    assert!(z_na.r.is_nan());
+}
 
-        let z_na = unsafe { ComplexFromLogical(NA_LOGICAL, std::ptr::null_mut()) };
-        assert!(z_na.r.is_nan());
-    }
+#[test]
+fn test_complex_from_integer() {
+    let _session = crate::sexp::session::RSession::new();
+    let z = unsafe { ComplexFromInteger(42, std::ptr::null_mut()) };
+    assert_eq!(z.r, 42.0);
+    assert_eq!(z.i, 0.0);
+}
 
-    #[test]
-    fn test_complex_from_integer() {
-        let _session = crate::sexp::session::RSession::new();
-        let z = unsafe { ComplexFromInteger(42, std::ptr::null_mut()) };
-        assert_eq!(z.r, 42.0);
-        assert_eq!(z.i, 0.0);
-    }
+#[test]
+fn test_complex_from_real() {
+    let _session = crate::sexp::session::RSession::new();
+    let z = unsafe { ComplexFromReal(3.14, std::ptr::null_mut()) };
+    assert_eq!(z.r, 3.14);
+    assert_eq!(z.i, 0.0);
 
-    #[test]
-    fn test_complex_from_real() {
-        let _session = crate::sexp::session::RSession::new();
-        let z = unsafe { ComplexFromReal(3.14, std::ptr::null_mut()) };
-        assert_eq!(z.r, 3.14);
-        assert_eq!(z.i, 0.0);
+    // R's specific NA -> both parts NA
+    let z_na = unsafe { ComplexFromReal(R_NA_REAL(), std::ptr::null_mut()) };
+    assert!(z_na.r.is_nan());
+    assert!(z_na.i.is_nan());
+}
 
-        // R's specific NA -> both parts NA
-        let z_na = unsafe { ComplexFromReal(R_NA_REAL(), std::ptr::null_mut()) };
-        assert!(z_na.r.is_nan());
-        assert!(z_na.i.is_nan());
-    }
+#[test]
+fn test_complex_from_string_c() {
+    let _session = crate::sexp::session::RSession::new();
+    let s = c"3+2i";
+    let z = unsafe { ComplexFromStringC(s.as_ptr(), std::ptr::null_mut()) };
+    assert_eq!(z.r, 3.0);
+    assert_eq!(z.i, 2.0);
 
-    #[test]
-    fn test_complex_from_string_c() {
-        let _session = crate::sexp::session::RSession::new();
-        let s = CString::new("3+2i").unwrap_or_default();
-        let z = unsafe { ComplexFromStringC(s.as_ptr(), std::ptr::null_mut()) };
-        assert_eq!(z.r, 3.0);
-        assert_eq!(z.i, 2.0);
+    let s2 = c"5i";
+    let z2 = unsafe { ComplexFromStringC(s2.as_ptr(), std::ptr::null_mut()) };
+    assert_eq!(z2.r, 0.0);
+    assert_eq!(z2.i, 5.0);
 
-        let s2 = CString::new("5i").unwrap_or_default();
-        let z2 = unsafe { ComplexFromStringC(s2.as_ptr(), std::ptr::null_mut()) };
-        assert_eq!(z2.r, 0.0);
-        assert_eq!(z2.i, 5.0);
+    let s3 = c"3-4i";
+    let z3 = unsafe { ComplexFromStringC(s3.as_ptr(), std::ptr::null_mut()) };
+    assert_eq!(z3.r, 3.0);
+    assert_eq!(z3.i, -4.0);
 
-        let s3 = CString::new("3-4i").unwrap_or_default();
-        let z3 = unsafe { ComplexFromStringC(s3.as_ptr(), std::ptr::null_mut()) };
-        assert_eq!(z3.r, 3.0);
-        assert_eq!(z3.i, -4.0);
+    let s4 = c"42";
+    let z4 = unsafe { ComplexFromStringC(s4.as_ptr(), std::ptr::null_mut()) };
+    assert_eq!(z4.r, 42.0);
+    assert_eq!(z4.i, 0.0);
+}
 
-        let s4 = CString::new("42").unwrap_or_default();
-        let z4 = unsafe { ComplexFromStringC(s4.as_ptr(), std::ptr::null_mut()) };
-        assert_eq!(z4.r, 42.0);
-        assert_eq!(z4.i, 0.0);
-    }
+// New tests for SEXP-based conversions
 
-    // New tests for SEXP-based conversions
+#[test]
+fn test_logical_from_string() {
+    let _session = crate::sexp::session::RSession::new();
+    // Test with null (no CHARSXP available in test without init)
+    let result = unsafe { LogicalFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
+    assert_eq!(result, NA_LOGICAL);
+}
 
-    #[test]
-    fn test_logical_from_string() {
-        let _session = crate::sexp::session::RSession::new();
-        // Test with null (no CHARSXP available in test without init)
-        let result = unsafe { LogicalFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
-        assert_eq!(result, NA_LOGICAL);
-    }
+#[test]
+fn test_string_from_logical() {
+    let _session = crate::sexp::session::RSession::new();
+    let s = unsafe { StringFromLogical(0) };
+    assert!(!s.is_null());
 
-    #[test]
-    fn test_string_from_logical() {
-        let _session = crate::sexp::session::RSession::new();
-        let s = unsafe { StringFromLogical(0) };
-        assert!(!s.is_null());
+    let s_true = unsafe { StringFromLogical(1) };
+    assert!(!s_true.is_null());
 
-        let s_true = unsafe { StringFromLogical(1) };
-        assert!(!s_true.is_null());
+    let s_na = unsafe { StringFromLogical(NA_LOGICAL) };
+    assert!(!s_na.is_null());
+}
 
-        let s_na = unsafe { StringFromLogical(NA_LOGICAL) };
-        assert!(!s_na.is_null());
-    }
+#[test]
+fn test_string_from_integer() {
+    let _session = crate::sexp::session::RSession::new();
+    let s = unsafe { StringFromInteger(42, std::ptr::null_mut()) };
+    assert!(!s.is_null());
 
-    #[test]
-    fn test_string_from_integer() {
-        let _session = crate::sexp::session::RSession::new();
-        let s = unsafe { StringFromInteger(42, std::ptr::null_mut()) };
-        assert!(!s.is_null());
+    let s_na = unsafe { StringFromInteger(NA_INTEGER, std::ptr::null_mut()) };
+    assert!(!s_na.is_null());
+}
 
-        let s_na = unsafe { StringFromInteger(NA_INTEGER, std::ptr::null_mut()) };
-        assert!(!s_na.is_null());
-    }
+#[test]
+fn test_string_from_raw() {
+    let _session = crate::sexp::session::RSession::new();
+    let s = unsafe { StringFromRaw(255, std::ptr::null_mut()) };
+    assert!(!s.is_null());
 
-    #[test]
-    fn test_string_from_raw() {
-        let _session = crate::sexp::session::RSession::new();
-        let s = unsafe { StringFromRaw(255, std::ptr::null_mut()) };
-        assert!(!s.is_null());
+    let s0 = unsafe { StringFromRaw(0, std::ptr::null_mut()) };
+    assert!(!s0.is_null());
+}
 
-        let s0 = unsafe { StringFromRaw(0, std::ptr::null_mut()) };
-        assert!(!s0.is_null());
-    }
+#[test]
+fn test_string_from_complex() {
+    let _session = crate::sexp::session::RSession::new();
+    let z = Rcomplex { r: 3.0, i: 4.0 };
+    let s = unsafe { StringFromComplex(z, std::ptr::null_mut()) };
+    assert!(!s.is_null());
 
-    #[test]
-    fn test_string_from_complex() {
-        let _session = crate::sexp::session::RSession::new();
-        let z = Rcomplex { r: 3.0, i: 4.0 };
-        let s = unsafe { StringFromComplex(z, std::ptr::null_mut()) };
-        assert!(!s.is_null());
+    let z_na = Rcomplex {
+        r: R_NA_REAL(),
+        i: 0.0,
+    };
+    let s_na = unsafe { StringFromComplex(z_na, std::ptr::null_mut()) };
+    assert!(!s_na.is_null());
+}
 
-        let z_na = Rcomplex {
-            r: R_NA_REAL(),
-            i: 0.0,
-        };
-        let s_na = unsafe { StringFromComplex(z_na, std::ptr::null_mut()) };
-        assert!(!s_na.is_null());
-    }
+#[test]
+fn test_string_from_real() {
+    let _session = crate::sexp::session::RSession::new();
+    let s = unsafe { crate::mainutils::printutils::StringFromReal(3.14, std::ptr::null_mut()) };
+    assert!(!s.is_null());
 
-    #[test]
-    fn test_string_from_real() {
-        let _session = crate::sexp::session::RSession::new();
-        let s = unsafe { crate::mainutils::printutils::StringFromReal(3.14, std::ptr::null_mut()) };
-        assert!(!s.is_null());
+    let s_na =
+        unsafe { crate::mainutils::printutils::StringFromReal(R_NA_REAL(), std::ptr::null_mut()) };
+    assert!(!s_na.is_null());
+}
 
-        let s_na = unsafe {
-            crate::mainutils::printutils::StringFromReal(R_NA_REAL(), std::ptr::null_mut())
-        };
-        assert!(!s_na.is_null());
-    }
+#[test]
+fn test_na_string_uses_global_sentinel() {
+    let _session = crate::sexp::session::RSession::new();
+    assert_eq!(R_NaString(), unsafe { crate::sexp::globals::R_NaString() });
+}
 
-    #[test]
-    fn test_na_string_uses_global_sentinel() {
-        let _session = crate::sexp::session::RSession::new();
-        assert_eq!(R_NaString(), unsafe { crate::sexp::globals::R_NaString() });
-    }
+#[test]
+fn test_warn_constants() {
+    let _session = crate::sexp::session::RSession::new();
+    // Verify warning constants match R's C defines
+    assert_eq!(WARN_NA, 1);
+    assert_eq!(WARN_INT_NA, 2);
+    assert_eq!(WARN_IMAG, 4);
+    assert_eq!(WARN_RAW, 8);
+}
 
-    #[test]
-    fn test_warn_constants() {
-        let _session = crate::sexp::session::RSession::new();
-        // Verify warning constants match R's C defines
-        assert_eq!(WARN_NA, 1);
-        assert_eq!(WARN_INT_NA, 2);
-        assert_eq!(WARN_IMAG, 4);
-        assert_eq!(WARN_RAW, 8);
-    }
+#[test]
+fn test_coercion_warning_flags() {
+    let _session = crate::sexp::session::RSession::new();
+    let mut warn: c_int = 0;
+    unsafe { IntegerFromReal(1e20, &mut warn) };
+    assert_ne!(warn & WARN_INT_NA, 0);
 
-    #[test]
-    fn test_coercion_warning_flags() {
-        let _session = crate::sexp::session::RSession::new();
-        let mut warn: c_int = 0;
-        unsafe { IntegerFromReal(1e20, &mut warn) };
-        assert_ne!(warn & WARN_INT_NA, 0);
+    let mut warn2: c_int = 0;
+    unsafe { IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, &mut warn2) };
+    assert_ne!(warn2 & WARN_IMAG, 0);
+}
 
-        let mut warn2: c_int = 0;
-        unsafe { IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, &mut warn2) };
-        assert_ne!(warn2 & WARN_IMAG, 0);
-    }
+#[test]
+fn test_r_isna() {
+    let _session = crate::sexp::session::RSession::new();
+    assert!(R_IsNA(R_NA_REAL()));
+    assert!(!R_IsNA(f64::NAN)); // regular NaN is NOT R's NA
+    assert!(!R_IsNA(0.0));
+    assert!(!R_IsNA(1.0));
+}
 
-    #[test]
-    fn test_r_isna() {
-        let _session = crate::sexp::session::RSession::new();
-        assert!(R_IsNA(R_NA_REAL()));
-        assert!(!R_IsNA(f64::NAN)); // regular NaN is NOT R's NA
-        assert!(!R_IsNA(0.0));
-        assert!(!R_IsNA(1.0));
-    }
+#[test]
+fn test_r_isnan() {
+    let _session = crate::sexp::session::RSession::new();
+    assert!(!R_IsNaN(R_NA_REAL())); // R's NA is NOT a "pure" NaN
+    assert!(R_IsNaN(f64::NAN)); // regular NaN IS a pure NaN
+    assert!(!R_IsNaN(0.0));
+    assert!(!R_IsNaN(f64::INFINITY));
+}
 
-    #[test]
-    fn test_r_isnan() {
-        let _session = crate::sexp::session::RSession::new();
-        assert!(!R_IsNaN(R_NA_REAL())); // R's NA is NOT a "pure" NaN
-        assert!(R_IsNaN(f64::NAN)); // regular NaN IS a pure NaN
-        assert!(!R_IsNaN(0.0));
-        assert!(!R_IsNaN(f64::INFINITY));
-    }
+#[test]
+fn test_r_finite() {
+    let _session = crate::sexp::session::RSession::new();
+    assert!(R_FINITE(0.0));
+    assert!(R_FINITE(1.0));
+    assert!(R_FINITE(-1.0));
+    assert!(!R_FINITE(f64::INFINITY));
+    assert!(!R_FINITE(f64::NEG_INFINITY));
+    assert!(!R_FINITE(f64::NAN));
+    assert!(!R_FINITE(R_NA_REAL()));
+}
 
-    #[test]
-    fn test_r_finite() {
-        let _session = crate::sexp::session::RSession::new();
-        assert!(R_FINITE(0.0));
-        assert!(R_FINITE(1.0));
-        assert!(R_FINITE(-1.0));
-        assert!(!R_FINITE(f64::INFINITY));
-        assert!(!R_FINITE(f64::NEG_INFINITY));
-        assert!(!R_FINITE(f64::NAN));
-        assert!(!R_FINITE(R_NA_REAL()));
-    }
+#[test]
+fn test_integer_from_string() {
+    let _session = crate::sexp::session::RSession::new();
+    // Test with null (no CHARSXP available in test)
+    let result = unsafe { IntegerFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
+    assert_eq!(result, NA_INTEGER);
+}
 
-    #[test]
-    fn test_integer_from_string() {
-        let _session = crate::sexp::session::RSession::new();
-        // Test with null (no CHARSXP available in test)
-        let result = unsafe { IntegerFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
-        assert_eq!(result, NA_INTEGER);
-    }
+#[test]
+fn test_real_from_string() {
+    let _session = crate::sexp::session::RSession::new();
+    let result = unsafe { RealFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
+    assert!(result.is_nan());
+}
 
-    #[test]
-    fn test_real_from_string() {
-        let _session = crate::sexp::session::RSession::new();
-        let result = unsafe { RealFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
-        assert!(result.is_nan());
-    }
+#[test]
+fn test_complex_from_string() {
+    let _session = crate::sexp::session::RSession::new();
+    let z = unsafe { ComplexFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
+    assert!(z.r.is_nan());
+    assert!(z.i.is_nan());
+}
 
-    #[test]
-    fn test_complex_from_string() {
-        let _session = crate::sexp::session::RSession::new();
-        let z = unsafe { ComplexFromString(std::ptr::null_mut(), std::ptr::null_mut()) };
-        assert!(z.r.is_nan());
-        assert!(z.i.is_nan());
-    }
+#[test]
+fn test_as_logical_null() {
+    let _session = crate::sexp::session::RSession::new();
+    let result = unsafe { asLogical(std::ptr::null_mut()) };
+    assert_eq!(result, NA_LOGICAL);
+}
 
-    #[test]
-    fn test_as_logical_null() {
-        let _session = crate::sexp::session::RSession::new();
-        let result = unsafe { asLogical(std::ptr::null_mut()) };
-        assert_eq!(result, NA_LOGICAL);
-    }
+#[test]
+fn test_as_integer_null() {
+    let _session = crate::sexp::session::RSession::new();
+    let result = unsafe { asInteger(std::ptr::null_mut()) };
+    assert_eq!(result, NA_INTEGER);
+}
 
-    #[test]
-    fn test_as_integer_null() {
-        let _session = crate::sexp::session::RSession::new();
-        let result = unsafe { asInteger(std::ptr::null_mut()) };
-        assert_eq!(result, NA_INTEGER);
-    }
+#[test]
+fn test_as_real_null() {
+    let _session = crate::sexp::session::RSession::new();
+    let result = unsafe { asReal(std::ptr::null_mut()) };
+    assert!(result.is_nan());
+}
 
-    #[test]
-    fn test_as_real_null() {
-        let _session = crate::sexp::session::RSession::new();
-        let result = unsafe { asReal(std::ptr::null_mut()) };
-        assert!(result.is_nan());
-    }
+#[test]
+fn test_as_complex_null() {
+    let _session = crate::sexp::session::RSession::new();
+    let z = unsafe { asComplex(std::ptr::null_mut()) };
+    assert!(z.r.is_nan());
+    assert!(z.i.is_nan());
+}
 
-    #[test]
-    fn test_as_complex_null() {
-        let _session = crate::sexp::session::RSession::new();
-        let z = unsafe { asComplex(std::ptr::null_mut()) };
-        assert!(z.r.is_nan());
-        assert!(z.i.is_nan());
-    }
+#[test]
+fn test_coerce_vector_same_type() {
+    let _session = crate::sexp::session::RSession::new();
+    // coerceVector should return the same pointer if types match
+    // We can't easily create real SEXP objects in tests without init,
+    // but we can test the null case
+    let result = unsafe { coerceVector(std::ptr::null_mut(), SEXPTYPE::LGLSXP.into()) };
+    assert!(result.is_null());
+}
 
-    #[test]
-    fn test_coerce_vector_same_type() {
-        let _session = crate::sexp::session::RSession::new();
-        // coerceVector should return the same pointer if types match
-        // We can't easily create real SEXP objects in tests without init,
-        // but we can test the null case
-        let result = unsafe { coerceVector(std::ptr::null_mut(), SEXPTYPE::LGLSXP.into()) };
-        assert!(result.is_null());
-    }
-
-    #[test]
-    fn test_coerce_symbol_to_unsupported_type_errors() {
-        let _session = crate::sexp::session::RSession::new();
-        let sym = unsafe { Rf_install(b"x\0".as_ptr() as *const c_char) };
-        let err = std::panic::catch_unwind(|| unsafe {
-            coerceVector(sym, SEXPTYPE::INTSXP.into());
-        });
-        assert!(err.is_err());
-    }
+#[test]
+fn test_coerce_symbol_to_unsupported_type_errors() {
+    let _session = crate::sexp::session::RSession::new();
+    let sym = unsafe { Rf_install(b"x\0".as_ptr() as *const c_char) };
+    let err = std::panic::catch_unwind(|| unsafe {
+        coerceVector(sym, SEXPTYPE::INTSXP.into());
+    });
+    assert!(err.is_err());
+}

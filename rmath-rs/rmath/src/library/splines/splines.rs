@@ -191,8 +191,7 @@ pub unsafe fn spline_value(knots: SEXP, coeff: SEXP, order: SEXP, x: SEXP, deriv
         let der = crate::main::coerce::asInteger(deriv);
 
         if ord == NA_INTEGER || ord <= 0 {
-            let msg =
-                std::ffi::CString::new("'ord' must be a positive integer").unwrap_or_default();
+            let msg = c"'ord' must be a positive integer";
             Rf_error(msg.as_ptr());
         }
 

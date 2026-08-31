@@ -371,10 +371,7 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             return R_NilValue();
         }
         // If already a data.frame, return as-is
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             let cls_name = elt_to_string(class, 0);
             if cls_name == "data.frame" {
@@ -392,17 +389,13 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class_vec.is_null() {
             let _class_guard = protect(class_vec);
-            let cstr = CString::new("data.frame").unwrap_or_default();
+            let cstr = c"data.frame";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 let data = (*class_vec).gengc_next_node as *mut SEXP;
                 *data.add(0) = charsxp;
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class_vec,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
         }
 
         // Set row.names
@@ -412,28 +405,20 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             let _row_names_guard = protect(rn);
             *INTEGER(rn) = NA_INTEGER;
             *INTEGER(rn).add(1) = -(nrow as i32);
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
-                rn,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), rn);
         }
 
         // Set column name to "x"
         let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !names_vec.is_null() {
             let _names_guard = protect(names_vec);
-            let cstr = CString::new("x").unwrap_or_default();
+            let cstr = c"x";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 let data = (*names_vec).gengc_next_node as *mut SEXP;
                 *data.add(0) = charsxp;
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                names_vec,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
         }
 
         result
@@ -789,12 +774,7 @@ fn data_frame_columns(x: SEXP) -> Vec<SEXP> {
 }
 
 fn data_frame_row_names_attr(x: SEXP) -> SEXP {
-    unsafe {
-        crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
-        )
-    }
+    unsafe { crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr())) }
 }
 
 pub(crate) fn data_frame_row_names(x: SEXP) -> Vec<String> {
@@ -874,13 +854,13 @@ fn build_data_frame(columns: Vec<SEXP>, names: Vec<String>, row_names: SEXP) -> 
         );
         crate::sexp::attrib_core::setAttrib(
             result,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-            Rf_mkString(CString::new("data.frame").unwrap_or_default().as_ptr()),
+            Rf_install(c"class".as_ptr()),
+            Rf_mkString(c"data.frame".as_ptr()),
         );
         if !row_names.is_null() && row_names != R_NilValue() {
             crate::sexp::attrib_core::setAttrib(
                 result,
-                Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
+                Rf_install(c"row.names".as_ptr()),
                 row_names,
             );
         }

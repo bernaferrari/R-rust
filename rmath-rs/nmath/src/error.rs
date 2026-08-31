@@ -33,7 +33,6 @@ fn emit_warning(message: &str) {
     }
 }
 
-
 /// `MATHLIB_WARNING(_("non-integer %s = %f"), which, value)` — dpq.h's
 /// `R_D_nonint_check` warns `x`; pbinom.c warns `n`.
 pub fn ml_warn_nonint(which: &str, value: f64) {

@@ -276,10 +276,7 @@ fn test_gc_reports_session_memory_counters() {
 
         assert!(!result.is_null());
         assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
-        let dim = crate::sexp::attrib_core::getAttrib(
-            result,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim = crate::sexp::attrib_core::getAttrib(result, Rf_install(c"dim".as_ptr()));
         assert!(!dim.is_null());
         assert_eq!(*INTEGER(dim), 2);
         // Stock base::gc prints a `limit (Mb)` column: NA for Ncells (no
@@ -465,10 +462,7 @@ fn test_transpose_non_square_matrix_uses_r_column_major_indexing() {
             std::ptr::null_mut(),
         );
 
-        let dim = crate::sexp::attrib_core::getAttrib(
-            result,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim = crate::sexp::attrib_core::getAttrib(result, Rf_install(c"dim".as_ptr()));
         assert_eq!(*INTEGER(dim), 3);
         assert_eq!(*INTEGER(dim).add(1), 2);
         assert_eq!(
@@ -512,10 +506,7 @@ fn test_string_matrix_and_transpose_preserve_elements() {
             CStr::from_ptr(CHAR(STRING_ELT(transpose, 1))).to_bytes(),
             b"b"
         );
-        let dim = crate::sexp::attrib_core::getAttrib(
-            transpose,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim = crate::sexp::attrib_core::getAttrib(transpose, Rf_install(c"dim".as_ptr()));
         assert_eq!(*INTEGER(dim), 3);
         assert_eq!(*INTEGER(dim).add(1), 1);
     }

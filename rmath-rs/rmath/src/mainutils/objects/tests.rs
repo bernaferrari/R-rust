@@ -1258,11 +1258,7 @@ mod tests {
     fn test_install_pname() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let s = Rf_install(
-                std::ffi::CString::new("test_sym")
-                    .unwrap_or_default()
-                    .as_ptr(),
-            );
+            let s = Rf_install(c"test_sym".as_ptr());
             assert!(!s.is_null());
             let pname = PRINTNAME(s);
             assert!(!pname.is_null(), "PRINTNAME should not be null");

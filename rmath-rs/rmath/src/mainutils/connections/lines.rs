@@ -77,8 +77,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             let ans = Rf_allocVector(SEXPTYPE::STRSXP, lines.len() as c_int);
             if !ans.is_null() {
                 for (idx, line) in lines.iter().enumerate() {
-                    let c_line = CString::new(line.as_str())
-                        .unwrap_or_else(|_| CString::new("").unwrap_or_default());
+                    let c_line = CString::new(line.as_str()).unwrap_or_default();
                     let charsxp = Rf_mkChar(c_line.as_ptr());
                     SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                 }
@@ -229,8 +228,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
-                let c_line = CString::new(line.as_str())
-                    .unwrap_or_else(|_| CString::new("").unwrap_or_default());
+                let c_line = CString::new(line.as_str()).unwrap_or_default();
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }

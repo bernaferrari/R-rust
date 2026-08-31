@@ -68,7 +68,7 @@ pub unsafe fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             _ => "any",
         };
         // Check S3 class
-        let class_sym = Rf_install(CString::new("class").unwrap_or_default().as_ptr());
+        let class_sym = Rf_install(c"class".as_ptr());
         let class_val = crate::sexp::attrib_core::getAttrib(x, class_sym);
         if !class_val.is_null()
             && class_val != R_NilValue()
@@ -363,11 +363,7 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
         // Set names attribute
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-            names,
-        );
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         // Set class attribute
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class_vec.is_null() {
@@ -377,11 +373,7 @@ pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !charsxp.is_null() {
                 SET_STRING_ELT(class_vec, 0, charsxp);
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class_vec,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class_vec);
         }
         crate::mainutils::objects::asS4(result, TRUE, 0)
     }
@@ -396,7 +388,7 @@ pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         // Try to print class info
-        let class_sym = Rf_install(CString::new("class").unwrap_or_default().as_ptr());
+        let class_sym = Rf_install(c"class".as_ptr());
         let class_val = crate::sexp::attrib_core::getAttrib(object, class_sym);
         if !class_val.is_null()
             && class_val != R_NilValue()
@@ -414,7 +406,7 @@ pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // Print slots if VECSXP
         if TYPEOF(object) == SEXPTYPE::VECSXP {
             let n = XLENGTH(object);
-            let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+            let names_sym = Rf_install(c"names".as_ptr());
             let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
             for i in 0..n {
                 let slot_val = crate::sexp::accessors::VECTOR_ELT(object, i);
@@ -461,7 +453,7 @@ pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             }
         }
         if crate::mainutils::objects::isS4(class_arg) == TRUE {
-            let class_sym = Rf_install(CString::new("class").unwrap_or_default().as_ptr());
+            let class_sym = Rf_install(c"class".as_ptr());
             let class_val = crate::sexp::attrib_core::getAttrib(class_arg, class_sym);
             if !class_val.is_null()
                 && class_val != R_NilValue()
@@ -476,7 +468,7 @@ pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             }
         }
         // If it's an object with names, return names
-        let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+        let names_sym = Rf_install(c"names".as_ptr());
         let names_val = crate::sexp::attrib_core::getAttrib(class_arg, names_sym);
         if !names_val.is_null()
             && names_val != R_NilValue()
@@ -768,7 +760,7 @@ pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let slot_name = elt_to_string(name_arg, 0);
         // Set slot in a VECSXP
         if TYPEOF(object) == SEXPTYPE::VECSXP {
-            let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+            let names_sym = Rf_install(c"names".as_ptr());
             let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
             if !names_val.is_null() && names_val != R_NilValue() {
                 let n = LENGTH(names_val);
@@ -897,11 +889,7 @@ pub unsafe fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             idx += 1;
             current = CDR(current);
         }
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-            names,
-        );
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         result
     }
 }

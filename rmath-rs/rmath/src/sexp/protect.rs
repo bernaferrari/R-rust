@@ -1066,8 +1066,7 @@ mod tests {
         // ambient re-acquisition `preserve_sexp` performs (Stacked Borrows).
         let left_ptr = current_instance_ptr().expect("left should be installed");
         let raw = unsafe { (*left_ptr).arena.alloc_node(SEXPTYPE::INTSXP) };
-        let value = unsafe { (*left_ptr).arena.sexp(raw) }
-            .expect("left arena object should wrap");
+        let value = unsafe { (*left_ptr).arena.sexp(raw) }.expect("left arena object should wrap");
 
         let guard = preserve_sexp(value);
         with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {

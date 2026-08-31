@@ -709,8 +709,14 @@ pub(crate) unsafe fn dim2total(dim: SEXP) -> Result<R_xlen_t, ()> {
         let mut dn: f64 = 1.0;
         for i in 0..ndim as usize {
             let d = *INTEGER(dim).add(i);
+            // dn *= d can overflow, but the result is 0 if any dimension
+            // is 0 (unless NA, so we can't simply break here) — trunk
+            // r37117c2 checks the zero first to avoid f/p overflow.
+            if d == 0 {
+                dn = 0.0;
+            }
             // NA_INTEGER is < 0; kept explicit for safety, mirroring
-            // trunk array.c (r9deb2eb restructure).
+            // trunk array.c.
             if d >= 0 && d != NA_INTEGER {
                 dn *= d as f64;
             } else if d == NA_INTEGER {

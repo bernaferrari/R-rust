@@ -682,10 +682,7 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if x.is_null() || what.is_null() {
             return Rf_ScalarLogical(FALSE);
         }
-        let class_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if class_attr.is_null() || TYPEOF(class_attr) != SEXPTYPE::STRSXP {
             return Rf_ScalarLogical(FALSE);
         }
@@ -765,23 +762,11 @@ unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !names.is_null() {
             let _np = protect(names);
-            SET_STRING_ELT(
-                names,
-                0,
-                Rf_mkChar(CString::new("message").unwrap_or_default().as_ptr()),
-            );
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                names,
-            );
+            SET_STRING_ELT(names, 0, Rf_mkChar(c"message".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
 
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            Rf_install(CString::new("message").unwrap_or_default().as_ptr()),
-            msg,
-        );
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"message".as_ptr()), msg);
 
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         if !class.is_null() {
@@ -793,11 +778,7 @@ unsafe fn simple_condition(message: &str, classes: &[&str]) -> SEXP {
                     Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
                 );
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
         }
 
         result
@@ -1188,7 +1169,7 @@ pub unsafe fn do_conditionMessage(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     unsafe {
         let cond = CAR(args);
         if cond.is_null() || cond == R_NilValue() {
-            return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+            return Rf_mkString(c"".as_ptr());
         }
         // Stock conditionMessage.condition is `c$message`: the element of
         // the condition list whose name is "message" (not an attribute).
@@ -1201,12 +1182,12 @@ pub unsafe fn do_conditionMessage(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         }
         // Fall back to the explicit "message" attribute for non-list
         // condition representations.
-        let msg_sym = Rf_install(CString::new("message").unwrap_or_default().as_ptr());
+        let msg_sym = Rf_install(c"message".as_ptr());
         let msg = crate::sexp::attrib_core::getAttrib(cond, msg_sym);
         if !msg.is_null() && msg != R_NilValue() && TYPEOF(msg) == SEXPTYPE::STRSXP {
             return msg;
         }
-        Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
+        Rf_mkString(c"".as_ptr())
     }
 }
 
@@ -1217,7 +1198,7 @@ pub unsafe fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         if cond.is_null() || cond == R_NilValue() {
             return R_NilValue();
         }
-        let call_sym = Rf_install(CString::new("call").unwrap_or_default().as_ptr());
+        let call_sym = Rf_install(c"call".as_ptr());
         let call_val = crate::sexp::attrib_core::getAttrib(cond, call_sym);
         if !call_val.is_null() && call_val != R_NilValue() {
             return call_val;
@@ -1255,17 +1236,13 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         // Set names
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !names.is_null() {
-            let cstr = CString::new("message").unwrap_or_default();
+            let cstr = c"message";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 let data = (*names).gengc_next_node as *mut SEXP;
                 *data = charsxp;
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                names,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
         // Set class
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
@@ -1279,11 +1256,7 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     *data.add(i) = charsxp;
                 }
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
         }
         result
     }
@@ -1315,17 +1288,13 @@ pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         SET_VECTOR_ELT(result, 0, msg_vec);
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !names.is_null() {
-            let cstr = CString::new("message").unwrap_or_default();
+            let cstr = c"message";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 let data = (*names).gengc_next_node as *mut SEXP;
                 *data = charsxp;
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                names,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
         let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         if !class.is_null() {
@@ -1338,11 +1307,7 @@ pub unsafe fn do_simpleWarning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                     *data.add(i) = charsxp;
                 }
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
         }
         result
     }

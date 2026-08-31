@@ -1436,14 +1436,13 @@ pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
 
     // --- R_stpcpy tests ---
 
     #[test]
     fn test_r_stpcpy_basic() {
         unsafe {
-            let src = CString::new("hello").unwrap_or_default();
+            let src = c"hello";
             let mut dest = [0i8; 16];
             let result = R_stpcpy(dest.as_mut_ptr(), src.as_ptr());
             assert_eq!(*result, 0);
@@ -1459,7 +1458,7 @@ mod tests {
     #[test]
     fn test_r_stpcpy_empty() {
         unsafe {
-            let src = CString::new("").unwrap_or_default();
+            let src = c"";
             let mut dest = [0i8; 8];
             let result = R_stpcpy(dest.as_mut_ptr(), src.as_ptr());
             assert_eq!(*result, 0);
@@ -1497,9 +1496,9 @@ mod tests {
     #[test]
     fn test_c_strlen() {
         unsafe {
-            let s = CString::new("hello world").unwrap_or_default();
+            let s = c"hello world";
             assert_eq!(c_strlen(s.as_ptr()), 11);
-            let empty = CString::new("").unwrap_or_default();
+            let empty = c"";
             assert_eq!(c_strlen(empty.as_ptr()), 0);
             assert_eq!(c_strlen(ptr::null()), 0);
         }

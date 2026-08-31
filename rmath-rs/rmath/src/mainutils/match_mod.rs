@@ -793,11 +793,7 @@ unsafe fn unused_arg_item(car: SEXP, tag: SEXP) -> String {
         if chars.is_null() {
             return deparsed;
         }
-        format!(
-            "{} = {}",
-            CStr::from_ptr(chars).to_string_lossy(),
-            deparsed
-        )
+        format!("{} = {}", CStr::from_ptr(chars).to_string_lossy(), deparsed)
     }
 }
 

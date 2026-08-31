@@ -15,7 +15,6 @@
 //! SEXP-dependent functions (ported from R's do_cum):
 //!   do_cumsum, do_cumprod, do_cummax, do_cummin
 
-use std::ffi::CString;
 use std::os::raw::{c_double, c_int};
 
 use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
@@ -353,9 +352,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 sum += v as c_double;
                 if sum > c_int::MAX as c_double || sum < (c_int::MIN as c_double) + 1.0 {
                     // Integer overflow — issue warning and stop
-                    let msg =
-                        CString::new("integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'")
-                            .unwrap_or_default();
+                    let msg = c"integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'";
                     Rf_warning(msg.as_ptr());
                     break;
                 }
@@ -452,7 +449,7 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP {
             // R errors: "'cummax' not defined for complex numbers"
-            let msg = CString::new("'cummax' not defined for complex numbers").unwrap_or_default();
+            let msg = c"'cummax' not defined for complex numbers";
             Rf_error(msg.as_ptr());
             unreachable!()
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
@@ -525,7 +522,7 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP {
             // R errors: "'cummin' not defined for complex numbers"
-            let msg = CString::new("'cummin' not defined for complex numbers").unwrap_or_default();
+            let msg = c"'cummin' not defined for complex numbers";
             Rf_error(msg.as_ptr());
             unreachable!()
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {

@@ -1469,11 +1469,7 @@ pub unsafe fn do_relevel(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         // call with its head replaced and attribute through it.
         let method_call = crate::mainutils::duplicate::duplicate(call);
         let _method_guard = protect(method_call);
-        let method_sym = crate::sexp::symbol::Rf_install(
-            std::ffi::CString::new("relevel.factor")
-                .unwrap_or_default()
-                .as_ptr(),
-        );
+        let method_sym = crate::sexp::symbol::Rf_install(c"relevel.factor".as_ptr());
         crate::sexp::accessors::SETCAR(method_call, method_sym);
         crate::mainutils::errors::attribute_handler_errors(method_call, || relevel_impl(args))
     }
@@ -1676,7 +1672,7 @@ pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             SET_STRING_ELT(levels_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
         }
 
-        let class = Rf_mkString(CString::new("factor").unwrap_or_default().as_ptr());
+        let class = Rf_mkString(c"factor".as_ptr());
         let _class_guard = protect(class);
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -2022,10 +2018,7 @@ pub unsafe fn do_is_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             return Rf_ScalarLogical(FALSE);
         }
         // Check class attribute for "factor"
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             let n = XLENGTH(class);
             for i in 0..n {
@@ -2052,10 +2045,7 @@ pub unsafe fn do_is_ordered(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
             let n = XLENGTH(class);
             for i in 0..n {
@@ -2083,10 +2073,7 @@ pub unsafe fn do_levels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return R_NilValue();
         }
         // Get levels attribute
-        let levels = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("levels").unwrap_or_default().as_ptr()),
-        );
+        let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
         if levels.is_null() {
             return R_NilValue();
         }
@@ -2241,10 +2228,7 @@ pub unsafe fn do_nlevels(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
-        let levels = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("levels").unwrap_or_default().as_ptr()),
-        );
+        let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
         if levels.is_null() {
             return Rf_ScalarInteger(0);
         }

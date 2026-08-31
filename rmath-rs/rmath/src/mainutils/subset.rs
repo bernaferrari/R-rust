@@ -58,79 +58,61 @@ const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
 /// Get the "dim" symbol (install if needed).
 #[inline]
 unsafe fn sym_Dim() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"dim".as_ptr()) }
 }
 
 /// Get the "names" symbol.
 #[inline]
 unsafe fn sym_Names() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"names".as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
 unsafe fn sym_DimNames() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("dimnames")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"dimnames".as_ptr()) }
 }
 
 /// Get the "class" symbol.
 #[inline]
 unsafe fn sym_Class() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"class".as_ptr()) }
 }
 
 /// Get the "srcref" symbol.
 #[inline]
 unsafe fn sym_Srcref() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("srcref")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"srcref".as_ptr()) }
 }
 
 /// Get the "tsp" symbol.
 #[inline]
 unsafe fn sym_Tsp() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"tsp".as_ptr()) }
 }
 
 /// Get the "tzone" symbol.
 #[inline]
 unsafe fn sym_Tzone() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("tzone").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"tzone".as_ptr()) }
 }
 
 /// Get the "drop" symbol.
 #[inline]
 unsafe fn sym_Drop() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("drop").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"drop".as_ptr()) }
 }
 
 /// Get the "exact" symbol.
 #[inline]
 unsafe fn sym_Exact() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("exact").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"exact".as_ptr()) }
 }
 
 /// Get the "row.names" symbol.
 #[inline]
 unsafe fn sym_RowNames() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("row.names")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"row.names".as_ptr()) }
 }
 
 unsafe fn is_data_frame(x: SEXP) -> bool {
@@ -858,7 +840,7 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if s == R_NilValue() || TYPEOF(s) == SEXPTYPE::SYMSXP {
             // Missing arg check
-            let missing_sym = Rf_install(std::ffi::CString::new("").unwrap_or_default().as_ptr());
+            let missing_sym = Rf_install(c"".as_ptr());
             if s == R_NilValue() {
                 return crate::mainutils::duplicate::duplicate(x);
             }
@@ -2566,7 +2548,7 @@ mod tests {
                     *INTEGER(x).add(i) = ((i + 1) * 10) as c_int;
                 }
                 /* Missing arg: create a symbol with empty name */
-                let missing = Rf_install(std::ffi::CString::new("").unwrap_or_default().as_ptr());
+                let missing = Rf_install(c"".as_ptr());
                 let result = VectorSubset(x, missing, R_NilValue());
                 /* Should return a duplicate (same length) */
                 assert!(!result.is_null());

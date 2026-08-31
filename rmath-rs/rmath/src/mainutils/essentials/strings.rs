@@ -400,11 +400,7 @@ pub unsafe fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
                     Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
                 );
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                names,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
 
         result
@@ -644,7 +640,7 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let digits_arg = CAR(CDR(args));
         let nsmall_arg = CAR(CDR(CDR(args)));
         if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+            return Rf_mkString(c"".as_ptr());
         }
         // format.default formats symbolic objects by deparse:
         // call/expression/"function"/"(" -> deparse(x, backtick=TRUE),
@@ -1124,17 +1120,13 @@ pub unsafe fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class_vec.is_null() {
-            let cstr = CString::new("noquote").unwrap_or_default();
+            let cstr = c"noquote";
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
                 let data = (*class_vec).gengc_next_node as *mut SEXP;
                 *data.add(0) = charsxp;
             }
-            crate::sexp::attrib_core::setAttrib(
-                x,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-                class_vec,
-            );
+            crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), class_vec);
         }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
@@ -1500,7 +1492,7 @@ pub unsafe fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let string_arg = CAR(args);
         let values_arg = CAR(CDR(args));
         if string_arg.is_null() || string_arg == R_NilValue() {
-            return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+            return Rf_mkString(c"".as_ptr());
         }
         let fmt = elt_to_string(string_arg, 0);
         if values_arg.is_null() || values_arg == R_NilValue() {
@@ -1611,7 +1603,7 @@ pub unsafe fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             if must_work {
                 package_error(format!("no file found for package '{}'", package));
             }
-            return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+            return Rf_mkString(c"".as_ptr());
         }
 
         let mut path = PathBuf::from(package_path);
@@ -1634,7 +1626,7 @@ pub unsafe fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     package
                 ));
             }
-            Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
+            Rf_mkString(c"".as_ptr())
         }
     }
 }

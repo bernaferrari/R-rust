@@ -17,9 +17,7 @@ use crate::sexp::constructors::{
     Rf_mkString,
 };
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{
-    ISNAN, NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE,
-};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -89,17 +87,18 @@ unsafe fn math2_complex(
         // coercion is the identity. `sa` stays the value operand and `sb`
         // the digits operand, matching complex_math2's a/b roles.
         let sa = x_arg;
-        let sb = if digits_arg.is_null()
-            || digits_arg == R_NilValue()
-            || digits_arg == R_MissingArg()
-        {
-            // do_Math2 fills the digits default upstream.
-            let s = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
-            *COMPLEX(s) = Rcomplex { r: dflt_digits, i: 0.0 };
-            s
-        } else {
-            crate::mainutils::coerce::coerceVector(digits_arg, SEXPTYPE::CPLXSXP.as_c_int())
-        };
+        let sb =
+            if digits_arg.is_null() || digits_arg == R_NilValue() || digits_arg == R_MissingArg() {
+                // do_Math2 fills the digits default upstream.
+                let s = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
+                *COMPLEX(s) = Rcomplex {
+                    r: dflt_digits,
+                    i: 0.0,
+                };
+                s
+            } else {
+                crate::mainutils::coerce::coerceVector(digits_arg, SEXPTYPE::CPLXSXP.as_c_int())
+            };
         let _sa_guard = protect(sa);
         let _sb_guard = protect(sb);
 
@@ -140,8 +139,8 @@ unsafe fn math2_complex(
             }
         }
         if naflag {
-            let msg = CString::new(format!("NaNs produced in function \"{name}\""))
-                .unwrap_or_default();
+            let msg =
+                CString::new(format!("NaNs produced in function \"{name}\"")).unwrap_or_default();
             crate::mainutils::errors::Rf_warningcall1(call, msg.as_ptr());
         }
         if n == na {
@@ -221,14 +220,9 @@ pub unsafe fn do_round(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // Stock routes complex x to complex_math2 (main/complex.c): round
         // each part with the same ties-even fround as the real path.
         if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
-            return math2_complex(
-                call,
-                x_arg,
-                digits_arg,
-                0.0,
-                "round",
-                |re, im, digits| (fround(re, digits), fround(im, digits)),
-            );
+            return math2_complex(call, x_arg, digits_arg, 0.0, "round", |re, im, digits| {
+                (fround(re, digits), fround(im, digits))
+            });
         }
         let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
             0.0
@@ -385,14 +379,7 @@ pub unsafe fn do_signif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // Stock routes complex x to complex_math2 (main/complex.c): apply
         // fprec (z_prec) to each part with the digits scalar.
         if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
-            return math2_complex(
-                call,
-                x_arg,
-                digits_arg,
-                6.0,
-                "signif",
-                |re, im, digits| z_prec_r(re, im, digits),
-            );
+            return math2_complex(call, x_arg, digits_arg, 6.0, "signif", z_prec_r);
         }
         let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
             6.0
@@ -829,11 +816,7 @@ pub unsafe fn do_setNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if obj.is_null() || nm.is_null() {
             return obj;
         }
-        crate::sexp::attrib_core::setAttrib(
-            obj,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-            nm,
-        );
+        crate::sexp::attrib_core::setAttrib(obj, Rf_install(c"names".as_ptr()), nm);
         obj
     }
 }
@@ -843,7 +826,7 @@ pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+            return Rf_mkString(c"".as_ptr());
         }
         let n = XLENGTH(x);
         let mut parts: Vec<String> = Vec::new();
@@ -1038,18 +1021,10 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
                 let cstr = CString::new(*name).unwrap_or_default();
                 SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-                names,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
         }
-        let class = Rf_mkString(CString::new("proc_time").unwrap_or_default().as_ptr());
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-            class,
-        );
+        let class = Rf_mkString(c"proc_time".as_ptr());
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
         result
     }
 }
@@ -1097,17 +1072,17 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         crate::sexp::attrib_core::setAttrib(
             result,
-            Rf_install(CString::new("match.length").unwrap_or_default().as_ptr()),
+            Rf_install(c"match.length".as_ptr()),
             match_len,
         );
         crate::sexp::attrib_core::setAttrib(
             result,
-            Rf_install(CString::new("index.type").unwrap_or_default().as_ptr()),
-            Rf_mkString(CString::new("chars").unwrap_or_default().as_ptr()),
+            Rf_install(c"index.type".as_ptr()),
+            Rf_mkString(c"chars".as_ptr()),
         );
         crate::sexp::attrib_core::setAttrib(
             result,
-            Rf_install(CString::new("useBytes").unwrap_or_default().as_ptr()),
+            Rf_install(c"useBytes".as_ptr()),
             Rf_ScalarLogical(TRUE),
         );
         result
@@ -1262,19 +1237,15 @@ pub unsafe fn do_regexec(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 unsafe fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
     unsafe {
+        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"match.length".as_ptr()), match_lengths);
         crate::sexp::attrib_core::setAttrib(
             x,
-            Rf_install(CString::new("match.length").unwrap_or_default().as_ptr()),
-            match_lengths,
+            Rf_install(c"index.type".as_ptr()),
+            Rf_mkString(c"chars".as_ptr()),
         );
         crate::sexp::attrib_core::setAttrib(
             x,
-            Rf_install(CString::new("index.type").unwrap_or_default().as_ptr()),
-            Rf_mkString(CString::new("chars").unwrap_or_default().as_ptr()),
-        );
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(CString::new("useBytes").unwrap_or_default().as_ptr()),
+            Rf_install(c"useBytes".as_ptr()),
             Rf_ScalarLogical(TRUE),
         );
     }
@@ -1282,20 +1253,16 @@ unsafe fn set_regexpr_attrs(x: SEXP, match_lengths: SEXP) {
 
 unsafe fn set_regexec_perl_attrs(x: SEXP, match_lengths: SEXP) {
     unsafe {
+        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"match.length".as_ptr()), match_lengths);
         crate::sexp::attrib_core::setAttrib(
             x,
-            Rf_install(CString::new("match.length").unwrap_or_default().as_ptr()),
-            match_lengths,
-        );
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(CString::new("useBytes").unwrap_or_default().as_ptr()),
+            Rf_install(c"useBytes".as_ptr()),
             Rf_ScalarLogical(TRUE),
         );
         crate::sexp::attrib_core::setAttrib(
             x,
-            Rf_install(CString::new("index.type").unwrap_or_default().as_ptr()),
-            Rf_mkString(CString::new("chars").unwrap_or_default().as_ptr()),
+            Rf_install(c"index.type".as_ptr()),
+            Rf_mkString(c"chars".as_ptr()),
         );
     }
 }
@@ -2233,11 +2200,7 @@ pub unsafe fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         if !dim.is_null() {
             *INTEGER(dim) = nx as c_int;
             *INTEGER(dim).add(1) = ny as c_int;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
         }
         result
     }

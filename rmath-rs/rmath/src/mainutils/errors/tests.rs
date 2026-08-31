@@ -89,7 +89,7 @@ fn test_session_error_flags_are_local_on_same_thread() {
         assert_eq!(r_warn_length(), 1000);
         assert!(!R_InterruptsSuspended());
         assert!(!interrupts_pending());
-    
+
         R_SetInError(2);
         R_SetExpressions(600);
         R_SetWarnLength(456);
@@ -419,7 +419,7 @@ fn test_format_varargs_null_format() {
 fn test_format_varargs_null_ap() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        let msg = std::ffi::CString::new("hello world").unwrap_or_default();
+        let msg = c"hello world";
         let result = format_varargs(msg.as_ptr(), ptr::null_mut());
         assert_eq!(result, "hello world");
     }
@@ -439,7 +439,7 @@ fn test_format_varargs_to_buf_null() {
 fn test_format_varargs_to_buf_null_ap() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        let msg = std::ffi::CString::new("test message").unwrap_or_default();
+        let msg = c"test message";
         let (s, truncated) = format_varargs_to_buf(msg.as_ptr(), ptr::null_mut());
         assert_eq!(s, "test message");
         assert!(!truncated);
@@ -643,7 +643,7 @@ fn test_r_make_partial_argument_match_warning_condition() {
 fn test_r_missing_arg_error_c() {
     let _session = crate::sexp::session::RSession::new();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let msg = std::ffi::CString::new("my_arg").unwrap_or_default();
+        let msg = c"my_arg";
         R_MissingArgError_c(msg.as_ptr(), ptr::null_mut(), ptr::null_mut());
     }));
     assert!(result.is_err());
@@ -749,7 +749,7 @@ fn test_r_get_src_filename() {
 #[test]
 fn test_rf_errorcall_fmt() {
     let _session = crate::sexp::session::RSession::new();
-    let fmt = std::ffi::CString::new("hello %s world %s").unwrap_or_default();
+    let fmt = c"hello %s world %s";
     let arg1 = must(std::ffi::CStr::from_bytes_with_nul(b"beautiful\0"));
     let arg2 = must(std::ffi::CStr::from_bytes_with_nul(b"today\0"));
     // This function pre-formats and calls verrorcall_dflt, which panics

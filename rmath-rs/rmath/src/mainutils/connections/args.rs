@@ -320,7 +320,7 @@ pub unsafe fn set_connection_class(ans: SEXP, specific_class: &str) {
             return;
         }
         let c1 = CString::new(specific_class).unwrap_or_default();
-        let c2 = CString::new("connection").unwrap_or_default();
+        let c2 = c"connection";
         let charsxp1 = Rf_mkChar(c1.as_ptr());
         let charsxp2 = Rf_mkChar(c2.as_ptr());
         if !charsxp1.is_null() {

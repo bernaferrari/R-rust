@@ -1,29 +1,5 @@
 //! Matrix linear algebra: crossprod, tcrossprod, det, solve, which() for arrays — extracted verbatim from the former single-file module.
 use super::*;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
-use std::path::Path;
-
-#[allow(unused_imports)]
-use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-};
-#[allow(unused_imports)]
-use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
-};
-use crate::sexp::context::RError;
-use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
-};
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
-
-use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
 
 // ---------------------------------------------------------------------------
 // Matrix/linear algebra
@@ -62,10 +38,7 @@ pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_ScalarReal(NA_REAL);
         }
 
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) != 2 {
             return Rf_ScalarReal(NA_REAL);
         }
@@ -144,10 +117,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            a,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(a, Rf_install(c"dim".as_ptr()));
         if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) != 2 {
             return R_NilValue();
         }
@@ -165,10 +135,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let nrhs = if b == R_NilValue() {
             n // inverse
         } else {
-            let b_dim = crate::sexp::attrib_core::getAttrib(
-                b,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-            );
+            let b_dim = crate::sexp::attrib_core::getAttrib(b, Rf_install(c"dim".as_ptr()));
             if !b_dim.is_null() && TYPEOF(b_dim) == SEXPTYPE::INTSXP && LENGTH(b_dim) == 2 {
                 *INTEGER(b_dim).add(1) as usize
             } else {
@@ -273,11 +240,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let _dim_guard = protect(dim);
                 *INTEGER(dim) = n as i32;
                 *INTEGER(dim).add(1) = nrhs as i32;
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                    dim,
-                );
+                crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
             }
         }
 

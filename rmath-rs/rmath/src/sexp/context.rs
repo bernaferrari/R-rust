@@ -704,10 +704,7 @@ mod tests {
             // a fresh `&mut left`/`&left` borrow here would retag the
             // allocation and pop the guard's borrow tag out from under its
             // drop path (aliasing UB under Stacked Borrows).
-            assert_eq!(
-                unsafe { (*guard.instance_ptr()).context_stack.len() },
-                1
-            );
+            assert_eq!(unsafe { (*guard.instance_ptr()).context_stack.len() }, 1);
             assert!(right.context_stack.is_empty());
 
             replace_current_instance(Some(&mut right as *mut RInstance));

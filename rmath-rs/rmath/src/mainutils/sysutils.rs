@@ -382,19 +382,15 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         let _ans_guard = protect(ans);
 
         // sysname
-        let sysname = Rf_mkString(
-            std::ffi::CString::new("Darwin")
-                .unwrap_or_default()
-                .as_ptr(),
-        );
+        let sysname = Rf_mkString(c"Darwin".as_ptr());
         SET_VECTOR_ELT(ans, 0, sysname);
 
         // release
-        let release = Rf_mkString(std::ffi::CString::new("").unwrap_or_default().as_ptr());
+        let release = Rf_mkString(c"".as_ptr());
         SET_VECTOR_ELT(ans, 1, release);
 
         // version
-        let version = Rf_mkString(std::ffi::CString::new("").unwrap_or_default().as_ptr());
+        let version = Rf_mkString(c"".as_ptr());
         SET_VECTOR_ELT(ans, 2, version);
 
         // nodename
@@ -407,61 +403,17 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         SET_VECTOR_ELT(ans, 3, nodename);
 
         // machine
-        let machine = Rf_mkString(
-            std::ffi::CString::new("x86_64")
-                .unwrap_or_default()
-                .as_ptr(),
-        );
+        let machine = Rf_mkString(c"x86_64".as_ptr());
         SET_VECTOR_ELT(ans, 4, machine);
 
         // Set names
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
         let _names_guard = protect(names);
-        SET_STRING_ELT(
-            names,
-            0,
-            Rf_mkChar(
-                std::ffi::CString::new("sysname")
-                    .unwrap_or_default()
-                    .as_ptr(),
-            ),
-        );
-        SET_STRING_ELT(
-            names,
-            1,
-            Rf_mkChar(
-                std::ffi::CString::new("release")
-                    .unwrap_or_default()
-                    .as_ptr(),
-            ),
-        );
-        SET_STRING_ELT(
-            names,
-            2,
-            Rf_mkChar(
-                std::ffi::CString::new("version")
-                    .unwrap_or_default()
-                    .as_ptr(),
-            ),
-        );
-        SET_STRING_ELT(
-            names,
-            3,
-            Rf_mkChar(
-                std::ffi::CString::new("nodename")
-                    .unwrap_or_default()
-                    .as_ptr(),
-            ),
-        );
-        SET_STRING_ELT(
-            names,
-            4,
-            Rf_mkChar(
-                std::ffi::CString::new("machine")
-                    .unwrap_or_default()
-                    .as_ptr(),
-            ),
-        );
+        SET_STRING_ELT(names, 0, Rf_mkChar(c"sysname".as_ptr()));
+        SET_STRING_ELT(names, 1, Rf_mkChar(c"release".as_ptr()));
+        SET_STRING_ELT(names, 2, Rf_mkChar(c"version".as_ptr()));
+        SET_STRING_ELT(names, 3, Rf_mkChar(c"nodename".as_ptr()));
+        SET_STRING_ELT(names, 4, Rf_mkChar(c"machine".as_ptr()));
 
         let names_sym = crate::eval::attrib_core::R_NamesSymbol();
         crate::eval::attrib_core::setAttrib(ans, names_sym, names);

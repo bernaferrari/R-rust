@@ -17,14 +17,14 @@ use crate::sexp::ffi::*;
 pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
     let t = unsafe { TYPEOF(object) };
     if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
-        let msg = CString::new("'R_get_primname' called on a non-primitive").unwrap_or_default();
+        let msg = c"'R_get_primname' called on a non-primitive";
         unsafe {
             Rf_error(msg.as_ptr());
         }
     }
     let name = unsafe { crate::main::names::getPRIMNAME(object) };
     if name.is_null() {
-        let s = CString::new("").unwrap_or_default();
+        let s = c"";
         unsafe { Rf_mkString(s.as_ptr()) }
     } else {
         unsafe { Rf_mkString(name) }

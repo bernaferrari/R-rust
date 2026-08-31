@@ -34,10 +34,7 @@ pub unsafe fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             println!("NULL");
             return R_NilValue();
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         let (nrow, ncol) =
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
@@ -51,10 +48,7 @@ pub unsafe fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             };
 
         // Get colnames
-        let colnames = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
-        );
+        let colnames = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
         let col_names_vec: Vec<String> =
             if !colnames.is_null() && TYPEOF(colnames) == SEXPTYPE::VECSXP && LENGTH(colnames) >= 2
             {
@@ -103,10 +97,7 @@ pub unsafe fn do_print_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
         let n = XLENGTH(x);
         // Get names
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-        );
+        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
         let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
 
         for i in 0..n {
@@ -469,17 +460,11 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         if t == SEXPTYPE::VECSXP {
             // List
-            let names = crate::sexp::attrib_core::getAttrib(
-                x,
-                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-            );
+            let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
             let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
 
             // Check for data.frame class
-            let class = crate::sexp::attrib_core::getAttrib(
-                x,
-                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-            );
+            let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
             let is_df = if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP {
                 elt_to_string(class, 0) == "data.frame"
             } else {
@@ -607,10 +592,7 @@ fn print_data_frame_column_texts(
     nrow: R_xlen_t,
 ) -> (Vec<String>, Vec<Vec<String>>) {
     unsafe {
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-        );
+        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
         let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
         let mut headers = Vec::with_capacity(ncol as usize);
         let mut columns = Vec::with_capacity(ncol as usize);
@@ -773,10 +755,7 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         // Table objects are typically arrays (REALSXP/INTSXP with dim attribute)
         let t = TYPEOF(x);
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
 
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) == 2 {
             // 2D table: print as matrix
@@ -784,10 +763,7 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let ncol = *INTEGER(dim_attr).add(1) as usize;
 
             // Get dimnames
-            let dn = crate::sexp::attrib_core::getAttrib(
-                x,
-                Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
-            );
+            let dn = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
             let has_dn = !dn.is_null() && TYPEOF(dn) == SEXPTYPE::VECSXP;
 
             // Print row names and values
@@ -873,10 +849,7 @@ pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         let n = XLENGTH(x);
 
         // Get levels attribute
-        let levels = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("levels").unwrap_or_default().as_ptr()),
-        );
+        let levels = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"levels".as_ptr()));
         let has_levels = !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP;
 
         // Print the factor values
@@ -943,10 +916,7 @@ pub unsafe fn do_summary_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SE
             return do_summary_default(_call, _op, args, _rho);
         }
         let ncol = XLENGTH(x);
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-        );
+        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
         let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
 
         for j in 0..ncol {
@@ -1091,11 +1061,7 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
             let _dim_guard = protect(dim);
             *INTEGER(dim) = nrow as i32;
             *INTEGER(dim).add(1) = ncol as i32;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
         }
 
         result

@@ -118,7 +118,6 @@ impl ArenaBudget {
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
 
-
 /// One raw-allocated slab of `NODE_PAGE_SIZE` node slots.
 ///
 /// Pages are allocated and freed through the allocator API and are only ever

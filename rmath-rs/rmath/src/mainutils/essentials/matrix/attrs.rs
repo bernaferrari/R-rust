@@ -1,29 +1,5 @@
 //! Attribute access: names, class, attr, attributes, structure, comment, namespace lookup, storage.mode — extracted verbatim from the former single-file module.
 use super::*;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
-use std::path::Path;
-
-#[allow(unused_imports)]
-use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-};
-#[allow(unused_imports)]
-use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
-};
-use crate::sexp::context::RError;
-use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
-};
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
-
-use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
 
 /// R's `storage.mode(x) <- value` — coerce storage while preserving attributes.
 pub unsafe fn do_storage_mode_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -90,20 +66,14 @@ pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let dimnames = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
-        );
+        let dimnames = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
         if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 1 {
             return VECTOR_ELT(dimnames, 0);
         }
         if is_data_frame_like(x) {
             return string_vector(&data_frame_row_names(x));
         }
-        crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
-        )
+        crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr()))
     }
 }
 
@@ -114,10 +84,7 @@ pub unsafe fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let dimnames = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
-        );
+        let dimnames = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dimnames".as_ptr()));
         if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 2 {
             VECTOR_ELT(dimnames, 1)
         } else {
@@ -139,11 +106,7 @@ pub unsafe fn do_names_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-            value,
-        );
+        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"names".as_ptr()), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
@@ -157,11 +120,7 @@ pub unsafe fn do_dimnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
-            value,
-        );
+        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"dimnames".as_ptr()), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
@@ -185,7 +144,7 @@ pub unsafe fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
             return R_NilValue();
         }
 
-        let dimnames_sym = Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr());
+        let dimnames_sym = Rf_install(c"dimnames".as_ptr());
         let mut dimnames = crate::sexp::attrib_core::getAttrib(x, dimnames_sym);
         if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
             dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
@@ -213,10 +172,7 @@ pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         if class.is_null() || class == R_NilValue() {
             let dim =
                 crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
@@ -300,11 +256,7 @@ pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        crate::sexp::attrib_core::setAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-            value,
-        );
+        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"class".as_ptr()), value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
     }
@@ -447,7 +399,7 @@ pub unsafe fn do_comment_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 }
 
 pub unsafe fn comment_symbol() -> SEXP {
-    unsafe { Rf_install(CString::new("comment").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"comment".as_ptr()) }
 }
 
 /// R's namespace lookup operators, `pkg::name` and `pkg:::name`.

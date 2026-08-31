@@ -842,7 +842,13 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         );
 
         if ofun.is_none() {
-            errorcall(call, &format!("C symbol name \"{}\" not in load table", String::from_utf8_lossy(&buf).trim_end_matches(char::from(0))));
+            errorcall(
+                call,
+                &format!(
+                    "C symbol name \"{}\" not in load table",
+                    String::from_utf8_lossy(&buf).trim_end_matches(char::from(0))
+                ),
+            );
         }
 
         let primval = PRIMVAL(op);

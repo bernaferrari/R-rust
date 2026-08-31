@@ -1,29 +1,5 @@
 //! Matrix construction: lower/upper.tri, matrix(), array(), diag(), element access/coercion helpers, as.matrix — extracted verbatim from the former single-file module.
 use super::*;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_int;
-use std::path::Path;
-
-#[allow(unused_imports)]
-use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, COMPLEX, FORMALS, FRAME, HASHTAB, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, PRINTNAME, RAW, REAL, REAL_ELT, SET_ENCLOS, SET_OBJECT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-};
-#[allow(unused_imports)]
-use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
-};
-use crate::sexp::context::RError;
-use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
-};
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::protect;
-use crate::sexp::symbol::Rf_install;
-
-use crate::sexp::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol};
 
 // ---------------------------------------------------------------------------
 // Matrix: lower.tri, upper.tri
@@ -40,10 +16,7 @@ pub unsafe fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let include_diag = !diag_arg.is_null()
             && diag_arg != R_NilValue()
             && real_or_default(diag_arg, 0.0) != 0.0;
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         let (nrow, ncol) =
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
@@ -84,10 +57,7 @@ pub unsafe fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let include_diag = !diag_arg.is_null()
             && diag_arg != R_NilValue()
             && real_or_default(diag_arg, 0.0) != 0.0;
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         let (nrow, ncol) =
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
@@ -320,20 +290,14 @@ pub unsafe fn string_vector_contains_value(x: SEXP, needle: &str) -> bool {
 
 pub(crate) unsafe fn is_data_frame_object(x: SEXP) -> bool {
     unsafe {
-        let class = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
-        );
+        let class = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"class".as_ptr()));
         string_vector_contains_value(class, "data.frame")
     }
 }
 
 pub(crate) unsafe fn data_frame_row_count(x: SEXP) -> R_xlen_t {
     unsafe {
-        let row_names = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
-        );
+        let row_names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"row.names".as_ptr()));
         if !row_names.is_null() && TYPEOF(row_names) == SEXPTYPE::INTSXP && LENGTH(row_names) == 2 {
             let first = *INTEGER(row_names);
             let second = *INTEGER(row_names).add(1);
@@ -419,11 +383,7 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if !dim.is_null() {
             *INTEGER(dim) = nrow as c_int;
             *INTEGER(dim).add(1) = ncol as c_int;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                dim,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
         }
 
         if !dimnames.is_null() && dimnames != R_NilValue() {
@@ -660,10 +620,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         // Check if x is a matrix
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             // Extract diagonal
             let nrow = *INTEGER(dim_attr) as usize;
@@ -707,11 +664,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if !dim.is_null() {
                     *INTEGER(dim) = n as c_int;
                     *INTEGER(dim).add(1) = n as c_int;
-                    crate::sexp::attrib_core::setAttrib(
-                        result,
-                        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                        dim,
-                    );
+                    crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
                 }
                 return result;
             }
@@ -741,11 +694,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !dim.is_null() {
                 *INTEGER(dim) = n as c_int;
                 *INTEGER(dim).add(1) = n as c_int;
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                    dim,
-                );
+                crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
             }
             result
         }
@@ -793,11 +742,7 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 let d = INTEGER(dim);
                 *d.add(0) = n as i32;
                 *d.add(1) = 1;
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                    dim,
-                );
+                crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
             }
             result
         } else if t == SEXPTYPE::STRSXP {
@@ -820,11 +765,7 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 let d = INTEGER(dim);
                 *d.add(0) = n as i32;
                 *d.add(1) = 1;
-                crate::sexp::attrib_core::setAttrib(
-                    result,
-                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-                    dim,
-                );
+                crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
             }
             result
         } else {

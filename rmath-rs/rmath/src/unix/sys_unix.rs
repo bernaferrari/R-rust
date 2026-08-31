@@ -244,12 +244,12 @@ pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
         let machine = CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy();
 
         // Get login name
-        let login = CString::new("unknown").unwrap_or_default();
+        let login = c"unknown";
         let login_ptr = libc::getlogin();
         let login_cstr = if !login_ptr.is_null() {
             CStr::from_ptr(login_ptr)
         } else {
-            login.as_c_str()
+            login
         };
 
         // Get user name: try env vars first (needed on Android where getpwuid returns NULL)
@@ -422,7 +422,6 @@ mod tests {
     use crate::sexp::accessors::*;
 
     use super::*;
-    use std::ffi::CString;
 
     #[test]
     fn test_do_machine() {
@@ -442,7 +441,7 @@ mod tests {
     fn test_expand_filename_no_tilde() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
-            let path = CString::new("/usr/lib/R").unwrap_or_default();
+            let path = c"/usr/lib/R";
             let result = R_ExpandFileName(path.as_ptr());
             assert_eq!(CStr::from_ptr(result).to_string_lossy(), "/usr/lib/R");
         }
@@ -453,7 +452,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            let path = CString::new("~/Documents").unwrap_or_default();
+            let path = c"~/Documents";
             let result = R_ExpandFileName(path.as_ptr());
             let expanded = CStr::from_ptr(result).to_string_lossy().to_string();
             assert!(expanded.starts_with(&home));
@@ -466,7 +465,7 @@ mod tests {
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            let path = CString::new("~").unwrap_or_default();
+            let path = c"~";
             let result = R_ExpandFileName(path.as_ptr());
             let expanded = CStr::from_ptr(result).to_string_lossy().to_string();
             assert_eq!(expanded, home);
@@ -526,7 +525,7 @@ mod tests {
 
         unsafe {
             let previous = replace_current_instance(Some(&mut first as *mut RInstance));
-            let path = CString::new("~").unwrap_or_default();
+            let path = c"~";
             let first_expanded = R_ExpandFileName(path.as_ptr());
             assert!(!first_expanded.is_null());
             first.sys_unix_state.clk_tck = 250.0;

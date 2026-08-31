@@ -63,7 +63,7 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
 
         if arg_vecs.is_empty() || max_len == 0 {
             if collapse.is_some() {
-                let s = CString::new("").unwrap_or_default();
+                let s = c"";
                 return Rf_mkString(s.as_ptr());
             }
             return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
@@ -208,7 +208,7 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
-            let s = CString::new("NULL").unwrap_or_default();
+            let s = c"NULL";
             return Rf_mkString(s.as_ptr());
         }
         let name = match TYPEOF(x) {
@@ -380,10 +380,7 @@ pub unsafe fn do_names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return names_from_pairlist(x);
         }
         // Get names attribute
-        let names = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-        );
+        let names = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"names".as_ptr()));
         if !names.is_null() && names != R_NilValue() {
             return names;
         }
@@ -854,7 +851,7 @@ pub unsafe fn do_table(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
         }
 
-        let class = Rf_mkString(CString::new("table").unwrap_or_default().as_ptr());
+        let class = Rf_mkString(c"table".as_ptr());
         if !class.is_null() {
             let _class_p = protect(class);
             crate::sexp::attrib_core::setAttrib(
@@ -1354,11 +1351,7 @@ unsafe fn environment_as_list(env: SEXP) -> SEXP {
             names.push(name.clone());
         }
         let names_vec = string_vector(&names);
-        crate::sexp::attrib_core::setAttrib(
-            result,
-            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
-            names_vec,
-        );
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
         result
     }
 }

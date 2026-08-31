@@ -250,8 +250,7 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
-                let c_line = CString::new(line.as_str())
-                    .unwrap_or_else(|_| CString::new("").unwrap_or_default());
+                let c_line = CString::new(line.as_str()).unwrap_or_default();
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
@@ -337,8 +336,7 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
             for i in 0..table.len() {
                 if let Some(ref conn) = table[i] {
                     let desc = format!("{} {} {}", i, conn.description, conn.mode);
-                    let c_desc =
-                        CString::new(desc).unwrap_or_else(|_| CString::new("").unwrap_or_default());
+                    let c_desc = CString::new(desc).unwrap_or_default();
                     let charsxp = Rf_mkChar(c_desc.as_ptr());
                     SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                     idx += 1;

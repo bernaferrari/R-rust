@@ -1002,7 +1002,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                 || ctm.tm_year == NA_INTEGER
             {
                 // NA_STRING
-                let cstr = CString::new("").unwrap_or_default();
+                let cstr = c"";
                 SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
             } else {
                 let mut tm_check = stm::new();
@@ -1015,7 +1015,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                 tm_check.tm_isdst = ctm.tm_isdst;
 
                 if validate_tm(&mut tm_check) < 0 || likely_strftime_overflow(&tm_check) {
-                    let cstr = CString::new("").unwrap_or_default();
+                    let cstr = c"";
                     SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
                 } else {
                     // Copy validated values back
@@ -1046,7 +1046,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                     );
 
                     if res == 0 {
-                        let cstr = CString::new("").unwrap_or_default();
+                        let cstr = c"";
                         SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
                     } else {
                         let s = std::str::from_utf8(&buf[..res as usize]).unwrap_or("");
@@ -1476,7 +1476,7 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             );
 
             // zone = "UTC", gmtoff = 0
-            let utc_cstr = CString::new("UTC").unwrap_or_default();
+            let utc_cstr = c"UTC";
             SET_STRING_ELT(
                 VECTOR_ELT(ans, 9),
                 i as R_xlen_t,
@@ -1666,7 +1666,7 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             );
 
             if nn >= 10 {
-                let zone_cstr = CString::new("").unwrap_or_default();
+                let zone_cstr = c"";
                 SET_STRING_ELT(
                     VECTOR_ELT(ans, 9),
                     i as R_xlen_t,

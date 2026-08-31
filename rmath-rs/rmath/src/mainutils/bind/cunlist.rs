@@ -194,7 +194,7 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Attempt method dispatch.
         // DispatchOrEval internal generic: unlist
         let mut ans: SEXP = ptr::null_mut();
-        let generic = std::ffi::CString::new("unlist").unwrap_or_default();
+        let generic = c"unlist";
         // DispatchOrEval returns 1 if dispatched (result in ans), 0 if not.
         let dispatched = DispatchOrEval(call, op, generic.as_ptr(), args, env, &mut ans, 0, 0);
         if dispatched != 0 {
@@ -278,9 +278,8 @@ pub unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
             if lenient || isVector(x_arg) != 0 {
                 return x_arg;
             }
-            let msg = std::ffi::CString::new("argument not a list").unwrap_or_default();
             std::panic::panic_any(crate::sexp::context::RError {
-                message: msg.into_string().unwrap_or_default(),
+                message: "argument not a list".to_string(),
             });
         }
 

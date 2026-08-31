@@ -51,22 +51,21 @@ use crate::sexp::object::Sexp;
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
-
-mod warn;
-mod atomic;
-mod vector;
 mod as_helpers;
-mod safe;
-mod lang;
+mod atomic;
 mod call;
+mod lang;
+mod safe;
+mod vector;
+mod warn;
 
-pub use self::warn::*;
-pub use self::atomic::*;
-pub use self::vector::*;
 pub use self::as_helpers::*;
-pub use self::safe::*;
-pub use self::lang::*;
+pub use self::atomic::*;
 pub use self::call::*;
+pub use self::lang::*;
+pub use self::safe::*;
+pub use self::vector::*;
+pub use self::warn::*;
 #[cfg(test)]
 mod tests;
 

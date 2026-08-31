@@ -208,7 +208,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if names.is_null() {
                 return R_NilValue();
             }
-            let empty = Rf_mkChar(CString::new("").unwrap_or_default().as_ptr());
+            let empty = Rf_mkChar(c"".as_ptr());
             for i in 0..total_len {
                 SET_STRING_ELT(names, i, empty);
             }
@@ -1039,10 +1039,7 @@ pub unsafe fn do_is_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         let is_mat =
             !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) == 2;
         Rf_ScalarLogical(if is_mat { TRUE } else { FALSE })
@@ -1056,10 +1053,7 @@ pub unsafe fn do_is_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);
         }
-        let dim_attr = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim_attr = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
         let is_array = !dim_attr.is_null()
             && dim_attr != R_NilValue()
             && TYPEOF(dim_attr) == SEXPTYPE::INTSXP

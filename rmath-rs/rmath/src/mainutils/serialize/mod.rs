@@ -306,18 +306,18 @@ unsafe fn clear_lazy_load_cache() {
     });
 }
 
-mod core;
 mod api;
-mod stream;
-mod membuf;
-mod lazyload;
 mod compress;
+mod core;
+mod lazyload;
+mod membuf;
+mod stream;
 
-pub use self::core::*;
 pub use self::api::*;
-pub use self::stream::*;
-pub use self::membuf::*;
-pub use self::lazyload::*;
 pub use self::compress::*;
+pub use self::core::*;
+pub use self::lazyload::*;
+pub use self::membuf::*;
+pub use self::stream::*;
 #[cfg(test)]
 mod tests;

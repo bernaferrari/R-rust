@@ -749,10 +749,7 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         }
 
         // Get dimensions
-        let dim = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
 
         if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
             // Not really an array — fall back to regular duplicated
@@ -943,10 +940,7 @@ pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
         };
 
         // Get dimensions
-        let dim = crate::sexp::attrib_core::getAttrib(
-            x,
-            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
-        );
+        let dim = crate::sexp::attrib_core::getAttrib(x, Rf_install(c"dim".as_ptr()));
 
         if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
             // Not really an array — fall back to regular anyDuplicated
@@ -2286,8 +2280,7 @@ pub unsafe fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     if diff > i32::MAX as i64 || diff < i32::MIN as i64 {
                         if !warned {
                             warned = true;
-                            let msg = CString::new("NAs produced by integer overflow")
-                                .unwrap_or_default();
+                            let msg = c"NAs produced by integer overflow";
                             crate::mainutils::errors::Rf_warning(msg.as_ptr());
                         }
                         NA_INTEGER

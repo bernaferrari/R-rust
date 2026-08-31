@@ -28,8 +28,7 @@ pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Has a message
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) == 0 {
-                let c_msg =
-                    std::ffi::CString::new(" [invalid string in stop(.)]").unwrap_or_default();
+                let c_msg = c" [invalid string in stop(.)]";
                 errorcall(c_call, c_msg.as_ptr());
             }
             // Pre-format: in C this is errorcall(c_call, "%s", translateChar(...))
@@ -102,8 +101,7 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             SETCAR(args, coerceVector(message, SEXPTYPE::STRSXP.as_c_int()));
             let message = CAR(args);
             if isValidString(message) == 0 {
-                let c_msg =
-                    std::ffi::CString::new(" [invalid string in warning(.)]").unwrap_or_default();
+                let c_msg = c" [invalid string in warning(.)]";
                 warningcall(c_call, c_msg.as_ptr());
             } else {
                 // Pre-format: in C this is warningcall(c_call, "%s", translateChar(...))

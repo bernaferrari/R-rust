@@ -42,24 +42,12 @@ pub(crate) struct ToplevelTaskCallback {
 
 /// Get the .Last.value symbol.
 pub unsafe fn R_LastvalueSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new(".Last.value")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c".Last.value".as_ptr()) }
 }
 
 /// Get the .Random.seed symbol.
 pub unsafe fn R_SeedsSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new(".Random.seed")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c".Random.seed".as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------

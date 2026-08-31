@@ -1322,7 +1322,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             let mut maxgrpn: c_int = NA_INTEGER;
             let flip = with_radix_state(|s| s.flip) as usize;
             ngrp = with_radix_state(|s| s.gsngrp[flip]);
-            let s_ends = Rf_install(std::ffi::CString::new("ends").unwrap_or_default().as_ptr());
+            let s_ends = Rf_install(c"ends".as_ptr());
             let x_ends = Rf_allocVector3(SEXPTYPE::INTSXP, ngrp as R_xlen_t);
             let _x_ends_guard = protect(x_ends);
             setAttrib(ans, s_ends, x_ends);
@@ -1336,37 +1336,16 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                 }
                 maxgrpn = with_radix_state(|s| s.gsmax[flip]);
             }
-            let s_maxgrpn = Rf_install(
-                std::ffi::CString::new("maxgrpn")
-                    .unwrap_or_default()
-                    .as_ptr(),
-            );
+            let s_maxgrpn = Rf_install(c"maxgrpn".as_ptr());
             let scalar_maxgrpn = Rf_ScalarInteger(maxgrpn);
             let _scalar_maxgrpn_guard = protect(scalar_maxgrpn);
             setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
             // Set class c("grouping", "integer")
             let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let _nms_guard = protect(nms);
-            SET_STRING_ELT(
-                nms,
-                0,
-                Rf_mkChar(
-                    std::ffi::CString::new("grouping")
-                        .unwrap_or_default()
-                        .as_ptr(),
-                ),
-            );
-            SET_STRING_ELT(
-                nms,
-                1,
-                Rf_mkChar(
-                    std::ffi::CString::new("integer")
-                        .unwrap_or_default()
-                        .as_ptr(),
-                ),
-            );
-            let class_sym =
-                Rf_install(std::ffi::CString::new("class").unwrap_or_default().as_ptr());
+            SET_STRING_ELT(nms, 0, Rf_mkChar(c"grouping".as_ptr()));
+            SET_STRING_ELT(nms, 1, Rf_mkChar(c"integer".as_ptr()));
+            let class_sym = Rf_install(c"class".as_ptr());
             setAttrib(ans, class_sym, nms);
         }
 

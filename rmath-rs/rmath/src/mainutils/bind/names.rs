@@ -356,11 +356,8 @@ pub unsafe fn c_Extract_opt(
                     if name_str.starts_with("recurs") {
                         n_recurse += 1;
                         if n_recurse > 1 {
-                            let msg =
-                                std::ffi::CString::new("repeated formal argument 'recursive'")
-                                    .unwrap_or_default();
                             std::panic::panic_any(crate::sexp::context::RError {
-                                message: msg.into_string().unwrap_or_default(),
+                                message: "repeated formal argument 'recursive'".to_string(),
                             });
                         }
                         // Check if CAR(a) is a logical
@@ -382,11 +379,8 @@ pub unsafe fn c_Extract_opt(
                     if name_str.starts_with("use.name") {
                         n_usenames += 1;
                         if n_usenames > 1 {
-                            let msg =
-                                std::ffi::CString::new("repeated formal argument 'use.names'")
-                                    .unwrap_or_default();
                             std::panic::panic_any(crate::sexp::context::RError {
-                                message: msg.into_string().unwrap_or_default(),
+                                message: "repeated formal argument 'use.names'".to_string(),
                             });
                         }
                         let val = CAR(a);
