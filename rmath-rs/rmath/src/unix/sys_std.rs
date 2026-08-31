@@ -54,6 +54,30 @@ pub unsafe fn Rstd_Suicide(s: *const c_char) {
 
 /// Read a line from the console.
 /// Without readline, reads from stdin.
+fn read_console_from(reader: &mut impl BufRead, buf: &mut [u8]) -> c_int {
+    let mut line = String::new();
+
+    match reader.read_line(&mut line) {
+        Ok(0) | Err(_) => 0,
+        Ok(_) => {
+            // Remove trailing newline.
+            if line.ends_with('\n') {
+                line.pop();
+                if line.ends_with('\r') {
+                    line.pop();
+                }
+            }
+            let bytes = line.as_bytes();
+            let copy_len = bytes.len().min(buf.len());
+            buf[..copy_len].copy_from_slice(&bytes[..copy_len]);
+            if copy_len < buf.len() {
+                buf[copy_len] = 0;
+            }
+            1
+        }
+    }
+}
+
 pub unsafe fn Rstd_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
@@ -61,7 +85,7 @@ pub unsafe fn Rstd_ReadConsole(
     _addtohistory: c_int,
 ) -> c_int {
     unsafe {
-        if len <= 0 {
+        if len <= 0 || buf.is_null() {
             return 0;
         }
 
@@ -75,27 +99,8 @@ pub unsafe fn Rstd_ReadConsole(
         // Read from stdin
         let stdin = io::stdin();
         let mut handle = stdin.lock();
-        let mut line = String::new();
-
-        match handle.read_line(&mut line) {
-            Ok(_) => {
-                // Remove trailing newline
-                if line.ends_with('\n') {
-                    line.pop();
-                    if line.ends_with('\r') {
-                        line.pop();
-                    }
-                }
-                let bytes = line.as_bytes();
-                let copy_len = bytes.len().min(len as usize);
-                ptr::copy_nonoverlapping(bytes.as_ptr(), buf, copy_len);
-                if copy_len < len as usize {
-                    *buf.add(copy_len) = 0;
-                }
-                1
-            }
-            Err(_) => 0,
-        }
+        let output = std::slice::from_raw_parts_mut(buf, len as usize);
+        read_console_from(&mut handle, output)
     }
 }
 
@@ -528,11 +533,16 @@ mod tests {
 
     #[test]
     fn test_std_read_console_empty() {
-        unsafe {
-            let mut buf = [0u8; 256];
-            let result = Rstd_ReadConsole(ptr::null(), buf.as_mut_ptr(), 256, 0);
-            // Will return 0 in test context since stdin is not interactive
-            // But we don't assert the value since it depends on test environment
-        }
+        let mut input = io::Cursor::new(Vec::<u8>::new());
+        let mut buf = [0u8; 256];
+        assert_eq!(read_console_from(&mut input, &mut buf), 0);
+    }
+
+    #[test]
+    fn test_std_read_console_uses_injected_input() {
+        let mut input = io::Cursor::new(b"hello\r\n".to_vec());
+        let mut buf = [0xffu8; 256];
+        assert_eq!(read_console_from(&mut input, &mut buf), 1);
+        assert_eq!(&buf[..6], b"hello\0");
     }
 }
