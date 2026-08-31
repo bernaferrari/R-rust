@@ -1317,28 +1317,24 @@ mod tests {
 
     #[test]
     fn test_session_bc_int_active_is_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             set_R_BCIntActive(1);
             assert_eq!(get_R_BCIntActive(), 1);
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| {
-                assert_eq!(get_R_BCIntActive(), 0);
-                set_R_BCIntActive(2);
-                assert_eq!(get_R_BCIntActive(), 2);
-            })
-            .unwrap();
+        right.with_active(|| {
+            assert_eq!(get_R_BCIntActive(), 0);
+            set_R_BCIntActive(2);
+            assert_eq!(get_R_BCIntActive(), 2);
+        });
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             assert_eq!(get_R_BCIntActive(), 1);
             set_R_BCIntActive(0);
-        })
-        .unwrap();
+        });
     }
 
     #[test]

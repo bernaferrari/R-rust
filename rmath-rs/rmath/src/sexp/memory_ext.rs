@@ -482,12 +482,12 @@ mod tests {
     #[test]
     fn test_session_raw_cons_and_vmax_are_local_on_same_thread() {
         let _session = crate::sexp::session::RSession::new();
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
         let mut left_cons = ptr::null_mut();
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             left_cons = cons_raw(ptr::null_mut(), ptr::null_mut());
             assert_eq!(raw_cons_len(), 1);
             let mark = vmaxget();
@@ -496,26 +496,22 @@ mod tests {
             assert_eq!(vmax_len(), 1);
             vmaxset(mark);
             assert_eq!(vmax_len(), 0);
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| unsafe {
-                assert_eq!(raw_cons_len(), 0);
-                let right_cons = cons_raw(ptr::null_mut(), ptr::null_mut());
-                assert_eq!(raw_cons_len(), 1);
-                assert_ne!(right_cons, left_cons);
-                free_raw_cons(right_cons);
-                assert_eq!(raw_cons_len(), 0);
-            })
-            .unwrap();
+        right.with_active(|| unsafe {
+            assert_eq!(raw_cons_len(), 0);
+            let right_cons = cons_raw(ptr::null_mut(), ptr::null_mut());
+            assert_eq!(raw_cons_len(), 1);
+            assert_ne!(right_cons, left_cons);
+            free_raw_cons(right_cons);
+            assert_eq!(raw_cons_len(), 0);
+        });
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             assert_eq!(raw_cons_len(), 1);
             free_raw_cons(left_cons);
             assert_eq!(raw_cons_len(), 0);
-        })
-        .unwrap();
+        });
     }
 
     #[test]

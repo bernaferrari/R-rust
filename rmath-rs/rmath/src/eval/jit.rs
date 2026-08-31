@@ -796,10 +796,10 @@ mod tests {
 
     #[test]
     fn test_jit_settings_are_session_local() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             apply_jit_settings(JitSettings::from_env_values(
                 Some("3"),
                 Some("1"),
@@ -808,28 +808,24 @@ mod tests {
             assert_eq!(get_R_jit_enabled(), 3);
             assert_eq!(get_R_compile_pkgs(), TRUE);
             assert_eq!(get_R_disable_bytecode(), FALSE);
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| {
-                apply_jit_settings(JitSettings::from_env_values(
-                    Some("0"),
-                    Some("0"),
-                    Some("1"),
-                ));
-                assert_eq!(get_R_jit_enabled(), 0);
-                assert_eq!(get_R_compile_pkgs(), FALSE);
-                assert_eq!(get_R_disable_bytecode(), TRUE);
-            })
-            .unwrap();
+        right.with_active(|| {
+            apply_jit_settings(JitSettings::from_env_values(
+                Some("0"),
+                Some("0"),
+                Some("1"),
+            ));
+            assert_eq!(get_R_jit_enabled(), 0);
+            assert_eq!(get_R_compile_pkgs(), FALSE);
+            assert_eq!(get_R_disable_bytecode(), TRUE);
+        });
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             assert_eq!(get_R_jit_enabled(), 3);
             assert_eq!(get_R_compile_pkgs(), TRUE);
             assert_eq!(get_R_disable_bytecode(), FALSE);
-        })
-        .unwrap();
+        });
     }
 
     #[test]
@@ -900,35 +896,31 @@ mod tests {
 
     #[test]
     fn test_session_jit_state_is_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             set_R_jit_enabled(3);
             init_exec_token();
             let left_token = with_required_current_instance(get_R_exec_token_in);
             assert_eq!(get_R_jit_enabled(), 3);
             assert!(!left_token.is_null());
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| unsafe {
-                assert_eq!(get_R_jit_enabled(), 3);
-                assert!(with_required_current_instance(get_R_exec_token_in).is_null());
-                set_R_jit_enabled(1);
-                init_exec_token();
-                let right_token = with_required_current_instance(get_R_exec_token_in);
-                assert_eq!(get_R_jit_enabled(), 1);
-                assert!(!right_token.is_null());
-            })
-            .unwrap();
+        right.with_active(|| unsafe {
+            assert_eq!(get_R_jit_enabled(), 3);
+            assert!(with_required_current_instance(get_R_exec_token_in).is_null());
+            set_R_jit_enabled(1);
+            init_exec_token();
+            let right_token = with_required_current_instance(get_R_exec_token_in);
+            assert_eq!(get_R_jit_enabled(), 1);
+            assert!(!right_token.is_null());
+        });
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             assert_eq!(get_R_jit_enabled(), 3);
             assert!(!with_required_current_instance(get_R_exec_token_in).is_null());
-        })
-        .unwrap();
+        });
     }
 
     #[test]

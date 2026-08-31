@@ -5352,30 +5352,26 @@ mod tests {
 
     #[test]
     fn test_ddval_symbols_are_session_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
         let mut left_sym0 = ptr::null_mut();
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             InitNames();
             left_sym0 = installDDVAL(0);
             assert_eq!(installDDVAL(0), left_sym0);
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| unsafe {
-                InitNames();
-                let right_sym0 = installDDVAL(0);
-                assert_eq!(installDDVAL(0), right_sym0);
-                assert_ne!(right_sym0, left_sym0);
-            })
-            .unwrap();
+        right.with_active(|| unsafe {
+            InitNames();
+            let right_sym0 = installDDVAL(0);
+            assert_eq!(installDDVAL(0), right_sym0);
+            assert_ne!(right_sym0, left_sym0);
+        });
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             assert_eq!(installDDVAL(0), left_sym0);
-        })
-        .unwrap();
+        });
     }
 
     #[test]

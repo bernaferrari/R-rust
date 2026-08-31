@@ -1676,26 +1676,26 @@ mod tests {
     #[test]
     fn test_options_are_session_local_on_same_thread() {
         let _guard = ProtectStackGuard::new();
-        let mut left = crate::sexp::session::RSession::new();
-        let mut right = crate::sexp::session::RSession::new();
+        let left = crate::sexp::session::RSession::new();
+        let right = crate::sexp::session::RSession::new();
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             InitOptions();
             R_SetOptionWidth(111);
             assert_eq!(GetOptionWidth(), 111);
         });
 
-        right.with_arena(|_| unsafe {
+        right.with_active(|| unsafe {
             InitOptions();
             assert_eq!(GetOptionWidth(), 80);
             R_SetOptionWidth(222);
             assert_eq!(GetOptionWidth(), 222);
         });
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             assert_eq!(GetOptionWidth(), 111);
         });
-        right.with_arena(|_| unsafe {
+        right.with_active(|| unsafe {
             assert_eq!(GetOptionWidth(), 222);
         });
     }

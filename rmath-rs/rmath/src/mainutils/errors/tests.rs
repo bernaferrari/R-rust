@@ -66,10 +66,10 @@ fn test_in_error_flag() {
 #[test]
 fn test_session_error_flags_are_local_on_same_thread() {
     let _session = crate::sexp::session::RSession::new();
-    let mut left = RSession::new();
-    let mut right = RSession::new();
+    let left = RSession::new();
+    let right = RSession::new();
 
-    left.with_arena(|_| {
+    left.with_active(|| {
         R_SetInError(7);
         R_SetExpressions(900);
         R_SetExpressionsKeep(901);
@@ -81,27 +81,24 @@ fn test_session_error_flags_are_local_on_same_thread() {
         assert_eq!(r_warn_length(), 123);
         assert!(R_InterruptsSuspended());
         assert!(interrupts_pending());
-    })
-    .unwrap();
+    });
 
-    right
-        .with_arena(|_| {
-            assert_eq!(R_GetInError(), 0);
-            assert_eq!(R_Expressions(), 500);
-            assert_eq!(r_warn_length(), 1000);
-            assert!(!R_InterruptsSuspended());
-            assert!(!interrupts_pending());
+    right.with_active(|| {
+        assert_eq!(R_GetInError(), 0);
+        assert_eq!(R_Expressions(), 500);
+        assert_eq!(r_warn_length(), 1000);
+        assert!(!R_InterruptsSuspended());
+        assert!(!interrupts_pending());
+    
+        R_SetInError(2);
+        R_SetExpressions(600);
+        R_SetWarnLength(456);
+        R_SetInterruptsSuspended(false);
+        R_SetInterruptsPending(false);
+        assert_eq!(R_GetInError(), 2);
+    });
 
-            R_SetInError(2);
-            R_SetExpressions(600);
-            R_SetWarnLength(456);
-            R_SetInterruptsSuspended(false);
-            R_SetInterruptsPending(false);
-            assert_eq!(R_GetInError(), 2);
-        })
-        .unwrap();
-
-    left.with_arena(|_| {
+    left.with_active(|| {
         assert_eq!(R_GetInError(), 7);
         assert_eq!(R_Expressions(), 900);
         R_Expressions_keep();
@@ -109,86 +106,77 @@ fn test_session_error_flags_are_local_on_same_thread() {
         assert_eq!(r_warn_length(), 123);
         assert!(R_InterruptsSuspended());
         assert!(interrupts_pending());
-    })
-    .unwrap();
+    });
 }
 
 #[test]
 fn test_session_warning_collection_is_local_on_same_thread() {
     let _session = crate::sexp::session::RSession::new();
-    let mut left = RSession::new();
-    let mut right = RSession::new();
+    let left = RSession::new();
+    let right = RSession::new();
 
-    left.with_arena(|_| {
+    left.with_active(|| {
         set_collect_warnings(3);
         unsafe {
             setup_warnings();
         }
         assert_eq!(collect_warnings(), 0);
         assert!(!warnings_ptr().is_null());
-    })
-    .unwrap();
+    });
 
-    right
-        .with_arena(|_| {
-            assert_eq!(collect_warnings(), 0);
-            assert!(warnings_ptr().is_null());
-            set_collect_warnings(1);
-            unsafe {
-                setup_warnings();
-            }
-            assert_eq!(collect_warnings(), 0);
-            assert!(!warnings_ptr().is_null());
-            set_warnings_ptr(ptr::null_mut());
-        })
-        .unwrap();
-
-    left.with_arena(|_| {
+    right.with_active(|| {
+        assert_eq!(collect_warnings(), 0);
+        assert!(warnings_ptr().is_null());
+        set_collect_warnings(1);
+        unsafe {
+            setup_warnings();
+        }
+        assert_eq!(collect_warnings(), 0);
         assert!(!warnings_ptr().is_null());
         set_warnings_ptr(ptr::null_mut());
-    })
-    .unwrap();
+    });
+
+    left.with_active(|| {
+        assert!(!warnings_ptr().is_null());
+        set_warnings_ptr(ptr::null_mut());
+    });
 }
 
 #[test]
 fn test_session_handler_and_restart_stacks_are_local_on_same_thread() {
     let _session = crate::sexp::session::RSession::new();
-    let mut left = RSession::new();
-    let mut right = RSession::new();
+    let left = RSession::new();
+    let right = RSession::new();
 
     let mut left_handler = ptr::null_mut();
     let mut left_restart = ptr::null_mut();
 
-    left.with_arena(|_| unsafe {
+    left.with_active(|| unsafe {
         left_handler = Rf_allocVector(SEXPTYPE::VECSXP, 5);
         left_restart = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         set_handler_stack(Rf_cons(left_handler, ptr::null_mut()));
         set_restart_stack(Rf_cons(left_restart, ptr::null_mut()));
         assert_eq!(CAR(handler_stack()), left_handler);
         assert_eq!(CAR(restart_stack()), left_restart);
-    })
-    .unwrap();
+    });
 
-    right
-        .with_arena(|_| unsafe {
-            assert!(handler_stack().is_null());
-            assert!(restart_stack().is_null());
-            let right_handler = Rf_allocVector(SEXPTYPE::VECSXP, 5);
-            let right_restart = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-            set_handler_stack(Rf_cons(right_handler, ptr::null_mut()));
-            set_restart_stack(Rf_cons(right_restart, ptr::null_mut()));
-            assert_eq!(CAR(handler_stack()), right_handler);
-            assert_eq!(CAR(restart_stack()), right_restart);
-        })
-        .unwrap();
+    right.with_active(|| unsafe {
+        assert!(handler_stack().is_null());
+        assert!(restart_stack().is_null());
+        let right_handler = Rf_allocVector(SEXPTYPE::VECSXP, 5);
+        let right_restart = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        set_handler_stack(Rf_cons(right_handler, ptr::null_mut()));
+        set_restart_stack(Rf_cons(right_restart, ptr::null_mut()));
+        assert_eq!(CAR(handler_stack()), right_handler);
+        assert_eq!(CAR(restart_stack()), right_restart);
+    });
 
-    left.with_arena(|_| unsafe {
+    left.with_active(|| unsafe {
         assert_eq!(CAR(handler_stack()), left_handler);
         assert_eq!(CAR(restart_stack()), left_restart);
         set_handler_stack(ptr::null_mut());
         set_restart_stack(ptr::null_mut());
-    })
-    .unwrap();
+    });
 }
 
 #[test]

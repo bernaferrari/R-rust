@@ -137,36 +137,32 @@ mod tests {
 
     #[test]
     fn test_session_env_hash_tables_are_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
         let env = 0x1000usize as SEXP;
         let sym = 0x2000usize as SEXP;
         let left_val = 0x3000usize as SEXP;
         let right_val = 0x4000usize as SEXP;
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             promote_to_hash_table(env, &[(sym, left_val)]);
             assert!(env_has_hash_table(env));
             assert_eq!(hash_get(env, sym), Some(left_val));
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| {
-                assert!(!env_has_hash_table(env));
-                assert_eq!(hash_get(env, sym), None);
-                promote_to_hash_table(env, &[(sym, right_val)]);
-                assert_eq!(hash_get(env, sym), Some(right_val));
-            })
-            .unwrap();
+        right.with_active(|| {
+            assert!(!env_has_hash_table(env));
+            assert_eq!(hash_get(env, sym), None);
+            promote_to_hash_table(env, &[(sym, right_val)]);
+            assert_eq!(hash_get(env, sym), Some(right_val));
+        });
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             assert_eq!(hash_get(env, sym), Some(left_val));
             remove_env(env);
             assert!(!env_has_hash_table(env));
-        })
-        .unwrap();
+        });
     }
 
     #[test]

@@ -193,34 +193,30 @@ mod tests {
 
     #[test]
     fn test_session_bc_stacks_are_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             with_bc_stack(|stack| {
                 stack.push(0x1 as SEXP);
                 assert_eq!(stack.depth(), 1);
             });
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| unsafe {
-                with_bc_stack(|stack| {
-                    assert_eq!(stack.depth(), 0);
-                    stack.push(0x2 as SEXP);
-                    assert_eq!(stack.pop(), 0x2 as SEXP);
-                });
-            })
-            .unwrap();
+        right.with_active(|| unsafe {
+            with_bc_stack(|stack| {
+                assert_eq!(stack.depth(), 0);
+                stack.push(0x2 as SEXP);
+                assert_eq!(stack.pop(), 0x2 as SEXP);
+            });
+        });
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             with_bc_stack(|stack| {
                 assert_eq!(stack.depth(), 1);
                 assert_eq!(stack.pop(), 0x1 as SEXP);
             });
-        })
-        .unwrap();
+        });
     }
 
     #[test]

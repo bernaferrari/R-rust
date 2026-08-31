@@ -2105,12 +2105,11 @@ mod tests {
             })
             .unwrap();
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             let stats = get_gc_stats();
             assert_eq!(stats.collections, 1);
             assert_eq!(stats.freed, 1);
-        })
-        .unwrap();
+        });
     }
 
     #[test]
@@ -2148,12 +2147,11 @@ mod tests {
             })
             .unwrap();
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
             minor_gc();
             assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
-        })
-        .unwrap();
+        });
     }
 
     #[test]

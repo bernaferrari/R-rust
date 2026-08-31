@@ -218,21 +218,40 @@ impl Drop for RenderPlotBackendGuard {
     }
 }
 
-struct ProtectScope<'a> {
-    stack: &'a RefCell<Vec<SEXP>>,
+struct ProtectScope {
+    /// Address of the owning protect stack, stored with exposed provenance —
+    /// see `with_stack`. Holding a Rust reference across the scoped closure
+    /// would be a protected lend that ambient `&mut RInstance`
+    /// re-acquisition under the closure invalidates (aliasing UB under
+    /// Stacked Borrows), so the scope keeps only the address and re-derives
+    /// the shared stack view per operation, exactly like
+    /// `protect::with_guard_owner`.
+    stack: usize,
     depth: usize,
 }
 
-impl<'a> ProtectScope<'a> {
-    fn new(stack: &'a RefCell<Vec<SEXP>>) -> Self {
+impl ProtectScope {
+    fn new(stack: &RefCell<Vec<SEXP>>) -> Self {
         let depth = stack.borrow().len();
-        Self { stack, depth }
+        Self {
+            stack: std::ptr::from_ref(stack).addr(),
+            depth,
+        }
+    }
+
+    /// Re-derive the owning stack through the exposed-provenance wildcard:
+    /// the shared retag re-bases on the still-live session root tag (shared
+    /// accesses push, never pop) and stays valid across ambient `&mut`
+    /// re-acquisition. The session owns the stack and outlives the scope.
+    fn with_stack<R>(&self, f: impl FnOnce(&RefCell<Vec<SEXP>>) -> R) -> R {
+        // SAFETY: see the struct docs; the stack outlives the scope.
+        f(unsafe { &*std::ptr::with_exposed_provenance::<RefCell<Vec<SEXP>>>(self.stack) })
     }
 }
 
-impl Drop for ProtectScope<'_> {
+impl Drop for ProtectScope {
     fn drop(&mut self) {
-        self.stack.borrow_mut().truncate(self.depth);
+        self.with_stack(|stack| stack.borrow_mut().truncate(self.depth));
     }
 }
 
@@ -955,7 +974,12 @@ impl RSession {
             return None;
         }
         let _guard = self.activate();
-        Some(f(&mut self.inst_mut().arena))
+        // Route through `with_arena_in` (not a direct `inst_mut().arena`
+        // lend): it exposes the arena lend for wildcard re-acquisition by
+        // ambient APIs under the closure (Stacked-Borrows discipline, see
+        // `instance::acquire_instance_mut`) and processes deferred
+        // alloc-time GC hooks exactly like every other arena entry point.
+        Some(super::memory::with_arena_in(self.inst_mut(), f))
     }
 
     /// Return the current arena budget for this session.
@@ -1397,7 +1421,7 @@ mod tests {
 
     #[test]
     fn test_session_method_activation_restores_previous_instance() {
-        let mut older = RSession::new();
+        let older = RSession::new();
         let older_instance = older.instance_ptr();
         let newer = RSession::new();
         let newer_instance = newer.instance_ptr();
@@ -1409,13 +1433,13 @@ mod tests {
                 .unwrap_or(false)
         );
 
-        let activated_older = older.with_arena(|_| {
+        let activated_older = older.with_active(|| {
             current_instance_ptr()
                 .map(|ptr| std::ptr::eq(ptr as *const RInstance, older_instance))
                 .unwrap_or(false)
         });
 
-        assert_eq!(activated_older, Some(true));
+        assert!(activated_older);
         assert!(
             current_instance_ptr()
                 .map(|ptr| std::ptr::eq(ptr as *const RInstance, newer_instance))
@@ -1682,12 +1706,12 @@ mod tests {
 
     #[test]
     fn test_session_protect_and_preserve_are_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
         let protected = 0x1 as SEXP;
         let preserved = 0x2 as SEXP;
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             std::mem::forget(protect(protected));
             unsafe {
                 R_PreserveObject(preserved);
@@ -1696,12 +1720,12 @@ mod tests {
             with_preserved_objects(|objects| assert_eq!(objects, &[preserved]));
         });
 
-        right.with_arena(|_| {
+        right.with_active(|| {
             assert_eq!(R_ProtectCount(), 0);
             with_preserved_objects(|objects| assert!(objects.is_empty()));
         });
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             drop(protect_n(1));
             unsafe {
                 R_ReleaseObject(preserved);

@@ -78,30 +78,26 @@ fn test_type2char_basic() {
 
 #[test]
 fn test_blank_string_is_session_local_on_same_thread() {
-    let mut left = RSession::new();
-    let mut right = RSession::new();
+    let left = RSession::new();
+    let right = RSession::new();
 
     let mut left_blank = ptr::null_mut();
-    left.with_arena(|_| unsafe {
+    left.with_active(|| unsafe {
         left_blank = R_BlankString();
         assert!(!left_blank.is_null());
         assert_eq!(R_BlankString(), left_blank);
-    })
-    .unwrap();
+    });
 
-    right
-        .with_arena(|_| unsafe {
-            let right_blank = R_BlankString();
-            assert!(!right_blank.is_null());
-            assert_eq!(R_BlankString(), right_blank);
-            assert_ne!(right_blank, left_blank);
-        })
-        .unwrap();
+    right.with_active(|| unsafe {
+        let right_blank = R_BlankString();
+        assert!(!right_blank.is_null());
+        assert_eq!(R_BlankString(), right_blank);
+        assert_ne!(right_blank, left_blank);
+    });
 
-    left.with_arena(|_| unsafe {
+    left.with_active(|| unsafe {
         assert_eq!(R_BlankString(), left_blank);
-    })
-    .unwrap();
+    });
 }
 
 #[test]

@@ -816,7 +816,16 @@ pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -
 where
     F: FnOnce(&mut RArena) -> R,
 {
-    let result = f(&mut inst.arena);
+    let arena = &mut inst.arena;
+    // Expose the lend: closures under this borrow legitimately re-enter the
+    // ambient instance APIs, whose wildcard re-acquisition (see
+    // `instance::acquire_instance_mut`) needs this tag as its re-base point.
+    // Without it the re-acquisition could only re-base on the root tag,
+    // which would pop this (protected) lend — aliasing UB under Stacked
+    // Borrows. Exposing a lend enables no access beyond what the live
+    // borrow already grants: the tag dies with the lend.
+    (arena as *mut RArena).expose_provenance();
+    let result = f(arena);
     // Deferred alloc-time GC hooks: the arena methods above run under the
     // live `&mut RArena` borrow and cannot touch instance state without
     // re-acquiring `&mut RInstance` while this borrow is still live and

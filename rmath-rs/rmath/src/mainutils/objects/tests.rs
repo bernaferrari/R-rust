@@ -427,27 +427,27 @@ mod tests {
 
     #[test]
     fn test_standard_generic_ptr_is_session_local() {
-        let mut left = crate::sexp::session::RSession::new();
-        let mut right = crate::sexp::session::RSession::new();
+        let left = crate::sexp::session::RSession::new();
+        let right = crate::sexp::session::RSession::new();
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             assert!(R_set_standardGeneric_ptr(Some(standard_generic_a), ptr::null_mut()).is_none());
             assert_eq!(isMethodsDispatchOn(), TRUE);
         });
 
-        right.with_arena(|_| unsafe {
+        right.with_active(|| unsafe {
             assert_eq!(isMethodsDispatchOn(), FALSE);
             assert!(R_set_standardGeneric_ptr(Some(standard_generic_b), ptr::null_mut()).is_none());
             assert_eq!(isMethodsDispatchOn(), TRUE);
         });
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             assert_eq!(isMethodsDispatchOn(), TRUE);
             assert!(R_set_standardGeneric_ptr(None, ptr::null_mut()).is_some());
             assert_eq!(isMethodsDispatchOn(), FALSE);
         });
 
-        right.with_arena(|_| unsafe {
+        right.with_active(|| unsafe {
             assert_eq!(isMethodsDispatchOn(), TRUE);
         });
     }

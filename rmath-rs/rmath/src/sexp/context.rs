@@ -239,6 +239,16 @@ pub struct ContextGuard {
 }
 
 impl ContextGuard {
+    /// The instance this guard is bound to.
+    ///
+    /// Exposed so tests (and future callers) can inspect the bound instance
+    /// through the guard's OWN pointer: a fresh borrow of the underlying
+    /// local would retag the allocation and pop the guard's borrow tag out
+    /// from under its drop path (aliasing UB under Stacked Borrows).
+    pub(crate) fn instance_ptr(&self) -> *mut RInstance {
+        self.instance
+    }
+
     pub fn context(&self) -> *mut RCNTXT {
         self.context
     }
@@ -629,53 +639,48 @@ mod tests {
 
     #[test]
     fn test_session_context_stacks_are_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        let left_ctx = left
-            .with_arena(|_| unsafe {
-                let ctx = Rf_begincontext(
-                    ctxt_flags::CTXT_FUNCTION,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    None,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                );
-                assert_eq!(R_GlobalContext(), ctx);
-                ctx
-            })
-            .unwrap();
+        let left_ctx = left.with_active(|| unsafe {
+            let ctx = Rf_begincontext(
+                ctxt_flags::CTXT_FUNCTION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            assert_eq!(R_GlobalContext(), ctx);
+            ctx
+        });
 
-        right
-            .with_arena(|_| unsafe {
-                assert!(R_GlobalContext().is_null());
-                let right_ctx = Rf_begincontext(
-                    ctxt_flags::CTXT_LOOP,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    None,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                );
-                assert_eq!(R_GlobalContext(), right_ctx);
-                let found = Rf_findcontext(ctxt_flags::CTXT_LOOP, ptr::null_mut(), ptr::null_mut());
-                assert_eq!(found, right_ctx);
-                Rf_endcontext(right_ctx);
-                assert!(R_GlobalContext().is_null());
-            })
-            .unwrap();
+        right.with_active(|| unsafe {
+            assert!(R_GlobalContext().is_null());
+            let right_ctx = Rf_begincontext(
+                ctxt_flags::CTXT_LOOP,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            assert_eq!(R_GlobalContext(), right_ctx);
+            let found = Rf_findcontext(ctxt_flags::CTXT_LOOP, ptr::null_mut(), ptr::null_mut());
+            assert_eq!(found, right_ctx);
+            Rf_endcontext(right_ctx);
+            assert!(R_GlobalContext().is_null());
+        });
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             assert_eq!(R_GlobalContext(), left_ctx);
             let found = Rf_findcontext(ctxt_flags::CTXT_FUNCTION, ptr::null_mut(), ptr::null_mut());
             assert_eq!(found, left_ctx);
             Rf_endcontext(left_ctx);
             assert!(R_GlobalContext().is_null());
-        })
-        .unwrap();
+        });
     }
 
     #[test]
@@ -695,7 +700,14 @@ mod tests {
                 ptr::null_mut(),
             );
 
-            assert_eq!(left.context_stack.len(), 1);
+            // Mid-guard read goes through the guard's OWN instance pointer:
+            // a fresh `&mut left`/`&left` borrow here would retag the
+            // allocation and pop the guard's borrow tag out from under its
+            // drop path (aliasing UB under Stacked Borrows).
+            assert_eq!(
+                unsafe { (*guard.instance_ptr()).context_stack.len() },
+                1
+            );
             assert!(right.context_stack.is_empty());
 
             replace_current_instance(Some(&mut right as *mut RInstance));
@@ -709,28 +721,24 @@ mod tests {
 
     #[test]
     fn test_session_in_error_flags_are_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             R_SetInError(true);
             assert!(R_GetInError());
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| {
-                assert!(!R_GetInError());
-                R_SetInError(false);
-                assert!(!R_GetInError());
-            })
-            .unwrap();
+        right.with_active(|| {
+            assert!(!R_GetInError());
+            R_SetInError(false);
+            assert!(!R_GetInError());
+        });
 
-        left.with_arena(|_| {
+        left.with_active(|| {
             assert!(R_GetInError());
             R_SetInError(false);
             assert!(!R_GetInError());
-        })
-        .unwrap();
+        });
     }
 }

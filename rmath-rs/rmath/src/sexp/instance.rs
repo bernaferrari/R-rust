@@ -713,9 +713,16 @@ where
     F: FnOnce(&mut RInstance) -> R,
 {
     let _borrow = enter_instance_borrow();
-    // SAFETY: original design used raw ptr precisely to support ambient access
-    // patterns including the safe point extra-protect bracketing gc.
-    unsafe { f(&mut *ptr) }
+    // SAFETY: the address is re-derived through the exposed-provenance
+    // wildcard (same discipline as `protect::with_guard_owner`), NOT by
+    // retagging the stored root tag: a direct `&mut *ptr` from the root
+    // pops every later tag on the allocation, including strongly-protected
+    // lends such as the `&mut inst.arena` a `with_arena` closure runs
+    // under (aliasing UB under Stacked Borrows). The wildcard retag
+    // re-bases on the topmost live exposed tag instead, so ambient
+    // re-acquisition under a live lend re-bases on that lend. The instance
+    // root provenance is exposed at every `set/replace_current_instance`.
+    unsafe { f(&mut *std::ptr::with_exposed_provenance::<RInstance>(ptr.addr()).cast_mut()) }
 }
 
 /// Set the current thread-local R instance for translated compatibility code.

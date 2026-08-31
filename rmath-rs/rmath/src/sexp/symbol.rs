@@ -343,18 +343,12 @@ mod tests {
 
     #[test]
     fn test_session_local_symbol_tables() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        let left_a = left
-            .with_arena(|_| unsafe { Rf_install(c"session_local_symbol".as_ptr()) })
-            .unwrap();
-        let left_b = left
-            .with_arena(|_| unsafe { Rf_install(c"session_local_symbol".as_ptr()) })
-            .unwrap();
-        let right_a = right
-            .with_arena(|_| unsafe { Rf_install(c"session_local_symbol".as_ptr()) })
-            .unwrap();
+        let left_a = left.with_active(|| unsafe { Rf_install(c"session_local_symbol".as_ptr()) });
+        let left_b = left.with_active(|| unsafe { Rf_install(c"session_local_symbol".as_ptr()) });
+        let right_a = right.with_active(|| unsafe { Rf_install(c"session_local_symbol".as_ptr()) });
 
         assert_eq!(left_a, left_b);
         assert_ne!(left_a, right_a);

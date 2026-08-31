@@ -339,7 +339,7 @@ pub unsafe fn R_NaString() -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::super::ffi::*;
-    use super::super::instance::{RInstance, replace_current_instance};
+    use super::super::instance::{RInstance, current_instance_ptr, replace_current_instance};
     use super::*;
 
     #[test]
@@ -455,15 +455,20 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
-
-        set_R_Visible_in(&mut left, 0);
+        // Direct access to the installed instance goes through the pointer
+        // recorded at install time: a fresh `&mut left` would retag the
+        // allocation and pop the installed borrow tag out from under the
+        // ambient re-acquisition the `set_R_Visible`/`set_R_EvalDepth`
+        // calls below perform (Stacked Borrows).
+        let left_ptr = current_instance_ptr().expect("left should be installed");
+        set_R_Visible_in(unsafe { &mut *left_ptr }, 0);
         set_R_Visible_in(&mut right, 1);
-        set_R_EvalDepth_in(&mut left, 7);
+        set_R_EvalDepth_in(unsafe { &mut *left_ptr }, 7);
         set_R_EvalDepth_in(&mut right, 13);
 
-        assert_eq!(R_Visible_in(&mut left), 0);
+        assert_eq!(R_Visible_in(unsafe { &mut *left_ptr }), 0);
         assert_eq!(R_Visible_in(&mut right), 1);
-        assert_eq!(R_EvalDepth_in(&mut left), 7);
+        assert_eq!(R_EvalDepth_in(unsafe { &mut *left_ptr }), 7);
         assert_eq!(R_EvalDepth_in(&mut right), 13);
 
         set_R_Visible(1);

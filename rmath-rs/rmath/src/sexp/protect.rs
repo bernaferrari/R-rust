@@ -722,7 +722,7 @@ mod tests {
     use std::ptr;
 
     use crate::sexp::ffi::SEXPTYPE;
-    use crate::sexp::instance::{RInstance, replace_current_instance};
+    use crate::sexp::instance::{RInstance, current_instance_ptr, replace_current_instance};
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -1060,11 +1060,19 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
-        let raw = left.arena.alloc_node(SEXPTYPE::INTSXP);
-        let value = left.arena.sexp(raw).expect("left arena object should wrap");
+        // Direct access to the installed instance goes through the pointer
+        // recorded at install time: a fresh `&mut left` would retag the
+        // allocation and pop the installed borrow tag out from under the
+        // ambient re-acquisition `preserve_sexp` performs (Stacked Borrows).
+        let left_ptr = current_instance_ptr().expect("left should be installed");
+        let raw = unsafe { (*left_ptr).arena.alloc_node(SEXPTYPE::INTSXP) };
+        let value = unsafe { (*left_ptr).arena.sexp(raw) }
+            .expect("left arena object should wrap");
 
         let guard = preserve_sexp(value);
-        with_preserved_objects_in(&mut left, |objects| assert_eq!(objects, &[raw]));
+        with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
+            assert_eq!(objects, &[raw])
+        });
         with_preserved_objects_in(&mut right, |objects| assert!(objects.is_empty()));
 
         unsafe {
@@ -1072,7 +1080,9 @@ mod tests {
         }
         drop(guard);
 
-        with_preserved_objects_in(&mut left, |objects| assert!(objects.is_empty()));
+        with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
+            assert!(objects.is_empty())
+        });
         with_preserved_objects_in(&mut right, |objects| assert!(objects.is_empty()));
         unsafe {
             replace_current_instance(previous);

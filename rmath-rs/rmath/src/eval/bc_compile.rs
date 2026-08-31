@@ -380,10 +380,8 @@ mod tests {
 
     #[test]
     fn compile_constant_round_trips_through_bc_eval() {
-        let mut session = RSession::new();
-        let expr = session
-            .with_arena(|_| unsafe { Rf_ScalarInteger(42) })
-            .expect("session active");
+        let session = RSession::new();
+        let expr = session.with_active(|| unsafe { Rf_ScalarInteger(42) });
         let env = session.global_env().expect("global env");
 
         unsafe {

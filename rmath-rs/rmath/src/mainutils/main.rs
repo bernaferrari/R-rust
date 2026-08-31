@@ -783,10 +783,10 @@ mod tests {
 
     #[test]
     fn test_session_main_state_is_local_on_same_thread() {
-        let mut left = RSession::new();
-        let mut right = RSession::new();
+        let left = RSession::new();
+        let right = RSession::new();
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             R_SetQuiet(1);
             R_SetInteractive(0);
             R_SetEvalDepth(12);
@@ -799,28 +799,24 @@ mod tests {
             assert_eq!(R_PPStackTop(), 4);
             assert_eq!(R_GetCollectWarnings(), 5);
             assert_eq!(R_GetVisible(), FALSE);
-        })
-        .unwrap();
+        });
 
-        right
-            .with_arena(|_| unsafe {
-                assert_eq!(R_Quiet(), 0);
-                assert_eq!(R_Interactive(), 1);
-                assert_eq!(R_GetEvalDepth(), 0);
-                assert_eq!(R_PPStackTop(), 0);
-                assert_eq!(R_GetCollectWarnings(), 0);
-                assert_eq!(R_GetVisible(), TRUE);
-            })
-            .unwrap();
+        right.with_active(|| unsafe {
+            assert_eq!(R_Quiet(), 0);
+            assert_eq!(R_Interactive(), 1);
+            assert_eq!(R_GetEvalDepth(), 0);
+            assert_eq!(R_PPStackTop(), 0);
+            assert_eq!(R_GetCollectWarnings(), 0);
+            assert_eq!(R_GetVisible(), TRUE);
+        });
 
-        left.with_arena(|_| unsafe {
+        left.with_active(|| unsafe {
             assert_eq!(R_Quiet(), 1);
             assert_eq!(R_Interactive(), 0);
             assert_eq!(R_GetEvalDepth(), 12);
             assert_eq!(R_PPStackTop(), 4);
             assert_eq!(R_GetCollectWarnings(), 5);
             assert_eq!(R_GetVisible(), FALSE);
-        })
-        .unwrap();
+        });
     }
 }
