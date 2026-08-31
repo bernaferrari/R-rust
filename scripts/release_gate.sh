@@ -174,7 +174,8 @@ run cargo fmt --check --all
 
 if [[ "$RUN_STRICT_CLIPPY" -eq 1 ]]; then
     section "Strict clippy"
-    run cargo clippy --all-targets --all-features -- -D warnings
+    run cargo clippy --workspace --all-targets -- -D warnings
+    run cargo check -p r-embed --no-default-features --features fortran-backend
 else
     section "Strict clippy"
     echo "Skipped by --no-strict-clippy. Do not use this mode for release signoff."

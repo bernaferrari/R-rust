@@ -171,6 +171,18 @@ PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --regen-goldens
 ./scripts/wasm_toolchain_check.sh
 ```
 
+`r-embed` selects exactly one dense linear-algebra backend. Its default is the
+portable pure-Rust/faer implementation. Desktop hosts that provide compatible
+Fortran BLAS/LAPACK can select the system profile explicitly:
+
+```bash
+cargo check -p r-embed --no-default-features --features fortran-backend
+```
+
+The `rust-backend` and `fortran-backend` features are mutually exclusive;
+building with both or neither is a compile-time error. The system profile is
+not supported on Android or WASM.
+
 ## Known gaps
 
 Honest ledger, each scoped with a reproduction:

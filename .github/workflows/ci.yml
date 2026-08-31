@@ -42,6 +42,11 @@ jobs:
       - name: Clippy (workspace, deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Check system BLAS/LAPACK embedding profile
+        run: >-
+          cargo check -p r-embed --no-default-features
+          --features fortran-backend
+
   test:
     name: Test
     runs-on: ubuntu-latest
