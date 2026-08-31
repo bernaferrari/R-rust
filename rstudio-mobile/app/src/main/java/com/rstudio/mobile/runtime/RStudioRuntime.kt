@@ -137,29 +137,18 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(initialUiState())
     val state: StateFlow<RStudioUiState> = _state
 
-    private fun initialUiState(): RStudioUiState = projects.restoreRecovery()?.let { recovered ->
-            RStudioUiState(
-                code = recovered.code,
-                currentFileName = recovered.name,
-                currentDocumentUri = recovered.sourceUri,
-                isDirty = true,
-                status = "Recovered unsaved work",
-                documents = listOf(EditorDocument("recovery", recovered.name, recovered.code, recovered.sourceUri, isDirty = true)),
-                activeDocumentId = "recovery",
-            )
-        } ?: restoreEditorState().let { persisted ->
-            val active = persisted.documents.firstOrNull { it.id == persisted.activeId }
-            RStudioUiState(
-                documents = persisted.documents,
-                activeDocumentId = persisted.activeId,
-                code = active?.code ?: DEFAULT_CODE,
-                currentFileName = active?.name ?: "untitled.R",
-                currentScriptPath = active?.localPath,
-                currentDocumentUri = active?.sourceUri,
-                isDirty = active?.isDirty ?: false,
-                consoleHistory = persisted.consoleHistory,
-            )
+    private fun initialUiState(): RStudioUiState {
+        val persisted = restoreEditorState()
+        val recovery = projects.restoreRecovery()?.let {
+            RecoveryDraft(name = it.name, sourceUri = it.sourceUri, code = it.code)
         }
+        return restoredEditorState(
+            documents = persisted.documents,
+            requestedActiveId = persisted.activeId,
+            consoleHistory = persisted.consoleHistory,
+            recovery = recovery,
+        )
+    }
 
     private fun restoreEditorState(): PersistedEditorState {
         val raw = sessionPreferences.getString("documents", null) ?: return PersistedEditorState(
@@ -253,15 +242,7 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateCode(code: String) {
-        _state.update { state ->
-            state.copy(
-                code = code,
-                isDirty = true,
-                documents = state.documents.map { document ->
-                    if (document.id == state.activeDocumentId) document.copy(code = code, isDirty = true) else document
-                },
-            )
-        }
+        _state.update { it.editActiveDocument(code) }
         recoveryJob?.cancel()
         recoveryJob = scope.launch {
             delay(500)
@@ -371,73 +352,77 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     fun saveScriptLocal() {
         runTask("Saving script...") {
             val state = _state.value
-            if (state.currentDocumentUri != null) {
+            val snapshot = state.activeSaveSnapshot()
+            if (snapshot.sourceUri != null) {
                 withContext(Dispatchers.IO) {
-                    projects.writeText(Uri.parse(state.currentDocumentUri), state.currentScriptPath, state.code)
-                    projects.clearRecovery()
+                    projects.writeText(Uri.parse(snapshot.sourceUri), snapshot.localPath, snapshot.code)
                 }
-                _state.update { it.copy(status = "Saved ${it.currentFileName}", isDirty = false, errorMessage = null).withActiveDocument(false) }
-                appendConsole("Saved script ${state.currentFileName}")
+                val clearRecovery = _state.value.canClearRecovery(snapshot)
+                _state.update { it.completeDocumentSave(snapshot) }
+                if (clearRecovery) withContext(Dispatchers.IO) { projects.clearRecovery() }
+                appendConsole("Saved script ${snapshot.name}")
                 return@runTask
             }
             val project = state.toWorkspaceProject()
             if (project != null) {
                 val created = withContext(Dispatchers.IO) {
-                    projects.createScript(project, state.currentFileName, state.code)
+                    projects.createScript(project, snapshot.name, snapshot.code)
                 }
-                withContext(Dispatchers.IO) { projects.clearRecovery() }
+                val clearRecovery = _state.value.canClearRecovery(snapshot)
                 _state.update {
-                    it.copy(
-                        currentFileName = created.name,
-                        currentScriptPath = created.localPath,
-                        currentDocumentUri = created.uri,
-                        projectFiles = (it.projectFiles + created).sortedBy(ProjectFile::relativePath),
-                        isDirty = false,
+                    it.completeDocumentSave(
+                        snapshot = snapshot,
+                        savedName = created.name,
+                        savedSourceUri = created.uri,
+                        savedLocalPath = created.localPath,
                         status = "Created ${created.name}",
-                        errorMessage = null,
-                    ).withActiveDocument(false)
+                    ).copy(
+                        projectFiles = (it.projectFiles + created).sortedBy(ProjectFile::relativePath),
+                    )
                 }
+                if (clearRecovery) withContext(Dispatchers.IO) { projects.clearRecovery() }
                 appendConsole("Created project script ${created.name}")
                 return@runTask
             }
             val saved = withContext(Dispatchers.IO) {
-                saveScriptToWorkspace(state.currentFileName, state.code)
+                saveScriptToWorkspace(snapshot.name, snapshot.code)
             }
-            withContext(Dispatchers.IO) { projects.clearRecovery() }
+            val clearRecovery = _state.value.canClearRecovery(snapshot)
             refreshRecentScriptsNow()
             _state.update {
-                it.copy(
-                    currentFileName = saved.name,
-                    currentScriptPath = saved.absolutePath,
-                    isDirty = false,
-                    status = "Saved ${saved.name}",
-                    errorMessage = null,
-                ).withActiveDocument(false)
+                it.completeDocumentSave(
+                    snapshot = snapshot,
+                    savedName = saved.name,
+                    savedSourceUri = null,
+                    savedLocalPath = saved.absolutePath,
+                )
             }
+            if (clearRecovery) withContext(Dispatchers.IO) { projects.clearRecovery() }
             appendConsole("Saved script ${saved.name}")
         }
     }
 
     fun saveScriptTo(uri: Uri) {
+        val snapshot = _state.value.activeSaveSnapshot()
         runTask("Exporting script...") {
             withContext(Dispatchers.IO) {
                 context.contentResolver.openOutputStream(uri, "wt").use { output ->
                     requireNotNull(output) { "Could not open destination file" }
-                    output.write(_state.value.code.toByteArray(Charsets.UTF_8))
+                    output.write(snapshot.code.toByteArray(Charsets.UTF_8))
                 }
             }
-            val name = displayName(uri, _state.value.currentFileName).sanitizeFileName()
-            withContext(Dispatchers.IO) { projects.clearRecovery() }
+            val name = displayName(uri, snapshot.name).sanitizeFileName()
+            val clearRecovery = _state.value.canClearRecovery(snapshot)
             _state.update {
-                it.copy(
-                    currentFileName = name,
-                    currentScriptPath = null,
-                    currentDocumentUri = uri.toString(),
-                    isDirty = false,
+                it.completeDocumentSave(
+                    snapshot = snapshot,
+                    savedName = name,
+                    savedSourceUri = uri.toString(),
+                    savedLocalPath = null,
                     status = "Exported $name",
-                    errorMessage = null,
-                ).withActiveDocument(false)
+                )
             }
+            if (clearRecovery) withContext(Dispatchers.IO) { projects.clearRecovery() }
             appendConsole("Exported script $name")
         }
     }
@@ -568,14 +553,15 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
         runTask("Opening ${file.name}…") {
             val code = withContext(Dispatchers.IO) { projects.readText(file) }
             _state.update {
-                it.copy(
-                    code = code,
-                    currentFileName = file.name,
-                    currentScriptPath = file.localPath,
-                    currentDocumentUri = file.uri,
-                    isDirty = false,
+                it.openEditorDocument(
+                    EditorDocument(
+                        id = file.uri,
+                        name = file.name,
+                        code = code,
+                        sourceUri = file.uri,
+                        localPath = file.localPath,
+                    ),
                     status = "Opened ${file.name}",
-                    errorMessage = null,
                 )
             }
             appendConsole("Opened ${file.relativePath}")
@@ -1289,21 +1275,6 @@ private fun RStudioUiState.toWorkspaceProject(): WorkspaceProject? {
 
 private fun List<EditorDocument>.upsert(document: EditorDocument): List<EditorDocument> =
     filterNot { it.id == document.id } + document
-
-private fun RStudioUiState.withActiveDocument(dirty: Boolean = isDirty): RStudioUiState =
-    copy(
-        isDirty = dirty,
-        documents = documents.upsert(
-            EditorDocument(
-                id = activeDocumentId,
-                name = currentFileName,
-                code = code,
-                sourceUri = currentDocumentUri,
-                localPath = currentScriptPath,
-                isDirty = dirty,
-            ),
-        ),
-    )
 
 private const val DEFAULT_CODE = """# Try real R code
 x <- c(1, 2, 3, 4)
