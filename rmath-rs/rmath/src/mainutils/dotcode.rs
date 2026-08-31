@@ -179,7 +179,7 @@ unsafe fn native_extension_policy_error(call: SEXP, entrypoint: &str) -> ! {
 }
 
 fn native_extension_policy_enabled() -> bool {
-    true
+    !crate::mainutils::rdynload::native_extensions_enabled()
 }
 
 unsafe fn warning(msg: &str) {

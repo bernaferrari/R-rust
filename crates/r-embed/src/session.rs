@@ -231,7 +231,8 @@ impl RSession {
         Ok(())
     }
 
-    /// Enable `system()` and `pipe()` for desktop-style hosts.
+    /// Enable trusted host-process features (`system`, pipes, and native
+    /// extensions) for desktop-style embedders.
     ///
     /// Embedded mobile and WASM sessions keep these disabled by default.
     pub fn enable_host_process_capabilities(&mut self) {

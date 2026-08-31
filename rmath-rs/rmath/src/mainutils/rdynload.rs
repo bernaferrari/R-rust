@@ -51,7 +51,7 @@ unsafe fn native_dynamic_loading_policy_error(entrypoint: &str) -> ! {
 }
 
 fn native_dynamic_loading_policy_enabled() -> bool {
-    true
+    !native_extensions_enabled()
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +170,9 @@ pub(crate) struct DynloadState {
     pub dll_error: [u8; 4000],
     pub max_num_dlls: usize,
     pub c_entry_table: SEXP,
+    /// Trusted desktop hosts may opt into process-native extensions. Mobile
+    /// and WASM sessions remain deny-by-default.
+    pub allow_native_extensions: bool,
 }
 
 impl Default for DynloadState {
@@ -179,8 +182,9 @@ impl Default for DynloadState {
             dll_info_eptrs: ptr::null_mut(),
             symbol_eptrs: ptr::null_mut(),
             dll_error: [0; 4000],
-            max_num_dlls: 0,
+            max_num_dlls: MAX_NUM_DLLS_DEFAULT,
             c_entry_table: ptr::null_mut(),
+            allow_native_extensions: false,
         }
     }
 }
@@ -191,6 +195,14 @@ where
     F: FnOnce(&mut DynloadState) -> R,
 {
     with_required_current_instance(|instance| f(&mut instance.dynload_state))
+}
+
+pub(crate) fn set_native_extensions_enabled(enabled: bool) {
+    with_dynload_state(|state| state.allow_native_extensions = enabled);
+}
+
+pub(crate) fn native_extensions_enabled() -> bool {
+    with_dynload_state(|state| state.allow_native_extensions)
 }
 
 // ---------------------------------------------------------------------------

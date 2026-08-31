@@ -1190,3 +1190,73 @@ fn cancellation_does_not_poison_sessions() {
     assert_eq!(other_session.eval("1 + 1").unwrap(), "[1] 2");
     assert_eq!(cancelled_session.eval("2 + 2").unwrap(), "[1] 4");
 }
+
+#[cfg(unix)]
+#[test]
+fn trusted_desktop_host_can_dynload_and_call_native_symbol() {
+    let root = std::env::temp_dir().join(format!(
+        "rport-native-extension-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos(),
+    ));
+    std::fs::create_dir_all(&root).expect("native fixture directory");
+    let source = root.join("identity.c");
+    std::fs::write(
+        &source,
+        "typedef void *SEXP;\nSEXP rport_identity(SEXP value) { return value; }\n",
+    )
+    .expect("native fixture source");
+    let library = if cfg!(target_os = "macos") {
+        root.join("identity.dylib")
+    } else {
+        root.join("identity.so")
+    };
+    let mut compiler = std::process::Command::new("cc");
+    if cfg!(target_os = "macos") {
+        compiler.arg("-dynamiclib");
+    } else {
+        compiler.args(["-shared", "-fPIC"]);
+    }
+    let status = compiler
+        .arg(&source)
+        .arg("-o")
+        .arg(&library)
+        .status()
+        .expect("C compiler available for native-extension test");
+    assert!(status.success(), "native fixture compilation failed");
+
+    let mut session = RSession::new().expect("session");
+    session.enable_host_process_capabilities();
+    let path = library.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+    let result = session
+        .eval_result(&format!(
+            "dyn.load(\"{path}\"); .Call(\"rport_identity\", 42)"
+        ))
+        .expect("trusted host native call");
+    assert_eq!(result.value, RValue::Real(Some(42.0)));
+    session
+        .eval(&format!("dyn.unload(\"{path}\")"))
+        .expect("native unload");
+
+    std::fs::remove_dir_all(root).expect("remove native fixture");
+}
+
+#[test]
+fn host_process_capabilities_are_session_local() {
+    let mut trusted = RSession::new().expect("trusted session");
+    trusted.enable_host_process_capabilities();
+    let mut untrusted = RSession::new().expect("untrusted session");
+
+    assert_eq!(trusted.eval("system('printf trusted')").unwrap(), "trusted");
+    let error = untrusted
+        .eval("system('printf untrusted')")
+        .expect_err("a separate session must retain the default sandbox");
+    let message = error.to_string();
+    assert!(
+        message.contains("disabled by the session capability policy"),
+        "unexpected sandbox error: {message}"
+    );
+}

@@ -196,11 +196,15 @@ impl RSession {
         self.core.set_capabilities(capabilities);
     }
 
-    /// Enable `system()` and `pipe()` for desktop-style hosts.
+    /// Enable trusted process capabilities for desktop-style hosts. Mobile
+    /// and WASM sessions retain the deny-by-default native-code policy.
     pub fn enable_host_process_capabilities(&mut self) {
         self.set_capabilities(crate::sexp::instance::SessionCapabilities {
             allow_system_commands: true,
             allow_pipe_commands: true,
+        });
+        self.core.with_active(|| {
+            crate::mainutils::rdynload::set_native_extensions_enabled(true);
         });
     }
 
