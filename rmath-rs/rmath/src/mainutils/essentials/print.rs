@@ -400,12 +400,12 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if t == SEXPTYPE::EXPRSXP {
                 let n_expr = XLENGTH(x);
                 let show = n_expr.min(3);
-                let sub_guard;
+                let _sub_guard;
                 let deparse_target = if show == n_expr {
                     x
                 } else {
                     let sub = Rf_allocVector3(SEXPTYPE::EXPRSXP, show);
-                    sub_guard = protect(sub);
+                    _sub_guard = protect(sub);
                     for i in 0..show {
                         SET_VECTOR_ELT(sub, i, VECTOR_ELT(x, i));
                     }

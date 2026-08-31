@@ -709,7 +709,6 @@ pub unsafe fn R_getS4DataSlot(x: SEXP, _type_: c_int) -> SEXP {
 unsafe fn getNames(x: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::R_DimSymbol;
-        use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
 
         let mut attr = ATTRIB(x);
         while !isNull(attr) {
@@ -736,8 +735,6 @@ unsafe fn getNames(x: SEXP) -> SEXP {
 /// allowing assignment past the end of a vector.
 unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
     unsafe {
-        use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
-
         let len = XLENGTH(x);
         let newtruelen: R_xlen_t;
         if newlen > len {
@@ -1004,8 +1001,6 @@ unsafe fn gi(indx: SEXP, i: R_xlen_t) -> R_xlen_t {
 /// Port of `DeleteListElements()` -- removes specified elements from a vector list.
 unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
     unsafe {
-        use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
-
         let len = XLENGTH(x);
         let lenw = XLENGTH(which);
 
@@ -1228,29 +1223,6 @@ unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
                     } else {
                         LOGICAL_ELT(y, iny as c_int)
                     };
-                    if iy == NA_INTEGER {
-                        *px.add(ii as usize) = NA_REAL;
-                    } else {
-                        *px.add(ii as usize) = iy as c_double;
-                    }
-                    iny += 1;
-                    if iny >= ny {
-                        iny = 0;
-                    }
-                }
-            }
-
-            1410 | 1413 => {
-                // real <- logical/integer
-                let px = REAL(x);
-                let mut iny: R_xlen_t = 0;
-                for idx in 0..n {
-                    let ii = gi(indx, idx);
-                    if ii == NA_INTEGER as R_xlen_t {
-                        continue;
-                    }
-                    let ii = ii - 1;
-                    let iy = INTEGER_ELT(y, iny as c_int);
                     if iy == NA_INTEGER {
                         *px.add(ii as usize) = NA_REAL;
                     } else {
@@ -2023,8 +1995,6 @@ unsafe fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
 /// Port of `DeleteOneVectorListItem()` -- removes a single element from a vector list.
 unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
     unsafe {
-        use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
-
         let n = XLENGTH(x);
         if which >= 0 && which < n {
             let y = Rf_allocVector3(TYPEOF(x), n - 1);
@@ -2326,7 +2296,6 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let _ = op;
         use crate::eval::attrib_core::R_DimNamesSymbol;
         use crate::eval::attrib_core::R_DimSymbol;
-        use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
         use crate::sexp::globals::R_MissingArg;
 
         let _args_guard = protect(args);
@@ -2706,8 +2675,6 @@ unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// Port of `R_subassign3_dflt()` -- default `$<-` implementation.
 pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> SEXP {
     unsafe {
-        use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
-
         let mut x = x;
         let mut val = val;
         // Upstream has no early NULL return: a NULL target is grown below

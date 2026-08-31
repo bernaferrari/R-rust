@@ -1117,10 +1117,14 @@ fn format_expression_vector(x: Sexp<'_>) -> String {
 const OUT_DEC: *const std::os::raw::c_char = b".\0".as_ptr() as *const std::os::raw::c_char;
 
 unsafe fn encode_cstr(p: *const std::os::raw::c_char) -> String {
-    if p.is_null() {
-        String::new()
-    } else {
-        std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+    // SAFETY: this unsafe function requires `p` to be null or a live,
+    // NUL-terminated C string for the duration of the conversion.
+    unsafe {
+        if p.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+        }
     }
 }
 
@@ -1151,49 +1155,58 @@ unsafe fn type_field_width(
     std::os::raw::c_int,
     std::os::raw::c_int,
 ) {
-    // (w, d, e); only real/complex use d/e.
-    let _ = quote;
-    match tp {
-        SEXPTYPE::LGLSXP => {
-            let mut w = 0;
-            crate::mainutils::format::formatLogicalS(raw, n, &mut w);
-            (w, 0, 0)
+    // SAFETY: callers provide a live atomic-vector SEXP whose runtime tag is
+    // `tp`; the formatting routines only read it and write to stack locals.
+    unsafe {
+        // (w, d, e); only real/complex use d/e.
+        let _ = quote;
+        match tp {
+            SEXPTYPE::LGLSXP => {
+                let mut w = 0;
+                crate::mainutils::format::formatLogicalS(raw, n, &mut w);
+                (w, 0, 0)
+            }
+            SEXPTYPE::INTSXP => {
+                let mut w = 0;
+                crate::mainutils::format::formatIntegerS(raw, n, &mut w);
+                (w, 0, 0)
+            }
+            SEXPTYPE::REALSXP => {
+                let mut w = 0;
+                let mut d = 0;
+                let mut e = 0;
+                crate::mainutils::format::formatRealS(raw, n, &mut w, &mut d, &mut e, 0);
+                (w, d, e)
+            }
+            SEXPTYPE::CPLXSXP => {
+                let mut wr = 0;
+                let mut dr = 0;
+                let mut er = 0;
+                let mut wi = 0;
+                let mut di = 0;
+                let mut ei = 0;
+                crate::mainutils::format::formatComplexS(
+                    raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
+                );
+                (wr + wi + 2, dr, er)
+            }
+            SEXPTYPE::STRSXP => {
+                let mut w = 0;
+                crate::mainutils::format::formatStringS(
+                    raw,
+                    n,
+                    &mut w,
+                    quote as std::os::raw::c_int,
+                );
+                (w, 0, 0)
+            }
+            SEXPTYPE::RAWSXP => {
+                let mut w = 0;
+                crate::mainutils::format::formatRawS(raw, n, &mut w);
+                (w, 0, 0)
+            }
+            _ => (0, 0, 0),
         }
-        SEXPTYPE::INTSXP => {
-            let mut w = 0;
-            crate::mainutils::format::formatIntegerS(raw, n, &mut w);
-            (w, 0, 0)
-        }
-        SEXPTYPE::REALSXP => {
-            let mut w = 0;
-            let mut d = 0;
-            let mut e = 0;
-            crate::mainutils::format::formatRealS(raw, n, &mut w, &mut d, &mut e, 0);
-            (w, d, e)
-        }
-        SEXPTYPE::CPLXSXP => {
-            let mut wr = 0;
-            let mut dr = 0;
-            let mut er = 0;
-            let mut wi = 0;
-            let mut di = 0;
-            let mut ei = 0;
-            crate::mainutils::format::formatComplexS(
-                raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-            );
-            (wr + wi + 2, dr, er)
-        }
-        SEXPTYPE::STRSXP => {
-            let mut w = 0;
-            crate::mainutils::format::formatStringS(raw, n, &mut w, quote as std::os::raw::c_int);
-            (w, 0, 0)
-        }
-        SEXPTYPE::RAWSXP => {
-            let mut w = 0;
-            crate::mainutils::format::formatRawS(raw, n, &mut w);
-            (w, 0, 0)
-        }
-        _ => (0, 0, 0),
     }
 }
 
@@ -1209,17 +1222,21 @@ struct ComplexFmt {
 }
 
 unsafe fn complex_fmt(raw: SEXP, n: R_xlen_t) -> ComplexFmt {
-    let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
-    crate::mainutils::format::formatComplexS(
-        raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
-    );
-    ComplexFmt {
-        wr,
-        dr,
-        er,
-        wi,
-        di,
-        ei,
+    // SAFETY: callers guarantee that `raw` is a live CPLXSXP with at least
+    // `n` elements; all output pointers refer to initialized stack locals.
+    unsafe {
+        let (mut wr, mut dr, mut er, mut wi, mut di, mut ei) = (0, 0, 0, 0, 0, 0);
+        crate::mainutils::format::formatComplexS(
+            raw, n, &mut wr, &mut dr, &mut er, &mut wi, &mut di, &mut ei, 0,
+        );
+        ComplexFmt {
+            wr,
+            dr,
+            er,
+            wi,
+            di,
+            ei,
+        }
     }
 }
 
@@ -1243,18 +1260,22 @@ unsafe fn encode_element_at(
     gap: std::os::raw::c_int,
     cfmt: ComplexFmt,
 ) -> String {
-    encode_element_adj(
-        raw,
-        tp,
-        i,
-        w,
-        d,
-        e,
-        quote,
-        gap,
-        cfmt,
-        crate::mainutils::printutils::Rprt_adj::right,
-    )
+    // SAFETY: `encode_element_adj` inherits this function's live-SEXP,
+    // matching-tag, and in-bounds-index requirements.
+    unsafe {
+        encode_element_adj(
+            raw,
+            tp,
+            i,
+            w,
+            d,
+            e,
+            quote,
+            gap,
+            cfmt,
+            crate::mainutils::printutils::Rprt_adj::right,
+        )
+    }
 }
 
 /// Like encode_element_at, with an explicit justification for STRSXP
@@ -1272,131 +1293,139 @@ unsafe fn encode_element_adj(
     cfmt: ComplexFmt,
     str_adj: crate::mainutils::printutils::Rprt_adj,
 ) -> String {
-    let i32i = i as std::os::raw::c_int;
-    match tp {
-        SEXPTYPE::LGLSXP => encode_cstr(crate::mainutils::printutils::EncodeLogical(
-            crate::sexp::accessors::LOGICAL_ELT(raw, i32i),
-            w,
-        )),
-        SEXPTYPE::INTSXP => encode_cstr(crate::mainutils::printutils::EncodeInteger(
-            crate::sexp::accessors::INTEGER_ELT(raw, i32i),
-            w,
-        )),
-        SEXPTYPE::REALSXP => encode_cstr(crate::mainutils::printutils::EncodeReal0(
-            crate::sexp::accessors::REAL_ELT(raw, i32i),
-            w,
-            d,
-            e,
-            OUT_DEC,
-        )),
-        SEXPTYPE::CPLXSXP => {
-            let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32i);
-            if part_is_na(c.r) || part_is_na(c.i) {
-                // stock: NA parts render as NA over the total width
-                encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                    crate::sexp::ffi::NA_REAL,
+    // SAFETY: callers guarantee `raw` is live, `tp` is its actual runtime
+    // tag, and `i` is in bounds; formatter-returned C strings are borrowed
+    // only until the next formatter call and are copied immediately.
+    unsafe {
+        let i32i = i as std::os::raw::c_int;
+        match tp {
+            SEXPTYPE::LGLSXP => encode_cstr(crate::mainutils::printutils::EncodeLogical(
+                crate::sexp::accessors::LOGICAL_ELT(raw, i32i),
+                w,
+            )),
+            SEXPTYPE::INTSXP => encode_cstr(crate::mainutils::printutils::EncodeInteger(
+                crate::sexp::accessors::INTEGER_ELT(raw, i32i),
+                w,
+            )),
+            SEXPTYPE::REALSXP => encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                crate::sexp::accessors::REAL_ELT(raw, i32i),
+                w,
+                d,
+                e,
+                OUT_DEC,
+            )),
+            SEXPTYPE::CPLXSXP => {
+                let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32i);
+                if part_is_na(c.r) || part_is_na(c.i) {
+                    // stock: NA parts render as NA over the total width
+                    encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                        crate::sexp::ffi::NA_REAL,
+                        w,
+                        0,
+                        0,
+                        OUT_DEC,
+                    ))
+                } else {
+                    encode_cstr(crate::mainutils::printutils::EncodeComplex(
+                        c,
+                        cfmt.wr + gap,
+                        cfmt.dr,
+                        cfmt.er,
+                        cfmt.wi,
+                        cfmt.di,
+                        cfmt.ei,
+                        OUT_DEC,
+                    ))
+                }
+            }
+            SEXPTYPE::STRSXP => {
+                let quote_ch = if quote {
+                    b'"' as std::os::raw::c_int
+                } else {
+                    0
+                };
+                encode_cstr(crate::mainutils::printutils::EncodeString(
+                    crate::sexp::accessors::STRING_ELT(raw, i),
                     w,
-                    0,
-                    0,
-                    OUT_DEC,
-                ))
-            } else {
-                encode_cstr(crate::mainutils::printutils::EncodeComplex(
-                    c,
-                    cfmt.wr + gap,
-                    cfmt.dr,
-                    cfmt.er,
-                    cfmt.wi,
-                    cfmt.di,
-                    cfmt.ei,
-                    OUT_DEC,
+                    quote_ch,
+                    str_adj,
                 ))
             }
+            SEXPTYPE::RAWSXP => encode_cstr(crate::mainutils::printutils::EncodeRaw(
+                crate::sexp::accessors::RAW_ELT(raw, i32i),
+                std::ptr::null(),
+            )),
+            _ => String::new(),
         }
-        SEXPTYPE::STRSXP => {
-            let quote_ch = if quote {
-                b'"' as std::os::raw::c_int
-            } else {
-                0
-            };
-            encode_cstr(crate::mainutils::printutils::EncodeString(
-                crate::sexp::accessors::STRING_ELT(raw, i),
-                w,
-                quote_ch,
-                str_adj,
-            ))
-        }
-        SEXPTYPE::RAWSXP => encode_cstr(crate::mainutils::printutils::EncodeRaw(
-            crate::sexp::accessors::RAW_ELT(raw, i32i),
-            std::ptr::null(),
-        )),
-        _ => String::new(),
     }
 }
 
 /// Stock printVector: unnamed vector with "[i]" index labels, wrapping at
 /// options("width"). Every element occupies the common field width.
 pub(crate) unsafe fn print_vector_stock(x: Sexp, quote: bool, n_pr: R_xlen_t) -> String {
-    let raw = x.clone().as_raw();
-    let tp = x.typeof_();
-    let (print_width, gap, _max) = vector_print_settings();
-    let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
-    let mut out = String::new();
-    let labwidth = crate::mainutils::printutils::IndexWidth_xlen(n_pr) + 2;
-    let mut width: std::os::raw::c_int = 0;
-    out.push_str(&vector_index(1, labwidth as usize));
-    width = labwidth;
-    if !matches!(tp, SEXPTYPE::STRSXP | SEXPTYPE::RAWSXP) {
-        w += gap;
-    }
-    let is_str = matches!(tp, SEXPTYPE::STRSXP);
-    let gap_prefixed = is_str || tp == SEXPTYPE::RAWSXP;
-    let cfmt = if tp == SEXPTYPE::CPLXSXP {
-        complex_fmt(raw, n_pr)
-    } else {
-        ComplexFmt {
-            wr: 0,
-            dr: 0,
-            er: 0,
-            wi: 0,
-            di: 0,
-            ei: 0,
+    // SAFETY: `x` is a rooted live SEXP and `n_pr` is bounded by its length;
+    // all raw access remains read-only for the duration of this call.
+    unsafe {
+        let raw = x.clone().as_raw();
+        let tp = x.typeof_();
+        let (print_width, gap, _max) = vector_print_settings();
+        let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
+        let mut out = String::new();
+        let labwidth = crate::mainutils::printutils::IndexWidth_xlen(n_pr) + 2;
+        let mut width = labwidth;
+        out.push_str(&vector_index(1, labwidth as usize));
+        if !matches!(tp, SEXPTYPE::STRSXP | SEXPTYPE::RAWSXP) {
+            w += gap;
         }
-    };
-    for i in 0..n_pr {
-        if i > 0 {
-            // stock wrap conditions: char adds the gap to the check and to
-            // the accumulated width; raw prefixes the gap but counts only w.
-            let wrap = if is_str {
-                width + w + gap > print_width
-            } else {
-                width + w > print_width
-            };
-            if wrap {
-                out.push('\n');
-                out.push_str(&vector_index(i + 1, labwidth as usize));
-                width = labwidth;
+        let is_str = matches!(tp, SEXPTYPE::STRSXP);
+        let gap_prefixed = is_str || tp == SEXPTYPE::RAWSXP;
+        let cfmt = if tp == SEXPTYPE::CPLXSXP {
+            complex_fmt(raw, n_pr)
+        } else {
+            ComplexFmt {
+                wr: 0,
+                dr: 0,
+                er: 0,
+                wi: 0,
+                di: 0,
+                ei: 0,
             }
+        };
+        for i in 0..n_pr {
+            if i > 0 {
+                // stock wrap conditions: char adds the gap to the check and to
+                // the accumulated width; raw prefixes the gap but counts only w.
+                let wrap = if is_str {
+                    width + w + gap > print_width
+                } else {
+                    width + w > print_width
+                };
+                if wrap {
+                    out.push('\n');
+                    out.push_str(&vector_index(i + 1, labwidth as usize));
+                    width = labwidth;
+                }
+            }
+            if gap_prefixed {
+                out.push_str(&" ".repeat(gap as usize));
+            }
+            out.push_str(&encode_element_adj(
+                raw,
+                tp,
+                i,
+                w,
+                d,
+                e,
+                quote,
+                gap,
+                cfmt,
+                crate::mainutils::printutils::Rprt_adj::left,
+            ));
+            width += if is_str { w + gap } else { w };
         }
-        if gap_prefixed {
-            out.push_str(&" ".repeat(gap as usize));
-        }
-        out.push_str(&encode_element_adj(
-            raw,
-            tp,
-            i,
-            w,
-            d,
-            e,
-            quote,
-            gap,
-            cfmt,
-            crate::mainutils::printutils::Rprt_adj::left,
-        ));
-        width += if is_str { w + gap } else { w };
+        out.push('\n');
+        out
     }
-    out.push('\n');
-    out
 }
 /// Stock printNamedVector: names line(s) right-justified over the value
 /// column(s), every column at the common width `w`, gap-separated.
@@ -1406,151 +1435,159 @@ pub(crate) unsafe fn print_named_vector_stock(
     quote: bool,
     n_pr: R_xlen_t,
 ) -> String {
-    let raw = x.clone().as_raw();
-    let names_raw = names.as_raw();
-    let tp = x.typeof_();
-    let (print_width, gap, _max) = vector_print_settings();
-    let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
-    let mut wn = 0;
-    let cfmt0 = if tp == SEXPTYPE::CPLXSXP {
-        complex_fmt(raw, n_pr)
-    } else {
-        ComplexFmt {
-            wr: 0,
-            dr: 0,
-            er: 0,
-            wi: 0,
-            di: 0,
-            ei: 0,
+    // SAFETY: `x` and `names` are rooted live SEXPs with compatible lengths;
+    // element access is read-only and bounded by `n_pr`.
+    unsafe {
+        let raw = x.clone().as_raw();
+        let names_raw = names.as_raw();
+        let tp = x.typeof_();
+        let (print_width, gap, _max) = vector_print_settings();
+        let (mut w, d, e) = type_field_width(raw, tp, n_pr, quote);
+        let mut wn = 0;
+        let cfmt0 = if tp == SEXPTYPE::CPLXSXP {
+            complex_fmt(raw, n_pr)
+        } else {
+            ComplexFmt {
+                wr: 0,
+                dr: 0,
+                er: 0,
+                wi: 0,
+                di: 0,
+                ei: 0,
+            }
+        };
+        crate::mainutils::format::formatStringS(names_raw, n_pr, &mut wn, 0);
+        if w < wn {
+            w = wn;
         }
-    };
-    crate::mainutils::format::formatStringS(names_raw, n_pr, &mut wn, 0);
-    if w < wn {
-        w = wn;
-    }
-    let nperline = ((print_width / (w + gap)).max(1)) as R_xlen_t;
-    let nlines = n_pr / nperline + R_xlen_t::from(n_pr % nperline != 0);
-    let mut out = String::new();
-    for i in 0..nlines {
-        if i != 0 {
+        let nperline = ((print_width / (w + gap)).max(1)) as R_xlen_t;
+        let nlines = n_pr / nperline + R_xlen_t::from(n_pr % nperline != 0);
+        let mut out = String::new();
+        for i in 0..nlines {
+            if i != 0 {
+                out.push('\n');
+            }
+            for j in 0..nperline {
+                let k = i * nperline + j;
+                if k >= n_pr {
+                    break;
+                }
+                out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeString(
+                    crate::sexp::accessors::STRING_ELT(names_raw, k),
+                    w,
+                    0,
+                    crate::mainutils::printutils::Rprt_adj::right,
+                )));
+                out.push_str(&" ".repeat(gap as usize));
+            }
             out.push('\n');
-        }
-        for j in 0..nperline {
-            let k = i * nperline + j;
-            if k >= n_pr {
-                break;
-            }
-            out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeString(
-                crate::sexp::accessors::STRING_ELT(names_raw, k),
-                w,
-                0,
-                crate::mainutils::printutils::Rprt_adj::right,
-            )));
-            out.push_str(&" ".repeat(gap as usize));
-        }
-        out.push('\n');
-        for j in 0..nperline {
-            let k = i * nperline + j;
-            if k >= n_pr {
-                break;
-            }
-            let i32k = k as std::os::raw::c_int;
-            if matches!(tp, SEXPTYPE::CPLXSXP) {
-                if j != 0 {
+            for j in 0..nperline {
+                let k = i * nperline + j;
+                if k >= n_pr {
+                    break;
+                }
+                let i32k = k as std::os::raw::c_int;
+                if matches!(tp, SEXPTYPE::CPLXSXP) {
+                    if j != 0 {
+                        out.push_str(&" ".repeat(gap as usize));
+                    }
+                    let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32k);
+                    if part_is_na(c.r) || part_is_na(c.i) {
+                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                            crate::sexp::ffi::NA_REAL,
+                            w,
+                            0,
+                            0,
+                            OUT_DEC,
+                        )));
+                    } else {
+                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                            c.r, cfmt0.wr, cfmt0.dr, cfmt0.er, OUT_DEC,
+                        )));
+                        if part_is_nan(c.i) {
+                            out.push_str("+NaNi");
+                        } else if c.i >= 0.0 {
+                            out.push('+');
+                            out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                                c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
+                            )));
+                            out.push('i');
+                        } else {
+                            out.push('-');
+                            out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
+                                -c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
+                            )));
+                            out.push('i');
+                        }
+                    }
+                } else if matches!(tp, SEXPTYPE::RAWSXP) {
+                    // stock: "%*s%s%*s" with w-2, raw, gap
+                    out.push_str(&" ".repeat((w - 2).max(0) as usize));
+                    out.push_str(&encode_element_at(raw, tp, k, w, d, e, quote, gap, cfmt0));
+                    out.push_str(&" ".repeat(gap as usize));
+                } else {
+                    let str_quote = if matches!(tp, SEXPTYPE::STRSXP) {
+                        quote
+                    } else {
+                        false
+                    };
+                    out.push_str(&encode_element_at(
+                        raw, tp, k, w, d, e, str_quote, gap, cfmt0,
+                    ));
                     out.push_str(&" ".repeat(gap as usize));
                 }
-                let c = crate::sexp::accessors::COMPLEX_ELT(raw, i32k);
-                if part_is_na(c.r) || part_is_na(c.i) {
-                    out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                        crate::sexp::ffi::NA_REAL,
-                        w,
-                        0,
-                        0,
-                        OUT_DEC,
-                    )));
-                } else {
-                    out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                        c.r, cfmt0.wr, cfmt0.dr, cfmt0.er, OUT_DEC,
-                    )));
-                    if part_is_nan(c.i) {
-                        out.push_str("+NaNi");
-                    } else if c.i >= 0.0 {
-                        out.push('+');
-                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                            c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
-                        )));
-                        out.push('i');
-                    } else {
-                        out.push('-');
-                        out.push_str(&encode_cstr(crate::mainutils::printutils::EncodeReal0(
-                            -c.i, cfmt0.wi, cfmt0.di, cfmt0.ei, OUT_DEC,
-                        )));
-                        out.push('i');
-                    }
-                }
-            } else if matches!(tp, SEXPTYPE::RAWSXP) {
-                // stock: "%*s%s%*s" with w-2, raw, gap
-                out.push_str(&" ".repeat((w - 2).max(0) as usize));
-                out.push_str(&encode_element_at(raw, tp, k, w, d, e, quote, gap, cfmt0));
-                out.push_str(&" ".repeat(gap as usize));
-            } else {
-                let str_quote = if matches!(tp, SEXPTYPE::STRSXP) {
-                    quote
-                } else {
-                    false
-                };
-                out.push_str(&encode_element_at(
-                    raw, tp, k, w, d, e, str_quote, gap, cfmt0,
-                ));
-                out.push_str(&" ".repeat(gap as usize));
             }
         }
+        out.push('\n');
+        out
     }
-    out.push('\n');
-    out
 }
 
 /// Render an atomic vector exactly like stock print.default: named vectors go
 /// through printNamedVector, others through printVector with index labels;
 /// both honour options("max.print") truncation.
 pub(crate) unsafe fn format_vector_stock(x: Sexp, quote: bool) -> String {
-    let n = x.clone().len();
-    if n == 0 {
-        // stock printVector PRINT_V_0. Callers own the final newline,
-        // exactly like the non-empty paths (whose closing newline is
-        // popped below).
-        return match x.typeof_() {
-            SEXPTYPE::LGLSXP => "logical(0)".to_string(),
-            SEXPTYPE::INTSXP => "integer(0)".to_string(),
-            SEXPTYPE::REALSXP => "numeric(0)".to_string(),
-            SEXPTYPE::CPLXSXP => "complex(0)".to_string(),
-            SEXPTYPE::STRSXP => "character(0)".to_string(),
-            SEXPTYPE::RAWSXP => "raw(0)".to_string(),
-            _ => String::new(),
+    // SAFETY: `x` is a rooted live atomic-vector SEXP; the delegated stock
+    // formatters preserve that lifetime and perform bounded read-only access.
+    unsafe {
+        let n = x.clone().len();
+        if n == 0 {
+            // stock printVector PRINT_V_0. Callers own the final newline,
+            // exactly like the non-empty paths (whose closing newline is
+            // popped below).
+            return match x.typeof_() {
+                SEXPTYPE::LGLSXP => "logical(0)".to_string(),
+                SEXPTYPE::INTSXP => "integer(0)".to_string(),
+                SEXPTYPE::REALSXP => "numeric(0)".to_string(),
+                SEXPTYPE::CPLXSXP => "complex(0)".to_string(),
+                SEXPTYPE::STRSXP => "character(0)".to_string(),
+                SEXPTYPE::RAWSXP => "raw(0)".to_string(),
+                _ => String::new(),
+            };
+        }
+        let (_width, _gap, max) = vector_print_settings();
+        let n_pr = if n <= (max + 1) as R_xlen_t {
+            n
+        } else {
+            max as R_xlen_t
         };
+        let mut out = match names_sexp(x.clone()) {
+            Some(names) => print_named_vector_stock(x, names, quote, n_pr),
+            None => print_vector_stock(x, quote, n_pr),
+        };
+        if n_pr < n {
+            out.push_str(&format!(
+                " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]\n",
+                n - n_pr
+            ));
+        }
+        // Callers own the final newline (print_value appends it; string contexts
+        // embed the rendering without one).
+        if out.ends_with('\n') {
+            out.pop();
+        }
+        out
     }
-    let (_width, _gap, max) = vector_print_settings();
-    let n_pr = if n <= (max + 1) as R_xlen_t {
-        n
-    } else {
-        max as R_xlen_t
-    };
-    let mut out = match names_sexp(x.clone()) {
-        Some(names) => print_named_vector_stock(x, names, quote, n_pr),
-        None => print_vector_stock(x, quote, n_pr),
-    };
-    if n_pr < n {
-        out.push_str(&format!(
-            " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]\n",
-            n - n_pr
-        ));
-    }
-    // Callers own the final newline (print_value appends it; string contexts
-    // embed the rendering without one).
-    if out.ends_with('\n') {
-        out.pop();
-    }
-    out
 }
 
 /// The raw names attribute when it is a character vector of full length.
@@ -1897,91 +1934,100 @@ unsafe fn first_class_string(x: Sexp<'_>) -> Option<String> {
 /// Stock print.condition: `<class: msg>` or `<class in <deparsed call>: msg>`.
 /// Conditions are `list(message, call, ...)` per R_makeErrorCondition.
 unsafe fn format_condition(x: Sexp<'_>) -> String {
-    let raw = x.clone().as_raw();
-    let class = first_class_string(x.clone()).unwrap_or_else(|| "condition".to_string());
-    let mut message = String::new();
-    let mut call_text = String::new();
-    if x.clone().typeof_() == SEXPTYPE::VECSXP && x.clone().len() >= 1 {
-        let msg = crate::sexp::accessors::VECTOR_ELT(raw, 0);
-        if !msg.is_null() && msg != crate::sexp::globals::R_NilValue() {
-            if let Some(sexp) = Sexp::from_raw(msg) {
-                if sexp.clone().typeof_() == SEXPTYPE::STRSXP && sexp.clone().len() >= 1 {
-                    let elt = crate::sexp::accessors::STRING_ELT(sexp.as_raw(), 0);
-                    if !elt.is_null() {
-                        let chars = crate::sexp::accessors::CHAR(elt);
-                        if !chars.is_null() {
-                            if let Ok(s) = std::ffi::CStr::from_ptr(chars).to_str() {
-                                message = s.to_string();
+    // SAFETY: callers provide a rooted live condition object. Each optional
+    // list/string field is tag-checked before raw element access.
+    unsafe {
+        let raw = x.clone().as_raw();
+        let class = first_class_string(x.clone()).unwrap_or_else(|| "condition".to_string());
+        let mut message = String::new();
+        let mut call_text = String::new();
+        if x.clone().typeof_() == SEXPTYPE::VECSXP && x.clone().len() >= 1 {
+            let msg = crate::sexp::accessors::VECTOR_ELT(raw, 0);
+            if !msg.is_null() && msg != crate::sexp::globals::R_NilValue() {
+                if let Some(sexp) = Sexp::from_raw(msg) {
+                    if sexp.clone().typeof_() == SEXPTYPE::STRSXP && sexp.clone().len() >= 1 {
+                        let elt = crate::sexp::accessors::STRING_ELT(sexp.as_raw(), 0);
+                        if !elt.is_null() {
+                            let chars = crate::sexp::accessors::CHAR(elt);
+                            if !chars.is_null() {
+                                if let Ok(s) = std::ffi::CStr::from_ptr(chars).to_str() {
+                                    message = s.to_string();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if x.len() >= 2 {
+                let call = crate::sexp::accessors::VECTOR_ELT(raw, 1);
+                if !call.is_null() && call != crate::sexp::globals::R_NilValue() {
+                    let dcall = crate::mainutils::deparse::deparse1s(call);
+                    if !dcall.is_null() && dcall != crate::sexp::globals::R_NilValue() {
+                        let elt = crate::sexp::accessors::STRING_ELT(dcall, 0);
+                        if !elt.is_null() {
+                            let chars = crate::sexp::accessors::CHAR(elt);
+                            if !chars.is_null() {
+                                if let Ok(s) = std::ffi::CStr::from_ptr(chars).to_str() {
+                                    call_text = format!(" in {s}");
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        if x.len() >= 2 {
-            let call = crate::sexp::accessors::VECTOR_ELT(raw, 1);
-            if !call.is_null() && call != crate::sexp::globals::R_NilValue() {
-                let dcall = crate::mainutils::deparse::deparse1s(call);
-                if !dcall.is_null() && dcall != crate::sexp::globals::R_NilValue() {
-                    let elt = crate::sexp::accessors::STRING_ELT(dcall, 0);
-                    if !elt.is_null() {
-                        let chars = crate::sexp::accessors::CHAR(elt);
-                        if !chars.is_null() {
-                            if let Ok(s) = std::ffi::CStr::from_ptr(chars).to_str() {
-                                call_text = format!(" in {s}");
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        format!("<{class}{call_text}: {message}>")
     }
-    format!("<{class}{call_text}: {message}>")
 }
 
 /// Stock print.default on a try-error object: the message string rendered as
 /// a character vector, then the class and condition attributes.
 unsafe fn format_try_error(x: Sexp<'_>) -> String {
-    let mut out = if x.clone().typeof_() == SEXPTYPE::STRSXP {
-        format_vector_stock(x.clone(), true)
-    } else {
-        format!("{}\n", format_sexp_direct(x.clone()))
-    };
-    out.push('\n');
+    // SAFETY: callers provide a rooted live try-error object; attribute and
+    // vector reads remain within the lifetime carried by `x`.
     unsafe {
-        let klass = crate::sexp::attrib_core::getAttrib(
-            x.clone().as_raw(),
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
-        let has_condition = {
+        let mut out = if x.clone().typeof_() == SEXPTYPE::STRSXP {
+            format_vector_stock(x.clone(), true)
+        } else {
+            format!("{}\n", format_sexp_direct(x.clone()))
+        };
+        out.push('\n');
+        unsafe {
+            let klass = crate::sexp::attrib_core::getAttrib(
+                x.clone().as_raw(),
+                crate::sexp::attrib_core::R_ClassSymbol(),
+            );
+            let has_condition = {
+                let cond_sym = crate::sexp::symbol::Rf_install(
+                    b"condition\0".as_ptr() as *const std::os::raw::c_char
+                );
+                let cond = crate::sexp::attrib_core::getAttrib(x.clone().as_raw(), cond_sym);
+                !cond.is_null() && cond != R_NilValue()
+            };
+            if let Some(klass) = Sexp::from_raw(klass) {
+                if klass.clone().typeof_() == SEXPTYPE::STRSXP {
+                    out.push_str("attr(,\"class\")\n");
+                    out.push_str(&format_vector_stock(klass, true));
+                    // print_value owns the final newline; add the separator
+                    // between attribute sections here.
+                    if has_condition {
+                        out.push('\n');
+                    }
+                }
+            }
             let cond_sym = crate::sexp::symbol::Rf_install(
                 b"condition\0".as_ptr() as *const std::os::raw::c_char
             );
-            let cond = crate::sexp::attrib_core::getAttrib(x.clone().as_raw(), cond_sym);
-            !cond.is_null() && cond != R_NilValue()
-        };
-        if let Some(klass) = Sexp::from_raw(klass) {
-            if klass.clone().typeof_() == SEXPTYPE::STRSXP {
-                out.push_str("attr(,\"class\")\n");
-                out.push_str(&format_vector_stock(klass, true));
-                // print_value owns the final newline; add the separator
-                // between attribute sections here.
-                if has_condition {
-                    out.push('\n');
+            let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
+            if let Some(cond) = Sexp::from_raw(cond) {
+                if cond.clone().typeof_() != SEXPTYPE::NILSXP {
+                    out.push_str("attr(,\"condition\")\n");
+                    out.push_str(&format_condition(cond));
                 }
             }
         }
-        let cond_sym =
-            crate::sexp::symbol::Rf_install(b"condition\0".as_ptr() as *const std::os::raw::c_char);
-        let cond = crate::sexp::attrib_core::getAttrib(x.as_raw(), cond_sym);
-        if let Some(cond) = Sexp::from_raw(cond) {
-            if cond.clone().typeof_() != SEXPTYPE::NILSXP {
-                out.push_str("attr(,\"condition\")\n");
-                out.push_str(&format_condition(cond));
-            }
-        }
+        out
     }
-    out
 }
 
 fn format_environment(x: Sexp<'_>) -> String {

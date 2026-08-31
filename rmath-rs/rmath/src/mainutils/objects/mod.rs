@@ -40,7 +40,7 @@ mod usemethod;
 
 pub use self::apply_args::*;
 pub use self::class_prims::*;
-pub use self::helpers::*;
+pub(crate) use self::helpers::*;
 pub use self::nextmethod::*;
 pub use self::primitive_methods::*;
 pub use self::s4::*;

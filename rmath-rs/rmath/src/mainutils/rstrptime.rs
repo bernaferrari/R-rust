@@ -138,7 +138,7 @@ fn match_char(rp: &[char], pos: &mut usize, ch: char) -> Option<()> {
 fn match_string(cs: &str, rp: &[char], pos: &mut usize) -> bool {
     let mut scan = *pos;
     for c in cs.chars() {
-        if scan >= rp.len() || rp[scan].to_ascii_lowercase() != c.to_ascii_lowercase() {
+        if scan >= rp.len() || !rp[scan].eq_ignore_ascii_case(&c) {
             return false;
         }
         scan += 1;
