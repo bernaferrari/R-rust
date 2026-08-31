@@ -236,6 +236,7 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     mark_reachable(instance.error_state.warnings);
     mark_reachable(instance.error_state.handler_stack);
     mark_reachable(instance.error_state.restart_stack);
+    mark_reachable(instance.error_state.warning_call);
 
     mark_reachable(instance.eval_state.current_expr);
     mark_reachable(instance.eval_state.parse_error_file);
@@ -248,6 +249,10 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     mark_reachable(instance.eval_state.print.data.na_string_noquote);
     mark_reachable(instance.eval_state.print.data.env);
     mark_reachable(instance.eval_state.print.data.callArgs);
+    instance
+        .eval_state
+        .bc_stack
+        .visit_roots(|obj| mark_reachable(*obj));
 
     for &obj in instance.symbols.values() {
         mark_reachable(obj);
@@ -276,6 +281,7 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     for &methods in &instance.objects_state.prim_mlist {
         mark_reachable(methods);
     }
+    mark_reachable(instance.objects_state.deferred_default_object);
     for (&env, table) in &instance.env_hash_tables {
         mark_reachable(env as SEXP);
         for (&symbol, &value) in table {
@@ -309,6 +315,8 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     mark_reachable(instance.dynload_state.dll_info_eptrs);
     mark_reachable(instance.dynload_state.symbol_eptrs);
     mark_reachable(instance.dynload_state.c_entry_table);
+
+    instance.httpd_state.visit_roots(|obj| mark_reachable(*obj));
 
     mark_reachable(instance.grid_runtime_state.current_grid_state);
     mark_reachable(instance.grid_runtime_state.eval_env);
@@ -667,6 +675,7 @@ fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &Has
     update_field(&mut instance.error_state.warnings, old_to_new);
     update_field(&mut instance.error_state.handler_stack, old_to_new);
     update_field(&mut instance.error_state.restart_stack, old_to_new);
+    update_field(&mut instance.error_state.warning_call, old_to_new);
 
     update_field(&mut instance.eval_state.current_expr, old_to_new);
     update_field(&mut instance.eval_state.parse_error_file, old_to_new);
@@ -688,6 +697,10 @@ fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &Has
     );
     update_field(&mut instance.eval_state.print.data.env, old_to_new);
     update_field(&mut instance.eval_state.print.data.callArgs, old_to_new);
+    instance
+        .eval_state
+        .bc_stack
+        .visit_roots(|obj| update_field(obj, old_to_new));
 
     for obj in instance.symbols.values_mut() {
         update_field(obj, old_to_new);
@@ -716,6 +729,10 @@ fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &Has
     for methods in &mut instance.objects_state.prim_mlist {
         update_field(methods, old_to_new);
     }
+    update_field(
+        &mut instance.objects_state.deferred_default_object,
+        old_to_new,
+    );
     let old_hash_tables = std::mem::take(&mut instance.env_hash_tables);
     instance.env_hash_tables = old_hash_tables
         .into_iter()
@@ -766,6 +783,10 @@ fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &Has
     update_field(&mut instance.dynload_state.dll_info_eptrs, old_to_new);
     update_field(&mut instance.dynload_state.symbol_eptrs, old_to_new);
     update_field(&mut instance.dynload_state.c_entry_table, old_to_new);
+
+    instance
+        .httpd_state
+        .visit_roots(|obj| update_field(obj, old_to_new));
 
     update_field(
         &mut instance.grid_runtime_state.current_grid_state,
@@ -1381,6 +1402,7 @@ impl<'a> VectorSlot<'a> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::super::memory::{ArenaBudget, with_arena};
     use super::super::protect::with_protected_objects;
@@ -2479,6 +2501,133 @@ mod tests {
             );
             assert_eq!(unsafe { *crate::sexp::accessors::INTEGER(payload) }, 4242);
         }
+    }
+
+    /// Exercise the public namespace-lookup path, not just the cache data
+    /// structure: after the first lookup returns, the namespace is retained
+    /// only by `package_namespace_cache`. A full collection must preserve the
+    /// environment and its exported binding for the next `::` lookup.
+    #[test]
+    fn test_cache_only_namespace_survives_full_gc_and_colon_lookup() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after Unix epoch")
+            .as_nanos();
+        let library = std::env::temp_dir().join(format!(
+            "rport-namespace-gc-{}-{unique}",
+            std::process::id()
+        ));
+        let package = library.join("gcProbePkg");
+        std::fs::create_dir_all(package.join("R")).expect("create package fixture");
+        std::fs::write(
+            package.join("DESCRIPTION"),
+            "Package: gcProbePkg\nVersion: 0.0.1\n",
+        )
+        .expect("write DESCRIPTION");
+        std::fs::write(package.join("NAMESPACE"), "export(answer)\n").expect("write NAMESPACE");
+        std::fs::write(package.join("R").join("answer.R"), "answer <- 4242\n")
+            .expect("write package source");
+
+        let mut session = RSession::new();
+        let library_literal = library
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('\'', "\\'");
+        let first_lookup = format!(".libPaths('{library_literal}'); gcProbePkg::answer");
+        {
+            let (result, _, _) = session.eval_script_with_output_capture(&first_lookup);
+            let value = result.expect("initial namespace lookup");
+            assert_eq!(
+                unsafe { *crate::sexp::accessors::REAL(value.as_raw()) },
+                4242.0
+            );
+        }
+
+        let cached_namespace = instance::with_required_current_instance(|inst| {
+            inst.package_namespace_cache
+                .get("gcProbePkg")
+                .expect("namespace cached")
+                .1
+        });
+        full_gc();
+        assert!(
+            with_arena(|arena| arena.contains(cached_namespace)),
+            "cache-only namespace was swept"
+        );
+
+        {
+            let (result, _, _) = session.eval_script_with_output_capture("gcProbePkg::answer");
+            let value = result.expect("cached namespace lookup after full GC");
+            assert_eq!(
+                unsafe { *crate::sexp::accessors::REAL(value.as_raw()) },
+                4242.0
+            );
+        }
+
+        std::fs::remove_dir_all(library).expect("remove package fixture");
+    }
+
+    /// Root-bearing runtime caches outside the arena must share the same
+    /// mark/remap contract as the namespace cache.
+    #[test]
+    fn test_auxiliary_instance_sexp_roots_are_traced_and_remapped() {
+        let _session = RSession::new();
+        let roots = with_arena(|arena| {
+            (0..7)
+                .map(|_| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+                .collect::<Vec<_>>()
+        });
+
+        instance::with_required_current_instance(|inst| {
+            inst.error_state.warning_call = roots[0];
+            inst.objects_state.deferred_default_object = roots[1];
+            unsafe { inst.eval_state.bc_stack.push(roots[2]) };
+            let mut http_roots = roots[3..6].iter().copied();
+            inst.httpd_state
+                .visit_roots(|slot| *slot = http_roots.next().expect("HTTP root slot"));
+            inst.package_namespace_cache.insert(
+                "rootProbePkg".to_string(),
+                (std::path::PathBuf::from("/root-probe"), roots[6]),
+            );
+        });
+
+        full_gc();
+        for &root in &roots {
+            assert!(
+                with_arena(|arena| arena.contains(root)),
+                "instance-owned root was swept"
+            );
+        }
+
+        let replacements = with_arena(|arena| {
+            (0..roots.len())
+                .map(|_| arena.alloc_vector(SEXPTYPE::REALSXP, 1))
+                .collect::<Vec<_>>()
+        });
+        let remap = roots
+            .iter()
+            .copied()
+            .zip(replacements.iter().copied())
+            .map(|(old, new)| (old as usize, new))
+            .collect::<HashMap<_, _>>();
+        instance::with_required_current_instance(|inst| update_instance_roots_in(inst, &remap));
+
+        instance::with_required_current_instance(|inst| {
+            assert_eq!(inst.error_state.warning_call, replacements[0]);
+            assert_eq!(inst.objects_state.deferred_default_object, replacements[1]);
+            let mut bytecode_root = None;
+            inst.eval_state
+                .bc_stack
+                .visit_roots(|root| bytecode_root = Some(*root));
+            assert_eq!(bytecode_root, Some(replacements[2]));
+            let mut http_roots = Vec::new();
+            inst.httpd_state.visit_roots(|root| http_roots.push(*root));
+            assert_eq!(http_roots, replacements[3..6]);
+            assert_eq!(
+                inst.package_namespace_cache["rootProbePkg"].1,
+                replacements[6]
+            );
+        });
     }
 
     /// Active-binding values must be traced while their entry exists, and an

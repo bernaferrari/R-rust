@@ -94,6 +94,17 @@ impl R_bcstack_t {
     pub fn is_empty(&self) -> bool {
         self.depth == 0
     }
+
+    /// Visit the live portion of the stack for garbage-collector tracing.
+    ///
+    /// Slots above `depth` are stale scratch storage, not roots. Keeping this
+    /// detail behind the stack interface prevents the collector from having
+    /// to duplicate the bytecode stack's liveness rules.
+    pub(crate) fn visit_roots(&mut self, mut visit: impl FnMut(&mut SEXP)) {
+        for item in &mut self.items[..self.depth] {
+            visit(item);
+        }
+    }
 }
 
 impl Default for R_bcstack_t {
