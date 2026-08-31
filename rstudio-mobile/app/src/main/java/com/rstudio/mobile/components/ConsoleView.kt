@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rstudio.mobile.util.AnsiParser
+import com.rstudio.mobile.util.AnsiPalette
 
 @Composable
 fun ConsoleView(
@@ -54,7 +56,9 @@ fun ConsoleView(
     onClear: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    val consoleLines = remember(console) { console.lines() }
+    val isDarkConsole = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val ansiPalette = if (isDarkConsole) AnsiPalette.dark else AnsiPalette.light
+    val consoleLines = remember(console, ansiPalette) { AnsiParser.parseLines(console, ansiPalette) }
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var historyIndex by remember(history.size) { mutableIntStateOf(history.size) }
@@ -105,7 +109,7 @@ fun ConsoleView(
         ) {
             items(consoleLines) { line ->
                 Text(
-                    text = AnsiParser.parse(line),
+                    text = line,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
