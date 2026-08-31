@@ -1,6 +1,4 @@
 //! Matrix construction: lower/upper.tri, matrix(), array(), diag(), element access/coercion helpers, as.matrix — extracted verbatim from the former single-file module.
-#![allow(unused_imports)]
-use super::*;
 use super::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;

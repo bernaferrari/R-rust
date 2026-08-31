@@ -38,7 +38,7 @@ pub fn dnbinom_inner(x: f64, size: f64, prob: f64, log_p: bool) -> f64 {
     }
     // R_D_nonint_check(x)
     if r_nonint(x) {
-        ml_warning(ME_DOMAIN, "");
+        ml_warn_nonint("x", x);
         return r_d__0(log_p);
     }
     if x < 0.0 || !r_finite(x) {
@@ -101,7 +101,7 @@ pub fn dnbinom_mu_inner(x: f64, size: f64, mu: f64, log_p: bool) -> f64 {
     }
     // R_D_nonint_check(x)
     if r_nonint(x) {
-        ml_warning(ME_DOMAIN, "");
+        ml_warn_nonint("x", x);
         return r_d__0(log_p);
     }
     if x < 0.0 || !r_finite(x) {

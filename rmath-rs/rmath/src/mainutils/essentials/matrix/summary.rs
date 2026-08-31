@@ -1,6 +1,4 @@
 //! Row/column summaries and extents: rowSums/colSums/rowMeans/colMeans, row(), col(), NROW/NCOL, lengths — extracted verbatim from the former single-file module.
-#![allow(unused_imports)]
-use super::*;
 use super::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;

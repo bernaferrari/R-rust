@@ -739,14 +739,65 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
             }
 
             if b != R_NilValue() {
-                // Show bad arguments in call without evaluating them
-                std::panic::panic_any(RError {
-                    message: "unused argument(s)".to_string(),
-                });
+                // Show bad arguments in call without evaluating them.
+                // Stock match.c wording: singular/plural with every unused
+                // argument listed, e.g. "unused arguments (c = 3, d = 4)".
+                let mut items: Vec<String> = Vec::new();
+                let mut u = b;
+                while u != R_NilValue() {
+                    if ARGUSED(u) == 0 {
+                        items.push(unused_arg_item(CAR(u), TAG(u)));
+                    }
+                    u = CDR(u);
+                }
+                let message = if items.len() == 1 {
+                    format!("unused argument ({})", items[0])
+                } else {
+                    format!("unused arguments ({})", items.join(", "))
+                };
+                std::panic::panic_any(RError { message });
             }
         }
 
         actuals
+    }
+}
+
+/// One `tag = value` (or bare `value`) item for the stock "unused
+/// argument(s)" error, deparsed without evaluating promises.
+unsafe fn unused_arg_item(car: SEXP, tag: SEXP) -> String {
+    unsafe {
+        let mut car_b = car;
+        if TYPEOF(car_b) == SEXPTYPE::PROMSXP {
+            car_b = PRCODE(car_b);
+        }
+        let text = crate::mainutils::deparse::deparse1line(car_b, false);
+        let deparsed = if text.is_null() || text == R_NilValue() || XLENGTH(text) == 0 {
+            String::new()
+        } else {
+            let chars = CHAR(STRING_ELT(text, 0));
+            if chars.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(chars).to_string_lossy().into_owned()
+            }
+        };
+        if tag.is_null() || tag == R_NilValue() {
+            return deparsed;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() || pname == R_NilValue() {
+            return deparsed;
+        }
+        let chars = CHAR(STRING_ELT(pname, 0));
+        if chars.is_null() {
+            return deparsed;
+        }
+        format!(
+            "{} = {}",
+            CStr::from_ptr(chars).to_string_lossy(),
+            deparsed
+        )
     }
 }
 

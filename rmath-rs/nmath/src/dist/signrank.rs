@@ -162,21 +162,11 @@ pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
         return ml_warn_return_nan();
     }
 
-    // R_Q_P01_check(x)
-    if log_p {
-        if x > 0.0 {
-            return ml_warn_return_nan();
-        }
-        if x == 0.0 {
-            return if lower_tail { ML_POSINF } else { 0.0 };
-        }
-        if x == ML_NEGINF {
-            return if lower_tail { 0.0 } else { ML_POSINF };
-        }
-    } else {
-        if x < 0.0 || x > 1.0 {
-            return ml_warn_return_nan();
-        }
+    // R_Q_P01_check(x): range validation only. The boundary returns below
+    // (R_DT_0 -> 0, R_DT_1 -> n(n+1)/2) must not be preempted here, so this
+    // mirrors the dpq.h macro exactly and nothing else.
+    if (log_p && x > 0.0) || (!log_p && (x < 0.0 || x > 1.0)) {
+        return ml_warn_return_nan();
     }
 
     let n = r_forceint(n);

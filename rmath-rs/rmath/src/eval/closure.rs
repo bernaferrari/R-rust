@@ -558,17 +558,32 @@ unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, Stri
                 .map_err(|err| sexp_err("dots argument pairlist wrap", err))?;
             SETCAR(result_cells[dots_idx], dots_value.as_raw());
         } else {
+            // Show bad arguments in the call without evaluating them:
+            // unwrap promises back to their expressions for deparsing.
+            // Stock match.c reports every unused argument, singular
+            // ("unused argument (y = 1)") or plural
+            // ("unused arguments (x = 1, y = 2)").
+            let mut unused: Vec<String> = Vec::new();
             for i in 0..supplied_cells.len() {
                 if used[i] != 0 {
                     continue;
                 }
-                // Show bad arguments in the call without evaluating them:
-                // unwrap promises back to their expressions for deparsing.
                 let mut car_b = CAR(supplied_cells[i]);
                 if TYPEOF(car_b) == SEXPTYPE::PROMSXP {
                     car_b = PRCODE(car_b);
                 }
-                return Err(format!("unused argument ({})", deparse_for_error(car_b)));
+                let deparsed = deparse_for_error(car_b);
+                let item = match formal_tag_name(TAG(supplied_cells[i])) {
+                    Some(tag) => format!("{tag} = {deparsed}"),
+                    None => deparsed,
+                };
+                unused.push(item);
+            }
+            if !unused.is_empty() {
+                if unused.len() == 1 {
+                    return Err(format!("unused argument ({})", unused[0]));
+                }
+                return Err(format!("unused arguments ({})", unused.join(", ")));
             }
         }
 

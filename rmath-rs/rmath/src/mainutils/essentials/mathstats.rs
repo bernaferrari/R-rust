@@ -17,7 +17,9 @@ use crate::sexp::constructors::{
     Rf_mkString,
 };
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{
+    ISNAN, NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE,
+};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
@@ -68,13 +70,165 @@ pub unsafe fn do_log2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
+/// complex_math2's round/signif driver (r-source/src/main/complex.c):
+/// coerce both operands to complex, recycle to max(na, nb), and apply `f`
+/// part-wise with the digits scalar `b.r`. The all-NA rule yields
+/// NA_complex_ only when every input part is NA; a NaN result part with no
+/// NaN/NA input part raises stock's "NaNs produced in function \"%s\"".
+unsafe fn math2_complex(
+    call: SEXP,
+    x_arg: SEXP,
+    digits_arg: SEXP,
+    dflt_digits: f64,
+    name: &str,
+    f: fn(re: f64, im: f64, digits: f64) -> (f64, f64),
+) -> SEXP {
+    unsafe {
+        // Trunk coerces CAR(args) (x) to complex first and CADR(args)
+        // (digits) second; x is already complex at this dispatch, so its
+        // coercion is the identity. `sa` stays the value operand and `sb`
+        // the digits operand, matching complex_math2's a/b roles.
+        let sa = x_arg;
+        let sb = if digits_arg.is_null()
+            || digits_arg == R_NilValue()
+            || digits_arg == R_MissingArg()
+        {
+            // do_Math2 fills the digits default upstream.
+            let s = Rf_allocVector3(SEXPTYPE::CPLXSXP, 1);
+            *COMPLEX(s) = Rcomplex { r: dflt_digits, i: 0.0 };
+            s
+        } else {
+            crate::mainutils::coerce::coerceVector(digits_arg, SEXPTYPE::CPLXSXP.as_c_int())
+        };
+        let _sa_guard = protect(sa);
+        let _sb_guard = protect(sb);
+
+        let na = XLENGTH(sa);
+        let nb = XLENGTH(sb);
+        if na == 0 || nb == 0 {
+            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
+        }
+        let n = if na < nb { nb } else { na };
+        let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+        let _sy_guard = protect(sy);
+
+        let a = std::slice::from_raw_parts(COMPLEX(sa), na as usize);
+        let b = std::slice::from_raw_parts(COMPLEX(sb), nb as usize);
+        let y = std::slice::from_raw_parts_mut(COMPLEX(sy), n as usize);
+        let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
+        let mut naflag = false;
+        // MOD_ITERATE2 recycling of x and digits.
+        for i in 0..n as usize {
+            let ai = a[i % na as usize];
+            let bi = b[i % nb as usize];
+            if ai.r.to_bits() == na_bit
+                && ai.i.to_bits() == na_bit
+                && bi.r.to_bits() == na_bit
+                && bi.i.to_bits() == na_bit
+            {
+                y[i].r = NA_REAL;
+                y[i].i = NA_REAL;
+            } else {
+                let (r, im) = f(ai.r, ai.i, bi.r);
+                y[i].r = r;
+                y[i].i = im;
+                if (r.is_nan() || im.is_nan())
+                    && !(ISNAN(ai.r) || ISNAN(ai.i) || ISNAN(bi.r) || ISNAN(bi.i))
+                {
+                    naflag = true;
+                }
+            }
+        }
+        if naflag {
+            let msg = CString::new(format!("NaNs produced in function \"{name}\""))
+                .unwrap_or_default();
+            crate::mainutils::errors::Rf_warningcall1(call, msg.as_ptr());
+        }
+        if n == na {
+            copy_all_attribs(sy, sa);
+        } else if n == nb {
+            copy_all_attribs(sy, sb);
+        }
+        sy
+    }
+}
+
+/// Port of complex.c's `z_prec_r`: `signif()` for complex parts scales both
+/// parts by the magnitude of the larger one (`m = max(|re|, |im|)`), so
+/// they share a single exponent scale before `fround` applies.
+fn z_prec_r(re: f64, im: f64, digits: f64) -> (f64, f64) {
+    const MAX_DIGITS: i32 = 22; // complex.c's local MAX_DIGITS
+    let m1 = re.abs();
+    let m2 = im.abs();
+    let mut m = 0.0f64;
+    if m1.is_finite() {
+        m = m1;
+    }
+    if m2.is_finite() && m2 > m {
+        m = m2;
+    }
+    if m == 0.0 {
+        return (re, im);
+    }
+    if !digits.is_finite() {
+        if digits > 0.0 {
+            return (re, im);
+        }
+        return (0.0, 0.0);
+    }
+    let mut dig = (digits + 0.5).floor() as i32;
+    if dig > MAX_DIGITS {
+        return (re, im);
+    } else if dig < 1 {
+        dig = 1;
+    }
+    let mag = m.log10().floor() as i32;
+    dig = dig - mag - 1;
+    if dig > 306 {
+        let pow10 = 1.0e4f64;
+        let digits = (dig - 4) as f64;
+        (
+            fround(pow10 * re, digits) / pow10,
+            fround(pow10 * im, digits) / pow10,
+        )
+    } else {
+        let digits = dig as f64;
+        (fround(re, digits), fround(im, digits))
+    }
+}
+
+/// SHALLOW_DUPLICATE_ATTRIB (attrib.h): shallow-copy every attribute of
+/// `src` onto `dst`. The coerce-level port helper only carries a fixed set
+/// of attributes; stock duplicates the whole list.
+unsafe fn copy_all_attribs(dst: SEXP, src: SEXP) {
+    unsafe {
+        let mut attr = ATTRIB(src);
+        while !attr.is_null() && attr != R_NilValue() {
+            crate::eval::attrib_core::setAttrib(dst, TAG(attr), CAR(attr));
+            attr = CDR(attr);
+        }
+    }
+}
+
 /// R's `round(x, digits=0)` — round to specified decimal digits.
-pub unsafe fn do_round(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_round(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = CAR(args);
         let digits_arg = CAR(CDR(args));
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
+        }
+        // Stock routes complex x to complex_math2 (main/complex.c): round
+        // each part with the same ties-even fround as the real path.
+        if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
+            return math2_complex(
+                call,
+                x_arg,
+                digits_arg,
+                0.0,
+                "round",
+                |re, im, digits| (fround(re, digits), fround(im, digits)),
+            );
         }
         let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
             0.0
@@ -221,12 +375,24 @@ fn logb(x: f64) -> f64 {
 ///
 /// Wires through the faithful `fprec` port (r-source/src/nmath/fprec.c),
 /// mirroring how `do_round` routes through `fround`.
-pub unsafe fn do_signif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_signif(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = CAR(args);
         let digits_arg = CAR(CDR(args));
         if x_arg.is_null() || x_arg == R_NilValue() {
             return R_NilValue();
+        }
+        // Stock routes complex x to complex_math2 (main/complex.c): apply
+        // fprec (z_prec) to each part with the digits scalar.
+        if TYPEOF(x_arg) == SEXPTYPE::CPLXSXP {
+            return math2_complex(
+                call,
+                x_arg,
+                digits_arg,
+                6.0,
+                "signif",
+                |re, im, digits| z_prec_r(re, im, digits),
+            );
         }
         let digits = if digits_arg.is_null() || digits_arg == R_NilValue() {
             6.0
@@ -1574,8 +1740,11 @@ pub unsafe fn do_besselI(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `besselJ(x, nu)` — Bessel function of the first kind.
-pub unsafe fn do_besselJ(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_besselJ(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        // Mathlib warnings raised inside bessel_j attribute to this call
+        // (upstream resolves it by walking out of the builtin context).
+        let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
         let x = CAR(args);
         let nu_arg = CAR(CDR(args));
         if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
@@ -1590,6 +1759,8 @@ pub unsafe fn do_besselJ(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         }
         let _p = protect(result);
         let dst = REAL(result);
+        let na_bit = crate::sexp::ffi::R_NA_BIT_PATTERN;
+        let mut naflag = false;
         for i in 0..n {
             let val = if t == SEXPTYPE::REALSXP {
                 *REAL(x).add(i as usize)
@@ -1599,11 +1770,18 @@ pub unsafe fn do_besselJ(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             } else {
                 NA_REAL
             };
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            if val.to_bits() == na_bit {
                 *dst.add(i as usize) = NA_REAL;
             } else {
-                *dst.add(i as usize) = crate::special::bessel_j::bessel_j(val, nu);
+                let b = crate::special::bessel_j::bessel_j(val, nu);
+                *dst.add(i as usize) = b;
+                if b.is_nan() && !val.is_nan() {
+                    naflag = true;
+                }
             }
+        }
+        if naflag {
+            crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
         }
         result
     }

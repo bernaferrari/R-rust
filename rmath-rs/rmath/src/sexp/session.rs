@@ -316,6 +316,13 @@ impl RSession {
             rmath_nmath::rng::set_binom_kind_hook(Some(
                 crate::mainutils::random::nmath_binom_kind_hook,
             ));
+            // Route nmath's MATHLIB_WARNING (ML_WARNING's range/precision
+            // messages, dpq.h's "non-integer x = %f") through the R warning
+            // machinery, so mathlib warnings are catchable and
+            // deferred-printed like stock (tryCatch(warning=), warn=1).
+            rmath_nmath::error::set_warning_hook(Some(
+                crate::mainutils::errors::nmath_warning_hook,
+            ));
         }
         RSession {
             active: true,

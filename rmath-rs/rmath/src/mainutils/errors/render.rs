@@ -904,6 +904,38 @@ pub unsafe fn Rf_warning1(msg: *const c_char) {
     }
 }
 
+thread_local! {
+    static MATHLIB_WARNING_CALL: std::cell::Cell<SEXP> =
+        const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+/// Restore the previous mathlib warning call on drop.
+pub struct MathlibWarningCallGuard {
+    prev: SEXP,
+}
+
+impl Drop for MathlibWarningCallGuard {
+    fn drop(&mut self) {
+        MATHLIB_WARNING_CALL.with(|slot| slot.set(self.prev));
+    }
+}
+
+/// Scope mathlib (nmath) warning attribution to `call`.
+///
+/// Upstream's `warning()` resolves the call by walking out of the enclosing
+/// CTXT_BUILTIN context; the port does not push builtin contexts for the
+/// dpq builtins, so `dpq_evaluate` pushes the builtin's call here for the
+/// duration of the nmath invocation.
+pub fn mathlib_warning_call_guard(call: SEXP) -> MathlibWarningCallGuard {
+    let prev = MATHLIB_WARNING_CALL.with(|slot| slot.replace(call));
+    MathlibWarningCallGuard { prev }
+}
+
+/// The call mathlib warnings should attribute to, if one is in scope.
+pub fn mathlib_warning_call() -> SEXP {
+    MATHLIB_WARNING_CALL.with(|slot| slot.get())
+}
+
 // ---------------------------------------------------------------------------
 // Message functions (R's message())
 // ---------------------------------------------------------------------------

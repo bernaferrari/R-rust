@@ -1,6 +1,4 @@
 //! Attribute access: names, class, attr, attributes, structure, comment, namespace lookup, storage.mode — extracted verbatim from the former single-file module.
-#![allow(unused_imports)]
-use super::*;
 use super::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;

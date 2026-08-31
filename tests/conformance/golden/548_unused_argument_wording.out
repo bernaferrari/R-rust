@@ -1,0 +1,6 @@
+one-pos: unused argument (3)
+named-one: unused argument (y = 1)
+multi-named: unused arguments (x = 1, y = 2)
+multi-pos: unused arguments (3, 4)
+multi-named2: unused arguments (c = 3, d = 4)
+expr-arg: unused argument (x + 2)

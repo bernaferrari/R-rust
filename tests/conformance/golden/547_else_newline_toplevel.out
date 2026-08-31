@@ -1,0 +1,7 @@
+toplevel-sameline: if (TRUE) 1 else 2
+toplevel-nl: ERR else-unexpected: TRUE
+in-braces: {     if (TRUE)          1     else 2 }
+in-parens: 1
+nested-brace-fn: 2
+eval-braced: 2
+eval-toplevel: TRUE

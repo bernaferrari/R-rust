@@ -1,6 +1,4 @@
 //! Elementwise math: %in%, real_math1 table, sinpi/cospi family, trigonometric builtins — extracted verbatim from the former single-file module.
-#![allow(unused_imports)]
-use super::*;
 use super::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;

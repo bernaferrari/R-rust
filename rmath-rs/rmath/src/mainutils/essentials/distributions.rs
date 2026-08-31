@@ -281,6 +281,9 @@ unsafe fn dpq_evaluate(
     compute: &mut dyn FnMut(&[f64], bool, bool) -> f64,
 ) -> SEXP {
     unsafe {
+        // Mathlib warnings raised inside `compute` attribute to this call
+        // (upstream resolves it by walking out of the builtin context).
+        let _mathlib_call = crate::mainutils::errors::mathlib_warning_call_guard(call);
         for (k, op) in operands.iter().enumerate() {
             if dpq_operand_len(op) == 0 {
                 let empty = Rf_allocVector3(SEXPTYPE::REALSXP, 0);

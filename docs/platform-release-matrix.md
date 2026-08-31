@@ -9,7 +9,7 @@ pinned toolchain from `rust-toolchain.toml`):
 
 | Workflow | Jobs | Notes |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | `fmt`, `clippy`, `test`, `conformance`, `wasm` | PR gate. Conformance runs against r-lib release R; engine-version-sensitive cases (e.g. the R 4.7 `.Random.seed` layout, case 534) are expected skips there, not failures. |
+| `.github/workflows/ci.yml` | `fmt`, `clippy`, `test`, `conformance`, `wasm` | PR gate. Conformance validates the immutable oracle manifest, builds/restores the exact pinned GNU R trunk oracle (r90451, commit `bac58395`), and runs strict three-way parity against it with `RPORT_REQUIRE_PINNED_ORACLE=1` (608/608 vs checked-in goldens + live oracle), then the 10-case whole-script differential (`scripts/script_diff_parity.sh`). Version-sensitive cases (e.g. the R 4.7 `.Random.seed` layout, case 534) run against the trunk oracle; on older contributor engines they degrade to expected skips, not failures. |
 | `.github/workflows/nightly.yml` | `miri`, `gc-torture` | Nightly: Miri over the `sexp::` safe-layer test subset, plus a GC-torture differential (`scripts/gc_torture_stress.sh`) that runs stock R and the Rust runner through the same allocation-heavy case under `gctorture(TRUE)`. |
 
 The former `parity-gate.yml`, `android-baseline.yml`, and

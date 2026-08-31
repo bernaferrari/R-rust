@@ -1,0 +1,27 @@
+[1] 0
+Warning message:
+In dhyper(1.5, 10, 10, 5) : non-integer x = 1.500000
+[1] 0
+Warning message:
+In dpois(1.5, 10) : non-integer x = 1.500000
+[1] 0
+Warning message:
+In dbinom(1.5, 10, 0.5) : non-integer x = 1.500000
+[1] 0
+Warning message:
+In dgeom(1.5, 0.25) : non-integer x = 1.500000
+[1] 0
+Warning message:
+In dnbinom(1.5, 10, 0.25) : non-integer x = 1.500000
+[1] NaN
+Warning messages:
+1: In pbinom(1, 2.5, 0.5) : non-integer n = 2.500000
+2: In pbinom(1, 2.5, 0.5) : NaNs produced
+[1] NaN
+Warning messages:
+1: In besselJ(-1, 0.5) : value out of range in 'bessel_j'
+2: In besselJ(-1, 0.5) : NaNs produced
+[1] 0
+[1] NaN
+Warning message:
+In qsignrank(1, 5, log.p = TRUE) : NaNs produced

@@ -98,6 +98,9 @@ jobs:
           RPORT_REQUIRE_PINNED_ORACLE: "1"
         run: bash scripts/conformance_parity.sh --check --strict
 
+      - name: Whole-script differential parity
+        run: bash scripts/script_diff_parity.sh --check
+
   wasm:
     name: WASM32 toolchain
     runs-on: ubuntu-latest

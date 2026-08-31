@@ -69,3 +69,27 @@ pub use self::render::*;
 pub use self::restarts::*;
 pub use self::state::*;
 pub use self::traceback::*;
+
+/// Bridge installed as the nmath crate's [`rmath_nmath::error::WarningHook`].
+///
+/// nmath.h maps `MATHLIB_WARNING(fmt, x)` to R's `warning(fmt, x)` in
+/// integrated mode, so mathlib warnings (ML_WARNING's range/precision
+/// messages, dpq.h's "non-integer x = %f") become regular, catchable,
+/// deferred-printed R warnings attributed to the current call. C's
+/// `warning()` strips one trailing newline from the formatted message
+/// before recording it (errors.c); mirror that so deferred rendering
+/// matches stock byte-for-byte.
+pub fn nmath_warning_hook(message: &str) {
+    let msg = message.strip_suffix('\n').unwrap_or(message);
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    unsafe {
+        // Attribute to the dpq builtin in scope, falling back to the
+        // current call (upstream warning() semantics).
+        let call = mathlib_warning_call();
+        if !call.is_null() && call != globals::R_NilValue() {
+            Rf_warningcall1(call, c_msg.as_ptr());
+        } else {
+            Rf_warning1(c_msg.as_ptr());
+        }
+    }
+}

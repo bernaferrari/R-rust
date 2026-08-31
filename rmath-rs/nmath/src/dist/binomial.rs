@@ -120,7 +120,7 @@ pub fn dbinom_inner(x: f64, n: f64, p: f64, give_log: bool) -> f64 {
     }
     // R_D_nonint_check(x):
     if r_nonint(x) {
-        ml_warning(ME_DOMAIN, "");
+        ml_warn_nonint("x", x);
         return r_d__0(give_log);
     }
     if x < 0.0 || !r_finite(x) {
@@ -146,7 +146,7 @@ pub fn pbinom_inner(x: f64, n: f64, p: f64, lower_tail: bool, log_p: bool) -> f6
     }
 
     if r_nonint(n) {
-        ml_warning(ME_DOMAIN, "");
+        ml_warn_nonint("n", n);
         return ml_warn_return_nan();
     }
     let n = r_forceint(n);

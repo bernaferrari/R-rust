@@ -1,6 +1,4 @@
 //! Matrix linear algebra: crossprod, tcrossprod, det, solve, which() for arrays — extracted verbatim from the former single-file module.
-#![allow(unused_imports)]
-use super::*;
 use super::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;

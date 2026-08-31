@@ -11,6 +11,7 @@ members = [
   "rmath-rs/rmath-test",
   "tests/script-diff",
 ]
+exclude = ["tests/differential"]
 
 [workspace.package]
 version = "0.1.0"

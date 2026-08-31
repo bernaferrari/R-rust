@@ -1,6 +1,4 @@
 //! Binding and statistics runtime: cbind/rbind fast paths, var, sd, median, IQR, cummin/cummax — extracted verbatim from the former single-file module.
-#![allow(unused_imports)]
-use super::*;
 use super::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;

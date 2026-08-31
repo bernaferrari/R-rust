@@ -75,6 +75,8 @@ enum Token {
     LeftAssign,  // <-
     RightAssign, // ->
     LeftSuper,   // <<-
+    // Help operator: `?topic` (unary) and `topic ? help` (binary)
+    Question,
     // Delimiters
     LParen,
     RParen,
@@ -349,6 +351,7 @@ impl Lexer {
             }
             ',' => Token::Comma,
             ';' => Token::Semicolon,
+            '?' => Token::Question,
             '~' => Token::Tilde,
             ':' => {
                 if self.peek_char() == Some(':') {
@@ -724,6 +727,7 @@ fn token_display(tok: &Token) -> String {
         Token::Or => "'|'".to_string(),
         Token::Or2 => "'||'".to_string(),
         Token::Not => "'!'".to_string(),
+        Token::Question => "'?'".to_string(),
         Token::Pipe => "'|>'".to_string(),
         Token::PipeBind => "'=>'".to_string(),
         Token::Placeholder => "'_'".to_string(),
@@ -902,6 +906,11 @@ pub struct Parser<'arena> {
     /// `HavePipeBind`: it arms the post-parse "invalid use of pipe bind
     /// symbol" scan so inputs without `=>` skip it entirely.
     have_pipebind: bool,
+    /// Per-token flag: is this token inside an unclosed `(`/`[`/`{` group?
+    /// Mirrors gram.y's contextstack/IfPush: an `else` after a newline only
+    /// attaches to its `if` when the `if` sits inside such a group; at top
+    /// level the newline terminates the `if` and `else` is a syntax error.
+    inside_group: Vec<bool>,
 }
 
 impl<'arena> Parser<'arena> {
@@ -925,6 +934,23 @@ impl<'arena> Parser<'arena> {
                 break;
             }
         }
+        // Precompute group containment per token (see `inside_group`).
+        let mut inside_group = Vec::with_capacity(tokens.len());
+        let mut depth = 0usize;
+        for tok in &tokens {
+            inside_group.push(depth > 0);
+            match tok {
+                Token::LParen
+                | Token::LBracket
+                | Token::LDoubleBracket
+                | Token::LBrace => depth += 1,
+                Token::RParen
+                | Token::RBracket
+                | Token::RDoubleBracket
+                | Token::RBrace => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
         Parser {
             tokens,
             spans,
@@ -933,6 +959,7 @@ impl<'arena> Parser<'arena> {
             arena,
             placeholder: std::ptr::null_mut(),
             have_pipebind,
+            inside_group,
         }
     }
 
@@ -1235,6 +1262,57 @@ impl<'arena> Parser<'arena> {
     // -----------------------------------------------------------------------
 
     fn parse_expr(&mut self) -> Result<SEXP, ParseError> {
+        self.parse_help()
+    }
+
+    /// Help operator, gram.y's lowest-precedence `%left '?'` tier:
+    /// `?topic` (unary) and `topic ? help` (binary, left-associative).
+    fn parse_help(&mut self) -> Result<SEXP, ParseError> {
+        let mut left = if self.peek() == &Token::Question {
+            self.advance();
+            self.skip_newlines();
+            let operand = self.parse_help_operand()?;
+            unsafe {
+                let op = Rf_install(c"?".as_ptr());
+                self.lang2(op, operand)?
+            }
+        } else {
+            self.parse_assignment()?
+        };
+        while self.peek() == &Token::Question {
+            self.advance();
+            self.skip_newlines();
+            let right = self.parse_help_rhs()?;
+            unsafe {
+                let op = Rf_install(c"?".as_ptr());
+                left = self.lang3(op, left, right)?;
+            }
+        }
+        Ok(left)
+    }
+
+    /// Prefix operand: a chain of leading `?`s (`??x` is `?`(`?`(x))),
+    /// otherwise an assignment-level expression. A following binary `?`
+    /// binds looser, per the reduce in gram.y.
+    fn parse_help_operand(&mut self) -> Result<SEXP, ParseError> {
+        if self.peek() == &Token::Question {
+            self.advance();
+            self.skip_newlines();
+            let operand = self.parse_help_operand()?;
+            unsafe {
+                let op = Rf_install(c"?".as_ptr());
+                return self.lang2(op, operand);
+            }
+        }
+        self.parse_assignment()
+    }
+
+    /// Binary `?` right-hand side: assignment level, optionally prefixed
+    /// by unary `?`s (`a ? ?b` is `` ?`(a, `?`(b)) ``).
+    fn parse_help_rhs(&mut self) -> Result<SEXP, ParseError> {
+        if self.peek() == &Token::Question {
+            return self.parse_help_operand();
+        }
         self.parse_assignment()
     }
 
@@ -2011,7 +2089,6 @@ impl<'arena> Parser<'arena> {
                 self.expect(&Token::RParen)?;
                 Ok(expr)
             }
-            // Anything else → atom
             _ => self.parse_atom(),
         }
     }
@@ -2032,9 +2109,15 @@ impl<'arena> Parser<'arena> {
         self.skip_newlines();
         let body = self.parse_expr()?;
 
-        // Check for else
+        // Check for else. gram.y: ELSE is only returned after a newline
+        // when the `if` was seen inside `(`/`[`/`{` (IfPush); otherwise the
+        // newline terminates the `if` and a stray `else` is a syntax error.
+        let nl_pos = self.pos;
         self.skip_newlines();
         if self.peek() == &Token::KwElse {
+            if self.pos > nl_pos && !self.inside_group[self.pos] {
+                return Err(self.unexpected_at(self.pos));
+            }
             self.advance();
             self.skip_newlines();
             let alt = self.parse_expr()?;

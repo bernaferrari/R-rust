@@ -63,6 +63,10 @@ crates/
   r-device-android-headless/  PNG device backend
 tests/conformance/  608 curated fixtures + three-way differential runner
 tests/script-diff/  script-level differential vs stock R
+tests/differential/ standalone numeric d/p/q harness vs fixed R 4.x
+                    reference values (own crate, excluded from the
+                    workspace; `cargo run --manifest-path
+                    tests/differential/Cargo.toml`)
 scripts/            parity, slices, corpus, release gates
 r-source/           vendored upstream C reference (fetched, not built,
                     not committed; see scripts/fetch-r-source.sh)

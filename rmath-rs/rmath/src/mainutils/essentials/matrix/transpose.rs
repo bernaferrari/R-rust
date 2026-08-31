@@ -1,6 +1,4 @@
 //! Transpose/dim helpers: t(), drop(), dim/dimnames<- , nrow/ncol, tsp, aperm-adjacent dimension utilities — extracted verbatim from the former single-file module.
-#![allow(unused_imports)]
-use super::*;
 use super::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
