@@ -653,19 +653,19 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
     fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultVoid.UniffiByValue,)
 }
 internal interface UniffiCallbackInterfaceSessionCallbackMethod0 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`update`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`operationId`: Long,`update`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceSessionCallbackMethod1 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`line`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`operationId`: Long,`line`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceSessionCallbackMethod2 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`plot`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`operationId`: Long,`plot`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceSessionCallbackMethod3 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`result`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`operationId`: Long,`result`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceSessionCallbackMethod4 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`error`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`operationId`: Long,`error`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 @Structure.FieldOrder("uniffiFree", "uniffiClone", "onProgress", "onOutput", "onPlotReady", "onEvalComplete", "onError")
 internal open class UniffiVTableCallbackInterfaceSessionCallback(
@@ -1057,19 +1057,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_r_uniffi_checksum_constructor_rsession_new() != 38904) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_progress() != 18517) {
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_progress() != 55165) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_output() != 20477) {
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_output() != 57296) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_plot_ready() != 7200) {
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_plot_ready() != 57529) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_eval_complete() != 16377) {
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_eval_complete() != 24636) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_error() != 48959) {
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_error() != 42480) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -2809,6 +2809,96 @@ public object FfiConverterTypeRuntimeInfo: FfiConverterRustBuffer<RuntimeInfo> {
 
 
 /**
+ * Typed payload retained for an asynchronous operation.
+ *
+ * Keeping evaluation and render outputs in the operation table makes
+ * callbacks optional notifications rather than the only way to recover a
+ * result. Hosts can always consume the exact operation they submitted.
+ */
+sealed class OperationResult {
+
+    data class Eval(
+        val `result`: com.rport.uniffi.EvalResult) : OperationResult()
+
+    {
+
+
+        companion object
+    }
+
+    data class Render(
+        val `result`: com.rport.uniffi.PlotResult) : OperationResult()
+
+    {
+
+
+        companion object
+    }
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOperationResult : FfiConverterRustBuffer<OperationResult>{
+    override fun read(buf: ByteBuffer): OperationResult {
+        return when(buf.getInt()) {
+            1 -> OperationResult.Eval(
+                FfiConverterTypeEvalResult.read(buf),
+                )
+            2 -> OperationResult.Render(
+                FfiConverterTypePlotResult.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: OperationResult): ULong = when(value) {
+        is OperationResult.Eval -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeEvalResult.allocationSize(value.`result`)
+            )
+        }
+        is OperationResult.Render -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypePlotResult.allocationSize(value.`result`)
+            )
+        }
+    }
+
+    override fun write(value: OperationResult, buf: ByteBuffer) {
+        when(value) {
+            is OperationResult.Eval -> {
+                buf.putInt(1)
+                FfiConverterTypeEvalResult.write(value.`result`, buf)
+                Unit
+            }
+            is OperationResult.Render -> {
+                buf.putInt(2)
+                FfiConverterTypePlotResult.write(value.`result`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
  * Final status of an operation, exported across the UniFFI boundary.
  */
 sealed class OperationStatus {
@@ -2819,8 +2909,15 @@ sealed class OperationStatus {
     object Running : OperationStatus()
 
 
+    /**
+     * Cancellation has been requested and the worker has not acknowledged
+     * the terminal cancelled outcome yet.
+     */
+    object Cancelling : OperationStatus()
+
+
     data class Succeeded(
-        val `result`: com.rport.uniffi.EvalResult) : OperationStatus()
+        val `result`: com.rport.uniffi.OperationResult) : OperationStatus()
 
     {
 
@@ -2872,15 +2969,16 @@ public object FfiConverterTypeOperationStatus : FfiConverterRustBuffer<Operation
         return when(buf.getInt()) {
             1 -> OperationStatus.Queued
             2 -> OperationStatus.Running
-            3 -> OperationStatus.Succeeded(
-                FfiConverterTypeEvalResult.read(buf),
+            3 -> OperationStatus.Cancelling
+            4 -> OperationStatus.Succeeded(
+                FfiConverterTypeOperationResult.read(buf),
                 )
-            4 -> OperationStatus.Failed(
+            5 -> OperationStatus.Failed(
                 FfiConverterString.read(buf),
                 )
-            5 -> OperationStatus.Cancelled
-            6 -> OperationStatus.Expired
-            7 -> OperationStatus.Unknown
+            6 -> OperationStatus.Cancelled
+            7 -> OperationStatus.Expired
+            8 -> OperationStatus.Unknown
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
     }
@@ -2898,11 +2996,17 @@ public object FfiConverterTypeOperationStatus : FfiConverterRustBuffer<Operation
                 4UL
             )
         }
+        is OperationStatus.Cancelling -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
         is OperationStatus.Succeeded -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
-                + FfiConverterTypeEvalResult.allocationSize(value.`result`)
+                + FfiConverterTypeOperationResult.allocationSize(value.`result`)
             )
         }
         is OperationStatus.Failed -> {
@@ -2942,26 +3046,30 @@ public object FfiConverterTypeOperationStatus : FfiConverterRustBuffer<Operation
                 buf.putInt(2)
                 Unit
             }
-            is OperationStatus.Succeeded -> {
+            is OperationStatus.Cancelling -> {
                 buf.putInt(3)
-                FfiConverterTypeEvalResult.write(value.`result`, buf)
+                Unit
+            }
+            is OperationStatus.Succeeded -> {
+                buf.putInt(4)
+                FfiConverterTypeOperationResult.write(value.`result`, buf)
                 Unit
             }
             is OperationStatus.Failed -> {
-                buf.putInt(4)
+                buf.putInt(5)
                 FfiConverterString.write(value.`error`, buf)
                 Unit
             }
             is OperationStatus.Cancelled -> {
-                buf.putInt(5)
-                Unit
-            }
-            is OperationStatus.Expired -> {
                 buf.putInt(6)
                 Unit
             }
-            is OperationStatus.Unknown -> {
+            is OperationStatus.Expired -> {
                 buf.putInt(7)
+                Unit
+            }
+            is OperationStatus.Unknown -> {
+                buf.putInt(8)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -3265,17 +3373,24 @@ public object FfiConverterTypeRValueKind: FfiConverterRustBuffer<RValueKind> {
 
 
 
+/**
+ * Ordered operation notifications delivered away from the interpreter
+ * thread. `operation_id` is the id returned by `eval_async` or
+ * `render_async`; hosts must ignore notifications that do not match their
+ * current session and operation identity. Terminal payloads remain
+ * recoverable through `take_result`, so callbacks are never the sole owner.
+ */
 public interface SessionCallback {
 
-    fun `onProgress`(`update`: ProgressUpdate)
+    fun `onProgress`(`operationId`: kotlin.ULong, `update`: ProgressUpdate)
 
-    fun `onOutput`(`line`: kotlin.String)
+    fun `onOutput`(`operationId`: kotlin.ULong, `line`: kotlin.String)
 
-    fun `onPlotReady`(`plot`: PlotResult)
+    fun `onPlotReady`(`operationId`: kotlin.ULong, `plot`: PlotResult)
 
-    fun `onEvalComplete`(`result`: EvalResult)
+    fun `onEvalComplete`(`operationId`: kotlin.ULong, `result`: EvalResult)
 
-    fun `onError`(`error`: kotlin.String)
+    fun `onError`(`operationId`: kotlin.ULong, `error`: kotlin.String)
 
     companion object
 }
@@ -3285,10 +3400,11 @@ public interface SessionCallback {
 // Put the implementation in an object so we don't pollute the top-level namespace
 internal object uniffiCallbackInterfaceSessionCallback {
     internal object `onProgress`: UniffiCallbackInterfaceSessionCallbackMethod0 {
-        override fun callback(`uniffiHandle`: Long,`update`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+        override fun callback(`uniffiHandle`: Long,`operationId`: Long,`update`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeSessionCallback.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.`onProgress`(
+                    FfiConverterULong.lift(`operationId`),
                     FfiConverterTypeProgressUpdate.lift(`update`),
                 )
             }
@@ -3297,10 +3413,11 @@ internal object uniffiCallbackInterfaceSessionCallback {
         }
     }
     internal object `onOutput`: UniffiCallbackInterfaceSessionCallbackMethod1 {
-        override fun callback(`uniffiHandle`: Long,`line`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+        override fun callback(`uniffiHandle`: Long,`operationId`: Long,`line`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeSessionCallback.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.`onOutput`(
+                    FfiConverterULong.lift(`operationId`),
                     FfiConverterString.lift(`line`),
                 )
             }
@@ -3309,10 +3426,11 @@ internal object uniffiCallbackInterfaceSessionCallback {
         }
     }
     internal object `onPlotReady`: UniffiCallbackInterfaceSessionCallbackMethod2 {
-        override fun callback(`uniffiHandle`: Long,`plot`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+        override fun callback(`uniffiHandle`: Long,`operationId`: Long,`plot`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeSessionCallback.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.`onPlotReady`(
+                    FfiConverterULong.lift(`operationId`),
                     FfiConverterTypePlotResult.lift(`plot`),
                 )
             }
@@ -3321,10 +3439,11 @@ internal object uniffiCallbackInterfaceSessionCallback {
         }
     }
     internal object `onEvalComplete`: UniffiCallbackInterfaceSessionCallbackMethod3 {
-        override fun callback(`uniffiHandle`: Long,`result`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+        override fun callback(`uniffiHandle`: Long,`operationId`: Long,`result`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeSessionCallback.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.`onEvalComplete`(
+                    FfiConverterULong.lift(`operationId`),
                     FfiConverterTypeEvalResult.lift(`result`),
                 )
             }
@@ -3333,10 +3452,11 @@ internal object uniffiCallbackInterfaceSessionCallback {
         }
     }
     internal object `onError`: UniffiCallbackInterfaceSessionCallbackMethod4 {
-        override fun callback(`uniffiHandle`: Long,`error`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+        override fun callback(`uniffiHandle`: Long,`operationId`: Long,`error`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeSessionCallback.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.`onError`(
+                    FfiConverterULong.lift(`operationId`),
                     FfiConverterString.lift(`error`),
                 )
             }

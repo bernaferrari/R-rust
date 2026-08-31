@@ -2,13 +2,16 @@
 //! timeouts, per-operation cancellation, and operation state transitions
 //! through the public + `pub(crate)` seams.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, sync_channel};
 use std::time::{Duration, Instant};
 
 use super::support::wait_for_terminal_status;
 use crate::uniffi::error::RError;
-use crate::uniffi::operation::OperationStatus;
+use crate::uniffi::operation::{OperationResult, OperationStatus};
 use crate::uniffi::session::RSession;
-use crate::uniffi::worker::{OpKind, QUEUE_CAPACITY};
+use crate::uniffi::worker::{OpKind, QUEUE_CAPACITY, SessionCommand, WorkerHandle};
 
 // ---------------------------------------------------------------------------
 // Item 1: initialization handshake
@@ -42,6 +45,27 @@ fn constructor_fails_when_init_exceeds_handshake_deadline() {
     );
     // Give the detached worker time to finish its doomed init and exit.
     std::thread::sleep(Duration::from_millis(300));
+}
+
+#[test]
+fn shutdown_waits_for_worker_thread_to_join() {
+    let (commands_tx, commands_rx) = sync_channel(1);
+    let (exited_tx, exited_rx) = channel();
+    let thread_finished = Arc::new(AtomicBool::new(false));
+    let finished = Arc::clone(&thread_finished);
+    let join = std::thread::spawn(move || {
+        assert!(matches!(commands_rx.recv(), Ok(SessionCommand::Shutdown)));
+        exited_tx.send(()).expect("exit signal receiver");
+        // Signal before actually returning: shutdown must join, not merely
+        // observe the signal and detach the still-running thread.
+        std::thread::sleep(Duration::from_millis(50));
+        finished.store(true, Ordering::Release);
+    });
+    let mut worker = WorkerHandle::new(commands_tx, exited_rx, join);
+
+    worker.shutdown();
+
+    assert!(thread_finished.load(Ordering::Acquire));
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +182,10 @@ fn cancel_operation_is_per_operation() {
     // Cancel ONE queued operation; the other queued operation must be
     // untouched.
     session.cancel_operation(cancelled_op).expect("cancel op");
+    assert!(matches!(
+        session.operation_status(cancelled_op),
+        OperationStatus::Cancelling
+    ));
 
     // Cancel the blocker so the worker can drain the queue.
     session.cancel_operation(blocker).expect("cancel blocker");
@@ -203,4 +231,47 @@ fn cancel_operation_is_per_operation() {
         session.operation_status(9_999),
         OperationStatus::Unknown
     ));
+}
+
+#[test]
+fn cancelled_queued_render_does_not_poison_render_rerun() {
+    let session = RSession::new().expect("session");
+    let blocker = session
+        .eval_async("repeat { 1 + 1 }".to_string())
+        .expect("blocker");
+    std::thread::sleep(Duration::from_millis(50));
+
+    let cancelled_render = session
+        .render_async("plot(1, 1)".to_string(), 120, 100)
+        .expect("queued render");
+    session
+        .cancel_operation(cancelled_render)
+        .expect("cancel queued render");
+    assert!(matches!(
+        session.operation_status(cancelled_render),
+        OperationStatus::Cancelling
+    ));
+
+    session.cancel_operation(blocker).expect("cancel blocker");
+    assert!(matches!(
+        wait_for_terminal_status(&session, blocker),
+        OperationStatus::Cancelled
+    ));
+    assert!(matches!(
+        wait_for_terminal_status(&session, cancelled_render),
+        OperationStatus::Cancelled
+    ));
+
+    let rerun = session
+        .render_async("plot(1, 1)".to_string(), 120, 100)
+        .expect("render rerun");
+    match wait_for_terminal_status(&session, rerun) {
+        OperationStatus::Succeeded {
+            result: OperationResult::Render { result },
+        } => {
+            assert_eq!((result.width, result.height), (120, 100));
+            assert!(result.png_bytes.starts_with(&[0x89, b'P', b'N', b'G']));
+        }
+        status => panic!("expected typed render result, got {status:?}"),
+    }
 }

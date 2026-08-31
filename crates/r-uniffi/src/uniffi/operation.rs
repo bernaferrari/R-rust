@@ -7,9 +7,8 @@
 //!   (new) ──────────────► Queued ─────────► Running ──────────────► Succeeded
 //!                             │                  │                    Failed
 //!              cancel_operation()/cancel_all()     │                    Cancelled
-//!              (token only; the worker observes    │
-//!               the cancelled token and lands the  │
-//!               operation in Cancelled)            │
+//!                             │                     │
+//!                             └────► Cancelling ────┘
 //!
 //!   Succeeded | Failed | Cancelled
 //!        │ retained async ops: FIFO-evicted once RETAINED_COMPLETED newer
@@ -26,6 +25,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use r_embed::CancellationToken;
 
 use super::conversion::EvalResult;
+use super::plot::PlotResult;
 
 /// Completed async operations retained for `take_result` (FIFO eviction).
 pub(crate) const RETAINED_COMPLETED: usize = 100;
@@ -40,8 +40,11 @@ const EXPIRED_TOMBSTONE_CAP: usize = 4096;
 pub enum OperationStatus {
     Queued,
     Running,
+    /// Cancellation has been requested and the worker has not acknowledged
+    /// the terminal cancelled outcome yet.
+    Cancelling,
     Succeeded {
-        result: EvalResult,
+        result: OperationResult,
     },
     Failed {
         error: String,
@@ -55,10 +58,22 @@ pub enum OperationStatus {
     Unknown,
 }
 
+/// Typed payload retained for an asynchronous operation.
+///
+/// Keeping evaluation and render outputs in the operation table makes
+/// callbacks optional notifications rather than the only way to recover a
+/// result. Hosts can always consume the exact operation they submitted.
+#[derive(Debug, Clone, uniffi::Enum)]
+#[allow(clippy::large_enum_variant)]
+pub enum OperationResult {
+    Eval { result: EvalResult },
+    Render { result: PlotResult },
+}
+
 /// Terminal outcome recorded by the worker.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum OpOutcome {
-    Succeeded(EvalResult),
+    Succeeded(OperationResult),
     Failed(String),
     Cancelled,
 }
@@ -66,6 +81,7 @@ pub(crate) enum OpOutcome {
 pub(crate) enum OpState {
     Queued,
     Running,
+    Cancelling,
     Done(OpOutcome),
 }
 
@@ -114,7 +130,11 @@ impl OperationTable {
         if let Some(operation) = self.entries.get_mut(&id)
             && matches!(operation.state, OpState::Queued)
         {
-            operation.state = OpState::Running;
+            operation.state = if operation.token.is_cancelled() {
+                OpState::Cancelling
+            } else {
+                OpState::Running
+            };
         }
     }
 
@@ -172,6 +192,7 @@ impl OperationTable {
             OpState::Done(outcome) => status_from_outcome(outcome),
             OpState::Queued => OperationStatus::Queued,
             OpState::Running => OperationStatus::Running,
+            OpState::Cancelling => OperationStatus::Cancelling,
         }
     }
 
@@ -191,6 +212,7 @@ impl OperationTable {
         for operation in self.entries.values_mut() {
             if matches!(operation.state, OpState::Queued | OpState::Running) {
                 operation.token.cancel();
+                operation.state = OpState::Cancelling;
                 cancelled += 1;
             }
         }
@@ -205,6 +227,7 @@ impl OperationTable {
         };
         if matches!(operation.state, OpState::Queued | OpState::Running) {
             operation.token.cancel();
+            operation.state = OpState::Cancelling;
             true
         } else {
             false
@@ -242,6 +265,7 @@ fn state_status(state: &OpState) -> OperationStatus {
     match state {
         OpState::Queued => OperationStatus::Queued,
         OpState::Running => OperationStatus::Running,
+        OpState::Cancelling => OperationStatus::Cancelling,
         OpState::Done(OpOutcome::Succeeded(result)) => OperationStatus::Succeeded {
             result: result.clone(),
         },

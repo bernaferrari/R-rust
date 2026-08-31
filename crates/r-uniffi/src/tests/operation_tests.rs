@@ -2,7 +2,15 @@
 
 use crate::uniffi::cancellation::new_token;
 use crate::uniffi::conversion::null_eval_result;
-use crate::uniffi::operation::{OpOutcome, OperationStatus, OperationTable, RETAINED_COMPLETED};
+use crate::uniffi::operation::{
+    OpOutcome, OperationResult, OperationStatus, OperationTable, RETAINED_COMPLETED,
+};
+
+fn eval_outcome(output: &str) -> OpOutcome {
+    OpOutcome::Succeeded(OperationResult::Eval {
+        result: null_eval_result(output),
+    })
+}
 
 #[test]
 fn operations_transition_through_the_state_machine() {
@@ -14,9 +22,11 @@ fn operations_transition_through_the_state_machine() {
     table.mark_running(1);
     assert!(matches!(table.status(1), OperationStatus::Running));
 
-    table.complete(1, OpOutcome::Succeeded(null_eval_result("done")));
+    table.complete(1, eval_outcome("done"));
     match table.status(1) {
-        OperationStatus::Succeeded { result } => assert_eq!(result.output, "done"),
+        OperationStatus::Succeeded {
+            result: OperationResult::Eval { result },
+        } => assert_eq!(result.output, "done"),
         other => panic!("expected Succeeded, got {other:?}"),
     }
 
@@ -64,9 +74,11 @@ fn cancellation_hits_only_the_target_operation() {
     assert!(table.cancel_operation(1));
     assert!(token_a.is_cancelled());
     assert!(!token_b.is_cancelled());
+    assert!(matches!(table.status(1), OperationStatus::Cancelling));
 
-    // cancel_all reaches every active operation exactly once.
-    assert_eq!(table.cancel_all(), 2);
+    // cancel_all reaches the remaining active operation exactly once; the
+    // already-cancelling operation is not counted twice.
+    assert_eq!(table.cancel_all(), 1);
     assert!(token_b.is_cancelled());
 }
 
@@ -75,7 +87,7 @@ fn retention_fifo_eviction_marks_expired() {
     let mut table = OperationTable::new(2);
     for id in 1..=3 {
         table.register(id, new_token(), true);
-        table.complete(id, OpOutcome::Succeeded(null_eval_result("ok")));
+        table.complete(id, eval_outcome("ok"));
     }
 
     // Capacity 2: the oldest completion (id 1) was evicted into an Expired
@@ -86,7 +98,7 @@ fn retention_fifo_eviction_marks_expired() {
 
     // Completing another operation evicts the next-oldest (id 2).
     table.register(4, new_token(), true);
-    table.complete(4, OpOutcome::Succeeded(null_eval_result("ok")));
+    table.complete(4, eval_outcome("ok"));
     assert!(matches!(table.status(2), OperationStatus::Expired));
     assert!(matches!(table.status(3), OperationStatus::Succeeded { .. }));
     assert!(matches!(table.status(4), OperationStatus::Succeeded { .. }));
@@ -100,10 +112,22 @@ fn synchronous_operations_are_not_retained() {
 
     assert!(matches!(table.status(1), OperationStatus::Queued));
 
-    table.complete(1, OpOutcome::Succeeded(null_eval_result("ok")));
+    table.complete(1, eval_outcome("ok"));
 
     // Removed without a tombstone: the result was handed to the synchronous
     // caller and must not occupy the retention window.
     assert!(matches!(table.status(1), OperationStatus::Unknown));
     assert!(!table.is_known(1));
+}
+
+#[test]
+fn expired_tombstones_are_bounded() {
+    let mut table = OperationTable::new(0);
+    for id in 0..5_000 {
+        table.register(id, new_token(), true);
+        table.complete(id, eval_outcome("ok"));
+    }
+
+    assert!(matches!(table.status(0), OperationStatus::Unknown));
+    assert!(matches!(table.status(4_999), OperationStatus::Expired));
 }

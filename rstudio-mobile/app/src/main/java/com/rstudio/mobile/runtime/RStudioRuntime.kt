@@ -11,6 +11,8 @@ import com.rstudio.shared.ReportChunkResult
 import com.rstudio.shared.ReportRenderer
 import com.rport.uniffi.DataFramePage
 import com.rport.uniffi.EvalResult
+import com.rport.uniffi.OperationResult
+import com.rport.uniffi.OperationStatus
 import com.rport.uniffi.PlotResult
 import com.rport.uniffi.RException
 import com.rport.uniffi.RSession
@@ -27,7 +29,6 @@ import androidx.lifecycle.ViewModelProvider
 import java.io.File
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
-import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
@@ -88,6 +89,8 @@ data class RStudioUiState(
     val console: String = R_BANNER,
     val consoleHistory: List<String> = emptyList(),
     val isRunning: Boolean = false,
+    val activeOperationId: ULong? = null,
+    val operationPhase: OperationPhase = OperationPhase.IDLE,
     val progress: Double = 0.0,
     val status: String = "Ready",
     val errorMessage: String? = null,
@@ -130,8 +133,10 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val projects = ProjectRepository(context.applicationContext)
     private var session = RSession()
+    private var sessionGeneration = 0L
     private val sessionPreferences = context.getSharedPreferences("r_workbench_session", 0)
-    private val awaitingAsyncEvaluation = AtomicBoolean(false)
+    private val asyncOperation = AsyncOperationTracker()
+    private var cancellationPending = false
     private var recoveryJob: Job? = null
 
     private val _state = MutableStateFlow(initialUiState())
@@ -210,6 +215,7 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     }
 
     private fun configureSession(candidate: RSession) {
+        val callbackGeneration = sessionGeneration
         val bundledLibrary = File(context.filesDir, "R/bundled-library").also { it.mkdirs() }
         candidate.configureAndroidPaths(
             appFilesDir = context.filesDir.absolutePath,
@@ -218,26 +224,30 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
         )
         _state.update { it.copy(runtimeInfo = runCatching { candidate.runtimeInfo() }.getOrNull()) }
         candidate.setCallback(object : SessionCallback {
-            override fun onProgress(update: ProgressUpdate) {
-                if (awaitingAsyncEvaluation.get()) _state.update { it.copy(progress = update.progress) }
+            override fun onProgress(operationId: ULong, update: ProgressUpdate) {
+                if (candidate === session && asyncOperation.accepts(callbackGeneration, operationId)) {
+                    _state.update { it.copy(progress = update.progress) }
+                }
             }
 
-            override fun onOutput(line: String) {
-                if (awaitingAsyncEvaluation.get() && line.isNotBlank()) appendConsole(line.trimEnd())
+            override fun onOutput(operationId: ULong, line: String) {
+                if (
+                    candidate === session &&
+                    asyncOperation.accepts(callbackGeneration, operationId) &&
+                    line.isNotBlank()
+                ) {
+                    appendConsole(line.trimEnd())
+                }
             }
 
-            override fun onPlotReady(plot: PlotResult) = Unit
+            override fun onPlotReady(operationId: ULong, plot: PlotResult) = Unit
 
-            override fun onEvalComplete(result: EvalResult) {
-                if (!awaitingAsyncEvaluation.compareAndSet(true, false)) return
-                publishResult(result, includeOutput = false)
-                _state.update { it.copy(isRunning = false, progress = 1.0, status = "Ready") }
-                refreshEnvironment()
-            }
+            // Terminal callbacks are notifications only. The polling path
+            // consumes the typed result by id, preventing delayed callbacks
+            // from completing a newer operation.
+            override fun onEvalComplete(operationId: ULong, result: EvalResult) = Unit
 
-            override fun onError(error: String) {
-                if (awaitingAsyncEvaluation.compareAndSet(true, false)) markError(error)
-            }
+            override fun onError(operationId: ULong, error: String) = Unit
         })
     }
 
@@ -261,14 +271,51 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     fun runCode(code: String) {
         if (code.isBlank() || _state.value.isRunning) return
         appendConsole("> ${code.lineSequence().firstOrNull().orEmpty()}")
-        _state.update { it.copy(isRunning = true, progress = 0.0, status = "Running…", errorMessage = null, diagnostics = emptyList()) }
-        awaitingAsyncEvaluation.set(true)
+        cancellationPending = false
+        _state.update {
+            it.copy(
+                isRunning = true,
+                operationPhase = OperationPhase.RUNNING,
+                progress = 0.0,
+                status = "Running…",
+                errorMessage = null,
+                diagnostics = emptyList(),
+            )
+        }
         scope.launch {
+            val operationSession = session
+            val operationGeneration = sessionGeneration
             try {
-                withContext(Dispatchers.IO) { session.evalAsync(code) }
+                val operationId = withContext(Dispatchers.IO) { operationSession.evalAsync(code) }
+                if (operationSession !== session || operationGeneration != sessionGeneration) return@launch
+                val identity = asyncOperation.start(operationGeneration, operationId).let {
+                    if (cancellationPending) {
+                        runCatching { operationSession.cancelOperation(operationId) }
+                        asyncOperation.requestCancellation() ?: it
+                    } else {
+                        it
+                    }
+                }
+                _state.update {
+                    it.copy(activeOperationId = identity.id, operationPhase = identity.phase)
+                }
+                when (val status = awaitOperation(operationSession, operationId)) {
+                    is OperationStatus.Succeeded -> when (val result = status.result) {
+                        is OperationResult.Eval -> {
+                            if (!completeOperation(operationGeneration, operationId)) return@launch
+                            publishResult(result.result, includeOutput = false)
+                            refreshEnvironment()
+                        }
+                        is OperationResult.Render -> finishUnexpectedOperation(operationGeneration, operationId, "evaluation returned a plot")
+                    }
+                    is OperationStatus.Cancelled -> finishCancelledOperation(operationGeneration, operationId)
+                    is OperationStatus.Failed -> finishFailedOperation(operationGeneration, operationId, status.error)
+                    else -> finishUnexpectedOperation(operationGeneration, operationId, "operation result expired")
+                }
             } catch (error: Exception) {
-                awaitingAsyncEvaluation.set(false)
-                markError(error.message ?: error.javaClass.simpleName)
+                if (completeCurrentOperation(operationSession, operationGeneration)) {
+                    markError(error.message ?: error.javaClass.simpleName)
+                }
             }
         }
     }
@@ -578,10 +625,50 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
 
     fun renderCurrentCode() {
         val code = _state.value.code
-        runTask("Rendering plot...") {
-            val plot = withContext(Dispatchers.IO) { session.render(code, 900u, 620u) }
-            setPlot(plot)
-            appendConsole("Rendered plot ${plot.width}x${plot.height}")
+        if (code.isBlank() || _state.value.isRunning) return
+        cancellationPending = false
+        _state.update {
+            it.copy(
+                isRunning = true,
+                operationPhase = OperationPhase.RUNNING,
+                progress = 0.0,
+                status = "Rendering plot…",
+                errorMessage = null,
+            )
+        }
+        scope.launch {
+            val operationSession = session
+            val operationGeneration = sessionGeneration
+            try {
+                val operationId = withContext(Dispatchers.IO) { operationSession.renderAsync(code, 900u, 620u) }
+                if (operationSession !== session || operationGeneration != sessionGeneration) return@launch
+                val identity = asyncOperation.start(operationGeneration, operationId).let {
+                    if (cancellationPending) {
+                        runCatching { operationSession.cancelOperation(operationId) }
+                        asyncOperation.requestCancellation() ?: it
+                    } else {
+                        it
+                    }
+                }
+                _state.update { it.copy(activeOperationId = identity.id, operationPhase = identity.phase) }
+                when (val status = awaitOperation(operationSession, operationId)) {
+                    is OperationStatus.Succeeded -> when (val result = status.result) {
+                        is OperationResult.Render -> {
+                            if (!completeOperation(operationGeneration, operationId)) return@launch
+                            setPlot(result.result)
+                            appendConsole("Rendered plot ${result.result.width}x${result.result.height}")
+                        }
+                        is OperationResult.Eval -> finishUnexpectedOperation(operationGeneration, operationId, "render returned an evaluation")
+                    }
+                    is OperationStatus.Cancelled -> finishCancelledOperation(operationGeneration, operationId)
+                    is OperationStatus.Failed -> finishFailedOperation(operationGeneration, operationId, status.error)
+                    else -> finishUnexpectedOperation(operationGeneration, operationId, "operation result expired")
+                }
+            } catch (error: Exception) {
+                if (completeCurrentOperation(operationSession, operationGeneration)) {
+                    markError(error.message ?: error.javaClass.simpleName)
+                }
+            }
         }
     }
 
@@ -866,17 +953,30 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancel() {
-        awaitingAsyncEvaluation.set(false)
-        session.cancelCurrentOperation()
-        _state.update { it.copy(isRunning = false, status = "Cancelled") }
-        appendConsole("Cancelled current operation")
+        val identity = asyncOperation.requestCancellation()
+        cancellationPending = true
+        if (identity?.id != null) {
+            runCatching { session.cancelOperation(identity.id) }
+        } else {
+            session.cancelCurrentOperation()
+        }
+        _state.update {
+            it.copy(
+                activeOperationId = identity?.id,
+                operationPhase = OperationPhase.CANCELLING,
+                status = "Cancelling…",
+            )
+        }
+        appendConsole("Cancelling current operation")
     }
 
     fun resetSession() {
         if (_state.value.isRunning) cancel()
-        awaitingAsyncEvaluation.set(false)
+        asyncOperation.reset()
+        cancellationPending = false
         runCatching { session.close() }
         session = RSession()
+        sessionGeneration += 1
         configureSession(session)
         _state.update {
             it.copy(
@@ -893,6 +993,8 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
                 diagnostics = emptyList(),
                 errorMessage = null,
                 isRunning = false,
+                activeOperationId = null,
+                operationPhase = OperationPhase.IDLE,
                 progress = 0.0,
                 status = "Session reset",
             )
@@ -961,6 +1063,62 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
                 errorMessage = null,
             ).reconcileProjectDocuments(project.files)
         }
+    }
+
+    private suspend fun awaitOperation(operationSession: RSession, operationId: ULong): OperationStatus {
+        while (true) {
+            when (val status = withContext(Dispatchers.IO) { operationSession.takeResult(operationId) }) {
+                is OperationStatus.Queued,
+                is OperationStatus.Running,
+                is OperationStatus.Cancelling,
+                -> delay(10)
+                else -> return status
+            }
+        }
+    }
+
+    private fun completeOperation(generation: Long, operationId: ULong): Boolean {
+        if (!asyncOperation.complete(generation, operationId)) return false
+        cancellationPending = false
+        _state.update {
+            it.copy(
+                isRunning = false,
+                activeOperationId = null,
+                operationPhase = OperationPhase.IDLE,
+                progress = 1.0,
+                status = "Ready",
+            )
+        }
+        return true
+    }
+
+    private fun completeCurrentOperation(
+        operationSession: RSession,
+        generation: Long,
+    ): Boolean {
+        if (operationSession !== session || generation != sessionGeneration) return false
+        val identity = asyncOperation.snapshot()
+        if (identity.id != null) return completeOperation(generation, identity.id)
+        if (!_state.value.isRunning || _state.value.activeOperationId != null) return false
+        cancellationPending = false
+        _state.update {
+            it.copy(activeOperationId = null, operationPhase = OperationPhase.IDLE)
+        }
+        return true
+    }
+
+    private fun finishCancelledOperation(generation: Long, operationId: ULong) {
+        if (!completeOperation(generation, operationId)) return
+        _state.update { it.copy(status = "Cancelled") }
+        appendConsole("Cancelled current operation")
+    }
+
+    private fun finishFailedOperation(generation: Long, operationId: ULong, message: String) {
+        if (completeOperation(generation, operationId)) markError(message)
+    }
+
+    private fun finishUnexpectedOperation(generation: Long, operationId: ULong, message: String) {
+        if (completeOperation(generation, operationId)) markError(message)
     }
 
     private fun runTask(status: String, block: suspend () -> Unit) {
@@ -1035,6 +1193,8 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
         _state.update {
             it.copy(
                 isRunning = false,
+                activeOperationId = null,
+                operationPhase = OperationPhase.IDLE,
                 status = "Error",
                 errorMessage = message,
                 lastValueSummary = message,

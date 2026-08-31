@@ -43,16 +43,24 @@ pub(crate) fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::pa
 #[derive(Debug, Clone)]
 pub(crate) enum CallbackEvent {
     EvalComplete {
+        operation_id: u64,
         output: String,
         kind: RValueKind,
     },
     PlotReady {
+        operation_id: u64,
         width: u32,
         height: u32,
         bytes: usize,
     },
-    Output(String),
-    Error(String),
+    Output {
+        operation_id: u64,
+        line: String,
+    },
+    Error {
+        operation_id: u64,
+        message: String,
+    },
 }
 
 pub(crate) type CallbackEvents = Arc<(Mutex<Vec<CallbackEvent>>, Condvar)>;
@@ -80,29 +88,34 @@ impl RecordingCallback {
 }
 
 impl SessionCallback for RecordingCallback {
-    fn on_progress(&self, _update: crate::uniffi::conversion::ProgressUpdate) {}
+    fn on_progress(&self, _operation_id: u64, _update: crate::uniffi::conversion::ProgressUpdate) {}
 
-    fn on_output(&self, line: String) {
-        self.push(CallbackEvent::Output(line));
+    fn on_output(&self, operation_id: u64, line: String) {
+        self.push(CallbackEvent::Output { operation_id, line });
     }
 
-    fn on_plot_ready(&self, plot: PlotResult) {
+    fn on_plot_ready(&self, operation_id: u64, plot: PlotResult) {
         self.push(CallbackEvent::PlotReady {
+            operation_id,
             width: plot.width,
             height: plot.height,
             bytes: plot.png_bytes.len(),
         });
     }
 
-    fn on_eval_complete(&self, result: EvalResult) {
+    fn on_eval_complete(&self, operation_id: u64, result: EvalResult) {
         self.push(CallbackEvent::EvalComplete {
+            operation_id,
             output: result.output,
             kind: result.value.kind,
         });
     }
 
-    fn on_error(&self, error: String) {
-        self.push(CallbackEvent::Error(error));
+    fn on_error(&self, operation_id: u64, error: String) {
+        self.push(CallbackEvent::Error {
+            operation_id,
+            message: error,
+        });
     }
 }
 

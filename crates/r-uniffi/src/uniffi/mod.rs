@@ -19,7 +19,7 @@ pub use conversion::{
     RMetadata, RValue, RValueKind, ResourceLimits, RuntimeInfo, android_runtime_paths,
 };
 pub use error::RError;
-pub use operation::OperationStatus;
+pub use operation::{OperationResult, OperationStatus};
 pub use plot::PlotResult;
 pub use session::RSession;
 pub use worker::SessionCallback;
