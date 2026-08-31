@@ -12,8 +12,8 @@ use r_embed::CancellationToken;
 
 use super::cancellation::map_eval_error;
 use super::conversion::{
-    AndroidRuntimePaths, EvalResult, PackageInfo, ProgressUpdate, RValue, ResourceLimits,
-    RuntimeInfo, null_eval_result,
+    AndroidRuntimePaths, DataFramePage, EvalResult, PackageInfo, ProgressUpdate, RValue,
+    ResourceLimits, RuntimeInfo, null_eval_result,
 };
 use super::error::RError;
 use super::operation::{OpOutcome, OperationTable};
@@ -226,6 +226,12 @@ pub(crate) enum OpKind {
         code: String,
         reply: Reply<EvalResult>,
     },
+    DataFramePage {
+        name: String,
+        offset: u64,
+        limit: u64,
+        reply: Reply<DataFramePage>,
+    },
     Render {
         code: String,
         width: u32,
@@ -433,6 +439,50 @@ fn execute_operation(
                 Err(err) => settle_error(op, err, table, dispatcher, reply),
             }
         }
+        OpKind::DataFramePage {
+            name,
+            offset,
+            limit,
+            reply,
+        } => {
+            let result = run_guarded(|| {
+                let name = quote_r_string(&name);
+                let count = session
+                    .eval_result_cancellable(
+                        &format!("nrow(get({name}, envir = .GlobalEnv))"),
+                        &op.token,
+                    )
+                    .map_err(map_table_eval_error)?;
+                let total_rows = nonnegative_integer(&count.value).ok_or_else(|| {
+                    RError::InvalidInput("object is not a rectangular table".to_string())
+                })?;
+                let end = offset.saturating_add(limit).min(total_rows);
+                let slice = if offset >= total_rows {
+                    format!("get({name}, envir = .GlobalEnv)[FALSE, , drop = FALSE]")
+                } else {
+                    format!(
+                        "get({name}, envir = .GlobalEnv)[seq.int({}, {}), , drop = FALSE]",
+                        offset + 1,
+                        end,
+                    )
+                };
+                let page = session
+                    .eval_result_cancellable(&slice, &op.token)
+                    .map_err(map_table_eval_error)?;
+                Ok(DataFramePage {
+                    value: RValue::from(page.value),
+                    total_rows,
+                    offset,
+                })
+            });
+            match result {
+                Ok(page) => {
+                    lock(table).complete(op.id, OpOutcome::Succeeded(null_eval_result("")));
+                    fire_reply(reply, Ok(page));
+                }
+                Err(err) => settle_error(op, err, table, dispatcher, reply),
+            }
+        }
         OpKind::Render {
             code,
             width,
@@ -475,6 +525,37 @@ fn execute_operation(
                 Err(err) => settle_error(op, err, table, dispatcher, reply),
             }
         }
+    }
+}
+
+fn quote_r_string(value: &str) -> String {
+    format!(
+        "\"{}\"",
+        value
+            .replace('\\', "\\\\")
+            .replace('\"', "\\\"")
+            .replace('\r', "\\r")
+            .replace('\n', "\\n")
+    )
+}
+
+fn map_table_eval_error(error: r_embed::RSessionError) -> RError {
+    match map_eval_error(error) {
+        RError::Cancelled => RError::Cancelled,
+        _ => RError::InvalidInput("object is not a rectangular table".to_string()),
+    }
+}
+
+fn nonnegative_integer(value: &r_embed::RValue) -> Option<u64> {
+    match value {
+        r_embed::RValue::Integer(Some(value)) if *value >= 0 => Some(*value as u64),
+        r_embed::RValue::Real(Some(value))
+            if value.is_finite() && *value >= 0.0 && value.fract() == 0.0 =>
+        {
+            Some(*value as u64)
+        }
+        r_embed::RValue::Attributed { value, .. } => nonnegative_integer(value),
+        _ => None,
     }
 }
 

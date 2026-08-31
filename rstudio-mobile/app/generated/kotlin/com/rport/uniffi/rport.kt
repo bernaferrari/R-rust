@@ -83,7 +83,7 @@ open class RustBuffer : Structure() {
 
     @Suppress("TooGenericExceptionThrown")
     fun asByteBuffer() =
-        this.data?.getByteBuffer(0, this.len.toLong())?.also {
+        this.data?.getByteBuffer(0, this.len)?.also {
             it.order(ByteOrder.BIG_ENDIAN)
         }
 }
@@ -100,6 +100,43 @@ internal open class ForeignBytes : Structure() {
     @JvmField var data: Pointer? = null
 
     class ByValue : ForeignBytes(), Structure.ByValue
+}
+
+// Converter for `&[u8]` / `[ByRef] bytes` arguments.
+//
+// Only `lower` is valid — zero-copy byte buffers only flow foreign -> Rust,
+// and only in argument position. `lift`, `read`, `write`, and
+// `allocationSize` have no sound implementation here and all panic at
+// runtime. The `FfiConverter` interface is implemented so that the
+// compiler enforces the full method set (rather than relying on eyeball).
+//
+// The provided `ByteBuffer` MUST be direct — only direct buffers have a
+// stable native address that JNA can expose via `getDirectBufferPointer`.
+// The returned `ForeignBytes.ByValue` is only valid for the duration of
+// the FFI call; the Rust side treats it as a borrow.
+internal object FfiConverterByRefBytes : FfiConverter<java.nio.ByteBuffer, ForeignBytes.ByValue> {
+    override fun lower(value: java.nio.ByteBuffer): ForeignBytes.ByValue {
+        require(value.isDirect) { "UniFFI zero-copy &[u8] requires a direct ByteBuffer. Use ByteBuffer.allocateDirect()." }
+        val remaining = value.remaining()
+        val fb = ForeignBytes.ByValue()
+        fb.len = remaining
+        // Zero-length direct buffers: skip getDirectBufferPointer (platform-variable behavior)
+        // and pass null. The Rust side treats (null, 0) as &[].
+        fb.data = if (remaining == 0) null else com.sun.jna.Native.getDirectBufferPointer(value)
+        return fb
+    }
+
+    override fun lift(value: ForeignBytes.ByValue): java.nio.ByteBuffer =
+        error("ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust")
+
+    override fun read(buf: java.nio.ByteBuffer): java.nio.ByteBuffer =
+        error("ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+
+    override fun write(value: java.nio.ByteBuffer, buf: java.nio.ByteBuffer): Unit =
+        error("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+
+    override fun allocationSize(value: java.nio.ByteBuffer): ULong =
+        error("ByRef bytes have no RustBuffer allocation size: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
 }
 /**
  * The FfiConverter interface handles converter types to and from the FFI
@@ -284,8 +321,9 @@ internal inline fun<T> uniffiTraitInterfaceCall(
     try {
         writeReturn(makeCall())
     } catch(e: kotlin.Exception) {
+        val err = try { e.stackTraceToString() } catch(_: Throwable) { "" }
         callStatus.code = UNIFFI_CALL_UNEXPECTED_ERROR
-        callStatus.error_buf = FfiConverterString.lower(e.toString())
+        callStatus.error_buf = FfiConverterString.lower(err)
     }
 }
 
@@ -302,8 +340,9 @@ internal inline fun<T, reified E: Throwable> uniffiTraitInterfaceCallWithError(
             callStatus.code = UNIFFI_CALL_ERROR
             callStatus.error_buf = lowerError(e)
         } else {
+            val err = try { e.stackTraceToString() } catch(_: Throwable) { "" }
             callStatus.code = UNIFFI_CALL_UNEXPECTED_ERROR
-            callStatus.error_buf = FfiConverterString.lower(e.toString())
+            callStatus.error_buf = FfiConverterString.lower(err)
         }
     }
 }
@@ -683,57 +722,67 @@ internal object IntegrityCheckingUniffiLib {
         uniffiCheckApiChecksums(this)
     }
     external fun uniffi_r_uniffi_checksum_func_android_runtime_paths(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_cancel(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_cancel_current_operation(
-    ): Short
+    ): Int
+    external fun uniffi_r_uniffi_checksum_method_rsession_cancel_operation(
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_configure_android_paths(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_configure_android_runtime(
-    ): Short
+    ): Int
+    external fun uniffi_r_uniffi_checksum_method_rsession_data_frame_page(
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_eval(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_eval_async(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_eval_result(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_installed_packages(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_is_active(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_load_package(
-    ): Short
+    ): Int
+    external fun uniffi_r_uniffi_checksum_method_rsession_operation_status(
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_package_available(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_package_info(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_package_path(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_render(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_render_async(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_resource_limits(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_runtime_info(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_set_callback(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_rsession_set_resource_limits(
-    ): Short
+    ): Int
+    external fun uniffi_r_uniffi_checksum_method_rsession_shutdown_worker(
+    ): Int
+    external fun uniffi_r_uniffi_checksum_method_rsession_take_result(
+    ): Int
     external fun uniffi_r_uniffi_checksum_constructor_rsession_new(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_sessioncallback_on_progress(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_sessioncallback_on_output(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_sessioncallback_on_plot_ready(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_sessioncallback_on_eval_complete(
-    ): Short
+    ): Int
     external fun uniffi_r_uniffi_checksum_method_sessioncallback_on_error(
-    ): Short
+    ): Int
     external fun ffi_r_uniffi_uniffi_contract_version(
     ): Int
 
@@ -763,10 +812,14 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_r_uniffi_fn_method_rsession_cancel_current_operation(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_r_uniffi_fn_method_rsession_cancel_operation(`ptr`: Long,`opId`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_r_uniffi_fn_method_rsession_configure_android_paths(`ptr`: Long,`appFilesDir`: RustBuffer.ByValue,`cacheDir`: RustBuffer.ByValue,`bundledLibraryDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_r_uniffi_fn_method_rsession_configure_android_runtime(`ptr`: Long,`paths`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_r_uniffi_fn_method_rsession_data_frame_page(`ptr`: Long,`name`: RustBuffer.ByValue,`offset`: Long,`limit`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_r_uniffi_fn_method_rsession_eval(`ptr`: Long,`code`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_r_uniffi_fn_method_rsession_eval_async(`ptr`: Long,`code`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -779,6 +832,8 @@ internal object UniffiLib {
     ): Byte
     external fun uniffi_r_uniffi_fn_method_rsession_load_package(`ptr`: Long,`package`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_r_uniffi_fn_method_rsession_operation_status(`ptr`: Long,`opId`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_r_uniffi_fn_method_rsession_package_available(`ptr`: Long,`package`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
     external fun uniffi_r_uniffi_fn_method_rsession_package_info(`ptr`: Long,`package`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -797,6 +852,10 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_r_uniffi_fn_method_rsession_set_resource_limits(`ptr`: Long,`limits`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_r_uniffi_fn_method_rsession_shutdown_worker(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_r_uniffi_fn_method_rsession_take_result(`ptr`: Long,`opId`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_r_uniffi_fn_init_callback_vtable_sessioncallback(`vtable`: UniffiVTableCallbackInterfaceSessionCallback,
     ): Unit
     external fun uniffi_r_uniffi_fn_func_android_runtime_paths(`appFilesDir`: RustBuffer.ByValue,`cacheDir`: RustBuffer.ByValue,`bundledLibraryDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -816,7 +875,7 @@ internal object UniffiLib {
     external fun ffi_r_uniffi_rust_future_free_u8(`handle`: Long,
     ): Unit
     external fun ffi_r_uniffi_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
-    ): Byte
+    ): Int
     external fun ffi_r_uniffi_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
     external fun ffi_r_uniffi_rust_future_cancel_i8(`handle`: Long,
@@ -832,7 +891,7 @@ internal object UniffiLib {
     external fun ffi_r_uniffi_rust_future_free_u16(`handle`: Long,
     ): Unit
     external fun ffi_r_uniffi_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
-    ): Short
+    ): Int
     external fun ffi_r_uniffi_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
     external fun ffi_r_uniffi_rust_future_cancel_i16(`handle`: Long,
@@ -920,82 +979,97 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_r_uniffi_checksum_func_android_runtime_paths() != 62399.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_func_android_runtime_paths() != 38782) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_cancel() != 46890.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_cancel() != 19707) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_cancel_current_operation() != 40555.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_cancel_current_operation() != 59845) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_configure_android_paths() != 30115.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_cancel_operation() != 22620) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_configure_android_runtime() != 43362.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_configure_android_paths() != 24521) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_eval() != 43278.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_configure_android_runtime() != 36992) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_eval_async() != 36604.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_data_frame_page() != 64369) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_eval_result() != 22162.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_eval() != 2188) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_installed_packages() != 27295.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_eval_async() != 2421) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_is_active() != 1384.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_eval_result() != 18006) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_load_package() != 22103.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_installed_packages() != 22654) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_package_available() != 50580.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_is_active() != 7544) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_package_info() != 51384.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_load_package() != 11679) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_package_path() != 58972.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_operation_status() != 41216) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_render() != 64197.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_package_available() != 59157) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_render_async() != 60885.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_package_info() != 8732) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_resource_limits() != 49890.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_package_path() != 61153) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_runtime_info() != 22064.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_render() != 11611) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_set_callback() != 29566.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_render_async() != 17482) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_rsession_set_resource_limits() != 59726.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_resource_limits() != 48339) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_constructor_rsession_new() != 62638.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_runtime_info() != 8883) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_progress() != 283.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_set_callback() != 57733) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_output() != 29003.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_set_resource_limits() != 25312) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_plot_ready() != 9443.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_shutdown_worker() != 31507) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_eval_complete() != 6299.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_method_rsession_take_result() != 55130) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_error() != 35957.toShort()) {
+    if (lib.uniffi_r_uniffi_checksum_constructor_rsession_new() != 38904) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_progress() != 18517) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_output() != 20477) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_plot_ready() != 7200) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_eval_complete() != 16377) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_r_uniffi_checksum_method_sessioncallback_on_error() != 48959) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1473,16 +1547,44 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 //
 
 
-//
+/**
+ * A UniFFI-facing R interpreter session.
+ *
+ * All interpretation runs on a dedicated worker thread behind a bounded
+ * command queue. Each operation owns a private cancellation token; see
+ * [`super::cancellation`] for the policy.
+ */
 public interface RSessionInterface {
 
+    /**
+     * Request cancellation of every active (queued or running) operation.
+     * Each operation owns a private token, so cancelling now can never affect
+     * operations submitted later.
+     */
     fun `cancel`()
 
+    /**
+     * Compatibility alias for `cancel` (per-operation tokens removed the old
+     * "current operation" ambiguity).
+     */
     fun `cancelCurrentOperation`()
+
+    /**
+     * Request cancellation of one operation by id. Returns an error when the
+     * id was never registered; cancelling an already-finished operation is a
+     * no-op success.
+     */
+    fun `cancelOperation`(`opId`: kotlin.ULong)
 
     fun `configureAndroidPaths`(`appFilesDir`: kotlin.String, `cacheDir`: kotlin.String, `bundledLibraryDir`: kotlin.String?)
 
     fun `configureAndroidRuntime`(`paths`: AndroidRuntimePaths)
+
+    /**
+     * Fetch a bounded row slice from a named rectangular object. Slicing is
+     * performed on the interpreter thread before owned values cross UniFFI.
+     */
+    fun `dataFramePage`(`name`: kotlin.String, `offset`: kotlin.ULong, `limit`: kotlin.ULong): DataFramePage
 
     fun `eval`(`code`: kotlin.String): kotlin.String
 
@@ -1495,6 +1597,13 @@ public interface RSessionInterface {
     fun `isActive`(): kotlin.Boolean
 
     fun `loadPackage`(`package`: kotlin.String)
+
+    /**
+     * Snapshot of an operation's state machine position (see
+     * [`super::operation`]): `Queued`, `Running`, a terminal state, or
+     * `Unknown` / `Expired`.
+     */
+    fun `operationStatus`(`opId`: kotlin.ULong): OperationStatus
 
     fun `packageAvailable`(`package`: kotlin.String): kotlin.Boolean
 
@@ -1514,9 +1623,29 @@ public interface RSessionInterface {
 
     fun `setResourceLimits`(`limits`: ResourceLimits)
 
+    /**
+     * Stop the worker: cancel all active operations, send `Shutdown`, and
+     * join the worker with a bounded wait.
+     */
+    fun `shutdownWorker`()
+
+    /**
+     * Consume a completed operation, returning its terminal status
+     * (`Succeeded`/`Failed`/`Cancelled`). Queued and running operations are
+     * left untouched; a consumed (or evicted) id reports `Expired` once.
+     */
+    fun `takeResult`(`opId`: kotlin.ULong): OperationStatus
+
     companion object
 }
 
+/**
+ * A UniFFI-facing R interpreter session.
+ *
+ * All interpretation runs on a dedicated worker thread behind a bounded
+ * command queue. Each operation owns a private cancellation token; see
+ * [`super::cancellation`] for the policy.
+ */
 open class RSession: Disposable, AutoCloseable, RSessionInterface
 {
 
@@ -1539,8 +1668,13 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     @Suppress("UNUSED_PARAMETER")
     constructor(noHandle: NoHandle) {
         this.handle = 0
-        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+        this.cleanable = null
     }
+    /**
+     * Create a session: spawn the interpreter worker, run `RSession::new` on
+     * it, and block (at most [`INIT_TIMEOUT`]) until the handshake reports
+     * success. Initialization failure or timeout is a constructor error.
+     */
     constructor() :
         this(UniffiWithHandle,
     uniffiRustCallWithError(RException) { _status ->
@@ -1551,10 +1685,15 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     )
 
     protected val handle: Long
-    protected val cleanable: UniffiCleaner.Cleanable
+    protected val cleanable: UniffiCleaner.Cleanable?
 
     private val wasDestroyed = AtomicBoolean(false)
     private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
 
     override fun destroy() {
         // Only allow a single call to this method.
@@ -1562,7 +1701,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
         if (this.wasDestroyed.compareAndSet(false, true)) {
             // This decrement always matches the initial count of 1 given at creation time.
             if (this.callCounter.decrementAndGet() == 0L) {
-                cleanable.clean()
+                cleanable?.clean()
             }
         }
     }
@@ -1590,7 +1729,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
         } finally {
             // This decrement always matches the increment we performed above.
             if (this.callCounter.decrementAndGet() == 0L) {
-                cleanable.clean()
+                cleanable?.clean()
             }
         }
     }
@@ -1621,7 +1760,12 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
         }
     }
 
-    override fun `cancel`()
+
+    /**
+     * Request cancellation of every active (queued or running) operation.
+     * Each operation owns a private token, so cancelling now can never affect
+     * operations submitted later.
+     */override fun `cancel`()
         =
     callWithHandle {
     uniffiRustCall() { _status ->
@@ -1633,7 +1777,11 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
 
 
 
-    override fun `cancelCurrentOperation`()
+
+    /**
+     * Compatibility alias for `cancel` (per-operation tokens removed the old
+     * "current operation" ambiguity).
+     */override fun `cancelCurrentOperation`()
         =
     callWithHandle {
     uniffiRustCall() { _status ->
@@ -1646,13 +1794,35 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
 
 
 
+    /**
+     * Request cancellation of one operation by id. Returns an error when the
+     * id was never registered; cancelling an already-finished operation is a
+     * no-op success.
+     */
+    @Throws(RException::class)override fun `cancelOperation`(`opId`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(RException) { _status ->
+    UniffiLib.uniffi_r_uniffi_fn_method_rsession_cancel_operation(
+        it,
+
+        FfiConverterULong.lower(`opId`),_status)
+}
+    }
+
+
+
+
     @Throws(RException::class)override fun `configureAndroidPaths`(`appFilesDir`: kotlin.String, `cacheDir`: kotlin.String, `bundledLibraryDir`: kotlin.String?)
         =
     callWithHandle {
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_configure_android_paths(
         it,
-        FfiConverterString.lower(`appFilesDir`),FfiConverterString.lower(`cacheDir`),FfiConverterOptionalString.lower(`bundledLibraryDir`),_status)
+
+        FfiConverterString.lower(`appFilesDir`),
+        FfiConverterString.lower(`cacheDir`),
+        FfiConverterOptionalString.lower(`bundledLibraryDir`),_status)
 }
     }
 
@@ -1665,10 +1835,32 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_configure_android_runtime(
         it,
+
         FfiConverterTypeAndroidRuntimePaths.lower(`paths`),_status)
 }
     }
 
+
+
+
+    /**
+     * Fetch a bounded row slice from a named rectangular object. Slicing is
+     * performed on the interpreter thread before owned values cross UniFFI.
+     */
+    @Throws(RException::class)override fun `dataFramePage`(`name`: kotlin.String, `offset`: kotlin.ULong, `limit`: kotlin.ULong): DataFramePage {
+            return FfiConverterTypeDataFramePage.lift(
+    callWithHandle {
+    uniffiRustCallWithError(RException) { _status ->
+    UniffiLib.uniffi_r_uniffi_fn_method_rsession_data_frame_page(
+        it,
+
+        FfiConverterString.lower(`name`),
+        FfiConverterULong.lower(`offset`),
+        FfiConverterULong.lower(`limit`),_status)
+}
+    }
+    )
+    }
 
 
 
@@ -1678,6 +1870,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_eval(
         it,
+
         FfiConverterString.lower(`code`),_status)
 }
     }
@@ -1692,6 +1885,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_eval_async(
         it,
+
         FfiConverterString.lower(`code`),_status)
 }
     }
@@ -1706,6 +1900,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_eval_result(
         it,
+
         FfiConverterString.lower(`code`),_status)
 }
     }
@@ -1747,10 +1942,30 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_load_package(
         it,
+
         FfiConverterString.lower(`package`),_status)
 }
     }
 
+
+
+
+    /**
+     * Snapshot of an operation's state machine position (see
+     * [`super::operation`]): `Queued`, `Running`, a terminal state, or
+     * `Unknown` / `Expired`.
+     */override fun `operationStatus`(`opId`: kotlin.ULong): OperationStatus {
+            return FfiConverterTypeOperationStatus.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_r_uniffi_fn_method_rsession_operation_status(
+        it,
+
+        FfiConverterULong.lower(`opId`),_status)
+}
+    }
+    )
+    }
 
 
 
@@ -1760,6 +1975,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_package_available(
         it,
+
         FfiConverterString.lower(`package`),_status)
 }
     }
@@ -1774,6 +1990,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_package_info(
         it,
+
         FfiConverterString.lower(`package`),_status)
 }
     }
@@ -1788,6 +2005,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_package_path(
         it,
+
         FfiConverterString.lower(`package`),_status)
 }
     }
@@ -1802,7 +2020,10 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_render(
         it,
-        FfiConverterString.lower(`code`),FfiConverterUInt.lower(`width`),FfiConverterUInt.lower(`height`),_status)
+
+        FfiConverterString.lower(`code`),
+        FfiConverterUInt.lower(`width`),
+        FfiConverterUInt.lower(`height`),_status)
 }
     }
     )
@@ -1816,7 +2037,10 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_render_async(
         it,
-        FfiConverterString.lower(`code`),FfiConverterUInt.lower(`width`),FfiConverterUInt.lower(`height`),_status)
+
+        FfiConverterString.lower(`code`),
+        FfiConverterUInt.lower(`width`),
+        FfiConverterUInt.lower(`height`),_status)
 }
     }
     )
@@ -1857,6 +2081,7 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_set_callback(
         it,
+
         FfiConverterTypeSessionCallback.lower(`callback`),_status)
 }
     }
@@ -1870,10 +2095,46 @@ open class RSession: Disposable, AutoCloseable, RSessionInterface
     uniffiRustCallWithError(RException) { _status ->
     UniffiLib.uniffi_r_uniffi_fn_method_rsession_set_resource_limits(
         it,
+
         FfiConverterTypeResourceLimits.lower(`limits`),_status)
 }
     }
 
+
+
+
+    /**
+     * Stop the worker: cancel all active operations, send `Shutdown`, and
+     * join the worker with a bounded wait.
+     */override fun `shutdownWorker`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_r_uniffi_fn_method_rsession_shutdown_worker(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    /**
+     * Consume a completed operation, returning its terminal status
+     * (`Succeeded`/`Failed`/`Cancelled`). Queued and running operations are
+     * left untouched; a consumed (or evicted) id reports `Expired` once.
+     */override fun `takeResult`(`opId`: kotlin.ULong): OperationStatus {
+            return FfiConverterTypeOperationStatus.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_r_uniffi_fn_method_rsession_take_result(
+        it,
+
+        FfiConverterULong.lower(`opId`),_status)
+}
+    }
+    )
+    }
 
 
 
@@ -1933,6 +2194,8 @@ data class AndroidRuntimePaths (
 
 
 
+
+
     companion object
 }
 
@@ -1972,12 +2235,61 @@ public object FfiConverterTypeAndroidRuntimePaths: FfiConverterRustBuffer<Androi
 
 
 
+/**
+ * A bounded table slice. Only `value` crosses the FFI boundary; `total_rows`
+ * describes the source object without serializing its unloaded rows.
+ */
+data class DataFramePage (
+    var `value`: RValue
+    ,
+    var `totalRows`: kotlin.ULong
+    ,
+    var `offset`: kotlin.ULong
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDataFramePage: FfiConverterRustBuffer<DataFramePage> {
+    override fun read(buf: ByteBuffer): DataFramePage {
+        return DataFramePage(
+            FfiConverterTypeRValue.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DataFramePage) = (
+            FfiConverterTypeRValue.allocationSize(value.`value`) +
+            FfiConverterULong.allocationSize(value.`totalRows`) +
+            FfiConverterULong.allocationSize(value.`offset`)
+    )
+
+    override fun write(value: DataFramePage, buf: ByteBuffer) {
+            FfiConverterTypeRValue.write(value.`value`, buf)
+            FfiConverterULong.write(value.`totalRows`, buf)
+            FfiConverterULong.write(value.`offset`, buf)
+    }
+}
+
+
+
 data class EvalResult (
     var `output`: kotlin.String
     ,
     var `value`: RValue
 
 ){
+
+
 
 
 
@@ -2035,6 +2347,8 @@ data class PackageInfo (
 
 
 
+
+
     companion object
 }
 
@@ -2089,14 +2403,22 @@ public object FfiConverterTypePackageInfo: FfiConverterRustBuffer<PackageInfo> {
 
 
 
+/**
+ * A rendered plot. `png_bytes` always contains a complete, PNG-encoded image.
+ */
 data class PlotResult (
     var `width`: kotlin.UInt
     ,
     var `height`: kotlin.UInt
     ,
-    var `pixels`: kotlin.ByteArray
+    /**
+     * PNG-encoded image bytes (starts with the `0x89 'P' 'N' 'G'` signature).
+     */
+    var `pngBytes`: kotlin.ByteArray
 
 ){
+
+
 
 
 
@@ -2118,13 +2440,13 @@ public object FfiConverterTypePlotResult: FfiConverterRustBuffer<PlotResult> {
     override fun allocationSize(value: PlotResult) = (
             FfiConverterUInt.allocationSize(value.`width`) +
             FfiConverterUInt.allocationSize(value.`height`) +
-            FfiConverterByteArray.allocationSize(value.`pixels`)
+            FfiConverterByteArray.allocationSize(value.`pngBytes`)
     )
 
     override fun write(value: PlotResult, buf: ByteBuffer) {
             FfiConverterUInt.write(value.`width`, buf)
             FfiConverterUInt.write(value.`height`, buf)
-            FfiConverterByteArray.write(value.`pixels`, buf)
+            FfiConverterByteArray.write(value.`pngBytes`, buf)
     }
 }
 
@@ -2136,6 +2458,8 @@ data class ProgressUpdate (
     var `message`: kotlin.String
 
 ){
+
+
 
 
 
@@ -2175,6 +2499,8 @@ data class RAttribute (
 
 
 
+
+
     companion object
 }
 
@@ -2208,6 +2534,8 @@ data class RComplexValue (
     var `imaginary`: kotlin.Double
 
 ){
+
+
 
 
 
@@ -2250,6 +2578,8 @@ data class RMetadata (
     var `attributes`: List<RAttribute>
 
 ){
+
+
 
 
 
@@ -2319,6 +2649,8 @@ data class RValue (
     var `metadata`: RMetadata
 
 ){
+
+
 
 
 
@@ -2398,6 +2730,8 @@ data class ResourceLimits (
 
 
 
+
+
     companion object
 }
 
@@ -2442,6 +2776,8 @@ data class RuntimeInfo (
 
 
 
+
+
     companion object
 }
 
@@ -2472,8 +2808,175 @@ public object FfiConverterTypeRuntimeInfo: FfiConverterRustBuffer<RuntimeInfo> {
 
 
 
+/**
+ * Final status of an operation, exported across the UniFFI boundary.
+ */
+sealed class OperationStatus {
+
+    object Queued : OperationStatus()
 
 
+    object Running : OperationStatus()
+
+
+    data class Succeeded(
+        val `result`: com.rport.uniffi.EvalResult) : OperationStatus()
+
+    {
+
+
+        companion object
+    }
+
+    data class Failed(
+        val `error`: kotlin.String) : OperationStatus()
+
+    {
+
+
+        companion object
+    }
+
+    object Cancelled : OperationStatus()
+
+
+    /**
+     * The operation completed but its result is no longer retained:
+     * it was FIFO-evicted after [`RETAINED_COMPLETED`] newer completions,
+     * or already consumed by `take_result`.
+     */
+    object Expired : OperationStatus()
+
+
+    /**
+     * No operation with this id was ever registered.
+     */
+    object Unknown : OperationStatus()
+
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOperationStatus : FfiConverterRustBuffer<OperationStatus>{
+    override fun read(buf: ByteBuffer): OperationStatus {
+        return when(buf.getInt()) {
+            1 -> OperationStatus.Queued
+            2 -> OperationStatus.Running
+            3 -> OperationStatus.Succeeded(
+                FfiConverterTypeEvalResult.read(buf),
+                )
+            4 -> OperationStatus.Failed(
+                FfiConverterString.read(buf),
+                )
+            5 -> OperationStatus.Cancelled
+            6 -> OperationStatus.Expired
+            7 -> OperationStatus.Unknown
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: OperationStatus): ULong = when(value) {
+        is OperationStatus.Queued -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is OperationStatus.Running -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is OperationStatus.Succeeded -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeEvalResult.allocationSize(value.`result`)
+            )
+        }
+        is OperationStatus.Failed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`error`)
+            )
+        }
+        is OperationStatus.Cancelled -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is OperationStatus.Expired -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is OperationStatus.Unknown -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: OperationStatus, buf: ByteBuffer) {
+        when(value) {
+            is OperationStatus.Queued -> {
+                buf.putInt(1)
+                Unit
+            }
+            is OperationStatus.Running -> {
+                buf.putInt(2)
+                Unit
+            }
+            is OperationStatus.Succeeded -> {
+                buf.putInt(3)
+                FfiConverterTypeEvalResult.write(value.`result`, buf)
+                Unit
+            }
+            is OperationStatus.Failed -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`error`, buf)
+                Unit
+            }
+            is OperationStatus.Cancelled -> {
+                buf.putInt(5)
+                Unit
+            }
+            is OperationStatus.Expired -> {
+                buf.putInt(6)
+                Unit
+            }
+            is OperationStatus.Unknown -> {
+                buf.putInt(7)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+
+
+/**
+ * Error type for every fallible operation on the [`crate::RSession`] surface.
+ */
 sealed class RException: kotlin.Exception() {
 
     class InitFailed(
@@ -2536,6 +3039,33 @@ sealed class RException: kotlin.Exception() {
             get() = "v1=${ v1 }"
     }
 
+    /**
+     * The bounded command queue (capacity [`crate::uniffi::worker::QUEUE_CAPACITY`])
+     * was full: the interpreter worker is still occupied and too many
+     * operations are already pending. Callers should shed load and retry.
+     */
+    class QueueFull(
+        ) : RException() {
+        override val message
+            get() = ""
+    }
+
+    /**
+     * The synchronous request exceeded its deadline (`DEFAULT_REQUEST_TIMEOUT`,
+     * 120 s by default). The deadline expiry also requests cancellation of the
+     * affected operation so the worker unwinds promptly.
+     */
+    class Timeout(
+
+        val `afterMs`: kotlin.ULong
+        ) : RException() {
+        override val message
+            get() = "afterMs=${ `afterMs` }"
+    }
+
+
+
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<RException> {
         override fun lift(error_buf: RustBuffer.ByValue): RException = FfiConverterTypeRError.lift(error_buf)
@@ -2571,6 +3101,10 @@ public object FfiConverterTypeRError : FfiConverterRustBuffer<RException> {
             7 -> RException.Cancelled()
             8 -> RException.SessionBusy(
                 FfiConverterString.read(buf),
+                )
+            9 -> RException.QueueFull()
+            10 -> RException.Timeout(
+                FfiConverterULong.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
@@ -2616,6 +3150,15 @@ public object FfiConverterTypeRError : FfiConverterRustBuffer<RException> {
                 4UL
                 + FfiConverterString.allocationSize(value.v1)
             )
+            is RException.QueueFull -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is RException.Timeout -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterULong.allocationSize(value.`afterMs`)
+            )
         }
     }
 
@@ -2659,6 +3202,15 @@ public object FfiConverterTypeRError : FfiConverterRustBuffer<RException> {
                 FfiConverterString.write(value.v1, buf)
                 Unit
             }
+            is RException.QueueFull -> {
+                buf.putInt(9)
+                Unit
+            }
+            is RException.Timeout -> {
+                buf.putInt(10)
+                FfiConverterULong.write(value.`afterMs`, buf)
+                Unit
+            }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 
@@ -2682,6 +3234,10 @@ enum class RValueKind {
     LIST,
     UNSUPPORTED,
     ERROR;
+
+
+
+
     companion object
 }
 
@@ -3359,12 +3915,19 @@ public object FfiConverterSequenceOptionalTypeRComplexValue: FfiConverterRustBuf
             FfiConverterOptionalTypeRComplexValue.write(it, buf)
         }
     }
-} fun `androidRuntimePaths`(`appFilesDir`: kotlin.String, `cacheDir`: kotlin.String, `bundledLibraryDir`: kotlin.String?): AndroidRuntimePaths {
+}
+        /**
+         * Derive Android app-private runtime paths (user library, temp dir, search
+         * path) from the app's file and cache directories.
+         */ fun `androidRuntimePaths`(`appFilesDir`: kotlin.String, `cacheDir`: kotlin.String, `bundledLibraryDir`: kotlin.String?): AndroidRuntimePaths {
             return FfiConverterTypeAndroidRuntimePaths.lift(
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_r_uniffi_fn_func_android_runtime_paths(
 
-        FfiConverterString.lower(`appFilesDir`),FfiConverterString.lower(`cacheDir`),FfiConverterOptionalString.lower(`bundledLibraryDir`),_status)
+
+        FfiConverterString.lower(`appFilesDir`),
+        FfiConverterString.lower(`cacheDir`),
+        FfiConverterOptionalString.lower(`bundledLibraryDir`),_status)
 }
     )
     }

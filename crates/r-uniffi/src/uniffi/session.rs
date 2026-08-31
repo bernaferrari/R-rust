@@ -10,7 +10,7 @@ use uniffi::Object;
 
 use super::cancellation::new_token;
 use super::conversion::{
-    AndroidRuntimePaths, EvalResult, PackageInfo, ResourceLimits, RuntimeInfo,
+    AndroidRuntimePaths, DataFramePage, EvalResult, PackageInfo, ResourceLimits, RuntimeInfo,
     android_runtime_paths, validate_package_name,
 };
 use super::error::RError;
@@ -68,6 +68,30 @@ impl RSession {
     pub fn eval_result(&self, code: String) -> Result<EvalResult, RError> {
         self.request(|reply| OpKind::Eval {
             code,
+            reply: Some(reply),
+        })
+    }
+
+    /// Fetch a bounded row slice from a named rectangular object. Slicing is
+    /// performed on the interpreter thread before owned values cross UniFFI.
+    pub fn data_frame_page(
+        &self,
+        name: String,
+        offset: u64,
+        limit: u64,
+    ) -> Result<DataFramePage, RError> {
+        if name.is_empty() {
+            return Err(RError::InvalidInput("object name is empty".to_string()));
+        }
+        if !(1..=500).contains(&limit) {
+            return Err(RError::InvalidInput(
+                "page size must be between 1 and 500 rows".to_string(),
+            ));
+        }
+        self.request(|reply| OpKind::DataFramePage {
+            name,
+            offset,
+            limit,
             reply: Some(reply),
         })
     }

@@ -9,6 +9,7 @@ import com.rstudio.mobile.data.ProjectRepository
 import com.rstudio.mobile.data.WorkspaceProject
 import com.rstudio.shared.ReportChunkResult
 import com.rstudio.shared.ReportRenderer
+import com.rport.uniffi.DataFramePage
 import com.rport.uniffi.EvalResult
 import com.rport.uniffi.PlotResult
 import com.rport.uniffi.RException
@@ -665,12 +666,28 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
 
     fun inspectEnvironment(name: String) {
         runTask("Inspecting $name…") {
-            val value = withContext(Dispatchers.IO) {
-                session.evalResult("get(\"${escapeRString(name)}\", envir = .GlobalEnv)")
+            val page = withContext(Dispatchers.IO) {
+                try {
+                    session.dataFramePage(name, 0UL, DATA_PAGE_SIZE.toULong())
+                } catch (_: RException.InvalidInput) {
+                    null
+                }
             }
-            publishResult(value)
-            _state.update { state ->
-                state.copy(dataTable = state.dataTable?.copy(title = name), dataSourceName = name, dataRowOffset = 0, status = "Inspecting $name")
+            if (page == null) {
+                val value = withContext(Dispatchers.IO) {
+                    session.evalResult("get(\"${escapeRString(name)}\", envir = .GlobalEnv)")
+                }
+                publishResult(value)
+            } else {
+                val table = page.toDataTable(name) ?: error("$name is not a rectangular table")
+                _state.update { state ->
+                    state.copy(
+                        dataTable = table,
+                        dataSourceName = name,
+                        dataRowOffset = table.rowOffset,
+                        status = "Inspecting $name",
+                    )
+                }
             }
         }
     }
@@ -679,10 +696,10 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
         val name = _state.value.dataSourceName ?: return
         val offset = _state.value.dataTable?.rows?.size?.plus(_state.value.dataTable?.rowOffset ?: 0) ?: return
         runTask("Loading more rows…") {
-            val result = withContext(Dispatchers.IO) {
-                session.evalResult("get(\"${escapeRString(name)}\", envir = .GlobalEnv)")
+            val page = withContext(Dispatchers.IO) {
+                session.dataFramePage(name, offset.toULong(), DATA_PAGE_SIZE.toULong())
             }
-            val next = result.value.toDataTable(maxRows = DATA_PAGE_SIZE, startRow = offset) ?: return@runTask
+            val next = page.toDataTable(name) ?: return@runTask
             _state.update { state ->
                 val current = state.dataTable
                 state.copy(
@@ -706,16 +723,32 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
 
     fun exportDataTo(uri: Uri) {
         val table = _state.value.dataTable ?: return
+        val sourceName = _state.value.dataSourceName
         runTask("Exporting data…") {
             withContext(Dispatchers.IO) {
                 context.contentResolver.openOutputStream(uri, "wt").use { output ->
                     requireNotNull(output) { "Could not open data destination" }
                     output.bufferedWriter(Charsets.UTF_8).use { writer ->
-                        writer.write(table.columns.joinToString(",") { csvCell(it) })
-                        writer.newLine()
-                        table.rows.forEach { row ->
-                            writer.write(row.joinToString(",") { csvCell(it) })
-                            writer.newLine()
+                        if (sourceName == null) {
+                            writeCsvPage(writer, table.columns, table.rows)
+                        } else {
+                            var offset = 0UL
+                            var totalRows = ULong.MAX_VALUE
+                            var rowsWritten: ULong
+                            var wroteHeader = false
+                            do {
+                                val page = session.dataFramePage(sourceName, offset, EXPORT_PAGE_SIZE)
+                                val next = page.toDataTable(sourceName)
+                                    ?: error("$sourceName is no longer a rectangular table")
+                                if (!wroteHeader) {
+                                    writeCsvHeader(writer, next.columns)
+                                    wroteHeader = true
+                                }
+                                writeCsvRows(writer, next.rows)
+                                if (totalRows == ULong.MAX_VALUE) totalRows = page.totalRows
+                                rowsWritten = next.rows.size.toULong()
+                                offset += rowsWritten
+                            } while (offset < totalRows && rowsWritten > 0UL)
                         }
                     }
                 }
@@ -956,6 +989,8 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
                 lastValue = result.value,
                 lastValueSummary = result.value.summary(),
                 dataTable = result.value.toDataTable(),
+                dataSourceName = null,
+                dataRowOffset = 0,
                 status = "Ready",
                 errorMessage = null,
             )
@@ -963,7 +998,7 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
     }
 
     private fun setPlot(plot: PlotResult) {
-        val image = PlotImage(width = plot.width.toInt(), height = plot.height.toInt(), pngBytes = plot.pixels)
+        val image = PlotImage(width = plot.width.toInt(), height = plot.height.toInt(), pngBytes = plot.pngBytes)
         _state.update {
             it.copy(
                 lastPlot = image,
@@ -1094,6 +1129,34 @@ class RStudioRuntime(application: Application) : AndroidViewModel(application) {
             val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
         } ?: fallback
+}
+
+private fun DataFramePage.toDataTable(title: String): DataTable? =
+    value.toDataTable(maxRows = Int.MAX_VALUE)?.copy(
+        title = title,
+        totalRows = totalRows.coerceAtMost(Int.MAX_VALUE.toULong()).toInt(),
+        rowOffset = offset.coerceAtMost(Int.MAX_VALUE.toULong()).toInt(),
+    )
+
+private fun writeCsvPage(
+    writer: java.io.BufferedWriter,
+    columns: List<String>,
+    rows: List<List<String>>,
+) {
+    writeCsvHeader(writer, columns)
+    writeCsvRows(writer, rows)
+}
+
+private fun writeCsvHeader(writer: java.io.BufferedWriter, columns: List<String>) {
+    writer.write(columns.joinToString(",") { csvCell(it) })
+    writer.newLine()
+}
+
+private fun writeCsvRows(writer: java.io.BufferedWriter, rows: List<List<String>>) {
+    rows.forEach { row ->
+        writer.write(row.joinToString(",") { csvCell(it) })
+        writer.newLine()
+    }
 }
 
 class RStudioRuntimeFactory(private val application: Application) : ViewModelProvider.Factory {
@@ -1255,4 +1318,5 @@ private const val MAX_CONSOLE_CHARS = 250_000
 private const val MAX_CONSOLE_HISTORY = 100
 private const val MAX_PLOT_HISTORY = 20
 private const val DATA_PAGE_SIZE = 200
+private const val EXPORT_PAGE_SIZE = 500UL
 private const val MAX_PACKAGE_BYTES = 100L * 1024L * 1024L

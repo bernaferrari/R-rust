@@ -22,6 +22,43 @@ fn cancel_without_active_eval_does_not_poison_next_eval() {
 }
 
 #[test]
+fn data_frame_page_slices_before_crossing_the_public_boundary() {
+    let session = RSession::new().expect("session");
+    session
+        .eval("paged <- data.frame(id = 1:1000, label = rep(c(\"a\", \"b\"), 500))".into())
+        .expect("create source table");
+
+    let page = session
+        .data_frame_page("paged".into(), 400, 25)
+        .expect("fetch page");
+
+    assert_eq!(page.total_rows, 1000);
+    assert_eq!(page.offset, 400);
+    assert_eq!(page.value.kind, RValueKind::List);
+    assert_eq!(page.value.list_values.len(), 2);
+    assert_eq!(page.value.list_values[0].integer_values.len(), 25);
+    assert_eq!(page.value.list_values[0].integer_values[0], Some(401));
+}
+
+#[test]
+fn data_frame_page_validates_bounds_and_table_shape() {
+    let session = RSession::new().expect("session");
+    assert!(matches!(
+        session.data_frame_page("x".into(), 0, 0),
+        Err(RError::InvalidInput(message)) if message.contains("page size")
+    ));
+    session.eval("x <- 1".into()).expect("create scalar");
+    let scalar_page = session.data_frame_page("x".into(), 0, 10);
+    assert!(
+        matches!(
+        &scalar_page,
+        Err(RError::InvalidInput(message)) if message.contains("rectangular")
+        ),
+        "unexpected scalar page result: {scalar_page:?}",
+    );
+}
+
+#[test]
 fn shutdown_worker_closes_session() {
     let session = RSession::new().expect("session");
 

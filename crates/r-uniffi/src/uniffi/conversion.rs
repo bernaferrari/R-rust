@@ -87,6 +87,15 @@ pub struct EvalResult {
     pub value: RValue,
 }
 
+/// A bounded table slice. Only `value` crosses the FFI boundary; `total_rows`
+/// describes the source object without serializing its unloaded rows.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DataFramePage {
+    pub value: RValue,
+    pub total_rows: u64,
+    pub offset: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct RuntimeInfo {
     pub is_active: bool,
