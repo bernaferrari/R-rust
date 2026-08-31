@@ -552,3 +552,21 @@ pub fn Rf_rnchisq(df: c_double, ncp: c_double) -> c_double {
 pub fn rnchisq(df: c_double, ncp: c_double) -> c_double {
     rnchisq_inner(df, ncp)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seeded_standalone_sample_completes_and_is_reproducible() {
+        crate::rng::set_seed(42, 24);
+        let first = rnchisq_inner(3.0, 2.0);
+
+        crate::rng::set_seed(42, 24);
+        let second = rnchisq_inner(3.0, 2.0);
+
+        assert!(first.is_finite());
+        assert!(first >= 0.0);
+        assert_eq!(first, second);
+    }
+}

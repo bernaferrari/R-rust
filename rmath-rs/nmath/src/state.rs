@@ -33,6 +33,7 @@ pub struct MathState {
 
 thread_local! {
     static CURRENT_STATE: RefCell<Option<*mut MathState>> = const { RefCell::new(None) };
+    static DEFAULT_STATE: RefCell<MathState> = RefCell::new(MathState::default());
 }
 
 /// Install `state` as the current thread's math state.
@@ -113,6 +114,22 @@ where
 {
     match CURRENT_STATE.with(|slot| *slot.borrow()) {
         Some(ptr) => unsafe { f(&mut *ptr) },
-        None => f(&mut MathState::default()),
+        None => DEFAULT_STATE.with(|state| f(&mut state.borrow_mut())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn standalone_state_persists_between_calls() {
+        with_required_current_instance(|state| {
+            state.signrank_cache.insert(3, vec![1.5]);
+        });
+
+        let cached_value = with_required_current_instance(|state| state.signrank_cache[&3][0]);
+
+        assert_eq!(cached_value, 1.5);
     }
 }
