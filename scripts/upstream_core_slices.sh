@@ -4,16 +4,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CASES_DIR="$ROOT_DIR/tests/upstream-core/cases"
 XFAIL_FILE="$ROOT_DIR/tests/upstream-core/xfail.tsv"
+UPSTREAM_CORPUS_DIR="$ROOT_DIR/tests/upstream-r"
+UPSTREAM_VENDOR_DIR="$UPSTREAM_CORPUS_DIR/vendor"
+UPSTREAM_DISPOSITIONS="$UPSTREAM_CORPUS_DIR/dispositions.tsv"
 RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 REPORT_DIR=""
+STRICT=0
 
 usage() {
     cat <<'USAGE'
-Usage: scripts/upstream_core_slices.sh [--report DIR]
+Usage: scripts/upstream_core_slices.sh [--strict] [--report DIR]
 
-Runs curated GNU R upstream evaluator/arithmetic slices against stock R and the
-Rust runtime. These are adapted from r-source/tests/*.R to stay inside the
-currently supported embedded runtime surface.
+Validates the complete pinned top-level r-source/tests/*.R inventory, then runs
+every pass/xfail whole-file disposition and the curated supported slices against
+stock R and the Rust runtime.
 USAGE
 }
 
@@ -27,6 +31,10 @@ while (($# > 0)); do
             REPORT_DIR="$2"
             shift 2
             ;;
+        --strict)
+            STRICT=1
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -39,9 +47,26 @@ while (($# > 0)); do
     esac
 done
 
+if [[ -n "$REPORT_DIR" ]]; then
+    python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py" \
+        --markdown "$REPORT_DIR/upstream-inventory.md"
+else
+    python3 "$ROOT_DIR/scripts/validate_upstream_r_tests.py"
+fi
+
 if ! command -v Rscript >/dev/null 2>&1; then
-    echo "SKIP: Rscript not found; upstream core slices require stock C R." >&2
-    exit 0
+    if [[ "$STRICT" -eq 1 ]]; then
+        echo "ERROR: Rscript not found; strict upstream parity requires stock GNU R." >&2
+        exit 1
+    else
+        echo "SKIP: Rscript not found; upstream parity requires stock GNU R." >&2
+        exit 0
+    fi
+fi
+
+if [[ "${RPORT_REQUIRE_PINNED_ORACLE:-0}" == "1" ]]; then
+    python3 "$ROOT_DIR/scripts/validate_r_oracle.py" \
+        --runtime "$(command -v Rscript)"
 fi
 
 if [[ ! -d "$CASES_DIR" ]]; then
@@ -125,14 +150,18 @@ run_case() {
     local c_norm="$tmp_dir/c.norm"
     local r_norm="$tmp_dir/r.norm"
 
-    if ! env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$c_out" 2>&1; then
+    local case_dir case_basename
+    case_dir="$(dirname "$case_file")"
+    case_basename="$(basename "$case_file")"
+
+    if ! (cd "$case_dir" && env LC_ALL=C LANG=C Rscript --vanilla "$case_basename") >"$c_out" 2>&1; then
         echo "FAIL ${case_name}: stock R exited non-zero"
         sed 's/^/  C | /' "$c_out"
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    if ! env LC_ALL=C LANG=C "$RUST_BIN" "$case_file" >"$r_out" 2>&1; then
+    if ! (cd "$case_dir" && env LC_ALL=C LANG=C "$RUST_BIN" "$case_basename") >"$r_out" 2>&1; then
         echo "FAIL ${case_name}: Rust runner exited non-zero"
         sed 's/^/  R | /' "$r_out"
         rm -rf "$tmp_dir"
@@ -158,7 +187,7 @@ write_report() {
     mkdir -p "$REPORT_DIR"
     local report="$REPORT_DIR/summary.md"
     {
-        echo "# Upstream Core Slice Report"
+        echo "# GNU R Upstream Parity Report"
         echo
         echo "| Case | Status | Note |"
         echo "| --- | --- | --- |"
@@ -181,6 +210,7 @@ main() {
     local passed=0
     local xfailed=0
     local xpassed=0
+    local skipped=0
     local failed=0
 
     local case_file
@@ -208,7 +238,42 @@ main() {
         fi
     done
 
-    echo "Summary: ${passed}/${total} upstream slices passed, ${xfailed} expected failures"
+    while IFS=$'\t' read -r upstream_path disposition owner reason; do
+        [[ -n "$upstream_path" && "$upstream_path" != \#* ]] || continue
+        total=$((total + 1))
+        case_file="$UPSTREAM_VENDOR_DIR/$upstream_path"
+        case_name="upstream/$upstream_path"
+        case "$disposition" in
+            skip)
+                echo "SKIP ${case_name}: ${reason} (${owner})"
+                record_result "$case_name" "skip" "${reason} (${owner})"
+                skipped=$((skipped + 1))
+                ;;
+            pass)
+                if run_case "$case_file"; then
+                    record_result "$case_name" "pass"
+                    passed=$((passed + 1))
+                else
+                    record_result "$case_name" "fail" "declared pass"
+                    failed=$((failed + 1))
+                fi
+                ;;
+            xfail)
+                if run_case "$case_file"; then
+                    echo "XPASS ${case_name}: remove its xfail or close ${owner}"
+                    record_result "$case_name" "xpass" "${reason} (${owner})"
+                    xpassed=$((xpassed + 1))
+                    failed=$((failed + 1))
+                else
+                    echo "XFAIL ${case_name}: ${reason} (${owner})"
+                    record_result "$case_name" "xfail" "${reason} (${owner})"
+                    xfailed=$((xfailed + 1))
+                fi
+                ;;
+        esac
+    done <"$UPSTREAM_DISPOSITIONS"
+
+    echo "Summary: ${passed}/${total} upstream cases passed, ${xfailed} expected failures, ${skipped} skipped"
     write_report
 
     if (( failed > 0 || xpassed > 0 )); then

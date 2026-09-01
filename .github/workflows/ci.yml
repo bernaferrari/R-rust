@@ -76,6 +76,7 @@ jobs:
         run: |
           python3 scripts/validate_r_oracle.py --github-output "$GITHUB_OUTPUT"
           python3 -m unittest scripts/tests/test_validate_r_oracle.py
+          python3 -m unittest scripts/tests/test_validate_upstream_r_tests.py
 
       - name: Cache exact R oracle build
         uses: actions/cache@v4
@@ -100,6 +101,19 @@ jobs:
 
       - name: Whole-script differential parity
         run: bash scripts/script_diff_parity.sh --check
+
+      - name: Pinned upstream GNU R inventory and parity slices
+        env:
+          RPORT_REQUIRE_PINNED_ORACLE: "1"
+        run: >-
+          bash scripts/upstream_core_slices.sh --strict
+          --report target/upstream-r
+
+      - name: Upload upstream GNU R disposition report
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-r-dispositions
+          path: target/upstream-r
 
   wasm:
     name: WASM32 toolchain

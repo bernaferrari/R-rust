@@ -67,7 +67,7 @@ Do not use `--no-wasm` for release signoff. The default gate includes the
 | WASM cargo check | yes | yes | `scripts/wasm_toolchain_check.sh` |
 | Android shared library size | yes | yes | `scripts/android_artifact_size.sh --check` |
 | Conformance parity | yes | yes | `scripts/conformance_parity.sh --check --report target/release-gate/conformance` |
-| Upstream core slices | yes | yes | `scripts/upstream_core_slices.sh --report target/release-gate/upstream-core-slices` |
+| Pinned upstream GNU R inventory and slices | yes | yes | `scripts/upstream_core_slices.sh --strict --report target/release-gate/upstream-core-slices` |
 | Artifact sanity | yes | yes | JSON/Markdown conformance report validation |
 | Android showcase artifacts | yes | yes | `scripts/android_showcase_artifacts.sh --check` |
 | Public safe API audit | yes | yes | `scripts/audit_safe_api.sh` |
@@ -105,6 +105,7 @@ The gate writes conformance reports to:
 - `target/release-gate/conformance/summary.json`
 - `target/release-gate/conformance/summary.md`
 - `target/release-gate/upstream-core-slices/summary.md`
+- `target/release-gate/upstream-core-slices/upstream-inventory.md`
 - `target/release-gate/android-artifacts/android-artifact-size.json`
 - `target/release-gate/android-artifacts/android-artifact-size.md`
 - `target/release-gate/android-showcase/showcase-transcript.txt`

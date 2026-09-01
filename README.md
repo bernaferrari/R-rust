@@ -137,6 +137,10 @@ a release snapshot:
   rejects any `Rscript` without the matching provenance marker. Moving
   `release`/`devel` comparisons run separately at night and are informational;
   they can never satisfy the required exact-oracle gate.
+- **Pinned upstream tests:** the complete 245-file `r-source/tests` tree from
+  that same commit is imported unmodified under `tests/upstream-r`, with
+  per-file checksums and owned dispositions for all 70 top-level `.R`/`.Rin`
+  drivers. CI executes every runnable whole file plus the green curated slices.
 - **Vendored reference tree:** pinned at the last sync base,
   `d4cc5d9e196a144bbb087a798bb945b37121383b` — exactly 273 commits
   behind the oracle commit. Reproduce it with:
