@@ -62,7 +62,7 @@ reg-tests-2.R	skip	rport-2gpp.5	requires broad long-tail base runtime regression
 reg-tests-3.R	skip	rport-2gpp.5	requires broad long-tail package, compiler, and runtime regression parity
 reg-translation.R	skip	rport-2gpp.4	requires gettext catalogs and deterministic locale translation behavior
 reg-win.R	skip	rport-2gpp.4	requires a Windows execution matrix and Windows host interfaces
-simple-true.R	skip	rport-2gpp.1	requires complete full-file base vector and evaluator parity
+simple-true.R	xfail	rport-2gpp.1	executes unmodified but still lacks generic outer character/dots parity and safe empty-data-frame negative-row subsetting
 sockets.R	skip	rport-2gpp.4	requires hermetic server, client, and parallel socket behavior
 structure.R	xfail	rport-2gpp.1	executes unmodified but still lacks complete structure and attribute validation parity
 test-system.R	skip	rport-2gpp.4	requires hermetic process execution and platform shell behavior
