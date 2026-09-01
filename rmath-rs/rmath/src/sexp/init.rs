@@ -6,7 +6,7 @@
 
 use super::accessors::{SETTAG, TYPEOF};
 use super::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang4, Rf_mkString,
 };
 use super::envir::{R_findVarInFrame, defineVar};
 use super::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -87,7 +87,33 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env:
         crate::eval::arithmetic::register_special_forms(base_env);
         crate::mainutils::essentials::register_essentials_builtins(base_env);
         initialize_special_environment_bindings(base_env);
+        initialize_base_functions(base_env);
         initialize_primitive_metadata_in(base_env);
+    }
+}
+
+/// Install base functions normally loaded from `src/library/base/R`.
+///
+/// The port does not yet source the complete base package during startup, so
+/// small language-level definitions needed by base itself must be installed
+/// explicitly. Keep these as ordinary closures rather than evaluator
+/// shortcuts so argument promises retain GNU R's lazy semantics.
+unsafe fn initialize_base_functions(base_env: SEXP) {
+    unsafe {
+        // `%||%` <- function(x, y) if (is.null(x)) y else x
+        let formals = formals_from_specs(&[arg("x"), arg("y")]);
+        let _formals_guard = super::protect::protect(formals);
+
+        let x = Rf_install_in_current("x");
+        let y = Rf_install_in_current("y");
+        let condition = Rf_lang2(Rf_install_in_current("is.null"), x);
+        let _condition_guard = super::protect::protect(condition);
+        let body = Rf_lang4(Rf_install_in_current("if"), condition, y, x);
+        let _body_guard = super::protect::protect(body);
+        let closure = crate::mainutils::dstruct::mkCLOSXP(formals, body, base_env);
+        let _closure_guard = super::protect::protect(closure);
+
+        defineVar(Rf_install_in_current("%||%"), closure, base_env);
     }
 }
 
@@ -771,6 +797,36 @@ mod tests {
 
             shutdown_r();
         }
+    }
+
+    #[test]
+    fn test_null_coalescing_base_function_is_lazy_and_null_specific() {
+        let mut session = crate::sexp::session::RSession::new();
+
+        let (result, _, _) = session.eval_code_with_output_capture("NULL %||% 42L");
+        assert_eq!(
+            result
+                .expect("NULL should select the fallback")
+                .integer_elt(0),
+            Some(42)
+        );
+
+        let (result, _, _) =
+            session.eval_code_with_output_capture("1L %||% missing_fallback_must_not_be_forced");
+        assert_eq!(
+            result
+                .expect("a non-NULL left operand must not force the fallback")
+                .integer_elt(0),
+            Some(1)
+        );
+
+        let (result, _, _) = session.eval_code_with_output_capture("FALSE %||% 42L");
+        assert_eq!(
+            result
+                .expect("false is a value, not a null operand")
+                .logical_elt(0),
+            Some(FALSE)
+        );
     }
 
     #[test]

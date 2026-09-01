@@ -61,6 +61,20 @@ pub unsafe fn Rf_lang3(car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
     }
 }
 
+/// Create a lang4 (4-element call).
+pub unsafe fn Rf_lang4(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP) -> SEXP {
+    unsafe {
+        let e4 = Rf_cons(a4, crate::sexp::globals::R_NilValue());
+        let e3 = Rf_cons(a3, e4);
+        let e2 = Rf_cons(a2, e3);
+        let cell = Rf_cons(car, e2);
+        if !cell.is_null() {
+            (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        cell
+    }
+}
+
 /// Create a lang5 (5-element call).
 pub unsafe fn Rf_lang5(car: SEXP, a2: SEXP, a3: SEXP, a4: SEXP, a5: SEXP) -> SEXP {
     unsafe {
