@@ -1349,6 +1349,18 @@ mod tests {
     }
 
     #[test]
+    fn test_parenthesized_assignment_is_visible() {
+        let mut session = RSession::new();
+
+        let (result, output, visible) =
+            session.eval_script_with_output_capture("(x <- 0 * (-1)); invisible(NULL)");
+        result.expect("parenthesized assignment should evaluate");
+
+        assert_eq!(output.stdout, "[1] 0\n");
+        assert!(!visible, "the final invisible(NULL) remains invisible");
+    }
+
+    #[test]
     fn test_session_script_parse_error_maps_to_upstream_message() {
         let mut session = RSession::new();
 

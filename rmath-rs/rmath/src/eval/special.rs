@@ -724,6 +724,9 @@ pub unsafe extern "C" fn do_paren_builtin(call: SEXP, op: SEXP, args: SEXP, rho:
         if args.is_null() || crate::sexp::accessors::Rf_isNull(args) != 0 {
             return R_NilValue();
         }
+        // eval.c's do_paren explicitly overrides the visibility left by its
+        // evaluated argument.  This is what makes `(x <- value)` visible.
+        super::runtime::set_visible(TRUE);
         CAR(args)
     }
 }
@@ -734,7 +737,9 @@ unsafe fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
         if args.is_null() || args == R_NilValue() {
             return R_NilValue();
         }
-        Rf_eval(CAR(args), rho)
+        let value = Rf_eval(CAR(args), rho);
+        super::runtime::set_visible(TRUE);
+        value
     }
 }
 

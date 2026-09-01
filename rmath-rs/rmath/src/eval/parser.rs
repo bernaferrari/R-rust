@@ -2085,7 +2085,14 @@ impl<'arena> Parser<'arena> {
                 let expr = self.parse_expr()?;
                 self.skip_newlines();
                 self.expect(&Token::RParen)?;
-                Ok(expr)
+                unsafe {
+                    // Parentheses are part of R's language object, not merely
+                    // parser grouping.  In particular, evaluating the `(`
+                    // primitive makes its value visible, so `(x <- 1)` is
+                    // auto-printed even though the inner assignment is not.
+                    let sym = Rf_install(c"(".as_ptr());
+                    self.lang2(sym, expr)
+                }
             }
             _ => self.parse_atom(),
         }
@@ -2852,6 +2859,11 @@ mod tests {
         unsafe {
             let result = must(parse_str("(1 + 2)"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+            assert_eq!(call_head_name(result), "(");
+
+            let inner = CADR(result);
+            assert_eq!(TYPEOF(inner), SEXPTYPE::LANGSXP);
+            assert_eq!(call_head_name(inner), "+");
         }
     }
 
