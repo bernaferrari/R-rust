@@ -285,6 +285,39 @@ unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
     }
 }
 
+/// Signal an already-constructed warning condition to active calling handlers.
+///
+/// Returns `true` when a handler invoked the dynamically-scoped
+/// `muffleWarning` restart. Internal runtime sites use this when a warning has
+/// a more specific class than `simpleWarning`; keeping the concrete condition
+/// intact is required for class-selective handlers and `inherits()` checks.
+pub(crate) unsafe fn signal_calling_warning_condition(condition: SEXP, rho: SEXP) -> bool {
+    unsafe {
+        let old_stack = restart_stack();
+        let restart = restart_entry("muffleWarning", R_NilValue());
+        let _restart_guard = protect(restart);
+        let new_stack = Rf_cons(restart, old_stack);
+        let _stack_guard = protect(new_stack);
+        set_restart_stack(new_stack);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            signal_calling_handlers(condition, rho)
+        }));
+        set_restart_stack(old_stack);
+
+        match result {
+            Ok(()) => false,
+            Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
+                Ok(signal) => match *signal {
+                    crate::sexp::context::RSignal::Restart(_) => true,
+                    other => std::panic::panic_any(other),
+                },
+                Err(payload) => std::panic::resume_unwind(payload),
+            },
+        }
+    }
+}
+
 unsafe fn calling_handler_entry_class(entry: SEXP) -> Option<String> {
     unsafe {
         if entry.is_null() || entry == R_NilValue() || TYPEOF(entry) != SEXPTYPE::VECSXP {

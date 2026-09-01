@@ -577,6 +577,30 @@ pub unsafe fn R_signalWarningCondition(cond: SEXP) {
     }
 }
 
+/// Apply the default warning policy to an already-signaled condition.
+///
+/// This is the post-handler half of `R_signalWarningCondition`: callers that
+/// preserve a concrete warning subclass signal it first, then collect/print it
+/// here only when no handler muffled the warning.
+pub(crate) unsafe fn warning_condition_default(cond: SEXP) {
+    unsafe {
+        if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
+            return;
+        }
+        let elt = VECTOR_ELT(cond, 0);
+        if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
+            return;
+        }
+        let msg = translateChar(STRING_ELT(elt, 0));
+        let call = if LENGTH(cond) > 1 {
+            VECTOR_ELT(cond, 1)
+        } else {
+            ptr::null_mut()
+        };
+        vwarningcall_dflt(call, msg, ptr::null_mut());
+    }
+}
+
 /// R_makeWarningCondition — create a warning condition object.
 /// Matches C's `SEXP R_makeWarningCondition(SEXP call, const char *classname,
 /// const char *subclassname, int nextra, const char *format, ...)`

@@ -1526,6 +1526,27 @@ mod tests {
     }
 
     #[test]
+    fn test_structure_deprecation_warning_preserves_condition_class() {
+        let mut session = RSession::new();
+
+        let result = session.eval(
+            r#"
+            caught <- NULL
+            withCallingHandlers(
+                structure(1:4, .Dim = c(2L, 2L)),
+                warning = function(w) {
+                    caught <<- w
+                    invokeRestart("muffleWarning")
+                }
+            )
+            inherits(caught, "deprecatedWarning")
+            "#,
+        );
+
+        assert_eq!(result.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
     fn test_regexpr_reports_match_attributes() {
         let mut session = RSession::new();
 

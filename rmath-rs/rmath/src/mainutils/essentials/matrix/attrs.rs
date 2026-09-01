@@ -569,7 +569,7 @@ pub fn structure_attr_name(name: &str) -> &str {
 /// the rename emits the upstream deprecation warning listing every renamed
 /// name in call order (`structure(.OBJSXP, dim=)` construct side; the deparse
 /// side landed separately with SyncErrDep).
-pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
@@ -619,9 +619,22 @@ pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     .collect::<Vec<_>>()),
             );
             let c_msg = CString::new(msg).unwrap_or_default();
-            // .Deprecated() warns with the structure() call so the deferred
-            // print renders "In structure(...) :".
-            crate::mainutils::errors::Rf_warningcall1(call, c_msg.as_ptr());
+            // `.Deprecated()` signals a classed warning, rather than a plain
+            // `simpleWarning`, so calling handlers can distinguish API
+            // deprecations while the default path retains structure()'s call.
+            let condition = crate::mainutils::errors::R_makeWarningCondition(
+                call,
+                c"deprecatedWarning".as_ptr(),
+                std::ptr::null(),
+                0,
+                c_msg.as_ptr(),
+            );
+            let _condition_guard = protect(condition);
+            let muffled =
+                crate::mainutils::essentials::signal_calling_warning_condition(condition, rho);
+            if !muffled {
+                crate::mainutils::errors::warning_condition_default(condition);
+            }
         }
 
         x
