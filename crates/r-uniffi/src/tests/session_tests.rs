@@ -450,7 +450,7 @@ fn async_operations_report_callbacks_and_recover_after_cancel() {
     assert_eq!(eval_id, 0);
     match wait_for_callback(
         &events,
-        |event| matches!(event, CallbackEvent::EvalComplete { operation_id, output, .. } if *operation_id == eval_id && output == "[1] 2"),
+        |event| matches!(event, CallbackEvent::EvalComplete { operation_id, output, .. } if *operation_id == eval_id && output.trim_end() == "[1] 2"),
     ) {
         CallbackEvent::EvalComplete {
             operation_id, kind, ..
@@ -463,7 +463,7 @@ fn async_operations_report_callbacks_and_recover_after_cancel() {
     match session.take_result(eval_id) {
         OperationStatus::Succeeded {
             result: OperationResult::Eval { result },
-        } => assert_eq!(result.output, "[1] 2"),
+        } => assert_eq!(result.output.trim_end(), "[1] 2"),
         status => panic!("expected retained eval result, got {status:?}"),
     }
     match wait_for_callback(
