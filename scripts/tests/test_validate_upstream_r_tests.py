@@ -30,9 +30,9 @@ class UpstreamCorpusValidationTests(unittest.TestCase):
 
         self.assertEqual(report.imported_files, 245)
         self.assertEqual(report.total, 70)
-        self.assertEqual(report.expected_failures, 8)
-        self.assertEqual(report.skipped, 61)
-        self.assertEqual(report.runnable, 9)
+        self.assertEqual(report.expected_failures, 9)
+        self.assertEqual(report.skipped, 60)
+        self.assertEqual(report.runnable, 10)
 
     def make_corpus(
         self,

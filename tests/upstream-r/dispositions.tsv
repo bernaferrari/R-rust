@@ -2,7 +2,7 @@
 CRANtools.R	skip	rport-2gpp.2	requires installed package metadata and CRAN repository tooling
 PCRE.R	skip	rport-2gpp.1	requires the complete upstream PCRE and base-regex surface
 any-all.R	skip	rport-2gpp.1	requires full-file evaluator parity beyond the curated any/all slice
-arith-true.R	skip	rport-2gpp.1	requires full-file arithmetic, warning, and attribute parity
+arith-true.R	xfail	rport-2gpp.1	executes unmodified through IEEE machine checks but still lacks startup .Options and full arithmetic parity
 arith.R	xfail	rport-2gpp.2	executes unmodified but still lacks polynomial roots, lowess, and exact arithmetic output parity
 array-subset.R	skip	rport-2gpp.1	requires the complete array subsetting and assignment surface
 classes-methods.R	skip	rport-2gpp.2	requires complete S3 and S4 method dispatch
