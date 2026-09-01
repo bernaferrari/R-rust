@@ -13,6 +13,7 @@ use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector,
 use crate::sexp::envir::Environment;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::object::Sexp;
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // SEXPTYPE constants
@@ -127,7 +128,9 @@ pub unsafe fn Init_R_Machine(_rho: SEXP) {
         let mach_size: usize = 19;
 
         let ans = Rf_allocVector(VECSXP_VAL, mach_size as c_int);
+        let _ans_guard = protect(ans);
         let nms = Rf_allocVector(STRSXP_VAL, mach_size as c_int);
+        let _nms_guard = protect(nms);
 
         let names: &[&[u8]] = &[
             b"double.eps\0",
@@ -151,32 +154,36 @@ pub unsafe fn Init_R_Machine(_rho: SEXP) {
             b"sizeof.time_t\0",
         ];
 
-        // Set machine constants
-        let values: [SEXP; 19] = [
-            Rf_ScalarReal(info.eps),
-            Rf_ScalarReal(info.epsneg),
-            Rf_ScalarReal(info.xmin),
-            Rf_ScalarReal(info.xmax),
-            Rf_ScalarInteger(info.ibeta),
-            Rf_ScalarInteger(info.it),
-            Rf_ScalarInteger(info.irnd),
-            Rf_ScalarInteger(info.ngrd),
-            Rf_ScalarInteger(info.machep),
-            Rf_ScalarInteger(info.negep),
-            Rf_ScalarInteger(info.iexp),
-            Rf_ScalarInteger(info.minexp),
-            Rf_ScalarInteger(info.maxexp),
-            Rf_ScalarInteger(i32::MAX),
-            Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int),
-            Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int),
-            Rf_ScalarInteger(std::mem::size_of::<u128>() as c_int), // long double on some platforms
-            Rf_ScalarInteger(std::mem::size_of::<*const c_void>() as c_int),
-            Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int), // time_t
-        ];
+        for (i, name) in names.iter().enumerate() {
+            SET_STRING_ELT(nms, i as i64, Rf_mkChar(name.as_ptr() as *const _));
+        }
 
-        for i in 0..mach_size.min(names.len()).min(values.len()) {
-            SET_STRING_ELT(nms, i as i64, Rf_mkChar(names[i].as_ptr() as *const _));
-            SET_VECTOR_ELT(ans, i as i64, values[i]);
+        // Install each freshly allocated scalar immediately into the rooted
+        // list. Keeping all of them only in a Rust array until later would
+        // leave the earlier values unrooted across subsequent allocations.
+        SET_VECTOR_ELT(ans, 0, Rf_ScalarReal(info.eps));
+        SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(info.epsneg));
+        SET_VECTOR_ELT(ans, 2, Rf_ScalarReal(info.xmin));
+        SET_VECTOR_ELT(ans, 3, Rf_ScalarReal(info.xmax));
+        let integer_values = [
+            info.ibeta,
+            info.it,
+            info.irnd,
+            info.ngrd,
+            info.machep,
+            info.negep,
+            info.iexp,
+            info.minexp,
+            info.maxexp,
+            i32::MAX,
+            std::mem::size_of::<i64>() as c_int,
+            std::mem::size_of::<i64>() as c_int,
+            std::mem::size_of::<u128>() as c_int,
+            std::mem::size_of::<*const c_void>() as c_int,
+            std::mem::size_of::<i64>() as c_int,
+        ];
+        for (i, value) in integer_values.into_iter().enumerate() {
+            SET_VECTOR_ELT(ans, (i + 4) as i64, Rf_ScalarInteger(value));
         }
 
         setAttrib(ans, R_NamesSymbol(), nms);

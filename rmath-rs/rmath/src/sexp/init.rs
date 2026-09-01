@@ -87,6 +87,7 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env:
         crate::eval::arithmetic::register_special_forms(base_env);
         crate::mainutils::essentials::register_essentials_builtins(base_env);
         initialize_special_environment_bindings(base_env);
+        crate::mainutils::machine::Init_R_Machine(base_env);
         initialize_base_functions(base_env);
         initialize_primitive_metadata_in(base_env);
     }
@@ -879,6 +880,19 @@ mod tests {
                 .expect("false is a value, not a null operand")
                 .logical_elt(0),
             Some(FALSE)
+        );
+    }
+
+    #[test]
+    fn test_initialize_installs_machine_constants() {
+        let mut session = crate::sexp::session::RSession::new();
+
+        let (result, _, _) = session.eval_code_with_output_capture(".Machine$double.eps");
+        assert_eq!(
+            result
+                .expect(".Machine should be installed in the base environment")
+                .real_elt(0),
+            Some(f64::EPSILON)
         );
     }
 
