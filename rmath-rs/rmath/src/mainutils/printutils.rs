@@ -840,15 +840,15 @@ pub enum Rprt_adj {
 /// thread-local buffer.
 pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
-        // Stock: NA_STRING renders as the unquoted text "NA" (from
-        // R_print.na_string), regardless of the quote flag.
+        // Stock uses `R_print.na_string` ("NA") for quoted string values and
+        // `R_print.na_string_noquote` ("<NA>") for unquoted labels/names.
         let is_na = !s.is_null() && s == crate::sexp::globals::R_NaString();
         if s.is_null() || is_na {
             return crate::sexp::instance::with_required_current_instance(|inst| {
                 let buffer = &mut inst.eval_state.printutils.encode_string;
                 buffer.clear();
-                // Padding to the field width, then the plain text "NA".
-                let text_len: c_int = 2;
+                let text: &[u8] = if quote != 0 { b"NA" } else { b"<NA>" };
+                let text_len = text.len() as c_int;
                 let mut b = w - text_len;
                 if justify == Rprt_adj::none {
                     b = 0;
@@ -863,8 +863,7 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
                         buffer.push(b' ');
                     }
                 }
-                buffer.push(b'N');
-                buffer.push(b'A');
+                buffer.extend_from_slice(text);
                 // Left-adjustment appends the remaining padding (stock pads
                 // the NA text to the field width like any other element).
                 if b > 0 && justify == Rprt_adj::left {
@@ -1236,5 +1235,22 @@ pub unsafe fn VectorIndex(i: R_xlen_t, w: c_int) {
         }
         let label = format!("[{}]", i);
         let _ = handle.write_all(label.as_bytes());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_na_string_distinguishes_values_from_unquoted_names() {
+        let session = crate::sexp::session::RSession::new();
+        session.with_protected(|| unsafe {
+            let na = crate::sexp::globals::R_NaString();
+            let quoted = CStr::from_ptr(EncodeString(na, 0, 1, Rprt_adj::left));
+            assert_eq!(quoted.to_bytes(), b"NA");
+            let name = CStr::from_ptr(EncodeString(na, 0, 0, Rprt_adj::left));
+            assert_eq!(name.to_bytes(), b"<NA>");
+        });
     }
 }
