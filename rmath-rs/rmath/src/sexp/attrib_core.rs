@@ -166,11 +166,20 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
             return;
         }
 
-        // Not found — prepend new attribute
-        let new_attr = Rf_cons(value, attrib);
+        // Not found — append the new attribute. GNU R preserves attribute
+        // assignment order: replacing an existing value leaves it in place,
+        // while a new name is linked after the current tail.
+        let _x_guard = super::protect::protect(x);
+        let _which_guard = super::protect::protect(which);
+        let _value_guard = super::protect::protect(value);
+        let new_attr = Rf_cons(value, R_NilValue());
         if !new_attr.is_null() {
             super::accessors::SETTAG(new_attr, which);
-            SET_ATTRIB(x, new_attr);
+            if attrib.is_null() || attrib == R_NilValue() {
+                SET_ATTRIB(x, new_attr);
+            } else {
+                SETCDR(previous, new_attr);
+            }
         }
 
         // Set OBJECT flag if setting "class" to non-nil

@@ -667,6 +667,28 @@ pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 #[cfg(test)]
 mod tests {
     #[test]
+    fn attributes_preserve_assignment_order() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, _, _) = session.eval_code_with_output_capture(
+            "X <- matrix(1:4, 2, 2, dimnames = list(c('A', 'B'), 1:2));\
+             y <- 1; attr(y, 'first') <- 1; attr(y, 'first') <- 3;\
+             attr(y, 'second') <- 2;\
+             z <- 1; attr(z, 'first') <- 1; attr(z, 'second') <- 2;\
+             attr(z, 'first') <- NULL; attr(z, 'first') <- 4;\
+             c(names(attributes(X)), names(attributes(y)), names(attributes(z)))",
+        );
+
+        let result = result.expect("attribute enumeration should evaluate");
+        let names = (0..result.clone().len())
+            .map(|index| result.clone().string_text_elt(index).flatten().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["dim", "dimnames", "first", "second", "second", "first"]
+        );
+    }
+
+    #[test]
     fn structure_coerces_legacy_double_factor_codes_to_integer() {
         let mut session = crate::sexp::session::RSession::new();
         let (result, _, _) = session.eval_code_with_output_capture(
