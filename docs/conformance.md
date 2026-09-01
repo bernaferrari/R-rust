@@ -87,7 +87,11 @@ provenance-enforced check.
 
 ## Upstream Core Slices
 
-`scripts/upstream_core_slices.sh` runs curated excerpts adapted from GNU R's
+`scripts/upstream_core_slices.sh` first validates a mechanical import of the
+complete 245-file `r-source/tests` tree from the exact pinned GNU R source
+commit, including every file's SHA-256 and explicit pass/xfail/skip dispositions
+for all 70 top-level `.R`/`.Rin` drivers. It then executes every whole-file
+pass/xfail disposition and runs curated excerpts adapted from GNU R's
 `r-source/tests/arith.R`, `arith-true.R`, `eval-etc.R`, `conditions.R`,
 `any-all.R`, `structure.R`, `complex.R`, `primitives.R`, `eval-fns.R`,
 `simple-true.R`, `print-tests.R`, `reg-IO2.R`, and `reg-tests-1b.R`.
@@ -96,16 +100,20 @@ Unlike the numbered conformance fixtures, these cases compare live stock
 for evaluator/arithmetic regression work and the release gate:
 
 ```bash
-scripts/upstream_core_slices.sh --report target/upstream-core-slices
+scripts/upstream_core_slices.sh --strict --report target/upstream-core-slices
 ```
 
 Known unsupported upstream expectations belong in
 `tests/upstream-core/xfail.tsv` with an owner bead. Passing slices should remain
-xfail-free.
+xfail-free. The unedited full files, immutable inventory, and owned disposition
+ledger are under `tests/upstream-r`. A whole-file `pass` or `xfail` row is always
+executed; XPASS is a failure. A `skip` row is permitted only with a valid owner
+bead and a concrete reason.
 
-If `Rscript` is missing, the harness prints a deterministic skip message and
-returns `0`. That keeps local runs from failing unexpectedly on machines without
-stock R installed; release gates should install stock R and require this command.
+If `Rscript` is missing, the default harness prints a deterministic skip message
+after validating the imported corpus and returns `0`. `--strict` turns that into
+an error and is mandatory in CI and release gates. Those gates additionally set
+`RPORT_REQUIRE_PINNED_ORACLE=1`, so an arbitrary local R cannot satisfy parity.
 
 ## Pure-R Package Corpus
 
@@ -213,7 +221,7 @@ work needs a scoped bead and a stock-R or target-specific gate.
 
 | Surface | Current stance | Owner bead | Proof or gate |
 | --- | --- | --- | --- |
-| Full GNU R compatibility | Not claimed by the Android release subset. The checked suite and curated upstream slices are the active proof boundary. | `rport-pcqa`, `rport-65tc` | `scripts/conformance_parity.sh --check --strict`, `scripts/upstream_core_slices.sh` |
+| Full GNU R compatibility | Not claimed by the Android release subset. All top-level upstream tests are now pinned and dispositioned; curated slices are green while the full files remain explicitly owned work. | `rport-2gpp.1` through `rport-2gpp.5` | `scripts/conformance_parity.sh --check --strict`, `scripts/upstream_core_slices.sh --strict` |
 | WASM interpreter embedding | Not currently exposed through `r-embed` or `r-uniffi`; those crates depend on the native/Android interpreter session and UniFFI runtime surface. WASM support is the pure Rust math/headless-graphics surface. | `rport-flq8`, `rport-mczh` | `scripts/wasm_toolchain_check.sh` |
 | Native/compiled package loading | Intentionally rejected for Android-style embedding until a host-specific native extension policy is implemented. Pure-R packages are the release surface. | `rport-ku08`, `rport-rmbf` | `scripts/pure_r_package_corpus.sh --check` |
 | Exact `.Random.seed` byte-stream parity | Claimed for the seeded default path: `set.seed`/`RNGkind`/`.Random.seed` and the Mersenne-Twister default reproduce stock R 4.6.1 streams bit-for-bit (`set.seed(42); runif(1)` and the 626-integer `.Random.seed` match stock). Non-default kinds are engine-faithful ports but not individually gated against stock streams. | `rport-pcqa` | Manual A/B probes against stock R 4.6.1 plus conformance RNG fixtures |

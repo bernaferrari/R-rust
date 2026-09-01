@@ -1,0 +1,71 @@
+# path	disposition	owner bead	reason
+CRANtools.R	skip	rport-2gpp.2	requires installed package metadata and CRAN repository tooling
+PCRE.R	skip	rport-2gpp.1	requires the complete upstream PCRE and base-regex surface
+any-all.R	skip	rport-2gpp.1	requires full-file evaluator parity beyond the curated any/all slice
+arith-true.R	skip	rport-2gpp.1	requires full-file arithmetic, warning, and attribute parity
+arith.R	skip	rport-2gpp.2	requires stats lowess and polynomial-root package support
+array-subset.R	skip	rport-2gpp.1	requires the complete array subsetting and assignment surface
+classes-methods.R	skip	rport-2gpp.2	requires complete S3 and S4 method dispatch
+complex.R	skip	rport-2gpp.1	requires full-file complex arithmetic and formatting parity
+conditions.R	skip	rport-2gpp.1	requires the complete condition, restart, warning, and traceback surface
+d-p-q-r-tests.R	skip	rport-2gpp.2	requires the complete stats distribution family and test helpers
+d-p-q-r-tst-2.R	skip	rport-2gpp.2	requires the complete stats distribution tail and log-probability surface
+datasets.R	skip	rport-2gpp.2	requires the installed datasets package and lazy data
+datetime.R	skip	rport-2gpp.4	requires complete platform date-time and locale behavior
+datetime2.R	skip	rport-2gpp.4	requires complete timezone database and date-time formatting behavior
+datetime3.R	skip	rport-2gpp.4	requires platform-specific timezone transition data
+datetime4.R	skip	rport-2gpp.4	requires platform-specific date-time and locale behavior
+datetime5.R	skip	rport-2gpp.4	requires complete time-zone conversion and system database behavior
+demos.R	skip	rport-2gpp.2	requires installed base-package demos and their package data
+demos2.R	skip	rport-2gpp.3	requires interactive graphics demos and deterministic devices
+download.file.R	skip	rport-2gpp.4	requires hermetic network and download-method adapters
+eval-etc-2.R	skip	rport-2gpp.1	requires complete evaluator introspection and call-context behavior
+eval-etc.R	skip	rport-2gpp.1	requires full-file evaluator, promise, dispatch, and parser parity
+eval-fns.R	skip	rport-2gpp.1	requires complete parse, deparse, eval, source-reference, and bytecode behavior
+gct-foot.R	skip	rport-2gpp.5	requires the upstream GC-torture prelude and timing normalization
+iconv.R	skip	rport-2gpp.4	requires complete platform iconv tables and encoding behavior
+iec60559.R	skip	rport-2gpp.1	requires full IEC 60559 edge, formatting, and identity parity
+internet.R	skip	rport-2gpp.4	requires hermetic internet capability and proxy behavior
+internet2.R	skip	rport-2gpp.4	requires hermetic HTTP server and URL-connection behavior
+isas-tests.Rin	skip	rport-2gpp.5	requires configure-time substitution and the complete internal type-predicate suite
+lapack.R	skip	rport-2gpp.2	requires complete LAPACK routines and exact numerical contracts
+libcurl.R	skip	rport-2gpp.4	requires hermetic libcurl multi-download and network behavior
+lm-tests.R	skip	rport-2gpp.2	requires the complete stats model-fitting surface
+method-dispatch.R	skip	rport-2gpp.2	requires complete S3 and S4 group and internal generic dispatch
+misc-devel.R	skip	rport-2gpp.4	requires localhost sockets and host connection edge behavior
+no-segfault.Rin	skip	rport-2gpp.5	requires configure-time substitution and isolated fatal-error stress execution
+ok-errors.R	skip	rport-2gpp.5	requires bounded recursion, stack overflow, and fatal-error isolation
+p-qbeta-strict-tst.R	skip	rport-2gpp.2	requires exhaustive beta-distribution accuracy contracts
+p-r-random-tests.R	skip	rport-2gpp.5	requires exhaustive random-generator statistical and long-run checks
+primitives.R	skip	rport-2gpp.1	requires complete primitive registry and base metadata parity
+print-tests.R	skip	rport-2gpp.1	requires complete printing, formatting, dispatch, and locale parity
+r-strict-tst.R	skip	rport-2gpp.5	requires the strict long-running numerical accuracy suite
+reg-BLAS.R	skip	rport-2gpp.2	requires complete BLAS backend and numerical error contracts
+reg-IO.R	skip	rport-2gpp.4	requires complete file, compression, FIFO, and connection behavior
+reg-IO2.R	skip	rport-2gpp.4	requires complete file-system and connection edge behavior
+reg-S4-examples.R	skip	rport-2gpp.2	requires installed methods examples and complete S4 dispatch
+reg-S4.R	skip	rport-2gpp.2	requires complete S4 classes, slots, inheritance, and dispatch
+reg-encodings.R	skip	rport-2gpp.4	requires platform encoding tables and locale matrices
+reg-examples1.R	skip	rport-2gpp.2	requires installed base package examples and datasets
+reg-examples2.R	skip	rport-2gpp.2	requires installed package examples and namespace machinery
+reg-examples3.R	skip	rport-2gpp.2	requires installed package examples, graphics, and datasets
+reg-large.R	skip	rport-2gpp.5	requires memory-intensive long-vector and allocation stress support
+reg-packages.R	skip	rport-2gpp.2	requires source and binary package installation and loading
+reg-plot-latin1.R	skip	rport-2gpp.3	requires deterministic graphics devices and Latin-1 text rendering
+reg-plot.R	skip	rport-2gpp.3	requires complete graphics, grid, device, and PDF comparison behavior
+reg-tests-1a.R	skip	rport-2gpp.5	requires the broad upstream regression surface and bounded isolation
+reg-tests-1b.R	skip	rport-2gpp.5	requires broad evaluator, I/O, package, and formatting regression parity
+reg-tests-1c.R	skip	rport-2gpp.5	requires broad class, method, serialization, and environment regression parity
+reg-tests-1d.R	skip	rport-2gpp.5	requires broad platform, process, date-time, and connection regression parity
+reg-tests-1e.R	skip	rport-2gpp.5	requires broad parser, evaluator, ALTREP, and long-vector regression parity
+reg-tests-2.R	skip	rport-2gpp.5	requires broad long-tail base runtime regression parity
+reg-tests-3.R	skip	rport-2gpp.5	requires broad long-tail package, compiler, and runtime regression parity
+reg-translation.R	skip	rport-2gpp.4	requires gettext catalogs and deterministic locale translation behavior
+reg-win.R	skip	rport-2gpp.4	requires a Windows execution matrix and Windows host interfaces
+simple-true.R	skip	rport-2gpp.1	requires complete full-file base vector and evaluator parity
+sockets.R	skip	rport-2gpp.4	requires hermetic server, client, and parallel socket behavior
+structure.R	skip	rport-2gpp.1	requires complete structure and attribute validation parity
+test-system.R	skip	rport-2gpp.4	requires hermetic process execution and platform shell behavior
+timezone.R	skip	rport-2gpp.4	requires deterministic host timezone discovery
+utf8-regex.R	skip	rport-2gpp.4	requires complete UTF-8 regex and locale behavior
+utf8.R	skip	rport-2gpp.4	requires complete UTF-8 validity, width, encoding, and locale behavior

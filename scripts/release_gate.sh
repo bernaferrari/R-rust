@@ -212,7 +212,8 @@ run env RPORT_REQUIRE_PINNED_ORACLE=1 \
     scripts/conformance_parity.sh --check --strict --report "$REPORT_DIR"
 
 section "Upstream core slices"
-run scripts/upstream_core_slices.sh --report "$UPSTREAM_REPORT_DIR"
+run env RPORT_REQUIRE_PINNED_ORACLE=1 \
+    scripts/upstream_core_slices.sh --strict --report "$UPSTREAM_REPORT_DIR"
 
 section "Artifact sanity"
 check_conformance_artifacts
