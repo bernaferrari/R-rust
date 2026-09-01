@@ -24,7 +24,7 @@ eval-etc.R	skip	rport-2gpp.1	requires full-file evaluator, promise, dispatch, an
 eval-fns.R	skip	rport-2gpp.1	requires complete parse, deparse, eval, source-reference, and bytecode behavior
 gct-foot.R	skip	rport-2gpp.5	requires the upstream GC-torture prelude and timing normalization
 iconv.R	skip	rport-2gpp.4	requires complete platform iconv tables and encoding behavior
-iec60559.R	skip	rport-2gpp.1	requires full IEC 60559 edge, formatting, and identity parity
+iec60559.R	xfail	rport-2gpp.1	executes unmodified but still lacks full IEC 60559 edge, formatting, and identity parity
 internet.R	skip	rport-2gpp.4	requires hermetic internet capability and proxy behavior
 internet2.R	skip	rport-2gpp.4	requires hermetic HTTP server and URL-connection behavior
 isas-tests.Rin	skip	rport-2gpp.5	requires configure-time substitution and the complete internal type-predicate suite
@@ -64,7 +64,7 @@ reg-translation.R	skip	rport-2gpp.4	requires gettext catalogs and deterministic 
 reg-win.R	skip	rport-2gpp.4	requires a Windows execution matrix and Windows host interfaces
 simple-true.R	skip	rport-2gpp.1	requires complete full-file base vector and evaluator parity
 sockets.R	skip	rport-2gpp.4	requires hermetic server, client, and parallel socket behavior
-structure.R	skip	rport-2gpp.1	requires complete structure and attribute validation parity
+structure.R	xfail	rport-2gpp.1	executes unmodified but still lacks complete structure and attribute validation parity
 test-system.R	skip	rport-2gpp.4	requires hermetic process execution and platform shell behavior
 timezone.R	skip	rport-2gpp.4	requires deterministic host timezone discovery
 utf8-regex.R	skip	rport-2gpp.4	requires complete UTF-8 regex and locale behavior
