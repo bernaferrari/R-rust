@@ -98,16 +98,17 @@ pub fn fun_tab_index_by_name(name: &str) -> Option<c_int> {
 ///
 /// Primitive names present in `R_FunTab` are allocated with their real table
 /// offset when the table's argument-evaluation kind matches the binding being
-/// installed. `.Internal` entries, kind mismatches, and Rust-only helper names
-/// are still exposed as primitives for the current evaluator surface, but
-/// receive `PRIMOFFSET = -1` so descriptor-driven dispatch can recognize them
-/// as noncanonical.
+/// installed. This includes evaluator-backed implementations of functions
+/// that are `.Internal` closures in GNU R: while the port exposes those
+/// implementations directly as primitives, they still need stable identity
+/// when passed as values to higher-order functions. Kind mismatches and
+/// Rust-only helper names receive `PRIMOFFSET = -1` so descriptor-driven
+/// dispatch can recognize them as noncanonical.
 pub unsafe fn make_primitive_binding(name: &str, fallback_kind: SEXPTYPE) -> SEXP {
     unsafe {
         if let Some(index) = fun_tab_index_by_name(name) {
             let entry = &R_FunTab[index as usize];
-            if (entry.eval % 100) / 10 == 0 && primitive_kind_for_eval(entry.eval) == fallback_kind
-            {
+            if primitive_kind_for_eval(entry.eval) == fallback_kind {
                 let prim = crate::mainutils::dstruct::mkPRIMSXP(index, entry.eval % 10);
                 if !prim.is_null() {
                     (*prim).sxpinfo.set_gp(1);
@@ -305,6 +306,17 @@ mod tests {
 
         assert!(unsafe { PrimitiveDescriptor::from_raw(primitive) }.is_none());
         assert_eq!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) }, -1);
+    }
+
+    #[test]
+    fn evaluator_backed_internal_binding_keeps_function_identity() {
+        let _session = RSession::new();
+        let primitive = unsafe { make_primitive_binding("paste", SEXPTYPE::BUILTINSXP) };
+        let descriptor =
+            unsafe { PrimitiveDescriptor::from_raw(primitive) }.expect("paste descriptor");
+
+        assert_eq!(descriptor.name, "paste");
+        assert_eq!(descriptor.kind, SEXPTYPE::BUILTINSXP.as_c_int());
     }
 
     #[test]

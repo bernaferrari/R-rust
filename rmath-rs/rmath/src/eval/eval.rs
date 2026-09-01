@@ -241,7 +241,15 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
         // eval.c Rf_eval: an expression vector is a VALUE and is returned
         // unchanged; only do_eval() (R-level eval()) walks its elements.
         | SEXPTYPE::EXPRSXP
-        | SEXPTYPE::EXTPTRSXP => EvalKind::SelfEvaluating,
+        | SEXPTYPE::EXTPTRSXP
+        // Function objects are values too.  A call may legitimately contain
+        // a function object in head position (for example, higher-order
+        // helpers construct calls from an already matched `FUN`).  GNU R's
+        // Rf_eval returns these objects unchanged before eval_lang dispatches
+        // them; rejecting them here made `outer(..., paste)` fail while
+        // evaluating the constructed call head.
+        | SEXPTYPE::BUILTINSXP
+        | SEXPTYPE::SPECIALSXP => EvalKind::SelfEvaluating,
         SEXPTYPE::SYMSXP => EvalKind::Symbol,
         SEXPTYPE::LANGSXP => EvalKind::Language,
         SEXPTYPE::CLOSXP => EvalKind::Closure,
@@ -791,6 +799,16 @@ mod tests {
             // R-level eval() (do_eval) walks their elements.
             assert_eq!(classify_expr(expr_vec), EvalKind::SelfEvaluating);
         }
+    }
+
+    #[test]
+    fn builtin_function_object_is_self_evaluating() {
+        let mut session = RSession::new();
+        let (result, _, _) =
+            session.eval_script_with_output_capture("f <- paste\nidentical(eval(f), f)");
+
+        let result = result.expect("builtin function object should evaluate as a value");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
     }
 
     #[test]
