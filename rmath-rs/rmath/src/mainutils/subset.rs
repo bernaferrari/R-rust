@@ -747,7 +747,7 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
                             };
                         }
                         t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, i, R_NilValue());
+                            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
                         }
                         t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, i, R_NilValue());
@@ -812,7 +812,7 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
                             };
                         }
                         t if t == SEXPTYPE::STRSXP => {
-                            SET_STRING_ELT(result, i, R_NilValue());
+                            SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
                         }
                         t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, i, R_NilValue());
@@ -2563,6 +2563,21 @@ mod tests {
         unsafe {
             let result = ExtractSubset(R_NilValue(), R_NilValue(), R_NilValue());
             assert_eq!(result, R_NilValue());
+        }
+    }
+
+    #[test]
+    fn extract_subset_uses_na_string_for_missing_character_elements() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let values = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            SET_STRING_ELT(values, 0, Rf_mkChar(c"present".as_ptr()));
+            let indices = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            *INTEGER(indices) = 2;
+
+            let result = ExtractSubset(values, indices, R_NilValue());
+
+            assert_eq!(STRING_ELT(result, 0), crate::sexp::globals::R_NaString());
         }
     }
 
