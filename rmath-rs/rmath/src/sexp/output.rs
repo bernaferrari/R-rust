@@ -1766,7 +1766,15 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            emit(&format!("{}\n", format_list(x)));
+            let list = format_list(x.clone());
+            if x.len() == 0 {
+                emit(&format!("{list}\n"));
+            } else {
+                // Stock printList emits a separator newline after every list
+                // element, including the final one.  This leaves the familiar
+                // blank line between the last value and the next prompt.
+                emit(&format!("{list}\n\n"));
+            }
         }
         SEXPTYPE::EXPRSXP => {
             emit(&format!("{}\n", format_expression_vector(x)));
@@ -2214,6 +2222,16 @@ mod tests {
                 assert_eq!(output.stdout, "[1] FALSE  TRUE    NA\n");
             })
             .unwrap();
+    }
+
+    #[test]
+    fn test_print_named_list_keeps_final_stock_separator_line() {
+        let mut session = RSession::new();
+        let (result, output, _) =
+            session.eval_code_with_output_capture("print(list(class = 'ts'))");
+
+        assert!(result.is_ok(), "named list should evaluate: {result:?}");
+        assert_eq!(output.stdout, "$class\n[1] \"ts\"\n\n");
     }
 
     #[test]
