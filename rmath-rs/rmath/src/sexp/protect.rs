@@ -36,6 +36,11 @@
 //! scopes). Roadmap: a generation-based handle table would pin slots
 //! permanently and remove this LIFO constraint; until then the stack
 //! semantics stay as upstream R's.
+//! Every pushed entry is tagged with a generation from a monotonic
+//! per-instance counter, so a slot handle whose entry was released and
+//! whose index was handed out again is detectable via
+//! [`ProtectionSlot::is_stale`] / [`RootedSexp::is_stale`] instead of
+//! silently resolving to another entry's protection.
 
 use super::ffi::SEXP;
 use super::instance::{RInstance, with_required_current_instance};
@@ -174,11 +179,43 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
     }
 }
 
+/// Allocate the next protection-slot generation.
+///
+/// The counter is monotonic per instance, so every push — including a push
+/// that reuses the index of a released entry — is distinguishable from
+/// every slot handle captured earlier.
+fn next_slot_generation(inst: &RInstance) -> u64 {
+    let generation = inst.protect_slot_next_generation.get();
+    inst.protect_slot_next_generation
+        .set(generation.wrapping_add(1));
+    generation
+}
+
+/// Record `generation` for the entry just pushed at `index`, keeping the
+/// generation log parallel to the protect stack even when foreign code
+/// truncated, cleared, or pushed onto the stack directly (the session
+/// `ProtectScope`, instance teardown, GC test harnesses): surplus entries
+/// are dropped and gaps are back-filled, so the log stays aligned with the
+/// entries this module pushed.
+fn record_slot_generation(inst: &RInstance, index: usize, generation: u64) {
+    let mut generations = inst.protect_stack_generations.borrow_mut();
+    if generations.len() > index {
+        generations.truncate(index);
+    }
+    if generations.len() < index {
+        generations.resize(index, generation);
+    }
+    generations.push(generation);
+}
+
 pub(crate) fn push_protect_in(inst: &mut RInstance, s: SEXP) {
     if !s.is_null() {
         let mut stack = inst.protect_stack.borrow_mut();
         reserve_slot_or_fail(&mut stack, "protect");
         stack.push(s);
+        let index = stack.len() - 1;
+        let generation = next_slot_generation(inst);
+        record_slot_generation(inst, index, generation);
     }
 }
 
@@ -290,10 +327,14 @@ pub(crate) fn unprotect_count_in(inst: &RInstance, n: usize) {
     }
     let mut stack = inst.protect_stack.borrow_mut();
     let len = stack.len();
+    let mut generations = inst.protect_stack_generations.borrow_mut();
     if n >= len {
         stack.clear();
+        generations.clear();
     } else {
-        stack.truncate(len - n);
+        let keep = len - n;
+        stack.truncate(keep);
+        generations.truncate(keep);
     }
 }
 
@@ -316,6 +357,10 @@ pub(crate) fn unprotect_ptr_in(inst: &mut RInstance, s: SEXP) {
     let mut stack = inst.protect_stack.borrow_mut();
     if let Some(pos) = stack.iter().rposition(|&x| x == s) {
         stack.remove(pos);
+        let mut generations = inst.protect_stack_generations.borrow_mut();
+        if pos < generations.len() {
+            generations.remove(pos);
+        }
     }
 }
 
@@ -413,18 +458,30 @@ pub(crate) struct ProtectIndex {
 
 /// Stable handle for a protected stack slot that may be replaced with another
 /// value before it is unprotected.
+///
+/// The handle records the generation assigned to the stack entry when it was
+/// pushed. Releasing a slot removes its entry and later pushes assign fresh
+/// generations, so [`is_stale`](ProtectionSlot::is_stale) detects a handle
+/// whose slot was released and handed out again.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProtectionSlot {
     index: Option<usize>,
+    generation: u64,
 }
 
 impl ProtectionSlot {
     fn inactive() -> Self {
-        Self { index: None }
+        Self {
+            index: None,
+            generation: 0,
+        }
     }
 
-    fn from_stack_index(index: usize) -> Self {
-        Self { index: Some(index) }
+    fn from_stack_index(index: usize, generation: u64) -> Self {
+        Self {
+            index: Some(index),
+            generation,
+        }
     }
 
     fn from_legacy_ptr(index: *mut ProtectIndex) -> Self {
@@ -432,7 +489,10 @@ impl ProtectionSlot {
         if raw == 0 {
             Self::inactive()
         } else {
-            Self::from_stack_index(raw - 1)
+            // Legacy encoded indices carry no generation; they are transient
+            // values passed straight back to `R_Reprotect`, never held long
+            // enough to be checked for staleness.
+            Self::from_stack_index(raw - 1, 0)
         }
     }
 
@@ -442,8 +502,22 @@ impl ProtectionSlot {
             .unwrap_or(std::ptr::null_mut())
     }
 
+    /// The generation assigned to the stack entry when this slot was
+    /// created. A released-then-reused slot always reports a different
+    /// generation than handles captured before the release.
+    pub fn generation(self) -> u64 {
+        self.generation
+    }
+
     pub fn is_active(self) -> bool {
         self.index.is_some()
+    }
+
+    /// Whether this handle no longer refers to the protection stack entry it
+    /// was created for: the entry was released and its index handed out
+    /// again (or is gone entirely). Inactive slots are never stale.
+    pub fn is_stale(self) -> bool {
+        with_required_current_instance(|inst| protect_slot_is_stale_in(inst, self))
     }
 }
 
@@ -458,7 +532,10 @@ fn protect_raw_with_slot_in(inst: &mut RInstance, s: SEXP, api: &str) -> Protect
     let mut stack = inst.protect_stack.borrow_mut();
     reserve_slot_or_fail(&mut stack, api);
     stack.push(s);
-    ProtectionSlot::from_stack_index(stack.len() - 1)
+    let index = stack.len() - 1;
+    let generation = next_slot_generation(inst);
+    record_slot_generation(inst, index, generation);
+    ProtectionSlot::from_stack_index(index, generation)
 }
 
 fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
@@ -486,7 +563,28 @@ fn release_protect_slot_in(inst: &RInstance, slot: ProtectionSlot) {
     let mut stack = inst.protect_stack.borrow_mut();
     if index < stack.len() {
         stack.remove(index);
+        let mut generations = inst.protect_stack_generations.borrow_mut();
+        if index < generations.len() {
+            generations.remove(index);
+        }
     }
+}
+
+/// The generation currently recorded for `slot`'s stack index, or `None`
+/// when the entry is gone (released, or the generation log was desynced by
+/// a foreign direct push onto the stack).
+fn protect_slot_generation_in(inst: &RInstance, slot: ProtectionSlot) -> Option<u64> {
+    let index = slot.index?;
+    let generations = inst.protect_stack_generations.borrow();
+    generations.get(index).copied()
+}
+
+/// Whether `slot` no longer refers to the stack entry it was created for.
+fn protect_slot_is_stale_in(inst: &RInstance, slot: ProtectionSlot) -> bool {
+    if !slot.is_active() {
+        return false;
+    }
+    protect_slot_generation_in(inst, slot) != Some(slot.generation)
 }
 
 /// RAII guard for a replaceable protection stack slot.
@@ -498,6 +596,19 @@ pub struct IndexedProtectGuard {
 impl IndexedProtectGuard {
     pub fn slot(&self) -> ProtectionSlot {
         self.slot
+    }
+
+    /// Whether the live stack entry at the guard's slot index still carries
+    /// `expected` as its generation, checked against the guard's OWNING
+    /// instance (see [`with_guard_owner`]). Inactive slots (null-SEXP
+    /// protections) trivially match — there is no entry to go stale.
+    fn slot_generation_is(&self, expected: u64) -> bool {
+        match self.owner {
+            Some(owner) if self.slot.is_active() => with_guard_owner(owner, |inst| {
+                protect_slot_generation_in(inst, self.slot) == Some(expected)
+            }),
+            _ => true,
+        }
     }
 
     pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
@@ -547,6 +658,10 @@ impl Drop for IndexedProtectGuard {
 /// docs for the ownership model and the planned generation-based handle
 /// table that would remove that constraint.
 ///
+/// Every root records the generation of the stack entry it created; reads
+/// through [`RootedSexp::get`] verify that the entry is still the root's
+/// own, and [`RootedSexp::is_stale`] reports a released-then-reused slot.
+///
 /// ```rust,ignore
 /// use rmath::sexp::protect::RootedSexp;
 ///
@@ -558,6 +673,9 @@ impl Drop for IndexedProtectGuard {
 pub struct RootedSexp<'a> {
     value: Sexp<'a>,
     guard: IndexedProtectGuard,
+    /// Generation of the stack entry captured at root creation; verified
+    /// against the live entry on every checked read.
+    expected_generation: u64,
 }
 
 impl std::fmt::Debug for RootedSexp<'_> {
@@ -582,12 +700,37 @@ impl<'a> RootedSexp<'a> {
     pub fn try_root(sexp: Sexp<'a>) -> Result<Self, ProtectError> {
         ensure_owner_scoped(sexp.clone(), "RootedSexp::root")?;
         let guard = protect_sexp_with_index(sexp.clone());
-        Ok(Self { value: sexp, guard })
+        let expected_generation = guard.slot().generation();
+        Ok(Self {
+            value: sexp,
+            guard,
+            expected_generation,
+        })
     }
 
-    /// Read the rooted handle.
-    pub fn get(&self) -> &Sexp<'a> {
-        &self.value
+    /// Read the rooted handle, verifying that the root's stack slot still
+    /// refers to the protection created for it.
+    ///
+    /// Returns `None` when the slot was released and handed out again (see
+    /// [`is_stale`](RootedSexp::is_stale)); debug builds assert on the
+    /// mismatch, release builds degrade to `None`. The [`Deref`] read is
+    /// the unchecked ergonomic path for code that upholds the drop-order
+    /// contract by construction.
+    pub fn get(&self) -> Option<&Sexp<'a>> {
+        let stale = self.is_stale();
+        debug_assert!(
+            !stale,
+            "RootedSexp slot was released and reused; the root is stale"
+        );
+        if stale { None } else { Some(&self.value) }
+    }
+
+    /// Whether the root's protection slot no longer refers to the stack
+    /// entry created for it — the root was released (or displaced by an
+    /// out-of-order drop) and the slot handed out again. Checked reads via
+    /// [`get`](RootedSexp::get) report the mismatch as `None`.
+    pub fn is_stale(&self) -> bool {
+        !self.guard.slot_generation_is(self.expected_generation)
     }
 
     /// The underlying protection slot, for callers that need to reprotect
@@ -617,7 +760,7 @@ impl<'a> RootedSexp<'a> {
     /// Consume the root, returning the guarded handle. The protection is
     /// released; the caller owns the returned handle without a stack root.
     pub fn unroot(self) -> Sexp<'a> {
-        let Self { value, guard } = self;
+        let Self { value, guard, .. } = self;
         drop(guard);
         value
     }
@@ -872,7 +1015,7 @@ mod tests {
             assert_eq!(R_ProtectCount(), depth_before + 1);
             with_protected_objects(|objects| assert_eq!(objects, &[value.clone().as_raw()]));
             // Deref exposes the guarded handle.
-            let readback = root.get().clone();
+            let readback = root.get().expect("fresh root must resolve").clone();
             assert_eq!(readback, value);
             let sexp = root.unroot();
             assert_eq!(sexp.as_raw(), value.clone().as_raw());
@@ -905,7 +1048,10 @@ mod tests {
             assert_eq!(R_ProtectCount(), depth_before + 1);
             outer.reprotect(second.clone());
             with_protected_objects(|objects| assert_eq!(objects, &[second.clone().as_raw()]));
-            assert_eq!(outer.get().clone(), second);
+            assert_eq!(
+                outer.get().expect("outer root must resolve").clone(),
+                second
+            );
             drop(outer);
             assert_eq!(R_ProtectCount(), depth_before);
         });
@@ -1239,6 +1385,135 @@ mod tests {
                 assert_eq!(objects[0] as usize, 0x200);
             });
             R_ReleaseObject(0x200 as SEXP);
+        });
+    }
+
+    #[test]
+    fn test_slot_generations_differ_across_release_and_reuse() {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let first = protect_with_index_raw(0x1 as SEXP, "test");
+            let first_slot = first.slot();
+            assert!(first_slot.is_active());
+            drop(first);
+
+            // The same index is handed out again with a fresh generation.
+            let second = protect_with_index_raw(0x2 as SEXP, "test");
+            let second_slot = second.slot();
+            assert_ne!(first_slot.generation(), second_slot.generation());
+
+            // The live handle still matches its own generation; the released
+            // handle resolves to a different generation at its index.
+            assert!(!second_slot.is_stale());
+            assert!(first_slot.is_stale());
+            drop(second);
+        });
+    }
+
+    #[test]
+    fn test_rooted_sexp_generation_survives_full_gc() {
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = session.sexp(value).expect("value belongs to session");
+
+        session.with_protected(|| {
+            let root = RootedSexp::root(value.clone());
+            let generation = root.slot().generation();
+            assert!(!root.is_stale());
+
+            // The root pins the value on the protect stack, so collection
+            // must leave the value and the slot's generation intact.
+            crate::sexp::gengc::full_gc();
+
+            assert!(!root.is_stale());
+            assert_eq!(root.slot().generation(), generation);
+            let readback = root.get().expect("rooted value must resolve after gc");
+            assert_eq!(readback.clone().as_raw(), value.clone().as_raw());
+            with_protected_objects(|objects| assert_eq!(objects, &[value.clone().as_raw()]));
+        });
+    }
+
+    #[test]
+    fn test_released_slot_reuse_reports_stale_generation() {
+        let mut session = RSession::new();
+        let raw = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = session.sexp(raw).expect("value belongs to session");
+
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
+            let root = RootedSexp::root(value.clone());
+            let slot = root.slot();
+            assert!(slot.is_active());
+            assert!(!slot.is_stale());
+            let generation = slot.generation();
+
+            // Release the slot, then allocate and churn roots so its index
+            // is handed out again.
+            let sexp = root.unroot();
+            assert_eq!(sexp.as_raw(), value.clone().as_raw());
+            assert_eq!(R_ProtectCount(), depth_before);
+            crate::sexp::instance::with_required_current_instance(|inst| {
+                for _ in 0..1000 {
+                    inst.arena.alloc_node(SEXPTYPE::INTSXP);
+                }
+            });
+
+            for _ in 0..1000 {
+                let churn = RootedSexp::root(value.clone());
+                assert_ne!(churn.slot().generation(), generation);
+                drop(churn);
+            }
+
+            // The old handle's slot was released and its index handed out
+            // again: the entry living there (if any) carries a different
+            // generation, so the handle reports stale.
+            assert!(slot.is_stale());
+        });
+    }
+
+    #[test]
+    fn test_out_of_order_release_marks_surviving_roots_stale() {
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = session.sexp(value).expect("value belongs to session");
+
+        session.with_protected(|| {
+            let first = RootedSexp::root(value.clone());
+            let second = RootedSexp::root(value.clone());
+            let third = RootedSexp::root(value.clone());
+            assert!(!first.is_stale());
+            assert!(!second.is_stale());
+            assert!(!third.is_stale());
+
+            // Violate LIFO: dropping `first` shifts the later entries down
+            // one index. The surviving roots' slot handles must report stale
+            // — one against another entry's generation, one against a gone
+            // index — instead of silently resolving to the wrong entry.
+            drop(first);
+            assert!(second.is_stale());
+            assert!(second.slot().is_stale());
+            assert!(third.is_stale());
+            assert!(third.slot().is_stale());
+
+            // A root created after the violation is healthy: fresh slot,
+            // fresh generation.
+            let fresh = RootedSexp::root(value.clone());
+            assert!(!fresh.is_stale());
+            assert!(fresh.get().is_some());
+
+            drop(fresh);
+            drop(third);
+            drop(second);
+            // Out-of-order release cannot restore the stack depth — the
+            // shifted entries no longer line up with their handles, which is
+            // exactly what the generation checks above exposed — so the
+            // session scope reclaims whatever remains.
         });
     }
 }

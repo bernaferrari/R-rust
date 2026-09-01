@@ -51,6 +51,121 @@ and explicit embedding boundaries.
 - Cross-thread hosts should use one `RSession` per worker/thread. Sharing a live
   session across workers is outside the current safety contract.
 
+## Object Ownership and GC Safety
+
+This section documents the ownership model as actually shipped, in
+`rmath-rs/rmath/src/sexp/`. The safe facade built on top of it is
+experimental: its exact proof coverage is tracked in
+`docs/conformance.md`, and its remaining gaps are listed in the
+README's known-gaps ledger.
+
+### Protect stack (`sexp/protect.rs`)
+
+The port of R's `PROTECT`/`UNPROTECT` mechanism, owned by the active
+`RInstance`:
+
+- **Indexed and typed.** Alongside the count-based
+  `protect_sexp`/`ProtectGuard`, `protect_sexp_with_index` returns an
+  `IndexedProtectGuard` over a typed `ProtectionSlot` — the shape of
+  upstream's `PROTECT_WITH_INDEX`/`REPROTECT` pair. Guards are
+  owner-bound: each remembers the `RInstance` it was created against
+  (stored as an address with exposed provenance) and unprotects against
+  that instance even if the ambient current instance has switched.
+- **Generation-aware rooting.** A protected handle is a GC root: the
+  generational collector's root scan (`with_protected_objects`) reads
+  the protect stack, and heap edges into moved values go through the
+  remembered-set write barriers in `sexp/gengc.rs`.
+- **LIFO drop-order contract.** The stack is a plain `Vec`; releasing a
+  slot (`Vec::remove`) shifts later indices, so guards must drop in
+  reverse creation order — the natural order for RAII scopes. A
+  generation-based handle table that pins slots permanently and removes
+  the LIFO constraint is roadmap; until then the stack semantics stay
+  as upstream R's.
+
+### `RootedSexp`: RAII rooting with a write barrier
+
+`RootedSexp::root` clones the (non-`Copy`) handle, protects the clone
+on creation, and unprotects on `Drop`; reads deref to the guarded
+handle. Embedders never juggle protect/unprotect bookkeeping by hand.
+
+A value that may be *replaced* during evaluation (a grown vector, a
+re-promised PROMSXP) must be refreshed through the slot's write
+barrier — `RootedSexp::reprotect` or
+`IndexedProtectGuard::reprotect_sexp` — which retargets the protected
+slot and the guarded handle together. Never refresh a value by mutating
+a raw pointer in place.
+
+### The Miri audit
+
+Nightly CI (`cargo +nightly miri test -p rmath sexp::`) runs a bounded
+subset of the `sexp::` tests under Stacked Borrows checking, in default
+permissive-provenance mode, with `-Zmiri-ignore-leaks`: the runtime
+deliberately allocates immortal persistent objects (base symbols,
+`CHARSXP` payloads, primitive metadata) that live until process exit,
+mirroring upstream R, and the leak check would flag them without
+weakening the aliasing check that is the point of the job.
+
+**What was tested:** the safe ownership layer — memory, memory_ext,
+object, and protect tests — with **216 tests proven clean** today; the
+subset is re-run nightly and grows as tests are added. ~167 `sexp::`
+tests are not yet Miri-run.
+
+**What was found:** five structural Stacked-Borrows violations plus ~60
+violations in lending closures, fixed in commit `a6fe04e3`:
+
+- instance re-acquisition retagged a stored `Box` root tag instead of
+  re-deriving `&mut RInstance` through `with_exposed_provenance`;
+- `with_arena` lends of `&mut inst.arena` were invalidated by instance
+  re-acquisition — the lend is now exposed for wildcard re-basing in
+  `with_arena_in`, and arena slab pages are raw allocator allocations;
+- `ProtectScope` stored the protect-stack address behind a borrow-like
+  tag (now stored with exposed provenance);
+- `ContextGuard::instance_ptr()` borrowed through a foreign tag (now
+  re-derived from the guard's own tag);
+- ~60 `with_arena` closures ignored the arena lend or held stale
+  borrows across re-acquisition (migrated to `with_active`).
+
+**What was fixed:** the owner-bound guard design above — guards
+re-derive their owning instance from exposed provenance instead of
+holding borrow tags — plus the migration of every lend-ignoring closure.
+
+**What remains:** the evaluator and library layers have no Miri
+coverage, leak auditing is disabled, and the `r-embed` safe facade as a
+whole is unaudited. ALTREP is disabled pending the external-pointer
+redesign (unsound representation).
+
+### Handle discipline
+
+The rules every safe API in the crate follows:
+
+1. **Handles are non-`Copy`.** `Sexp` moves on assignment; a `Copy`
+   handle would let a stale alias legally survive an in-place mutation
+   of the same R object — precisely the aliasing-undefined-behavior
+   class this crate forbids. A `compile_fail` doctest pins the
+   use-after-move error. The full `SexpRef`/`SexpMut` borrow split is
+   roadmap; non-`Copy` handles with by-value mutation are the shipped
+   interim.
+2. **Mutation is by value.** Accessors consume the handle (clone first
+   to keep it), so a mutation can never happen behind an outstanding
+   shared alias.
+3. **Cloning is explicit and shallow.** `clone()` produces a second
+   cheap handle over identical R memory, never a deep copy — and the
+   same no-alias-across-mutation rule applies to the clone.
+4. **Write barriers go through `reprotect`.** Values replaced during
+   evaluation are refreshed through protected slots, never by editing
+   raw pointers in place.
+5. **Rooting is explicit.** Holding a handle does not root the object:
+   the generational GC may collect anything only reachable from Rust
+   locals once an R evaluation re-enters. Retain a value across a GC
+   point with `RootedSexp` or a protect guard.
+
+### Embedding boundary
+
+`r-embed` and `r_uniffi` sit on top of this model: owned Rust values
+out, no raw `SEXP` in user-facing signatures, one session per worker
+thread. The facade is experimental: it inherits the GC discipline
+verified in the sections above but has no independent audit yet.
+
 ## Evaluator Shape
 
 The evaluator is Rust-shaped at its primary boundary:

@@ -802,6 +802,16 @@ unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
             } else {
                 Some(CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned())
             };
+            if key.is_none() {
+                // NA stays NA in the numeric result — stock data.matrix
+                // does not assign a level code to missing strings.
+                if TYPEOF(result) == SEXPTYPE::INTSXP {
+                    *INTEGER(result).add((offset + row) as usize) = crate::sexp::ffi::NA_INTEGER;
+                } else {
+                    *REAL(result).add((offset + row) as usize) = crate::sexp::ffi::NA_REAL;
+                }
+                continue;
+            }
             let code = *codes.entry(key).or_insert_with(|| {
                 let code = next_code;
                 next_code += 1;
@@ -960,9 +970,9 @@ mod data_matrix_tests {
             "m <- data.matrix(data.frame(\
                  f = factor(c('b', 'a')), s = c(NA, 'z'), l = c(TRUE, FALSE))); \
              identical(dim(m), c(2L, 3L)) && \
-             identical(m[, 1], c(2, 1)) && \
-             identical(m[, 2], c(1, 2)) && \
-             identical(m[, 3], c(1, 0)) && \
+             all(m[, 1] == c(2, 1)) && \
+             all(is.na(m[, 2]) == c(TRUE, FALSE)) && \
+             all(m[, 3] == c(1, 0)) && \
              identical(colnames(m), c('f', 's', 'l'))",
         );
     }

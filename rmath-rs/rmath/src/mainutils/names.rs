@@ -3847,7 +3847,7 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         None,
         0,
         11,
-        1,
+        -1,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
     FunTabEntry::new(

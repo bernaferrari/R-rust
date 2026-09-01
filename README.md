@@ -34,9 +34,11 @@ can be diffed, ported, and verified hunk-by-hunk.
   binary compatibility, no `compiler`/bytecode evaluation path.
 - **Not a full WASM R.** The WASM32 target covers the math and graphics
   core only (nmath + plotting primitives), not the whole evaluator.
-- **Not a safe port, and not a sandbox.** The safe embedding facade is
-  experimental; nothing here has been audited as a memory-safety or
-  isolation boundary. See [Safety status](#safety-status).
+- **Not a memory-safety-audited runtime, and not a sandbox.** The safe
+  facade is experimental and not yet audited by Miri at scale — the
+  Miri/GC-torture proof covers a bounded `sexp::` subset, not the whole
+  workspace — and nothing here is an isolation boundary for running
+  untrusted R code. See [Safety status](#safety-status).
 - **Not at 100% fidelity.** Compatibility is claimed only where the
   curated corpus pins it; [Known gaps](#known-gaps) lists the rest.
 
@@ -83,12 +85,17 @@ module map with per-file sync mode lives in
 - The object model is being reworked (copy semantics, external-pointer
   representation). Interfaces and invariants are moving; treat every
   release as disposable.
-- The `r-embed` "safe" facade is an *API design goal* (owned values, no
-  raw SEXP in user code), not an audited guarantee.
-- No memory-safety audit, no fuzzing at the boundary, no isolation
-  claims: this is not a security boundary for running untrusted R code.
-- Known soundness work is tracked openly; e.g. ALTREP is disabled
-  pending an external-pointer redesign (unsound representation).
+- The `r-embed` safe facade is **experimental**: an API design goal
+  (owned values, no raw SEXP in user code) shipped with *verified GC
+  discipline* — the `sexp::` ownership layer is Miri-checked on a
+  bounded test subset and stressed by a nightly GC-torture differential
+  — but the facade as a whole is not an audited guarantee.
+- No memory-safety audit at scale, no fuzzing at the boundary, no
+  isolation claims: this is not a security boundary for running
+  untrusted R code. The ownership model is documented in
+  [Object ownership and GC safety](docs/rust-r-port-architecture.md#object-ownership-and-gc-safety);
+  the exact safety-test coverage and its bounds are in
+  [Safety testing](docs/conformance.md#safety-testing).
 
 ## Compatibility status
 
@@ -205,6 +212,16 @@ Honest ledger, each scoped with a reproduction:
 - **ALTREP disabled pending external-pointer redesign (unsound
   representation)**; remaining wrapper-class work is tracked in
   `docs/upstream-port-map.tsv`.
+- The protect stack keeps upstream R's LIFO drop-order semantics until
+  the **generation-based handle table** lands (roadmap): protect slots
+  shift on release, so guards — including `RootedSexp`, the shipped
+  RAII rooting alternative — must drop in reverse creation order.
+- The **full `SexpRef`/`SexpMut` borrow split** is roadmap. The shipped
+  interim is the non-`Copy` `Sexp` handle: moves instead of implicit
+  aliasing, by-value accessors, explicit `clone()` for a second handle.
+- **Miri coverage is a bounded subset**: ~167 `sexp::` tests are not
+  yet Miri-run (216 are proven clean and re-run by nightly CI);
+  evaluator and library layers have no Miri coverage.
 - Mersenne-Twister is the only *stream-parity* engine; the alternative
   kinds run but their streams are not bit-verified against stock.
 - A few samplers (`rbeta`, `rnorm` under some shapes) differ from stock

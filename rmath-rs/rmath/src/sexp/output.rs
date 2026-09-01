@@ -379,7 +379,7 @@ fn format_printable_attributes(x: Sexp<'_>) -> String {
         }
 
         let mut out = String::new();
-        for (name, value) in visible.into_iter().rev() {
+        for (name, value) in visible {
             out.push('\n');
             out.push_str(&format!("attr(,\"{name}\")\n"));
             if let Some(value) = Sexp::from_raw(value) {

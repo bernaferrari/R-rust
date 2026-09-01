@@ -472,7 +472,7 @@ pub unsafe fn do_attributes_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
             });
         }
 
-        for i in (0..XLENGTH(value)).rev() {
+        for i in 0..XLENGTH(value) {
             let name_elt = STRING_ELT(names, i);
             if name_elt.is_null() || name_elt == crate::sexp::globals::R_NaString() {
                 continue;

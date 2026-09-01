@@ -154,6 +154,38 @@ impl Clone for Sexp<'_> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Compile-time guard — Sexp must never be Copy
+// Stable Rust has no negative bounds, so the guard exploits method
+// resolution: `SexpCopyGuardIfNotCopy` applies to every type, while
+// `SexpCopyGuardIfCopy` applies only to `Copy` types. Today only the
+// first candidate exists and the call below resolves; the moment
+// someone adds `impl Copy for Sexp`, both traits become applicable and
+// the build fails with an ambiguity error (E0034) instead of silently
+// legalizing stale aliases.
+#[allow(dead_code)]
+trait SexpCopyGuardIfNotCopy {
+    fn sexp_copy_guard(&self) {}
+}
+
+#[allow(dead_code)]
+trait SexpCopyGuardIfCopy {
+    fn sexp_copy_guard(&self);
+}
+
+impl<T> SexpCopyGuardIfNotCopy for T {}
+
+impl<T: Copy> SexpCopyGuardIfCopy for T {
+    fn sexp_copy_guard(&self) {}
+}
+
+const _: () = {
+    #[allow(dead_code)]
+    fn sexp_is_not_copy(sexp: &Sexp<'_>) {
+        sexp.sexp_copy_guard();
+    }
+};
+
 impl<'a> Sexp<'a> {
     /// Return R's immutable `NULL` singleton as an owner-independent handle.
     #[inline]

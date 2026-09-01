@@ -265,6 +265,32 @@ unsafe fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
         };
         let _result_guard = protect(result);
 
+        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if !out_dim.is_null() {
+            let _dim_guard = protect(out_dim);
+            *INTEGER(out_dim) = 1;
+            *INTEGER(out_dim).add(1) = n;
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_DimSymbol(),
+                out_dim,
+            );
+        }
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if !class.is_null() {
+            let _class_guard = protect(class);
+            SET_STRING_ELT(class, 0, Rf_mkChar(c"ftable".as_ptr()));
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_ClassSymbol(),
+                class,
+            );
+        }
+
+        let row_vars = named_empty_list();
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.vars".as_ptr()), row_vars);
+
         let col_vars = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
         if !col_vars.is_null() {
             let _col_guard = protect(col_vars);
@@ -290,31 +316,6 @@ unsafe fn ftable_one_dim_table(x: SEXP) -> Option<SEXP> {
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"col.vars".as_ptr()), col_vars);
         }
 
-        let row_vars = named_empty_list();
-        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.vars".as_ptr()), row_vars);
-
-        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        if !class.is_null() {
-            let _class_guard = protect(class);
-            SET_STRING_ELT(class, 0, Rf_mkChar(c"ftable".as_ptr()));
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_ClassSymbol(),
-                class,
-            );
-        }
-
-        let out_dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if !out_dim.is_null() {
-            let _dim_guard = protect(out_dim);
-            *INTEGER(out_dim) = 1;
-            *INTEGER(out_dim).add(1) = n;
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_DimSymbol(),
-                out_dim,
-            );
-        }
         Some(result)
     }
 }

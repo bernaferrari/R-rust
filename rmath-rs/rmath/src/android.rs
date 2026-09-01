@@ -1925,7 +1925,13 @@ mod tests {
                 ])),
                 metadata: RMetadata {
                     dim: Some(vec![2, 2]),
+                    // Stock attribute order: dim was set first by matrix(),
+                    // then dimnames by dimnames<-.
                     attributes: vec![
+                        RAttribute {
+                            name: "dim".to_string(),
+                            value: RValue::IntegerVector(vec![Some(2), Some(2)]),
+                        },
                         RAttribute {
                             name: "dimnames".to_string(),
                             value: RValue::List(vec![
@@ -1938,10 +1944,6 @@ mod tests {
                                     Some("c2".to_string()),
                                 ]),
                             ]),
-                        },
-                        RAttribute {
-                            name: "dim".to_string(),
-                            value: RValue::IntegerVector(vec![Some(2), Some(2)]),
                         },
                     ],
                     ..RMetadata::default()

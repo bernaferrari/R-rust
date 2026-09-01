@@ -858,7 +858,20 @@ unsafe fn check_TRUE_FALSE(arg: SEXP, chname: *const c_char) {
 
 pub unsafe fn do_getOption(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        checkArity(op, args);
+        // Trunk dispatches getOption through the closure
+        // function(x, default = NULL), so the internal always receives one
+        // argument plus an optional default. The flattened builtin accepts
+        // both shapes; anything else mirrors trunk's missing-argument error.
+        let nargs = Rf_length(args);
+        if nargs < 1 {
+            r_error("argument \"x\" is missing, with no default");
+        }
+        if nargs > 2 {
+            let noun = if nargs == 1 { "argument" } else { "arguments" };
+            r_error(&format!(
+                "{nargs} {noun} passed to .Internal(getOption) which requires 1"
+            ));
+        }
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::STRSXP || LENGTH(x) != 1 {
             r_error("'x' must be a character string");

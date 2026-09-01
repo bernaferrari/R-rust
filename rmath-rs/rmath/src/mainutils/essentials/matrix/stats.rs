@@ -100,6 +100,19 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        // GNU R dispatches `rbind` through S3.  This runtime registers a
+        // direct builtin, so retain the key dispatch boundary explicitly:
+        // a data-frame first argument must be bound column-by-column rather
+        // than flattened as the VECSXP storage of an atomic matrix.
+        let first = if args.is_null() || args == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(args)
+        };
+        if sexp_has_class(first, "data.frame") && TYPEOF(first) == SEXPTYPE::VECSXP {
+            return rbind_data_frame(args);
+        }
+
         let mut result_type = SEXPTYPE::LGLSXP;
         let mut row_names = Vec::new();
         let mut has_row_names = false;
@@ -185,6 +198,157 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if has_row_names {
             set_bind_dimnames(result, string_vector(&row_names), R_NilValue());
         }
+        result
+    }
+}
+
+/// Core `rbind.data.frame` behavior for atomic columns and atomic/list rows.
+///
+/// Each output column computes its own common type. Data-frame arguments are
+/// matched to the first frame by column name; vector/list arguments add one
+/// row and are matched by name when every element is named.
+unsafe fn rbind_data_frame(args: SEXP) -> SEXP {
+    unsafe {
+        let template = CAR(args);
+        let ncols = XLENGTH(template);
+        let template_names = crate::sexp::attrib_core::getAttrib(
+            template,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        let column_names: Vec<String> = (0..ncols)
+            .map(|i| string_at_or_empty(template_names, i))
+            .collect();
+
+        // A source vector and index for every result cell, grouped by column.
+        let mut cells: Vec<Vec<(SEXP, R_xlen_t)>> = vec![Vec::new(); ncols as usize];
+        let mut result_row_names = Vec::new();
+        let mut next_automatic_row = 1usize;
+        let mut current = args;
+
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            if value.is_null() || value == R_NilValue() {
+                current = CDR(current);
+                continue;
+            }
+
+            if sexp_has_class(value, "data.frame") && TYPEOF(value) == SEXPTYPE::VECSXP {
+                if XLENGTH(value) != ncols {
+                    base_error("numbers of columns of arguments do not match".to_string());
+                }
+                let value_names = crate::sexp::attrib_core::getAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                let source_columns: Vec<R_xlen_t> = column_names
+                    .iter()
+                    .enumerate()
+                    .map(|(fallback, wanted)| {
+                        (0..ncols)
+                            .find(|&j| string_at_or_empty(value_names, j) == *wanted)
+                            .unwrap_or(fallback as R_xlen_t)
+                    })
+                    .collect();
+                let nrows = data_frame_row_count(value);
+                let source_row_names = if nrows == 0 {
+                    Vec::new()
+                } else {
+                    data_frame_row_names(value)
+                };
+                for (out_col, &source_col) in source_columns.iter().enumerate() {
+                    let column = VECTOR_ELT(value, source_col);
+                    if XLENGTH(column) != nrows {
+                        base_error("invalid data frame column length".to_string());
+                    }
+                    for row in 0..nrows {
+                        cells[out_col].push((column, row));
+                    }
+                }
+                for row_name in source_row_names {
+                    result_row_names.push(row_name);
+                    next_automatic_row += 1;
+                }
+            } else {
+                if XLENGTH(value) != ncols {
+                    base_error(format!(
+                        "number of columns of result, {ncols}, is not a multiple of vector length {} of arg",
+                        XLENGTH(value)
+                    ));
+                }
+                let value_names = crate::sexp::attrib_core::getAttrib(
+                    value,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                let fully_named = TYPEOF(value_names) == SEXPTYPE::STRSXP
+                    && XLENGTH(value_names) == ncols
+                    && (0..ncols).all(|i| !string_at_or_empty(value_names, i).is_empty());
+                for (out_col, wanted) in column_names.iter().enumerate() {
+                    let source_col = if fully_named {
+                        (0..ncols)
+                            .find(|&j| string_at_or_empty(value_names, j) == *wanted)
+                            .unwrap_or(out_col as R_xlen_t)
+                    } else {
+                        out_col as R_xlen_t
+                    };
+                    cells[out_col].push((value, source_col));
+                }
+                let tag = tag_name(current).unwrap_or_default();
+                result_row_names.push(if tag.is_empty() {
+                    next_automatic_row.to_string()
+                } else {
+                    tag
+                });
+                next_automatic_row += 1;
+            }
+            current = CDR(current);
+        }
+
+        let nrows = result_row_names.len() as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncols);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        for (column_index, source_cells) in cells.iter().enumerate() {
+            let mut result_type = SEXPTYPE::LGLSXP;
+            for &(source, source_index) in source_cells {
+                let source_type = if TYPEOF(source) == SEXPTYPE::VECSXP {
+                    TYPEOF(VECTOR_ELT(source, source_index))
+                } else {
+                    TYPEOF(source)
+                };
+                result_type = bind_common_type(result_type, SEXPTYPE(source_type));
+            }
+            let column = Rf_allocVector3(result_type, nrows);
+            if column.is_null() {
+                return R_NilValue();
+            }
+            let column_guard = protect(column);
+            for (row, &(source, source_index)) in source_cells.iter().enumerate() {
+                if TYPEOF(source) == SEXPTYPE::VECSXP {
+                    copy_bind_value(
+                        column,
+                        row as R_xlen_t,
+                        result_type,
+                        VECTOR_ELT(source, source_index),
+                        0,
+                    );
+                } else {
+                    copy_bind_value(column, row as R_xlen_t, result_type, source, source_index);
+                }
+            }
+            SET_VECTOR_ELT(result, column_index as R_xlen_t, column);
+            drop(column_guard);
+        }
+
+        set_string_names(result, &column_names);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+            string_vector(&result_row_names),
+        );
+        set_data_frame_class(result);
         result
     }
 }
@@ -621,5 +785,46 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             *dst.add(i as usize) = max_so_far;
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod rbind_data_frame_tests {
+    use crate::sexp::ffi::TRUE;
+    use crate::sexp::session::RSession;
+
+    fn assert_r_true(code: &str) {
+        let mut session = RSession::new();
+        let (result, output, visible) = session.eval_code_with_output_capture(code);
+        let result = result.expect("rbind.data.frame expression should evaluate");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(
+            output.stdout.is_empty(),
+            "unexpected output: {}",
+            output.stdout
+        );
+        assert!(visible);
+    }
+
+    #[test]
+    fn rbind_preserves_data_frame_shape_and_binds_columns_independently() {
+        assert_r_true(
+            "d1 <- rbind(data.frame(a=1, b=I(TRUE)), new=c(7, 'N')); \
+             is.data.frame(d1) && identical(names(d1), c('a', 'b')) && \
+             identical(row.names(d1), c('1', 'new')) && \
+             identical(d1$a, c('1', '7')) && identical(d1$b, c('TRUE', 'N')) && \
+             is.null(attr(unclass(d1$b), 'class'))",
+        );
+    }
+
+    #[test]
+    fn rbind_matches_data_frame_and_named_row_columns_by_name() {
+        assert_r_true(
+            "x <- data.frame(a=1:2, b=c('x', 'y')); \
+             y <- data.frame(b='z', a=3); \
+             z <- rbind(x, y, c(b='w', a='4')); \
+             identical(z$a, c('1', '2', '3', '4')) && \
+             identical(z$b, c('x', 'y', 'z', 'w'))",
+        );
     }
 }

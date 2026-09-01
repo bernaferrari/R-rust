@@ -573,7 +573,7 @@ unsafe fn write_attribute_list(writer: &mut impl Write, value: SEXP) -> io::Resu
         OutNewlineAscii(writer)?;
         OutIntegerAscii(writer, entries.len() as c_int)?;
         OutNewlineAscii(writer)?;
-        for (tag, car) in entries.into_iter().rev() {
+        for (tag, car) in entries {
             write_saved_object(writer, tag)?;
             write_saved_object(writer, car)?;
         }
