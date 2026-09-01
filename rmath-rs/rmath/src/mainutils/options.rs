@@ -15,10 +15,11 @@ use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
+use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::{R_PreserveObject, protect};
+use crate::sexp::protect::{R_PreserveObject, protect, protect_with_index_raw};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -529,15 +530,35 @@ pub unsafe fn R_Options() -> SEXP {
             keys.sort();
 
             let mut result: SEXP = nil;
+            let mut result_guard: Option<crate::sexp::protect::IndexedProtectGuard> = None;
             for key in keys.iter().rev() {
                 let tag = Rf_install(CString::new(key.as_str()).unwrap_or_default().as_ptr());
                 let val = *inst.options.get(key.as_str()).unwrap_or(&nil);
                 let cell = Rf_cons(val, result);
                 SETTAG(cell, tag);
                 result = cell;
+                if let Some(guard) = result_guard.as_mut() {
+                    guard.reprotect_raw(result);
+                } else {
+                    result_guard = Some(protect_with_index_raw(result, "R_Options"));
+                }
             }
             result
         })
+    }
+}
+
+/// Rebuild the language-level `.Options` binding from the canonical
+/// per-session option table.
+///
+/// GNU R exposes its internal options pairlist through a base-environment
+/// binding. This port keeps the canonical state in a `HashMap`, so the binding
+/// is a snapshot which must be refreshed after each mutation.
+unsafe fn refresh_options_binding() {
+    unsafe {
+        let options = R_Options();
+        let _options_guard = protect(options);
+        defineVar(options_symbol(), options, R_BaseEnv());
     }
 }
 
@@ -585,14 +606,16 @@ unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
         let nil = R_NilValue();
         InitOptions();
 
-        crate::sexp::instance::with_required_current_instance(|inst| {
+        let old = crate::sexp::instance::with_required_current_instance(|inst| {
             if value == nil {
                 inst.options.remove(name).unwrap_or(nil)
             } else {
                 R_PreserveObject(value);
                 inst.options.insert(name.to_string(), value).unwrap_or(nil)
             }
-        })
+        });
+        refresh_options_binding();
+        old
     }
 }
 
@@ -737,9 +760,13 @@ pub unsafe fn Rf_GetOptionDeviceAsk() -> Rboolean {
 /// Populate an options HashMap with default R option values.
 unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
     unsafe {
-        let pi = crate::sexp::constructors::persistent_scalar_integer;
-        let pl = crate::sexp::constructors::persistent_scalar_logical;
-        let pm = crate::sexp::constructors::persistent_mkstring;
+        // Options are per-session GC roots, so allocate their values in the
+        // owning session arena. Process-lifetime `persistent_*` allocations
+        // are neither necessary here nor accepted by the owner-checked
+        // embedding API when `.Options$name` returns one of these values.
+        let pi = Rf_ScalarInteger;
+        let pl = Rf_ScalarLogical;
+        let pm = Rf_mkString;
 
         let val = pm(c"> ".as_ptr());
         options.insert("prompt".to_string(), val);
@@ -793,13 +820,17 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
 /// Initialize the default options list.
 pub unsafe fn InitOptions() {
     unsafe {
-        crate::sexp::instance::with_required_current_instance(|inst| {
+        let initialized_now = crate::sexp::instance::with_required_current_instance(|inst| {
             if inst.options_initialized {
-                return;
+                return false;
             }
             populate_options(&mut inst.options);
             inst.options_initialized = true;
+            true
         });
+        if initialized_now {
+            refresh_options_binding();
+        }
     }
 }
 

@@ -88,6 +88,7 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env:
         crate::mainutils::essentials::register_essentials_builtins(base_env);
         initialize_special_environment_bindings(base_env);
         crate::mainutils::machine::Init_R_Machine(base_env);
+        crate::mainutils::options::InitOptions();
         initialize_base_functions(base_env);
         initialize_primitive_metadata_in(base_env);
     }
@@ -893,6 +894,43 @@ mod tests {
                 .expect(".Machine should be installed in the base environment")
                 .real_elt(0),
             Some(f64::EPSILON)
+        );
+    }
+
+    #[test]
+    fn test_initialize_installs_live_options_binding() {
+        let mut session = crate::sexp::session::RSession::new();
+
+        let (result, _, _) = session.eval_code_with_output_capture(".Options$width");
+        assert_eq!(
+            result
+                .expect(".Options should be installed in the base environment")
+                .integer_elt(0),
+            Some(80)
+        );
+
+        let (result, _, _) =
+            session.eval_code_with_output_capture("options(rErr.eps = 1e-30); .Options$rErr.eps");
+        assert_eq!(
+            result
+                .expect("options() should refresh the .Options binding")
+                .real_elt(0),
+            Some(1e-30)
+        );
+    }
+
+    #[test]
+    fn test_options_binding_refresh_survives_gc_torture() {
+        let mut session = crate::sexp::session::RSession::new();
+
+        let (result, _, _) = session.eval_code_with_output_capture(
+            "gctorture(TRUE); options(alpha = 20L, beta = 22L); value <- .Options$alpha + .Options$beta; gctorture(FALSE); value",
+        );
+        assert_eq!(
+            result
+                .expect("the refreshed .Options pairlist should remain rooted")
+                .integer_elt(0),
+            Some(42)
         );
     }
 
