@@ -498,6 +498,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
             && TYPEOF(seq_val) != SEXPTYPE::CPLXSXP
             && TYPEOF(seq_val) != SEXPTYPE::STRSXP
             && TYPEOF(seq_val) != SEXPTYPE::RAWSXP
+            && TYPEOF(seq_val) != SEXPTYPE::NILSXP
         {
             std::panic::panic_any(crate::sexp::context::RSignal::Error {
                 message: "invalid 'for' loop variable sequence".to_string(),
@@ -506,6 +507,9 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
 
         let n = crate::sexp::constructors::Rf_length(seq_val) as usize;
         let val_type = TYPEOF(seq_val);
+        // GNU R creates (or resets) the loop binding even when the sequence
+        // is empty. This is observable after `for (x in NULL) ...`.
+        crate::sexp::envir::defineVar(var_sym, R_NilValue(), rho);
         let i = std::cell::Cell::new(0usize);
         let list_cell_addr = std::cell::Cell::new(seq_val as usize);
         let mut gc_counter = 0u32;
@@ -520,7 +524,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
                         t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             VECTOR_ELT(seq_val, idx as i64)
                         }
-                        t if t == SEXPTYPE::LISTSXP => {
+                        t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
                             let list_cell = list_cell_addr.get() as SEXP;
                             let v = CAR(list_cell);
                             list_cell_addr.set(CDR(list_cell) as usize);

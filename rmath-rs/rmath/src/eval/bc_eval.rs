@@ -18,12 +18,13 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, Rf_isNull, TYPEOF, VECTOR_ELT,
+    CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
+    VECTOR_ELT,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 
 use super::bc_stack::R_bcstack_t;
@@ -126,7 +127,63 @@ pub mod opcodes {
     pub const OP_PUSHNILVALUE: i32 = 51;
     pub const OP_DFLTFUN: i32 = 52;
     pub const OP_DFLTFORM: i32 = 53;
-    pub const OP_LAST: i32 = 54;
+    pub const OP_STARTFOR: i32 = 54;
+    pub const OP_NEXTFOR: i32 = 55;
+    pub const OP_LAST: i32 = 56;
+}
+
+#[derive(Clone, Copy)]
+struct ForLoopState {
+    sequence_slot: usize,
+    symbol: SEXP,
+    index: c_int,
+    length: c_int,
+}
+
+unsafe fn for_sequence_length(sequence: SEXP) -> Option<c_int> {
+    unsafe {
+        match TYPEOF(sequence) {
+            t if t == SEXPTYPE::NILSXP => Some(0),
+            t if t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP
+                || t == SEXPTYPE::VECSXP
+                || t == SEXPTYPE::EXPRSXP
+                || t == SEXPTYPE::LISTSXP
+                || t == SEXPTYPE::LANGSXP =>
+            {
+                Some(LENGTH(sequence))
+            }
+            _ => None,
+        }
+    }
+}
+
+unsafe fn for_sequence_element(sequence: SEXP, index: c_int) -> SEXP {
+    unsafe {
+        match TYPEOF(sequence) {
+            t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(*LOGICAL(sequence).add(index as usize)),
+            t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(*INTEGER(sequence).add(index as usize)),
+            t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(*REAL(sequence).add(index as usize)),
+            t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(*COMPLEX(sequence).add(index as usize)),
+            t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(sequence, index as i64)),
+            t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(*RAW(sequence).add(index as usize)),
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                VECTOR_ELT(sequence, index as i64)
+            }
+            t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => {
+                let mut node = sequence;
+                for _ in 0..index {
+                    node = CDR(node);
+                }
+                CAR(node)
+            }
+            _ => bc_error("invalid for() loop sequence"),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -136,15 +193,18 @@ pub mod opcodes {
 /// Evaluate a value as a boolean condition for branching.
 unsafe fn eval_bc_condition(val: SEXP) -> bool {
     unsafe {
-        if val.is_null() || val == R_NilValue() {
-            return false;
+        let length = if val.is_null() { 0 } else { LENGTH(val) };
+        if length == 0 {
+            bc_error("argument is of length zero");
         }
-        if TYPEOF(val) == SEXPTYPE::LGLSXP {
-            let data = crate::sexp::accessors::LOGICAL(val);
-            !data.is_null() && *data != 0
-        } else {
-            Rf_isNull(val) == 0
+        if length > 1 {
+            bc_error("the condition has length > 1");
         }
+        let condition = crate::mainutils::coerce::asLogical(val);
+        if condition == NA_LOGICAL {
+            bc_error("missing value where TRUE/FALSE needed");
+        }
+        condition != FALSE
     }
 }
 
@@ -328,6 +388,21 @@ where
     }
 }
 
+unsafe fn bind_for_element(
+    stack: &R_bcstack_t,
+    sequence: SEXP,
+    symbol: SEXP,
+    index: c_int,
+    rho: SEXP,
+) {
+    unsafe {
+        with_stack_rooted(stack, symbol, || {
+            let value = for_sequence_element(sequence, index);
+            defineVar(symbol, value, rho);
+        });
+    }
+}
+
 // ---------------------------------------------------------------------------
 // bcEval — the main bytecode evaluation loop
 // ---------------------------------------------------------------------------
@@ -359,6 +434,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
         let mut pc: c_int = 0; // program counter
         let mut stack = R_bcstack_t::new(stack_depth as usize);
+        let mut for_loops: Vec<ForLoopState> = Vec::new();
 
         while pc < code_len {
             let op = *code_ptr.add(pc as usize);
@@ -414,7 +490,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_SETVAR => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "SETVAR");
                     let sym = constant_at(consts, idx, "SETVAR");
-                    let val = stack_pop_checked(&mut stack, "SETVAR");
+                    // GNU R's SETVAR leaves the assigned value on the operand
+                    // stack so assignment remains an expression. Blocks and
+                    // loops decide separately whether to discard that value.
+                    let val = stack_top_checked(&stack, "SETVAR");
                     defineVar(sym, val, rho);
                     super::runtime::set_visible(FALSE);
                 }
@@ -495,7 +574,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_BRIFNOT => {
                     let target = read_jump_target(code_ptr, &mut pc, code_len, "BRIFNOT");
-                    let val = stack_top_checked(&stack, "BRIFNOT");
+                    let val = stack_pop_checked(&mut stack, "BRIFNOT");
                     let cond = eval_bc_condition(val);
                     if !cond {
                         pc = target;
@@ -504,7 +583,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 
                 opcodes::OP_BRIFTRUE => {
                     let target = read_jump_target(code_ptr, &mut pc, code_len, "BRIFTRUE");
-                    let val = stack_top_checked(&stack, "BRIFTRUE");
+                    let val = stack_pop_checked(&mut stack, "BRIFTRUE");
                     let cond = eval_bc_condition(val);
                     if cond {
                         pc = target;
@@ -735,6 +814,63 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "DFLTFORM");
                     let val = constant_at(consts, idx, "DFLTFORM");
                     stack.push(val);
+                }
+
+                opcodes::OP_STARTFOR => {
+                    let symbol_idx = read_operand(code_ptr, &mut pc, code_len, "STARTFOR");
+                    let end = read_jump_target(code_ptr, &mut pc, code_len, "STARTFOR");
+                    let symbol = constant_at(consts, symbol_idx, "STARTFOR");
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error("STARTFOR requires a symbol constant");
+                    }
+                    let mut sequence = stack_top_checked(&stack, "STARTFOR sequence");
+                    if crate::mainutils::essentials::sexp_has_class(sequence, "factor") {
+                        sequence = with_stack_rooted(&stack, symbol, || {
+                            crate::mainutils::coerce::asCharacterFactor(sequence)
+                        });
+                        let sequence_slot = stack.depth() - 1;
+                        stack.set(sequence_slot, sequence);
+                    }
+                    let Some(length) = for_sequence_length(sequence) else {
+                        bc_error("invalid for() loop sequence");
+                    };
+                    defineVar(symbol, R_NilValue(), rho);
+                    if length == 0 {
+                        stack_pop_checked(&mut stack, "STARTFOR empty sequence");
+                        stack.push(R_NilValue());
+                        pc = end;
+                    } else {
+                        bind_for_element(&stack, sequence, symbol, 0, rho);
+                        for_loops.push(ForLoopState {
+                            sequence_slot: stack.depth() - 1,
+                            symbol,
+                            index: 0,
+                            length,
+                        });
+                    }
+                }
+
+                opcodes::OP_NEXTFOR => {
+                    crate::sexp::instance::check_cancellation();
+                    let body_start = read_jump_target(code_ptr, &mut pc, code_len, "NEXTFOR");
+                    let Some(state) = for_loops.last_mut() else {
+                        bc_error("NEXTFOR has no active for loop");
+                    };
+                    state.index += 1;
+                    if state.index < state.length {
+                        let sequence =
+                            stack_at_checked(&stack, state.sequence_slot, "NEXTFOR sequence");
+                        bind_for_element(&stack, sequence, state.symbol, state.index, rho);
+                        pc = body_start;
+                    } else {
+                        let completed = for_loops.pop().expect("active loop checked above");
+                        if stack.depth() != completed.sequence_slot + 1 {
+                            bc_error("NEXTFOR bytecode stack is unbalanced");
+                        }
+                        stack_pop_checked(&mut stack, "NEXTFOR sequence");
+                        stack.push(R_NilValue());
+                        super::runtime::set_visible(FALSE);
+                    }
                 }
 
                 opcodes::OP_STARTSUBSET | opcodes::OP_ENDSUBSET => {
