@@ -24,10 +24,13 @@
 
 use std::os::raw::{c_double, c_int};
 
+use num::complex::Complex64;
+
 use crate::attrib_core::{R_DimSymbol, getAttrib};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
+use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::protect::protect;
 
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
@@ -38,7 +41,180 @@ unsafe fn duplicate(x: SEXP) -> SEXP {
     unsafe { crate::main::duplicate::duplicate(x) }
 }
 
-use crate::library::stats::fft::{fft_factor, fft_work};
+/// Pure-Rust mixed-radix discrete Fourier transform.
+///
+/// Composite lengths use Cooley--Tukey decomposition; prime leaves use the
+/// direct transform.  This keeps arbitrary-length GNU R semantics without a
+/// BLAS/Fortran dependency (notably on WASM and Android), while avoiding the
+/// quadratic path for the overwhelmingly common composite sizes.
+fn transform(values: &[Complex64], inverse: bool) -> Vec<Complex64> {
+    let n = values.len();
+    if n <= 1 {
+        return values.to_vec();
+    }
+
+    let mut factor = n;
+    let mut candidate = 2usize;
+    while candidate <= n / candidate {
+        if n.is_multiple_of(candidate) {
+            factor = candidate;
+            break;
+        }
+        candidate += 1;
+    }
+    let sign = if inverse { 1.0 } else { -1.0 };
+
+    if factor == n {
+        return (0..n)
+            .map(|k| {
+                let step =
+                    Complex64::from_polar(1.0, sign * std::f64::consts::TAU * k as f64 / n as f64);
+                let mut twiddle = Complex64::new(1.0, 0.0);
+                let mut sum = Complex64::new(0.0, 0.0);
+                for &value in values {
+                    sum += value * twiddle;
+                    twiddle *= step;
+                }
+                sum
+            })
+            .collect();
+    }
+
+    let inner_len = n / factor;
+    let inner: Vec<Vec<Complex64>> = (0..factor)
+        .map(|residue| {
+            let lane: Vec<_> = (0..inner_len)
+                .map(|index| values[index * factor + residue])
+                .collect();
+            transform(&lane, inverse)
+        })
+        .collect();
+
+    let mut output = vec![Complex64::new(0.0, 0.0); n];
+    for k in 0..n {
+        let inner_k = k % inner_len;
+        let step = Complex64::from_polar(1.0, sign * std::f64::consts::TAU * k as f64 / n as f64);
+        let mut twiddle = Complex64::new(1.0, 0.0);
+        for lane in &inner {
+            output[k] += lane[inner_k] * twiddle;
+            twiddle *= step;
+        }
+    }
+    output
+}
+
+#[cfg(test)]
+mod transform_tests {
+    use super::*;
+
+    fn close(actual: Complex64, expected: Complex64) {
+        assert!(
+            (actual - expected).norm() < 1e-10,
+            "{actual:?} != {expected:?}"
+        );
+    }
+
+    #[test]
+    fn forward_matches_gnu_r_oracle_and_inverse_is_unscaled() {
+        let input: Vec<_> = (1..=4)
+            .map(|value| Complex64::new(value as f64, 0.0))
+            .collect();
+        let forward = transform(&input, false);
+        let oracle = [
+            Complex64::new(10.0, 0.0),
+            Complex64::new(-2.0, 2.0),
+            Complex64::new(-2.0, 0.0),
+            Complex64::new(-2.0, -2.0),
+        ];
+        for (actual, expected) in forward.iter().copied().zip(oracle) {
+            close(actual, expected);
+        }
+        for (actual, expected) in transform(&forward, true).into_iter().zip(input) {
+            close(actual, expected * 4.0);
+        }
+    }
+
+    #[test]
+    fn prime_length_round_trip_matches_gnu_r_scaling() {
+        let input: Vec<_> = (0..7)
+            .map(|index| Complex64::new(index as f64 - 2.0, index as f64 / 3.0))
+            .collect();
+        let forward = transform(&input, false);
+        for (actual, expected) in transform(&forward, true).into_iter().zip(input) {
+            close(actual, expected * 7.0);
+        }
+    }
+
+    #[test]
+    fn sexp_front_end_transforms_real_vectors() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let input = Rf_allocVector(SEXPTYPE::REALSXP.0, 4);
+            let _input_guard = protect(input);
+            for (index, value) in [1.0, 2.0, 3.0, 4.0].into_iter().enumerate() {
+                *REAL(input).add(index) = value;
+            }
+            let inverse = Rf_ScalarLogical(0);
+            let _inverse_guard = protect(inverse);
+            let result = fft(input, inverse);
+            assert_eq!(LENGTH(result), 4);
+            let expected = [
+                Rcomplex { r: 10.0, i: 0.0 },
+                Rcomplex { r: -2.0, i: 2.0 },
+                Rcomplex { r: -2.0, i: 0.0 },
+                Rcomplex { r: -2.0, i: -2.0 },
+            ];
+            for (index, expected) in expected.into_iter().enumerate() {
+                close(
+                    Complex64::new(
+                        (*COMPLEX(result).add(index)).r,
+                        (*COMPLEX(result).add(index)).i,
+                    ),
+                    Complex64::new(expected.r, expected.i),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn strided_transform_matches_gnu_r_matrix_oracle() {
+        let mut values: Vec<_> = (1..=4)
+            .map(|value| Rcomplex {
+                r: value as f64,
+                i: 0.0,
+            })
+            .collect();
+        unsafe {
+            transform_line(values.as_mut_ptr(), 2, 1, false);
+            transform_line(values.as_mut_ptr().add(2), 2, 1, false);
+            transform_line(values.as_mut_ptr(), 2, 2, false);
+            transform_line(values.as_mut_ptr().add(1), 2, 2, false);
+        }
+        for (actual, expected) in values.into_iter().zip([10.0, -2.0, -4.0, 0.0]) {
+            close(
+                Complex64::new(actual.r, actual.i),
+                Complex64::new(expected, 0.0),
+            );
+        }
+    }
+}
+
+unsafe fn transform_line(base: *mut Rcomplex, len: usize, stride: usize, inverse: bool) {
+    unsafe {
+        let input: Vec<_> = (0..len)
+            .map(|index| {
+                let value = *base.add(index * stride);
+                Complex64::new(value.r, value.i)
+            })
+            .collect();
+        for (index, value) in transform(&input, inverse).into_iter().enumerate() {
+            *base.add(index * stride) = Rcomplex {
+                r: value.re,
+                i: value.im,
+            };
+        }
+    }
+}
 
 /// true if namedness > 0 (potentially shared).
 unsafe fn MAYBE_REFERENCED(x: SEXP) -> c_int {
@@ -110,100 +286,62 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
         }
         let _z_guard = protect(z);
 
-        /* -2 for forward transform, complex values */
-        /* +2 for backward transform, complex values */
-        let mut inv = as_logical(inverse);
-        if inv == NA_INTEGER || inv == 0 {
-            inv = -2;
-        } else {
-            inv = 2;
-        }
+        let inverse = as_logical(inverse) != NA_INTEGER && as_logical(inverse) != 0;
 
         if LENGTH(z) > 1 {
             let d = getAttrib(z, R_DimSymbol());
-            if d.is_null() {
+            if d.is_null() || d == R_NilValue() {
                 /* temporal transform */
-                let n = LENGTH(z);
-                let mut maxf: c_int = 0;
-                let mut maxp: c_int = 0;
-                fft_factor(n, &mut maxf, &mut maxp);
-                if maxf == 0 {
-                    Rf_error(b"fft factorization error\0".as_ptr() as *const libc::c_char);
-                }
-                let smaxf = maxf as usize;
-                let maxsize = usize::MAX / 4;
-                if smaxf > maxsize {
-                    Rf_error(b"fft too large\0".as_ptr() as *const libc::c_char);
-                }
-                let mut work = vec![0.0f64; 4 * smaxf];
-                let mut iwork = vec![0i32; maxp as usize];
-                let re = &mut (*COMPLEX(z)).r;
-                let im = &mut (*COMPLEX(z)).i;
-                fft_work(
-                    re as *mut f64,
-                    im as *mut f64,
-                    1,
-                    n,
-                    1,
-                    inv,
-                    work.as_mut_ptr(),
-                    iwork.as_mut_ptr(),
-                );
+                transform_line(COMPLEX(z), LENGTH(z) as usize, 1, inverse);
             } else {
                 /* spatial transform */
-                let mut maxmaxf: c_int = 1;
-                let mut maxmaxp: c_int = 1;
                 let ndims = LENGTH(d);
+                let total = LENGTH(z) as usize;
+                let mut stride = 1usize;
                 for i in 0..(ndims as usize) {
-                    if *INTEGER(d.add(i)) > 1 {
-                        let mut maxf: c_int = 0;
-                        let mut maxp: c_int = 0;
-                        fft_factor(*INTEGER(d.add(i)), &mut maxf, &mut maxp);
-                        if maxf == 0 {
-                            Rf_error(b"fft factorization error\0".as_ptr() as *const libc::c_char);
-                        }
-                        if maxf > maxmaxf {
-                            maxmaxf = maxf;
-                        }
-                        if maxp > maxmaxp {
-                            maxmaxp = maxp;
+                    let len = *INTEGER(d).add(i) as usize;
+                    if len > 1 {
+                        let block_len = stride * len;
+                        for block in 0..(total / block_len) {
+                            for lane in 0..stride {
+                                transform_line(
+                                    COMPLEX(z).add(block * block_len + lane),
+                                    len,
+                                    stride,
+                                    inverse,
+                                );
+                            }
                         }
                     }
-                }
-                let smaxf = maxmaxf as usize;
-                let maxsize = usize::MAX / 4;
-                if smaxf > maxsize {
-                    Rf_error(b"fft too large\0".as_ptr() as *const libc::c_char);
-                }
-                let mut work = vec![0.0f64; 4 * smaxf];
-                let mut iwork = vec![0i32; maxmaxp as usize];
-                let mut nseg = LENGTH(z);
-                let mut n: c_int = 1;
-                let mut nspn: c_int = 1;
-                for i in 0..(ndims as usize) {
-                    if *INTEGER(d.add(i)) > 1 {
-                        nspn *= n;
-                        n = *INTEGER(d.add(i));
-                        nseg /= n;
-                        let mut maxf: c_int = 0;
-                        let mut maxp: c_int = 0;
-                        fft_factor(n, &mut maxf, &mut maxp);
-                        fft_work(
-                            &mut (*COMPLEX(z)).r,
-                            &mut (*COMPLEX(z)).i,
-                            nseg,
-                            n,
-                            nspn,
-                            inv,
-                            work.as_mut_ptr(),
-                            iwork.as_mut_ptr(),
-                        );
-                    }
+                    stride *= len;
                 }
             }
         }
     }
     z
+}
+
+/// Evaluator adapter for the public `fft(x, inverse = FALSE)` closure.
+///
+/// GNU R implements this small front end in R and delegates to the stats
+/// native routine.  The port currently exposes package functions directly as
+/// evaluator builtins, so keep the default here while reusing the translated,
+/// allocation-safe FFT backend above.
+pub unsafe fn do_fft(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let z = CAR(args);
+        if z.is_null() || z == R_NilValue() || z == R_MissingArg() {
+            crate::main::errors::errorcall_str(call, "argument \"z\" is missing, with no default");
+        }
+        let inverse = CADR(args);
+        if inverse.is_null() || inverse == R_NilValue() || inverse == R_MissingArg() {
+            let default_inverse = Rf_ScalarLogical(0);
+            let _default_guard = protect(default_inverse);
+            fft(z, default_inverse)
+        } else {
+            fft(z, inverse)
+        }
+    }
 }
 
 /* Fourier Transform for Vector-Valued ("multivariate") Series */
@@ -214,13 +352,13 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
     let mut z = z;
     unsafe {
         let d = getAttrib(z, R_DimSymbol());
-        if d.is_null() || LENGTH(d) > 2 {
+        if d.is_null() || d == R_NilValue() || LENGTH(d) != 2 {
             Rf_error(
                 b"vector-valued (multivariate) series required\0".as_ptr() as *const libc::c_char
             );
         }
         let n = *INTEGER(d);
-        let p = *INTEGER(d.add(1));
+        let p = *INTEGER(d).add(1);
 
         match TYPEOF(z) as c_int {
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP => {
@@ -237,44 +375,34 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
         }
         let _z_guard = protect(z);
 
-        let mut inv = as_logical(inverse);
-        if inv == NA_INTEGER || inv == 0 {
-            inv = -2;
-        } else {
-            inv = 2;
-        }
+        let inverse = as_logical(inverse) != NA_INTEGER && as_logical(inverse) != 0;
 
         if n > 1 {
-            let mut maxf: c_int = 0;
-            let mut maxp: c_int = 0;
-            fft_factor(n, &mut maxf, &mut maxp);
-            if maxf == 0 {
-                Rf_error(b"fft factorization error\0".as_ptr() as *const libc::c_char);
-            }
-            let smaxf = maxf as usize;
-            let maxsize = usize::MAX / 4;
-            if smaxf > maxsize {
-                Rf_error(b"fft too large\0".as_ptr() as *const libc::c_char);
-            }
-            let mut work = vec![0.0f64; 4 * smaxf];
-            let mut iwork = vec![0i32; maxp as usize];
             for i in 0..(p as usize) {
-                fft_factor(n, &mut maxf, &mut maxp);
                 let base = COMPLEX(z).add(i * n as usize);
-                fft_work(
-                    &mut (*base).r,
-                    &mut (*base).i,
-                    1,
-                    n,
-                    1,
-                    inv,
-                    work.as_mut_ptr(),
-                    iwork.as_mut_ptr(),
-                );
+                transform_line(base, n as usize, 1, inverse);
             }
         }
     }
     z
+}
+
+/// Evaluator adapter for `mvfft(x, inverse = FALSE)`.
+pub unsafe fn do_mvfft(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let z = CAR(args);
+        if z.is_null() || z == R_NilValue() || z == R_MissingArg() {
+            crate::main::errors::errorcall_str(call, "argument \"z\" is missing, with no default");
+        }
+        let inverse = CADR(args);
+        if inverse.is_null() || inverse == R_NilValue() || inverse == R_MissingArg() {
+            let default_inverse = Rf_ScalarLogical(0);
+            let _default_guard = protect(default_inverse);
+            mvfft(z, default_inverse)
+        } else {
+            mvfft(z, inverse)
+        }
+    }
 }
 
 fn ok_n(mut n: c_int, f: &[c_int]) -> bool {

@@ -15,7 +15,7 @@ mod family;
 pub(crate) mod fexact;
 pub(crate) mod fft;
 mod filter;
-mod fourier;
+pub(crate) mod fourier;
 mod hclust_utils;
 mod holtwinters;
 mod influence;

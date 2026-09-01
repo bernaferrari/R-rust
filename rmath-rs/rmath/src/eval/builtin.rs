@@ -798,6 +798,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::library::stats::random::do_rnorm_r,
     },
     EvaluatedBuiltin {
+        name: "fft",
+        handler: crate::library::stats::fourier::do_fft,
+    },
+    EvaluatedBuiltin {
+        name: "mvfft",
+        handler: crate::library::stats::fourier::do_mvfft,
+    },
+    EvaluatedBuiltin {
         name: "rpois",
         handler: crate::library::stats::random::do_rpois_r,
     },
