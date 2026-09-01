@@ -6,7 +6,7 @@
 
 use super::accessors::{CDR, SETCAR, SETTAG, TYPEOF};
 use super::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang4, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang3, Rf_lang4, Rf_mkString,
 };
 use super::envir::{R_findVarInFrame, defineVar};
 use super::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -169,6 +169,38 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
             identical_closure,
             base_env,
         );
+
+        // `I` <- function(x) {
+        //     class(x) <- unique(c("AsIs", oldClass(x)))
+        //     x
+        // }
+        //
+        // GNU R defines this wrapper in base's dataframe.R.  It must prepend
+        // rather than replace an existing explicit class, and `unique` keeps
+        // repeated I() calls idempotent.  Keep it as a closure so assigning
+        // the class follows the evaluator's normal copy-on-modify path.
+        let as_is_formals = formals_from_specs(&[arg("x")]);
+        let _as_is_formals_guard = super::protect::protect(as_is_formals);
+
+        let as_is = Rf_mkString(c"AsIs".as_ptr());
+        let _as_is_guard = super::protect::protect(as_is);
+        let old_class = Rf_lang2(Rf_install_in_current("oldClass"), x);
+        let _old_class_guard = super::protect::protect(old_class);
+        let classes = Rf_lang3(Rf_install_in_current("c"), as_is, old_class);
+        let _classes_guard = super::protect::protect(classes);
+        let unique_classes = Rf_lang2(Rf_install_in_current("unique"), classes);
+        let _unique_classes_guard = super::protect::protect(unique_classes);
+        let class_lhs = Rf_lang2(Rf_install_in_current("class"), x);
+        let _class_lhs_guard = super::protect::protect(class_lhs);
+        let class_assignment = Rf_lang3(Rf_install_in_current("<-"), class_lhs, unique_classes);
+        let _class_assignment_guard = super::protect::protect(class_assignment);
+        let as_is_body = Rf_lang3(Rf_install_in_current("{"), class_assignment, x);
+        let _as_is_body_guard = super::protect::protect(as_is_body);
+        let as_is_closure =
+            crate::mainutils::dstruct::mkCLOSXP(as_is_formals, as_is_body, base_env);
+        let _as_is_closure_guard = super::protect::protect(as_is_closure);
+
+        defineVar(Rf_install_in_current("I"), as_is_closure, base_env);
     }
 }
 
@@ -881,6 +913,40 @@ mod tests {
                 .expect("false is a value, not a null operand")
                 .logical_elt(0),
             Some(FALSE)
+        );
+    }
+
+    #[test]
+    fn test_as_is_base_function_preserves_and_prepends_explicit_classes() {
+        let mut session = crate::sexp::session::RSession::new();
+
+        let (result, _, _) = session.eval_code_with_output_capture(
+            r#"
+                x <- structure(1:3, names = c("a", "b", "c"), class = c("foo", "AsIs", "bar"))
+                y <- I(x)
+                identical(oldClass(y), c("AsIs", "foo", "bar")) &&
+                    identical(names(y), names(x)) &&
+                    identical(oldClass(I(y)), oldClass(y))
+            "#,
+        );
+        assert_eq!(
+            result
+                .expect("I() should preserve attributes and prepend one AsIs class")
+                .logical_elt(0),
+            Some(TRUE)
+        );
+
+        let (result, _, _) = session.eval_code_with_output_capture(
+            r#"
+                y <- I(matrix(1:4, 2L, 2L))
+                identical(oldClass(y), "AsIs") && identical(dim(y), c(2L, 2L))
+            "#,
+        );
+        assert_eq!(
+            result
+                .expect("I() should add AsIs without discarding unrelated attributes")
+                .logical_elt(0),
+            Some(TRUE)
         );
     }
 
