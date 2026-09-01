@@ -8,7 +8,7 @@
 use std::os::raw::c_int;
 
 use super::bc_eval::opcodes;
-use crate::sexp::accessors::{BODY, CAR, CDR, LENGTH, PRINTNAME, SET_BODY, TYPEOF};
+use crate::sexp::accessors::{BODY, CAR, CDR, PRINTNAME, SET_BODY, TYPEOF};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
@@ -56,22 +56,22 @@ impl BytecodeCompiler {
             }
 
             match TYPEOF(expr) {
-                t if t == SEXPTYPE::LGLSXP && LENGTH(expr) == 1 => {
+                t if t == SEXPTYPE::LGLSXP => {
                     let idx = self.add_const(expr);
                     self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     true
                 }
-                t if t == SEXPTYPE::INTSXP && LENGTH(expr) == 1 => {
+                t if t == SEXPTYPE::INTSXP => {
                     let idx = self.add_const(expr);
                     self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     true
                 }
-                t if t == SEXPTYPE::REALSXP && LENGTH(expr) == 1 => {
+                t if t == SEXPTYPE::REALSXP => {
                     let idx = self.add_const(expr);
                     self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     true
                 }
-                t if t == SEXPTYPE::STRSXP && LENGTH(expr) == 1 => {
+                t if t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::STRSXP || t == SEXPTYPE::RAWSXP => {
                     let idx = self.add_const(expr);
                     self.emit_operand(opcodes::OP_PUSHCONST, idx);
                     true
@@ -116,6 +116,9 @@ impl BytecodeCompiler {
                 if name.as_deref() == Some("for") {
                     return self.compile_for(expr);
                 }
+                if matches!(name.as_deref(), Some("<-") | Some("=")) {
+                    return self.compile_assignment(expr);
+                }
                 if !name.as_deref().is_some_and(is_eager_builtin_call) {
                     return false;
                 }
@@ -157,9 +160,12 @@ impl BytecodeCompiler {
             if !self.compile_expr(body) {
                 return false;
             }
+            self.emit(opcodes::OP_POP);
             self.emit_operand(opcodes::OP_GOTO, test_label);
             let end_label = self.code.len() as c_int;
             self.code[brif_idx as usize + 1] = end_label;
+            let nil_idx = self.add_const(R_NilValue());
+            self.emit_operand(opcodes::OP_PUSHCONST, nil_idx);
             // Upstream's compiler wraps while-loop results in INVISIBLE
             // (the loop's NULL result never auto-prints at top level).
             self.emit(opcodes::OPinvisible);
@@ -168,12 +174,45 @@ impl BytecodeCompiler {
     }
 
     unsafe fn compile_for(&mut self, expr: SEXP) -> bool {
-        // The bytecode VM does not yet model R's full for-loop state
-        // (sequence, binding cell, reusable scalar value, break/next
-        // context). Keep for-loops on the AST evaluator rather than
-        // emitting bytecode that silently skips or mistypes iterations.
-        let _ = expr;
-        false
+        unsafe {
+            // for (symbol in sequence) body
+            let symbol = CAR(CDR(expr));
+            let sequence = CAR(CDR(CDR(expr)));
+            let body = CAR(CDR(CDR(CDR(expr))));
+            if TYPEOF(symbol) != SEXPTYPE::SYMSXP || !self.compile_expr(sequence) {
+                return false;
+            }
+
+            let symbol_idx = self.add_const(symbol);
+            let start_idx = self.code.len();
+            self.emit(opcodes::OP_STARTFOR);
+            self.code.push(symbol_idx);
+            self.code.push(0); // end label, patched below
+
+            let body_start = self.code.len() as c_int;
+            if !self.compile_expr(body) {
+                return false;
+            }
+            self.emit(opcodes::OP_POP);
+            self.emit_operand(opcodes::OP_NEXTFOR, body_start);
+
+            self.code[start_idx + 2] = self.code.len() as c_int;
+            self.emit(opcodes::OPinvisible);
+            true
+        }
+    }
+
+    unsafe fn compile_assignment(&mut self, expr: SEXP) -> bool {
+        unsafe {
+            let lhs = CAR(CDR(expr));
+            let rhs = CAR(CDR(CDR(expr)));
+            if TYPEOF(lhs) != SEXPTYPE::SYMSXP || !self.compile_expr(rhs) {
+                return false;
+            }
+            let symbol_idx = self.add_const(lhs);
+            self.emit_operand(opcodes::OP_SETVAR, symbol_idx);
+            true
+        }
     }
 
     unsafe fn compile_if(&mut self, expr: SEXP) -> bool {
@@ -285,6 +324,12 @@ fn is_eager_builtin_call(name: &str) -> bool {
             | "%%"
             | "%/%"
             | "%in%"
+            | "<"
+            | "<="
+            | "=="
+            | "!="
+            | ">="
+            | ">"
             | "c"
             | "list"
             | "abs"
@@ -313,6 +358,7 @@ fn is_eager_builtin_call(name: &str) -> bool {
             | "seq"
             | "seq_len"
             | "seq_along"
+            | ":"
     )
 }
 
@@ -436,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_assignment_block_is_rejected() {
+    fn compile_assignment_block_round_trips_through_bc_eval() {
         let session = RSession::new();
         let env = session.global_env().expect("global env");
 
@@ -456,30 +502,119 @@ mod tests {
             );
             (*block).sxpinfo.set_type(SEXPTYPE::LANGSXP);
 
-            assert!(compile_expr(assign, env.clone().as_raw()).is_none());
-            assert!(compile_expr(block, env.as_raw()).is_none());
+            let bcode = compile_expr(block, env.clone().as_raw()).expect("block should compile");
+            let result = super::super::bc_eval::bcEval(bcode, env.clone().as_raw());
+            assert_eq!(*INTEGER(result), 1);
+            assert_eq!(
+                *INTEGER(crate::sexp::envir::R_findVar(
+                    Rf_install(c"x".as_ptr()),
+                    env.as_raw()
+                )),
+                1
+            );
         }
     }
 
     #[test]
-    fn compile_for_loop_is_rejected_until_vm_loop_state_is_complete() {
+    fn compile_for_loop_updates_binding_and_returns_invisible_null() {
+        let mut session = RSession::new();
+        let env = session.global_env().expect("global env").as_raw();
+
+        session
+            .with_arena(|arena| unsafe {
+                let sequence = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+                let values = INTEGER(sequence);
+                *values = 1;
+                *values.add(1) = 2;
+                *values.add(2) = 3;
+
+                let sum = Rf_install(c"sum".as_ptr());
+                defineVar(sum, Rf_ScalarInteger(0), env);
+                let add = Rf_cons(
+                    Rf_install(c"+".as_ptr()),
+                    Rf_cons(sum, Rf_cons(Rf_install(c"i".as_ptr()), R_NilValue())),
+                );
+                (*add).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                let assign = Rf_cons(
+                    Rf_install(c"<-".as_ptr()),
+                    Rf_cons(sum, Rf_cons(add, R_NilValue())),
+                );
+                (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                let for_call = Rf_cons(
+                    Rf_install(c"for".as_ptr()),
+                    Rf_cons(
+                        Rf_install(c"i".as_ptr()),
+                        Rf_cons(sequence, Rf_cons(assign, R_NilValue())),
+                    ),
+                );
+                (*for_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+
+                let bcode = compile_expr(for_call, env).expect("for loop should compile");
+                let result = super::super::bc_eval::bcEval(bcode, env);
+                assert_eq!(result, R_NilValue());
+                assert_eq!(*INTEGER(crate::sexp::envir::R_findVar(sum, env)), 6);
+
+                let empty = arena.alloc_vector(SEXPTYPE::INTSXP, 0);
+                let empty_for = Rf_cons(
+                    Rf_install(c"for".as_ptr()),
+                    Rf_cons(
+                        Rf_install(c"i".as_ptr()),
+                        Rf_cons(empty, Rf_cons(R_NilValue(), R_NilValue())),
+                    ),
+                );
+                (*empty_for).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                let empty_bcode =
+                    compile_expr(empty_for, env).expect("empty for loop should compile");
+                assert_eq!(
+                    super::super::bc_eval::bcEval(empty_bcode, env),
+                    R_NilValue()
+                );
+                assert_eq!(
+                    crate::sexp::envir::R_findVar(Rf_install(c"i".as_ptr()), env),
+                    R_NilValue()
+                );
+            })
+            .expect("session active");
+    }
+
+    #[test]
+    fn compile_while_loop_keeps_operand_stack_balanced() {
         let session = RSession::new();
         let env = session.global_env().expect("global env");
 
         unsafe {
-            let for_call = Rf_cons(
-                Rf_install(c"for".as_ptr()),
-                Rf_cons(
-                    Rf_install(c"i".as_ptr()),
-                    Rf_cons(
-                        Rf_ScalarInteger(1),
-                        Rf_cons(Rf_install(c"i".as_ptr()), R_NilValue()),
-                    ),
-                ),
-            );
-            (*for_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let counter = Rf_install(c"counter".as_ptr());
+            defineVar(counter, Rf_ScalarInteger(0), env.clone().as_raw());
 
-            assert!(compile_expr(for_call, env.as_raw()).is_none());
+            let condition = Rf_cons(
+                Rf_install(c"<".as_ptr()),
+                Rf_cons(counter, Rf_cons(Rf_ScalarInteger(1_000), R_NilValue())),
+            );
+            (*condition).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let increment = Rf_cons(
+                Rf_install(c"+".as_ptr()),
+                Rf_cons(counter, Rf_cons(Rf_ScalarInteger(1), R_NilValue())),
+            );
+            (*increment).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let assign = Rf_cons(
+                Rf_install(c"<-".as_ptr()),
+                Rf_cons(counter, Rf_cons(increment, R_NilValue())),
+            );
+            (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let while_call = Rf_cons(
+                Rf_install(c"while".as_ptr()),
+                Rf_cons(condition, Rf_cons(assign, R_NilValue())),
+            );
+            (*while_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+
+            let bcode =
+                compile_expr(while_call, env.clone().as_raw()).expect("while loop should compile");
+            let result = super::super::bc_eval::bcEval(bcode, env.clone().as_raw());
+            assert_eq!(result, R_NilValue());
+            assert_eq!(
+                *INTEGER(crate::sexp::envir::R_findVar(counter, env.as_raw())),
+                1_000
+            );
         }
     }
 }
