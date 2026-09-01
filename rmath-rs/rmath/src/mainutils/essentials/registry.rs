@@ -213,6 +213,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "ncol",
     "tsp",
     "tsp<-",
+    "ts",
     "lengths",
     "length<-",
     "rownames",

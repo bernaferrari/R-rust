@@ -33,6 +33,7 @@ mod linalg;
 mod math;
 mod stats;
 mod summary;
+mod timeseries;
 mod transpose;
 
 pub use self::attrs::*;
@@ -41,4 +42,5 @@ pub use self::linalg::*;
 pub use self::math::*;
 pub use self::stats::*;
 pub use self::summary::*;
+pub use self::timeseries::*;
 pub use self::transpose::*;
