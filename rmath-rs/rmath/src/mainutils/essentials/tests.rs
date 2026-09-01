@@ -260,6 +260,71 @@ fn test_do_log2_explicit_base_is_preserved() {
 }
 
 #[test]
+fn psigamma_recycles_x_and_deriv_to_the_longer_length() {
+    let _session = crate::sexp::session::RSession::new();
+    unsafe {
+        crate::sexp::init::initialize_r();
+
+        let x = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
+        let _x_guard = protect(x);
+        *REAL(x) = 1.0;
+        *REAL(x).add(1) = 2.0;
+
+        let deriv = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+        let _deriv_guard = protect(deriv);
+        *INTEGER(deriv) = 1;
+        *INTEGER(deriv).add(1) = 3;
+        *INTEGER(deriv).add(2) = 5;
+
+        let args = test_pairlist(&[x, deriv]);
+        let result = do_psigamma(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            args,
+            std::ptr::null_mut(),
+        );
+
+        assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+        assert_eq!(XLENGTH(result), 3);
+        let expected = [
+            crate::special::polygamma::psigamma(1.0, 1.0),
+            crate::special::polygamma::psigamma(2.0, 3.0),
+            crate::special::polygamma::psigamma(1.0, 5.0),
+        ];
+        for (i, expected) in expected.into_iter().enumerate() {
+            assert_eq!((*REAL(result).add(i)).to_bits(), expected.to_bits());
+        }
+    }
+}
+
+#[test]
+fn psigamma_with_a_zero_length_input_returns_a_zero_length_real_vector() {
+    let _session = crate::sexp::session::RSession::new();
+    unsafe {
+        crate::sexp::init::initialize_r();
+
+        let x = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+        let _x_guard = protect(x);
+        let deriv = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+        let _deriv_guard = protect(deriv);
+        *INTEGER(deriv) = 1;
+        *INTEGER(deriv).add(1) = 3;
+        *INTEGER(deriv).add(2) = 5;
+
+        let args = test_pairlist(&[x, deriv]);
+        let result = do_psigamma(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            args,
+            std::ptr::null_mut(),
+        );
+
+        assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+        assert_eq!(XLENGTH(result), 0);
+    }
+}
+
+#[test]
 fn test_gc_reports_session_memory_counters() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {

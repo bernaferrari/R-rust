@@ -1497,7 +1497,13 @@ unsafe fn apply_binary_scalar_fn(x: SEXP, y: SEXP, scalar_fn: impl Fn(f64, f64) 
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
             return R_NilValue();
         }
-        let n = XLENGTH(x).max(XLENGTH(y));
+        let x_len = XLENGTH(x);
+        let y_len = XLENGTH(y);
+        let n = if x_len == 0 || y_len == 0 {
+            0
+        } else {
+            x_len.max(y_len)
+        };
         let tx = TYPEOF(x);
         let ty = TYPEOF(y);
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
@@ -1505,10 +1511,14 @@ unsafe fn apply_binary_scalar_fn(x: SEXP, y: SEXP, scalar_fn: impl Fn(f64, f64) 
             return R_NilValue();
         }
         let _p = protect(result);
+        if x_len == 0 || y_len == 0 {
+            if x_len == 0 {
+                copy_all_attribs(result, x);
+            }
+            return result;
+        }
         let dst = REAL(result);
         for i in 0..n {
-            let x_len = XLENGTH(x);
-            let y_len = XLENGTH(y);
             let xi = if x_len > 0 { i % x_len } else { 0 };
             let yi = if y_len > 0 { i % y_len } else { 0 };
             let val_x = if tx == SEXPTYPE::REALSXP {
@@ -1534,6 +1544,11 @@ unsafe fn apply_binary_scalar_fn(x: SEXP, y: SEXP, scalar_fn: impl Fn(f64, f64) 
             } else {
                 *dst.add(i as usize) = scalar_fn(val_x, val_y);
             }
+        }
+        if n == x_len {
+            copy_all_attribs(result, x);
+        } else if n == y_len {
+            copy_all_attribs(result, y);
         }
         result
     }
@@ -1567,31 +1582,7 @@ pub unsafe fn do_psigamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if x.is_null() || x == R_NilValue() || deriv_arg.is_null() || deriv_arg == R_NilValue() {
             return R_NilValue();
         }
-        let deriv = real_or_default(deriv_arg, 1.0);
-        let n = XLENGTH(x);
-        let t = TYPEOF(x);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        let dst = REAL(result);
-        for i in 0..n {
-            let val = if t == SEXPTYPE::REALSXP {
-                *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                let v = *INTEGER(x).add(i as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            } else {
-                NA_REAL
-            };
-            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
-            } else {
-                *dst.add(i as usize) = crate::special::polygamma::psigamma(val, deriv);
-            }
-        }
-        result
+        apply_binary_scalar_fn(x, deriv_arg, crate::special::polygamma::psigamma)
     }
 }
 
