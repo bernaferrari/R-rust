@@ -797,6 +797,15 @@ pub(crate) fn current_instance_ptr() -> Option<*mut RInstance> {
     CURRENT_INSTANCE.with(|ci| *ci.borrow())
 }
 
+/// Return whether this thread currently has an active runtime instance.
+///
+/// Code that only needs a capability check should use this instead of
+/// obtaining a raw instance pointer it will never dereference.
+#[inline]
+pub(crate) fn has_current_instance() -> bool {
+    CURRENT_INSTANCE.with(|ci| ci.borrow().is_some())
+}
+
 /// Execute a closure with a reference to the current instance, if active.
 ///
 /// Returns `None` (and does not call `f`) if no instance is currently active.

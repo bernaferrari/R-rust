@@ -2207,7 +2207,7 @@ pub fn set_session_seed64(seed: i64) {
 /// session's R-level RNG dispatch (all RNG kinds, `.Random.seed` state)
 /// instead of the standalone MultiCarry stream.
 pub fn nmath_unif_hook() -> f64 {
-    if crate::sexp::instance::current_instance_ptr().is_some() {
+    if crate::sexp::instance::has_current_instance() {
         // Stock R randomizes lazily when the RNG is first used without a
         // .Random.seed; a virgin per-instance state gets the same treatment
         // instead of drawing from an all-zero Mersenne Twister state.
@@ -2228,7 +2228,7 @@ pub fn nmath_unif_hook() -> f64 {
 /// selection follows the session's `binom.kind` — the port-side equivalent
 /// of stock RNG.c's `Bin_kind` writing nmath's shared `Binom_kind` global.
 pub fn nmath_binom_kind_hook() -> crate::nmath::rng::Binomtype {
-    if crate::sexp::instance::current_instance_ptr().is_some() {
+    if crate::sexp::instance::has_current_instance() {
         match r_binom_kind() {
             Binomtype::BUGGY_BTPE => crate::nmath::rng::Binomtype::BUGGY_BTPE,
             Binomtype::BTPE => crate::nmath::rng::Binomtype::BTPE,
