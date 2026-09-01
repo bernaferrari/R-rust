@@ -833,6 +833,7 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
 
         // Create a logical mask: TRUE for selected, FALSE for excluded
         let mask = Rf_allocVector3(SEXPTYPE::LGLSXP, nx);
+        let _mask_guard = protect(mask);
         let mp = LOGICAL(mask);
         for i in 0..nx as usize {
             *mp.add(i) = 1; // TRUE = include
@@ -856,7 +857,8 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
         }
 
         // Now use logicalSubscript on the mask
-        logicalSubscript(mask, nx, nx, ptr::null_mut(), ptr::null_mut())
+        let mut stretch = 0;
+        logicalSubscript(mask, nx, nx, &mut stretch, ptr::null_mut())
     }
 }
 

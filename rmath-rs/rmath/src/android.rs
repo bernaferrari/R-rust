@@ -2166,6 +2166,22 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_negative_row_exclusion_can_create_empty_data_frame() {
+        let mut session = RSession::new();
+        let setup = session.eval(
+            "x <- data.frame(a = 1:3)\n\
+             y <- x[-(1:3), , drop = FALSE]",
+        );
+
+        assert_eq!(setup.output, "");
+        assert_eq!(session.eval("dim(y)").output, "[1] 0 1");
+        assert_eq!(session.eval("nrow(y)").output, "[1] 0");
+        assert_eq!(session.eval("ncol(y)").output, "[1] 1");
+        assert_eq!(session.eval("names(y)").output, "[1] \"a\"");
+        assert_eq!(session.eval("is.data.frame(y)").output, "[1] TRUE");
+    }
+
+    #[test]
     fn test_eval_registered_distribution_and_cumulative_helpers() {
         let mut session = RSession::new();
         let dnorm = session.eval("dnorm(0)");
