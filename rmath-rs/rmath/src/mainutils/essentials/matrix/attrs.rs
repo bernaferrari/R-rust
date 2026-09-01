@@ -571,7 +571,7 @@ pub fn structure_attr_name(name: &str) -> &str {
 /// side landed separately with SyncErrDep).
 pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
+        let mut x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
@@ -581,7 +581,30 @@ pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
         let mut renamed: Vec<(String, String)> = Vec::new();
 
+        // GNU R's language-level structure() retains compatibility with
+        // factors deparsed before R 2.5.0, when their integer codes were
+        // emitted as doubles. Coerce before attaching the factor class so the
+        // ordinary storage.mode<- factor guard does not reject the repair.
         let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some("class") {
+                // attrib[["class", exact = TRUE]] selects the first exact
+                // match when duplicate names are present.
+                if TYPEOF(x) == SEXPTYPE::REALSXP
+                    && string_vector_contains_value(CAR(current), "factor")
+                {
+                    let coerced =
+                        crate::mainutils::coerce::coerceVector(x, SEXPTYPE::INTSXP.as_c_int());
+                    crate::sexp::accessors::SET_ATTRIB(coerced, ATTRIB(x));
+                    x = coerced;
+                }
+                break;
+            }
+            current = CDR(current);
+        }
+        let _x_guard = protect(x);
+
+        current = CDR(args);
         while !current.is_null() && current != R_NilValue() {
             if let Some(name) = tag_name(current) {
                 let attr_name = structure_attr_name(&name);
@@ -638,6 +661,24 @@ pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         }
 
         x
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn structure_coerces_legacy_double_factor_codes_to_integer() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, _, _) = session.eval_code_with_output_capture(
+            "state <- structure(c(1, 2), levels = c('a', 'b'), class = 'factor');\
+             c(typeof(state), storage.mode(state), identical(state,\
+               structure(c(1L, 2L), levels = c('a', 'b'), class = 'factor')))",
+        );
+
+        let result = result.expect("legacy factor structure should evaluate");
+        assert_eq!(result.clone().string_text_elt(0), Some(Some("integer")));
+        assert_eq!(result.clone().string_text_elt(1), Some(Some("integer")));
+        assert_eq!(result.string_text_elt(2), Some(Some("TRUE")));
     }
 }
 
