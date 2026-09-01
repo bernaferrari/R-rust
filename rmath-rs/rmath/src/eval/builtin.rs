@@ -574,6 +574,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::identical::do_identical,
     },
     EvaluatedBuiltin {
+        name: "all.equal",
+        handler: crate::mainutils::all_equal::do_all_equal,
+    },
+    EvaluatedBuiltin {
         name: "c",
         handler: crate::mainutils::essentials::do_c,
     },

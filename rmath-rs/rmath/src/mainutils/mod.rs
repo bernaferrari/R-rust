@@ -3,6 +3,7 @@
 pub mod CommandLineArgs;
 pub mod Rmain;
 pub mod agrep;
+pub mod all_equal;
 pub mod alloca;
 #[cfg(feature = "altrep")]
 pub mod altclasses;
