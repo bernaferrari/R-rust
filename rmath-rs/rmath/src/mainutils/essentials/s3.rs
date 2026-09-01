@@ -362,8 +362,96 @@ pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // S3 generics
 // ---------------------------------------------------------------------------
 
+unsafe fn matrix_column(x: SEXP, nrow: R_xlen_t, column: R_xlen_t) -> SEXP {
+    unsafe {
+        let ty = TYPEOF(x);
+        let result = Rf_allocVector3(ty, nrow);
+        if result.is_null() {
+            return result;
+        }
+        let offset = column * nrow;
+        for row in 0..nrow {
+            let source = offset + row;
+            match ty {
+                t if t == SEXPTYPE::LGLSXP => {
+                    *LOGICAL(result).add(row as usize) = *LOGICAL(x).add(source as usize)
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    *INTEGER(result).add(row as usize) = *INTEGER(x).add(source as usize)
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    *REAL(result).add(row as usize) = *REAL(x).add(source as usize)
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    *COMPLEX(result).add(row as usize) = *COMPLEX(x).add(source as usize)
+                }
+                t if t == SEXPTYPE::RAWSXP => {
+                    *RAW(result).add(row as usize) = *RAW(x).add(source as usize)
+                }
+                t if t == SEXPTYPE::STRSXP => SET_STRING_ELT(result, row, STRING_ELT(x, source)),
+                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                    SET_VECTOR_ELT(result, row, VECTOR_ELT(x, source))
+                }
+                _ => base_error("cannot coerce matrix to a data frame"),
+            }
+        }
+        result
+    }
+}
+
+unsafe fn matrix_as_data_frame(x: SEXP, dim: SEXP) -> SEXP {
+    unsafe {
+        let nrow = INTEGER_ELT(dim, 0) as R_xlen_t;
+        let ncol = INTEGER_ELT(dim, 1) as R_xlen_t;
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
+        if result.is_null() {
+            return result;
+        }
+        let _result_guard = protect(result);
+        for column in 0..ncol {
+            let value = matrix_column(x, nrow, column);
+            let _value_guard = protect(value);
+            SET_VECTOR_ELT(result, column, value);
+        }
+
+        let dimnames =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimNamesSymbol());
+        let row_names = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) >= 1 {
+            VECTOR_ELT(dimnames, 0)
+        } else {
+            R_NilValue()
+        };
+        if !row_names.is_null() && row_names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(c"row.names".as_ptr()),
+                row_names,
+            );
+        } else {
+            set_compact_row_names(result, nrow);
+        }
+
+        let column_names = if TYPEOF(dimnames) == SEXPTYPE::VECSXP && XLENGTH(dimnames) >= 2 {
+            VECTOR_ELT(dimnames, 1)
+        } else {
+            R_NilValue()
+        };
+        if !column_names.is_null() && column_names != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                column_names,
+            );
+        } else {
+            let names = (1..=ncol).map(|i| format!("V{i}")).collect::<Vec<_>>();
+            set_string_names(result, &names);
+        }
+        set_data_frame_class(result);
+        result
+    }
+}
+
 /// R's `as.data.frame(x)` — convert to data.frame.
-/// Simplified: wraps x in a list with data.frame class.
 pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -377,6 +465,10 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             if cls_name == "data.frame" {
                 return x;
             }
+        }
+        let dim = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_DimSymbol());
+        if TYPEOF(dim) == SEXPTYPE::INTSXP && XLENGTH(dim) == 2 {
+            return matrix_as_data_frame(x, dim);
         }
         // Wrap in a single-element list and set class
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
@@ -422,6 +514,31 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod as_data_frame_tests {
+    use crate::sexp::ffi::TRUE;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn matrix_conversion_splits_columns_and_preserves_dimnames() {
+        let mut session = RSession::new();
+        let (result, output, visible) = session.eval_code_with_output_capture(
+            "x <- matrix(1:4, 2, 2, dimnames=list(c('abc','ab'), c('cde','cd'))); \
+             y <- as.data.frame(x); \
+             identical(dim(y), c(2L, 2L)) && \
+             identical(names(y), c('cde', 'cd')) && \
+             identical(row.names(y), c('abc', 'ab')) && \
+             identical(y['ab',]$cde, 2L) && \
+             identical(y['ab',]$cd, 4L) && \
+             identical(y[, 'cd'], c(3L, 4L))",
+        );
+        let result = result.expect("matrix conversion should evaluate");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(output.stdout.is_empty());
+        assert!(visible);
     }
 }
 

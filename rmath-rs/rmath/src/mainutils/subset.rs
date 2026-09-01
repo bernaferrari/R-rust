@@ -1615,12 +1615,34 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             let _dims_guard = protect(dims);
             *INTEGER(dims).add(0) = nrows;
             *INTEGER(dims).add(1) = ncols;
-            let sr = int_arraySubscript(0, CAR(subs), dims, ax, call);
-            let _sr_guard = protect(sr);
-            let sc = int_arraySubscript(1, CADR(subs), dims, ax, call);
-            let _sc_guard = protect(sc);
+            let rownames = getAttrib(x, sym_RowNames());
+            let _rownames_guard = protect(rownames);
             let colnames = getAttrib(x, sym_Names());
             let _colnames_guard = protect(colnames);
+
+            // int_arraySubscript resolves character indices through an
+            // array's dimnames.  A data.frame stores the equivalent labels
+            // as row.names and names, so expose that representation on a
+            // shallow temporary rather than mutating the frame itself.
+            let subscript_source = if TYPEOF(CAR(subs)) == SEXPTYPE::STRSXP
+                || TYPEOF(CADR(subs)) == SEXPTYPE::STRSXP
+            {
+                let source = crate::mainutils::duplicate::shallow_duplicate(ax);
+                let _source_guard = protect(source);
+                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                let _dimnames_guard = protect(dimnames);
+                SET_VECTOR_ELT(dimnames, 0, rownames);
+                SET_VECTOR_ELT(dimnames, 1, colnames);
+                setAttrib(source, sym_DimNames(), dimnames);
+                source
+            } else {
+                ax
+            };
+            let _subscript_source_guard = protect(subscript_source);
+            let sr = int_arraySubscript(0, CAR(subs), dims, subscript_source, call);
+            let _sr_guard = protect(sr);
+            let sc = int_arraySubscript(1, CADR(subs), dims, subscript_source, call);
+            let _sc_guard = protect(sc);
 
             if LENGTH(sc) == 1 && drop != 0 {
                 let col = VECTOR_ELT(ax, (*INTEGER(sc) as R_xlen_t) - 1);
@@ -1641,8 +1663,6 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 let _new_names_guard = protect(new_names);
                 setAttrib(ans, sym_Names(), new_names);
             }
-            let rownames = getAttrib(x, sym_RowNames());
-            let _rownames_guard = protect(rownames);
             if !isNull(rownames) {
                 setAttrib(
                     ans,
