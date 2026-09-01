@@ -793,7 +793,7 @@ pub fn clear_current_instance_if(instance: *const RInstance) -> bool {
 
 /// Return the current raw instance pointer, if one is active.
 #[inline]
-pub fn current_instance_ptr() -> Option<*mut RInstance> {
+pub(crate) fn current_instance_ptr() -> Option<*mut RInstance> {
     CURRENT_INSTANCE.with(|ci| *ci.borrow())
 }
 
