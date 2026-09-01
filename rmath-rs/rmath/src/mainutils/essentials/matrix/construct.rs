@@ -775,10 +775,219 @@ pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+unsafe fn data_matrix_row_names(frame: SEXP, rownames_force: SEXP) -> SEXP {
+    unsafe {
+        let force = if rownames_force.is_null() || rownames_force == R_NilValue() {
+            NA_INTEGER
+        } else if TYPEOF(rownames_force) == SEXPTYPE::LGLSXP
+            || TYPEOF(rownames_force) == SEXPTYPE::INTSXP
+        {
+            *LOGICAL(rownames_force)
+        } else {
+            NA_INTEGER
+        };
+        if force == FALSE {
+            return R_NilValue();
+        }
+
+        let row_names = crate::sexp::attrib_core::getAttrib(
+            frame,
+            crate::sexp::attrib_core::R_RowNamesSymbol(),
+        );
+        let automatic = !row_names.is_null()
+            && TYPEOF(row_names) == SEXPTYPE::INTSXP
+            && XLENGTH(row_names) == 2
+            && *INTEGER(row_names) == NA_INTEGER
+            && *INTEGER(row_names).add(1) < 0;
+        if force == NA_INTEGER && automatic {
+            return R_NilValue();
+        }
+        string_vector(&data_frame_row_names(frame))
+    }
+}
+
+unsafe fn character_column_codes(column: SEXP, result: SEXP, offset: R_xlen_t) {
+    unsafe {
+        let mut codes: std::collections::BTreeMap<Option<String>, c_int> =
+            std::collections::BTreeMap::new();
+        let mut next_code = 1;
+        for row in 0..XLENGTH(column) {
+            let value = STRING_ELT(column, row);
+            // match(x, unique(x)), used by base data.matrix(), assigns an
+            // ordinary code to NA_character_ because missing values match
+            // one another. Keep that sentinel distinct from real strings.
+            let key = if value.is_null() || value == crate::sexp::globals::R_NaString() {
+                None
+            } else {
+                Some(CStr::from_ptr(CHAR(value)).to_string_lossy().into_owned())
+            };
+            let code = *codes.entry(key).or_insert_with(|| {
+                let code = next_code;
+                next_code += 1;
+                code
+            });
+            if TYPEOF(result) == SEXPTYPE::INTSXP {
+                *INTEGER(result).add((offset + row) as usize) = code;
+            } else {
+                *REAL(result).add((offset + row) as usize) = code as f64;
+            }
+        }
+    }
+}
+
+/// R's `data.matrix(frame, rownames.force = NA)`.
+///
+/// Data-frame factors retain their integer codes, character columns become
+/// first-occurrence integer codes, and logical/real columns select double
+/// storage just as base R does after its per-column conversion pass.
+pub unsafe fn do_data_matrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null() || args == R_NilValue() {
+            base_error("argument 'frame' is missing, with no default");
+        }
+        let frame = CAR(args);
+        if frame.is_null() || frame == R_NilValue() {
+            return R_NilValue();
+        }
+        if !is_data_frame_object(frame) {
+            let dim =
+                crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_DimSymbol());
+            if !dim.is_null() && dim != R_NilValue() && XLENGTH(dim) == 2 {
+                return frame;
+            }
+            return do_as_matrix(_call, _op, args, rho);
+        }
+
+        let nrow = data_frame_row_count(frame);
+        let ncol = XLENGTH(frame);
+        let integer_result = (0..ncol).all(|column_index| {
+            let column = VECTOR_ELT(frame, column_index);
+            TYPEOF(column) == SEXPTYPE::INTSXP || TYPEOF(column) == SEXPTYPE::STRSXP
+        });
+        let result_type = if integer_result {
+            SEXPTYPE::INTSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        let result = Rf_allocVector3(result_type, nrow.saturating_mul(ncol));
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+
+        for column_index in 0..ncol {
+            let column = VECTOR_ELT(frame, column_index);
+            let offset = column_index * nrow;
+            if TYPEOF(column) == SEXPTYPE::STRSXP {
+                character_column_codes(column, result, offset);
+                continue;
+            }
+            for row in 0..nrow {
+                let source_row = if XLENGTH(column) == 0 {
+                    0
+                } else {
+                    row % XLENGTH(column)
+                };
+                if result_type == SEXPTYPE::INTSXP {
+                    *INTEGER(result).add((offset + row) as usize) = if XLENGTH(column) == 0 {
+                        NA_INTEGER
+                    } else {
+                        *INTEGER(column).add(source_row as usize)
+                    };
+                } else {
+                    *REAL(result).add((offset + row) as usize) = if XLENGTH(column) == 0 {
+                        NA_REAL
+                    } else {
+                        match TYPEOF(column) {
+                            t if t == SEXPTYPE::REALSXP => *REAL(column).add(source_row as usize),
+                            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                                let value = *INTEGER(column).add(source_row as usize);
+                                if value == NA_INTEGER {
+                                    NA_REAL
+                                } else {
+                                    value as f64
+                                }
+                            }
+                            _ => NA_REAL,
+                        }
+                    };
+                }
+            }
+        }
+
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _dim_guard = protect(dim);
+        *INTEGER(dim) = nrow as c_int;
+        *INTEGER(dim).add(1) = ncol as c_int;
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let _dimnames_guard = protect(dimnames);
+        let rownames_force = arg_by_name_or_position(args, &["rownames.force"], 1);
+        let row_names = data_matrix_row_names(frame, rownames_force);
+        let _row_names_guard = protect(row_names);
+        SET_VECTOR_ELT(dimnames, 0, row_names);
+        SET_VECTOR_ELT(
+            dimnames,
+            1,
+            crate::sexp::attrib_core::getAttrib(frame, crate::sexp::attrib_core::R_NamesSymbol()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dimnames,
+        );
+        result
+    }
+}
+
 /// R's `as.numeric(x)` — alias for as.double.
 pub unsafe fn do_as_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Delegate to do_as_double
         do_as_double(_call, _op, args, _rho)
+    }
+}
+
+#[cfg(test)]
+mod data_matrix_tests {
+    use crate::sexp::ffi::TRUE;
+    use crate::sexp::session::RSession;
+
+    fn assert_r_true(code: &str) {
+        let mut session = RSession::new();
+        let (result, output, visible) = session.eval_code_with_output_capture(code);
+        let result = result.expect("data.matrix expression should evaluate");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(output.stdout.is_empty());
+        assert!(visible);
+    }
+
+    #[test]
+    fn data_matrix_preserves_empty_data_frame_dimensions() {
+        assert_r_true(
+            "x <- data.frame(a = 1:3); \
+             x30 <- x[, -1]; x01 <- x[-(1:3), , drop = FALSE]; x00 <- x01[, -1]; \
+             identical(dim(data.matrix(x30)), c(3L, 0L)) && \
+             identical(dim(data.matrix(x00)), c(0L, 0L))",
+        );
+    }
+
+    #[test]
+    fn data_matrix_converts_factors_characters_and_logicals() {
+        assert_r_true(
+            "m <- data.matrix(data.frame(\
+                 f = factor(c('b', 'a')), s = c(NA, 'z'), l = c(TRUE, FALSE))); \
+             identical(dim(m), c(2L, 3L)) && \
+             identical(m[, 1], c(2, 1)) && \
+             identical(m[, 2], c(1, 2)) && \
+             identical(m[, 3], c(1, 0)) && \
+             identical(colnames(m), c('f', 's', 'l'))",
+        );
+    }
+
+    #[test]
+    fn data_matrix_leaves_existing_matrices_unchanged() {
+        assert_r_true("m <- matrix(1:4, 2, 2); identical(data.matrix(m), m)");
     }
 }

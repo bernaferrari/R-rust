@@ -571,6 +571,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "readBin",
     "writeBin",
     "as.matrix",
+    "data.matrix",
     "as.numeric",
     "inherits",
     "toString",
