@@ -927,9 +927,14 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut n = length(args);
         let mut args = args;
 
+        let single_arg_tag = if n == 1 { TAG(args) } else { R_NilValue() };
         if n == 1
             && (isPairList(CAR(args)) != 0 || isVectorList(CAR(args)) != 0)
-            && TAG(args) == R_NilValue()
+            // Untagged evaluator-built pairlists use a null TAG, while
+            // C-built pairlists may use the R_NilValue singleton.  Both are
+            // R's unnamed argument representation and must enable the
+            // `options(list(...))` restore form.
+            && (single_arg_tag.is_null() || single_arg_tag == R_NilValue())
         {
             args = CAR(args);
             n = length(args);
@@ -1600,6 +1605,20 @@ mod tests {
         right.with_active(|| unsafe {
             assert_eq!(GetOptionWidth(), 222);
         });
+    }
+
+    #[test]
+    fn test_options_accepts_unnamed_list_restore() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, output, _) = session.eval_code_with_output_capture(
+            "old <- options(keep.parse.data = FALSE); \
+             options(old); \
+             identical(getOption('keep.parse.data'), TRUE)",
+        );
+
+        let result = result.expect("an unnamed options list should restore its values");
+        assert_eq!(result.logical_elt(0), Some(TRUE));
+        assert!(output.stdout.is_empty());
     }
 
     #[test]
