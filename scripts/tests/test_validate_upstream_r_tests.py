@@ -30,7 +30,7 @@ class UpstreamCorpusValidationTests(unittest.TestCase):
 
         self.assertEqual(report.imported_files, 245)
         self.assertEqual(report.total, 70)
-        self.assertEqual(report.expected_failures, 8)
+        self.assertEqual(report.expected_failures, 7)
         self.assertEqual(report.skipped, 62)
         self.assertEqual(report.runnable, 8)
 
