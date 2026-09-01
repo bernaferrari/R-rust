@@ -4,7 +4,7 @@
 //! environment chain itself is owned by `RInstance`; there is intentionally no
 //! process-global fallback interpreter.
 
-use super::accessors::{SETTAG, TYPEOF};
+use super::accessors::{CDR, SETCAR, SETTAG, TYPEOF};
 use super::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocList, Rf_lang2, Rf_lang4, Rf_mkString,
 };
@@ -114,6 +114,59 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let _closure_guard = super::protect::protect(closure);
 
         defineVar(Rf_install_in_current("%||%"), closure, base_env);
+
+        // `identical` is an ordinary base closure in GNU R, not the internal
+        // primitive itself. Keeping that wrapper matters for argument
+        // matching: an explicitly empty actual such as `identical(x, y,)`
+        // selects `num.eq = TRUE` before `.Internal(identical(...))` eagerly
+        // evaluates its complete argument list.
+        let identical_formals = formals_from_specs(&[
+            arg("x"),
+            arg("y"),
+            arg_default("num.eq", FormalDefault::True),
+            arg_default("single.NA", FormalDefault::True),
+            arg_default("attrib.as.set", FormalDefault::True),
+            arg_default("ignore.bytecode", FormalDefault::True),
+            arg_default("ignore.environment", FormalDefault::False),
+            arg_default("ignore.srcref", FormalDefault::True),
+            arg_default("extptr.as.ref", FormalDefault::False),
+        ]);
+        let _identical_formals_guard = super::protect::protect(identical_formals);
+
+        // Build `identical(x, y, num.eq, ..., extptr.as.ref)` as a language
+        // object, then wrap it in `.Internal(...)`. The internal lookup uses
+        // R_FunTab, so replacing the public base binding with this closure
+        // does not hide the primitive implementation.
+        let internal_call = Rf_allocList(10);
+        let _internal_call_guard = super::protect::protect(internal_call);
+        (*internal_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        let mut cell = internal_call;
+        for name in [
+            "identical",
+            "x",
+            "y",
+            "num.eq",
+            "single.NA",
+            "attrib.as.set",
+            "ignore.bytecode",
+            "ignore.environment",
+            "ignore.srcref",
+            "extptr.as.ref",
+        ] {
+            SETCAR(cell, Rf_install_in_current(name));
+            cell = CDR(cell);
+        }
+        let identical_body = Rf_lang2(Rf_install_in_current(".Internal"), internal_call);
+        let _identical_body_guard = super::protect::protect(identical_body);
+        let identical_closure =
+            crate::mainutils::dstruct::mkCLOSXP(identical_formals, identical_body, base_env);
+        let _identical_closure_guard = super::protect::protect(identical_closure);
+
+        defineVar(
+            Rf_install_in_current("identical"),
+            identical_closure,
+            base_env,
+        );
     }
 }
 

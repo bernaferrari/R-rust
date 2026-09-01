@@ -1324,6 +1324,31 @@ mod tests {
     }
 
     #[test]
+    fn test_trailing_empty_actual_uses_formal_default() {
+        let mut session = RSession::new();
+
+        let (result, output, visible) = session.eval_code_with_output_capture("identical(0, -0,)");
+        let result = result.expect("the empty num.eq actual should select its default");
+
+        assert_eq!(result.logical_elt(0), Some(1));
+        assert!(output.stdout.is_empty());
+        assert!(visible);
+    }
+
+    #[test]
+    fn test_closure_trailing_empty_actual_uses_formal_default() {
+        let mut session = RSession::new();
+
+        let (result, output, visible) =
+            session.eval_code_with_output_capture("(function(x, option = TRUE) option)(0,)");
+        let result = result.expect("an empty actual should select the closure formal's default");
+
+        assert_eq!(result.logical_elt(0), Some(1));
+        assert!(output.stdout.is_empty());
+        assert!(visible);
+    }
+
+    #[test]
     fn test_session_script_parse_error_maps_to_upstream_message() {
         let mut session = RSession::new();
 
