@@ -154,14 +154,22 @@ run_case() {
     case_dir="$(dirname "$case_file")"
     case_basename="$(basename "$case_file")"
 
-    if ! (cd "$case_dir" && env LC_ALL=C LANG=C Rscript --vanilla "$case_basename") >"$c_out" 2>&1; then
+    if ! (
+        cd "$case_dir" &&
+            env LC_ALL=C LANG=C SRCDIR="$case_dir" \
+                Rscript --vanilla "$case_basename"
+    ) >"$c_out" 2>&1; then
         echo "FAIL ${case_name}: stock R exited non-zero"
         sed 's/^/  C | /' "$c_out"
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    if ! (cd "$case_dir" && env LC_ALL=C LANG=C "$RUST_BIN" "$case_basename") >"$r_out" 2>&1; then
+    if ! (
+        cd "$case_dir" &&
+            env LC_ALL=C LANG=C SRCDIR="$case_dir" \
+                "$RUST_BIN" "$case_basename"
+    ) >"$r_out" 2>&1; then
         echo "FAIL ${case_name}: Rust runner exited non-zero"
         sed 's/^/  R | /' "$r_out"
         rm -rf "$tmp_dir"
