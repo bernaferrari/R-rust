@@ -120,9 +120,125 @@ pub unsafe fn do_dimnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        crate::sexp::attrib_core::setAttrib(x, Rf_install(c"dimnames".as_ptr()), value);
+        set_array_dimnames(x, value);
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         x
+    }
+}
+
+/// Normalize and install an array's dimnames using GNU R's `dimnamesgets`
+/// contract.  In particular, axis labels are character vectors regardless of
+/// the vector type supplied by the caller.
+pub(super) unsafe fn set_array_dimnames(x: SEXP, value: SEXP) {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(x, R_DimSymbol());
+        if dim.is_null() || dim == R_NilValue() || TYPEOF(dim) != SEXPTYPE::INTSXP {
+            std::panic::panic_any(RError {
+                message: "'dimnames' applied to non-array".to_string(),
+            });
+        }
+
+        let dimnames_sym = R_DimNamesSymbol();
+        if value.is_null() || value == R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
+            return;
+        }
+        if TYPEOF(value) != SEXPTYPE::VECSXP && TYPEOF(value) != SEXPTYPE::LISTSXP {
+            std::panic::panic_any(RError {
+                message: "'dimnames' must be a list".to_string(),
+            });
+        }
+
+        let rank = XLENGTH(dim);
+        let supplied = XLENGTH(value);
+        if supplied > rank {
+            std::panic::panic_any(RError {
+                message: format!(
+                    "length of 'dimnames' [{}] must match that of 'dims' [{}]",
+                    supplied, rank
+                ),
+            });
+        }
+        if supplied == 0 {
+            crate::sexp::attrib_core::setAttrib(x, dimnames_sym, R_NilValue());
+            return;
+        }
+
+        // Always build a fresh list: coercing a shared list in place would also
+        // change the caller's object (`dn <- list(1:2); dimnames(x) <- dn`).
+        let normalized = Rf_allocVector3(SEXPTYPE::VECSXP, rank);
+        let _normalized_guard = protect(normalized);
+        let mut pair = value;
+        for axis in 0..rank {
+            let labels = if axis >= supplied {
+                R_NilValue()
+            } else if TYPEOF(value) == SEXPTYPE::VECSXP {
+                VECTOR_ELT(value, axis)
+            } else {
+                let labels = CAR(pair);
+                pair = CDR(pair);
+                labels
+            };
+
+            if labels.is_null() || labels == R_NilValue() {
+                SET_VECTOR_ELT(normalized, axis, R_NilValue());
+                continue;
+            }
+            if crate::sexp::constructors::Rf_isVector(labels) == 0 {
+                std::panic::panic_any(RError {
+                    message: format!(
+                        "invalid type ({}) for 'dimnames' (must be a vector)",
+                        TYPEOF(labels)
+                    ),
+                });
+            }
+            let label_count = XLENGTH(labels);
+            let extent = INTEGER_ELT(dim, axis as c_int) as R_xlen_t;
+            if label_count != 0 && label_count != extent {
+                std::panic::panic_any(RError {
+                    message: format!(
+                        "length of 'dimnames' [{}] not equal to array extent",
+                        axis + 1
+                    ),
+                });
+            }
+
+            let labels = if label_count == 0 {
+                R_NilValue()
+            } else if inherits_class(labels, "factor") {
+                crate::mainutils::coerce::asCharacterFactor(labels)
+            } else if TYPEOF(labels) == SEXPTYPE::STRSXP {
+                labels
+            } else {
+                let coerced =
+                    crate::mainutils::coerce::coerceVector(labels, SEXPTYPE::STRSXP.as_c_int());
+                crate::sexp::accessors::SET_ATTRIB(coerced, R_NilValue());
+                crate::sexp::accessors::SET_OBJECT(coerced, FALSE);
+                coerced
+            };
+            SET_VECTOR_ELT(normalized, axis, labels);
+        }
+
+        // `lengthgets()` retains names on a new-list dimnames value and pads
+        // them with empty strings when fewer names than dimensions were given.
+        if TYPEOF(value) == SEXPTYPE::VECSXP {
+            let names = crate::sexp::attrib_core::getAttrib(value, R_NamesSymbol());
+            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                let normalized_names = Rf_allocVector3(SEXPTYPE::STRSXP, rank);
+                let _normalized_names_guard = protect(normalized_names);
+                for axis in 0..rank {
+                    let name = if axis < XLENGTH(names) {
+                        STRING_ELT(names, axis)
+                    } else {
+                        Rf_mkChar(c"".as_ptr())
+                    };
+                    SET_STRING_ELT(normalized_names, axis, name);
+                }
+                crate::sexp::attrib_core::setAttrib(normalized, R_NamesSymbol(), normalized_names);
+            }
+        }
+
+        crate::sexp::attrib_core::setAttrib(x, dimnames_sym, normalized);
     }
 }
 
@@ -686,6 +802,35 @@ mod tests {
             names,
             ["dim", "dimnames", "first", "second", "second", "first"]
         );
+    }
+
+    #[test]
+    fn dimnames_are_coerced_validated_and_do_not_mutate_the_input_list() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (result, _, _) = session.eval_code_with_output_capture(
+            "dn <- list(cols = 1:2);\
+             X <- matrix(1:4, 2, 2, dimnames = list(c('A', 'B'), 1:2));\
+             Y <- array(1:4, c(2, 2)); dimnames(Y) <- dn;\
+             c(typeof(dimnames(X)[[2]]),\
+               paste(dimnames(X)[[2]], collapse = ','),\
+               typeof(dn[[1]]), length(dimnames(Y)),\
+               names(dimnames(Y))[1], names(dimnames(Y))[2])",
+        );
+
+        let result = result.expect("valid dimnames should be normalized");
+        let values = (0..result.clone().len())
+            .map(|index| result.clone().string_text_elt(index).flatten().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(values, ["character", "1,2", "integer", "2", "cols", ""]);
+
+        let (result, _, _) = session.eval_code_with_output_capture(
+            "X <- matrix(1:4, 2, 2); dimnames(X) <- list(letters[1:3])",
+        );
+        assert!(result.is_err(), "axis labels must match their array extent");
+
+        let (result, _, _) = session
+            .eval_code_with_output_capture("X <- matrix(1:4, 2, 2); dimnames(X) <- c('a', 'b')");
+        assert!(result.is_err(), "dimnames must be supplied as a list");
     }
 
     #[test]

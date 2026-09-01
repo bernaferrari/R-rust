@@ -387,16 +387,7 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
 
         if !dimnames.is_null() && dimnames != R_NilValue() {
-            if !valid_array_dimnames(dimnames, dim) {
-                std::panic::panic_any(RError {
-                    message: "length of 'dimnames' not equal to array extent".to_string(),
-                });
-            }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-                dimnames,
-            );
+            super::attrs::set_array_dimnames(result, dimnames);
         }
 
         result
@@ -440,12 +431,6 @@ pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }),
         };
 
-        if !valid_array_dimnames(dimnames, dim) {
-            std::panic::panic_any(RError {
-                message: "length of 'dimnames' not equal to array extent".to_string(),
-            });
-        }
-
         let result = Rf_allocVector3(data_type, total_len);
         if result.is_null() {
             return R_NilValue();
@@ -462,11 +447,7 @@ pub unsafe fn do_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
         if !dimnames.is_null() && dimnames != R_NilValue() {
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_DimNamesSymbol(),
-                dimnames,
-            );
+            super::attrs::set_array_dimnames(result, dimnames);
         }
 
         result
