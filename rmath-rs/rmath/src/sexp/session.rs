@@ -682,7 +682,7 @@ impl RSession {
                 // value.
                 if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        let rendered = super::output::format_sexp_direct(value.clone());
+                        let rendered = super::output::format_sexp_top_level(value.clone());
                         super::output::capture_stdout(&format!("{rendered}\n"));
                     }
                 }
@@ -790,7 +790,7 @@ impl RSession {
                 // assembly.
                 if index != last_index && self.inst().eval_state.visible != 0 {
                     if let Ok(value) = result.as_ref() {
-                        let rendered = super::output::format_sexp_direct(value.clone());
+                        let rendered = super::output::format_sexp_top_level(value.clone());
                         super::output::capture_stdout(&format!("{rendered}\n"));
                     }
                 }
@@ -1358,6 +1358,23 @@ mod tests {
 
         assert_eq!(output.stdout, "[1] 0\n");
         assert!(!visible, "the final invisible(NULL) remains invisible");
+    }
+
+    #[test]
+    fn test_script_auto_print_keeps_separator_after_attributes_list() {
+        let mut session = RSession::new();
+
+        let (result, output, visible) = session.eval_script_with_output_capture(
+            "attributes(structure(1:2, tsp = c(1, 2, 1), class = 'ts')); \
+             cat('after\\n'); invisible(NULL)",
+        );
+        result.expect("attributes list and following expression should evaluate");
+
+        assert_eq!(
+            output.stdout,
+            "$tsp\n[1] 1 2 1\n\n$class\n[1] \"ts\"\n\nafter\n"
+        );
+        assert!(!visible);
     }
 
     #[test]

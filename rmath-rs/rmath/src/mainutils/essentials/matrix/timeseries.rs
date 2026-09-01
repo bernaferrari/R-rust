@@ -328,7 +328,14 @@ mod tests {
             .next()
             .expect("the pinned structure driver retains its levels section");
         let mut session = RSession::new();
-        let (result, _, _) = session.eval_script_with_output_capture(through_ts);
+        let (result, output, _) = session.eval_script_with_output_capture(through_ts);
         result.expect("the unmodified upstream prefix through ts() should pass");
+        assert!(
+            output
+                .stdout
+                .contains("$class\n[1] \"ts\"\n\nstructure(1:10"),
+            "the auto-printed attributes(z) list must retain stock's final separator before the following deparse output; got:\n{}",
+            output.stdout
+        );
     }
 }

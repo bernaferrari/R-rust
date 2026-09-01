@@ -1070,6 +1070,25 @@ fn format_list(x: Sexp<'_>) -> String {
     sections.join("\n\n")
 }
 
+/// Format a value for top-level emission, excluding the caller-owned final
+/// line terminator.
+///
+/// `printList()` emits a separator newline after every non-empty list
+/// element, including the last one.  String contexts deliberately use
+/// [`format_sexp_direct`] without that trailing separator, while both
+/// `print()` and the REPL/script auto-print path need it before they append
+/// their ordinary final newline.
+pub(crate) fn format_sexp_top_level(x: Sexp<'_>) -> String {
+    let mut rendered = format_sexp_direct(x.clone());
+    if x.clone().typeof_() == SEXPTYPE::VECSXP
+        && x.clone().len() != 0
+        && format_data_frame(x).is_none()
+    {
+        rendered.push('\n');
+    }
+    rendered
+}
+
 fn deparse_expression_one(expr: SEXP) -> String {
     unsafe {
         let text = crate::mainutils::deparse::deparse1line(expr, false);
@@ -1766,15 +1785,7 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let list = format_list(x.clone());
-            if x.len() == 0 {
-                emit(&format!("{list}\n"));
-            } else {
-                // Stock printList emits a separator newline after every list
-                // element, including the final one.  This leaves the familiar
-                // blank line between the last value and the next prompt.
-                emit(&format!("{list}\n\n"));
-            }
+            emit(&format!("{}\n", format_sexp_top_level(x)));
         }
         SEXPTYPE::EXPRSXP => {
             emit(&format!("{}\n", format_expression_vector(x)));
