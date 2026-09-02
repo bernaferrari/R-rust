@@ -1,0 +1,17 @@
+[package]
+name = "rport-upstream-run"
+version = "0.1.0"
+edition = "2024"
+description = "Run a single R file through the rport interpreter for upstream differential tests"
+
+# Standalone on purpose (mirrors tests/differential): shares nothing with the
+# root workspace so the upstream test runner never interferes with sibling
+# workspace builds.
+[workspace]
+
+[[bin]]
+name = "rport-upstream-run"
+path = "src/main.rs"
+
+[dependencies]
+rmath = { path = "../../rmath-rs/rmath" }

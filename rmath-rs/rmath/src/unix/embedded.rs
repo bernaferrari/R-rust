@@ -25,7 +25,14 @@ unsafe fn fpu_setup(_start: c_int) {}
 // Stubs for cleanup functions
 // ---------------------------------------------------------------------------
 
-unsafe fn R_RunExitFinalizers() {}
+unsafe fn R_RunExitFinalizers() {
+    // Finalizers flagged `onexit` are marked ready and executed through the
+    // same pending-finalizer machinery used during collection safe points
+    // (upstream memory.c R_RunExitFinalizers).
+    unsafe {
+        crate::mainutils::memory_main::R_RunExitFinalizers_memory();
+    }
+}
 unsafe fn CleanEd() {}
 unsafe fn KillAllDevices() {}
 unsafe fn R_CleanTempDir() {}

@@ -672,7 +672,7 @@ unsafe fn _R_SaveAsBmp(
     unsafe { super::rbitmap::save_as_bmp(d, width, height, gp, bgr, fp, res) }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::sexp::instance::{RInstance, replace_current_instance};

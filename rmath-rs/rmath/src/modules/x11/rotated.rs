@@ -437,7 +437,7 @@ pub unsafe fn XRfRotDrawString(
     0 // failure - no X11 support
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::sexp::instance::{RInstance, replace_current_instance};

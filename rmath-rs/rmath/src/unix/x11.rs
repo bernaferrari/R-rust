@@ -94,7 +94,7 @@ pub unsafe fn R_setX11Routines(_routines: *mut c_void) -> *mut c_void {
 // Tests
 // ---------------------------------------------------------------------------
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use crate::sexp::accessors::*;
 

@@ -129,7 +129,12 @@ pub mod opcodes {
     pub const OP_DFLTFORM: i32 = 53;
     pub const OP_STARTFOR: i32 = 54;
     pub const OP_NEXTFOR: i32 = 55;
-    pub const OP_LAST: i32 = 56;
+    /// Superassignment `<<-`: store into the enclosing frame (eval.c SETVAR2).
+    pub const OP_SETVAR2: i32 = 56;
+    /// Attach the formal-name tag to the argument on top of the stack
+    /// (eval.c SETTAG), so lazy call arguments bind by name.
+    pub const OP_SETTAG: i32 = 57;
+    pub const OP_LAST: i32 = 58;
 }
 
 #[derive(Clone, Copy)]
@@ -138,6 +143,104 @@ struct ForLoopState {
     symbol: SEXP,
     index: c_int,
     length: c_int,
+}
+
+/// Runtime loop context for compiled `while`/`for` loops — the port of
+/// eval.c's STARTLOOPCNTXT/ENDLOOPCNTXT pair.
+///
+/// BEGINLOOP records where `break`/`next` continue, plus the operand-stack
+/// depth and for-loop state depth at loop entry, so an exit from mid-body
+/// (including a `break` unwinding out of a nested `tryCatch`) can discard the
+/// loop's partial operands and sequence state before resuming at the exit.
+#[derive(Clone, Copy)]
+struct LoopContext {
+    break_target: c_int,
+    next_target: c_int,
+    stack_depth: usize,
+    for_depth: usize,
+}
+
+/// A resolved non-local loop exit produced by `break`/`next` surfacing from a
+/// nested evaluation. The caller applies the depth truncations and jumps.
+struct LoopJump {
+    target: c_int,
+    stack_depth: usize,
+    for_depth: usize,
+}
+
+fn loop_jump_from_context(ctx: &LoopContext, is_break: bool) -> LoopJump {
+    LoopJump {
+        target: if is_break {
+            ctx.break_target
+        } else {
+            ctx.next_target
+        },
+        stack_depth: ctx.stack_depth,
+        for_depth: ctx.for_depth,
+    }
+}
+
+/// Evaluate `call` in `rho`, routing `break`/`next` signals that escape the
+/// nested evaluation to the innermost compiled-loop context.
+///
+/// This is the bytecode counterpart of eval.c's `findcontext(CTXT_BREAK/
+/// CTXT_NEXT, ...)`: an R-level `break` inside a `tryCatch` whose body runs
+/// under a compiled loop unwinds as an `RSignal` panics; the bytecode loop
+/// owns the innermost loop context, so `bcEval` — not the AST evaluator —
+/// must catch it here and convert it into a pc jump. Any other signal
+/// (`Error`, `Return`, condition-handler jumps, ...) re-panics unchanged.
+/// With no loop context on record the signal also re-panics, letting an
+/// enclosing AST loop (or the top level) handle it.
+unsafe fn eval_call_with_loop_routing(
+    call: SEXP,
+    rho: SEXP,
+    loop_stack: &[LoopContext],
+) -> Result<SEXP, LoopJump> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        crate::eval::eval::Rf_eval(call, rho)
+    }));
+    match result {
+        Ok(value) => Ok(value),
+        Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
+            Ok(signal) => {
+                let is_break = matches!(*signal, crate::sexp::context::RSignal::Break);
+                let is_loop_signal = is_break
+                    || matches!(*signal, crate::sexp::context::RSignal::Next);
+                if !is_loop_signal {
+                    std::panic::panic_any(*signal);
+                }
+                match loop_stack.last() {
+                    Some(ctx) => Err(loop_jump_from_context(ctx, is_break)),
+                    None => std::panic::panic_any(*signal),
+                }
+            }
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
+    }
+}
+
+/// Root the residual operand stack around a nested call evaluation and route
+/// escaping loop signals. Combines the GC-rooting window of
+/// `with_stack_rooted` with `eval_call_with_loop_routing`.
+unsafe fn eval_nested_call(
+    call: SEXP,
+    rho: SEXP,
+    stack: &R_bcstack_t,
+    loop_stack: &[LoopContext],
+) -> Result<SEXP, LoopJump> {
+    unsafe { with_stack_rooted(stack, call, || unsafe {
+        eval_call_with_loop_routing(call, rho, loop_stack)
+    }) }
+}
+
+/// Apply a resolved loop jump: discard partial loop operands and for-loop
+/// state, then continue at the loop's break/next target.
+unsafe fn apply_loop_jump(stack: &mut R_bcstack_t, for_loops: &mut Vec<ForLoopState>, jump: LoopJump) -> c_int {
+    unsafe {
+        for_loops.truncate(jump.for_depth);
+        stack.set_depth(jump.stack_depth);
+        jump.target
+    }
 }
 
 unsafe fn for_sequence_length(sequence: SEXP) -> Option<c_int> {
@@ -435,6 +538,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
         let mut pc: c_int = 0; // program counter
         let mut stack = R_bcstack_t::new(stack_depth as usize);
         let mut for_loops: Vec<ForLoopState> = Vec::new();
+        let mut loop_stack: Vec<LoopContext> = Vec::new();
 
         while pc < code_len {
             let op = *code_ptr.add(pc as usize);
@@ -444,18 +548,23 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_PUSHCONST => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "PUSHCONST");
                     let val = constant_at(consts, idx, "PUSHCONST");
+                    // eval.c LDCONST: constants load visible.
+                    super::runtime::set_visible(TRUE);
                     stack.push(val);
                 }
 
                 opcodes::OP_PUSHCONSTARG => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "PUSHCONSTARG");
                     let val = constant_at(consts, idx, "PUSHCONSTARG");
+                    super::runtime::set_visible(TRUE);
                     stack.push(val);
                 }
 
                 opcodes::OP_GETVAR => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "GETVAR");
                     let sym = constant_at(consts, idx, "GETVAR");
+                    // eval.c DO_GETVAR: variable loads are visible.
+                    super::runtime::set_visible(TRUE);
                     let val = R_findVar(sym, rho);
                     if val == R_UnboundValue() {
                         bc_error("object not found");
@@ -467,14 +576,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         // (GNU R handles dots ops as runtime builtins); if a
                         // hand-built bytecode does anyway, fall back to the
                         // AST evaluator instead of pushing the raw DOTSXP.
-                        let call = Rf_cons(sym, R_NilValue());
-                        if !call.is_null() {
-                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                        }
-                        let evaluated = with_stack_rooted(&stack, call, || unsafe {
-                            crate::eval::eval::Rf_eval(call, rho)
-                        });
-                        stack.push(evaluated);
+                        bc_error("'...' used in an invalid context");
                     } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
                         let forced =
                             with_stack_rooted(&stack, val, || unsafe { forcePromise(val) });
@@ -632,9 +734,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
-                        let result = with_stack_rooted(&stack, call, || unsafe {
-                            crate::eval::eval::Rf_eval(call, rho)
-                        });
+                        let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
+                            Ok(value) => value,
+                            Err(jump) => {
+                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                                super::runtime::set_visible(FALSE);
+                                continue;
+                            }
+                        };
                         stack.push(result);
                     }
                 }
@@ -654,9 +761,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
-                        let result = with_stack_rooted(&stack, call, || unsafe {
-                            crate::eval::eval::Rf_eval(call, rho)
-                        });
+                        let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
+                            Ok(value) => value,
+                            Err(jump) => {
+                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                                super::runtime::set_visible(FALSE);
+                                continue;
+                            }
+                        };
                         stack.push(result);
                     }
                     super::runtime::set_visible(TRUE);
@@ -677,9 +789,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
-                        let result = with_stack_rooted(&stack, call, || unsafe {
-                            crate::eval::eval::Rf_eval(call, rho)
-                        });
+                        let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
+                            Ok(value) => value,
+                            Err(jump) => {
+                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                                super::runtime::set_visible(FALSE);
+                                continue;
+                            }
+                        };
                         stack.push(result);
                     }
                     super::runtime::set_visible(FALSE);
@@ -765,11 +882,24 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BEGINLOOP => {
-                    stack.push(R_NilValue());
+                    // eval.c STARTLOOPCNTXT: record the exit targets and the
+                    // operand-stack/for-state depths at loop entry, so a
+                    // break/next from mid-body can unwind that state.
+                    let break_target = read_jump_target(code_ptr, &mut pc, code_len, "BEGINLOOP");
+                    let next_target = read_jump_target(code_ptr, &mut pc, code_len, "BEGINLOOP");
+                    loop_stack.push(LoopContext {
+                        break_target,
+                        next_target,
+                        stack_depth: stack.depth(),
+                        for_depth: for_loops.len(),
+                    });
                 }
 
                 opcodes::OP_ENDLOOP => {
-                    stack_pop_checked(&mut stack, "ENDLOOP");
+                    // eval.c ENDLOOPCNTXT: normal loop exit pops the context.
+                    if loop_stack.pop().is_none() {
+                        bc_error("ENDLOOP bytecode with no active loop context");
+                    }
                 }
 
                 opcodes::OP_HIDDENCALL => {
@@ -780,9 +910,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         stack.push(R_NilValue());
                     } else {
                         let call = Rf_lang2(fun, args);
-                        let result = with_stack_rooted(&stack, call, || unsafe {
-                            crate::eval::eval::Rf_eval(call, rho)
-                        });
+                        let result = match eval_nested_call(call, rho, &stack, &loop_stack) {
+                            Ok(value) => value,
+                            Err(jump) => {
+                                pc = apply_loop_jump(&mut stack, &mut for_loops, jump);
+                                super::runtime::set_visible(FALSE);
+                                continue;
+                            }
+                        };
                         stack.push(result);
                     }
                     super::runtime::set_visible(FALSE);

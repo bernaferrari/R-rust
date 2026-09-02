@@ -1,9 +1,82 @@
 //! Generational garbage collector with remembered-set write barriers.
 //!
+//! # Design parity with upstream R (`r-source/src/main/memory.c`)
+//!
+//! Upstream's `R_gc_internal`/`RunGenCollect` (memory.c:1681) is a
+//! *non-compacting* generational mark-sweep collector. The "GC moving
+//! parity" question — whether the port needs upstream's node moving —
+//! resolves to: it does not, because upstream never relocates nodes in
+//! memory either.
+//!
+//! Upstream mechanism (memory.c):
+//! - Every node lives on one intrusive circular doubly-linked list per node
+//!   class: `R_GenHeap[cls].New` / `.Old[0..NUM_OLD_GENERATIONS-1]` /
+//!   `.OldToNew[gen]` / `.Free` (Baker's no-motion incremental design,
+//!   memory.c:594-607). "Moving" a node between generations is an
+//!   `UNSNAP_NODE`/`SNAP_NODE` re-link (or a `BULK_MOVE` of a whole list);
+//!   the node's address never changes and no reference to it is ever
+//!   rewritten. `SortNodes` only reorders *free* nodes for locality.
+//! - `sxpinfo.gcgen` is a 1-bit generation counter (`NUM_OLD_GENERATIONS`
+//!   = 2 lists, gcgen 0/1, plus the unmarked `New` space).
+//!   `NODE_IS_OLDER` + `CHECK_OLD_TO_NEW` form the write barrier: storing a
+//!   young (unmarked or younger-generation) child into a marked (old)
+//!   parent puts the parent on its per-generation `OldToNew` remembered
+//!   list (memory.c:559-561, 1313-1314).
+//! - Collections come in levels 0/1/2 (collect `New` only / also `Old[0]`
+//!   / everything), scheduled by `LEVEL_0_FREQ`=20 and `LEVEL_1_FREQ`=5
+//!   counters with immediate escalation when a level frees too little
+//!   (memory.c:280-296, 1691-1698, 1983-1992). Collected generations are
+//!   unmarked and bulk-relinked into `New` (survivor generation bumped
+//!   while `gen < NUM_OLD_GENERATIONS - 1`); marking then re-snaps
+//!   reachable nodes into `Old[NODE_GENERATION(s)]` — that relinking *is*
+//!   promotion (`FORWARD_NODE`/`PROCESS_ONE_NODE`, memory.c:789-804).
+//!   Unmarked nodes become the free list; empty pages are released.
+//! - Weak references/finalizers: `CheckFinalizers` (inside
+//!   `RunGenCollect`, memory.c:1448) marks weakrefs whose key died
+//!   ready-to-finalize and keeps them alive until run; `RunFinalizers`
+//!   executes them from `R_gc`/`R_gc_lite` after the collection
+//!   (memory.c:3092-3102) and from the eval-loop interrupt checks
+//!   (`R_RunPendingFinalizers` in eval.c:1096, bc_check_sigint eval.c:6265)
+//!   — finalizers run arbitrary R code, so they fire only at quiescent
+//!   points, never mid-collection.
+//!
+//! The port is semantically equivalent with different plumbing:
+//! - Generation is the same 1-bit counter (`sxpinfo.gcgen`, `Generation`):
+//!   allocation is young; surviving a minor or full cycle promotes the node
+//!   to old (`promote_to_old` and the sweeps below). Upstream's extra
+//!   `Old[0]`/`Old[1]` distinction is reclamation-latency tuning, not
+//!   observable behavior: both designs reclaim young garbage every minor
+//!   cycle and old garbage on the periodic full pass (port: every
+//!   `SAFE_POINT_FULL_COLLECTION_INTERVAL`-th safe-point collection, and
+//!   every explicit `gc()`; upstream: the level counters).
+//! - The write barrier (`write_barrier`) records old-parent/young-child
+//!   edges in `RememberedSet` — the analog of upstream's `OldToNew` lists.
+//!   Minor and full collections mark remembered parents so their young
+//!   children stay reachable, then clear the set; survivors are promoted by
+//!   the sweep, matching upstream's aging of `OldToNew` entries.
+//! - The arena is a non-moving slab with a free list; `free_node` recycles
+//!   slots exactly like upstream's `Free`-pointer reset. Node addresses are
+//!   stable for the node's lifetime in BOTH implementations: R's C code and
+//!   this port's translated evaluator hold raw `SEXP`s in machine-stack
+//!   locals across allocations, so neither collector may relocate live
+//!   objects. The formerly-present relocation machinery was removed for
+//!   that reason; `compact_if_needed`/`force_compact` survive only as
+//!   free-list normalization hooks that never move live objects.
+//! - Dead-reference rewrite to `R_NilValue` in swept survivors is a port
+//!   hardening measure; upstream leaves references to freed nodes in place
+//!   (safe there because free nodes are never dereferenced).
+//! - Weak references and finalizers exist (`R_MakeWeakRef`,
+//!   `R_WeakRefKey`, `R_RegisterFinalizer(Ex)`, `R_RegisterCFinalizer(Ex)`
+//!   in `mainutils::memory_main`). Sweeps mark ready finalizers via
+//!   `mark_finalizers_ready_for_unreachable_in` and pin them until run;
+//!   they execute after collections at the same quiescent points upstream
+//!   uses — `R_gc`/`R_gc_lite`, eval safe points, the quiescent flush, and
+//!   session exit (`R_RunExitFinalizers`).
+//!
 //! The collector is intentionally defensive: it scopes state to the active
 //! `RInstance`, catches panics at public GC entry points, and uses a
-//! non-moving mark/sweep collector with free-list recycling.
-//! Raw `SEXP` internals still require careful auditing; do not document new
+//! non-moving mark/sweep collector with free-list recycling. Raw `SEXP`
+//! internals still require careful auditing; do not document new
 //! invariants here unless they are enforced by code and regression tests.
 
 use std::collections::{HashMap, HashSet};
@@ -1063,9 +1136,9 @@ const SAFE_POINT_FULL_COLLECTION_INTERVAL: u64 = 64;
 /// Call this after loop iterations and brace-block statements complete, when
 /// no SEXP values from the just-finished evaluation remain only on Rust stack.
 pub fn maybe_collect_at_eval_safe_point() {
-    instance::with_required_current_instance(|instance| {
+    let collected = instance::with_required_current_instance(|instance| {
         if !eval_safe_point_gc_due_in(instance) {
-            return;
+            return false;
         }
         let start = instance.protect_stack.borrow().len();
         push_environment_binding_protects(instance);
@@ -1082,17 +1155,47 @@ pub fn maybe_collect_at_eval_safe_point() {
             minor_gc_in(instance);
         }
         super::protect::unprotect_count_in(instance, added);
+        true
     });
+    if collected {
+        run_pending_finalizers_after_collection();
+    }
 }
 
-/// Flush a deferred collection after a top-level expression completes.
+/// Run finalizers whose keys died in the collection that just completed.
+///
+/// Sweeps only mark weak references ready
+/// (`mark_finalizers_ready_for_unreachable_in`); executing them is deferred
+/// to quiescent points because finalizers run arbitrary R code. Upstream
+/// runs `RunFinalizers` from exactly these sites: after `R_gc`/`R_gc_lite`
+/// (memory.c:3092-3102) and from the eval-loop interrupt checks
+/// (eval.c:1096, bc_check_sigint eval.c:6265). The `running_finalizers`
+/// guard inside `R_RunPendingFinalizers` keeps a finalizer that allocates
+/// (and so re-enters a collection) from recursing.
+fn run_pending_finalizers_after_collection() {
+    // SAFETY: requires an active instance (any collection entry point
+    // implies one); the guard against finalizer re-entrancy lives inside.
+    unsafe {
+        crate::mainutils::memory_main::R_RunPendingFinalizers();
+    }
+}
+
+/// Flush a deferred collection after a top-level expression completes, then
+/// run any finalizers the collection made ready (upstream runs finalizers
+/// at these same between-expression quiescent points).
 pub fn run_pending_gc_if_quiescent() {
-    instance::with_current_instance(|inst| {
+    let collected = instance::with_current_instance(|inst| {
         if inst.eval_state.eval_depth == 0 && inst.gc_state.gc_pending {
             inst.gc_state.gc_pending = false;
             minor_gc_in(inst);
+            true
+        } else {
+            false
         }
     });
+    if collected.unwrap_or(false) {
+        run_pending_finalizers_after_collection();
+    }
 }
 
 fn do_minor_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
@@ -2817,5 +2920,85 @@ mod tests {
                 assert!(!inst.locked_environments.contains(&(env as usize)));
             });
         }
+    }
+
+    /// Upstream executes finalizers only at quiescent points after a
+    /// collection (R_gc/R_gc_lite, eval.c interrupt checks); sweeps just
+    /// mark them ready. The quiescent flush must therefore both sweep the
+    /// dead key and run its finalizer once the deferred collection fires.
+    #[test]
+    fn test_quiescent_flush_runs_dead_key_finalizer() {
+        use std::os::raw::c_void;
+        use std::sync::atomic::{AtomicI32, Ordering};
+
+        static RUNS: AtomicI32 = AtomicI32::new(0);
+        unsafe extern "C" fn count_finalizer(_ptr: *mut c_void) {
+            RUNS.fetch_add(1, Ordering::SeqCst);
+        }
+
+        let _session = RSession::new();
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            instance::with_required_current_instance(|inst| {
+                inst.memory_state.pending_finalizers.clear();
+                inst.gc_state.gc_pending = false;
+                inst.eval_state.eval_depth = 0;
+            });
+            RUNS.store(0, Ordering::SeqCst);
+
+            // Young and unrooted: nothing marks it, so the sweep marks its
+            // finalizer ready.
+            let key = with_arena(|arena| arena.alloc_node(SEXPTYPE::EXTPTRSXP));
+            crate::mainutils::memory_main::R_RegisterCFinalizerEx(key, count_finalizer, 0);
+
+            // Nothing pending: no collection, so the finalizer stays put.
+            run_pending_gc_if_quiescent();
+            assert_eq!(RUNS.load(Ordering::SeqCst), 0);
+
+            instance::with_required_current_instance(|inst| {
+                inst.gc_state.gc_pending = true;
+            });
+            run_pending_gc_if_quiescent();
+            assert_eq!(RUNS.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    /// Same contract at the eval-loop safe point (upstream eval.c:1096 runs
+    /// R_RunPendingFinalizers right after the interrupt check): a collection
+    /// that marks a finalizer ready is followed by running it; a skipped
+    /// safe point runs nothing.
+    #[test]
+    fn test_eval_safe_point_runs_dead_key_finalizer_only_after_collection() {
+        use std::os::raw::c_void;
+        use std::sync::atomic::{AtomicI32, Ordering};
+
+        static RUNS: AtomicI32 = AtomicI32::new(0);
+        unsafe extern "C" fn count_finalizer(_ptr: *mut c_void) {
+            RUNS.fetch_add(1, Ordering::SeqCst);
+        }
+
+        let _session = RSession::new();
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            instance::with_required_current_instance(|inst| {
+                inst.memory_state.pending_finalizers.clear();
+                inst.gc_state.gc_pending = false;
+                inst.eval_state.eval_depth = 0;
+            });
+            RUNS.store(0, Ordering::SeqCst);
+
+            let key = with_arena(|arena| arena.alloc_node(SEXPTYPE::EXTPTRSXP));
+            crate::mainutils::memory_main::R_RegisterCFinalizerEx(key, count_finalizer, 0);
+
+            // Under the trigger thresholds: no collection, no finalizer.
+            maybe_collect_at_eval_safe_point();
+            assert_eq!(RUNS.load(Ordering::SeqCst), 0);
+
+            instance::with_required_current_instance(|inst| {
+                inst.gc_state.gc_pending = true;
+            });
+            maybe_collect_at_eval_safe_point();
+            assert_eq!(RUNS.load(Ordering::SeqCst), 1);
+        });
     }
 }
