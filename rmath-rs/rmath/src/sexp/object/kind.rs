@@ -8,7 +8,7 @@ use crate::sexp::globals::R_NilValue;
 /// while preserving their null-tolerant predicate semantics.
 #[inline]
 pub(crate) fn raw_is_atomic_vector(ptr: SEXP) -> bool {
-    Sexp::from_raw(ptr).is_some_and(Sexp::is_atomic)
+    Sexp::from_raw(ptr).is_some_and(|sexp| sexp.is_atomic())
 }
 
 /// Return whether a raw pointer is any R vector type.
@@ -16,7 +16,7 @@ pub(crate) fn raw_is_atomic_vector(ptr: SEXP) -> bool {
 /// This is the raw-boundary companion to [`Sexp::is_vector`].
 #[inline]
 pub(crate) fn raw_is_vector(ptr: SEXP) -> bool {
-    Sexp::from_raw(ptr).is_some_and(Sexp::is_vector)
+    Sexp::from_raw(ptr).is_some_and(|sexp| sexp.is_vector())
 }
 
 impl<'a> Sexp<'a> {
@@ -46,7 +46,7 @@ impl<'a> Sexp<'a> {
 
     /// Get the type of this SEXP.
     #[inline]
-    pub fn typeof_(self) -> SEXPTYPE {
+    pub fn typeof_(&self) -> SEXPTYPE {
         unsafe { (*self.ptr).sxpinfo.type_of() }
     }
 
@@ -54,8 +54,8 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns 0 for non-vector types.
     #[inline]
-    pub fn len(self) -> R_xlen_t {
-        if self.clone().typeof_().is_vector_type() {
+    pub fn len(&self) -> R_xlen_t {
+        if self.typeof_().is_vector_type() {
             unsafe { (*self.ptr).vecsxp_length() }
         } else {
             0
@@ -64,43 +64,43 @@ impl<'a> Sexp<'a> {
 
     /// Check if this SEXP is empty (length 0 or nil).
     #[inline]
-    pub fn is_empty(self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Check if this is R_NilValue.
     #[inline]
-    pub fn is_nil(self) -> bool {
+    pub fn is_nil(&self) -> bool {
         self.ptr == unsafe { R_NilValue() }
     }
 
     /// Check if this is a null value (R_NilValue).
     #[inline]
-    pub fn is_null_value(self) -> bool {
+    pub fn is_null_value(&self) -> bool {
         self.is_nil()
     }
 
     /// Check if this is a symbol (SYMSXP).
     #[inline]
-    pub fn is_symbol(self) -> bool {
+    pub fn is_symbol(&self) -> bool {
         self.typeof_() == SEXPTYPE::SYMSXP
     }
 
     /// Check if this is a closure (CLOSXP, i.e., a user-defined function).
     #[inline]
-    pub fn is_closure(self) -> bool {
+    pub fn is_closure(&self) -> bool {
         self.typeof_() == SEXPTYPE::CLOSXP
     }
 
     /// Check if this is an environment (ENVSXP).
     #[inline]
-    pub fn is_environment(self) -> bool {
+    pub fn is_environment(&self) -> bool {
         self.typeof_() == SEXPTYPE::ENVSXP
     }
 
     /// Check if this is a pairlist (LISTSXP or LANGSXP).
     #[inline]
-    pub fn is_pairlist(self) -> bool {
+    pub fn is_pairlist(&self) -> bool {
         matches!(self.typeof_(), SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP)
     }
 
@@ -109,7 +109,7 @@ impl<'a> Sexp<'a> {
     /// Atomic vectors hold primitive data directly (LGLSXP, INTSXP,
     /// REALSXP, CPLXSXP, STRSXP, RAWSXP).
     #[inline]
-    pub fn is_atomic(self) -> bool {
+    pub fn is_atomic(&self) -> bool {
         self.typeof_().is_atomic_type()
     }
 
@@ -117,7 +117,7 @@ impl<'a> Sexp<'a> {
     ///
     /// Includes all atomic vectors plus VECSXP, EXPRSXP, and RAWSXP.
     #[inline]
-    pub fn is_vector(self) -> bool {
+    pub fn is_vector(&self) -> bool {
         self.typeof_().is_vector_type()
     }
 }

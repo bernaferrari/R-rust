@@ -32,6 +32,7 @@
 
 mod error;
 mod kind;
+mod mut_ref;
 mod owned;
 mod pairlist;
 mod primitive;
@@ -42,6 +43,7 @@ mod view;
 
 pub use error::{SexpError, SexpResult};
 pub(crate) use kind::{raw_is_atomic_vector, raw_is_vector};
+pub use mut_ref::SexpMut;
 pub(crate) use pairlist::PairlistBuilder;
 pub use pairlist::PairlistIter;
 pub use value::{SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
@@ -95,7 +97,7 @@ pub enum SexpOwner {
 /// let sexp = arena
 ///     .alloc_vector_sexp(SEXPTYPE::INTSXP, 3)
 ///     .expect("arena allocation failed");
-/// assert!(sexp.clone().is_vector()); // accessors consume the handle: clone to keep it
+/// assert!(sexp.is_vector()); // shared reads never move the handle
 /// assert_eq!(sexp.len(), 3);
 /// ```
 ///
@@ -282,27 +284,27 @@ impl<'a> Sexp<'a> {
 
     /// Return the owner provenance attached to this handle.
     #[inline]
-    pub fn owner(self) -> SexpOwner {
+    pub fn owner(&self) -> SexpOwner {
         self.owner
     }
 
     /// Return true when this handle was created through a checked owner.
     #[inline]
-    pub fn is_owner_scoped(self) -> bool {
+    pub fn is_owner_scoped(&self) -> bool {
         !matches!(self.owner, SexpOwner::Unknown)
     }
 
     /// Return true when this handle is scoped to `arena` and the arena still
     /// contains the raw pointer.
     #[inline]
-    pub fn belongs_to_arena(self, arena: &crate::sexp::memory::RArena) -> bool {
+    pub fn belongs_to_arena(&self, arena: &crate::sexp::memory::RArena) -> bool {
         self.owner == SexpOwner::Arena(Self::arena_owner_token(arena)) && arena.contains(self.ptr)
     }
 
     /// Return true when this handle is scoped to persistent storage owned by
     /// `instance` and the instance still owns the raw pointer.
     #[inline]
-    pub fn belongs_to_session(self, instance: &crate::sexp::instance::RInstance) -> bool {
+    pub fn belongs_to_session(&self, instance: &crate::sexp::instance::RInstance) -> bool {
         self.owner == SexpOwner::Session(Self::session_owner_token(instance))
             && instance.owns_sexp(self.ptr)
     }
@@ -318,18 +320,18 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn typed_data<T>(self, expected: SEXPTYPE) -> Option<*const T> {
+    fn typed_data<T>(&self, expected: SEXPTYPE) -> Option<*const T> {
         self.try_typed_data::<T>(expected, sexptype_name(expected))
             .ok()
     }
 
     #[inline]
     fn try_typed_data<T>(
-        self,
+        &self,
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<*const T> {
-        self.clone().expect_type(expected, expected_name).clone()?;
+        self.expect_type(expected, expected_name)?;
         let data = unsafe { (*self.ptr).gengc_next_node as *const T };
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
@@ -339,8 +341,8 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn expect_type(self, expected: SEXPTYPE, expected_name: &'static str) -> SexpResult<()> {
-        if self.clone().typeof_() != expected {
+    fn expect_type(&self, expected: SEXPTYPE, expected_name: &'static str) -> SexpResult<()> {
+        if self.typeof_() != expected {
             Err(SexpError::TypeMismatch {
                 expected: expected_name,
                 actual: self.typeof_(),
@@ -351,7 +353,11 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn expect_any_type(self, expected_name: &'static str, expected: &[SEXPTYPE]) -> SexpResult<()> {
+    fn expect_any_type(
+        &self,
+        expected_name: &'static str,
+        expected: &[SEXPTYPE],
+    ) -> SexpResult<()> {
         let actual = self.typeof_();
         if expected.contains(&actual) {
             Ok(())
@@ -364,18 +370,18 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn typed_data_mut<T>(self, expected: SEXPTYPE) -> Option<*mut T> {
+    fn typed_data_mut<T>(&self, expected: SEXPTYPE) -> Option<*mut T> {
         self.try_typed_data_mut::<T>(expected, sexptype_name(expected))
             .ok()
     }
 
     #[inline]
     fn try_typed_data_mut<T>(
-        self,
+        &self,
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<*mut T> {
-        self.clone().expect_type(expected, expected_name).clone()?;
+        self.expect_type(expected, expected_name)?;
         let data = unsafe { (*self.ptr).gengc_next_node as *mut T };
         if data.is_null() {
             Err(SexpError::MissingData { sexptype: expected })
@@ -396,7 +402,7 @@ impl<'a> Sexp<'a> {
         expected: SEXPTYPE,
         expected_name: &'static str,
     ) -> SexpResult<&'a [T]> {
-        self.clone().expect_type(expected, expected_name)?;
+        self.expect_type(expected, expected_name)?;
         let len = self.clone().len() as usize;
         if len == 0 {
             return Ok(&[]);
@@ -406,7 +412,7 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn try_index(self, i: R_xlen_t) -> SexpResult<usize> {
+    fn try_index(&self, i: R_xlen_t) -> SexpResult<usize> {
         let len = self.len();
         if i >= 0 && i < len {
             Ok(i as usize)
@@ -416,13 +422,13 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn vector_sexp_data(self) -> Option<*const SEXP> {
+    fn vector_sexp_data(&self) -> Option<*const SEXP> {
         self.try_vector_sexp_data().ok()
     }
 
     #[inline]
-    fn try_vector_sexp_data(self) -> SexpResult<*const SEXP> {
-        if !matches!(self.clone().typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
+    fn try_vector_sexp_data(&self) -> SexpResult<*const SEXP> {
+        if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
             return Err(SexpError::TypeMismatch {
                 expected: "generic or expression vector",
                 actual: self.typeof_(),
@@ -439,13 +445,13 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn vector_sexp_data_mut(self) -> Option<*mut SEXP> {
+    fn vector_sexp_data_mut(&self) -> Option<*mut SEXP> {
         self.try_vector_sexp_data_mut().ok()
     }
 
     #[inline]
-    fn try_vector_sexp_data_mut(self) -> SexpResult<*mut SEXP> {
-        if !matches!(self.clone().typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
+    fn try_vector_sexp_data_mut(&self) -> SexpResult<*mut SEXP> {
+        if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
             return Err(SexpError::TypeMismatch {
                 expected: "generic or expression vector",
                 actual: self.typeof_(),
@@ -462,7 +468,7 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn valid_index(self, i: R_xlen_t) -> bool {
+    fn valid_index(&self, i: R_xlen_t) -> bool {
         self.try_index(i).is_ok()
     }
 
@@ -476,8 +482,8 @@ impl<'a> Sexp<'a> {
     }
 
     #[inline]
-    fn try_pairlist(self) -> SexpResult<()> {
-        if self.clone().is_pairlist() {
+    fn try_pairlist(&self) -> SexpResult<()> {
+        if self.is_pairlist() {
             Ok(())
         } else {
             Err(SexpError::TypeMismatch {
@@ -491,7 +497,7 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns true for non-NULL values, or the actual boolean/logical value
     /// for LGLSXP/INTSXP types.
-    pub fn to_bool(self) -> bool {
+    pub fn to_bool(&self) -> bool {
         self.try_to_bool().unwrap_or(true)
     }
 
@@ -500,11 +506,11 @@ impl<'a> Sexp<'a> {
     /// `NULL` is false. Numeric and logical vectors use their first element;
     /// empty vectors report [`SexpError::OutOfBounds`]. Other values are true,
     /// matching R's broad truthiness at this wrapper layer.
-    pub fn try_to_bool(self) -> SexpResult<bool> {
-        if self.clone().is_nil() {
+    pub fn try_to_bool(&self) -> SexpResult<bool> {
+        if self.is_nil() {
             return Ok(false);
         }
-        match self.clone().typeof_() {
+        match self.typeof_() {
             SEXPTYPE::LGLSXP => self.try_logical_elt(0).map(|value| value != 0),
             SEXPTYPE::INTSXP => self.try_integer_elt(0).map(|value| value != 0),
             SEXPTYPE::REALSXP => self.try_real_elt(0).map(|value| value != 0.0),
@@ -515,13 +521,13 @@ impl<'a> Sexp<'a> {
     /// Convert to an f64 value.
     ///
     /// Returns 0.0 for non-numeric types.
-    pub fn as_f64(self) -> f64 {
+    pub fn as_f64(&self) -> f64 {
         self.try_as_f64().unwrap_or(0.0)
     }
 
     /// Convert the first logical/integer/real element to `f64`.
-    pub fn try_as_f64(self) -> SexpResult<f64> {
-        match self.clone().typeof_() {
+    pub fn try_as_f64(&self) -> SexpResult<f64> {
+        match self.typeof_() {
             SEXPTYPE::REALSXP => self.try_real_elt(0),
             SEXPTYPE::INTSXP => self.try_integer_elt(0).map(|value| value as f64),
             SEXPTYPE::LGLSXP => self.try_logical_elt(0).map(|value| value as f64),
@@ -538,8 +544,8 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `None` if this is not a pairlist or the CAR is null.
     #[inline]
-    pub fn car(self) -> Option<Sexp<'a>> {
-        if self.clone().is_pairlist() {
+    pub fn car(&self) -> Option<Sexp<'a>> {
+        if self.is_pairlist() {
             Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.carval })
         } else {
             None
@@ -548,8 +554,8 @@ impl<'a> Sexp<'a> {
 
     /// Get the CAR with typed error reporting.
     #[inline]
-    pub fn try_car(self) -> SexpResult<Sexp<'a>> {
-        self.clone().try_pairlist().clone()?;
+    pub fn try_car(&self) -> SexpResult<Sexp<'a>> {
+        self.try_pairlist()?;
         Self::checked_child(unsafe { (*self.ptr).data.listsxp.carval })
     }
 
@@ -557,8 +563,8 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `None` if this is not a pairlist or the CDR is null.
     #[inline]
-    pub fn cdr(self) -> Option<Sexp<'a>> {
-        if self.clone().is_pairlist() {
+    pub fn cdr(&self) -> Option<Sexp<'a>> {
+        if self.is_pairlist() {
             Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.cdrval })
         } else {
             None
@@ -567,8 +573,8 @@ impl<'a> Sexp<'a> {
 
     /// Get the CDR with typed error reporting.
     #[inline]
-    pub fn try_cdr(self) -> SexpResult<Sexp<'a>> {
-        self.clone().try_pairlist().clone()?;
+    pub fn try_cdr(&self) -> SexpResult<Sexp<'a>> {
+        self.try_pairlist()?;
         Self::checked_child(unsafe { (*self.ptr).data.listsxp.cdrval })
     }
 
@@ -576,8 +582,8 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `None` if this is not a pairlist or the TAG is null.
     #[inline]
-    pub fn tag(self) -> Option<Sexp<'a>> {
-        if self.clone().is_pairlist() {
+    pub fn tag(&self) -> Option<Sexp<'a>> {
+        if self.is_pairlist() {
             Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.tagval })
         } else {
             None
@@ -586,16 +592,16 @@ impl<'a> Sexp<'a> {
 
     /// Get the TAG with typed error reporting.
     #[inline]
-    pub fn try_tag(self) -> SexpResult<Sexp<'a>> {
-        self.clone().try_pairlist().clone()?;
+    pub fn try_tag(&self) -> SexpResult<Sexp<'a>> {
+        self.try_pairlist()?;
         Self::checked_child(unsafe { (*self.ptr).data.listsxp.tagval })
     }
 
     /// Return the next pairlist cell, or `None` at the end of the chain.
     #[inline]
-    pub(crate) fn try_next_pairlist_cell(self) -> SexpResult<Option<Sexp<'a>>> {
+    pub(crate) fn try_next_pairlist_cell(&self) -> SexpResult<Option<Sexp<'a>>> {
         let next = self.try_cdr()?;
-        if next.clone().is_nil() {
+        if next.is_nil() {
             Ok(None)
         } else {
             Ok(Some(next))
@@ -641,9 +647,9 @@ impl<'a> Sexp<'a> {
     ///
     /// Untagged cells and non-symbol tags are valid R list cells; they simply
     /// do not match.
-    pub(crate) fn try_tag_name_eq(self, name: &[u8]) -> SexpResult<bool> {
+    pub(crate) fn try_tag_name_eq(&self, name: &[u8]) -> SexpResult<bool> {
         let tag = self.try_tag()?;
-        if tag.clone().is_nil() || tag.clone().typeof_() != SEXPTYPE::SYMSXP {
+        if tag.is_nil() || tag.typeof_() != SEXPTYPE::SYMSXP {
             return Ok(false);
         }
 
@@ -690,6 +696,7 @@ impl std::fmt::Display for Sexp<'_> {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(deprecated)] // translated tests exercise the Sexp compat setters
 mod tests {
     use std::ptr;
 

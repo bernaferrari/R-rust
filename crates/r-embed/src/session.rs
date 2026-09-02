@@ -182,6 +182,23 @@ impl RSession {
         self.eval_result_with_cancel(code, Some(cancellation.token()))
     }
 
+    /// Return whether `code` is a syntactically complete R input.
+    ///
+    /// Interactive hosts call this to decide between evaluating immediately
+    /// and showing a continuation prompt: input is incomplete when the parser
+    /// reports an unexpected end of input (unmatched braces or parentheses, a
+    /// trailing binary operator, ...). Complete-but-malformed input (e.g. a
+    /// stray `)`) reports `true` so evaluation produces the upstream-shaped
+    /// parse error.
+    pub fn is_input_complete(&mut self, code: &str) -> Result<bool, RSessionError> {
+        if !self.active {
+            return Err(RSessionError::EvalError("Session closed".into()));
+        }
+        self.inner
+            .is_syntax_complete(code)
+            .map_err(RSessionError::EvalError)
+    }
+
     /// Configure Android app-private R runtime paths.
     pub fn configure_android_paths(
         &mut self,

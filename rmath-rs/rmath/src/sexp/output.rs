@@ -2138,6 +2138,7 @@ pub(crate) unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(deprecated)] // translated tests exercise the Sexp compat setters
 mod tests {
     use super::*;
     use crate::sexp::instance::RInstance;

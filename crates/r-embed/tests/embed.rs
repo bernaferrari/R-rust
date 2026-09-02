@@ -1305,3 +1305,38 @@ fn malformed_script_is_atomic_at_embed_boundary() {
         "[1] FALSE"
     );
 }
+
+#[test]
+fn is_input_complete_distinguishes_continuation_from_error() {
+    let mut session = RSession::new().expect("session");
+
+    // Incomplete inputs await continuation (unmatched brace, trailing
+    // operator).
+    assert!(
+        !session
+            .is_input_complete("f <- function(x) {")
+            .expect("probe incomplete brace")
+    );
+    assert!(
+        !session
+            .is_input_complete("1 +")
+            .expect("probe trailing operator")
+    );
+
+    // Complete inputs evaluate (or fail with the usual parse error).
+    assert!(
+        session
+            .is_input_complete("f <- function(x) {\n  x + 1\n}")
+            .expect("probe complete function")
+    );
+    assert!(
+        session
+            .is_input_complete("1 + 1")
+            .expect("probe complete expression")
+    );
+    assert!(
+        session
+            .is_input_complete(")")
+            .expect("stray closer is complete, not continuation")
+    );
+}

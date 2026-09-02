@@ -93,6 +93,7 @@ impl<'a> NumericVector<'a> {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // translated tests exercise the Sexp compat setters
 mod tests {
     use super::*;
     use crate::sexp::constructors::Rf_allocVector3;

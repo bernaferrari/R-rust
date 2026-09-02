@@ -204,8 +204,8 @@ unsafe fn eval_call_with_loop_routing(
         Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
             Ok(signal) => {
                 let is_break = matches!(*signal, crate::sexp::context::RSignal::Break);
-                let is_loop_signal = is_break
-                    || matches!(*signal, crate::sexp::context::RSignal::Next);
+                let is_loop_signal =
+                    is_break || matches!(*signal, crate::sexp::context::RSignal::Next);
                 if !is_loop_signal {
                     std::panic::panic_any(*signal);
                 }
@@ -228,14 +228,20 @@ unsafe fn eval_nested_call(
     stack: &R_bcstack_t,
     loop_stack: &[LoopContext],
 ) -> Result<SEXP, LoopJump> {
-    unsafe { with_stack_rooted(stack, call, || unsafe {
-        eval_call_with_loop_routing(call, rho, loop_stack)
-    }) }
+    unsafe {
+        with_stack_rooted(stack, call, || unsafe {
+            eval_call_with_loop_routing(call, rho, loop_stack)
+        })
+    }
 }
 
 /// Apply a resolved loop jump: discard partial loop operands and for-loop
 /// state, then continue at the loop's break/next target.
-unsafe fn apply_loop_jump(stack: &mut R_bcstack_t, for_loops: &mut Vec<ForLoopState>, jump: LoopJump) -> c_int {
+unsafe fn apply_loop_jump(
+    stack: &mut R_bcstack_t,
+    for_loops: &mut Vec<ForLoopState>,
+    jump: LoopJump,
+) -> c_int {
     unsafe {
         for_loops.truncate(jump.for_depth);
         stack.set_depth(jump.stack_depth);

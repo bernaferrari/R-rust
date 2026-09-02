@@ -894,7 +894,7 @@ mod tests {
                 .build_in(&mut arena),
         );
         assert_eq!(vec.clone().len(), 1);
-        assert!(vec.vector_elt(0).is_some_and(Sexp::is_nil));
+        assert!(vec.vector_elt(0).is_some_and(|sexp| sexp.is_nil()));
     }
 
     #[test]

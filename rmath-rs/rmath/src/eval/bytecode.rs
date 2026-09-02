@@ -4,6 +4,9 @@
 //! The bytecode format is a vector of integers where each
 //! instruction is an opcode followed by operand indices.
 
+// Constant initializers build scalar vectors through the deprecated Sexp
+// compat setters; SexpMut (sexp::object) is the long-term borrow guard.
+#![allow(deprecated)]
 use std::os::raw::{c_double, c_int};
 
 use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};

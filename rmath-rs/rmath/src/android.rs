@@ -263,6 +263,27 @@ impl RSession {
         self.eval_script_with_cancellation_token(code, token)
     }
 
+    /// Check whether `code` is a syntactically complete R program without
+    /// evaluating it.
+    ///
+    /// Runs the same parser as evaluation against this session's arena:
+    /// `Ok(true)` when the code parses as complete top-level expressions —
+    /// including complete-but-malformed input such as a stray `)`, which
+    /// evaluation then reports with the usual upstream-shaped parse error —
+    /// and `Ok(false)` when the parser reports an unexpected end of input
+    /// (interactive hosts show a continuation prompt). `Err` is reserved for
+    /// session-level failure.
+    pub fn is_syntax_complete(&mut self, code: &str) -> Result<bool, String> {
+        self.core
+            .with_arena(
+                |arena| match crate::eval::parser::parse_expressions(code, arena) {
+                    Err(e) if e.0 == "unexpected end of input" => Ok(false),
+                    Ok(_) | Err(_) => Ok(true),
+                },
+            )
+            .unwrap_or_else(|| Err("session closed".to_string()))
+    }
+
     /// Configure app-private runtime paths for Android embedding.
     ///
     /// `app_files_dir` owns the writable user library, `cache_dir` owns
@@ -746,6 +767,7 @@ pub fn qnorm_free(p: f64, mean: f64, sd: f64) -> f64 {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(deprecated)] // translated tests exercise the Sexp compat setters
 mod tests {
     use super::*;
     use std::path::Path;
@@ -764,8 +786,8 @@ mod tests {
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock should be after epoch")
-                .as_nanos()
+                .unwrap_or_default()
+                .as_secs()
         ))
     }
 

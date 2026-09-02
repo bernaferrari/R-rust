@@ -1,5 +1,8 @@
 //! Vectorized arithmetic and comparison builtin operations.
 #![deny(unsafe_op_in_unsafe_fn)]
+// The translated C loops write result elements through the deprecated Sexp
+// compat setters; SexpMut (sexp::object) is the long-term borrow guard.
+#![allow(deprecated)]
 //!
 //! These handle the core numeric operators (+, -, *, /, ^, %%, %/%),
 //! comparison operators (<, >, <=, >=, ==, !=), and unary operators (!, -).

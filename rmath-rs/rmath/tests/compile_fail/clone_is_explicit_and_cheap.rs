@@ -27,13 +27,13 @@ fn main() {
     // PartialEq compares by reference: no move, no clone needed here.
     assert_eq!(alias, sexp, "handle equality is pointer identity");
 
-    // The clone is an independent Rust value: it moves and is consumed by
-    // a by-value accessor without affecting the original handle.
+    // The clone is an independent Rust value: assigning it moves the
+    // handle, and shared reads stay available through the new binding.
     let moved = alias;
     assert_eq!(moved.len(), 2);
 
     // The original handle is untouched and still fully usable.
-    assert_eq!(sexp.clone().len(), 2);
-    assert!(sexp.clone().is_vector());
+    assert_eq!(sexp.len(), 2);
+    assert!(sexp.is_vector());
     println!("clone_is_explicit_and_cheap: ok");
 }

@@ -7,4 +7,5 @@ description = "Desktop CLI/REPL host for the R interpreter"
 
 [dependencies]
 r-embed = { path = "../r-embed" }
+libc = { workspace = true }
 anyhow = { workspace = true }

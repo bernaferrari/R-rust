@@ -4,6 +4,7 @@ use super::{Sexp, SexpResult};
 use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NaString, R_NilValue};
 
+#[allow(deprecated)] // deprecated Sexp set_* shims delegate to try_set_* shims
 impl<'a> Sexp<'a> {
     // --- Vector element access with bounds checking ---
 
@@ -12,17 +13,14 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a logical vector, the index is out of
     /// bounds, or the data pointer is null.
     #[inline]
-    pub fn logical_elt(self, i: R_xlen_t) -> Option<c_int> {
+    pub fn logical_elt(&self, i: R_xlen_t) -> Option<c_int> {
         self.try_logical_elt(i).ok()
     }
 
     /// Get the i-th logical value with typed error reporting.
     #[inline]
-    pub fn try_logical_elt(self, i: R_xlen_t) -> SexpResult<c_int> {
-        let data = self
-            .clone()
-            .try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
-            .clone()?;
+    pub fn try_logical_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
+        let data = self.try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -32,17 +30,14 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not an integer vector, the index is out of
     /// bounds, or the data pointer is null.
     #[inline]
-    pub fn integer_elt(self, i: R_xlen_t) -> Option<c_int> {
+    pub fn integer_elt(&self, i: R_xlen_t) -> Option<c_int> {
         self.try_integer_elt(i).ok()
     }
 
     /// Get the i-th integer value with typed error reporting.
     #[inline]
-    pub fn try_integer_elt(self, i: R_xlen_t) -> SexpResult<c_int> {
-        let data = self
-            .clone()
-            .try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector")
-            .clone()?;
+    pub fn try_integer_elt(&self, i: R_xlen_t) -> SexpResult<c_int> {
+        let data = self.try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -52,17 +47,14 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a real vector, the index is out of bounds,
     /// or the data pointer is null.
     #[inline]
-    pub fn real_elt(self, i: R_xlen_t) -> Option<c_double> {
+    pub fn real_elt(&self, i: R_xlen_t) -> Option<c_double> {
         self.try_real_elt(i).ok()
     }
 
     /// Get the i-th real value with typed error reporting.
     #[inline]
-    pub fn try_real_elt(self, i: R_xlen_t) -> SexpResult<c_double> {
-        let data = self
-            .clone()
-            .try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector")
-            .clone()?;
+    pub fn try_real_elt(&self, i: R_xlen_t) -> SexpResult<c_double> {
+        let data = self.try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -72,17 +64,14 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a raw vector, the index is out of bounds,
     /// or the data pointer is null.
     #[inline]
-    pub fn raw_elt(self, i: R_xlen_t) -> Option<Rbyte> {
+    pub fn raw_elt(&self, i: R_xlen_t) -> Option<Rbyte> {
         self.try_raw_elt(i).ok()
     }
 
     /// Get the i-th raw byte with typed error reporting.
     #[inline]
-    pub fn try_raw_elt(self, i: R_xlen_t) -> SexpResult<Rbyte> {
-        let data = self
-            .clone()
-            .try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
-            .clone()?;
+    pub fn try_raw_elt(&self, i: R_xlen_t) -> SexpResult<Rbyte> {
+        let data = self.try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -92,17 +81,14 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a complex vector, the index is out of
     /// bounds, or the data pointer is null.
     #[inline]
-    pub fn complex_elt(self, i: R_xlen_t) -> Option<Rcomplex> {
+    pub fn complex_elt(&self, i: R_xlen_t) -> Option<Rcomplex> {
         self.try_complex_elt(i).ok()
     }
 
     /// Get the i-th complex value with typed error reporting.
     #[inline]
-    pub fn try_complex_elt(self, i: R_xlen_t) -> SexpResult<Rcomplex> {
-        let data = self
-            .clone()
-            .try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")
-            .clone()?;
+    pub fn try_complex_elt(&self, i: R_xlen_t) -> SexpResult<Rcomplex> {
+        let data = self.try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
         let i = self.try_index(i)?;
         Ok(unsafe { *data.add(i) })
     }
@@ -112,17 +98,14 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if the index is out of bounds, the data pointer is null,
     /// or the element itself is null.
     #[inline]
-    pub fn string_elt(self, i: R_xlen_t) -> Option<Sexp<'a>> {
+    pub fn string_elt(&self, i: R_xlen_t) -> Option<Sexp<'a>> {
         self.try_string_elt(i).ok()
     }
 
     /// Get the i-th string element with typed error reporting.
     #[inline]
-    pub fn try_string_elt(self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
-        let data = self
-            .clone()
-            .try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")
-            .clone()?;
+    pub fn try_string_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
         let i = self.try_index(i)?;
         Self::checked_child(unsafe { *data.add(i) })
     }
@@ -156,14 +139,14 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if the index is out of bounds, the data pointer is null,
     /// or the element itself is null.
     #[inline]
-    pub fn vector_elt(self, i: R_xlen_t) -> Option<Sexp<'a>> {
+    pub fn vector_elt(&self, i: R_xlen_t) -> Option<Sexp<'a>> {
         self.try_vector_elt(i).ok()
     }
 
     /// Get the i-th generic/expression vector element with typed error reporting.
     #[inline]
-    pub fn try_vector_elt(self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
-        let data = self.clone().try_vector_sexp_data().clone()?;
+    pub fn try_vector_elt(&self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        let data = self.try_vector_sexp_data()?;
         let i = self.try_index(i)?;
         Self::checked_child(unsafe { *data.add(i) })
     }
@@ -173,11 +156,19 @@ impl<'a> Sexp<'a> {
     /// Set the i-th logical value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
         self.try_set_logical_elt(i, v).is_ok()
     }
 
     /// Set the i-th logical value with typed error reporting.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
         let data = self
             .clone()
@@ -193,11 +184,19 @@ impl<'a> Sexp<'a> {
     /// Set the i-th integer value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
         self.try_set_integer_elt(i, v).is_ok()
     }
 
     /// Set the i-th integer value with typed error reporting.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
         let data = self
             .clone()
@@ -213,11 +212,19 @@ impl<'a> Sexp<'a> {
     /// Set the i-th real (double) value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
         self.try_set_real_elt(i, v).is_ok()
     }
 
     /// Set the i-th real value with typed error reporting.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
         let data = self
             .clone()
@@ -233,11 +240,19 @@ impl<'a> Sexp<'a> {
     /// Set the i-th raw byte.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
         self.try_set_raw_elt(i, v).is_ok()
     }
 
     /// Set the i-th raw byte with typed error reporting.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
         let data = self
             .clone()
@@ -254,11 +269,19 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `false` if this is not a string vector, `v` is not CHARSXP,
     /// the index is out of bounds, or data pointer is null.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
         self.try_set_string_elt(i, v).is_ok()
     }
 
     /// Set the i-th string element with typed error reporting.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         v.clone()
             .expect_type(SEXPTYPE::CHARSXP, "character scalar")
@@ -278,11 +301,19 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `false` if this is not a generic/expression vector, the index is
     /// out of bounds, or data pointer is null.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
         self.try_set_vector_elt(i, v).is_ok()
     }
 
     /// Set the i-th generic/expression vector element with typed error reporting.
+    #[doc(hidden)]
+    #[deprecated(
+        note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
+    )]
     pub fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         let data = self.clone().try_vector_sexp_data_mut().clone()?;
         let i = self.try_index(i)?;

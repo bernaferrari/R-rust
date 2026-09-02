@@ -1216,6 +1216,7 @@ impl Drop for RSession {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(deprecated)] // translated tests exercise the Sexp compat setters
 mod tests {
     use super::*;
     use crate::sexp::instance::{
