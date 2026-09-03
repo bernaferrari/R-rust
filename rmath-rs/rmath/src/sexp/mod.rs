@@ -54,8 +54,8 @@ pub use output::{
 
 pub use instance::SessionCapabilities;
 pub use object::{
-    PairlistIter, Sexp, SexpAttribute, SexpComplex, SexpError, SexpMetadata, SexpMut, SexpResult,
-    SexpValue, SexpView,
+    PairlistIter, Sexp, SexpAttribute, SexpComplex, SexpError, SexpMetadata, SexpMut, SexpRef,
+    SexpResult, SexpValue, SexpView,
 };
 pub use session::{CancellationToken, RSession};
 

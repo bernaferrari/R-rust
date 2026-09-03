@@ -4,15 +4,14 @@
 //! The bytecode format is a vector of integers where each
 //! instruction is an opcode followed by operand indices.
 
-// Constant initializers build scalar vectors through the deprecated Sexp
-// compat setters; SexpMut (sexp::object) is the long-term borrow guard.
-#![allow(deprecated)]
+// Constant initializers build scalar vectors through the SexpMut borrow guard
+// (sexp::object); the guard is the sole mutation path.
 use std::os::raw::{c_double, c_int};
 
 use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::memory::with_arena;
-use crate::sexp::object::{Sexp, SexpError};
+use crate::sexp::object::{Sexp, SexpError, SexpMut};
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
@@ -123,10 +122,11 @@ fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate logical scalar".to_string());
     }
     let sexp = Sexp::from_raw(lgl).ok_or_else(|| "invalid logical scalar pointer".to_string())?;
-    sexp.clone()
+    let mut guard = SexpMut::from_owned(sexp);
+    guard
         .try_set_logical_elt(0, val)
-        .clone()
         .map_err(|err| sexp_err("failed to initialize logical scalar", err))?;
+    let sexp = guard.freeze();
     unsafe {
         (*lgl).sxpinfo.set_scalar(true);
     }
@@ -139,10 +139,11 @@ fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate real scalar".to_string());
     }
     let sexp = Sexp::from_raw(real).ok_or_else(|| "invalid real scalar pointer".to_string())?;
-    sexp.clone()
+    let mut guard = SexpMut::from_owned(sexp);
+    guard
         .try_set_real_elt(0, val)
-        .clone()
         .map_err(|err| sexp_err("failed to initialize real scalar", err))?;
+    let sexp = guard.freeze();
     unsafe {
         (*real).sxpinfo.set_scalar(true);
     }
@@ -155,10 +156,11 @@ fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
         return Err("failed to allocate integer scalar".to_string());
     }
     let sexp = Sexp::from_raw(int).ok_or_else(|| "invalid integer scalar pointer".to_string())?;
-    sexp.clone()
+    let mut guard = SexpMut::from_owned(sexp);
+    guard
         .try_set_integer_elt(0, val)
-        .clone()
         .map_err(|err| sexp_err("failed to initialize integer scalar", err))?;
+    let sexp = guard.freeze();
     unsafe {
         (*int).sxpinfo.set_scalar(true);
     }

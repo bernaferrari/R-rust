@@ -156,6 +156,16 @@ impl Clone for Sexp<'_> {
     }
 }
 
+/// Shared-borrow handle to an R object.
+///
+/// Alias for [`Sexp`]: a shared, reborrowable read handle with no mutation
+/// surface. Reads (`typeof_`, `len`, predicates, `*_elt` / `try_*_elt`
+/// element reads, slice views, child-handle accessors) are shared-borrow
+/// safe and may coexist; in-place mutation goes through
+/// [`SexpMut`](crate::sexp::object::SexpMut) (`from_owned` -> `set_*` ->
+/// `freeze()`).
+pub type SexpRef<'a> = Sexp<'a>;
+
 // ---------------------------------------------------------------------------
 // Compile-time guard — Sexp must never be Copy
 // Stable Rust has no negative bounds, so the guard exploits method

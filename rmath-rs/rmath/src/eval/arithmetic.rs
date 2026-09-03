@@ -1,8 +1,7 @@
 //! Vectorized arithmetic and comparison builtin operations.
 #![deny(unsafe_op_in_unsafe_fn)]
-// The translated C loops write result elements through the deprecated Sexp
-// compat setters; SexpMut (sexp::object) is the long-term borrow guard.
-#![allow(deprecated)]
+// Translated C loops write result elements through the SexpMut borrow guard
+// (sexp::object); the guard is the sole mutation path.
 //!
 //! These handle the core numeric operators (+, -, *, /, ^, %%, %/%),
 //! comparison operators (<, >, <=, >=, ==, !=), and unary operators (!, -).
@@ -34,7 +33,7 @@ use crate::sexp::ffi::{
 };
 use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::numeric::NumericVector;
-use crate::sexp::object::Sexp;
+use crate::sexp::object::{Sexp, SexpMut};
 use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -89,6 +88,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        let mut result_mut = SexpMut::from_owned(result);
         warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
         let mut integer_overflow = false;
 
@@ -100,15 +100,15 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             let y_na = y.to_bits() == R_NA_BIT_PATTERN;
 
             if op == "^" && ((!y_na && y == 0.0) || (!x_na && x == 1.0)) {
-                result.clone().set_real_elt(i, 1.0);
+                result_mut.set_real_elt(i, 1.0);
                 continue;
             }
 
             if x_na || y_na {
                 if use_real {
-                    result.clone().set_real_elt(i, NA_REAL);
+                    result_mut.set_real_elt(i, NA_REAL);
                 } else {
-                    result.clone().set_integer_elt(i, NA_INTEGER);
+                    result_mut.set_integer_elt(i, NA_INTEGER);
                 }
                 continue;
             }
@@ -116,7 +116,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             let val = binary_arithmetic_value(op, x, y);
 
             if use_real {
-                result.clone().set_real_elt(i, val);
+                result_mut.set_real_elt(i, val);
             } else {
                 // Integer path: check for overflow
                 if val.is_finite()
@@ -125,10 +125,10 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     && val <= i32::MAX as f64
                 {
                     let ival = val as i32;
-                    result.clone().set_integer_elt(i, ival);
+                    result_mut.set_integer_elt(i, ival);
                 } else {
                     integer_overflow |= integer_overflow_can_warn;
-                    result.clone().set_integer_elt(i, NA_INTEGER);
+                    result_mut.set_integer_elt(i, NA_INTEGER);
                 }
             }
         }
@@ -136,6 +136,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         if integer_overflow {
             warn_simple("NAs produced by integer overflow");
         }
+        let _ = result_mut.freeze();
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
         result_raw
     }
@@ -175,6 +176,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        let mut result_mut = SexpMut::from_owned(result);
         warn_if_non_multiple_recycling(a.clone().len(), b.clone().len());
 
         let use_real = a.clone().needs_real_with(b.clone());
@@ -220,9 +222,10 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             } else {
                 FALSE
             };
-            result.clone().set_logical_elt(i, value);
+            result_mut.set_logical_elt(i, value);
         }
 
+        let _ = result_mut.freeze();
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
         result_raw
     }
@@ -457,6 +460,7 @@ unsafe fn coerce_difftime_operand(
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
+        let mut result_mut = SexpMut::from_owned(result);
         for i in 0..input.clone().len() {
             let value = input.clone().real_at(i);
             let converted = if value.to_bits() == R_NA_BIT_PATTERN {
@@ -466,8 +470,9 @@ unsafe fn coerce_difftime_operand(
             } else {
                 value * scale
             };
-            result.clone().set_real_elt(i, converted);
+            result_mut.set_real_elt(i, converted);
         }
+        let _ = result_mut.freeze();
         result_raw
     }
 }
@@ -501,7 +506,9 @@ unsafe fn coerce_character_comparison_operand(
         let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
         };
-        for i in 0..input.len() {
+        let input_len = input.len();
+        let mut result_mut = SexpMut::from_owned(result);
+        for i in 0..input_len {
             let value = STRING_ELT(source, i);
             let parsed = if value.is_null() || value == R_NaString() {
                 NA_REAL
@@ -511,8 +518,9 @@ unsafe fn coerce_character_comparison_operand(
                     arithmetic_error("character string is not in a standard unambiguous format");
                 })
             };
-            result.clone().set_real_elt(i, parsed);
+            result_mut.set_real_elt(i, parsed);
         }
+        let _ = result_mut.freeze();
         result_raw
     }
 }
@@ -734,18 +742,20 @@ unsafe fn posixct_binary_arithmetic(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> 
                 let Some(result_sexp) = Sexp::from_raw(result) else {
                     return Some(result);
                 };
-                let values_len = result_sexp.clone().len();
+                let values_len = result_sexp.len();
                 let values: Vec<f64> = (0..values_len)
-                    .filter_map(|i| result_sexp.clone().try_real_elt(i).ok())
+                    .filter_map(|i| result_sexp.try_real_elt(i).ok())
                     .collect();
                 let (units, scale) = auto_difftime_units(&values);
-                for i in 0..result_sexp.clone().len() {
-                    if let Ok(value) = result_sexp.clone().try_real_elt(i).clone()
+                let mut result_mut = SexpMut::from_owned(result_sexp);
+                for i in 0..result_mut.len() {
+                    if let Ok(value) = result_mut.try_real_elt(i)
                         && value.to_bits() != R_NA_BIT_PATTERN
                     {
-                        result_sexp.clone().set_real_elt(i, value / scale);
+                        result_mut.set_real_elt(i, value / scale);
                     }
                 }
+                let _ = result_mut.freeze();
                 set_difftime_attributes(result, units);
                 Some(result)
             }
@@ -799,26 +809,27 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
-
+        let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             poll_vector_cancellation(i);
             let value = x.clone().real_at(i);
             if value.to_bits() == R_NA_BIT_PATTERN {
-                result.clone().set_real_elt(i, NA_REAL);
+                result_mut.set_real_elt(i, NA_REAL);
             } else {
                 let r = f(value);
                 // Preserve incoming NaN (don't replace with NA_REAL)
                 if r.is_nan() && !value.is_nan() {
                     // Newly produced NaN from valid input → leave as NaN
                 }
-                result.clone().set_real_elt(i, r);
+                result_mut.set_real_elt(i, r);
             }
         }
-
+        let _ = result_mut.freeze();
         propagate_unary_vector_attributes(result_raw, sa, n);
         result_raw
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // Factor operands and stock group-generic behavior
@@ -880,9 +891,11 @@ unsafe fn factor_na_result(e1: SEXP, e2: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
-            result.clone().set_logical_elt(i, NA_LOGICAL);
+            result_mut.set_logical_elt(i, NA_LOGICAL);
         }
+        let _ = result_mut.freeze();
         result_raw
     }
 }
@@ -1049,6 +1062,7 @@ unsafe fn factor_scalar_string_compare(op: &str, f: SEXP, levels: &[String], oth
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             let code = INTEGER_ELT(f, i as i32);
             let value = if code == NA_INTEGER || code <= 0 || code as usize > levels.len() {
@@ -1057,8 +1071,9 @@ unsafe fn factor_scalar_string_compare(op: &str, f: SEXP, levels: &[String], oth
                 let eq = levels[(code - 1) as usize] == other;
                 if (op == "==") == eq { TRUE } else { FALSE }
             };
-            result.clone().set_logical_elt(i, value);
+            result_mut.set_logical_elt(i, value);
         }
+        let _ = result_mut.freeze();
         result_raw
     }
 }
@@ -1087,6 +1102,7 @@ unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
+        let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             let x = crate::sexp::accessors::COMPLEX_ELT(a, i as i32);
             let y = crate::sexp::accessors::COMPLEX_ELT(b, i as i32);
@@ -1097,8 +1113,9 @@ unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                 let eq = x.r == y.r && x.i == y.i;
                 if (op == "==") == eq { TRUE } else { FALSE }
             };
-            result.clone().set_logical_elt(i, value);
+            result_mut.set_logical_elt(i, value);
         }
+        let _ = result_mut.freeze();
         result_raw
     }
 }
@@ -1429,10 +1446,10 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _result_guard = protect(result_raw);
-
+        let mut result_mut = SexpMut::from_owned(result);
         if result_type == SEXPTYPE::REALSXP {
             for i in 0..n {
-                result.clone().set_real_elt(i, -input.clone().real_at(i));
+                result_mut.set_real_elt(i, -input.clone().real_at(i));
             }
         } else {
             for i in 0..n {
@@ -1442,12 +1459,13 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
                 } else {
                     -value
                 };
-                result.clone().set_integer_elt(i, negated);
+                result_mut.set_integer_elt(i, negated);
             }
         }
-
+        let _ = result_mut.freeze();
         propagate_unary_vector_attributes(result_raw, x, n);
         result_raw
+
     }
 }
 
@@ -1487,15 +1505,13 @@ unsafe fn ordered_factor_compare(op: &str, sa: SEXP, sb: SEXP) -> Option<SEXP> {
         };
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a_len, b_len);
-
+        let mut result_mut = SexpMut::from_owned(result);
         for i in 0..n {
             let lhs = ordered_operand_code(sa, i % a_len, &levels);
             let rhs = ordered_operand_code(sb, i % b_len, &levels);
-            result
-                .clone()
-                .set_logical_elt(i, ordered_code_compare(op, lhs, rhs));
+            result_mut.set_logical_elt(i, ordered_code_compare(op, lhs, rhs));
         }
-
+        let _ = result_mut.freeze();
         Some(result_raw)
     }
 }
@@ -1610,6 +1626,7 @@ unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         };
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(a_len, b_len);
+        let mut result_mut = SexpMut::from_owned(result);
 
         for i in 0..n {
             let ai = i % a_len;
@@ -1628,8 +1645,9 @@ unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     _ => NA_LOGICAL,
                 }
             };
-            result.clone().set_logical_elt(i, value);
+            result_mut.set_logical_elt(i, value);
         }
+        let _ = result_mut.freeze();
 
         propagate_binary_vector_attributes(result_raw, sa, sb, n);
         result_raw
@@ -1675,6 +1693,7 @@ unsafe fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
         };
         let _result_guard = protect(result_raw);
         warn_if_non_multiple_recycling(nx, nb);
+        let mut result_mut = SexpMut::from_owned(result);
         let mut naflag = false;
         for i in 0..n {
             let xv = x.clone().real_at(i % nx);
@@ -1693,8 +1712,9 @@ unsafe fn log_with_base(call: SEXP, sx: SEXP, sbase: SEXP) -> SEXP {
                 }
                 v
             };
-            result.clone().set_real_elt(i, out);
+            result_mut.set_real_elt(i, out);
         }
+        let _ = result_mut.freeze();
         if naflag {
             crate::mainutils::errors::Rf_warningcall1(call, c"NaNs produced".as_ptr());
         }
@@ -1807,6 +1827,7 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         return R_NilValue();
                     };
                     let _out_guard = protect(out);
+                    let mut result_mut = SexpMut::from_owned(result);
                     for i in 0..n {
                         let c = crate::sexp::accessors::COMPLEX_ELT(x, i as i32);
                         let value = if c.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
@@ -1816,8 +1837,9 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         } else {
                             libm::sqrt(c.r * c.r + c.i * c.i)
                         };
-                        result.clone().set_real_elt(i, value);
+                        result_mut.set_real_elt(i, value);
                     }
+                    let _ = result_mut.freeze();
                     return out;
                 }
                 "log10" => super::complex_arith::complex_unary_vec(x, |c| {
@@ -1904,6 +1926,7 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return result;
                 };
                 let _iresult_guard = protect(iresult_raw);
+                let mut iresult_mut = SexpMut::from_owned(iresult);
                 for i in 0..n {
                     let v = result_vec.clone().real_at(i);
                     let value = if v.to_bits() == R_NA_BIT_PATTERN {
@@ -1911,8 +1934,9 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     } else {
                         v as i32
                     };
-                    iresult.clone().set_integer_elt(i, value);
+                    iresult_mut.set_integer_elt(i, value);
                 }
+                let _ = iresult_mut.freeze();
                 propagate_unary_vector_attributes(iresult_raw, x, n);
                 return iresult_raw;
             }
@@ -2367,9 +2391,10 @@ unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
         };
         let result = Rf_allocVector3(result_type, 2);
         let result_view = Sexp::from_raw_unchecked(result);
+        let mut result_mut = SexpMut::from_owned(result_view);
         match result_type {
             SEXPTYPE::REALSXP => {
-                result_view.clone().set_real_elt(
+                result_mut.set_real_elt(
                     0,
                     min_value
                         .clone()
@@ -2377,7 +2402,7 @@ unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
                         .or_else(|| min_value.clone().integer_elt(0).map(f64::from))
                         .unwrap_or(NA_REAL),
                 );
-                result_view.clone().set_real_elt(
+                result_mut.set_real_elt(
                     1,
                     max_value
                         .clone()
@@ -2387,15 +2412,14 @@ unsafe fn eval_range(args: SEXP, shape: SummaryShape, na_rm: bool) -> SEXP {
                 );
             }
             SEXPTYPE::INTSXP => {
-                result_view
-                    .clone()
+                result_mut
                     .set_integer_elt(0, min_value.clone().integer_elt(0).unwrap_or(NA_INTEGER));
-                result_view
-                    .clone()
+                result_mut
                     .set_integer_elt(1, max_value.clone().integer_elt(0).unwrap_or(NA_INTEGER));
             }
             _ => {}
         }
+        let _ = result_mut.freeze();
         result
     }
 }
