@@ -636,6 +636,7 @@ pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `Sys.junction()` (Windows) / `file.link()` — create symbolic links.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
@@ -665,6 +666,32 @@ pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     .unwrap_or("");
                 *pa.add(i) = if symlink(fc, tc).is_ok() { TRUE } else { FALSE };
             }
+        }
+        ans
+    }
+}
+
+/// WASM M1 stub for `do_filesymlink`: `std::os::unix::fs::symlink`
+/// does not exist on wasm32. Mirrors upstream R's no-symlink fallback
+/// (platform.c `do_filesymlink` `#else` branch): warn that symbolic
+/// links are unsupported on this platform and return an all-FALSE
+/// logical vector of matching length (unsupported-operation path).
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, LENGTH};
+        use crate::sexp::constructors::Rf_allocVector3;
+        use crate::sexp::ffi::{FALSE, SEXPTYPE};
+
+        crate::mainutils::errors::Rf_warning(
+            c"symbolic links are not supported on this platform".as_ptr(),
+        );
+        let n = LENGTH(CAR(args));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
+        let pa = crate::sexp::accessors::LOGICAL(ans);
+        for i in 0..n as usize {
+            *pa.add(i) = FALSE;
         }
         ans
     }
@@ -1983,6 +2010,7 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
 }
 
 /// R's `Sys.chmod()` — change file permissions.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL};
@@ -2020,7 +2048,6 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
-
         for i in 0..n as usize {
             if let Some(path) = path_at(paths, i) {
                 let result = fs::set_permissions(
@@ -2031,6 +2058,49 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             } else {
                 *pa.add(i) = FALSE;
             }
+        }
+        ans
+    }
+}
+
+/// WASM M1 stub for `do_syschmod`: `std::os::unix::fs::PermissionsExt`
+/// does not exist on wasm32. Mirrors upstream R's no-chmod fallback
+/// (platform.c `do_syschmod` `#else` branch): warn of insufficient OS
+/// support on this platform and return an all-FALSE logical vector
+/// (unsupported-operation path).
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    unsafe {
+        use crate::sexp::accessors::{CAR, CDR, LENGTH, LOGICAL};
+        use crate::sexp::constructors::Rf_allocVector3;
+        use crate::sexp::ffi::{FALSE, SEXPTYPE};
+        use crate::sexp::globals::R_NilValue;
+
+        let mut paths = R_NilValue();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let value = CAR(current);
+            match platform_tag_name(current).as_deref() {
+                Some("paths") => paths = value,
+                Some(_) => {}
+                None => {
+                    if paths == R_NilValue() {
+                        paths = value;
+                    }
+                }
+            }
+            current = CDR(current);
+        }
+
+        crate::mainutils::errors::Rf_warning(
+            c"insufficient OS support on this platform".as_ptr(),
+        );
+        let n = LENGTH(paths);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
+        let _ans_guard = protect(ans);
+        let pa = LOGICAL(ans);
+        for i in 0..n as usize {
+            *pa.add(i) = FALSE;
         }
         ans
     }

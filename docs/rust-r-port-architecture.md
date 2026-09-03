@@ -166,6 +166,53 @@ out, no raw `SEXP` in user-facing signatures, one session per worker
 thread. The facade is experimental: it inherits the GC discipline
 verified in the sections above but has no independent audit yet.
 
+### Crate-scale split (deferred)
+
+Decision: the core stays a modular monolith in the single `rmath` crate
+(plus the already-split `rmath-nmath` and the embedding crates
+`r-embed`/`r-uniffi`). A finer split into `r-translated-core` /
+`r-runtime` / `r-safe` is deferred, not rejected.
+
+Why deferred:
+
+- **Single-owner borrow surface in `sexp/`.** Handles (`Sexp<'a>`),
+  owner-bound protect guards, and the `with_exposed_provenance`
+  re-derivation patterns assume one crate can see the arena, instance,
+  and provenance plumbing together (see the Miri audit above).
+  Splitting now would freeze premature `pub` boundaries through unsafe
+  internals that are still being reshaped.
+- **Generation-table prerequisite.** The protect stack is still a plain
+  `Vec` with a LIFO drop-order contract; the roadmap generation-based
+  handle table that pins slots permanently has not landed. A crate
+  boundary cut today would lock in the index-shifting stack semantics.
+- **No second consumer yet.** All embedding paths (`r-embed`,
+  `r-uniffi`, `android`) sit on the same `RInstance`/`RSession`. There
+  is no independent consumer that needs a smaller dependency subset, so
+  a split would add workspace churn with no user.
+
+Intended boundaries when revisited:
+
+- **`r-translated-core`** — faithful translations that stay close to
+  upstream and may speak raw `SEXP` internally: `eval/`, `library/`,
+  `mainutils/`, `modules/`, and the C-port leaves (`appl`, `dist`,
+  `dpq`, `special`, `fprec`, `tre`, `trio`, `unix`, `graphapp`, `intl`,
+  `xdr`, `tzone*`, `rng`, `constants`, `error`, `utils`).
+- **`r-runtime`** — session-owned state and collection: `sexp/`
+  ownership core (`memory`, `memory_ext`, `instance`, `session`,
+  `context`, `envir`, `env_hash`, `symbol`, `protect`, `gengc`, `init`,
+  `globals`, `constructors`, `accessors`, `attrib_core`, `output`).
+- **`r-safe`** — the only API new Rust and embedding code should touch:
+  `sexp/object` (`Sexp`, `SexpMut`, the future `SexpRef`,
+  `RootedSexp`, `builder`) plus the typed entrypoints
+  (`RSession::sexp`, `RSession::eval_sexp*`, `EvalContext`,
+  `eval_expr`).
+
+Revisit trigger: a second embedding consumer that needs a stable subset
+without the translated core, or the safe API stabilizing — the shipped
+`SexpRef`/`SexpMut` borrow split plus the generation handle table. Until
+then, keep new code behind the typed `Sexp`/session boundary inside the
+monolith instead of pre-splitting.
+
 ## Evaluator Shape
 
 The evaluator is Rust-shaped at its primary boundary:

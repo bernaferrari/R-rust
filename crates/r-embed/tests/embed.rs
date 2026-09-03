@@ -1340,3 +1340,582 @@ fn is_input_complete_distinguishes_continuation_from_error() {
             .expect("stray closer is complete, not continuation")
     );
 }
+/// 25-package pure-R corpus ledger (offline, zero network).
+/// Each entry names an installed fixture package, the feature axis it
+/// exercises, a probe expression, and the expected output snippet. The
+/// `xfail` flag mirrors `tests/upstream-r/dispositions.tsv` semantics: an
+/// entry marked `xfail` is known to fail on the current tree and records the
+/// observed error in `xfail_reason` instead of changing interpreter code.
+struct Corpus25Entry {
+    name: &'static str,
+    axis: &'static str,
+    title: &'static str,
+    blurb: &'static str,
+    desc_extra: &'static str,
+    namespace: &'static str,
+    sources: &'static [(&'static str, &'static str)],
+    data_sources: &'static [(&'static str, &'static str)],
+    extra: Option<(&'static str, &'static [u8])>,
+    probe: &'static str,
+    expected: &'static str,
+    xfail: bool,
+    xfail_reason: &'static str,
+}
+const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
+    Corpus25Entry {
+        name: "pxexports",
+        axis: "exports",
+        title: "Px Exports Package",
+        blurb: "Exercises plain exported functions.",
+        desc_extra: "",
+        namespace: "export(pxexports_value)\n",
+        sources: &[("exports.R", "pxexports_value <- function() 101L\n")],
+        data_sources: &[],
+        extra: None,
+        probe: "pxexports_value()",
+        expected: "[1] 101",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxs3",
+        axis: "S3 dispatch",
+        title: "Px S3 Package",
+        blurb: "Exercises S3 generics, methods, and classed objects.",
+        desc_extra: "",
+        namespace: "export(pxs3_value, pxs3_make, pxs3_generic)\nS3method(pxs3_generic, pxs3class)\n",
+        sources: &[(
+            "s3.R",
+            concat!(
+                "pxs3_value <- function() 102L\n",
+                "pxs3_make <- function() { x <- 102L; class(x) <- \"pxs3class\"; x }\n",
+                "pxs3_generic <- function(x) UseMethod(\"pxs3_generic\", x)\n",
+                "pxs3_generic.pxs3class <- function(x) 102L\n",
+                "pxs3_hidden <- function() 999L\n",
+            ),
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxs3_generic(pxs3_make())",
+        expected: "[1] 102",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxdata",
+        axis: "source-form data",
+        title: "Px Data Package",
+        blurb: "Exercises source-form package data loading.",
+        desc_extra: "",
+        namespace: "export(pxdata_value)\n",
+        sources: &[("data-shape.R", "pxdata_value <- function() 303L\n")],
+        data_sources: &[("pxdata_item.R", "pxdata_item <- 103L\n")],
+        extra: None,
+        probe: "data(\"pxdata_item\", package = \"pxdata\")\npxdata_item + pxdata_value()",
+        expected: "[1] 406",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pximport",
+        axis: "whole-package import",
+        title: "Px Import Package",
+        blurb: "Exercises whole-package namespace imports.",
+        desc_extra: "Imports: pxexports\n",
+        namespace: "import(pxexports)\nexport(pximport_value)\n",
+        sources: &[(
+            "import.R",
+            "pximport_value <- function() pxexports_value() + 100L\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pximport_value()",
+        expected: "[1] 201",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxfrom",
+        axis: "selective importFrom",
+        title: "Px ImportFrom Package",
+        blurb: "Exercises selective namespace imports.",
+        desc_extra: "Imports: pxexports\n",
+        namespace: "importFrom(pxexports, pxexports_value)\nexport(pxfrom_value)\n",
+        sources: &[(
+            "from.R",
+            "pxfrom_value <- function() pxexports_value() + 104L\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxfrom_value()",
+        expected: "[1] 205",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxcollate",
+        axis: "Collate ordering",
+        title: "Px Collate Package",
+        blurb: "Exercises DESCRIPTION Collate source ordering.",
+        desc_extra: "Collate: 'z-producer.R' 'a-consumer.R'\n",
+        namespace: "export(pxcollate_value)\n",
+        sources: &[
+            ("a-consumer.R", "pxcollate_value <- pxcollate_seed + 2L\n"),
+            ("z-producer.R", "pxcollate_seed <- 204L\n"),
+        ],
+        data_sources: &[],
+        extra: None,
+        probe: "pxcollate_value",
+        expected: "[1] 206",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxdepends",
+        axis: "Depends loading",
+        title: "Px Depends Package",
+        blurb: "Exercises DESCRIPTION Depends loading and symbol visibility.",
+        desc_extra: "Depends: R (>= 4.0.0), pxexports\n",
+        namespace: "export(pxdepends_value)\n",
+        sources: &[(
+            "depends.R",
+            "pxdepends_value <- function() pxexports_value() + 106L\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxdepends_value()",
+        expected: "[1] 207",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxsysfile",
+        axis: "system.file resources",
+        title: "Px System File Package",
+        blurb: "Exercises package resource discovery via system.file.",
+        desc_extra: "",
+        namespace: "export(pxsys_value)\n",
+        sources: &[("sysfile.R", "pxsys_value <- function() 208L\n")],
+        data_sources: &[],
+        extra: Some(("examples/pxsys-resource.R", b"pxsys_answer <- 42L\n")),
+        probe: "source(system.file(\"examples\", \"pxsys-resource.R\", package = \"pxsysfile\", mustWork = TRUE))\npxsys_value() + pxsys_answer",
+        expected: "[1] 250",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxpattern",
+        axis: "exportPattern",
+        title: "Px Export Pattern Package",
+        blurb: "Exercises NAMESPACE exportPattern handling.",
+        desc_extra: "",
+        namespace: "exportPattern(\"^pxpat_\")\n",
+        sources: &[(
+            "pattern.R",
+            "pxpat_value <- function() 209L\nhidden_junk <- function() 99L\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxpat_value()",
+        expected: "[1] 209",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxs4",
+        axis: "S4 classes and slots",
+        title: "Px S4 Package",
+        blurb: "Exercises pure-R package S4 class creation and slot access.",
+        desc_extra: "",
+        namespace: "export(pxs4_make, pxs4_name, pxs4_slots)\n",
+        sources: &[(
+            "s4.R",
+            concat!(
+                "setClass(\"PxS4Person\", name = \"character\", score = \"numeric\")\n",
+                "pxs4_make <- function() new(\"PxS4Person\", name = \"Ada\", score = 42)\n",
+                "pxs4_name <- function(x) slot(x, \"name\")\n",
+                "pxs4_slots <- function() slotNames(\"PxS4Person\")\n",
+            ),
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "p <- pxs4_make()\nall(c(isS4(p), is(p, \"PxS4Person\"), pxs4_name(p) == \"Ada\", all(pxs4_slots() == c(\"name\", \"score\"))))",
+        expected: "[1] TRUE",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxdataenv",
+        axis: "data envir loading",
+        title: "Px Data Envir Package",
+        blurb: "Exercises data with an explicit target environment.",
+        desc_extra: "",
+        namespace: "export(pxdataenv_value)\n",
+        sources: &[("dataenv.R", "pxdataenv_value <- function() 211L\n")],
+        data_sources: &[("pxenv_item.R", "pxenv_item <- 111L\n")],
+        extra: None,
+        probe: "e <- new.env()\ndata(\"pxenv_item\", package = \"pxdataenv\", envir = e)\nget(\"pxenv_item\", envir = e) + exists(\"pxenv_item\")",
+        expected: "[1] 111",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxlazy",
+        axis: "LazyData source data",
+        title: "Px Lazy Data Package",
+        blurb: "Exercises LazyData with source-form package data.",
+        desc_extra: "LazyData: true\n",
+        namespace: "export(pxlazy_value)\n",
+        sources: &[(
+            "lazy-source.R",
+            "pxlazy_value <- function() pxlazy_data + 2L\n",
+        )],
+        data_sources: &[("pxlazy_data.R", "pxlazy_data <- 212L\n")],
+        extra: None,
+        probe: "pxlazy_data + pxlazy_value()",
+        expected: "[1] 426",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxpaths",
+        axis: ".libPaths visibility",
+        title: "Px Library Paths Package",
+        blurb: "Exercises package-visible Android library paths.",
+        desc_extra: "",
+        namespace: "export(pxpaths_paths)\n",
+        sources: &[("paths.R", "pxpaths_paths <- function() .libPaths()\n")],
+        data_sources: &[],
+        extra: None,
+        probe: "paste(pxpaths_paths(), collapse = \",\")",
+        expected: "bundled-library",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxarith",
+        axis: "arithmetic evaluation",
+        title: "Px Arithmetic Package",
+        blurb: "Exercises vectorized arithmetic inside a package namespace.",
+        desc_extra: "",
+        namespace: "export(pxarith_value)\n",
+        sources: &[(
+            "arith.R",
+            "pxarith_value <- function() sum(c(1, 2, 3) * 10)\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxarith_value()",
+        expected: "[1] 60",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxpaste",
+        axis: "string paste",
+        title: "Px Paste Package",
+        blurb: "Exercises paste and paste0 string assembly.",
+        desc_extra: "",
+        namespace: "export(pxpaste_value)\n",
+        sources: &[(
+            "paste.R",
+            "pxpaste_value <- function() paste0(\"a\", \"-\", 115L)\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxpaste_value()",
+        expected: "a-115",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxlogic",
+        axis: "logical operators",
+        title: "Px Logic Package",
+        blurb: "Exercises logical operators and any/all aggregation.",
+        desc_extra: "",
+        namespace: "export(pxlogic_value)\n",
+        sources: &[(
+            "logic.R",
+            "pxlogic_value <- function() any(c(TRUE, FALSE) & c(TRUE, TRUE))\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxlogic_value()",
+        expected: "[1] TRUE",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxvec",
+        axis: "vector subsetting",
+        title: "Px Vector Package",
+        blurb: "Exercises vector construction and positional subsetting.",
+        desc_extra: "",
+        namespace: "export(pxvec_value)\n",
+        sources: &[("vec.R", "pxvec_value <- function() c(10L, 20L, 117L)[3L]\n")],
+        data_sources: &[],
+        extra: None,
+        probe: "pxvec_value()",
+        expected: "[1] 117",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxlist",
+        axis: "list element access",
+        title: "Px List Package",
+        blurb: "Exercises named list construction and dollar access.",
+        desc_extra: "",
+        namespace: "export(pxlist_value)\n",
+        sources: &[(
+            "list.R",
+            "pxlist_value <- function() list(alpha = 118L, beta = 2L)$alpha\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxlist_value()",
+        expected: "[1] 118",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxctrl",
+        axis: "control flow",
+        title: "Px Control Flow Package",
+        blurb: "Exercises for loops and if/else accumulation.",
+        desc_extra: "",
+        namespace: "export(pxctrl_value)\n",
+        sources: &[(
+            "ctrl.R",
+            concat!(
+                "pxctrl_value <- function() {\n",
+                "  total <- 0L\n",
+                "  for (i in 1:5) {\n",
+                "    if (i > 3L) { total <- total + i }\n",
+                "  }\n",
+                "  total + 110L\n",
+                "}\n",
+            ),
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxctrl_value()",
+        expected: "[1] 119",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxfn",
+        axis: "closures and lexical scope",
+        title: "Px Closure Package",
+        blurb: "Exercises nested closures and lexical scoping.",
+        desc_extra: "",
+        namespace: "export(pxfn_value)\n",
+        sources: &[(
+            "fn.R",
+            concat!(
+                "pxfn_adder <- function(n) function(x) x + n\n",
+                "pxfn_value <- function() pxfn_adder(100L)(20L)\n",
+            ),
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxfn_value()",
+        expected: "[1] 120",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxns",
+        axis: "namespace-qualified access",
+        title: "Px Namespace Operator Package",
+        blurb: "Exercises :: and ::: access against an installed package.",
+        desc_extra: "Imports: pxexports\n",
+        namespace: "export(pxns_value)\n",
+        sources: &[(
+            "ns.R",
+            "pxns_value <- function() pxexports::pxexports_value() + 20L\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxns_value() + pxexports:::pxexports_value()",
+        expected: "[1] 222",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxattach",
+        axis: "attach isolation",
+        title: "Px Attach Package",
+        blurb: "Exercises search-path attach and non-export hiding.",
+        desc_extra: "",
+        namespace: "export(pxattach_value)\n",
+        sources: &[(
+            "attach.R",
+            concat!(
+                "pxattach_value <- function() 122L\n",
+                "pxattach_hidden <- function() 999L\n",
+            ),
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxattach_value() + exists(\"pxattach_hidden\")",
+        expected: "[1] 122",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxmulti",
+        axis: "multi-file sourcing",
+        title: "Px Multi File Package",
+        blurb: "Exercises multiple R files sharing one namespace.",
+        desc_extra: "",
+        namespace: "export(pxmulti_value)\n",
+        sources: &[
+            ("aa-first.R", "pxmulti_seed <- 120L\n"),
+            ("bb-second.R", "pxmulti_value <- function() pxmulti_seed + 3L\n"),
+        ],
+        data_sources: &[],
+        extra: None,
+        probe: "pxmulti_value()",
+        expected: "[1] 123",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxnslookup",
+        axis: "getNamespace lookup",
+        title: "Px Namespace Lookup Package",
+        blurb: "Exercises getNamespace and programmatic symbol lookup.",
+        desc_extra: "",
+        namespace: "export(pxnslookup_value)\n",
+        sources: &[(
+            "nslookup.R",
+            "pxnslookup_value <- function() 124L\n",
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "list(is.environment(getNamespace(\"pxnslookup\")), get(\"pxnslookup_value\", envir = asNamespace(\"pxnslookup\"))())",
+        expected: "124",
+        xfail: false,
+        xfail_reason: "",
+    },
+    Corpus25Entry {
+        name: "pxhiddenns",
+        axis: "triple-colon hidden access",
+        title: "Px Hidden Symbol Package",
+        blurb: "Exercises ::: access to a non-exported symbol.",
+        desc_extra: "",
+        namespace: "export(pxhiddenns_value)\n",
+        sources: &[(
+            "hidden.R",
+            concat!(
+                "pxhiddenns_value <- function() 125L\n",
+                "pxhiddenns_secret <- function() 425L\n",
+            ),
+        )],
+        data_sources: &[],
+        extra: None,
+        probe: "pxhiddenns:::pxhiddenns_secret()",
+        expected: "[1] 425",
+        xfail: false,
+        xfail_reason: "",
+    },
+];
+#[test]
+fn pure_r_25_package_corpus_ledger() {
+    assert_eq!(PURE_R_25_LEDGER.len(), 25, "ledger must hold 25 packages");
+    let mut names: Vec<&str> = PURE_R_25_LEDGER.iter().map(|entry| entry.name).collect();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(names.len(), 25, "ledger package names must be unique");
+    let root = unique_test_root("rport-embed-corpus25");
+    let bundled = root.join("bundled-library");
+    for entry in PURE_R_25_LEDGER {
+        let description = format!(
+            "Package: {name}\nVersion: 0.1.0\nTitle: {title}\nDescription: {blurb}\nLicense: MIT\n{extra}NeedsCompilation: no\n",
+            name = entry.name,
+            title = entry.title,
+            blurb = entry.blurb,
+            extra = entry.desc_extra,
+        );
+        let pkg = bundled.join(entry.name);
+        let r_dir = pkg.join("R");
+        std::fs::create_dir_all(&r_dir).expect("package R dir");
+        std::fs::write(pkg.join("DESCRIPTION"), description).expect("description");
+        std::fs::write(pkg.join("NAMESPACE"), entry.namespace).expect("namespace");
+        for (file, source) in entry.sources {
+            std::fs::write(r_dir.join(file), source).expect("R source");
+        }
+        if !entry.data_sources.is_empty() {
+            let data_dir = pkg.join("data");
+            std::fs::create_dir_all(&data_dir).expect("data dir");
+            for (file, source) in entry.data_sources {
+                std::fs::write(data_dir.join(file), source).expect("data source");
+            }
+        }
+        if let Some((file, bytes)) = entry.extra {
+            let path = pkg.join(file);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("extra file parent");
+            }
+            std::fs::write(path, bytes).expect("extra file");
+        }
+    }
+    let mut session = RSession::new().expect("session");
+    session
+        .configure_android_runtime(&android_paths_for(&root))
+        .expect("path config");
+    let mut passed = 0usize;
+    let mut xfailed = 0usize;
+    for entry in PURE_R_25_LEDGER {
+        if entry.xfail {
+            let load = session.load_package(entry.name);
+            let observed = match load {
+                Ok(()) => match session.eval(entry.probe) {
+                    Ok(output) => format!("probe unexpectedly passed: {output}"),
+                    Err(err) => err.to_string(),
+                },
+                Err(err) => err.to_string(),
+            };
+            assert!(
+                observed.contains(entry.xfail_reason) || entry.xfail_reason.is_empty(),
+                "xfail ledger entry `{}` (axis `{}`) drifted: observed `{observed}`, recorded `{}`",
+                entry.name,
+                entry.axis,
+                entry.xfail_reason,
+            );
+            xfailed += 1;
+            continue;
+        }
+        session
+            .load_package(entry.name)
+            .unwrap_or_else(|err| panic!("load {} (axis {}): {err}", entry.name, entry.axis));
+        let output = session
+            .eval(entry.probe)
+            .unwrap_or_else(|err| panic!("probe {} (axis {}): {err}", entry.name, entry.axis));
+        assert!(
+            output.contains(entry.expected),
+            "ledger entry `{}` (axis `{}`) probe `{}` got `{output}`, want snippet `{}`",
+            entry.name,
+            entry.axis,
+            entry.probe,
+            entry.expected,
+        );
+        passed += 1;
+    }
+    assert_eq!(passed + xfailed, 25);
+    eprintln!("pure_r_25 ledger: {passed} passed, {xfailed} xfailed");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn wasm_m3_oracle_shape() {
+    // Pins the contract the future wasm-bindgen M2/M3 session boundary must
+    // satisfy: the M3 Node smoke test asserts this exact oracle string for
+    // `eval("1+1")`. See docs/web-architecture.md ("R-in-WASM milestones
+    // M2/M3 (plan)").
+    let mut session = RSession::new().expect("session");
+    assert_eq!(session.eval("1+1").unwrap(), "[1] 2");
+}

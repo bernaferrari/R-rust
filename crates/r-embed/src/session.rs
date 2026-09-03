@@ -182,6 +182,30 @@ impl RSession {
         self.eval_result_with_cancel(code, Some(cancellation.token()))
     }
 
+    /// Return the names of bindings in the global environment.
+    ///
+    /// Hosts use this for tab completion. It goes through the same
+    /// evaluator path as `ls(all.names=TRUE)` and never mutates the
+    /// session; a closed session or an evaluation failure yields an empty
+    /// list instead of an error.
+    pub fn global_binding_names(&mut self) -> Vec<String> {
+        if !self.active {
+            return Vec::new();
+        }
+        let value = match self.eval_result("ls(all.names=TRUE)") {
+            Ok(output) => output.value,
+            Err(_) => return Vec::new(),
+        };
+        match value {
+            RValue::StringVector(names) => names.into_iter().flatten().collect(),
+            RValue::Attributed { value, .. } => match *value {
+                RValue::StringVector(names) => names.into_iter().flatten().collect(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        }
+    }
+
     /// Return whether `code` is a syntactically complete R input.
     ///
     /// Interactive hosts call this to decide between evaluating immediately

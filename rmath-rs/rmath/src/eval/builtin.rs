@@ -292,6 +292,66 @@ pub(super) struct EvaluatedBuiltin {
     pub handler: EvaluatedBuiltinHandler,
 }
 
+/// WASM M1 stubs for the stats/fourier builtins unavailable on wasm32.
+/// Each stub has the identical `BuiltinHandler` signature and raises the
+/// standard platform-unavailable error path via `platform_error`-style
+/// `RError` panic (matching `do_filechoose`'s `platform_error` pattern),
+/// so R code observes the usual catchable R error.
+#[cfg(target_arch = "wasm32")]
+macro_rules! wasm_unavailable_builtin {
+    ($name:ident) => {
+        unsafe fn $name(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: concat!(stringify!($name), " is not available on this platform")
+                    .to_string(),
+            })
+        }
+    };
+}
+
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_runif_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rnorm_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_fft_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_mvfft_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rpois_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rexp_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rchisq_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rgeom_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rt_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rsignrank_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rbeta_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rbinom_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rcauchy_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rf_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rgamma_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rlnorm_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rlogis_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rnbinom_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rweibull_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rwilcox_wasm);
+#[cfg(target_arch = "wasm32")]
+wasm_unavailable_builtin!(do_rhyper_wasm);
+
 /// Find the Rust implementation for an evaluated builtin name.
 pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHandler> {
     EVALUATED_BUILTINS
@@ -791,87 +851,150 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "runif",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_runif_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_runif_wasm,
     },
     EvaluatedBuiltin {
         name: "rnorm",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rnorm_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rnorm_wasm,
     },
     EvaluatedBuiltin {
         name: "fft",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::fourier::do_fft,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_fft_wasm,
     },
     EvaluatedBuiltin {
         name: "mvfft",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::fourier::do_mvfft,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_mvfft_wasm,
     },
     EvaluatedBuiltin {
         name: "rpois",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rpois_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rpois_wasm,
     },
     EvaluatedBuiltin {
         name: "rexp",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rexp_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rexp_wasm,
     },
     EvaluatedBuiltin {
         name: "rchisq",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rchisq_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rchisq_wasm,
     },
     EvaluatedBuiltin {
         name: "rgeom",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rgeom_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rgeom_wasm,
     },
     EvaluatedBuiltin {
         name: "rt",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rt_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rt_wasm,
     },
     EvaluatedBuiltin {
         name: "rsignrank",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rsignrank_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rsignrank_wasm,
     },
     EvaluatedBuiltin {
         name: "rbeta",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rbeta_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rbeta_wasm,
     },
     EvaluatedBuiltin {
         name: "rbinom",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rbinom_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rbinom_wasm,
     },
     EvaluatedBuiltin {
         name: "rcauchy",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rcauchy_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rcauchy_wasm,
     },
     EvaluatedBuiltin {
         name: "rf",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rf_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rf_wasm,
     },
     EvaluatedBuiltin {
         name: "rgamma",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rgamma_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rgamma_wasm,
     },
     EvaluatedBuiltin {
         name: "rlnorm",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rlnorm_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rlnorm_wasm,
     },
     EvaluatedBuiltin {
         name: "rlogis",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rlogis_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rlogis_wasm,
     },
     EvaluatedBuiltin {
         name: "rnbinom",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rnbinom_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rnbinom_wasm,
     },
     EvaluatedBuiltin {
         name: "rweibull",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rweibull_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rweibull_wasm,
     },
     EvaluatedBuiltin {
         name: "rwilcox",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rwilcox_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rwilcox_wasm,
     },
     EvaluatedBuiltin {
         name: "rhyper",
+        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rhyper_r,
+        #[cfg(target_arch = "wasm32")]
+        handler: do_rhyper_wasm,
     },
     EvaluatedBuiltin {
         name: "sample",
@@ -3249,5 +3372,39 @@ mod tests {
             );
         }
         assert!(unevaluated_builtin_handler("+").is_none());
+    }
+}
+#[cfg(test)]
+mod wasm_m1_tests {
+    use super::EVALUATED_BUILTINS;
+
+    /// Native gate check: all 21 stats/fourier entries stay wired to
+    /// their real handlers on native (wasm stubs are wasm-only).
+    #[test]
+    fn stats_fourier_entries_use_native_handlers() {
+        for name in [
+            "runif", "rnorm", "fft", "mvfft", "rpois", "rexp", "rchisq", "rgeom", "rt",
+            "rsignrank", "rbeta", "rbinom", "rcauchy", "rf", "rgamma", "rlnorm", "rlogis",
+            "rnbinom", "rweibull", "rwilcox", "rhyper",
+        ] {
+            assert!(
+                EVALUATED_BUILTINS
+                    .iter()
+                    .any(|builtin| builtin.name == name),
+                "missing evaluated builtin handler for {name}"
+            );
+        }
+        assert_eq!(
+            EVALUATED_BUILTINS
+                .iter()
+                .filter(|b| [
+                    "runif", "rnorm", "fft", "mvfft", "rpois", "rexp", "rchisq", "rgeom",
+                    "rt", "rsignrank", "rbeta", "rbinom", "rcauchy", "rf", "rgamma",
+                    "rlnorm", "rlogis", "rnbinom", "rweibull", "rwilcox", "rhyper",
+                ]
+                .contains(&b.name))
+                .count(),
+            21
+        );
     }
 }

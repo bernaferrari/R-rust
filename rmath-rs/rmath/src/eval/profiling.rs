@@ -42,10 +42,13 @@ use crate::sexp::instance::{
 use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject};
 
 /// Profiling timer type (ITIMER_PROF is not available on Android).
-#[cfg(not(target_os = "android"))]
+#[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
 const PROF_TIMER: libc::c_int = libc::ITIMER_PROF;
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(target_arch = "wasm32")))]
 const PROF_TIMER: libc::c_int = 2; // ITIMER_PROF value on most Unix systems
+/// WASM M1: no setitimer; timer fns below are wasm no-op stubs.
+#[cfg(target_arch = "wasm32")]
+const PROF_TIMER: c_int = 2;
 use crate::sexp::symbol::Rf_install;
 use crate::sexp::symbol::{
     R_Bracket2Symbol, R_DollarSymbol, R_DoubleColonSymbol, R_TripleColonSymbol,
@@ -606,6 +609,7 @@ unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
 ///
 /// On Unix, this avoids calling fprintf (signal-safe).
 /// Ported from R's `pf_str()` in eval.c.
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn pf_str(s: *const c_char) -> isize {
     unsafe {
         let outfile = with_profiling_state(|state| state.profile_outfile);
@@ -636,6 +640,15 @@ unsafe fn pf_str(s: *const c_char) -> isize {
             }
         }
     }
+}
+
+/// WASM M1 no-op stub: no file-descriptor profiling output on wasm.
+/// Same signature as the native writer; returns the R-level
+/// 'not available on this platform' sentinel (-1) used when no
+/// profile output file is open.
+#[cfg(target_arch = "wasm32")]
+unsafe fn pf_str(_s: *const c_char) -> isize {
+    -1
 }
 
 // ---------------------------------------------------------------------------
@@ -875,6 +888,7 @@ unsafe fn doprof_null(_sig: c_int) {
 ///
 /// Note: In this Rust port, threading is handled via std::thread.
 /// This is a simplified version that uses sleep instead of pthread_cond_timedwait.
+#[cfg(not(target_arch = "wasm32"))]
 fn profile_thread_entry(interval_us: u64, terminate_rx: std::sync::mpsc::Receiver<()>) {
     use std::sync::mpsc::RecvTimeoutError;
     use std::time::Duration;
@@ -894,6 +908,15 @@ fn profile_thread_entry(interval_us: u64, terminate_rx: std::sync::mpsc::Receive
     }
 }
 
+/// WASM M1 no-op stub: no SIGPROF timer thread on wasm.
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
+fn profile_thread_entry(
+    _interval_us: u64,
+    _terminate_rx: std::sync::mpsc::Receiver<()>,
+) {
+}
+
 // ---------------------------------------------------------------------------
 // R_EndProfiling -- stop profiling (full implementation)
 // ---------------------------------------------------------------------------
@@ -904,6 +927,7 @@ fn profile_thread_entry(interval_us: u64, terminate_rx: std::sync::mpsc::Receive
 /// not manipulate process-global profiling timers. Samples are emitted through
 /// `R_WriteProfile`, keeping profiler state session-owned for Android and
 /// parallel runtimes.
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn R_EndProfiling() {
     unsafe {
         // Close the output file
@@ -943,6 +967,31 @@ unsafe fn R_EndProfiling() {
     }
 }
 
+/// WASM M1 no-op stub: no file-descriptor profiling output on wasm.
+/// Same signature as the native stop routine; resets the session-local
+/// profiling flags (no fd to close since the wasm `R_InitProfiling`
+/// stub never opens one).
+#[cfg(target_arch = "wasm32")]
+unsafe fn R_EndProfiling() {
+    unsafe {
+        // Reset state
+        with_profiling_state(|state| {
+            state.profiling = 0;
+            state.mem_profiling = 0;
+            state.gc_profiling = 0;
+            state.line_profiling = 0;
+        });
+
+        // Release the source files buffer
+        let buf = with_profiling_state(|state| state.srcfiles_buffer);
+        if !buf.is_null() && buf != R_NilValue() {
+            R_ReleaseObject(buf);
+            with_profiling_state(|state| state.srcfiles_buffer = ptr::null_mut());
+        }
+        with_profiling_state(|state| state.srcfiles = ptr::null_mut());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // R_InitProfiling -- initialize profiling (full implementation)
 // ---------------------------------------------------------------------------
@@ -955,6 +1004,7 @@ unsafe fn R_EndProfiling() {
 /// This Rust/Android port avoids those globals so multiple `RSession`s can run
 /// in parallel without stealing each other's profiling timer. The active
 /// session can emit samples with `R_WriteProfile`.
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn R_InitProfiling(
     filename: SEXP,
     append: c_int,
@@ -1053,6 +1103,27 @@ unsafe fn R_InitProfiling(
 
         with_profiling_state(|state| state.profiling = 1);
     }
+}
+
+/// WASM M1 no-op stub: no setitimer/SIGPROF/file-IO profiling on wasm.
+/// Same signature as the native initializer; leaves the R-level
+/// 'not available on this platform' state (profiling stays off,
+/// output fd stays closed) so callers observe the neighboring-stub
+/// behavior of returning `R_NilValue()` without starting profiling.
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
+unsafe fn R_InitProfiling(
+    _filename: SEXP,
+    _append: c_int,
+    _dinterval: c_double,
+    _mem_profiling: c_int,
+    _gc_profiling: c_int,
+    _line_profiling: c_int,
+    _filter_callframes: c_int,
+    _numfiles: c_int,
+    _bufsize: c_int,
+    _event: rpe_type,
+) {
 }
 
 // ---------------------------------------------------------------------------
@@ -1260,6 +1331,7 @@ unsafe fn dobcprof_null(_sig: c_int) {
 /// Sets up the profiling timer and initializes opcode counts.
 ///
 /// Ported from R's `do_bcprofstart()` in eval.c.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let dinterval: c_double = 0.02;
@@ -1299,6 +1371,15 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
     }
 }
 
+/// WASM M1 no-op stub: no setitimer/SIGPROF bytecode profiling on wasm.
+/// Same signature as the native starter; returns the R-level
+/// 'not available on this platform' value (`R_NilValue()`) used by
+/// neighboring profiling stubs.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_bcprofstart(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
+
 // ---------------------------------------------------------------------------
 // do_bcprofstop -- stop bytecode profiling
 // ---------------------------------------------------------------------------
@@ -1308,6 +1389,7 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 /// Disables the profiling timer.
 ///
 /// Ported from R's `do_bcprofstop()` in eval.c.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if with_profiling_state(|state| state.bc_profiling) == 0 {
@@ -1331,6 +1413,15 @@ pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
         R_NilValue()
     }
+}
+
+/// WASM M1 no-op stub: no setitimer/SIGPROF bytecode profiling on wasm.
+/// Same signature as the native stopper; returns the R-level
+/// 'not available on this platform' value (`R_NilValue()`) used by
+/// neighboring profiling stubs.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_bcprofstop(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
 }
 
 // ---------------------------------------------------------------------------

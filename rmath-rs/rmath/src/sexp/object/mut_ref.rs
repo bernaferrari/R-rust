@@ -12,6 +12,10 @@
 //!   from the moved value, so every mutation can safely take `&mut self`.
 //! * Reads stay available through [`Deref`] to [`Sexp`]: type predicates,
 //!   element reads, and child-handle accessors are shared-borrow safe.
+//!   A small set of hot reads ([`SexpMut::len`], [`SexpMut::typeof_`],
+//!   [`SexpMut::is_empty`]) is also forwarded as inherent methods so
+//!   callers do not need a `Deref` step (or a premature [`SexpMut::freeze`])
+//!   for the common length/type checks.
 //! * Hand the value back to read-only code with [`SexpMut::freeze`], which
 //!   converts the exclusive guard into a plain `Sexp` handle.
 //!
@@ -39,12 +43,85 @@
 //! Mutating through a non-`mut` binding is rejected at compile time, and
 //! the forbidden aliasing patterns remain pinned by the
 //! `tests/compile_fail` suite.
+//!
+//! # Full split contract
+//!
+//! This module currently ships the interim step of a `SexpRef` / `SexpMut`
+//! split. `SexpRef` does not exist yet as a type; every shared handle is
+//! still a plain [`Sexp`].
+//!
+//! ## (a) Interim: non-`Copy` `Sexp` + by-value `SexpMut` guard
+//!
+//! * [`Sexp`] is intentionally not `Copy` (`sexp/object/mod.rs` documents
+//!   the rationale and pins it with a trait-ambiguity compile-time guard
+//!   plus `tests/compile_fail` move-semantics cases). Cloning is explicit
+//!   and cheap (same pointer, same owner token), and every clone is
+//!   understood to be an alias.
+//! * [`SexpMut::from_owned`] consumes the caller's handle by value. Once
+//!   moved in, no second handle is reachable *from that value*, so the
+//!   `&mut self` element setters cannot alias a live shared reader derived
+//!   from it for the duration of the guard.
+//! * The guard itself is not `Clone`, so exclusivity cannot be duplicated
+//!   while it is live; [`SexpMut::freeze`] consumes the guard and returns
+//!   the plain `Sexp` handle to read-only code.
+//! * Why this is sound with [`Deref`] still present: `Deref` only yields
+//!   `&Sexp` shared reads (type predicates, `*_elt` element reads,
+//!   child-handle accessors), which never write through the raw pointer.
+//!   All writes require `&mut self` on the guard and therefore exclude any
+//!   concurrent borrow of the guard.
+//! * The deprecated by-value `set_*` / `try_set_*` shims on `Sexp` (twelve
+//!   in `sexp/object/vector.rs`: logical, integer, real, raw, string, and
+//!   vector element setters plus their `try_*` variants; two more in
+//!   `sexp/object/slots.rs`: the complex pair) remain only as
+//!   translation-compat shims for already-ported C-shaped code. Their
+//!   exclusivity story is move semantics: each takes `self` by value.
+//!   New code must use `SexpMut::from_owned(..)` -> `set_*` -> `freeze()`.
+//!
+//! ## (b) Target: `SexpRef` / `SexpMut` with no `Deref` short-circuit
+//!
+//! * `SexpRef` will be the shared borrow handle (`&`-like): freely
+//!   reborrowable, exposing the full read surface (`typeof_`, `len`,
+//!   predicates, `*_elt` / `try_*_elt` element reads, slice views,
+//!   child-handle accessors) and no mutation surface.
+//! * `SexpMut` will be the exclusive handle (`&mut`-like): constructed by
+//!   moving a handle in (`from_owned`), mutating through `&mut self`
+//!   setters, and handing back via `freeze()`. Its own small inherent
+//!   read surface (length/type checks such as `len` / `typeof_`) exists so
+//!   write loops can inspect the object without freezing early.
+//! * No `Deref` between the two: reads will be spelled explicitly on each
+//!   handle instead of falling through from `SexpMut` to `Sexp`. Method
+//!   resolution will therefore tell the reader whether a call ran against
+//!   the exclusive guard (inherent method) or a shared handle, and removing
+//!   the shared reborrow will be a visible code change rather than a silent
+//!   deref-chain edit.
+//!
+//! ## (c) Migration steps and done-condition
+//!
+//! Ordered steps:
+//!
+//! 1. Migrate the remaining deprecated call sites to the guard: the
+//!    translated write loops under `#![allow(deprecated)]` in
+//!    `eval/arithmetic.rs` and `eval/bytecode.rs` (plus any stragglers in
+//!    tests still exercising the shims) become
+//!    `SexpMut::from_owned(..)` -> `set_*` / `try_set_*` -> `freeze()`.
+//! 2. Remove `impl Deref for SexpMut`, extending the inherent
+//!    `Deref`-free forwarding reads (seeded here with `len`, `is_empty`,
+//!    and `typeof_`) to cover whatever shared reads guard-held write loops
+//!    still need, so no caller must `freeze()` prematurely just to read.
+//! 3. Introduce the `SexpRef` alias for the shared handle and re-point
+//!    read-only code at it, leaving `SexpMut` as the sole mutation path.
+//!
+//! Done-condition: no `#![allow(deprecated)]` / `#[allow(deprecated)]`
+//! kept alive for the `Sexp` `set_*` shims outside this module's internal
+//! delegation, no `Deref` impl on `SexpMut`, the `SexpRef` shared-handle
+//! alias present with read-only code using it, and `cargo build -p rmath`
+//! plus the `tests/compile_fail` suite green.
 
 use std::ops::Deref;
 use std::os::raw::{c_double, c_int};
 
 use super::{Sexp, SexpResult};
-use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP};
+use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 
 /// Exclusive mutable access to an R SEXP.
 ///
@@ -87,6 +164,37 @@ impl<'a> SexpMut<'a> {
     #[inline]
     pub fn as_raw(&self) -> SEXP {
         self.inner.clone().as_raw()
+    }
+
+    /// Get the type of the guarded SEXP without going through [`Deref`].
+    ///
+    /// Thin shared-borrow forward to [`Sexp::typeof_`]: write loops that
+    /// need a type check while the guard is live can call this instead of
+    /// freezing early (or relying on the `Deref` short-circuit that the
+    /// full `SexpRef` / `SexpMut` split will remove).
+    #[inline]
+    pub fn typeof_(&self) -> SEXPTYPE {
+        self.inner.typeof_()
+    }
+
+    /// Get the length of the guarded vector SEXP without going through
+    /// [`Deref`].
+    ///
+    /// Thin shared-borrow forward to [`Sexp::len`] (0 for non-vector
+    /// types); exists so result-fill loops can bound themselves while the
+    /// guard is live.
+    #[inline]
+    pub fn len(&self) -> R_xlen_t {
+        self.inner.len()
+    }
+
+    /// Check whether the guarded SEXP is empty without going through
+    /// [`Deref`].
+    ///
+    /// Thin shared-borrow forward to [`Sexp::is_empty`].
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 
     /// Set the i-th logical value.
@@ -275,6 +383,23 @@ mod tests {
         assert_eq!(shared.len(), 2);
         assert_eq!(shared.integer_elt(1), Some(0));
         assert_eq!(*shared, *shared);
+    }
+
+    #[test]
+    fn inherent_reads_match_shared_surface() {
+        let mut arena = RArena::new();
+        let sexp = arena
+            .alloc_vector_sexp(SEXPTYPE::INTSXP, 2)
+            .expect("arena allocation failed");
+        let mutable = SexpMut::from_owned(sexp);
+
+        // Inherent Deref-free forwards agree with the shared `Sexp` reads,
+        // so write loops can check length/type without freezing early.
+        assert_eq!(mutable.len(), mutable.inner.len());
+        assert_eq!(mutable.typeof_(), SEXPTYPE::INTSXP);
+        assert_eq!(mutable.typeof_(), mutable.inner.typeof_());
+        assert_eq!(mutable.is_empty(), mutable.inner.is_empty());
+        assert!(!mutable.is_empty());
     }
 
     #[test]
