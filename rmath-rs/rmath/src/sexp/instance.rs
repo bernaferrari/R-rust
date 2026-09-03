@@ -282,6 +282,10 @@ pub struct RInstance {
     pub(crate) protect_stack_generations: RefCell<Vec<u64>>,
     /// Monotonic source of protection-slot generations.
     pub(crate) protect_slot_next_generation: Cell<u64>,
+    /// Vacant `protect_stack` indices available for reuse. Released slots are
+    /// tombstoned (null ptr + bumped generation) and pushed here instead of
+    /// shifting the stack, so live slot indices stay stable across drops.
+    pub(crate) protect_slot_free: RefCell<Vec<usize>>,
     /// The permanent preserve stack for this instance.
     pub(crate) preserve_stack: RefCell<Vec<SEXP>>,
     /// Per-instance execution context stack.
@@ -467,6 +471,7 @@ impl RInstance {
             initialized: false,
             protect_stack: RefCell::new(Vec::new()),
             protect_stack_generations: RefCell::new(Vec::new()),
+            protect_slot_free: RefCell::new(Vec::new()),
             protect_slot_next_generation: Cell::new(0),
             preserve_stack: RefCell::new(Vec::new()),
             context_stack: Vec::new(),

@@ -290,9 +290,9 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     {
         let stack = instance.protect_stack.borrow();
         for &obj in stack.iter() {
-            // Protected roots must be marked even when the collector has already
-            // removed a reused address from the active-node set. (Now unconditional
-            // since no traceable set.)
+            // Released (tombstoned) slots hold null; `mark_reachable_traced`
+            // null-guards before dereferencing, so vacant entries are skipped
+            // without a separate filter here.
             mark_reachable_traced(obj);
         }
     }
@@ -1578,7 +1578,8 @@ mod tests {
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         instance::with_required_current_instance(|instance| {
             instance.protect_stack.borrow_mut().clear();
-            instance.preserve_stack.borrow_mut().clear();
+            instance.protect_stack_generations.borrow_mut().clear();
+            instance.protect_slot_free.borrow_mut().clear();
             instance.context_stack.clear();
             instance.gc_state.remembered_set.clear();
             instance.error_state.warnings = nil;

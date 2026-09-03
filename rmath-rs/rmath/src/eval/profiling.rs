@@ -1125,7 +1125,6 @@ unsafe fn R_InitProfiling(
     _event: rpe_type,
 ) {
 }
-
 // ---------------------------------------------------------------------------
 // do_Rprof -- Rprof() builtin (full implementation)
 // ---------------------------------------------------------------------------
@@ -1134,8 +1133,7 @@ unsafe fn R_InitProfiling(
 ///
 /// When called with a non-empty filename, starts profiling to that file.
 /// When called with an empty filename, stops profiling.
-///
-/// Ported from R's `do_Rprof()` in eval.c.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // BC profiling check
@@ -1225,12 +1223,33 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
         R_NilValue()
     }
 }
+/// WASM M1 stub for `Rprof()`: no timer/file-descriptor profiler on wasm.
+/// Starting profiling raises the catchable R platform-unavailable error
+/// (matching upstream's `error(_("R profiling is not available on this system"))`
+/// fallback). Stopping with an empty filename stays a silent no-op.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_Rprof_wasm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT, TYPEOF};
+    unsafe {
+        let filename_arg = CAR(args);
+        let empty = filename_arg.is_null()
+            || filename_arg == R_NilValue()
+            || TYPEOF(filename_arg) != SEXPTYPE::STRSXP
+            || LENGTH(filename_arg) != 1
+            || LENGTH(STRING_ELT(filename_arg, 0)) == 0;
+        if empty {
+            return R_NilValue();
+        }
+        crate::sexp::context::r_error("R profiling is not available on this platform")
+    }
+}
 
 // ---------------------------------------------------------------------------
 // do_Rprof_mem -- Rprofmem() builtin
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofmem()` function for memory profiling.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let filename_arg = if args.is_null() || args == R_NilValue() {
@@ -1275,23 +1294,42 @@ pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) ->
         R_NilValue()
     }
 }
+/// WASM M1 stub for `Rprofmem()`: no memory profiler on wasm.
+/// Always raises the catchable R platform-unavailable error (matching
+/// upstream's `error(_("memory profiling is not available on this system"))`
+/// fallback) instead of silently returning success.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_Rprofmem_wasm(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::context::r_error("memory profiling is not available on this platform")
+}
 
 // ---------------------------------------------------------------------------
 // do_Rprofaddr -- Rprofaddr() builtin
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofaddr()` function for address profiling.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
-
-// ---------------------------------------------------------------------------
-// do_gcprof -- gcprof() builtin
-// ---------------------------------------------------------------------------
-
+/// WASM M1 stub for `Rprofaddr()`: no address profiler on wasm.
+/// Raises the catchable R platform-unavailable error instead of silently
+/// returning success.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_Rprofaddr(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::context::r_error("address profiling is not available on this platform")
+}
 /// Implement the `gcprof()` function for GC profiling.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
+}
+/// WASM M1 stub for `gcprof()`: no GC profiler on wasm.
+/// Raises the catchable R platform-unavailable error instead of silently
+/// returning success.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_gcprof(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::context::r_error("GC profiling is not available on this platform")
 }
 
 // ---------------------------------------------------------------------------
@@ -1371,13 +1409,14 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
     }
 }
 
-/// WASM M1 no-op stub: no setitimer/SIGPROF bytecode profiling on wasm.
-/// Same signature as the native starter; returns the R-level
-/// 'not available on this platform' value (`R_NilValue()`) used by
-/// neighboring profiling stubs.
+/// WASM M1 stub: no setitimer/SIGPROF bytecode profiling on wasm.
+/// Same signature as the native starter; raises the catchable R
+/// platform-unavailable error (matching upstream's
+/// `error(_("byte code profiling is not supported in this build"))`
+/// fallback) instead of silently returning success.
 #[cfg(target_arch = "wasm32")]
 pub unsafe fn do_bcprofstart(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    crate::sexp::context::r_error("byte code profiling is not supported on this platform")
 }
 
 // ---------------------------------------------------------------------------
@@ -1415,13 +1454,14 @@ pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 }
 
-/// WASM M1 no-op stub: no setitimer/SIGPROF bytecode profiling on wasm.
-/// Same signature as the native stopper; returns the R-level
-/// 'not available on this platform' value (`R_NilValue()`) used by
-/// neighboring profiling stubs.
+/// WASM M1 stub: no setitimer/SIGPROF bytecode profiling on wasm.
+/// Same signature as the native stopper; raises the catchable R
+/// platform-unavailable error (matching upstream's
+/// `error(_("byte code profiling is not supported in this build"))`
+/// fallback) instead of silently returning success.
 #[cfg(target_arch = "wasm32")]
 pub unsafe fn do_bcprofstop(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    crate::sexp::context::r_error("byte code profiling is not supported on this platform")
 }
 
 // ---------------------------------------------------------------------------
@@ -1433,6 +1473,7 @@ pub unsafe fn do_bcprofstop(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 /// Returns an integer vector of opcode counts.
 ///
 /// Ported from R's `do_bcprofcounts()` in eval.c.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let val = Rf_allocVector(SEXPTYPE::INTSXP, OPCOUNT as c_int);
@@ -1449,6 +1490,14 @@ pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
         val
     }
+}
+/// WASM M1 stub for `bcprofcounts()`: no bytecode profiler state on wasm.
+/// Raises the catchable R platform-unavailable error (matching upstream's
+/// `error(_("byte code profiling is not supported in this build"))`
+/// fallback) instead of returning a silent zero vector.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_bcprofcounts(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::context::r_error("byte code profiling is not supported on this platform")
 }
 
 // ---------------------------------------------------------------------------

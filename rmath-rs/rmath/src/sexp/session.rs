@@ -26,7 +26,6 @@
 //! [`RSession::close`]. Once closed, evaluation and variable definition
 //! operations become no-ops or return errors.
 
-use std::cell::RefCell;
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -219,39 +218,45 @@ impl Drop for RenderPlotBackendGuard {
 }
 
 struct ProtectScope {
-    /// Address of the owning protect stack, stored with exposed provenance —
-    /// see `with_stack`. Holding a Rust reference across the scoped closure
-    /// would be a protected lend that ambient `&mut RInstance`
+    /// Address of the owning instance, stored with exposed provenance —
+    /// see `protect::with_guard_owner`. Holding a Rust reference across the
+    /// scoped closure would be a protected lend that ambient `&mut RInstance`
     /// re-acquisition under the closure invalidates (aliasing UB under
     /// Stacked Borrows), so the scope keeps only the address and re-derives
-    /// the shared stack view per operation, exactly like
+    /// the shared instance view per operation, exactly like
     /// `protect::with_guard_owner`.
-    stack: usize,
+    instance: usize,
     depth: usize,
 }
 
 impl ProtectScope {
-    fn new(stack: &RefCell<Vec<SEXP>>) -> Self {
-        let depth = stack.borrow().len();
+    fn new(instance: &RInstance) -> Self {
+        let depth = instance.protect_stack.borrow().len();
         Self {
-            stack: std::ptr::from_ref(stack).addr(),
+            instance: std::ptr::from_ref(instance).addr(),
             depth,
         }
     }
 
-    /// Re-derive the owning stack through the exposed-provenance wildcard:
+    /// Re-derive the owning instance through the exposed-provenance wildcard:
     /// the shared retag re-bases on the still-live session root tag (shared
     /// accesses push, never pop) and stays valid across ambient `&mut`
-    /// re-acquisition. The session owns the stack and outlives the scope.
-    fn with_stack<R>(&self, f: impl FnOnce(&RefCell<Vec<SEXP>>) -> R) -> R {
-        // SAFETY: see the struct docs; the stack outlives the scope.
-        f(unsafe { &*std::ptr::with_exposed_provenance::<RefCell<Vec<SEXP>>>(self.stack) })
+    /// re-acquisition. The session owns the instance and outlives the scope.
+    fn with_instance<R>(&self, f: impl FnOnce(&RInstance) -> R) -> R {
+        // SAFETY: see the struct docs; the instance outlives the scope.
+        f(unsafe { &*std::ptr::with_exposed_provenance::<RInstance>(self.instance) })
     }
 }
 
 impl Drop for ProtectScope {
     fn drop(&mut self) {
-        self.with_stack(|stack| stack.borrow_mut().truncate(self.depth));
+        self.with_instance(|inst| {
+            inst.protect_stack.borrow_mut().truncate(self.depth);
+            inst.protect_stack_generations.borrow_mut().truncate(self.depth);
+            inst.protect_slot_free
+                .borrow_mut()
+                .retain(|&index| index < self.depth);
+        });
     }
 }
 
@@ -1069,7 +1074,7 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            let _scope = ProtectScope::new(&self.inst().protect_stack);
+            let _scope = ProtectScope::new(self.inst());
             f()
         })
     }

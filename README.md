@@ -21,7 +21,7 @@ can be diffed, ported, and verified hunk-by-hunk.
 - Embedding surfaces: `r-embed` (owned-value facade), `r-uniffi`
   (Kotlin/Swift bindings), an Android headless PNG device, and a desktop
   CLI/REPL host (`r-host-cli`).
-- A verification rig: a 608-case curated behavioral fixture corpus run
+- A verification rig: a 615-case curated behavioral fixture corpus run
   three-way (stock C output vs checked-in golden vs Rust output),
   a script-level differential harness, and stream-parity RNG goldens.
 
@@ -30,8 +30,12 @@ can be diffed, ported, and verified hunk-by-hunk.
 - **Not drop-in R.** It will not run arbitrary CRAN packages or
   real-world R scripts unchanged. The `.Internal`/builtin surface is a
   curated subset, not the full R API.
-- **Not a native package runtime.** No C-extension loading, no CRAN
-  binary compatibility, no `compiler`/bytecode evaluation path.
+- **Not a general native package runtime.** Native code loading stays
+  deny-by-default on Android/WASM; an experimental trusted-desktop ABI
+  (`RSession::enable_host_process_capabilities` gating `dyn.load`/`dyn.unload`/
+  `.Call`/`.C`) exists for desktop hosts only, with no CRAN binary-compatibility
+  claim. No `compiler`-package semantics; bytecode evaluation is a partial
+  internal path (see [Known gaps](#known-gaps)).
 - **Not a full WASM R.** The WASM32 target covers the math and graphics
   core only (nmath + plotting primitives), not the whole evaluator.
 - **Not a memory-safety-audited runtime, and not a sandbox.** The safe
@@ -63,7 +67,7 @@ crates/
   r-uniffi/         Kotlin/Swift bindings surface
   r-graphics-engine/  portable plotting primitives
   r-device-android-headless/  PNG device backend
-tests/conformance/  608 curated fixtures + three-way differential runner
+tests/conformance/  615 curated fixtures + three-way differential runner
 tests/script-diff/  script-level differential vs stock R
 tests/differential/ standalone numeric d/p/q harness vs fixed R 4.x
                     reference values (own crate, excluded from the
@@ -102,9 +106,9 @@ module map with per-file sync mode lives in
 All parity claims are **against the exact oracle described below**, on a
 **curated subset** of R behavior — not against R's own test suites:
 
-- **608/608 curated behavioral fixtures pass, three-way** (stock C
+- **615/615 curated behavioral fixtures pass, three-way** (stock C
   output vs checked-in golden vs Rust output). The corpus is a curated
-  subset selected to pin ported upstream hunks; it is *not* "608 of R's
+  subset selected to pin ported upstream hunks; it is *not* "615 of R's
   tests", and passing it does not imply general conformance.
 - Script-level differential vs stock R: 10/10 curated scripts.
 - Workspace tests: 2357+ green. Clippy (`--workspace --all-targets`,
@@ -238,7 +242,8 @@ Honest ledger, each scoped with a reproduction:
 - `sprintf` on language objects, `str()`/`format()` of calls, and
   condition-object printing are implemented; exotic corner formats
   (`%OS<n>` on some locales) may lag trunk.
-- No compiler/bytecode evaluation path; namespaces/imports beyond the
+- Bytecode evaluation is a partial internal path (AST fallback remains; no
+  `compiler`-package semantics claimed); namespaces/imports beyond the
   implemented surface; no locale-complete runtime.
 
 ## Roadmap
@@ -248,7 +253,7 @@ Direction, not promises — ordered by current work:
 1. **Object model rework**: Sexp copy/move semantics and the
    external-pointer redesign; re-enable ALTREP on the new
    representation.
-2. **Broaden the corpus** beyond the curated 608 fixtures toward
+2. **Broaden the corpus** beyond the curated 615 fixtures toward
    sampled real-world R scripts, keeping the three-way methodology.
 3. **Stream-parity for alternative RNG kinds** (Marsaglia-MultiCarry,
    Wichmann-Hill) or explicit stream-difference documentation per kind.

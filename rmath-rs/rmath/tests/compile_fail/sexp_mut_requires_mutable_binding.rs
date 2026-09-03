@@ -1,11 +1,11 @@
-//! FORBIDDEN: mutating through a `SexpMut` that is not behind `mut`.
+//! FORBIDDEN: constructing a `SexpMut` outside the crate.
 //!
-//! `SexpMut` is the exclusive mutation guard for the safe API: every write
-//! takes `&mut self`, so the binding itself must be declared `mut`. A
-//! shared binding can still read (through `Deref` to `Sexp`) but can never
-//! write.
+//! `SexpMut` is a crate-internal mutation guard, not a uniqueness proof:
+//! consuming one clone cannot prove no other aliases exist. Its constructor
+//! is therefore `pub(crate)` — external code cannot mint the guard at all.
+//! In-crate mutation still requires a `mut` binding (`&mut self` setters).
 //!
-//! Expected: error[E0596] — cannot borrow `guard` as mutable.
+//! Expected: error[E0624] — `from_owned` is private.
 
 use rmath::sexp::memory::RArena;
 use rmath::sexp::object::SexpMut;
@@ -17,7 +17,6 @@ pub fn forbidden() {
         .alloc_vector_sexp(SEXPTYPE::INTSXP, 1)
         .expect("arena allocation failed");
 
-    // No `mut` on the binding: reads work, writes are rejected.
-    let guard = SexpMut::from_owned(sexp);
-    guard.set_integer_elt(0, 42); //~ ERROR: E0596
+    // External construction rejected: no guard, no mutation surface.
+    let _guard = SexpMut::from_owned(sexp); //~ ERROR: E0624
 }

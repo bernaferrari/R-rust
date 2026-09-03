@@ -4,8 +4,9 @@
 //! The bytecode format is a vector of integers where each
 //! instruction is an opcode followed by operand indices.
 
-// Constant initializers build scalar vectors through the SexpMut borrow guard
-// (sexp::object); the guard is the sole mutation path.
+// Constant initializers build scalar vectors through the SexpMut mutation guard
+// (sexp::object); the guard is the in-crate mutation path — a containment
+// boundary (construction is crate-internal), not a uniqueness proof.
 use std::os::raw::{c_double, c_int};
 
 use crate::sexp::accessors::{VECTOR_ELT, XLENGTH};

@@ -1340,13 +1340,13 @@ fn is_input_complete_distinguishes_continuation_from_error() {
             .expect("stray closer is complete, not continuation")
     );
 }
-/// 25-package pure-R corpus ledger (offline, zero network).
+/// Synthetic package feature matrix (offline, zero network).
 /// Each entry names an installed fixture package, the feature axis it
 /// exercises, a probe expression, and the expected output snippet. The
 /// `xfail` flag mirrors `tests/upstream-r/dispositions.tsv` semantics: an
 /// entry marked `xfail` is known to fail on the current tree and records the
 /// observed error in `xfail_reason` instead of changing interpreter code.
-struct Corpus25Entry {
+struct SyntheticPkgEntry {
     name: &'static str,
     axis: &'static str,
     title: &'static str,
@@ -1361,8 +1361,8 @@ struct Corpus25Entry {
     xfail: bool,
     xfail_reason: &'static str,
 }
-const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
-    Corpus25Entry {
+const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
+    SyntheticPkgEntry {
         name: "pxexports",
         axis: "exports",
         title: "Px Exports Package",
@@ -1377,7 +1377,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxs3",
         axis: "S3 dispatch",
         title: "Px S3 Package",
@@ -1401,7 +1401,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxdata",
         axis: "source-form data",
         title: "Px Data Package",
@@ -1416,7 +1416,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pximport",
         axis: "whole-package import",
         title: "Px Import Package",
@@ -1434,7 +1434,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxfrom",
         axis: "selective importFrom",
         title: "Px ImportFrom Package",
@@ -1452,7 +1452,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxcollate",
         axis: "Collate ordering",
         title: "Px Collate Package",
@@ -1470,7 +1470,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxdepends",
         axis: "Depends loading",
         title: "Px Depends Package",
@@ -1488,7 +1488,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxsysfile",
         axis: "system.file resources",
         title: "Px System File Package",
@@ -1503,7 +1503,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxpattern",
         axis: "exportPattern",
         title: "Px Export Pattern Package",
@@ -1521,7 +1521,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxs4",
         axis: "S4 classes and slots",
         title: "Px S4 Package",
@@ -1544,7 +1544,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxdataenv",
         axis: "data envir loading",
         title: "Px Data Envir Package",
@@ -1559,7 +1559,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxlazy",
         axis: "LazyData source data",
         title: "Px Lazy Data Package",
@@ -1577,7 +1577,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxpaths",
         axis: ".libPaths visibility",
         title: "Px Library Paths Package",
@@ -1592,7 +1592,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxarith",
         axis: "arithmetic evaluation",
         title: "Px Arithmetic Package",
@@ -1610,7 +1610,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxpaste",
         axis: "string paste",
         title: "Px Paste Package",
@@ -1628,7 +1628,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxlogic",
         axis: "logical operators",
         title: "Px Logic Package",
@@ -1646,7 +1646,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxvec",
         axis: "vector subsetting",
         title: "Px Vector Package",
@@ -1661,7 +1661,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxlist",
         axis: "list element access",
         title: "Px List Package",
@@ -1679,7 +1679,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxctrl",
         axis: "control flow",
         title: "Px Control Flow Package",
@@ -1705,7 +1705,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxfn",
         axis: "closures and lexical scope",
         title: "Px Closure Package",
@@ -1726,7 +1726,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxns",
         axis: "namespace-qualified access",
         title: "Px Namespace Operator Package",
@@ -1744,7 +1744,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxattach",
         axis: "attach isolation",
         title: "Px Attach Package",
@@ -1765,7 +1765,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxmulti",
         axis: "multi-file sourcing",
         title: "Px Multi File Package",
@@ -1783,7 +1783,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxnslookup",
         axis: "getNamespace lookup",
         title: "Px Namespace Lookup Package",
@@ -1801,7 +1801,7 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
         xfail: false,
         xfail_reason: "",
     },
-    Corpus25Entry {
+    SyntheticPkgEntry {
         name: "pxhiddenns",
         axis: "triple-colon hidden access",
         title: "Px Hidden Symbol Package",
@@ -1824,15 +1824,15 @@ const PURE_R_25_LEDGER: &[Corpus25Entry] = &[
     },
 ];
 #[test]
-fn pure_r_25_package_corpus_ledger() {
-    assert_eq!(PURE_R_25_LEDGER.len(), 25, "ledger must hold 25 packages");
-    let mut names: Vec<&str> = PURE_R_25_LEDGER.iter().map(|entry| entry.name).collect();
+fn synthetic_package_feature_matrix() {
+    assert_eq!(SYNTHETIC_PACKAGE_FEATURE_MATRIX.len(), 25, "ledger must hold 25 packages");
+    let mut names: Vec<&str> = SYNTHETIC_PACKAGE_FEATURE_MATRIX.iter().map(|entry| entry.name).collect();
     names.sort_unstable();
     names.dedup();
     assert_eq!(names.len(), 25, "ledger package names must be unique");
-    let root = unique_test_root("rport-embed-corpus25");
+    let root = unique_test_root("rport-embed-synthetic-matrix");
     let bundled = root.join("bundled-library");
-    for entry in PURE_R_25_LEDGER {
+    for entry in SYNTHETIC_PACKAGE_FEATURE_MATRIX {
         let description = format!(
             "Package: {name}\nVersion: 0.1.0\nTitle: {title}\nDescription: {blurb}\nLicense: MIT\n{extra}NeedsCompilation: no\n",
             name = entry.name,
@@ -1869,7 +1869,7 @@ fn pure_r_25_package_corpus_ledger() {
         .expect("path config");
     let mut passed = 0usize;
     let mut xfailed = 0usize;
-    for entry in PURE_R_25_LEDGER {
+    for entry in SYNTHETIC_PACKAGE_FEATURE_MATRIX {
         if entry.xfail {
             let load = session.load_package(entry.name);
             let observed = match load {
@@ -1906,7 +1906,7 @@ fn pure_r_25_package_corpus_ledger() {
         passed += 1;
     }
     assert_eq!(passed + xfailed, 25);
-    eprintln!("pure_r_25 ledger: {passed} passed, {xfailed} xfailed");
+    eprintln!("synthetic matrix: {passed} passed, {xfailed} xfailed");
     let _ = std::fs::remove_dir_all(root);
 }
 

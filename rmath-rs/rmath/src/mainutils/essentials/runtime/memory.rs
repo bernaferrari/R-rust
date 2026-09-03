@@ -41,6 +41,13 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's `Rprof(filename, ...)` — session-owned profiling.
+///
+/// On wasm32 there is no `setitimer`/SIGPROF/file-descriptor profiler, so
+/// starting `Rprof()` raises the catchable R platform-unavailable error
+/// (matching upstream's `error(_("R profiling is not available on this system"))`
+/// fallback) instead of silently returning success. Stopping `Rprof()` with
+/// an empty filename stays a silent no-op.
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = crate::eval::profiling::do_Rprof(call, op, args, rho);
@@ -48,11 +55,31 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         result
     }
 }
-
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_Rprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let result = crate::eval::profiling::do_Rprof_wasm(call, op, args, rho);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        result
+    }
+}
 /// R's `Rprofmem(filename, ...)` — session-owned memory profiling.
+///
+/// On wasm32 memory profiling is unavailable, so this raises the same
+/// catchable R platform-unavailable error as `do_Rprof` (matching upstream's
+/// `error(_("memory profiling is not available on this system"))` fallback).
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let result = crate::eval::profiling::do_Rprofmem(call, op, args, rho);
+        crate::sexp::globals::set_R_Visible(FALSE);
+        result
+    }
+}
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let result = crate::eval::profiling::do_Rprofmem_wasm(call, op, args, rho);
         crate::sexp::globals::set_R_Visible(FALSE);
         result
     }
@@ -101,7 +128,7 @@ fn set_real_matrix_cell(data: *mut f64, row: usize, col: usize, rows: usize, val
 /// and vector-heap ceilings (NA where unset — upstream `R_MaxNSize` /
 /// `R_MaxVSize`); on macOS the vector pool carries a startup default
 /// (max(physical memory, 16 Gb)), so the column usually renders there.
-/// stock `base::gc` drops the column when it is all-NA.
+/// The `limit (Mb)` column is always present (NA where no ceiling applies).
 /// Unlike the old port, the result is *visible* (stock prints it).
 pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -164,30 +191,21 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
             ),
         ];
 
-        // base::gc drops the `limit (Mb)` column when it is all-NA.
-        let drop_limit = full[4].0.is_nan() && full[4].1.is_nan();
-        let cols: Vec<&(f64, f64)> = if drop_limit {
-            full.iter()
-                .enumerate()
-                .filter(|(i, _)| *i != 4)
-                .map(|(_, col)| col)
-                .collect()
-        } else {
-            full.iter().collect()
-        };
-        let col_names: Vec<&str> = if drop_limit {
-            vec!["used", "(Mb)", "gc trigger", "(Mb)", "max used", "(Mb)"]
-        } else {
-            vec![
-                "used",
-                "(Mb)",
-                "gc trigger",
-                "(Mb)",
-                "limit (Mb)",
-                "max used",
-                "(Mb)",
-            ]
-        };
+        // Stock `base::gc` visible table is 2x7: rows Ncells/Vcells,
+        // columns used | (Mb) | gc trigger | (Mb) | limit (Mb) | max used
+        // | (Mb). The `limit (Mb)` column is NA for Ncells (no node
+        // ceiling) and the platform vector-pool ceiling for Vcells
+        // (NA when unlimited); the column is always present.
+        let cols: Vec<&(f64, f64)> = full.iter().collect();
+        let col_names: Vec<&str> = vec![
+            "used",
+            "(Mb)",
+            "gc trigger",
+            "(Mb)",
+            "limit (Mb)",
+            "max used",
+            "(Mb)",
+        ];
 
         let ncols = cols.len();
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, (2 * ncols) as R_xlen_t);

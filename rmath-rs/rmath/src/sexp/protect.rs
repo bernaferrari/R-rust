@@ -19,7 +19,7 @@
 //!   push it on the protect stack.
 //! * [`RootedSexp`] is the ergonomic RAII rooting layer: it clones the
 //!   handle, protects it on creation, and unprotects on [`Drop`], exposing
-//!   reads through [`Deref`]. Lower-level callers can use
+//!   reads through [`RootedSexp::get`]. Lower-level callers can use
 //!   [`protect_sexp`]/[`ProtectGuard`] or the replaceable-slot
 //!   [`protect_sexp_with_index`]/[`IndexedProtectGuard`] directly.
 //! * Handles to objects that may be *replaced* during evaluation (grown
@@ -28,17 +28,17 @@
 //!   [`IndexedProtectGuard::reprotect_sexp`] on a slot-protected value —
 //!   never by mutating a raw pointer in place.
 //!
-//! # Drop-order contract
+//! # Slot-stability contract
 //!
-//! The protect stack is a plain `Vec` and slot release (`Vec::remove`)
-//! shifts later indices, so guards — including [`RootedSexp`] — must be
-//! released in **reverse creation order** (the natural order for RAII
-//! scopes). Roadmap: a generation-based handle table would pin slots
-//! permanently and remove this LIFO constraint; until then the stack
-//! semantics stay as upstream R's.
+//! The protect stack is a `Vec` with stable slot indices. Releasing a slot
+//! (`IndexedProtectGuard` / [`RootedSexp`] drop) tombstones its entry
+//! (null pointer + a fresh generation) and pushes the index onto a per-
+//! instance free list instead of shifting later entries, so guards may be
+//! dropped in **any order** — surviving guards keep resolving to their own
+//! entries. A later slot push reuses a freed index with a fresh generation.
 //! Every pushed entry is tagged with a generation from a monotonic
-//! per-instance counter, so a slot handle whose entry was released and
-//! whose index was handed out again is detectable via
+//! per-instance counter, so a slot handle whose entry was released (or cut
+//! away by a truncating `unprotect`) is detectable via
 //! [`ProtectionSlot::is_stale`] / [`RootedSexp::is_stale`] instead of
 //! silently resolving to another entry's protection.
 
@@ -208,14 +208,37 @@ fn record_slot_generation(inst: &RInstance, index: usize, generation: u64) {
     generations.push(generation);
 }
 
+/// Claim a protect-stack slot for `s`, reusing a tombstoned index when one is
+/// free. Freed tail slots collapse off the stack on release while interior
+/// frees stay vacant (null) beneath live entries; reuse pops any free index
+/// and overwrites it in place, so surviving slots keep their indices across
+/// arbitrary drop orders. Returns the index now holding `s` and the fresh
+/// generation recorded for it.
+fn claim_protect_slot_in(inst: &RInstance, s: SEXP, api: &str) -> (usize, u64) {
+    if let Some(index) = inst.protect_slot_free.borrow_mut().pop() {
+        let mut stack = inst.protect_stack.borrow_mut();
+        let mut generations = inst.protect_stack_generations.borrow_mut();
+        if index < stack.len() && index < generations.len() {
+            stack[index] = s;
+            let generation = next_slot_generation(inst);
+            generations[index] = generation;
+            return (index, generation);
+        }
+        // Stale free-list entry (truncated away without pruning): discard it
+        // and fall through to a fresh push.
+    }
+    let mut stack = inst.protect_stack.borrow_mut();
+    reserve_slot_or_fail(&mut stack, api);
+    stack.push(s);
+    let index = stack.len() - 1;
+    let generation = next_slot_generation(inst);
+    record_slot_generation(inst, index, generation);
+    (index, generation)
+}
+
 pub(crate) fn push_protect_in(inst: &mut RInstance, s: SEXP) {
     if !s.is_null() {
-        let mut stack = inst.protect_stack.borrow_mut();
-        reserve_slot_or_fail(&mut stack, "protect");
-        stack.push(s);
-        let index = stack.len() - 1;
-        let generation = next_slot_generation(inst);
-        record_slot_generation(inst, index, generation);
+        claim_protect_slot_in(inst, s, "protect");
     }
 }
 
@@ -327,14 +350,21 @@ pub(crate) fn unprotect_count_in(inst: &RInstance, n: usize) {
     }
     let mut stack = inst.protect_stack.borrow_mut();
     let len = stack.len();
-    let mut generations = inst.protect_stack_generations.borrow_mut();
     if n >= len {
         stack.clear();
-        generations.clear();
+        inst.protect_stack_generations.borrow_mut().clear();
+        inst.protect_slot_free.borrow_mut().clear();
     } else {
         let keep = len - n;
         stack.truncate(keep);
-        generations.truncate(keep);
+        inst.protect_stack_generations.borrow_mut().truncate(keep);
+        // Free-list indices at/above the new length no longer name live
+        // slots: drop them, and release protection for any live-rooted
+        // object whose slot was cut away is reported stale via the
+        // truncated generation.
+        inst.protect_slot_free
+            .borrow_mut()
+            .retain(|&index| index < keep);
     }
 }
 
@@ -372,6 +402,9 @@ pub(crate) fn R_ProtectCount() -> usize {
 }
 
 pub(crate) fn R_ProtectCount_in(inst: &mut RInstance) -> usize {
+    // Freed tail slots collapse off the stack on release, so the physical
+    // length is the live-entry tail depth; interior tombstones below live
+    // entries are impossible by construction.
     inst.protect_stack.borrow().len()
 }
 
@@ -460,9 +493,10 @@ pub(crate) struct ProtectIndex {
 /// value before it is unprotected.
 ///
 /// The handle records the generation assigned to the stack entry when it was
-/// pushed. Releasing a slot removes its entry and later pushes assign fresh
-/// generations, so [`is_stale`](ProtectionSlot::is_stale) detects a handle
-/// whose slot was released and handed out again.
+/// pushed. Releasing a slot tombstones its entry in place (null pointer +
+/// fresh generation) without disturbing later slots; later pushes reuse the
+/// freed index with newer generations, so [`is_stale`](ProtectionSlot::is_stale)
+/// detects a handle whose slot was released and handed out again.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProtectionSlot {
     index: Option<usize>,
@@ -529,12 +563,7 @@ fn protect_raw_with_slot_in(inst: &mut RInstance, s: SEXP, api: &str) -> Protect
     if s.is_null() {
         return ProtectionSlot::inactive();
     }
-    let mut stack = inst.protect_stack.borrow_mut();
-    reserve_slot_or_fail(&mut stack, api);
-    stack.push(s);
-    let index = stack.len() - 1;
-    let generation = next_slot_generation(inst);
-    record_slot_generation(inst, index, generation);
+    let (index, generation) = claim_protect_slot_in(inst, s, api);
     ProtectionSlot::from_stack_index(index, generation)
 }
 
@@ -560,16 +589,41 @@ fn release_protect_slot_in(inst: &RInstance, slot: ProtectionSlot) {
     let Some(index) = slot.index else {
         return;
     };
+    // Tombstone the entry in place so surviving slots keep their indices:
+    // clear the pointer, bump the generation, and queue the index for
+    // reuse. A stale release (index already freed, stolen by a truncating
+    // unprotect, or whose generation moved on) is a no-op — dropping two
+    // guards that disagree on the entry must not evict the live owner.
+    // Freed tail slots collapse immediately (popped off the stack) so the
+    // physical stack stays contiguous and legacy LIFO depths,
+    // `with_protected_objects` tail snapshots, and the GC root scan never
+    // observe holes below live entries; interior frees stay tombstoned until
+    // every slot above them has also been released.
     let mut stack = inst.protect_stack.borrow_mut();
-    if index < stack.len() {
-        stack.remove(index);
-        let mut generations = inst.protect_stack_generations.borrow_mut();
-        if index < generations.len() {
-            generations.remove(index);
+    if index >= stack.len() {
+        return;
+    }
+    let mut generations = inst.protect_stack_generations.borrow_mut();
+    if index >= generations.len() || generations[index] != slot.generation {
+        return;
+    }
+    stack[index] = std::ptr::null_mut();
+    generations[index] = next_slot_generation(inst);
+    let mut free = inst.protect_slot_free.borrow_mut();
+    if !free.contains(&index) {
+        free.push(index);
+    }
+    while stack.len() > 0 && stack[stack.len() - 1].is_null() {
+        let tail = stack.len() - 1;
+        if let Some(pos) = free.iter().position(|&i| i == tail) {
+            free.swap_remove(pos);
+            stack.pop();
+            generations.pop();
+        } else {
+            break;
         }
     }
 }
-
 /// The generation currently recorded for `slot`'s stack index, or `None`
 /// when the entry is gone (released, or the generation log was desynced by
 /// a foreign direct push onto the stack).
@@ -649,14 +703,13 @@ impl Drop for IndexedProtectGuard {
 /// [`RootedSexp::root`] clones the (non-`Copy`) handle, protects the cloned
 /// SEXP on creation, and unprotects it when the root is dropped, so callers
 /// never juggle `protect_sexp`/`unprotect` bookkeeping by hand. Reads go
-/// through [`Deref`] to the guarded handle.
+/// through [`RootedSexp::get`].
 ///
 /// Roots use a slot-protected stack entry (see [`protect_sexp_with_index`])
-/// so an individual root's stack slot is stable across evaluations that push
-/// and pop other protections. Like every guard over this `Vec`-backed stack,
-/// roots should still be dropped in reverse creation order; see the module
-/// docs for the ownership model and the planned generation-based handle
-/// table that would remove that constraint.
+/// with stable slot indices: tombstoned entries are reused with a fresh
+/// generation, so roots may be dropped in any order and surviving roots keep
+/// resolving to their own protections. See the module docs for the slot-
+/// stability contract.
 ///
 /// Every root records the generation of the stack entry it created; reads
 /// through [`RootedSexp::get`] verify that the entry is still the root's
@@ -667,7 +720,7 @@ impl Drop for IndexedProtectGuard {
 ///
 /// let root = RootedSexp::root(some_sexp.clone());
 /// run_gc_point(); // the rooted value survives collection
-/// let n = root.length(); // deref read through the rooted handle
+/// let n = root.get().expect("root is live").length(); // checked read
 /// drop(root); // stack slot released
 /// ```
 pub struct RootedSexp<'a> {
@@ -709,13 +762,13 @@ impl<'a> RootedSexp<'a> {
     }
 
     /// Read the rooted handle, verifying that the root's stack slot still
-    /// refers to the protection created for it.
+    /// refers to the protection created for it. This is the only read path:
+    /// there is deliberately no `Deref` impl, so stale roots cannot silently
+    /// resolve to another entry's protection.
     ///
     /// Returns `None` when the slot was released and handed out again (see
     /// [`is_stale`](RootedSexp::is_stale)); debug builds assert on the
-    /// mismatch, release builds degrade to `None`. The [`Deref`] read is
-    /// the unchecked ergonomic path for code that upholds the drop-order
-    /// contract by construction.
+    /// mismatch, release builds degrade to `None`.
     pub fn get(&self) -> Option<&Sexp<'a>> {
         let stale = self.is_stale();
         debug_assert!(
@@ -763,14 +816,6 @@ impl<'a> RootedSexp<'a> {
         let Self { value, guard, .. } = self;
         drop(guard);
         value
-    }
-}
-
-impl<'a> std::ops::Deref for RootedSexp<'a> {
-    type Target = Sexp<'a>;
-
-    fn deref(&self) -> &Sexp<'a> {
-        &self.value
     }
 }
 
@@ -1014,7 +1059,6 @@ mod tests {
             let root = RootedSexp::root(value.clone());
             assert_eq!(R_ProtectCount(), depth_before + 1);
             with_protected_objects(|objects| assert_eq!(objects, &[value.clone().as_raw()]));
-            // Deref exposes the guarded handle.
             let readback = root.get().expect("fresh root must resolve").clone();
             assert_eq!(readback, value);
             let sexp = root.unroot();
@@ -1044,7 +1088,8 @@ mod tests {
                 let inner = RootedSexp::root(first.clone());
                 assert!(inner.slot().is_active());
             }
-            // LIFO release of the inner root left exactly one entry.
+            // The tail drop collapses the inner slot off the stack, so the
+            // outer root is the only entry left.
             assert_eq!(R_ProtectCount(), depth_before + 1);
             outer.reprotect(second.clone());
             with_protected_objects(|objects| assert_eq!(objects, &[second.clone().as_raw()]));
@@ -1476,7 +1521,7 @@ mod tests {
     }
 
     #[test]
-    fn test_out_of_order_release_marks_surviving_roots_stale() {
+    fn test_arbitrary_drop_order_keeps_surviving_roots_live() {
         let mut session = RSession::new();
         let value = session
             .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
@@ -1484,36 +1529,101 @@ mod tests {
         let value = session.sexp(value).expect("value belongs to session");
 
         session.with_protected(|| {
+            let depth_before = R_ProtectCount();
             let first = RootedSexp::root(value.clone());
             let second = RootedSexp::root(value.clone());
             let third = RootedSexp::root(value.clone());
+            assert_eq!(R_ProtectCount(), depth_before + 3);
             assert!(!first.is_stale());
             assert!(!second.is_stale());
             assert!(!third.is_stale());
 
-            // Violate LIFO: dropping `first` shifts the later entries down
-            // one index. The surviving roots' slot handles must report stale
-            // — one against another entry's generation, one against a gone
-            // index — instead of silently resolving to the wrong entry.
+            // Drop out of order: the interior tombstone leaves the survivors'
+            // indices untouched, so they keep resolving to their own entries.
             drop(first);
-            assert!(second.is_stale());
-            assert!(second.slot().is_stale());
-            assert!(third.is_stale());
-            assert!(third.slot().is_stale());
+            assert!(second.get().is_some());
+            assert!(third.get().is_some());
+            assert!(!second.is_stale());
+            assert!(!third.is_stale());
+            assert_eq!(R_ProtectCount(), depth_before + 3);
 
-            // A root created after the violation is healthy: fresh slot,
-            // fresh generation.
+            // The freed index is reusable: a fresh root lands exactly there
+            // with a newer generation while the survivors stay healthy.
             let fresh = RootedSexp::root(value.clone());
             assert!(!fresh.is_stale());
             assert!(fresh.get().is_some());
+            assert!(!second.is_stale());
+            assert!(!third.is_stale());
+            assert_eq!(R_ProtectCount(), depth_before + 3);
 
             drop(fresh);
             drop(third);
             drop(second);
-            // Out-of-order release cannot restore the stack depth — the
-            // shifted entries no longer line up with their handles, which is
-            // exactly what the generation checks above exposed — so the
-            // session scope reclaims whatever remains.
+            // All slots released: the tail collapse pops every entry, so the
+            // live-entry depth is restored exactly.
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
+    }
+
+    #[test]
+    fn test_shuffled_roots_survive_vec_drop_order() {
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = session.sexp(value).expect("value belongs to session");
+
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
+            let mut roots: Vec<RootedSexp<'_>> =
+                (0..16).map(|_| RootedSexp::root(value.clone())).collect();
+            assert_eq!(R_ProtectCount(), depth_before + 16);
+            // Deterministic bit-reversal permutation: exercises a genuinely
+            // shuffled drop order without pulling in an RNG dependency.
+            let mut permuted: Vec<RootedSexp<'_>> = Vec::with_capacity(roots.len());
+            while !roots.is_empty() {
+                let mid = roots.len() / 2;
+                permuted.push(roots.remove(mid));
+            }
+            let mut roots = permuted;
+            // Drop half in shuffled order: every survivor still reads.
+            for _ in 0..8 {
+                roots.pop();
+            }
+            // Drain the rest in the shuffled order too: every release either
+            // reuses, tombstones, or collapses, so the depth is restored.
+            while roots.pop().is_some() {}
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
+    }
+
+    #[test]
+    fn test_slot_reuse_rejects_old_token() {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
+            let first = protect_with_index_raw(0x1 as SEXP, "test");
+            let stale_token = first.slot();
+            assert!(stale_token.is_active());
+            assert!(!stale_token.is_stale());
+            drop(first);
+            assert!(stale_token.is_stale());
+
+            // The freed index is handed out again with a fresh generation.
+            let second = protect_with_index_raw(0x2 as SEXP, "test");
+            let live_token = second.slot();
+            assert!(live_token.is_active());
+            assert_ne!(stale_token.generation(), live_token.generation());
+            assert!(!live_token.is_stale());
+
+            // A double release against the stale token cannot evict the live
+            // owner: generations disagree, so the tombstone is untouched.
+            release_protect_slot(stale_token);
+            assert!(!live_token.is_stale());
+            assert!(!second.slot().is_stale());
+            assert_eq!(second.slot().generation(), live_token.generation());
+            drop(second);
+            assert_eq!(R_ProtectCount(), depth_before);
         });
     }
 }

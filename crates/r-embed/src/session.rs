@@ -4,6 +4,7 @@ use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, RenderPlot};
 use rmath::android::{RArenaStats, RResourceLimits, RRuntimeInfo, RValue};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::RSessionError;
 use crate::packages::{
@@ -17,6 +18,7 @@ use crate::plot::{PlotSeries, draw_series, numeric_series, parse_plot_call};
 /// evaluate expressions and render plots. Internally uses the rmath
 /// crate for the interpreter backend.
 pub struct RSession {
+    session_id: u64,
     active: bool,
     inner: rmath::android::RSession,
 }
@@ -113,6 +115,9 @@ impl Default for CancellationToken {
     }
 }
 
+/// Process-wide counter assigning each `RSession` a unique id.
+static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+
 impl RSession {
     /// Create a new R session.
     ///
@@ -120,9 +125,15 @@ impl RSession {
     /// stack, environments, RNG state, and output capture.
     pub fn new() -> Result<Self, RSessionError> {
         Ok(RSession {
+            session_id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             active: true,
             inner: rmath::android::RSession::new(),
         })
+    }
+
+    /// Unique id assigned at construction from a process-wide counter.
+    pub fn session_id(&self) -> u64 {
+        self.session_id
     }
 
     /// Evaluate an R expression, returning the output as a string.
@@ -186,23 +197,23 @@ impl RSession {
     ///
     /// Hosts use this for tab completion. It goes through the same
     /// evaluator path as `ls(all.names=TRUE)` and never mutates the
-    /// session; a closed session or an evaluation failure yields an empty
-    /// list instead of an error.
-    pub fn global_binding_names(&mut self) -> Vec<String> {
+    /// session.
+    pub fn global_binding_names(&mut self) -> Result<Vec<String>, RSessionError> {
         if !self.active {
-            return Vec::new();
+            return Err(RSessionError::EvalError("Session closed".into()));
         }
-        let value = match self.eval_result("ls(all.names=TRUE)") {
-            Ok(output) => output.value,
-            Err(_) => return Vec::new(),
-        };
+        let value = self.eval_result("ls(all.names=TRUE)")?.value;
         match value {
-            RValue::StringVector(names) => names.into_iter().flatten().collect(),
+            RValue::StringVector(names) => Ok(names.into_iter().flatten().collect()),
             RValue::Attributed { value, .. } => match *value {
-                RValue::StringVector(names) => names.into_iter().flatten().collect(),
-                _ => Vec::new(),
+                RValue::StringVector(names) => Ok(names.into_iter().flatten().collect()),
+                other => Err(RSessionError::EvalError(format!(
+                    "ls(all.names=TRUE) returned unexpected value: {other:?}"
+                ))),
             },
-            _ => Vec::new(),
+            other => Err(RSessionError::EvalError(format!(
+                "ls(all.names=TRUE) returned unexpected value: {other:?}"
+            ))),
         }
     }
 
@@ -447,5 +458,23 @@ impl RSession {
 impl Drop for RSession {
     fn drop(&mut self) {
         self.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closed_session_binding_names_returns_err() {
+        let mut session = RSession::new().expect("session starts");
+        session.close();
+        let err = session
+            .global_binding_names()
+            .expect_err("closed session must fail");
+        assert!(
+            matches!(&err, RSessionError::EvalError(msg) if msg == "Session closed"),
+            "unexpected error: {err:?}"
+        );
     }
 }

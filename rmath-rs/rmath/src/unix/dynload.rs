@@ -72,7 +72,7 @@ fn os_dyn_symbol_table() -> OsDynSymbolTable {
 // ---------------------------------------------------------------------------
 
 /// Compute the dlopen flag from asLocal and now parameters.
-fn compute_dlopen_flag(as_local: c_int, now: c_int) -> c_int {
+pub(crate) fn compute_dlopen_flag(as_local: c_int, now: c_int) -> c_int {
     let mut flag: c_int = 0;
 
     if as_local != 0 {

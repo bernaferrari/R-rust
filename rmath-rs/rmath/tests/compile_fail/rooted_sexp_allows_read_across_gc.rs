@@ -36,9 +36,8 @@ fn main() {
         // handle stays valid and readable after collection.
         session.gc();
 
-        // Read through the rooted handle via `Deref` (stable across
-        // `RootedSexp` API surface changes) and clone to keep a value.
-        let readback = std::ops::Deref::deref(&root).clone();
+        // Read through the checked `get()` path and clone to keep a value.
+        let readback = root.get().expect("root is live").clone();
         assert_eq!(readback.clone().len(), 3);
         assert_eq!(readback.clone().integer_elt(0), Some(10));
         assert_eq!(readback.clone().integer_elt(1), Some(20));

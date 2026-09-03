@@ -1075,12 +1075,9 @@ unsafe fn AddDLL(
         }
 
         let handle = {
-            let flag = if _now != 0 { 0x2 } else { 0x1 };
-            let flag = if _as_local != 0 {
-                flag | 0x4
-            } else {
-                flag | 0x8
-            };
+            // Single source of truth for RTLD flags (macOS vs Linux values
+            // differ); see unix::dynload::compute_dlopen_flag.
+            let flag = crate::unix::dynload::compute_dlopen_flag(_as_local, _now);
             unsafe extern "C" {
                 fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
             }

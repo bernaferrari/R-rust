@@ -346,23 +346,29 @@ fn test_gc_reports_session_memory_counters() {
         assert_eq!(*INTEGER(dim), 2);
         // Stock base::gc prints a `limit (Mb)` column: NA for Ncells (no
         // node limit) and the platform vector-pool ceiling for Vcells
-        // (macOS startup default: max(physical, 16 Gb) = 32768 Mb here),
-        // so the visible table is 2x7. When no ceiling applies the
-        // all-NA column is dropped and the table is 2x6.
+        // (macOS startup default: max(physical, 16 Gb) = 32768 Mb here;
+        // NA when unlimited), so the visible table is always 2x7.
+        // Column-major with 2 rows: limit (Mb) is col index 4, so the
+        // Ncells limit sits at flat index 8 and Vcells limit at index 9.
+        assert_eq!(*INTEGER(dim).add(1), 7);
         let vlimit = crate::mainutils::memory_main::R_GetMaxVSize_memory();
+        let data = REAL(result);
+        assert!(
+            (*data.add(8)).is_nan(),
+            "Ncells limit should be NA (no node ceiling)"
+        );
         if vlimit == u64::MAX {
-            assert_eq!(*INTEGER(dim).add(1), 6);
+            assert!(
+                (*data.add(9)).is_nan(),
+                "Vcells limit should be NA when unlimited"
+            );
         } else {
-            // limit (Mb) for Vcells sits at row 2, col 5 (index 4) of the
-            // flattened table: Ncells row is cols 0-3, Vcells row cols 4-6.
-            let data = REAL(result);
-            assert!(*data.add(4) > 0.0, "Vcells limit should be reported");
+            assert!(*data.add(9) > 0.0, "Vcells limit should be reported");
         }
 
-        let data = REAL(result);
         assert!(*data > 0.0, "Ncells used should reflect active arena nodes");
         assert!(*data.add(1) > 0.0, "Vcells used should reflect arena bytes");
-        assert!(*data.add(9) >= *data.add(1), "Vcells max used >= used");
+        assert!(*data.add(11) >= *data.add(1), "Vcells max used >= used");
     }
 }
 

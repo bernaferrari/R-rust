@@ -248,7 +248,8 @@ fn main() -> Result<()> {
         SIGINT_FLAG.store(false, Ordering::Relaxed);
 
         let line = match read_input(&prompt, &mut |prefix: &str| {
-            let mut pool = session.global_binding_names();
+            // The CLI degrades to static completions on error.
+            let mut pool = session.global_binding_names().unwrap_or_default();
             pool.extend(STATIC_COMPLETIONS.iter().map(|s| s.to_string()));
             filter_completions(prefix, &pool)
         })? {

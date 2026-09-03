@@ -1,7 +1,8 @@
 //! Vectorized arithmetic and comparison builtin operations.
 #![deny(unsafe_op_in_unsafe_fn)]
-// Translated C loops write result elements through the SexpMut borrow guard
-// (sexp::object); the guard is the sole mutation path.
+// Translated C loops write result elements through the SexpMut mutation guard
+// (sexp::object); the guard is the in-crate mutation path — a containment
+// boundary (construction is crate-internal), not a uniqueness proof.
 //!
 //! These handle the core numeric operators (+, -, *, /, ^, %%, %/%),
 //! comparison operators (<, >, <=, >=, ==, !=), and unary operators (!, -).
