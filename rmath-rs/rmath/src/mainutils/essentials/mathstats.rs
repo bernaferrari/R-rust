@@ -1029,7 +1029,15 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
     }
 }
 
-/// R regexpr(pattern, text)
+/// R regexpr(pattern, text) — port of grep.c:do_regexpr.
+///
+/// With perl = TRUE and capture groups in the pattern, attaches the
+/// capture.start / capture.length matrices (one row per text element, one
+/// column per group, column-major, dimnames list(NULL, capture.names)) and
+/// the capture.names vector, mirroring grep.c's pcre2_pattern_info +
+/// extract_match_and_groups: non-participating groups yield start 0 /
+/// length 0 (PCRE2_UNSET arithmetic), non-matching elements -1 / -1, and
+/// NA text elements leave the NA initialization (PR#16484).
 pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
@@ -1038,6 +1046,17 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
         let n = XLENGTH(text);
+
+        // grep.c drops perl when fixed = TRUE, so only a genuine perl run
+        // gets capture attribution. A pattern that fails to compile here
+        // also fails the per-element match below (reported as no match).
+        let (capture_count, capture_names) = if perl && !fixed {
+            crate::mainutils::grep::perl_group_info(&pat, ignore_case)
+                .unwrap_or_else(|| (0, Vec::new()))
+        } else {
+            (0, Vec::new())
+        };
+
         let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -1048,27 +1067,6 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return R_NilValue();
         }
         let _mlp = protect(match_len);
-
-        for i in 0..n {
-            let txt = elt_to_string(text, i);
-            let found = if fixed {
-                fixed_find(&txt, &pat, ignore_case)
-            } else if perl {
-                crate::mainutils::grep::perl_find(&pat, &txt, ignore_case)
-            } else {
-                crate::mainutils::grep::ere_find(&pat, &txt, ignore_case)
-            };
-            match found {
-                Some(m) => {
-                    *INTEGER(result).add(i as usize) = (m.start + 1) as c_int;
-                    *INTEGER(match_len).add(i as usize) = (m.end - m.start) as c_int;
-                }
-                None => {
-                    *INTEGER(result).add(i as usize) = -1;
-                    *INTEGER(match_len).add(i as usize) = -1;
-                }
-            }
-        }
 
         crate::sexp::attrib_core::setAttrib(
             result,
@@ -1085,7 +1083,196 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             Rf_install(c"useBytes".as_ptr()),
             Rf_ScalarLogical(TRUE),
         );
+
+        // Capture matrices, initialized to NA so NA text elements keep NA
+        // entries (grep.c PR#16484); overwritten per match below.
+        let mut capture_start = R_NilValue();
+        let mut capture_len = R_NilValue();
+        if capture_count > 0 {
+            let names_sexp = Rf_allocVector3(SEXPTYPE::STRSXP, capture_count as R_xlen_t);
+            if names_sexp.is_null() {
+                return R_NilValue();
+            }
+            let _nsg = protect(names_sexp);
+            for (g, name) in capture_names.iter().enumerate() {
+                let cstr = CString::new(name.as_str()).unwrap_or_default();
+                SET_STRING_ELT(names_sexp, g as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            }
+
+            capture_start = alloc_int_matrix(n, capture_count);
+            if capture_start.is_null() {
+                return R_NilValue();
+            }
+            let _csp = protect(capture_start);
+            capture_len = alloc_int_matrix(n, capture_count);
+            if capture_len.is_null() {
+                return R_NilValue();
+            }
+            let _clp = protect(capture_len);
+
+            let dmn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            if dmn.is_null() {
+                return R_NilValue();
+            }
+            let _dmp = protect(dmn);
+            SET_VECTOR_ELT(dmn, 0, R_NilValue());
+            SET_VECTOR_ELT(dmn, 1, names_sexp);
+            crate::sexp::attrib_core::setAttrib(
+                capture_start,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dmn,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                capture_len,
+                crate::sexp::attrib_core::R_DimNamesSymbol(),
+                dmn,
+            );
+
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(c"capture.start".as_ptr()),
+                capture_start,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(c"capture.length".as_ptr()),
+                capture_len,
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(c"capture.names".as_ptr()),
+                names_sexp,
+            );
+
+            let total = (n as usize) * capture_count;
+            for j in 0..total {
+                *INTEGER(capture_start).add(j) = NA_INTEGER;
+                *INTEGER(capture_len).add(j) = NA_INTEGER;
+            }
+        }
+
+        for i in 0..n {
+            // grep.c: NA text elements yield NA, capture entries stay NA.
+            if TYPEOF(text) == SEXPTYPE::STRSXP
+                && STRING_ELT(text, i) == crate::sexp::globals::R_NaString()
+            {
+                *INTEGER(result).add(i as usize) = NA_INTEGER;
+                *INTEGER(match_len).add(i as usize) = NA_INTEGER;
+                continue;
+            }
+
+            let txt = elt_to_string(text, i);
+            if fixed {
+                match fixed_find(&txt, &pat, ignore_case) {
+                    Some(m) => {
+                        *INTEGER(result).add(i as usize) = (m.start + 1) as c_int;
+                        *INTEGER(match_len).add(i as usize) = (m.end - m.start) as c_int;
+                    }
+                    None => {
+                        *INTEGER(result).add(i as usize) = -1;
+                        *INTEGER(match_len).add(i as usize) = -1;
+                    }
+                }
+            } else if capture_count > 0 {
+                // perl run with capture groups: one full-capture match
+                // fills the overall position and every group column.
+                let caps = crate::mainutils::grep::perl_captures(&pat, &txt, ignore_case);
+                match caps.as_ref().and_then(|c| c.first()).and_then(|c| c.as_ref()) {
+                    Some(whole) => {
+                        *INTEGER(result).add(i as usize) = (whole.start + 1) as c_int;
+                        *INTEGER(match_len).add(i as usize) = (whole.end - whole.start) as c_int;
+                        for g in 0..capture_count {
+                            let ind = i as usize + g * n as usize;
+                            match caps.as_ref().and_then(|c| c.get(g + 1)).and_then(|c| c.as_ref())
+                            {
+                                Some(cm) => {
+                                    *INTEGER(capture_start).add(ind) = (cm.start + 1) as c_int;
+                                    *INTEGER(capture_len).add(ind) = (cm.end - cm.start) as c_int;
+                                }
+                                None => {
+                                    // grep.c's ovector_extract_start_length on
+                                    // a PCRE2_UNSET group computes
+                                    // start = -1 + 1 = 0 and length = 0.
+                                    *INTEGER(capture_start).add(ind) = 0;
+                                    *INTEGER(capture_len).add(ind) = 0;
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        *INTEGER(result).add(i as usize) = -1;
+                        *INTEGER(match_len).add(i as usize) = -1;
+                        fill_capture_no_match(
+                            capture_start,
+                            capture_len,
+                            i as usize,
+                            n,
+                            capture_count,
+                        );
+                    }
+                }
+            } else {
+                let found = if perl {
+                    crate::mainutils::grep::perl_find(&pat, &txt, ignore_case)
+                } else {
+                    crate::mainutils::grep::ere_find(&pat, &txt, ignore_case)
+                };
+                match found {
+                    Some(m) => {
+                        *INTEGER(result).add(i as usize) = (m.start + 1) as c_int;
+                        *INTEGER(match_len).add(i as usize) = (m.end - m.start) as c_int;
+                    }
+                    None => {
+                        *INTEGER(result).add(i as usize) = -1;
+                        *INTEGER(match_len).add(i as usize) = -1;
+                    }
+                }
+            }
+        }
+
         result
+    }
+}
+
+/// Column-major integer matrix with dim c(nrow, ncol) — the shape grep.c's
+/// do_regexpr uses for capture.start / capture.length.
+unsafe fn alloc_int_matrix(nrow: R_xlen_t, ncol: usize) -> SEXP {
+    unsafe {
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, nrow * ncol as R_xlen_t);
+        if ans.is_null() {
+            return ans;
+        }
+        let _ans_guard = protect(ans);
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if dim.is_null() {
+            return R_NilValue();
+        }
+        let _dim_guard = protect(dim);
+        *INTEGER(dim) = nrow as c_int;
+        *INTEGER(dim).add(1) = ncol as c_int;
+        crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        ans
+    }
+}
+
+/// Mark every capture entry of a non-matching text element as -1
+/// (grep.c's no-match branch in do_regexpr).
+unsafe fn fill_capture_no_match(
+    capture_start: SEXP,
+    capture_len: SEXP,
+    i: usize,
+    n: R_xlen_t,
+    capture_count: usize,
+) {
+    unsafe {
+        if capture_start == R_NilValue() {
+            return;
+        }
+        for g in 0..capture_count {
+            let ind = i + g * n as usize;
+            *INTEGER(capture_start).add(ind) = -1;
+            *INTEGER(capture_len).add(ind) = -1;
+        }
     }
 }
 

@@ -50,6 +50,22 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
                 Some("collapse") => collapse = Some(elt_to_string(arg, 0)),
                 _ => {
                     if !arg.is_null() && arg != R_NilValue() {
+                        // Upstream paste() coerces every `...` argument with
+                        // as.character before .Internal paste: a list arg
+                        // contributes its elements ("list(\"a\")" columns),
+                        // not its type code. Whisker assembles output with
+                        // paste over an as.list()'d character vector.
+                        let arg = if TYPEOF(arg) == SEXPTYPE::VECSXP
+                            || TYPEOF(arg) == SEXPTYPE::EXPRSXP
+                        {
+                            crate::mainutils::coerce::coerceVector(
+                                arg,
+                                SEXPTYPE::STRSXP.as_c_int(),
+                            )
+                        } else {
+                            arg
+                        };
+                        let _arg_guard = protect(arg);
                         arg_vecs.push(arg);
                         let n = XLENGTH(arg);
                         if n > max_len {

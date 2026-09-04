@@ -285,6 +285,75 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let field_c = CString::new(field).unwrap_or_default();
         SET_STRING_ELT(out_names, n, Rf_mkChar(field_c.as_ptr()));
         crate::sexp::attrib_core::setAttrib(out, names_sym, out_names);
+
+        // Preserve the object's remaining attributes (class, row.names, dim,
+        // ...): appending a column must not demote a data.frame to a plain
+        // list. `key$type <- factor(...)` in whisker's getKeyInfo relied on
+        // the frame keeping its class and rows across the assignment.
+        let mut ap = ATTRIB(object);
+        while !ap.is_null() && ap != R_NilValue() {
+            let tag = TAG(ap);
+            if !tag.is_null() && tag != R_NilValue() && tag != names_sym {
+                crate::sexp::attrib_core::setAttrib(out, tag, CAR(ap));
+            }
+            ap = CDR(ap);
+        }
+
+        // A data.frame's rows must match the appended column: extend the
+        // compact row names when the new column is longer, and recycle
+        // shorter ones like upstream `$<-.data.frame` -> `[[<-`.
+        if sexp_has_class(out, "data.frame") {
+            let rownames =
+                crate::sexp::attrib_core::getAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol());
+            let rows: R_xlen_t = if rownames.is_null() || rownames == R_NilValue() {
+                0
+            } else if TYPEOF(rownames) == SEXPTYPE::INTSXP
+                && XLENGTH(rownames) == 2
+                && *INTEGER(rownames) == NA_INTEGER
+            {
+                -(*INTEGER(rownames).add(1) as R_xlen_t)
+            } else {
+                XLENGTH(rownames)
+            };
+            let t = TYPEOF(value);
+            let value_len: R_xlen_t = if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+                let mut len: R_xlen_t = 0;
+                let mut p = value;
+                while !p.is_null() && p != R_NilValue() {
+                    len += 1;
+                    p = CDR(p);
+                }
+                len
+            } else if t == SEXPTYPE::VECSXP
+                || t == SEXPTYPE::EXPRSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP
+            {
+                XLENGTH(value)
+            } else {
+                1
+            };
+            let new_rows = if rows == 0 {
+                value_len
+            } else if value_len == rows || value_len == 1 || value_len == 0 {
+                rows
+            } else if value_len > rows && value_len % rows == 0 {
+                value_len
+            } else if rows % value_len == 0 {
+                rows
+            } else {
+                base_error(format!(
+                    "replacement has {value_len} rows, data has {rows}"
+                ))
+            };
+            if new_rows != rows {
+                crate::mainutils::essentials::functional::set_compact_row_names(out, new_rows);
+            }
+        }
         out
     }
 }
@@ -942,8 +1011,31 @@ pub(crate) unsafe fn load_package_namespace(
         define_package_metadata(package, package_env);
         reject_unsupported_internal_data(package, package_dir)?;
         reject_unsupported_lazyload_code(package, package_dir)?;
-        let namespace = populate_package_namespace(package, package_dir, package_env, loading)?;
+        // Register the in-flight namespace before sourcing its R files:
+        // upstream loadNamespace records the namespace first, so package
+        // code that calls `asNamespace(pkg)` mid-load (crayon's
+        // `assign(style, make_style(style), envir = asNamespace("crayon"))`)
+        // receives the environment under construction instead of triggering
+        // a nested load of the same package.
         cache_package_namespace(package, package_dir, package_env);
+        let populated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            populate_package_namespace(package, package_dir, package_env, loading)
+        }));
+        let namespace = match populated {
+            Ok(result) => match result {
+                Ok(namespace) => namespace,
+                Err(message) => {
+                    uncache_package_namespace(package);
+                    return Err(message);
+                }
+            },
+            Err(payload) => {
+                // Sourced R code errors unwind as RSignal panics; drop the
+                // half-built namespace so a later attempt reloads cleanly.
+                uncache_package_namespace(package);
+                std::panic::resume_unwind(payload);
+            }
+        };
         Ok((package_env, namespace))
     }
 }
@@ -966,6 +1058,12 @@ pub(crate) fn cache_package_namespace(package: &str, package_dir: &Path, package
     crate::sexp::instance::with_required_current_instance(|inst| {
         inst.package_namespace_cache
             .insert(package.to_string(), (package_dir, package_env));
+    });
+}
+
+pub(crate) fn uncache_package_namespace(package: &str) {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.package_namespace_cache.remove(package);
     });
 }
 
@@ -1068,6 +1166,7 @@ pub(crate) unsafe fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<()
             crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
         })?;
         let expr = if expr.is_null() { R_NilValue() } else { expr };
+        let _guard = crate::sexp::protect::protect(expr);
         let _ = crate::eval::eval::Rf_eval(expr, env);
         Ok(())
     }
@@ -1374,9 +1473,27 @@ pub(crate) unsafe fn source_package_r_files(
             files = ordered;
         }
 
-        for file in files {
-            source_r_file_into_env(&file, package_env)?;
-        }
+        // Source with the package directory installed as the resolution
+        // root for relative file paths: package code evaluated at install
+        // time upstream (crayon's ansi-palette.R reads
+        // "tools/ansi-palettes.txt") sees the package root, not the host
+        // process CWD.
+        let saved_package_dir = crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.loading_package_dir
+                .replace(normalized_package_dir(package_dir))
+        });
+        let sourced: Result<(), String> =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                for file in files {
+                    source_r_file_into_env(&file, package_env)?;
+                }
+                Ok(())
+            }))
+            .unwrap_or_else(|payload| std::panic::resume_unwind(payload));
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.loading_package_dir = saved_package_dir;
+        });
+        sourced?;
 
         if package_has_lazy_db(package_dir, package) {
             let filebase = package_lazy_db_base(package_dir, package);

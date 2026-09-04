@@ -118,6 +118,11 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
                     });
                 }
             } else if expr == R_MissingArg() {
+                // Upstream eval.c (evalList): a literal empty argument is
+                // an immediate error (`list(, 1)` -> "argument 1 is
+                // empty"). Callers that legitimately pass a missing VALUE
+                // (lapply over formals) must wrap it in a pre-forced
+                // promise, never splice it as an expression.
                 std::panic::panic_any(RError {
                     message: format!("argument {} is empty", count + 1),
                 });

@@ -58,7 +58,6 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_substr — substring extraction
 // ---------------------------------------------------------------------------
 
-/// R's `substr(x, start, stop)` — extract substrings.
 pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
@@ -68,7 +67,28 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
-        let n = XLENGTH(x);
+        // Upstream substr.c recycles x/start/stop to the COMMON length
+        // n = max(len(x), len(start), len(stop)) — vector bounds with a
+        // scalar string yield a vector result (substring over gregexpr's
+        // per-match positions).
+        let nx = XLENGTH(x);
+        let nstart = if start_arg.is_null() || start_arg == R_NilValue() {
+            1
+        } else {
+            XLENGTH(start_arg)
+        };
+        let nstop = if stop_arg.is_null() || stop_arg == R_NilValue() {
+            1
+        } else {
+            XLENGTH(stop_arg)
+        };
+        // Upstream split (character.c do_substr vs base::substring):
+        // the INTERNAL iterates only len(x) — start/stop recycle against
+        // it but never extend the result. base::substring (an R wrapper)
+        // rep_lens text to max(len(text), len(first), len(last)) FIRST;
+        // our `substring` handler below reproduces that. Zero-length x
+        // stays zero-length either way (the wrapper's `lt &&` guard).
+        let n = nx;
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
         if result.is_null() {
             return R_NilValue();
@@ -76,16 +96,18 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let _result_guard = protect(result);
 
         for i in 0..n {
-            if TYPEOF(x) == SEXPTYPE::STRSXP {
-                let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
-                if STRING_ELT(x, idx) == crate::sexp::globals::R_NaString() {
+            let xi = if nx == 0 { 0 } else { i % nx };
+            if TYPEOF(x) == SEXPTYPE::STRSXP && nx > 0 {
+                if STRING_ELT(x, xi) == crate::sexp::globals::R_NaString() {
                     SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
                     continue;
                 }
             }
-            let s = elt_to_string(x, i);
-            let start = (real_elt_or_default(start_arg, i, 1.0) as usize).max(1) - 1;
-            let stop = real_elt_or_default(stop_arg, i, 1000.0) as usize;
+            let s = elt_to_string(x, xi);
+            let si = if nstart == 0 { 0 } else { i % nstart };
+            let ei = if nstop == 0 { 0 } else { i % nstop };
+            let start = (real_elt_or_default(start_arg, si, 1.0) as usize).max(1) - 1;
+            let stop = real_elt_or_default(stop_arg, ei, 1000.0) as usize;
             let chars: Vec<char> = s.chars().collect();
             let end = stop.min(chars.len());
             let sub: String = if start < chars.len() {
@@ -102,6 +124,55 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
 
         result
+    }
+}
+
+/// R's `substring(text, first, last=NULL)` — base::substring is an R
+/// wrapper over the same internal that rep_lens `text` to the common
+/// length max(len(text), len(first), len(last)) first (character.R);
+/// zero-length text stays zero-length.
+pub unsafe fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let first_arg = CAR(CDR(args));
+        let last_arg = CAR(CDR(CDR(args)));
+
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let lt = XLENGTH(x);
+        if lt == 0 {
+            return do_substr(_call, _op, args, _rho);
+        }
+        let lf = if first_arg.is_null() || first_arg == R_NilValue() {
+            1
+        } else {
+            XLENGTH(first_arg)
+        };
+        let ll = if last_arg.is_null() || last_arg == R_NilValue() {
+            1
+        } else {
+            XLENGTH(last_arg)
+        };
+        let n = lt.max(lf).max(ll);
+        if lt >= n {
+            return do_substr(_call, _op, args, _rho);
+        }
+        // rep_len(x, n): recycle the string vector.
+        let rep = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if rep.is_null() {
+            return R_NilValue();
+        }
+        let _rep_guard = protect(rep);
+        for i in 0..n {
+            SET_STRING_ELT(rep, i, STRING_ELT(x, i % lt));
+        }
+        let new_args = Rf_cons(
+            rep,
+            Rf_cons(first_arg, Rf_cons(last_arg, crate::sexp::globals::R_NilValue())),
+        );
+        let _args_guard = protect(new_args);
+        do_substr(_call, _op, new_args, _rho)
     }
 }
 
@@ -539,7 +610,15 @@ unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
     }
 }
 
-/// R's `strsplit(x, split)` — split strings by separator, return list.
+/// R's `strsplit(x, split, fixed=FALSE, perl=FALSE, useBytes=FALSE)` — split
+/// strings by matches of `split`, returning a list of token vectors.
+///
+/// Mirrors upstream `do_strsplit` (grep.c): every match splits — a
+/// non-empty match is dropped and the text before it becomes a token; an
+/// empty match consumes the current character, which itself becomes the
+/// token. A trailing remainder is kept only when non-empty. The `split`
+/// vector recycles across `x`; an empty pattern splits into characters; an
+/// NA split token does not split; NA strings pass through as NA.
 pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x_arg = CAR(args);
@@ -547,33 +626,106 @@ pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if x_arg.is_null() || x_arg == R_NilValue() || split_arg.is_null() {
             return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
         }
-        let split = elt_to_string(split_arg, 0);
+        let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let n = XLENGTH(x_arg);
+        let tlen = if split_arg == R_NilValue() {
+            0
+        } else {
+            XLENGTH(split_arg)
+        };
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
         for i in 0..n {
+            // NA input string passes through as NA.
+            if TYPEOF(x_arg) == SEXPTYPE::STRSXP
+                && STRING_ELT(x_arg, i as i64) == crate::sexp::globals::R_NaString()
+            {
+                let na_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+                if !na_vec.is_null() {
+                    let _na_guard = protect(na_vec);
+                    SET_STRING_ELT(na_vec, 0, crate::sexp::globals::R_NaString());
+                    SET_VECTOR_ELT(result, i as i64, na_vec);
+                }
+                continue;
+            }
             let s = elt_to_string(x_arg, i);
-            let parts: Vec<&str> = if split.is_empty() {
-                s.split("").filter(|p| !p.is_empty()).collect()
+            // NA split token doesn't split: whole string as the only token.
+            let na_split = tlen > 0
+                && TYPEOF(split_arg) == SEXPTYPE::STRSXP
+                && STRING_ELT(split_arg, (i % tlen) as i64)
+                    == crate::sexp::globals::R_NaString();
+            let split = if tlen == 0 {
+                String::new()
             } else {
-                s.split(&split).collect()
+                elt_to_string(split_arg, (i % tlen) as i64)
             };
-            let vec = Rf_allocVector3(SEXPTYPE::STRSXP, parts.len() as R_xlen_t);
+
+            let tokens: Vec<String> = if na_split {
+                vec![s]
+            } else if split.is_empty() {
+                s.chars().map(|c| c.to_string()).collect()
+            } else {
+                // Find all matches, then cut tokens around them.
+                let mut matches: Vec<(usize, usize)> = Vec::new();
+                let mut offset = 0usize;
+                if !s.is_empty() {
+                    loop {
+                        let hay = &s[offset..];
+                        let found = if fixed {
+                            fixed_find(hay, &split, false)
+                        } else if perl {
+                            crate::mainutils::grep::perl_find(&split, hay, false)
+                        } else {
+                            crate::mainutils::grep::ere_find(&split, hay, false)
+                        };
+                        let Some(m) = found else { break };
+                        matches.push((offset + m.start, offset + m.end));
+                        if m.end > m.start {
+                            offset += m.end;
+                        } else {
+                            // Empty match gets the next char, so move by one.
+                            offset += hay.chars().next().map_or(1, char::len_utf8);
+                        }
+                        if offset >= s.len() {
+                            break;
+                        }
+                    }
+                }
+                let mut tokens = Vec::with_capacity(matches.len() + 1);
+                let mut pos = 0usize;
+                for (st, en) in &matches {
+                    if en > st {
+                        tokens.push(s[pos..*st].to_string());
+                        pos = *en;
+                    } else {
+                        // Empty match: the current character is the token.
+                        let clen = s[*st..].chars().next().map_or(1, char::len_utf8);
+                        tokens.push(s[*st..(*st + clen)].to_string());
+                        pos = *st + clen;
+                    }
+                }
+                if pos < s.len() {
+                    tokens.push(s[pos..].to_string());
+                }
+                tokens
+            };
+
+            let vec = Rf_allocVector3(SEXPTYPE::STRSXP, tokens.len() as R_xlen_t);
             if !vec.is_null() {
                 let _vec_guard = protect(vec);
-                for (j, part) in parts.iter().enumerate() {
-                    let cstr = CString::new(*part).unwrap_or_default();
+                for (j, part) in tokens.iter().enumerate() {
+                    let cstr = CString::new(part.as_str()).unwrap_or_default();
                     let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                     if !charsxp.is_null() {
-                        let data = (*vec).gengc_next_node as *mut SEXP;
-                        *data.add(j) = charsxp;
+                        SET_STRING_ELT(vec, j as i64, charsxp);
                     }
                 }
             }
-            crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, vec);
+            SET_VECTOR_ELT(result, i as i64, vec);
         }
         result
     }

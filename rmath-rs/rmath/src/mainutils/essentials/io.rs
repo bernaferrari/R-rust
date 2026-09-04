@@ -25,6 +25,30 @@ use crate::sexp::symbol::Rf_install;
 // I/O builtins: cat() to file, writeLines(), file.exists()
 // ---------------------------------------------------------------------------
 
+/// Resolve a file path from a table-reading builtin against the package
+/// directory currently being sourced, when one is active.
+///
+/// Upstream evaluates install-time package code (crayon's
+/// `read.table("tools/ansi-palettes.txt", ...)`) with the package root as
+/// the working directory, baking the result into the lazy-load database.
+/// This port sources package R files at load time instead, so a relative
+/// path from that code is re-rooted at the package directory. Absolute
+/// paths and ordinary session reads (no package being sourced) pass
+/// through unchanged.
+fn resolve_package_relative_path(file_path: String) -> String {
+    let given = std::path::Path::new(&file_path);
+    if given.is_absolute() {
+        return file_path;
+    }
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.loading_package_dir
+            .as_ref()
+            .map(|dir| dir.join(given))
+    })
+    .map(|joined| joined.to_string_lossy().into_owned())
+    .unwrap_or(file_path)
+}
+
 /// R's `writeLines(text, con = stdout(), sep = "\n", useBytes = FALSE)`.
 pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -1159,7 +1183,7 @@ pub unsafe fn do_read_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             CAR(CDR(args))
         };
 
-        let file_path = elt_to_string(file_arg, 0);
+        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
         let header = if header_arg.is_null() || header_arg == R_NilValue() {
             true
         } else {
@@ -1364,7 +1388,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             CAR(CDR(args))
         };
 
-        let file_path = elt_to_string(file_arg, 0);
+        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
         let header = if header_arg.is_null() || header_arg == R_NilValue() {
             false
         } else {
@@ -1473,7 +1497,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_read_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let file_arg = CAR(args);
-        let file_path = elt_to_string(file_arg, 0);
+        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
 
         // Read file
         let content = match std::fs::read_to_string(&file_path) {
@@ -1664,7 +1688,7 @@ pub unsafe fn do_read_delim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             CAR(CDR(args))
         };
 
-        let file_path = elt_to_string(file_arg, 0);
+        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
         let sep = if sep_arg.is_null() || sep_arg == R_NilValue() {
             "\t".to_string()
         } else {
@@ -1761,7 +1785,7 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let file_arg = CAR(args);
         let widths_arg = CAR(CDR(args));
 
-        let file_path = elt_to_string(file_arg, 0);
+        let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
 
         let nfields = XLENGTH(widths_arg);
         if nfields == 0 {

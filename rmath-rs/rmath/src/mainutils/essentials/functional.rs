@@ -28,7 +28,13 @@ use crate::sexp::symbol::Rf_install;
 // lapply/sapply/Map/Filter/do.call — functional programming
 // ---------------------------------------------------------------------------
 
-/// R's `lapply(X, FUN)` — apply FUN to each element, return list.
+/// R's `lapply(X, FUN, ...)` — apply FUN to each element, return list.
+///
+/// Extra arguments are forwarded to every FUN call (evaluated once, tags
+/// preserved), matching the R-level closure: `lapply(1:2, `+`, 10)` and
+/// `lapply(x, f, ctx=1)` both reach FUN. Without this, whisker's
+/// `lapply(keys, resolve, context=context, strict=strict)` calls `resolve`
+/// with no `context`, failing on its first formal without a default.
 pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
@@ -44,6 +50,53 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // Protect both for the whole loop, like `result`.
         let _x_guard = protect(x);
         let _fun_guard = protect(fun);
+
+        // Collect `...`: every cell that is not X (name or first positional
+        // when X is unnamed) and not FUN (name or the positional after X).
+        // Evaluate each once in the caller; values live across the loop.
+        let mut extra_args = R_NilValue();
+        let mut extra_tail: SEXP = std::ptr::null_mut();
+        let mut extra_guards: Vec<_> = Vec::new();
+        let mut x_named = false;
+        let mut fun_named = false;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            match tag_name(current).as_deref() {
+                Some("X") => x_named = true,
+                Some("FUN") => fun_named = true,
+                _ => {}
+            }
+            current = CDR(current);
+        }
+        let mut positional = 0usize;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let named = tag_name(current);
+            let is_x = named.as_deref() == Some("X")
+                || (named.is_none() && !x_named && positional == 0);
+            let is_fun = named.as_deref() == Some("FUN")
+                || (named.is_none() && !fun_named && positional == 1);
+            if !is_x && !is_fun {
+                let val = crate::eval::eval::Rf_eval(CAR(current), rho);
+                let cell = Rf_cons(val, R_NilValue());
+                extra_guards.push(protect(cell));
+                let tg = TAG(current);
+                if !tg.is_null() && tg != R_NilValue() {
+                    SETTAG(cell, tg);
+                }
+                if extra_args == R_NilValue() {
+                    extra_args = cell;
+                } else {
+                    SETCDR(extra_tail, cell);
+                }
+                extra_tail = cell;
+            }
+            if named.is_none() {
+                positional += 1;
+            }
+            current = CDR(current);
+        }
+
         let n = list_apply_len(x);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -52,7 +105,28 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _result_guard = protect(result);
         for i in 0..n {
             let elem = extract_element(x, i);
-            let val = apply_unary_value(fun, elem, rho);
+            let val = if extra_args == R_NilValue() {
+                apply_unary_value(fun, elem, rho)
+            } else {
+                // The extracted element is a VALUE, not an expression:
+                // splicing a language object (`1 + 2` from a saved
+                // expression vector) straight into the call makes evalList
+                // EVALUATE it. Upstream lapply.c passes each element as a
+                // pre-forced promise; mirror that.
+                let elem_promise = crate::sexp::memory_ext::mkPROMSXP(elem, rho);
+                if !elem_promise.is_null() {
+                    crate::sexp::accessors::SET_PRVALUE(elem_promise, elem);
+                }
+                let _promise_guard = protect(elem_promise);
+                let call_args = Rf_cons(elem_promise, extra_args);
+                let _call_args_guard = protect(call_args);
+                let call = Rf_cons(fun, call_args);
+                if !call.is_null() {
+                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+                let _call_guard = protect(call);
+                crate::eval::eval::Rf_eval(call, rho)
+            };
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
         let names = list_apply_names(x, n);
@@ -203,9 +277,29 @@ fn eval_arg_by_name_or_position(args: SEXP, names: &[&str], position: usize, rho
         let expr = arg_by_name_or_position(args, names, position);
         if expr.is_null() || expr == R_NilValue() {
             R_NilValue()
+        } else if is_already_a_value(expr) {
+            // Evaluated builtins (vapply -> do_lapply) arrive with args
+            // already evaluated: X is a pairlist/vector, not a symbol or
+            // call. Re-evaluating a pairlist evaluates EACH element, which
+            // panics on a missing-arg formal (evalList "argument N is
+            // empty"). Values pass through untouched.
+            expr
         } else {
             crate::eval::eval::Rf_eval(expr, rho)
         }
+    }
+}
+
+/// Whether `expr` is already an evaluated R value (self-evaluating or a
+/// container), as opposed to a symbol/closure-call that still needs
+/// evaluation in `rho`.
+fn is_already_a_value(expr: SEXP) -> bool {
+    unsafe {
+        let t = crate::sexp::accessors::TYPEOF(expr);
+        t != SEXPTYPE::SYMSXP.0
+            && t != SEXPTYPE::LANGSXP.0
+            && t != SEXPTYPE::PROMSXP.0
+            && t != SEXPTYPE::BCODESXP.0
     }
 }
 
@@ -930,60 +1024,6 @@ unsafe fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
     }
 }
 
-/// R's `mapply(FUN, ...)` — multivariate sapply. Applies FUN element-wise across multiple vectors with recycling.
-pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let fun = CAR(args);
-        let vec_args = CDR(args);
-        if fun.is_null() {
-            return R_NilValue();
-        }
-
-        // Collect vector args, find max length
-        let mut arg_vecs: Vec<SEXP> = Vec::new();
-        let mut max_len: R_xlen_t = 0;
-        let mut current = vec_args;
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            if !arg.is_null() && arg != R_NilValue() {
-                arg_vecs.push(arg);
-                let n = XLENGTH(arg);
-                if n > max_len {
-                    max_len = n;
-                }
-            }
-            current = CDR(current);
-        }
-        if max_len == 0 {
-            return R_NilValue();
-        }
-
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, max_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-
-        for i in 0..max_len {
-            // Build call: FUN(arg1[i], arg2[i], ...) with recycling
-            let mut call_args = R_NilValue();
-            for &arg in arg_vecs.iter().rev() {
-                let n = XLENGTH(arg);
-                let idx = if n == 0 { 0 } else { i % n };
-                let elem = extract_element(arg, idx);
-                call_args = Rf_cons(elem, call_args);
-            }
-            let call_sexp = Rf_cons(fun, call_args);
-            if !call_sexp.is_null() {
-                (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-            }
-            let val = crate::eval::eval::Rf_eval(call_sexp, rho);
-            crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
-        }
-
-        result
-    }
-}
 
 /// R's `outer(X, Y, FUN="*")` — outer product. Returns a matrix of length(X) x length(Y).
 ///
@@ -1448,7 +1488,41 @@ unsafe fn recycle_column_if_needed(x: SEXP, target_len: R_xlen_t) -> SEXP {
 /// R's `data.frame(...)`: build a data-frame list while expanding data-frame arguments.
 pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let initial = do_list(_call, _op, args, _rho);
+        // `...` are the columns; the remaining formals (row.names,
+        // check.rows, check.names, fix.empty.names, stringsAsFactors) are
+        // options, never columns. Drop option cells before list-building so
+        // `data.frame(a=1, stringsAsFactors=FALSE)` keeps 1 column.
+        let mut filtered = R_NilValue();
+        let mut tail: SEXP = std::ptr::null_mut();
+        let mut filter_guards: Vec<_> = Vec::new();
+        let mut ap = args;
+        while !ap.is_null() && ap != R_NilValue() {
+            let is_option = matches!(
+                tag_name(ap).as_deref(),
+                Some("row.names")
+                    | Some("check.rows")
+                    | Some("check.names")
+                    | Some("fix.empty.names")
+                    | Some("stringsAsFactors")
+            );
+            if !is_option {
+                let cell = Rf_cons(CAR(ap), R_NilValue());
+                filter_guards.push(protect(cell));
+                let tg = TAG(ap);
+                if !tg.is_null() && tg != R_NilValue() {
+                    SETTAG(cell, tg);
+                }
+                if filtered == R_NilValue() {
+                    filtered = cell;
+                } else {
+                    SETCDR(tail, cell);
+                }
+                tail = cell;
+            }
+            ap = CDR(ap);
+        }
+        let _filtered_guard = protect(filtered);
+        let initial = do_list(_call, _op, filtered, _rho);
         if initial.is_null() || initial == R_NilValue() {
             let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
             if !result.is_null() {

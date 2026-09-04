@@ -958,6 +958,22 @@ pub(crate) fn perl_captures(
         .and_then(|regex| regex.captures(text))
 }
 
+/// Capture-group metadata for a perl pattern: `(group count excluding the
+/// implicit whole-match group 0, group names)` where unnamed groups map to
+/// "". Port of grep.c's pcre2_pattern_info(PCRE2_INFO_CAPTURECOUNT /
+/// NAMECOUNT / NAMETABLE) block in do_regexpr. Returns None when the
+/// pattern fails to compile.
+pub(crate) fn perl_group_info(pattern: &str, ignore_case: bool) -> Option<(usize, Vec<String>)> {
+    let re = PerlRegex::compile(pattern, ignore_case).ok()?;
+    let names: Vec<String> = re
+        .regex
+        .capture_names()
+        .skip(1) // group 0 (the whole match) is always unnamed
+        .map(|name| name.unwrap_or("").to_string())
+        .collect();
+    Some((names.len(), names))
+}
+
 // ---------------------------------------------------------------------------
 // R_grep_fixed -- C-callable fixed-string grep (port of grep.c:R_grep_fixed)
 // ---------------------------------------------------------------------------

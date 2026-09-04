@@ -8,7 +8,7 @@
 use std::os::raw::c_int;
 
 use super::bc_eval::opcodes;
-use crate::sexp::accessors::{BODY, CAR, CDR, PRINTNAME, SET_BODY, TYPEOF};
+use crate::sexp::accessors::{BODY, CAR, CDR, PRINTNAME, SET_BODY, TAG, TYPEOF};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
@@ -137,8 +137,17 @@ impl BytecodeCompiler {
                 if !self.compile_expr(CAR(*cell)) {
                     return false;
                 }
+                // Named argument (`name = value`): tag the just-pushed
+                // value so the call opcodes bind it by name (eval.c
+                // SETTAG). Without this, `paste(x, collapse=",")` inside a
+                // compiled closure loses the tag and "," becomes a
+                // positional argument.
+                let tag = TAG(*cell);
+                if !tag.is_null() && tag != R_NilValue() {
+                    let tag_idx = self.add_const(tag);
+                    self.emit_operand(opcodes::OP_SETTAG, tag_idx);
+                }
             }
-
             let fun_idx = self.add_const(fun);
             self.emit_operand(opcodes::OP_PUSHFUN, fun_idx);
             self.emit_operand(opcodes::OP_CALL, arg_cells.len() as c_int);

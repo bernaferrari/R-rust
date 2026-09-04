@@ -1,0 +1,22 @@
+pos: 9 len: 12
+capture.start: 11
+capture.length: 9
+capture.names:
+dim: 1,1
+attr order: match.length,index.type,useBytes,capture.start,capture.length,capture.names
+template1: ${adjective}
+part: adjective
+sub: You are pioneering
+m2: 1,1,-1,NA
+m2.start: 0,1,-1,NA,1,0,-1,NA
+m2.length: 0,1,-1,NA,1,0,-1,NA
+m3.names: word,
+     word
+[1,]    1 3
+[2,]    1 3
+     word
+[1,]    2 2
+[2,]    2 0
+ere null: TRUE
+fixed null: TRUE
+praise: You are pioneering

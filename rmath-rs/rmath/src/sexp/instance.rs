@@ -407,6 +407,13 @@ pub struct RInstance {
     /// GC contract: the cached namespace env is traced as a root by `gengc`
     /// (it may have no other referee) and remapped on reference updates.
     pub(crate) package_namespace_cache: HashMap<String, (std::path::PathBuf, SEXP)>,
+    /// Package source directory currently being sourced into a namespace
+    /// (set for the duration of `source_package_r_files`): relative file
+    /// paths opened by package R code — e.g. crayon's install-time
+    /// `read.table("tools/ansi-palettes.txt", ...)` — resolve against it,
+    /// standing in for upstream's install-time evaluation against the
+    /// package directory.
+    pub(crate) loading_package_dir: Option<std::path::PathBuf>,
     /// Per-instance headless graphics device registry.
     pub(crate) graphics_device_registry: crate::library::grdevices::device_registry::DeviceRegistry,
     /// Per-instance graphics engine registration state.
@@ -521,13 +528,14 @@ impl RInstance {
             loess_workspace_state: crate::library::stats::loessc::LoessWorkspaceState::default(),
             bspline_state: crate::library::stats::bspline::BsplineState::default(),
             fexact_state: crate::library::stats::fexact::FexactState::default(),
+            package_namespace_cache: HashMap::new(),
+            loading_package_dir: None,
             fft_state: crate::library::stats::fft::FftState::default(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
             path_policy: crate::mainutils::paths::RuntimePathPolicy::default(),
             tempfile_counter: 0,
             file_creation_umask: 0o022,
-            package_namespace_cache: HashMap::new(),
             graphics_device_registry:
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
             graphics_engine_state: crate::mainutils::engine::GraphicsEngineState::default(),

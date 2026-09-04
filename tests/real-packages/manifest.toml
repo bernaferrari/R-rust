@@ -21,13 +21,13 @@ sha256 = "bf5151494508032f68ac41e211bda80da9087c65c7068ffdd12f16669bf1f2bc"
 cran_md5 = "eda4d778ea813e892c86511d355ee26c"
 license = "GPL-3"
 needs_compilation = false
-axis = "templating engine: nested subscripts, newline-continuation, multiline formals, first-class environments"
-status = "partial"
+axis = "templating engine: nested subscripts, newline-continuation, multiline formals, first-class environments, mapply/lapply/strsplit/paste dataflow, data.frame construction"
+status = "pass"
 probes = [
   "whisker.render(\"Hello {{name}}!\", list(name=\"World\")) == \"Hello World!\"",
   "whisker.render(\"{{#show}}yes{{/show}}\", list(show=TRUE)) == \"yes\"",
+  "whisker.render(\"{{^hide}}vis{{/hide}}\", list(hide=FALSE)) == \"vis\"",
 ]
-blocker = "mapply() with named FUN argument hangs the evaluator (renderTemplate path); positional-FUN mapply works"
 
 [[package]]
 name = "praise"
@@ -37,12 +37,11 @@ sha256 = "5c035e74fd05dfa59b03afe0d5f4c53fbf34144e175e90c53d09c6baedf5debd"
 cran_md5 = "9318724cec0454884b5f762bee2da6a1"
 license = "MIT + file LICENSE"
 needs_compilation = false
-axis = "string templating over data lists: substring/substr, sample, paste0, tolower"
-status = "partial"
+axis = "string templating over data lists: regexpr(perl=TRUE) capture.start/capture.length attribution, substring, sample, paste0, tolower"
+status = "pass"
 probes = [
   "praise(\"You are ${adjective}\") matches \"You are <word>\"",
 ]
-blocker = "template interpolation returns the stem without the word (\"You are \"); likely regexpr/match.length attribution in replace_one_template"
 
 [[package]]
 name = "crayon"
@@ -52,7 +51,8 @@ sha256 = "3e74a0685541efb5ea763b92cfd5c859df71c46b0605967a0b5dbb7326e9da69"
 cran_md5 = "bb290c70d23b2200006187ac7839116f"
 license = "MIT + file LICENSE"
 needs_compilation = false
-axis = "industrial package: Collate ordering, S3 operators, local(), parent.env<-, grDevices colors, dynamic style generation, tools/ data files"
-status = "blocked"
-probes = []
-blocker = "package-time read.table(\"tools/...\") uses CWD-relative paths (engine CWD is the host dir, not the package dir); plus dynamic-assign exports (assign to asNamespace) not visible to the attach-time export check"
+axis = "industrial package: Collate ordering, S3 operators, local(), parent.env<-, grDevices colors, dynamic style generation via assign(envir=asNamespace(pkg)) at load time, package-relative tools/ data reads"
+status = "pass"
+probes = [
+  "crayon::red(\"hi\") == \"hi\"",
+]

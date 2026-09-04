@@ -898,10 +898,16 @@ pub fn substr_safe<'a>(
     let k = starts.clone().len();
     let l_val = stops.as_ref().map(|s| s.clone().len()).unwrap_or(1);
 
-    let s = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len as c_int) };
+    // Upstream substr.c: recycle x/start/stop to the COMMON length
+    // n = max(len(x), len(start), len(stop)) — a vector start/stop with a
+    // scalar x yields a vector result (substring(t, first, last) over
+    // gregexpr's per-match positions). The port used to iterate x's
+    // length only, silently dropping the extra positions.
+    let n = len.max(k).max(l_val);
+    let s = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as c_int) };
     let _s_guard = protect(s);
 
-    for i in 0..len {
+    for i in 0..n {
         let start = starts
             .clone()
             .integer_elt((i as R_xlen_t) % k)
@@ -911,7 +917,10 @@ pub fn substr_safe<'a>(
             .and_then(|s| s.clone().integer_elt((i as R_xlen_t) % l_val))
             .unwrap_or(c_int::MAX);
 
-        let el = x.clone().string_elt(i).ok_or("missing string element")?;
+        let el = x
+            .clone()
+            .string_elt((i as R_xlen_t) % len)
+            .ok_or("missing string element")?;
 
         if el.clone().as_raw() == na
             || start == crate::sexp::ffi::NA_INTEGER

@@ -835,12 +835,12 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_substr,
     },
     EvaluatedBuiltin {
-        // `substring` is base R's 3-argument alias for `substr` (same
-        // `do_substr` handler; `substring(x, first)` defaults `last` to
-        // a large value upstream). Registered here so real packages
-        // (e.g. praise) resolve it.
+        // base::substring: R-level wrapper rep_lens text to the common
+        // length before the internal (character.R); do_substring mirrors
+        // that, so `substring(s, c(1,2), c(2,3))` returns 2 elements
+        // while plain `substr` iterates len(x) only.
         name: "substring",
-        handler: crate::mainutils::essentials::do_substr,
+        handler: crate::mainutils::essentials::do_substring,
     },
     EvaluatedBuiltin {
         name: "tolower",
@@ -1027,7 +1027,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "mapply",
-        handler: crate::mainutils::essentials::do_mapply,
+        handler: crate::mainutils::mapply::do_mapply,
     },
     EvaluatedBuiltin {
         name: "outer",

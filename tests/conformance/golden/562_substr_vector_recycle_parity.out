@@ -1,0 +1,6 @@
+vec-both: ab bc
+vec-start: abc bc
+vec-stop: bc bcd
+scalar: ell
+substr-vec: ab
+gregexpr-pair: {{#s} x{{/s

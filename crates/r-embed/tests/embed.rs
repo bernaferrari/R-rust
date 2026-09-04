@@ -1936,35 +1936,33 @@ fn real_package_corpus() {
         .configure_android_paths(&app, &cache, Some(&bundled))
         .expect("paths");
 
-    // whisker 0.4.1 — partial: loads; render probes run (mapply named-FUN
-    // hang is the documented blocker for full render parity).
-    let whisker_load = session.load_package("whisker");
-    eprintln!("whisker load: {whisker_load:?}");
-    assert!(whisker_load.is_ok(), "whisker must load");
-    eprintln!("whisker ns render fn: {:?}", session.eval("get(\"whisker.render\", envir=asNamespace(\"whisker\"))").map(|s| s.chars().take(40).collect::<String>()));
+    // whisker 0.4.1 — pass: all three manifest probes (interpolation,
+    // section, inverted-section) match the oracle exactly.
+    session.load_package("whisker").expect("whisker must load");
+    assert_eq!(
+        session.eval("whisker.render(\"Hello {{name}}!\", list(name=\"World\"))").expect("whisker render"),
+        "[1] \"Hello World!\""
+    );
+    assert_eq!(
+        session.eval("whisker.render(\"{{#show}}yes{{/show}}\", list(show=TRUE))").expect("whisker section"),
+        "[1] \"yes\""
+    );
+    assert_eq!(
+        session.eval("whisker.render(\"{{^hide}}vis{{/hide}}\", list(hide=FALSE))").expect("whisker inverted"),
+        "[1] \"vis\""
+    );
 
-    // praise 1.0.0 — partial: loads; stem renders, word interpolation pending.
-    let praise_load = session.load_package("praise");
-    eprintln!("praise load: {praise_load:?}");
-    assert!(praise_load.is_ok(), "praise must load");
+    // praise 1.0.0 — pass: word interpolates via regexpr(perl=TRUE)
+    // capture attribution (see conformance case 561).
+    session.load_package("praise").expect("praise must load");
     let praise_out = session.eval("praise(\"You are ${adjective}\")").expect("praise eval");
-    eprintln!("praise probe: {praise_out:?}");
-    assert!(praise_out.starts_with("[1] \"You are "), "praise stem must render");
+    assert!(praise_out.starts_with("[1] \"You are "), "praise must interpolate a word: {praise_out}");
+    assert!(praise_out.trim_end_matches('\"').len() > "[1] \"You are ".len(), "praise word must be non-empty: {praise_out}");
 
-    // crayon 1.5.3 — blocked: package-time tools/ data files + dynamic
-    // exports; assert the EXACT current blocker so progress is visible.
-    let crayon_load = session.load_package("crayon");
-    eprintln!("crayon load: {crayon_load:?}");
-    match crayon_load {
-        Ok(()) => {
-            eprintln!("crayon unexpectedly loads — update manifest status");
-        }
-        Err(e) => {
-            let msg = format!("{e:?}");
-            assert!(
-                msg.contains("builtin_styles") || msg.contains("undefined exports"),
-                "crayon blocker changed — update manifest: {msg}"
-            );
-        }
-    }
+    // crayon 1.5.3 — pass: loads and red() renders (oracle: [1] "hi").
+    session.load_package("crayon").expect("crayon must load");
+    assert_eq!(
+        session.eval("crayon::red(\"hi\")").expect("crayon red"),
+        "[1] \"hi\""
+    );
 }

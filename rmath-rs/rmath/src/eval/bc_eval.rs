@@ -443,6 +443,30 @@ unsafe fn stack_pop_checked(stack: &mut R_bcstack_t, context: &str) -> SEXP {
     }
 }
 
+/// Apply recorded OP_SETTAG tags to the argument cells a call opcode just
+/// rebuilt. `top` is the stack depth AFTER the function was popped and
+/// BEFORE the argument values were popped, so a value recorded at depth
+/// `d` is the cell created on pop `top - 1 - d` (0-based, top-first).
+/// Consumed entries are removed; unmatched entries (stale) are dropped.
+unsafe fn apply_pending_arg_tags(
+    pending: &mut Vec<(usize, SEXP)>,
+    top: usize,
+    cells: &[SEXP],
+) {
+    if pending.is_empty() {
+        return;
+    }
+    let taken = std::mem::take(pending);
+    for (d, tag) in taken {
+        let j = top as isize - 1 - d as isize;
+        if j >= 0 && (j as usize) < cells.len() {
+            unsafe {
+                crate::sexp::accessors::SETTAG(cells[j as usize], tag);
+            }
+        }
+    }
+}
+
 unsafe fn stack_top_checked(stack: &R_bcstack_t, context: &str) -> SEXP {
     unsafe {
         let value = stack.top();
@@ -545,7 +569,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
         let mut stack = R_bcstack_t::new(stack_depth as usize);
         let mut for_loops: Vec<ForLoopState> = Vec::new();
         let mut loop_stack: Vec<LoopContext> = Vec::new();
-
+        // OP_SETTAG records (stack depth, tag symbol) for the argument
+        // values awaiting a call opcode; the call handlers apply them to
+        // the rebuilt argument cells (eval.c SETTAG semantics).
+        let mut pending_arg_tags: Vec<(usize, SEXP)> = Vec::new();
         while pc < code_len {
             let op = *code_ptr.add(pc as usize);
             pc += 1;
@@ -722,17 +749,31 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_DOMISSING => {
-                    stack.push(R_NilValue());
                 }
 
+                opcodes::OP_SETTAG => {
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "SETTAG");
+                    let tag = constant_at(consts, idx, "SETTAG");
+                    if !tag.is_null() {
+                        // Drop stale entries whose value was already popped
+                        // by an opcode other than a call (defensive).
+                        let depth_now = stack.depth();
+                        pending_arg_tags.retain(|&(d, _)| d < depth_now);
+                        pending_arg_tags.push((depth_now.saturating_sub(1), tag));
+                    }
+                }
                 opcodes::OP_CALL => {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALL");
                     let fun = stack_pop_checked(&mut stack, "CALL function");
                     let mut args = R_NilValue();
+                    let top = stack.depth();
+                    let mut cells: Vec<SEXP> = Vec::with_capacity(nargs.max(0) as usize);
                     for _ in 0..nargs {
                         let arg = stack_pop_checked(&mut stack, "CALL argument");
                         args = Rf_cons(arg, args);
+                        cells.push(args);
                     }
+                    apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
@@ -756,10 +797,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLBUILTIN");
                     let fun = stack_pop_checked(&mut stack, "CALLBUILTIN function");
                     let mut args = R_NilValue();
+                    let top = stack.depth();
+                    let mut cells: Vec<SEXP> = Vec::with_capacity(nargs.max(0) as usize);
                     for _ in 0..nargs {
                         let arg = stack_pop_checked(&mut stack, "CALLBUILTIN argument");
                         args = Rf_cons(arg, args);
+                        cells.push(args);
                     }
+                    apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
@@ -784,10 +829,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let nargs = read_operand(code_ptr, &mut pc, code_len, "CALLSPECIAL");
                     let fun = stack_pop_checked(&mut stack, "CALLSPECIAL function");
                     let mut args = R_NilValue();
+                    let top = stack.depth();
+                    let mut cells: Vec<SEXP> = Vec::with_capacity(nargs.max(0) as usize);
                     for _ in 0..nargs {
                         let arg = stack_pop_checked(&mut stack, "CALLSPECIAL argument");
                         args = Rf_cons(arg, args);
+                        cells.push(args);
                     }
+                    apply_pending_arg_tags(&mut pending_arg_tags, top, &cells);
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {

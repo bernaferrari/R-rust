@@ -867,11 +867,15 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// Process a positive subscript by removing zeros.
-unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t) -> SEXP {
+unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, _nx: R_xlen_t) -> SEXP {
     unsafe {
-        if nx == 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
-        }
+        // Upstream (subscript.c positiveSubscript) drops zeros and keeps
+        // every positive index — including on zero-length targets, where
+        // the caller (integerSubscript) has already either raised the
+        // out-of-bounds error or recorded the stretch. An nx == 0 early
+        // return is a misport: it made `r[1:2] <- list(...)` on an empty
+        // list enlarge `r` (SubassignTypeFix) yet assign nothing, leaving
+        // NULL elements behind.
 
         // Count non-zero values
         let mut count: R_xlen_t = 0;
