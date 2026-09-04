@@ -78,11 +78,14 @@ pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 /// R's `environment(fun)` — get the environment associated with a closure.
+/// With no argument, returns the current evaluation environment (callers
+/// rely on `environment()` inside `local({...})` blocks to capture the
+/// fresh child env).
 pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let fn_arg = CAR(args);
         if fn_arg.is_null() || fn_arg == R_NilValue() {
-            return R_NilValue();
+            return if _rho.is_null() { R_NilValue() } else { _rho };
         }
         let t = TYPEOF(fn_arg);
         if t == SEXPTYPE::CLOSXP {

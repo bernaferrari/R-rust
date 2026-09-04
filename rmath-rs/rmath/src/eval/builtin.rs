@@ -240,6 +240,15 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        // `local(expr, envir)` must receive `expr` UNEVALUATED (like
+        // `with`): the evaluated table would eval the block in the caller
+        // env first, leaking assignments to globalenv. The handler builds
+        // the child env itself and Rf_evals the raw expression in it.
+        name: "local",
+        handler: crate::mainutils::essentials::do_local,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "substitute",
         handler: crate::mainutils::coerce::do_substitute,
         restore_visibility_always: true,
@@ -826,6 +835,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_substr,
     },
     EvaluatedBuiltin {
+        // `substring` is base R's 3-argument alias for `substr` (same
+        // `do_substr` handler; `substring(x, first)` defaults `last` to
+        // a large value upstream). Registered here so real packages
+        // (e.g. praise) resolve it.
+        name: "substring",
+        handler: crate::mainutils::essentials::do_substr,
+    },
+    EvaluatedBuiltin {
         name: "tolower",
         handler: crate::mainutils::essentials::do_tolower,
     },
@@ -1087,6 +1104,37 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "head",
         handler: crate::mainutils::essentials::do_head,
+    },
+    EvaluatedBuiltin {
+        // grDevices color primitives (existing implementations in
+        // library::grdevices::colors, previously unreachable from R code;
+        // needed by real packages such as crayon via col2rgb/colors).
+        name: "col2rgb",
+        handler: crate::library::grdevices::colors::do_col2rgb_builtin,
+    },
+    EvaluatedBuiltin {
+        name: "colors",
+        handler: crate::library::grdevices::colors::do_colors_builtin,
+    },
+    EvaluatedBuiltin {
+        name: "palette",
+        handler: crate::library::grdevices::colors::do_palette_builtin,
+    },
+    EvaluatedBuiltin {
+        name: "rgb",
+        handler: crate::library::grdevices::colors::do_rgb_builtin,
+    },
+    EvaluatedBuiltin {
+        name: "hsv",
+        handler: crate::library::grdevices::colors::do_hsv_builtin,
+    },
+    EvaluatedBuiltin {
+        name: "gray",
+        handler: crate::library::grdevices::colors::do_gray_builtin,
+    },
+    EvaluatedBuiltin {
+        name: "grey",
+        handler: crate::library::grdevices::colors::do_gray_builtin,
     },
     EvaluatedBuiltin {
         name: "tail",
@@ -1617,8 +1665,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_eval,
     },
     EvaluatedBuiltin {
+        // parse()/source() file-parse path: strict newline-else (gram.y
+        // context-stack semantics); the interactive eval path stays lenient.
         name: "parse",
-        handler: crate::mainutils::essentials::do_parse,
+        handler: crate::mainutils::source::do_parse,
     },
     EvaluatedBuiltin {
         name: "conditionMessage",
@@ -1979,6 +2029,13 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "parent.env",
         handler: crate::mainutils::essentials::do_parent_env,
+    },
+    EvaluatedBuiltin {
+        // `parent.env(env) <- value` replacement form (same
+        // `do_set_parent_env` handler; needed by real packages such as
+        // crayon's rstudio-detect shim).
+        name: "parent.env<-",
+        handler: crate::mainutils::essentials::do_set_parent_env,
     },
     EvaluatedBuiltin {
         name: "environmentName",

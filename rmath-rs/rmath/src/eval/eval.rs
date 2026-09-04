@@ -197,6 +197,10 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
         }
         EvalKind::Language => eval_lang_safe(expr, env),
         EvalKind::Closure => Ok(expr),
+        // Environments are first-class values (upstream Rf_eval returns
+        // ENVSXP unchanged): `local({...})` blocks capture them via
+        // `environment()`, and package shims return them as values.
+        EvalKind::Environment => Ok(expr),
         EvalKind::Promise => eval_promise_safe(expr, env),
         EvalKind::Dots => eval_dots_safe(expr, env),
         EvalKind::Bytecode => eval_bytecode_safe(expr, env),
@@ -221,6 +225,7 @@ enum EvalKind {
     Symbol,
     Language,
     Closure,
+    Environment,
     Promise,
     Dots,
     Bytecode,
@@ -253,6 +258,7 @@ fn classify_expr(expr: Sexp<'_>) -> EvalKind {
         SEXPTYPE::SYMSXP => EvalKind::Symbol,
         SEXPTYPE::LANGSXP => EvalKind::Language,
         SEXPTYPE::CLOSXP => EvalKind::Closure,
+        SEXPTYPE::ENVSXP => EvalKind::Environment,
         SEXPTYPE::PROMSXP => EvalKind::Promise,
         SEXPTYPE::DOTSXP => EvalKind::Dots,
         SEXPTYPE::BCODESXP => EvalKind::Bytecode,

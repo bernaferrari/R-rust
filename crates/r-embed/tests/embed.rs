@@ -1919,3 +1919,52 @@ fn wasm_m3_oracle_shape() {
     let mut session = RSession::new().expect("session");
     assert_eq!(session.eval("1+1").unwrap(), "[1] 2");
 }
+
+/// Pinned real-package corpus (tests/real-packages/manifest.toml).
+///
+/// Unlike the synthetic feature matrix above, these are independently
+/// authored CRAN packages, unpacked from tests/real-packages/vendor/ by
+/// scripts/real_package_corpus.sh (env: RPORT_REAL_PKG_BUNDLED/APP/CACHE).
+/// Statuses mirror the manifest: pass/partial/blocked with exact blockers.
+#[test]
+fn real_package_corpus() {
+    let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED").unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
+    let app = std::env::var("RPORT_REAL_PKG_APP").unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
+    let cache = std::env::var("RPORT_REAL_PKG_CACHE").unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
+    let mut session = RSession::new().expect("session");
+    session
+        .configure_android_paths(&app, &cache, Some(&bundled))
+        .expect("paths");
+
+    // whisker 0.4.1 — partial: loads; render probes run (mapply named-FUN
+    // hang is the documented blocker for full render parity).
+    let whisker_load = session.load_package("whisker");
+    eprintln!("whisker load: {whisker_load:?}");
+    assert!(whisker_load.is_ok(), "whisker must load");
+    eprintln!("whisker ns render fn: {:?}", session.eval("get(\"whisker.render\", envir=asNamespace(\"whisker\"))").map(|s| s.chars().take(40).collect::<String>()));
+
+    // praise 1.0.0 — partial: loads; stem renders, word interpolation pending.
+    let praise_load = session.load_package("praise");
+    eprintln!("praise load: {praise_load:?}");
+    assert!(praise_load.is_ok(), "praise must load");
+    let praise_out = session.eval("praise(\"You are ${adjective}\")").expect("praise eval");
+    eprintln!("praise probe: {praise_out:?}");
+    assert!(praise_out.starts_with("[1] \"You are "), "praise stem must render");
+
+    // crayon 1.5.3 — blocked: package-time tools/ data files + dynamic
+    // exports; assert the EXACT current blocker so progress is visible.
+    let crayon_load = session.load_package("crayon");
+    eprintln!("crayon load: {crayon_load:?}");
+    match crayon_load {
+        Ok(()) => {
+            eprintln!("crayon unexpectedly loads — update manifest status");
+        }
+        Err(e) => {
+            let msg = format!("{e:?}");
+            assert!(
+                msg.contains("builtin_styles") || msg.contains("undefined exports"),
+                "crayon blocker changed — update manifest: {msg}"
+            );
+        }
+    }
+}

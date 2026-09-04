@@ -85,7 +85,6 @@ enum Token {
     LBracket,
     RBracket,
     LDoubleBracket,
-    RDoubleBracket,
     Comma,
     Semicolon,
     Newline,
@@ -341,14 +340,12 @@ impl Lexer {
                     Token::LBracket
                 }
             }
-            ']' => {
-                if self.peek_char() == Some(']') {
-                    self.advance();
-                    Token::RDoubleBracket
-                } else {
-                    Token::RBracket
-                }
-            }
+            // A `]` closes one subscript level; `]]` closes two. The lexer
+            // must NOT greedily fuse adjacent closes: in `v[c(1,2)[1]]`
+            // the inner `[1]` consumes the first `]` and the outer `[...]`
+            // consumes the second. Always emit a single close here; the
+            // `[[` parse rule consumes two `]` positionally.
+            ']' => Token::RBracket,
             ',' => Token::Comma,
             ';' => Token::Semicolon,
             '?' => Token::Question,
@@ -741,7 +738,6 @@ fn token_display(tok: &Token) -> String {
         Token::RBracket => "']'".to_string(),
         Token::LBracket => "'['".to_string(),
         Token::LDoubleBracket => "'[['".to_string(),
-        Token::RDoubleBracket => "']]'".to_string(),
         Token::Comma => "','".to_string(),
         Token::Semicolon => "';'".to_string(),
         Token::Tilde => "'~'".to_string(),
@@ -911,9 +907,25 @@ pub struct Parser<'arena> {
     /// attaches to its `if` when the `if` sits inside such a group; at top
     /// level the newline terminates the `if` and `else` is a syntax error.
     inside_group: Vec<bool>,
+    /// Token index of the innermost unclosed `(`/`[`/`{` opener at each
+    /// position (parallel to `inside_group`): `None` at top level. Used by
+    /// `if_closed_before` to tell a `]`/`)`/`}` that merely closes an inner
+    /// group (e.g. a call inside the `if` body — the `if` stays open) from
+    /// one that closes the `if`'s own group (the `if` is completed).
+    group_opener: Vec<Option<usize>>,
+    /// Strict `parse()`/`source()` mode (see `parse_expressions_strict`):
+    /// newline-crossing `else` is always rejected. The interactive
+    /// top-level path leaves it false (lenient group-depth gate).
+    strict_newline_else: bool,
 }
 
 impl<'arena> Parser<'arena> {
+    /// Enable strict `parse()`/`source()` newline-`else` semantics on an
+    /// existing parser (see `parse_expressions_strict`).
+    pub fn set_strict_newline_else(&mut self, strict: bool) {
+        self.strict_newline_else = strict;
+    }
+
     pub fn new(input: &str, arena: &'arena mut RArena) -> Self {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
@@ -936,14 +948,26 @@ impl<'arena> Parser<'arena> {
         }
         // Precompute group containment per token (see `inside_group`).
         let mut inside_group = Vec::with_capacity(tokens.len());
+        let mut group_opener: Vec<Option<usize>> = Vec::with_capacity(tokens.len());
         let mut depth = 0usize;
-        for tok in &tokens {
+        let mut opener_stack: Vec<usize> = Vec::new();
+        for (idx, tok) in tokens.iter().enumerate() {
             inside_group.push(depth > 0);
+            group_opener.push(opener_stack.last().copied());
             match tok {
-                Token::LParen | Token::LBracket | Token::LDoubleBracket | Token::LBrace => {
+                Token::LParen | Token::LBracket | Token::LBrace => {
+                    opener_stack.push(idx);
                     depth += 1
                 }
-                Token::RParen | Token::RBracket | Token::RDoubleBracket | Token::RBrace => {
+                // `[[` opens TWO levels (it consumes two `]`); push twice
+                // so a later `[[`-balance probe sees the doubled depth.
+                Token::LDoubleBracket => {
+                    opener_stack.push(idx);
+                    opener_stack.push(idx);
+                    depth += 2
+                }
+                Token::RParen | Token::RBracket | Token::RBrace => {
+                    opener_stack.pop();
                     depth = depth.saturating_sub(1)
                 }
                 _ => {}
@@ -958,6 +982,8 @@ impl<'arena> Parser<'arena> {
             placeholder: std::ptr::null_mut(),
             have_pipebind,
             inside_group,
+            group_opener,
+            strict_newline_else: false,
         }
     }
 
@@ -1366,6 +1392,13 @@ impl<'arena> Parser<'arena> {
 
         let mut left = self.parse_or()?;
         loop {
+            // EatLines (gram.y): a newline before a binary operator
+            // continues the expression only inside a group (`(`/`[`/`{`).
+            // At top level the newline terminates the expression.
+            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+                break;
+            }
+            self.skip_newlines();
             if self.peek() == &Token::Tilde {
                 self.advance();
                 self.skip_newlines();
@@ -1384,6 +1417,13 @@ impl<'arena> Parser<'arena> {
     fn parse_or(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_and()?;
         loop {
+            // EatLines (gram.y): a newline before a binary operator
+            // continues the expression only inside a group (`(`/`[`/`{`).
+            // At top level the newline terminates the expression.
+            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+                return Ok(left);
+            }
+            self.skip_newlines();
             match self.peek() {
                 Token::Or2 => {
                     self.advance();
@@ -1411,6 +1451,13 @@ impl<'arena> Parser<'arena> {
     fn parse_and(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_not()?;
         loop {
+            // EatLines (gram.y): a newline before a binary operator
+            // continues the expression only inside a group (`(`/`[`/`{`).
+            // At top level the newline terminates the expression.
+            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+                return Ok(left);
+            }
+            self.skip_newlines();
             match self.peek() {
                 Token::And2 => {
                     self.advance();
@@ -1481,6 +1528,11 @@ impl<'arena> Parser<'arena> {
     fn parse_addition(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_multiplication()?;
         loop {
+            // EatLines (gram.y): see the group gate in parse_tilde below.
+            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+                return Ok(left);
+            }
+            self.skip_newlines();
             let op_name = match self.peek() {
                 Token::Plus => "+",
                 Token::Minus => "-",
@@ -1497,6 +1549,13 @@ impl<'arena> Parser<'arena> {
     fn parse_multiplication(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_special()?;
         loop {
+            // EatLines (gram.y): a newline before a binary operator
+            // continues the expression only inside a group (`(`/`[`/`{`).
+            // At top level the newline terminates the expression.
+            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+                return Ok(left);
+            }
+            self.skip_newlines();
             let op_name = match self.peek() {
                 Token::Star => "*".to_string(),
                 Token::Slash => "/".to_string(),
@@ -1518,6 +1577,13 @@ impl<'arena> Parser<'arena> {
     fn parse_special(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_pipebind()?;
         loop {
+            // EatLines (gram.y): a newline before a binary operator
+            // continues the expression only inside a group (`(`/`[`/`{`).
+            // At top level the newline terminates the expression.
+            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+                return Ok(left);
+            }
+            self.skip_newlines();
             match self.peek() {
                 Token::Percent(name) => {
                     let op_name = name.clone();
@@ -1777,16 +1843,23 @@ impl<'arena> Parser<'arena> {
     fn parse_colon(&mut self) -> Result<SEXP, ParseError> {
         let mut left = self.parse_unary()?;
         loop {
-            if self.peek() == &Token::Colon {
-                self.advance();
-                self.skip_newlines();
-                let right = self.parse_unary()?;
-                unsafe {
-                    let op = Rf_install(c":".as_ptr());
-                    left = self.lang3(op, left, right)?;
-                }
-            } else {
+            // EatLines: a newline before a binary operator continues the
+            // expression — but only when the operator actually follows.
+            // Probe past the newline WITHOUT consuming it: if no colon
+            // follows, the newline terminates (an `if` body ending here
+            // must still see its newline for the else gate below).
+            let before_nl = self.pos;
+            self.skip_newlines();
+            if self.peek() != &Token::Colon {
+                self.pos = before_nl;
                 break;
+            }
+            self.advance();
+            self.skip_newlines();
+            let right = self.parse_unary()?;
+            unsafe {
+                let op = Rf_install(c":".as_ptr());
+                left = self.lang3(op, left, right)?;
             }
         }
         Ok(left)
@@ -1796,7 +1869,11 @@ impl<'arena> Parser<'arena> {
         match self.peek() {
             Token::Minus => {
                 self.advance();
-                let operand = self.parse_unary()?;
+                // Unary sign binds its full postfix operand (`-x[1]`,
+                // `-f()[1]`): the operand includes calls/subscripts, so a
+                // nested subscript inside an outer subscript parses as one
+                // index expression instead of stranding the inner `]`.
+                let operand = self.parse_postfix()?;
                 unsafe {
                     let op = Rf_install(c"-".as_ptr());
                     self.lang2(op, operand)
@@ -1804,7 +1881,8 @@ impl<'arena> Parser<'arena> {
             }
             Token::Plus => {
                 self.advance();
-                let operand = self.parse_unary()?;
+                // Same postfix-operand rule as unary minus above.
+                let operand = self.parse_postfix()?;
                 unsafe {
                     // stock R keeps the call: `+"a"` errors at runtime
                     // ("invalid argument to unary operator")
@@ -1814,7 +1892,8 @@ impl<'arena> Parser<'arena> {
             }
             Token::Not => {
                 self.advance();
-                let operand = self.parse_unary()?;
+                // Same postfix-operand rule as unary minus above.
+                let operand = self.parse_postfix()?;
                 unsafe {
                     let op = Rf_install(c"!".as_ptr());
                     self.lang2(op, operand)
@@ -1888,10 +1967,14 @@ impl<'arena> Parser<'arena> {
                 }
                 // Double subscript: x[[i]], x[[i, j]] — multiple comma-
                 // separated slots allowed, empty slots become missing args.
+                // Closes are consumed positionally as two `]` tokens (the
+                // lexer never fuses `]]`): the first closes the slot list,
+                // the second closes the `[[` opener.
                 Token::LDoubleBracket => {
                     self.advance();
-                    let slots = self.parse_subscript_slots(&Token::RDoubleBracket)?;
-                    self.expect(&Token::RDoubleBracket)?;
+                    let slots = self.parse_subscript_slots(&Token::RBracket)?;
+                    self.expect(&Token::RBracket)?;
+                    self.expect(&Token::RBracket)?;
 
                     unsafe {
                         let dbracket_sym = Rf_install(c"[[".as_ptr());
@@ -2058,7 +2141,16 @@ impl<'arena> Parser<'arena> {
                 self.advance();
                 let val = if self.peek() == &Token::LParen {
                     self.advance();
-                    let e = self.parse_expr()?;
+                    // Bare `return()` returns NULL: an immediately-closed
+                    // paren is an empty argument, not a parse error.
+                    // Upstream treats `return` as a keyword call whose
+                    // argument may be missing (`do_return` with R_MissingArg
+                    // returns NULL); `f() { return() }` is valid R.
+                    let e = if self.peek() == &Token::RParen {
+                        unsafe { R_NilValue() }
+                    } else {
+                        self.parse_expr()?
+                    };
                     self.expect(&Token::RParen)?;
                     e
                 } else {
@@ -2102,25 +2194,61 @@ impl<'arena> Parser<'arena> {
     // Control structures
     // -----------------------------------------------------------------------
 
+    /// Whether an `if` whose body ended at `body_end` was already popped
+    /// before a newline-crossing `else` (gram.y: `case ']'/')'/RBRACE:
+    /// `while (*contextp == 'i') ifpop()`).
+    ///
+    /// The `if` is completed when, scanning back from `body_end`, a
+    /// `]`/`)`/`}` closes the group the `if` body belonged to — i.e. the
+    /// opener depth at the body's last token is deeper than (or the opener
+    /// differs from) the opener at `body_end`. Closes strictly inside the
+    /// body (a call's `)` before the body's final token) do not pop it.
+    fn if_closed_before(&self, body_end: usize) -> bool {
+        if body_end == 0 || body_end > self.tokens.len() {
+            return false;
+        }
+        // Innermost unclosed opener just before the newline vs at the last
+        // body token: if the body ended by closing its own group (the
+        // opener changed between body-last and body-end), the `if` popped.
+        let before = body_end.saturating_sub(1);
+        let opener_at_end = self.group_opener.get(body_end).copied().flatten();
+        let opener_before = self.group_opener.get(before).copied().flatten();
+        opener_at_end != opener_before
+    }
+
     /// if (cond) expr [else expr]
     fn parse_if(&mut self) -> Result<SEXP, ParseError> {
+        // Token index of this `if`: the EatLines gate below probes the
+        // group depth HERE (gram.y pushes 'i' at IF-time when inside a
+        // group; a bare `[[` later in the body must not change the answer).
+        let if_pos = self.pos;
         self.advance(); // consume 'if'
         self.skip_newlines();
         self.expect(&Token::LParen)?;
         let cond = self.parse_expr()?;
         self.expect(&Token::RParen)?;
-
         // Skip newlines after )
         self.skip_newlines();
         let body = self.parse_expr()?;
 
-        // Check for else. gram.y: ELSE is only returned after a newline
-        // when the `if` was seen inside `(`/`[`/`{` (IfPush); otherwise the
-        // newline terminates the `if` and a stray `else` is a syntax error.
-        let nl_pos = self.pos;
+        // Check for else. Upstream (gram.y token(): `case IF: IfPush()`
+        // pushes 'i' when inside `(`/`[`/`{`; `case ']'/')'/RBRACE:
+        // `while (*contextp == 'i') ifpop()` pops it) reports ELSE after a
+        // newline only when the `if` is still on the context stack: at top
+        // level the `if` was never pushed, so a newline-terminated body
+        // rejects `else`; inside a function body or `{` block the `if`
+        // sits under an unclosed group, so whisker's `if (escape)\n
+        // gsub(...)\n else ...` attaches. Gate on the group depth at the
+        // `if` keyword itself: `None` (top level) rejects a
+        // newline-crossing `else`, `Some(_)` (inside a group) accepts it.
+        let body_end = self.pos;
+        let if_opener = self.group_opener.get(if_pos).copied().flatten();
         self.skip_newlines();
         if self.peek() == &Token::KwElse {
-            if self.pos > nl_pos && !self.inside_group[self.pos] {
+            // Strict file-parse mode (`parse()`/`source()`) rejects every
+            // newline-crossing `else`; the interactive path gates on the
+            // group depth at the `if` keyword (see above).
+            if self.pos > body_end && (self.strict_newline_else || if_opener.is_none()) {
                 return Err(self.unexpected_at(self.pos));
             }
             self.advance();
@@ -2375,8 +2503,8 @@ impl<'arena> Parser<'arena> {
                 let name = name.clone();
                 self.advance();
                 match name.as_str() {
-                    "TRUE" => self.scalar_logical(TRUE),
-                    "FALSE" => self.scalar_logical(FALSE),
+                    "TRUE" | "T" => self.scalar_logical(TRUE),
+                    "FALSE" | "F" => self.scalar_logical(FALSE),
                     "NULL" => unsafe { Ok(R_NilValue()) },
                     "NA" => self.scalar_logical(NA_LOGICAL),
                     "Inf" => self.scalar_real(f64::INFINITY),
@@ -2392,9 +2520,6 @@ impl<'arena> Parser<'arena> {
             _ => Err(self.unexpected_at(self.pos)),
         }
     }
-
-    // -----------------------------------------------------------------------
-    // Argument list
     // -----------------------------------------------------------------------
 
     fn parse_arglist(&mut self) -> Result<Vec<(Option<String>, SEXP)>, ParseError> {
@@ -2495,6 +2620,18 @@ pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
 /// instead of a synthetic `{ ... }` block used by direct evaluation.
 pub fn parse_expressions(input: &str, arena: &mut RArena) -> Result<Vec<SEXP>, ParseError> {
     let mut parser = Parser::new(input, arena);
+    parser.parse_top_level_expressions()
+}
+
+/// Parse R source the way `parse()`/`source()` do: newline-crossing `else`
+/// is always rejected (gram.y reports ELSE after a newline only when the
+/// `if` is still on the lexer's context stack, and the file-parse path
+/// never carries a statement-continuation context across the newline).
+/// The interactive top-level path (`parse_program`, used by eval) keeps
+/// the lenient gate that attaches `else` inside an unclosed group.
+pub fn parse_expressions_strict(input: &str, arena: &mut RArena) -> Result<Vec<SEXP>, ParseError> {
+    let mut parser = Parser::new(input, arena);
+    parser.strict_newline_else = true;
     parser.parse_top_level_expressions()
 }
 
@@ -2971,6 +3108,26 @@ mod tests {
 
         assert!(error.to_string().contains("allocation"), "{error}");
         assert!(error.to_string().contains("(<input>:1:"), "{error}");
+    }
+
+
+    #[test]
+    fn zz_strict_gate_unit() {
+        // Direct unit test of the strict gate: parse_expressions_strict
+        // must reject top-level newline-crossing `else` (gram.y ELSE rule).
+        let session = Box::leak(Box::new(RSession::new()));
+        let err = session
+            .with_arena(|arena| parse_expressions_strict("if (TRUE)\n1\nelse 2\n", arena))
+            .unwrap_or_else(|| panic!("test session is closed"))
+            .expect_err("strict path must reject newline-else");
+        assert!(err.to_string().contains("unexpected 'else'"), "{err}");
+    }
+    #[test]
+    fn zz_paren_newline_plus() {
+        // Newline BEFORE a binary operator continues the expression
+        // (EatLines): `(1\n + 2)` must parse like `(1 +\n 2)`.
+        let _ = must(parse_str("(1\n + 2)"));
+        let _ = must(parse_str("(1 +\n 2)"));
     }
 
     // --- NEW: Control flow ---

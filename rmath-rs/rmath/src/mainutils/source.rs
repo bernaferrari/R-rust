@@ -9,7 +9,7 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, XLENGTH,
+    CAR, CDR, CHAR, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector3, Rf_mkCharLen};
 use crate::sexp::context::RError;
@@ -25,6 +25,23 @@ use crate::sexp::protect::protect;
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         reset_parse_state();
+        // `file=` (by name or as the lone positional): read the file and
+        // parse its content with strict file-parse semantics.
+        let file = file_arg(args);
+        if !file.is_null() && file != R_NilValue() {
+            let path = local_elt_to_string(file, 0);
+            if !path.is_empty() {
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => {
+                        remember_parse_context(&content);
+                        return parse_content_to_exprs(&content);
+                    }
+                    Err(err) => {
+                        parse_failure(format!("cannot open file '{path}': {err}"));
+                    }
+                }
+            }
+        }
         let text = parse_text_arg(args);
         if text.is_null() || text == R_NilValue() {
             return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
@@ -33,41 +50,121 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             parse_failure("invalid 'text' argument");
         }
 
+        // Multi-element `text` is ONE source stream: upstream concatenates
+        // the vector with newlines before parsing (a function split across
+        // elements parses as a whole). Join first, then strict-parse once.
         let n = XLENGTH(text);
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
-        }
-
-        let mut parsed = Vec::new();
+        let mut combined = String::new();
         for i in 0..n {
             let elt = STRING_ELT(text, i);
             if elt == R_NaString() {
                 parse_failure("invalid 'text' argument");
             }
             let source = CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned();
-            if source.trim().is_empty() {
-                continue;
+            if !combined.is_empty() {
+                combined.push('\n');
             }
-            remember_parse_context(&source);
-            let expr = crate::sexp::memory::with_arena(|arena| {
-                crate::eval::parser::parse(&source, arena).map_err(|err| err.to_string())
-            });
-            match expr {
-                Ok(expr) if !expr.is_null() && expr != R_NilValue() => parsed.push(expr),
-                Ok(_) => {}
-                Err(message) => parse_failure(message),
-            }
+            combined.push_str(&source);
         }
+        if combined.trim().is_empty() {
+            return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
+        }
+        remember_parse_context(&combined);
+        return parse_content_to_exprs(&combined);
+    }
+}
 
-        let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, parsed.len() as R_xlen_t);
-        if result.is_null() {
-            return R_NilValue();
+// Parse whole-file content with strict file-parse semantics,
+// shared by the `file=` path below.
+unsafe fn parse_content_to_exprs(content: &str) -> SEXP {
+    unsafe {
+        let parsed = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse_expressions_strict(content, arena)
+                .map_err(|err| err.to_string())
+        });
+        match parsed {
+            Ok(exprs) => {
+                let result = Rf_allocVector3(SEXPTYPE::EXPRSXP, exprs.len() as R_xlen_t);
+                if result.is_null() {
+                    return R_NilValue();
+                }
+                let _result_guard = protect(result);
+                for (i, expr) in exprs.into_iter().enumerate() {
+                    SET_VECTOR_ELT(result, i as R_xlen_t, expr);
+                }
+                result
+            }
+            Err(message) => {
+                parse_failure(message);
+            }
         }
-        let _result_guard = protect(result);
-        for (i, expr) in parsed.into_iter().enumerate() {
-            SET_VECTOR_ELT(result, i as R_xlen_t, expr);
+    }
+}
+
+// Local element-to-string (mirrors essentials' helper without
+// reaching into its private `shared` module).
+unsafe fn local_elt_to_string(x: SEXP, i: R_xlen_t) -> String {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return String::new();
         }
-        result
+        if TYPEOF(x) != SEXPTYPE::STRSXP {
+            return String::new();
+        }
+        let elt = STRING_ELT(x, i);
+        if elt.is_null() {
+            return String::new();
+        }
+        CStr::from_ptr(CHAR(elt)).to_string_lossy().into_owned()
+    }
+}
+
+// Compare a tag symbol's printed name without reaching into private modules.
+unsafe fn tag_name_is(tag: SEXP, want: &str) -> bool {
+    unsafe {
+        if tag.is_null() {
+            return false;
+        }
+        let pname = crate::sexp::accessors::PRINTNAME(tag);
+        if pname.is_null() {
+            return false;
+        }
+        let chars = crate::sexp::accessors::CHAR(pname);
+        if chars.is_null() {
+            return false;
+        }
+        std::ffi::CStr::from_ptr(chars).to_str().unwrap_or("") == want
+    }
+}
+
+// `file` by name, or the lone positional string when it names a
+// readable file (parse(file=...) / parse(path)).
+unsafe fn file_arg(args: SEXP) -> SEXP {
+    unsafe {
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            if !tag.is_null()
+                && tag_name_is(tag, "file")
+            {
+                return CAR(cell);
+            }
+            cell = CDR(cell);
+        }
+        // Lone positional string that names a readable file.
+        if !args.is_null()
+            && args != R_NilValue()
+            && (CDR(args).is_null() || CDR(args) == R_NilValue())
+        {
+            let first = CAR(args);
+            if TYPEOF(first) == SEXPTYPE::STRSXP {
+                let path = local_elt_to_string(first, 0);
+                if !path.is_empty() && std::path::Path::new(&path).is_file() {
+                    return first;
+                }
+            }
+        }
+        R_NilValue()
     }
 }
 

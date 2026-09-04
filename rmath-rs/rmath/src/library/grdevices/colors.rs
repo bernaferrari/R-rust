@@ -4038,6 +4038,157 @@ pub unsafe fn do_colors() -> SEXP {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Evaluated-builtin wrappers (`(call, op, args, rho)` shape).
+//
+// The C-ported implementations above take unwrapped arguments
+// (`do_col2rgb(colors, alpha)`); the evaluator calls builtins with the
+// standard four-argument form, so these thin wrappers unpack `args`.
+use crate::sexp::accessors::{CAR, CDR};
+
+pub unsafe fn do_col2rgb_builtin(
+    _call: *mut crate::sexp::ffi::SexprecCore,
+    _op: *mut crate::sexp::ffi::SexprecCore,
+    args: *mut crate::sexp::ffi::SexprecCore,
+    _rho: *mut crate::sexp::ffi::SexprecCore,
+) -> *mut crate::sexp::ffi::SexprecCore {
+    unsafe {
+        use crate::sexp::ffi::{FALSE, SEXPTYPE};
+        use crate::sexp::globals::R_NilValue;
+        let colors = CAR(args);
+        let alpha_cell = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(CDR(args))
+        };
+        // Upstream col2rgb(colors, alpha=FALSE): a missing alpha defaults
+        // to FALSE, not NA (which errors as invalid).
+        let alpha = if alpha_cell.is_null() || alpha_cell == R_NilValue() {
+            crate::sexp::constructors::Rf_ScalarLogical(FALSE)
+        } else {
+            alpha_cell
+        };
+        let _guard = crate::sexp::protect::protect(alpha);
+        do_col2rgb(colors, alpha)
+    }
+}
+
+pub unsafe fn do_colors_builtin(
+    _call: *mut crate::sexp::ffi::SexprecCore,
+    _op: *mut crate::sexp::ffi::SexprecCore,
+    _args: *mut crate::sexp::ffi::SexprecCore,
+    _rho: *mut crate::sexp::ffi::SexprecCore,
+) -> *mut crate::sexp::ffi::SexprecCore {
+    unsafe { do_colors() }
+}
+
+pub unsafe fn do_palette_builtin(
+    _call: *mut crate::sexp::ffi::SexprecCore,
+    _op: *mut crate::sexp::ffi::SexprecCore,
+    args: *mut crate::sexp::ffi::SexprecCore,
+    _rho: *mut crate::sexp::ffi::SexprecCore,
+) -> *mut crate::sexp::ffi::SexprecCore {
+    unsafe {
+        // `palette()` with no argument queries the current palette:
+        // pass an empty string vector (length 0 hits neither the
+        // reset nor the set branch, returning the recorded palette).
+        let val = CAR(args);
+        let val = if val.is_null() || val == R_NilValue() {
+            Rf_allocVector(SEXPTYPE::STRSXP, 0)
+        } else {
+            val
+        };
+        let _guard = crate::sexp::protect::protect(val);
+        do_palette(val)
+    }
+}
+
+pub unsafe fn do_rgb_builtin(
+    _call: *mut crate::sexp::ffi::SexprecCore,
+    _op: *mut crate::sexp::ffi::SexprecCore,
+    args: *mut crate::sexp::ffi::SexprecCore,
+    _rho: *mut crate::sexp::ffi::SexprecCore,
+) -> *mut crate::sexp::ffi::SexprecCore {
+    unsafe {
+        let cell = |i: usize| {
+            let mut c = args;
+            for _ in 0..i {
+                if c.is_null() || c == R_NilValue() {
+                    return R_NilValue();
+                }
+                c = CDR(c);
+            }
+            if c.is_null() || c == R_NilValue() {
+                R_NilValue()
+            } else {
+                CAR(c)
+            }
+        };
+        // R formals: rgb(red, green, blue, alpha, names, maxColorValue=1).
+        // Missing maxColorValue defaults to 1 (not NA, which errors).
+        // Missing args arrive as R_MissingArg (a SYMSXP), not NULL, so
+        // treat any non-numeric arg as missing too.
+        let raw_mcv = cell(5);
+        let mcv = if raw_mcv.is_null()
+            || raw_mcv == R_NilValue()
+            || crate::sexp::ffi::SEXPTYPE::REALSXP != crate::sexp::accessors::TYPEOF(raw_mcv)
+                && crate::sexp::ffi::SEXPTYPE::INTSXP != crate::sexp::accessors::TYPEOF(raw_mcv)
+                && crate::sexp::ffi::SEXPTYPE::LGLSXP != crate::sexp::accessors::TYPEOF(raw_mcv)
+        {
+            crate::sexp::constructors::Rf_ScalarReal(1.0)
+        } else {
+            raw_mcv
+        };
+        let _mcv_guard = crate::sexp::protect::protect(mcv);
+        // do_rgb's 4th/5th params are (alpha, maxColorValue)-adjacent:
+        // the R formals are (red, green, blue, alpha, names, maxColorValue)
+        // but the C port takes (r, g, b, a, mcv, nam). cell(3)=alpha,
+        // cell(4)=names are positional; pass through.
+        do_rgb(cell(0), cell(1), cell(2), cell(3), mcv, cell(4))
+    }
+}
+
+pub unsafe fn do_hsv_builtin(
+    _call: *mut crate::sexp::ffi::SexprecCore,
+    _op: *mut crate::sexp::ffi::SexprecCore,
+    args: *mut crate::sexp::ffi::SexprecCore,
+    _rho: *mut crate::sexp::ffi::SexprecCore,
+) -> *mut crate::sexp::ffi::SexprecCore {
+    unsafe {
+        let h = CAR(args);
+        let s = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(CDR(args))
+        };
+        // do_hsv(h, s, v, a): map the call's (h, s, v) positionally;
+        // alpha defaults to missing (fully opaque).
+        let v = if CDR(CDR(args)).is_null() || CDR(CDR(args)) == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(CDR(CDR(args)))
+        };
+        do_hsv(h, s, v, R_NilValue())
+    }
+}
+
+pub unsafe fn do_gray_builtin(
+    _call: *mut crate::sexp::ffi::SexprecCore,
+    _op: *mut crate::sexp::ffi::SexprecCore,
+    args: *mut crate::sexp::ffi::SexprecCore,
+    _rho: *mut crate::sexp::ffi::SexprecCore,
+) -> *mut crate::sexp::ffi::SexprecCore {
+    unsafe {
+        let lev = CAR(args);
+        let a = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+            R_NilValue()
+        } else {
+            CAR(CDR(args))
+        };
+        do_gray(lev, a)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

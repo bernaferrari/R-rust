@@ -39,7 +39,35 @@ use crate::sexp::symbol::Rf_install;
 // Complete R runtime: eval, substitute, quote, parse
 // ---------------------------------------------------------------------------
 
-/// R's `eval(expr, envir, enclos)` — evaluate expression in environment.
+/// R's `local(expr, envir = new.env())` — evaluate `expr` in a fresh child
+/// environment and return its value (eval.c `do_local`). The default
+/// environment parents to the caller (`_rho`); an explicit ENVSXP `envir`
+/// is used as-is (wrapped in a child so assignments stay local).
+pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        let envir_arg = CAR(CDR(args));
+        if expr.is_null() || expr == R_NilValue() {
+            return R_NilValue();
+        }
+        let parent = if envir_arg.is_null() || envir_arg == R_NilValue() {
+            _rho
+        } else {
+            envir_arg
+        };
+        let env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            parent,
+            R_NilValue(),
+        );
+        if env.is_null() {
+            return R_NilValue();
+        }
+        let _guard = protect(env);
+        crate::eval::eval::Rf_eval(expr, env)
+    }
+}
+
 pub unsafe fn do_eval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
@@ -177,7 +205,7 @@ unsafe fn parse_source_strings(source: &[String]) -> SEXP {
 pub(crate) unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
     unsafe {
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions(source, arena).map_err(|err| err.to_string())
+            crate::eval::parser::parse_expressions_strict(source, arena).map_err(|err| err.to_string())
         })
         .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
 

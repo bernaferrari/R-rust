@@ -501,7 +501,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "modifyList",
     "split",
     "with",
-    "within",
+    "local",
     "transform",
     "prop.table",
     "addmargins",

@@ -55,11 +55,65 @@ fn call_head_name(call: Sexp<'_>) -> String {
 }
 
 fn primitive_call_name(primitive: Option<PrimitiveDescriptor<'_>>, call: Sexp<'_>) -> String {
-    primitive
-        .map(|primitive| primitive.name.to_string())
-        .unwrap_or_else(|| call_head_name(call))
+    // A `pkg::name` head evaluates to a fallback primitive minted without
+    // funtab identity (PRIMOFFSET -1, display name "unknown"): the evaluated
+    // value carries no name, so recover it from the call spelling. The
+    // `::` call's second argument is the name symbol (`utils::head` ->
+    // "head"); a plain symbol head falls back to the head print-name.
+    if let Some(primitive) = primitive {
+        if !primitive.name.is_empty() && primitive.name != "unknown" {
+            return primitive.name.to_string();
+        }
+    }
+    if let Some(name) = namespace_lookup_name(call.clone()) {
+        return name;
+    }
+    call_head_name(call)
 }
 
+/// If `call` is a `pkg::name` / `pkg:::name` lookup, return `name`.
+fn namespace_lookup_name(call: Sexp<'_>) -> Option<String> {
+    unsafe {
+        let head = crate::sexp::accessors::CAR(call.as_raw());
+        if crate::sexp::ffi::SEXPTYPE::LANGSXP != crate::sexp::accessors::TYPEOF(head) {
+            return None;
+        }
+        let op = crate::sexp::accessors::CAR(head);
+        let op_name = crate::sexp::accessors::PRINTNAME(op);
+        if op_name.is_null() {
+            return None;
+        }
+        let op_chars = crate::sexp::accessors::CHAR(op_name);
+        if op_chars.is_null() {
+            return None;
+        }
+        let op_str = std::ffi::CStr::from_ptr(op_chars).to_str().unwrap_or("");
+        if op_str != "::" && op_str != ":::" {
+            return None;
+        }
+        // `::` call shape is `(:: pkg name)`: CAR(head) is the `::`
+        // symbol, CADR(head) is the package, CADDR(head) is the name.
+        let name_sym = crate::sexp::accessors::CAR(crate::sexp::accessors::CDR(
+            crate::sexp::accessors::CDR(head),
+        ));
+        if name_sym.is_null() {
+            return None;
+        }
+        let pname = crate::sexp::accessors::PRINTNAME(name_sym);
+        if pname.is_null() {
+            return None;
+        }
+        let chars = crate::sexp::accessors::CHAR(pname);
+        if chars.is_null() {
+            return None;
+        }
+        let name = std::ffi::CStr::from_ptr(chars).to_str().unwrap_or("");
+        if name.is_empty() {
+            return None;
+        }
+        Some(name.to_string())
+    }
+}
 /// Safe special form application.
 pub(crate) fn apply_special_safe<'a>(
     fun: Sexp<'a>,

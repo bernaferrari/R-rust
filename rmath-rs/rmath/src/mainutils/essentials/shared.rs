@@ -896,7 +896,6 @@ pub(crate) fn package_depends_names(package_dir: &Path) -> Result<Vec<String>, S
         .map(|value| description_package_list(value))
         .unwrap_or_default())
 }
-
 pub(crate) fn is_builtin_package_dependency(package: &str) -> bool {
     matches!(
         package,
@@ -1547,7 +1546,6 @@ pub(crate) unsafe fn apply_description_depends(
         Ok(())
     }
 }
-
 pub(crate) unsafe fn apply_namespace_imports(
     package: &str,
     package_env: SEXP,
@@ -1562,13 +1560,18 @@ pub(crate) unsafe fn apply_namespace_imports(
                 }
             };
 
+            // Base-distribution packages (grDevices, methods, utils, ...)
+            // are satisfied by the engine itself: like DESCRIPTION Depends,
+            // skip them instead of demanding an installed copy.
+            if is_builtin_package_dependency(import_package) {
+                continue;
+            }
             if loading.iter().any(|entry| entry == import_package) {
                 return Err(format!(
                     "package '{}' has cyclic namespace import involving '{}'",
                     package, import_package
                 ));
             }
-
             let import_dir = find_package_path(import_package);
             if import_dir.is_empty() {
                 return Err(format!(
@@ -1682,6 +1685,13 @@ pub(crate) unsafe fn make_package_attach_env(
         for name in lazy_data_names_binding(package_env) {
             push_unique(&mut exports, name);
         }
+        // Crayon-style dynamic exports: top-level package code may
+        // `assign(name, value, envir = asNamespace("pkg"))` AFTER the
+        // files are sourced (its `sapply(names(builtin_styles), ...)`
+        // block). Those bindings live in the namespace env but were never
+        // declared as lexical assignments, so a strict frame check misses
+        // them. Fall back to the full namespace-env lookup before
+        // declaring an export missing.
         let mut missing = Vec::new();
         for export in exports {
             let Ok(symbol_name) = CString::new(export.as_str()) else {
@@ -1689,7 +1699,13 @@ pub(crate) unsafe fn make_package_attach_env(
                 continue;
             };
             let symbol = Rf_install(symbol_name.as_ptr());
-            let value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
+            let mut value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
+            if value.is_null()
+                || value == R_NilValue()
+                || value == crate::sexp::globals::R_UnboundValue()
+            {
+                value = crate::sexp::envir::R_findVar(symbol, package_env);
+            }
             if value.is_null()
                 || value == R_NilValue()
                 || value == crate::sexp::globals::R_UnboundValue()
@@ -1699,7 +1715,6 @@ pub(crate) unsafe fn make_package_attach_env(
                 crate::sexp::envir::defineVar(symbol, value, attach_env);
             }
         }
-
         if missing.is_empty() {
             Ok(attach_env)
         } else {

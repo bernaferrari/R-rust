@@ -567,6 +567,22 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
 
         if package_name != "base" {
+            // Base-distribution packages (utils, stats, tools, ...) ship
+            // with the engine, not as installed package dirs: resolve the
+            // name against the base namespace's bindings. A direct hit
+            // returns the real value (funtab-identified primitive or
+            // closure); otherwise fall through to the installed-package
+            // path which reports the missing namespace.
+            if crate::mainutils::essentials::is_builtin_package_dependency(&package_name) {
+                let probe = crate::sexp::envir::R_findVar(
+                    name,
+                    crate::sexp::globals::R_BaseEnv(),
+                );
+                if probe != crate::sexp::globals::R_UnboundValue() && !probe.is_null() {
+                    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+                    return probe;
+                }
+            }
             let namespace = match load_package_namespace_by_name(&package_name) {
                 Ok(env) => env,
                 Err(message) => {
