@@ -484,11 +484,11 @@ unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
             if sc == 0 && tc == 0 {
                 return 1;
             }
-            if sc == b' ' as libc::c_char {
+            if sc == b' ' as core::ffi::c_char {
                 si += 1;
                 continue;
             }
-            if tc == b' ' as libc::c_char {
+            if tc == b' ' as core::ffi::c_char {
                 ti += 1;
                 continue;
             }
@@ -527,7 +527,7 @@ unsafe fn hexdigit(d: c_int) -> u32 {
 
 unsafe fn rgb2col(rgb: *const c_char) -> rcolor {
     unsafe {
-        if *rgb != b'#' as libc::c_char {
+        if *rgb != b'#' as core::ffi::c_char {
             Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
         }
         let len = libc::strlen(rgb);
@@ -3241,7 +3241,7 @@ unsafe fn name2col(nm: *const c_char) -> rcolor {
 
 unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
     unsafe {
-        if *s == b'#' as libc::c_char {
+        if *s == b'#' as core::ffi::c_char {
             return rgb2col(s);
         }
         if (*s as c_int) >= b'0' as c_int && (*s as c_int) <= b'9' as c_int {
@@ -3960,7 +3960,7 @@ pub unsafe fn do_palette(val: SEXP) -> SEXP {
             let mut i = 0usize;
             while i < n {
                 let s = CHAR(STRING_ELT(val, i as R_xlen_t));
-                color_buf[i] = if *s == b'#' as libc::c_char {
+                color_buf[i] = if *s == b'#' as core::ffi::c_char {
                     rgb2col(s)
                 } else {
                     name2col(s)

@@ -176,7 +176,7 @@ const NB: usize = 1000;
 /// >= 16 for IEEE 754 double).
 pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig: *mut c_int) {
     unsafe {
-        let mut buff = [0 as libc::c_char; NB];
+        let mut buff = [0 as core::ffi::c_char; NB];
         let d = d as usize;
         let _nc = snprintf(&mut buff, NB, b"%#.*e\0".as_ptr().cast(), d - 1, r);
         // buff[d+2..] contains the exponent string, e.g. "e+02" or "e+100"
@@ -187,7 +187,7 @@ pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig
         *kpower = exp_val as c_int;
         // Count significant digits from the right: skip trailing zeros.
         let mut i = d as i32;
-        while i >= 2 && buff[i as usize] == b'0' as libc::c_char {
+        while i >= 2 && buff[i as usize] == b'0' as core::ffi::c_char {
             i -= 1;
         }
         *nsig = i;
@@ -198,9 +198,9 @@ pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig
 /// Writes into `buf` (up to `buf_size` bytes including NUL) using the
 /// C format string `fmt`.
 fn snprintf(
-    buf: &mut [libc::c_char],
+    buf: &mut [core::ffi::c_char],
     buf_size: usize,
-    fmt: *const libc::c_char,
+    fmt: *const core::ffi::c_char,
     precision: usize,
     value: f64,
 ) -> i32 {
@@ -213,8 +213,8 @@ fn snprintf(
     buf[..copy_len].copy_from_slice(
         &bytes[..copy_len]
             .iter()
-            .map(|&b| b as libc::c_char)
-            .collect::<Vec<libc::c_char>>()[..copy_len],
+            .map(|&b| b as core::ffi::c_char)
+            .collect::<Vec<core::ffi::c_char>>()[..copy_len],
     );
     buf[copy_len] = 0;
     formatted.len() as i32

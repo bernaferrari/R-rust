@@ -1336,10 +1336,10 @@ fn test_dgetrf_rectangular_tall_m5n3() {
     let mut info = 0i32;
     unsafe {
         backend::dgetrf_(
-            &m as *const usize as *const libc::c_int,
-            &n as *const usize as *const libc::c_int,
+            &m as *const usize as *const core::ffi::c_int,
+            &n as *const usize as *const core::ffi::c_int,
             a.as_mut_ptr(),
-            &m as *const usize as *const libc::c_int,
+            &m as *const usize as *const core::ffi::c_int,
             ipiv.as_mut_ptr(),
             &mut info,
         );
@@ -1357,10 +1357,10 @@ fn test_dgetrf_rectangular_wide_m3n5() {
     let mut info = 0i32;
     unsafe {
         backend::dgetrf_(
-            &m as *const usize as *const libc::c_int,
-            &n as *const usize as *const libc::c_int,
+            &m as *const usize as *const core::ffi::c_int,
+            &n as *const usize as *const core::ffi::c_int,
             a.as_mut_ptr(),
-            &m as *const usize as *const libc::c_int,
+            &m as *const usize as *const core::ffi::c_int,
             ipiv.as_mut_ptr(),
             &mut info,
         );

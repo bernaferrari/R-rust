@@ -108,7 +108,7 @@ pub unsafe fn getlinelength(c: textbox) -> c_int {
         }
 
         let mut len = 0usize;
-        while *(*c).text.add(len) != 0 && *(*c).text.add(len) != b'\n' as libc::c_char {
+        while *(*c).text.add(len) != 0 && *(*c).text.add(len) != b'\n' as core::ffi::c_char {
             len += 1;
         }
         len as c_int
@@ -231,7 +231,7 @@ mod tests {
         unsafe {
             let mut textbox = Box::new(mem::zeroed::<ObjInfo>());
             let mut text = *b"hello world\0";
-            textbox.text = text.as_mut_ptr() as *mut libc::c_char;
+            textbox.text = text.as_mut_ptr() as *mut core::ffi::c_char;
             textbox.max = 64;
 
             let textbox_ptr = &mut *textbox as textbox;

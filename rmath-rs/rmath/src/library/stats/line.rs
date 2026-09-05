@@ -158,28 +158,28 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
 
         let n = LENGTH(x);
         if n < 2 {
-            Rf_error(b"insufficient observations\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"insufficient observations\0".as_ptr() as *const core::ffi::c_char);
         }
 
         let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
         let _ans_guard = protect(ans);
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
         setAttrib(ans, R_NamesSymbol(), nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const libc::c_char));
+        SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const core::ffi::c_char));
         SET_STRING_ELT(
             nm,
             1,
-            Rf_mkChar(b"coefficients\0".as_ptr() as *const libc::c_char),
+            Rf_mkChar(b"coefficients\0".as_ptr() as *const core::ffi::c_char),
         );
         SET_STRING_ELT(
             nm,
             2,
-            Rf_mkChar(b"residuals\0".as_ptr() as *const libc::c_char),
+            Rf_mkChar(b"residuals\0".as_ptr() as *const core::ffi::c_char),
         );
         SET_STRING_ELT(
             nm,
             3,
-            Rf_mkChar(b"fitted.values\0".as_ptr() as *const libc::c_char),
+            Rf_mkChar(b"fitted.values\0".as_ptr() as *const core::ffi::c_char),
         );
         SET_VECTOR_ELT(ans, 0, call);
 

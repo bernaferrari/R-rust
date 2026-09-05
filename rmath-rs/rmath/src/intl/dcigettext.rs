@@ -73,7 +73,7 @@ unsafe fn gl_locale_name_posix(category: c_int) -> *mut c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut libc::c_char,
+                    ptr as *mut core::ffi::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -100,7 +100,7 @@ unsafe fn gl_locale_name_posix(category: c_int) -> *mut c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut libc::c_char,
+                    ptr as *mut core::ffi::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -117,7 +117,7 @@ unsafe fn gl_locale_name_posix(category: c_int) -> *mut c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut libc::c_char,
+                    ptr as *mut core::ffi::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -158,7 +158,7 @@ unsafe fn gl_locale_name(category: c_int, _categoryname: *const c_char) -> *mut 
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut libc::c_char,
+                    ptr as *mut core::ffi::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -188,7 +188,7 @@ unsafe fn gl_locale_name_language_pref() -> *mut c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut libc::c_char,
+                    ptr as *mut core::ffi::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;

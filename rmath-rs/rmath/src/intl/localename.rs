@@ -31,7 +31,7 @@ unsafe fn alloc_env_var(name: &str) -> Option<*mut c_char> {
         }
         ptr::copy_nonoverlapping(
             cstr.as_ptr(),
-            out as *mut libc::c_char,
+            out as *mut core::ffi::c_char,
             cstr.as_bytes_with_nul().len(),
         );
         Some(out)

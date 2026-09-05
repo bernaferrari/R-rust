@@ -18,7 +18,7 @@
  */
 
 #[cfg(target_os = "macos")]
-use libc::c_int;
+use core::ffi::c_int;
 
 // ============================================================
 // Fortran-callable CBLAS wrappers for macOS vecLib compatibility
@@ -34,41 +34,41 @@ unsafe extern "C" {
     /// cblas_cdotu_sub - CBLAS unconjugated complex float dot product
     fn cblas_cdotu_sub(
         n: c_int,
-        x: *const libc::c_void,
+        x: *const core::ffi::c_void,
         incx: c_int,
-        y: *const libc::c_void,
+        y: *const core::ffi::c_void,
         incy: c_int,
-        dotu: *mut libc::c_void,
+        dotu: *mut core::ffi::c_void,
     );
 
     /// cblas_cdotc_sub - CBLAS conjugated complex float dot product
     fn cblas_cdotc_sub(
         n: c_int,
-        x: *const libc::c_void,
+        x: *const core::ffi::c_void,
         incx: c_int,
-        y: *const libc::c_void,
+        y: *const core::ffi::c_void,
         incy: c_int,
-        dotc: *mut libc::c_void,
+        dotc: *mut core::ffi::c_void,
     );
 
     /// cblas_zdotu_sub - CBLAS unconjugated double complex dot product
     fn cblas_zdotu_sub(
         n: c_int,
-        x: *const libc::c_void,
+        x: *const core::ffi::c_void,
         incx: c_int,
-        y: *const libc::c_void,
+        y: *const core::ffi::c_void,
         incy: c_int,
-        dotu: *mut libc::c_void,
+        dotu: *mut core::ffi::c_void,
     );
 
     /// cblas_zdotc_sub - CBLAS conjugated double complex dot product
     fn cblas_zdotc_sub(
         n: c_int,
-        x: *const libc::c_void,
+        x: *const core::ffi::c_void,
         incx: c_int,
-        y: *const libc::c_void,
+        y: *const core::ffi::c_void,
         incy: c_int,
-        dotc: *mut libc::c_void,
+        dotc: *mut core::ffi::c_void,
     );
 }
 
@@ -81,11 +81,11 @@ unsafe extern "C" {
 #[cfg(target_os = "macos")]
 pub unsafe fn rcblas_cdotu_sub_(
     n: *const c_int,
-    x: *const libc::c_void,
+    x: *const core::ffi::c_void,
     incx: *const c_int,
-    y: *const libc::c_void,
+    y: *const core::ffi::c_void,
     incy: *const c_int,
-    dotu: *mut libc::c_void,
+    dotu: *mut core::ffi::c_void,
 ) {
     unsafe {
         cblas_cdotu_sub(*n, x, *incx, y, *incy, dotu);
@@ -101,11 +101,11 @@ pub unsafe fn rcblas_cdotu_sub_(
 #[cfg(target_os = "macos")]
 pub unsafe fn rcblas_cdotc_sub_(
     n: *const c_int,
-    x: *const libc::c_void,
+    x: *const core::ffi::c_void,
     incx: *const c_int,
-    y: *const libc::c_void,
+    y: *const core::ffi::c_void,
     incy: *const c_int,
-    dotc: *mut libc::c_void,
+    dotc: *mut core::ffi::c_void,
 ) {
     unsafe {
         cblas_cdotc_sub(*n, x, *incx, y, *incy, dotc);
@@ -121,11 +121,11 @@ pub unsafe fn rcblas_cdotc_sub_(
 #[cfg(target_os = "macos")]
 pub unsafe fn rcblas_zdotu_sub_(
     n: *const c_int,
-    x: *const libc::c_void,
+    x: *const core::ffi::c_void,
     incx: *const c_int,
-    y: *const libc::c_void,
+    y: *const core::ffi::c_void,
     incy: *const c_int,
-    dotu: *mut libc::c_void,
+    dotu: *mut core::ffi::c_void,
 ) {
     unsafe {
         cblas_zdotu_sub(*n, x, *incx, y, *incy, dotu);
@@ -141,11 +141,11 @@ pub unsafe fn rcblas_zdotu_sub_(
 #[cfg(target_os = "macos")]
 pub unsafe fn rcblas_zdotc_sub_(
     n: *const c_int,
-    x: *const libc::c_void,
+    x: *const core::ffi::c_void,
     incx: *const c_int,
-    y: *const libc::c_void,
+    y: *const core::ffi::c_void,
     incy: *const c_int,
-    dotc: *mut libc::c_void,
+    dotc: *mut core::ffi::c_void,
 ) {
     unsafe {
         cblas_zdotc_sub(*n, x, *incx, y, *incy, dotc);

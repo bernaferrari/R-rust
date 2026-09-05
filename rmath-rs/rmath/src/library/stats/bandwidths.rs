@@ -183,7 +183,7 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
         if !R_FINITE(value) {
             unsafe {
                 Rf_error(
-                    b"non-finite x[%d] in bandwidth calculation\0".as_ptr() as *const libc::c_char
+                    b"non-finite x[%d] in bandwidth calculation\0".as_ptr() as *const core::ffi::c_char
                 );
             }
         }
@@ -198,7 +198,7 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     if rang == 0.0 {
         unsafe {
             Rf_error(
-                b"data are constant in bandwidth calculation\0".as_ptr() as *const libc::c_char
+                b"data are constant in bandwidth calculation\0".as_ptr() as *const core::ffi::c_char
             );
         }
     }

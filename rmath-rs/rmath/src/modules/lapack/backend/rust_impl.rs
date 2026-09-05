@@ -125,10 +125,10 @@ fn perm_bwd_to_ipiv(bwd: &[usize], n: usize) -> Vec<i32> {
 /// DLANGE — matrix norm (Frobenius / 1-norm / inf-norm / max element).
 pub unsafe fn dlange_(
     norm: *const u8,
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *const f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     _work: *mut f64,
 ) -> f64 {
     unsafe {
@@ -201,12 +201,12 @@ pub unsafe fn dlange_(
 
 /// DGETRF — LU factorization with partial pivoting.
 pub unsafe fn dgetrf_(
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
-    ipiv: *mut libc::c_int,
-    info: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    ipiv: *mut core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m = *m as usize;
@@ -263,14 +263,14 @@ pub unsafe fn dgetrf_(
 
 /// DGESV — solve Ax = B via LU.
 pub unsafe fn dgesv_(
-    n: *const libc::c_int,
-    nrhs: *const libc::c_int,
+    n: *const core::ffi::c_int,
+    nrhs: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
-    ipiv: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    ipiv: *mut core::ffi::c_int,
     b: *mut f64,
-    ldb: *const libc::c_int,
-    info: *mut libc::c_int,
+    ldb: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n = *n as usize;
@@ -292,7 +292,7 @@ pub unsafe fn dgesv_(
         let u = lu.U();
         for i in 0..n {
             if u[(i, i)].abs() == 0.0 {
-                *info = (i + 1) as libc::c_int;
+                *info = (i + 1) as core::ffi::c_int;
                 return;
             }
         }
@@ -320,10 +320,10 @@ pub unsafe fn dgesv_(
 /// DPOTRF — Cholesky factorization.
 pub unsafe fn dpotrf_(
     uplo: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
-    info: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n = *n as usize;
@@ -337,7 +337,7 @@ pub unsafe fn dpotrf_(
         // Stock DPOTF2 flags a non-positive OR NaN pivot: report the first
         // NaN diagonal element as the failing minor (1-based column).
         if let Some(i) = (0..n).find(|&i| (*a.add(i + i * lda)).is_nan()) {
-            *info = (i + 1) as libc::c_int;
+            *info = (i + 1) as core::ffi::c_int;
             return;
         }
 
@@ -406,7 +406,7 @@ pub unsafe fn dpotrf_(
                         }
                     }
                 }
-                *info = failed as libc::c_int;
+                *info = failed as core::ffi::c_int;
             }
         }
     }
@@ -415,10 +415,10 @@ pub unsafe fn dpotrf_(
 /// DPOTRI — inverse from Cholesky factor.
 pub unsafe fn dpotri_(
     uplo: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
-    info: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n = *n as usize;
@@ -440,7 +440,7 @@ pub unsafe fn dpotri_(
         // is left unreferenced, matching the Fortran contract.
         for i in 0..n {
             if chol[(i, i)] == 0.0 {
-                *info = (i + 1) as libc::c_int;
+                *info = (i + 1) as core::ffi::c_int;
                 return;
             }
         }
@@ -502,14 +502,14 @@ pub unsafe fn dpotri_(
 /// DPSTRF — pivoted Cholesky factorization.
 pub unsafe fn dpstrf_(
     uplo: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
-    piv: *mut libc::c_int,
-    rank: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    piv: *mut core::ffi::c_int,
+    rank: *mut core::ffi::c_int,
     tol: *const f64,
     _work: *mut f64,
-    info: *mut libc::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n = *n as usize;
@@ -525,7 +525,7 @@ pub unsafe fn dpstrf_(
 
         // Initialize pivots (1-based)
         for i in 0..n {
-            *piv.add(i) = (i + 1) as libc::c_int;
+            *piv.add(i) = (i + 1) as core::ffi::c_int;
         }
 
         // Read the matrix
@@ -690,7 +690,7 @@ pub unsafe fn dpstrf_(
             }
         }
 
-        *rank = r as libc::c_int;
+        *rank = r as core::ffi::c_int;
         *info = if r < n { 1 } else { 0 };
     }
 }
@@ -698,19 +698,19 @@ pub unsafe fn dpstrf_(
 /// DGESDD — SVD.
 pub unsafe fn dgesdd_(
     jobz: *const u8,
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     s: *mut f64,
     u: *mut f64,
-    ldu: *const libc::c_int,
+    ldu: *const core::ffi::c_int,
     vt: *mut f64,
-    ldvt: *const libc::c_int,
+    ldvt: *const core::ffi::c_int,
     work: *mut f64,
-    lwork: *const libc::c_int,
-    _iwork: *mut libc::c_int,
-    info: *mut libc::c_int,
+    lwork: *const core::ffi::c_int,
+    _iwork: *mut core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m = *m as usize;
@@ -807,24 +807,24 @@ pub unsafe fn dsyevr_(
     jobz: *const u8,
     range: *const u8,
     uplo: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     vl: *const f64,
     vu: *const f64,
-    il: *const libc::c_int,
-    iu: *const libc::c_int,
+    il: *const core::ffi::c_int,
+    iu: *const core::ffi::c_int,
     _abstol: *const f64,
-    m: *mut libc::c_int,
+    m: *mut core::ffi::c_int,
     w: *mut f64,
     z: *mut f64,
-    ldz: *const libc::c_int,
-    isuppz: *mut libc::c_int,
+    ldz: *const core::ffi::c_int,
+    isuppz: *mut core::ffi::c_int,
     work: *mut f64,
-    lwork: *const libc::c_int,
-    _iwork: *mut libc::c_int,
-    liwork: *const libc::c_int,
-    info: *mut libc::c_int,
+    lwork: *const core::ffi::c_int,
+    _iwork: *mut core::ffi::c_int,
+    liwork: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -848,7 +848,7 @@ pub unsafe fn dsyevr_(
                 *work = (26 * n_val) as f64;
             }
             if liwork_val == -1 {
-                *_iwork = (10 * n_val) as libc::c_int;
+                *_iwork = (10 * n_val) as core::ffi::c_int;
             }
             *info = 0;
             return;
@@ -889,7 +889,7 @@ pub unsafe fn dsyevr_(
             _ => (0..n_val).collect(),
         };
 
-        *m = selected.len() as libc::c_int;
+        *m = selected.len() as core::ffi::c_int;
 
         // Write eigenvalues
         for (idx, &i) in selected.iter().enumerate() {
@@ -913,7 +913,7 @@ pub unsafe fn dsyevr_(
                 }
                 // isuppz: estimate support (conservative: full range)
                 *isuppz.add(2 * idx) = 1;
-                *isuppz.add(2 * idx + 1) = n_val as libc::c_int;
+                *isuppz.add(2 * idx + 1) = n_val as core::ffi::c_int;
             }
         }
         *info = 0;
@@ -924,18 +924,18 @@ pub unsafe fn dsyevr_(
 pub unsafe fn dgeev_(
     jobvl: *const u8,
     jobvr: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     wr: *mut f64,
     wi: *mut f64,
     vl: *mut f64,
-    ldvl: *const libc::c_int,
+    ldvl: *const core::ffi::c_int,
     vr: *mut f64,
-    ldvr: *const libc::c_int,
+    ldvr: *const core::ffi::c_int,
     work: *mut f64,
-    lwork: *const libc::c_int,
-    info: *mut libc::c_int,
+    lwork: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -1062,15 +1062,15 @@ pub unsafe fn dgeev_(
 
 /// DGEQP3 — QR factorization with column pivoting.
 pub unsafe fn dgeqp3_(
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *mut f64,
-    lda: *const libc::c_int,
-    jpvt: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    jpvt: *mut core::ffi::c_int,
     tau: *mut f64,
     work: *mut f64,
-    lwork: *const libc::c_int,
-    info: *mut libc::c_int,
+    lwork: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m_val = *m as usize;
@@ -1104,7 +1104,7 @@ pub unsafe fn dgeqp3_(
         for j in 0..n_val {
             let cur = *jpvt.add(j);
             if cur == 0 {
-                *jpvt.add(j) = (j + 1) as libc::c_int;
+                *jpvt.add(j) = (j + 1) as core::ffi::c_int;
             }
         }
 
@@ -1248,17 +1248,17 @@ pub unsafe fn dgeqp3_(
 pub unsafe fn dormqr_(
     side: *const u8,
     trans: *const u8,
-    m: *const libc::c_int,
-    n: *const libc::c_int,
-    k: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
+    k: *const core::ffi::c_int,
     a: *const f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     tau: *const f64,
     c__: *mut f64,
-    ldc: *const libc::c_int,
+    ldc: *const core::ffi::c_int,
     work: *mut f64,
-    lwork: *const libc::c_int,
-    info: *mut libc::c_int,
+    lwork: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m_val = *m as usize;
@@ -1356,14 +1356,14 @@ pub unsafe fn dormqr_(
 /// DGECON — condition number estimate.
 pub unsafe fn dgecon_(
     norm: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *const f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     anorm: *const f64,
     rcond: *mut f64,
     _work: *mut f64,
-    _iwork: *mut libc::c_int,
-    info: *mut libc::c_int,
+    _iwork: *mut core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -1421,13 +1421,13 @@ pub unsafe fn dtrcon_(
     _norm: *const u8,
     uplo: *const u8,
     diag: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *const f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     rcond: *mut f64,
     _work: *mut f64,
-    _iwork: *mut libc::c_int,
-    info: *mut libc::c_int,
+    _iwork: *mut core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -1474,13 +1474,13 @@ pub unsafe fn dtrtrs_(
     uplo: *const u8,
     trans: *const u8,
     diag: *const u8,
-    n: *const libc::c_int,
-    nrhs: *const libc::c_int,
+    n: *const core::ffi::c_int,
+    nrhs: *const core::ffi::c_int,
     a: *const f64,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     b: *mut f64,
-    ldb: *const libc::c_int,
-    info: *mut libc::c_int,
+    ldb: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -1504,7 +1504,7 @@ pub unsafe fn dtrtrs_(
         if !is_unit {
             for i in 0..n_val {
                 if *a.add(i + i * lda_val) == 0.0 {
-                    *info = (i + 1) as libc::c_int;
+                    *info = (i + 1) as core::ffi::c_int;
                     return;
                 }
             }
@@ -1555,10 +1555,10 @@ pub unsafe fn dtrtrs_(
 /// ZLANGE — complex matrix norm.
 pub unsafe fn zlange_(
     norm: *const u8,
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *const Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     _work: *mut f64,
 ) -> f64 {
     unsafe {
@@ -1616,12 +1616,12 @@ pub unsafe fn zlange_(
 
 /// ZGETRF — complex LU factorization.
 pub unsafe fn zgetrf_(
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *mut Rcomplex,
-    lda: *const libc::c_int,
-    ipiv: *mut libc::c_int,
-    info: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    ipiv: *mut core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m = *m as usize;
@@ -1673,14 +1673,14 @@ pub unsafe fn zgetrf_(
 
 /// ZGESV — complex linear solve.
 pub unsafe fn zgesv_(
-    n: *const libc::c_int,
-    nrhs: *const libc::c_int,
+    n: *const core::ffi::c_int,
+    nrhs: *const core::ffi::c_int,
     a: *mut Rcomplex,
-    lda: *const libc::c_int,
-    ipiv: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    ipiv: *mut core::ffi::c_int,
     b: *mut Rcomplex,
-    ldb: *const libc::c_int,
-    info: *mut libc::c_int,
+    ldb: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -1700,7 +1700,7 @@ pub unsafe fn zgesv_(
         let u = lu.U();
         for i in 0..n_val {
             if u[(i, i)].re == 0.0 && u[(i, i)].im == 0.0 {
-                *info = (i + 1) as libc::c_int;
+                *info = (i + 1) as core::ffi::c_int;
                 return;
             }
         }
@@ -1730,20 +1730,20 @@ pub unsafe fn zgesv_(
 /// ZGESDD — complex SVD.
 pub unsafe fn zgesdd_(
     jobz: *const u8,
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *mut Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     s: *mut f64,
     u: *mut Rcomplex,
-    ldu: *const libc::c_int,
+    ldu: *const core::ffi::c_int,
     vt: *mut Rcomplex,
-    ldvt: *const libc::c_int,
+    ldvt: *const core::ffi::c_int,
     work: *mut Rcomplex,
-    lwork: *const libc::c_int,
+    lwork: *const core::ffi::c_int,
     _rwork: *mut f64,
-    _iwork: *mut libc::c_int,
-    info: *mut libc::c_int,
+    _iwork: *mut core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m_val = *m as usize;
@@ -1833,14 +1833,14 @@ pub unsafe fn zgesdd_(
 pub unsafe fn zheev_(
     jobz: *const u8,
     uplo: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *mut Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     w: *mut f64,
     work: *mut Rcomplex,
-    lwork: *const libc::c_int,
+    lwork: *const core::ffi::c_int,
     _rwork: *mut f64,
-    info: *mut libc::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -1906,18 +1906,18 @@ pub unsafe fn zheev_(
 pub unsafe fn zgeev_(
     jobvl: *const u8,
     jobvr: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *mut Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     w: *mut Rcomplex,
     vl: *mut Rcomplex,
-    ldvl: *const libc::c_int,
+    ldvl: *const core::ffi::c_int,
     vr: *mut Rcomplex,
-    ldvr: *const libc::c_int,
+    ldvr: *const core::ffi::c_int,
     work: *mut Rcomplex,
-    lwork: *const libc::c_int,
+    lwork: *const core::ffi::c_int,
     _rwork: *mut f64,
-    info: *mut libc::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -1988,16 +1988,16 @@ pub unsafe fn zgeev_(
 
 /// ZGEQP3 — complex QR with column pivoting.
 pub unsafe fn zgeqp3_(
-    m: *const libc::c_int,
-    n: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
     a: *mut Rcomplex,
-    lda: *const libc::c_int,
-    jpvt: *mut libc::c_int,
+    lda: *const core::ffi::c_int,
+    jpvt: *mut core::ffi::c_int,
     tau: *mut Rcomplex,
     work: *mut Rcomplex,
-    lwork: *const libc::c_int,
+    lwork: *const core::ffi::c_int,
     _rwork: *mut f64,
-    info: *mut libc::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m_val = *m as usize;
@@ -2034,7 +2034,7 @@ pub unsafe fn zgeqp3_(
         // Initialize jpvt
         for j in 0..n_val {
             if *jpvt.add(j) == 0 {
-                *jpvt.add(j) = (j + 1) as libc::c_int;
+                *jpvt.add(j) = (j + 1) as core::ffi::c_int;
             }
         }
 
@@ -2181,17 +2181,17 @@ pub unsafe fn zgeqp3_(
 pub unsafe fn zunmqr_(
     side: *const u8,
     trans: *const u8,
-    m: *const libc::c_int,
-    n: *const libc::c_int,
-    k: *const libc::c_int,
+    m: *const core::ffi::c_int,
+    n: *const core::ffi::c_int,
+    k: *const core::ffi::c_int,
     a: *const Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     tau: *const Rcomplex,
     c__: *mut Rcomplex,
-    ldc: *const libc::c_int,
+    ldc: *const core::ffi::c_int,
     work: *mut Rcomplex,
-    lwork: *const libc::c_int,
-    info: *mut libc::c_int,
+    lwork: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let m_val = *m as usize;
@@ -2346,14 +2346,14 @@ pub unsafe fn zunmqr_(
 /// ZGECON — complex condition number estimate.
 pub unsafe fn zgecon_(
     _norm: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *const Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     anorm: *const f64,
     rcond: *mut f64,
     _work: *mut Rcomplex,
     _rwork: *mut f64,
-    info: *mut libc::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -2393,13 +2393,13 @@ pub unsafe fn ztrcon_(
     _norm: *const u8,
     _uplo: *const u8,
     diag: *const u8,
-    n: *const libc::c_int,
+    n: *const core::ffi::c_int,
     a: *const Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     rcond: *mut f64,
     _work: *mut Rcomplex,
     _rwork: *mut f64,
-    info: *mut libc::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -2441,13 +2441,13 @@ pub unsafe fn ztrtrs_(
     uplo: *const u8,
     trans: *const u8,
     diag: *const u8,
-    n: *const libc::c_int,
-    nrhs: *const libc::c_int,
+    n: *const core::ffi::c_int,
+    nrhs: *const core::ffi::c_int,
     a: *const Rcomplex,
-    lda: *const libc::c_int,
+    lda: *const core::ffi::c_int,
     b: *mut Rcomplex,
-    ldb: *const libc::c_int,
-    info: *mut libc::c_int,
+    ldb: *const core::ffi::c_int,
+    info: *mut core::ffi::c_int,
 ) {
     unsafe {
         let n_val = *n as usize;
@@ -2471,7 +2471,7 @@ pub unsafe fn ztrtrs_(
             for i in 0..n_val {
                 let rc = *a.add(i + i * lda_val);
                 if rc.r == 0.0 && rc.i == 0.0 {
-                    *info = (i + 1) as libc::c_int;
+                    *info = (i + 1) as core::ffi::c_int;
                     return;
                 }
             }

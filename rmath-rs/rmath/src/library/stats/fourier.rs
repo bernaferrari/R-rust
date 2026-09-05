@@ -281,7 +281,7 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                 }
             }
             _ => {
-                Rf_error(b"non-numeric argument\0".as_ptr() as *const libc::c_char);
+                Rf_error(b"non-numeric argument\0".as_ptr() as *const core::ffi::c_char);
             }
         }
         let _z_guard = protect(z);
@@ -354,7 +354,7 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
         let d = getAttrib(z, R_DimSymbol());
         if d.is_null() || d == R_NilValue() || LENGTH(d) != 2 {
             Rf_error(
-                b"vector-valued (multivariate) series required\0".as_ptr() as *const libc::c_char
+                b"vector-valued (multivariate) series required\0".as_ptr() as *const core::ffi::c_char
             );
         }
         let n = *INTEGER(d);
@@ -370,7 +370,7 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
                 }
             }
             _ => {
-                Rf_error(b"non-numeric argument\0".as_ptr() as *const libc::c_char);
+                Rf_error(b"non-numeric argument\0".as_ptr() as *const core::ffi::c_char);
             }
         }
         let _z_guard = protect(z);
@@ -450,7 +450,7 @@ fn nextn0(mut n: c_int, f: &[c_int]) -> c_int {
         unsafe {
             crate::main::errors::Rf_warning(
                 b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr()
-                    as *const libc::c_char,
+                    as *const core::ffi::c_char,
             );
         }
         return NA_INTEGER;
@@ -471,7 +471,7 @@ fn nextn0_64(mut n: u64, f: &[c_int]) -> u64 {
     if n >= u64::MAX {
         unsafe {
             crate::main::errors::Rf_warning(
-                b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr() as *const libc::c_char,
+                b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr() as *const core::ffi::c_char,
             );
         }
         return 0;
@@ -496,15 +496,15 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
 
         /* check the factors */
         if nf == 0 {
-            Rf_error(b"no factors\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"no factors\0".as_ptr() as *const core::ffi::c_char);
         }
         if nf < 0 {
-            Rf_error(b"too many factors\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"too many factors\0".as_ptr() as *const core::ffi::c_char);
         }
         let factors = std::slice::from_raw_parts(INTEGER(f) as *const c_int, nf as usize);
         for &factor in factors {
             if factor == NA_INTEGER || factor <= 1 {
-                Rf_error(b"invalid factors\0".as_ptr() as *const libc::c_char);
+                Rf_error(b"invalid factors\0".as_ptr() as *const core::ffi::c_char);
             }
         }
 
@@ -512,7 +512,7 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
         if !use_int && TYPEOF(n) != SEXPTYPE::REALSXP {
             Rf_error(
                 b"'n' must have typeof(.) \"integer\" or \"double\"\0".as_ptr()
-                    as *const libc::c_char,
+                    as *const core::ffi::c_char,
             );
         }
         let nn = XLENGTH(n);
@@ -574,7 +574,7 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
                     if n_n > max_dbl_int {
                         crate::main::errors::Rf_warning(
                             b"nextn() may not be exactly representable in R (as \"double\")\0"
-                                .as_ptr() as *const libc::c_char,
+                                .as_ptr() as *const core::ffi::c_char,
                         );
                     }
                     *r.add(i) = n_n as c_double;

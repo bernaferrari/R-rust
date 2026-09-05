@@ -458,7 +458,7 @@ pub unsafe fn loess_raw(
                 *diagonal.add(i) = *hat_matrix.as_ptr().add(i * k);
             }
         } else {
-            Rf_error(b"invalid surface statistic type\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid surface statistic type\0".as_ptr() as *const core::ffi::c_char);
         }
         with_loess_workspace_state(|state| state.tau = tau);
         loess_free();
@@ -670,7 +670,7 @@ unsafe fn loess_workspace(
         let nvmax = r_max(200, n);
         let nf = r_min(n, (n as f64 * span + 1e-5).floor() as c_int);
         if nf <= 0 {
-            Rf_error(b"span is too small\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"span is too small\0".as_ptr() as *const core::ffi::c_char);
         }
 
         let tau0 = if degree > 1 {
@@ -693,14 +693,14 @@ unsafe fn loess_workspace(
             if total_dlv < c_int::MAX as f64 && total_dliv < c_int::MAX as f64 {
                 (total_dlv as c_int, total_dliv as c_int)
             } else {
-                Rf_error(b"workspace required is too large\0".as_ptr() as *const libc::c_char);
+                Rf_error(b"workspace required is too large\0".as_ptr() as *const core::ffi::c_char);
                 unreachable!()
             }
         } else {
             if dlv < c_int::MAX as f64 && dliv < c_int::MAX as f64 {
                 (dlv as c_int, dliv as c_int)
             } else {
-                Rf_error(b"workspace required is too large\0".as_ptr() as *const libc::c_char);
+                Rf_error(b"workspace required is too large\0".as_ptr() as *const core::ffi::c_char);
                 unreachable!()
             }
         };
@@ -894,7 +894,7 @@ pub unsafe fn loesswarn(i: *mut c_int) {
                 "Assert failed"
             }
         };
-        crate::main::errors::Rf_warning(format!("{}\0", msg).as_ptr() as *const libc::c_char);
+        crate::main::errors::Rf_warning(format!("{}\0", msg).as_ptr() as *const core::ffi::c_char);
     }
 }
 
@@ -915,7 +915,7 @@ pub unsafe fn ehg183a(
             mess.push_str(&format!(" {}", *i.add(j * (*inc as usize))));
         }
         mess.push('\n');
-        crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const libc::c_char);
+        crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const core::ffi::c_char);
     }
 }
 
@@ -936,7 +936,7 @@ pub unsafe fn ehg184a(
             mess.push_str(&format!(" {:.5}", *x.add(j * (*inc as usize))));
         }
         mess.push('\n');
-        crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const libc::c_char);
+        crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const core::ffi::c_char);
     }
 }
 

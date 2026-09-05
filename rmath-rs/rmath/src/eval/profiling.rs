@@ -46,9 +46,9 @@ use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject};
 
 /// Profiling timer type (ITIMER_PROF is not available on Android).
 #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
-const PROF_TIMER: libc::c_int = libc::ITIMER_PROF;
+const PROF_TIMER: core::ffi::c_int = libc::ITIMER_PROF;
 #[cfg(all(target_os = "android", not(target_arch = "wasm32")))]
-const PROF_TIMER: libc::c_int = 2; // ITIMER_PROF value on most Unix systems
+const PROF_TIMER: core::ffi::c_int = 2; // ITIMER_PROF value on most Unix systems
 /// WASM M1: no setitimer; timer fns below are wasm no-op stubs.
 #[cfg(target_arch = "wasm32")]
 const PROF_TIMER: c_int = 2;

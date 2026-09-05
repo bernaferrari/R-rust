@@ -33,11 +33,11 @@ fn find_menu_object(wparam: usize) -> object {
     }
 }
 
-fn menu_text_ptr(name: &'static [u8]) -> *const libc::c_char {
-    name.as_ptr() as *const libc::c_char
+fn menu_text_ptr(name: &'static [u8]) -> *const core::ffi::c_char {
+    name.as_ptr() as *const core::ffi::c_char
 }
 
-unsafe fn new_menu_object(kind: c_int, parent: object, text: *const libc::c_char) -> object {
+unsafe fn new_menu_object(kind: c_int, parent: object, text: *const core::ffi::c_char) -> object {
     unsafe {
         objects::init_objects();
     }
@@ -262,7 +262,7 @@ mod tests {
             let item_name = CString::new("Open").unwrap_or_else(|e| panic!("{e}"));
             let mut items = [
                 MenuItem {
-                    nm: item_name.as_ptr() as *mut libc::c_char,
+                    nm: item_name.as_ptr() as *mut core::ffi::c_char,
                     fn_: Some(item_callback),
                     key: 'O' as c_int,
                     m: ptr::null_mut(),
@@ -296,7 +296,7 @@ mod tests {
             let item_name = CString::new("Save").unwrap_or_else(|e| panic!("{e}"));
             let mut items = [
                 MenuItem {
-                    nm: item_name.as_ptr() as *mut libc::c_char,
+                    nm: item_name.as_ptr() as *mut core::ffi::c_char,
                     fn_: Some(item_callback),
                     key: 'S' as c_int,
                     m: ptr::null_mut(),

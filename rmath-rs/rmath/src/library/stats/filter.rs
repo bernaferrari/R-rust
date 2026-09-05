@@ -119,7 +119,7 @@ pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) ->
         use crate::main::errors::Rf_error;
 
         if TYPEOF(sx) != SEXPTYPE::REALSXP || TYPEOF(sfilter) != SEXPTYPE::REALSXP {
-            Rf_error(b"invalid input\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
         }
 
         let nx = XLENGTH(sx) as isize;
@@ -127,7 +127,7 @@ pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) ->
         let sides = as_integer(ssides);
         let circular = as_logical(scircular);
         if sides == NA_INTEGER || circular == NA_INTEGER {
-            Rf_error(b"invalid input\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
         }
 
         let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx as c_int);
@@ -220,7 +220,7 @@ pub unsafe fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
             || TYPEOF(filter) != SEXPTYPE::REALSXP
             || TYPEOF(out) != SEXPTYPE::REALSXP
         {
-            Rf_error(b"invalid input\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
         }
 
         let nx = XLENGTH(x);

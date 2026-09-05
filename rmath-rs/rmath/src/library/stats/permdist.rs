@@ -104,7 +104,7 @@ pub unsafe fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
             if !R_FINITE(*dH.add(row_start + j)) {
                 Rf_error(
                     b"overflow error; cannot compute exact distribution\0".as_ptr()
-                        as *const libc::c_char,
+                        as *const core::ffi::c_char,
                 );
             }
             *dret.add(j) = *dH.add(row_start + j);
@@ -113,7 +113,7 @@ pub unsafe fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
         if !R_FINITE(msum) || msum == 0.0 {
             Rf_error(
                 b"overflow error; cannot compute exact distribution\0".as_ptr()
-                    as *const libc::c_char,
+                    as *const core::ffi::c_char,
             );
         }
         for j in 0..(sum_b as usize) {
@@ -174,7 +174,7 @@ pub unsafe fn dpermdist1(x: SEXP) -> SEXP {
             if !R_FINITE(*dH.add(i)) {
                 Rf_error(
                     b"overflow error: cannot compute exact distribution\0".as_ptr()
-                        as *const libc::c_char,
+                        as *const core::ffi::c_char,
                 );
             }
             msum += *dH.add(i);
@@ -182,7 +182,7 @@ pub unsafe fn dpermdist1(x: SEXP) -> SEXP {
         if !R_FINITE(msum) || msum == 0.0 {
             Rf_error(
                 b"overflow error: cannot compute exact distribution\0".as_ptr()
-                    as *const libc::c_char,
+                    as *const core::ffi::c_char,
             );
         }
 

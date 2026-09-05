@@ -203,7 +203,7 @@ unsafe fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
             SET_STRING_ELT(
                 nm,
                 i as R_xlen_t,
-                Rf_mkCharLen(name.as_ptr() as *const libc::c_char, name.len() as c_int),
+                Rf_mkCharLen(name.as_ptr() as *const core::ffi::c_char, name.len() as c_int),
             );
         }
         ans
@@ -220,7 +220,7 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
 
         let ans_dim = getAttrib(x, R_DimSymbol());
         if asBool(chk) && LENGTH(ans_dim) != 2 {
-            Rf_error(b"'x' is not a matrix\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"'x' is not a matrix\0".as_ptr() as *const core::ffi::c_char);
         }
         let dims = INTEGER(ans_dim);
         let n = *dims.add(0);
@@ -230,7 +230,7 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
             ny = (XLENGTH(y) as i64 / n as i64) as c_int;
         }
         if asBool(chk) && n * ny != XLENGTH(y) as c_int {
-            Rf_error(b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const core::ffi::c_char);
         }
 
         /* These lose attributes, so do after we have extracted dims */
@@ -246,14 +246,14 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         let rptr = REAL(x);
         for i in 0..(XLENGTH(x) as usize) {
             if !R_FINITE(*rptr.add(i)) {
-                Rf_error(b"NA/NaN/Inf in 'x'\0".as_ptr() as *const libc::c_char);
+                Rf_error(b"NA/NaN/Inf in 'x'\0".as_ptr() as *const core::ffi::c_char);
             }
         }
 
         let rptr = REAL(y);
         for i in 0..(XLENGTH(y) as usize) {
             if !R_FINITE(*rptr.add(i)) {
-                Rf_error(b"NA/NaN/Inf in 'y'\0".as_ptr() as *const libc::c_char);
+                Rf_error(b"NA/NaN/Inf in 'y'\0".as_ptr() as *const core::ffi::c_char);
             }
         }
 

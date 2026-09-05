@@ -120,7 +120,7 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     klass,
                     0,
                     crate::sexp::constructors::Rf_mkChar(
-                        c"try-error".as_ptr() as *const libc::c_char
+                        c"try-error".as_ptr() as *const core::ffi::c_char
                     ),
                 );
                 crate::sexp::attrib_core::Rf_setAttrib(
@@ -130,7 +130,7 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 );
                 crate::sexp::attrib_core::Rf_setAttrib(
                     msg_sexp,
-                    Rf_install(c"condition".as_ptr() as *const libc::c_char),
+                    Rf_install(c"condition".as_ptr() as *const core::ffi::c_char),
                     condition,
                 );
                 // Stock try() ends its error handler with
@@ -748,7 +748,7 @@ unsafe fn simple_error_condition(message: &str) -> SEXP {
         let c_msg = CString::new(message).unwrap_or_default();
         crate::mainutils::errors::R_makeErrorCondition(
             call,
-            c"simpleError".as_ptr() as *const libc::c_char,
+            c"simpleError".as_ptr() as *const core::ffi::c_char,
             std::ptr::null(),
             0,
             c_msg.as_ptr(),
@@ -775,7 +775,7 @@ unsafe fn simple_warning_condition(message: &str) -> SEXP {
         let c_msg = CString::new(message).unwrap_or_default();
         crate::mainutils::errors::R_makeWarningCondition(
             call,
-            c"simpleWarning".as_ptr() as *const libc::c_char,
+            c"simpleWarning".as_ptr() as *const core::ffi::c_char,
             std::ptr::null(),
             0,
             c_msg.as_ptr(),

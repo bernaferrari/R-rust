@@ -181,7 +181,7 @@ fn R_dist_binary(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> 
             if !both_finite(a, b) {
                 unsafe {
                     Rf_warning(
-                        b"treating non-finite values as NA\0".as_ptr() as *const libc::c_char
+                        b"treating non-finite values as NA\0".as_ptr() as *const core::ffi::c_char
                     );
                 }
             } else {

@@ -59,7 +59,7 @@ pub struct stm {
     pub tm_yday: i32,
     pub tm_isdst: i32,
     pub tm_gmtoff: i64,
-    pub tm_zone: *const libc::c_char,
+    pub tm_zone: *const core::ffi::c_char,
 }
 
 // ---------------------------------------------------------------------------
@@ -78,9 +78,9 @@ fn r_mktime(_t: &stm) -> i64 {
 }
 
 /// Stubs for `R_tzname`. Returns a static pointer to "UTC".
-fn r_tzname(_isdst: bool) -> *const libc::c_char {
+fn r_tzname(_isdst: bool) -> *const core::ffi::c_char {
     // Placeholder. Real implementation lives in the tzone module.
-    b"UTC\0".as_ptr() as *const libc::c_char
+    b"UTC\0".as_ptr() as *const core::ffi::c_char
 }
 
 // ---------------------------------------------------------------------------
@@ -735,7 +735,7 @@ unsafe fn fmt_do(
 pub unsafe fn R_strftime(
     s: *mut u8,
     maxsize: usize,
-    format: *const libc::c_char,
+    format: *const core::ffi::c_char,
     t: *const stm,
 ) -> usize {
     unsafe {
@@ -816,7 +816,7 @@ mod tests {
         yday: i32,
         isdst: i32,
         gmtoff: i64,
-        zone: *const libc::c_char,
+        zone: *const core::ffi::c_char,
     ) -> stm {
         stm {
             tm_sec: sec,
@@ -994,7 +994,7 @@ mod tests {
             0,
             0,
             0,
-            ZONE_UTC.as_ptr() as *const libc::c_char,
+            ZONE_UTC.as_ptr() as *const core::ffi::c_char,
         );
         assert_eq!(some(do_fmt("%Z", &t)), "UTC");
     }

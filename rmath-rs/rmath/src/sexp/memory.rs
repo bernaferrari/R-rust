@@ -945,7 +945,7 @@ mod tests {
         unsafe {
             assert_eq!((*ptr).sxpinfo.type_of(), SEXPTYPE::CHARSXP);
             let data = (*ptr).gengc_next_node as *const u8;
-            let s = std::ffi::CStr::from_ptr(data as *const libc::c_char);
+            let s = std::ffi::CStr::from_ptr(data as *const core::ffi::c_char);
             assert_eq!(s.to_str().unwrap_or(""), "hello");
         }
     }
@@ -957,7 +957,7 @@ mod tests {
         assert!(!ptr.is_null());
         unsafe {
             let data = (*ptr).gengc_next_node as *const u8;
-            let s = std::ffi::CStr::from_ptr(data as *const libc::c_char);
+            let s = std::ffi::CStr::from_ptr(data as *const core::ffi::c_char);
             assert_eq!(s.to_str().unwrap_or(""), "");
         }
     }

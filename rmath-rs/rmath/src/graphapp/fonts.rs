@@ -24,7 +24,7 @@ unsafe fn alloc_font(name: &str, style: c_int, size: c_int) -> font {
     bytes.push(0);
 
     unsafe {
-        (*obj).text = strings::new_string(bytes.as_ptr() as *const libc::c_char);
+        (*obj).text = strings::new_string(bytes.as_ptr() as *const core::ffi::c_char);
         (*obj).state = style as _;
         (*obj).value = size;
         (*obj).size = size;

@@ -209,11 +209,11 @@ macro_rules! rport_snprintf {
 pub(crate) mod wasm_c {
     #[inline]
     pub(crate) unsafe fn snprintf(
-        s: *mut libc::c_char,
+        s: *mut core::ffi::c_char,
         n: usize,
-        fmt: *const libc::c_char,
+        fmt: *const core::ffi::c_char,
         args: &[libc::CArg],
-    ) -> libc::c_int {
+    ) -> core::ffi::c_int {
         unsafe { libc::snprintf_args(s, n, fmt, args) }
     }
 

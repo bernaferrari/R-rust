@@ -37,7 +37,7 @@ pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
                 if signal != NA_INTEGER {
                     let p = *pid.add(i as usize);
                     if p > 0 && p != NA_INTEGER {
-                        if libc::kill(p as libc::pid_t, signal as libc::c_int) == 0 {
+                        if libc::kill(p as libc::pid_t, signal as core::ffi::c_int) == 0 {
                             *res.add(i as usize) = TRUE;
                         }
                     }
@@ -78,7 +78,7 @@ pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
                     continue;
                 }
                 if p != NA_INTEGER {
-                    let mut errno_save: libc::c_int = 0;
+                    let mut errno_save: core::ffi::c_int = 0;
                     let r = libc::getpriority(libc::PRIO_PROCESS, p as libc::id_t);
                     if r == -1 {
                         errno_save = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);

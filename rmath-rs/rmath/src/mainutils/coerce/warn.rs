@@ -299,21 +299,21 @@ pub unsafe fn CoercionWarning(warn: c_int) {
     if warn & WARN_NA != 0 {
         unsafe {
             crate::mainutils::errors::Rf_warning(
-                b"NAs introduced by coercion\0".as_ptr() as *const libc::c_char
+                b"NAs introduced by coercion\0".as_ptr() as *const core::ffi::c_char
             );
         }
     }
     if warn & WARN_INT_NA != 0 {
         unsafe {
             crate::mainutils::errors::Rf_warning(
-                b"NAs introduced by coercion to integer range\0".as_ptr() as *const libc::c_char,
+                b"NAs introduced by coercion to integer range\0".as_ptr() as *const core::ffi::c_char,
             );
         }
     }
     if warn & WARN_IMAG != 0 {
         unsafe {
             crate::mainutils::errors::Rf_warning(
-                b"imaginary parts discarded in coercion\0".as_ptr() as *const libc::c_char,
+                b"imaginary parts discarded in coercion\0".as_ptr() as *const core::ffi::c_char,
             );
         }
     }
@@ -321,7 +321,7 @@ pub unsafe fn CoercionWarning(warn: c_int) {
         unsafe {
             crate::mainutils::errors::Rf_warning(
                 b"out-of-range values treated as 0 in coercion to raw\0".as_ptr()
-                    as *const libc::c_char,
+                    as *const core::ffi::c_char,
             );
         }
     }

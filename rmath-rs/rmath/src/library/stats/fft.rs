@@ -9,7 +9,7 @@
  *
  *  Original C translation by Ross Ihaka, University of Auckland, Feb 1997.
  */
-use libc::{c_double, c_int};
+use core::ffi::{c_double, c_int};
 
 use crate::sexp::instance::with_required_current_instance;
 

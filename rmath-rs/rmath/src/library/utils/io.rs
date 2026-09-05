@@ -61,17 +61,17 @@ unsafe fn errno_ptr() -> *mut c_int {
 }
 
 /// Check if string is blank (empty or whitespace-only)
-unsafe fn isBlankString(s: *const libc::c_char) -> c_int {
+unsafe fn isBlankString(s: *const core::ffi::c_char) -> c_int {
     unsafe {
         if *s == 0 {
             return 1;
         }
         let mut p = s;
         while *p != 0 {
-            if *p != b' ' as libc::c_char
-                && *p != b'\t' as libc::c_char
-                && *p != b'\n' as libc::c_char
-                && *p != b'\r' as libc::c_char
+            if *p != b' ' as core::ffi::c_char
+                && *p != b'\t' as core::ffi::c_char
+                && *p != b'\n' as core::ffi::c_char
+                && *p != b'\r' as core::ffi::c_char
             {
                 return 0;
             }
@@ -945,7 +945,7 @@ unsafe fn ruleout_types(
         if typeInfo.isreal {
             let mut endp: *mut c_char = ptr::null_mut();
             Strtod(s, &mut endp, 1, data, exact);
-            if isBlankString(endp as *const libc::c_char) == 0 {
+            if isBlankString(endp as *const core::ffi::c_char) == 0 {
                 typeInfo.isreal = false;
             }
         }
@@ -953,7 +953,7 @@ unsafe fn ruleout_types(
         if typeInfo.iscomplex {
             let mut endp: *mut c_char = ptr::null_mut();
             strtoc(s, &mut endp, 1, data, exact);
-            if isBlankString(endp as *const libc::c_char) == 0 {
+            if isBlankString(endp as *const core::ffi::c_char) == 0 {
                 typeInfo.iscomplex = false;
             }
         }
@@ -1079,7 +1079,7 @@ unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
     unsafe {
         // Rf_error in our Rust port takes a single format string
         // Build the full message using snprintf
-        let mut buf = [0 as libc::c_char; 512];
+        let mut buf = [0 as core::ffi::c_char; 512];
         crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
         Rf_error(buf.as_ptr());
     }
@@ -1088,7 +1088,7 @@ unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
 /// Format an error message with int arg and call Rf_error
 unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
     unsafe {
-        let mut buf = [0 as libc::c_char; 512];
+        let mut buf = [0 as core::ffi::c_char; 512];
         crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
         Rf_error(buf.as_ptr());
     }
@@ -1097,7 +1097,7 @@ unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
 /// Format a warning message and call Rf_warning
 unsafe fn r_warning(fmt: *const c_char, arg: *const c_char) {
     unsafe {
-        let mut buf = [0 as libc::c_char; 512];
+        let mut buf = [0 as core::ffi::c_char; 512];
         crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
         Rf_warning(buf.as_ptr());
     }
@@ -1609,7 +1609,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 } else {
                     let mut endp: *mut c_char = ptr::null_mut();
                     let val = Strtod(tmp, &mut endp, 0, &data, i_exact);
-                    if isBlankString(endp as *const libc::c_char) == 0 {
+                    if isBlankString(endp as *const core::ffi::c_char) == 0 {
                         all_real = false;
                         typeInfo.isreal = false;
                         ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
@@ -1643,7 +1643,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 } else {
                     let mut endp: *mut c_char = ptr::null_mut();
                     let z = strtoc(tmp, &mut endp, 0, &data, i_exact);
-                    if isBlankString(endp as *const libc::c_char) == 0 {
+                    if isBlankString(endp as *const core::ffi::c_char) == 0 {
                         all_complex = false;
                         typeInfo.iscomplex = false;
                         ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
@@ -1978,7 +1978,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
                 nread += 1;
                 // Check for embedded nulls (strlen < nbuf)
                 if libc::strlen(buf) < nbuf {
-                    let mut warn_buf = [0 as libc::c_char; 256];
+                    let mut warn_buf = [0 as core::ffi::c_char; 256];
                     crate::rport_snprintf!(
                         warn_buf.as_mut_ptr(),
                         256,

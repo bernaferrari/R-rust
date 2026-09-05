@@ -108,7 +108,7 @@ pub struct stm {
     pub tm_yday: i32,
     pub tm_isdst: i32,
     pub tm_gmtoff: i64,
-    pub tm_zone: *const libc::c_char,
+    pub tm_zone: *const core::ffi::c_char,
 }
 
 // We need Default for internal use.
@@ -238,7 +238,7 @@ struct TzGlobals {
     gmt_is_set: i32,
     tm: stm,
     tzname_bufs: [Box<[u8; TZ_MAX_CHARS + 1]>; 2],
-    tzname_ptrs: Box<[*mut libc::c_char; 2]>,
+    tzname_ptrs: Box<[*mut core::ffi::c_char; 2]>,
 }
 
 impl Default for TzGlobals {
@@ -267,8 +267,8 @@ impl Default for TzGlobals {
 
 impl TzGlobals {
     fn sync_tzname_ptrs(&mut self) {
-        self.tzname_ptrs[0] = self.tzname_bufs[0].as_mut_ptr() as *mut libc::c_char;
-        self.tzname_ptrs[1] = self.tzname_bufs[1].as_mut_ptr() as *mut libc::c_char;
+        self.tzname_ptrs[0] = self.tzname_bufs[0].as_mut_ptr() as *mut core::ffi::c_char;
+        self.tzname_ptrs[1] = self.tzname_bufs[1].as_mut_ptr() as *mut core::ffi::c_char;
     }
 }
 
@@ -1802,7 +1802,7 @@ fn localsub(g: &mut TzGlobals, timep: &i64, _offset: i32, tmp: &mut stm) -> Opti
     // This is safe because the chars buffer lives in the active RInstance's
     // timezone state for at least as long as the returned stm is used.
     let abbr_ind = ttisp.tt_abbrind as usize;
-    tmp.tm_zone = sp.chars[abbr_ind..].as_ptr() as *const libc::c_char;
+    tmp.tm_zone = sp.chars[abbr_ind..].as_ptr() as *const core::ffi::c_char;
 
     Some(result)
 }
@@ -2281,7 +2281,7 @@ pub fn R_tzsetwall() {
 
 /// `R_tzname` -- returns a pointer to the [2]-element array of timezone name
 /// pointers (standard, daylight).
-pub unsafe fn R_tzname() -> *mut *mut libc::c_char {
+pub unsafe fn R_tzname() -> *mut *mut core::ffi::c_char {
     with_tz_globals(|g| {
         r_tzset_impl(g);
         g.sync_tzname_ptrs();

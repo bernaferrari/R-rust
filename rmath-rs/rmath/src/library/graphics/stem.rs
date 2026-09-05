@@ -219,23 +219,23 @@ pub unsafe fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP
 
     unsafe {
         if TYPEOF(x) != SEXPTYPE::REALSXP || TYPEOF(scale) != SEXPTYPE::REALSXP {
-            Rf_error(b"invalid input\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid input\0".as_ptr() as *const core::ffi::c_char);
         }
         let width = asInteger(swidth);
         let n = LENGTH(x);
         if n == NA_INTEGER {
-            Rf_error(b"invalid 'x' argument\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid 'x' argument\0".as_ptr() as *const core::ffi::c_char);
         }
         if width == NA_INTEGER {
-            Rf_error(b"invalid 'width' argument\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid 'width' argument\0".as_ptr() as *const core::ffi::c_char);
         }
         let sc = asReal(scale);
         let sa = asReal(atom);
         if !R_FINITE(sc) {
-            Rf_error(b"invalid 'scale' argument\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid 'scale' argument\0".as_ptr() as *const core::ffi::c_char);
         }
         if !R_FINITE(sa) {
-            Rf_error(b"invalid 'atom' argument\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid 'atom' argument\0".as_ptr() as *const core::ffi::c_char);
         }
 
         /* Make a mutable copy since R_rsort sorts in place */
@@ -305,10 +305,10 @@ pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SE
         let sr = asLogical(right);
         let sl = asLogical(lowest);
         if sr == NA_INTEGER {
-            Rf_error(b"invalid 'right' argument\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid 'right' argument\0".as_ptr() as *const core::ffi::c_char);
         }
         if sl == NA_INTEGER {
-            Rf_error(b"invalid 'include.lowest' argument\0".as_ptr() as *const libc::c_char);
+            Rf_error(b"invalid 'include.lowest' argument\0".as_ptr() as *const core::ffi::c_char);
         }
 
         let counts = Rf_allocVector(SEXPTYPE::INTSXP, (nB - 1) as c_int);

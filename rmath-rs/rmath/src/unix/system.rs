@@ -535,8 +535,8 @@ pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
         {
             let mut base: usize = 0;
             let mut len: usize = std::mem::size_of::<*const c_void>();
-            let KERN_USRSTACK: libc::c_int = 33;
-            let mut mib: [libc::c_int; 2] = [libc::CTL_KERN, KERN_USRSTACK];
+            let KERN_USRSTACK: core::ffi::c_int = 33;
+            let mut mib: [core::ffi::c_int; 2] = [libc::CTL_KERN, KERN_USRSTACK];
             if libc::sysctl(
                 mib.as_mut_ptr(),
                 2,

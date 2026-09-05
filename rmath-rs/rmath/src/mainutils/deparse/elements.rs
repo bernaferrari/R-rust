@@ -47,8 +47,8 @@ pub unsafe fn deparse2buf_name(nv: SEXP, i: c_int, d: *mut LocalParseData) {
 pub unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *const c_char {
     unsafe {
         // Simplified implementation: format real and imaginary parts
-        let mut re_buf = [0 as libc::c_char; 64];
-        let mut im_buf = [0 as libc::c_char; 64];
+        let mut re_buf = [0 as core::ffi::c_char; 64];
+        let mut im_buf = [0 as core::ffi::c_char; 64];
         if R_FINITE(x.r) {
             crate::rport_snprintf!(
                 re_buf.as_mut_ptr(),
