@@ -379,8 +379,19 @@ pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             if Rf_isEnvironment(val) == 0 {
                 errorcall(call, "invalid replacement for 'environment'");
             }
-            SET_CLOENV(x, val);
-            return x;
+            // Upstream do_envirgets shallow-duplicates the closure before
+            // reparenting it (builtin.c): `environment(f) <- e` must
+            // rebind the target to a NEW closure sharing formals/body, so
+            // other references to the original (e.g. one function object
+            // copied into several R6 generator environments by
+            // assign_func_envs) keep their own enclosing environments.
+            let _x_guard = crate::sexp::protect::protect(x);
+            let dup = crate::mainutils::duplicate::shallow_duplicate(x);
+            if dup.is_null() || dup == R_NilValue() {
+                return x;
+            }
+            SET_CLOENV(dup, val);
+            return dup;
         }
         if Rf_isEnvironment(val) != 0 {
             setAttrib(

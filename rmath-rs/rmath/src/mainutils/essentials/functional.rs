@@ -154,7 +154,43 @@ pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let template_expr = arg_by_name_or_position(args, &["FUN.VALUE"], 2);
         let template_type = fun_value_type(template_expr, rho);
-        let list = do_lapply(_call, _op, args, rho);
+        // FUN.VALUE and USE.NAMES are vapply's own formals (upstream
+        // signature: vapply(X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE));
+        // only the remaining `...` forwards to FUN. Strip them before
+        // delegating to the shared lapply loop, which forwards every
+        // non-X/FUN argument.
+        let mut filtered = R_NilValue();
+        let mut tail: SEXP = std::ptr::null_mut();
+        let mut guards: Vec<_> = Vec::new();
+        let mut positional = 0usize;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let named = tag_name(current);
+            let is_vapply_formal = matches!(
+                named.as_deref(),
+                Some("FUN.VALUE") | Some("USE.NAMES")
+            ) || (named.is_none() && positional == 2);
+            if !is_vapply_formal {
+                let cell = Rf_cons(CAR(current), R_NilValue());
+                guards.push(protect(cell));
+                let tg = TAG(current);
+                if !tg.is_null() && tg != R_NilValue() {
+                    SETTAG(cell, tg);
+                }
+                if filtered == R_NilValue() {
+                    filtered = cell;
+                } else {
+                    SETCDR(tail, cell);
+                }
+                tail = cell;
+            }
+            if named.is_none() {
+                positional += 1;
+            }
+            current = CDR(current);
+        }
+        let _filtered_guard = protect(filtered);
+        let list = do_lapply(_call, _op, filtered, rho);
         simplify_scalar_list_as(list, template_type)
     }
 }

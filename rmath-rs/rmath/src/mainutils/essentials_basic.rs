@@ -204,6 +204,15 @@ pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return R_NilValue();
         }
+        // Upstream `print` is `function(x, ...) UseMethod("print")`:
+        // dispatch to a class method when one is registered as a closure
+        // (loaded-package methods like R6's print.R6ClassGenerator); the
+        // port's built-in print.<class> primitives keep the paths below.
+        if let Some(result) =
+            crate::mainutils::essentials::apply_s3_closure_method("print", _call, args, _rho)
+        {
+            return result;
+        }
         if crate::mainutils::essentials::sexp_has_class(x, "data.frame") {
             return crate::mainutils::essentials::do_print_data_frame(_call, _op, args, _rho);
         }
@@ -1296,6 +1305,69 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 );
             }
         }
+        result
+    }
+}
+
+/// R's `as.list.environment(x, all.names = FALSE, sorted = FALSE, ...)` —
+/// environment bindings as a named list. Values are read through
+/// `R_findVarInFrame` so active bindings evaluate to their current value,
+/// matching upstream env2list. Unsorted output preserves frame order.
+pub unsafe fn do_as_list_environment(
+    _call: SEXP,
+    _op: SEXP,
+    args: SEXP,
+    _rho: SEXP,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::ENVSXP {
+            return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        }
+        let _x_guard = protect(x);
+
+        let all_names = match CDR(args) {
+            rest if !rest.is_null() && rest != R_NilValue() => {
+                crate::mainutils::essentials::logical_arg(CAR(rest), false)
+            }
+            _ => false,
+        };
+        let sorted = match CDR(CDR(args)) {
+            rest if !rest.is_null() && rest != R_NilValue() => {
+                crate::mainutils::essentials::logical_arg(CAR(rest), false)
+            }
+            _ => false,
+        };
+
+        let mut entries: Vec<(String, SEXP)> = Vec::new();
+        let mut frame = FRAME(x);
+        while !frame.is_null() && frame != R_NilValue() {
+            if let Some(name) = tag_name(TAG(frame)) {
+                if all_names || !name.starts_with('.') {
+                    let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
+                    let value = crate::sexp::envir::R_findVarInFrame(x, sym);
+                    if !value.is_null() && value != crate::sexp::globals::R_UnboundValue() {
+                        entries.push((name, value));
+                    }
+                }
+            }
+            frame = CDR(frame);
+        }
+        if sorted {
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, entries.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = protect(result);
+        let names: Vec<String> = entries.iter().map(|(name, _)| name.clone()).collect();
+        for (i, (_, value)) in entries.iter().enumerate() {
+            SET_VECTOR_ELT(result, i as R_xlen_t, *value);
+        }
+        let names_vec = string_vector(&names);
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names_vec);
         result
     }
 }

@@ -21,6 +21,10 @@ pub struct RSession {
     session_id: u64,
     active: bool,
     inner: rmath::android::RSession,
+    /// Live handle slots: index = slot id, value = current generation.
+    /// Removed slots keep their entry with a bumped generation so stale
+    /// handles are rejected; ids are never reused.
+    handle_slot_states: Vec<u32>,
 }
 
 /// Owned result of an evaluation.
@@ -128,6 +132,7 @@ impl RSession {
             session_id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             active: true,
             inner: rmath::android::RSession::new(),
+            handle_slot_states: Vec::new(),
         })
     }
 
@@ -203,18 +208,29 @@ impl RSession {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
         let value = self.eval_result("ls(all.names=TRUE)")?.value;
-        match value {
-            RValue::StringVector(names) => Ok(names.into_iter().flatten().collect()),
+        // The reserved handle environment is engine-internal: hosts listing
+        // bindings for tab completion never see it.
+        let names = match value {
+            RValue::StringVector(names) => names,
             RValue::Attributed { value, .. } => match *value {
-                RValue::StringVector(names) => Ok(names.into_iter().flatten().collect()),
-                other => Err(RSessionError::EvalError(format!(
-                    "ls(all.names=TRUE) returned unexpected value: {other:?}"
-                ))),
+                RValue::StringVector(names) => names,
+                other => {
+                    return Err(RSessionError::EvalError(format!(
+                        "ls(all.names=TRUE) returned unexpected value: {other:?}"
+                    )))
+                }
             },
-            other => Err(RSessionError::EvalError(format!(
-                "ls(all.names=TRUE) returned unexpected value: {other:?}"
-            ))),
-        }
+            other => {
+                return Err(RSessionError::EvalError(format!(
+                    "ls(all.names=TRUE) returned unexpected value: {other:?}"
+                )))
+            }
+        };
+        Ok(names
+            .into_iter()
+            .flatten()
+            .filter(|name| name != HANDLE_ENV_NAME)
+            .collect())
     }
 
     /// Return whether `code` is a syntactically complete R input.
@@ -445,6 +461,126 @@ impl RSession {
 
         Ok(Some(PlotSeries { x, y, options }))
     }
+    /// Evaluate `expr` and keep the resulting value rooted in the session's
+    /// reserved handle environment, returning an opaque [`ValueHandle`].
+    ///
+    /// The value survives later evaluations and `gc()` because it stays
+    /// bound in the reserved environment until [`RSession::remove_handle`]
+    /// or session close. `expr` is wrapped in `{ }`, so multi-statement
+    /// expressions work.
+    pub fn define_handle(&mut self, expr: &str) -> Result<ValueHandle, RSessionError> {
+        self.ensure_handle_env()?;
+        self.handle_slot_states.push(0);
+        let slot = self.handle_slot_states.len() as u32 - 1;
+        self.assign_handle_slot(slot, expr)?;
+        Ok(ValueHandle {
+            session_id: self.session_id,
+            slot,
+            generation: 0,
+        })
+    }
+
+    /// Borrow the value behind `handle` for reading.
+    ///
+    /// The [`ReadGuard`] holds an owned snapshot and exclusively borrows the
+    /// session: no evaluation can run while it is alive, so the snapshot
+    /// cannot be invalidated underneath the reader.
+    pub fn read_handle<'s>(
+        &'s mut self,
+        handle: &ValueHandle,
+    ) -> Result<ReadGuard<'s>, RSessionError> {
+        let slot = self.validate_handle(handle)?;
+        let expr = format!("{}$h{slot}", HANDLE_ENV_NAME);
+        let snapshot = self.eval_result(&expr)?;
+        if matches!(snapshot.value, RValue::Null | RValue::Error(_)) && !self.slot_exists(slot)? {
+            return Err(RSessionError::EvalError(
+                "stale value handle: slot binding vanished".into(),
+            ));
+        }
+        Ok(ReadGuard {
+            session: self,
+            snapshot,
+        })
+    }
+
+    /// Borrow the slot behind `handle` for writing.
+    ///
+    /// The [`WriteGuard`] exclusively borrows the session: at most one write
+    /// guard (and no evaluation) exists at any time.
+    pub fn write_handle<'s>(
+        &'s mut self,
+        handle: &ValueHandle,
+    ) -> Result<WriteGuard<'s>, RSessionError> {
+        let slot = self.validate_handle(handle)?;
+        if !self.slot_exists(slot)? {
+            return Err(RSessionError::EvalError(
+                "stale value handle: slot binding vanished".into(),
+            ));
+        }
+        Ok(WriteGuard {
+            session: self,
+            slot,
+        })
+    }
+
+    /// Drop the slot binding and invalidate every handle referring to it.
+    ///
+    /// Later reads or writes through those handles fail as stale.
+    pub fn remove_handle(&mut self, handle: &ValueHandle) -> Result<(), RSessionError> {
+        let slot = self.validate_handle(handle)?;
+        let expr = format!("rm(h{slot}, envir = {HANDLE_ENV_NAME})");
+        self.eval(&expr)?;
+        if let Some(generation) = self.handle_slot_states.get_mut(slot as usize) {
+            *generation += 1;
+        }
+        Ok(())
+    }
+
+    fn validate_handle(&self, handle: &ValueHandle) -> Result<u32, RSessionError> {
+        if handle.session_id != self.session_id {
+            return Err(RSessionError::EvalError(format!(
+                "value handle belongs to session {}, used on session {}",
+                handle.session_id, self.session_id
+            )));
+        }
+        match self.handle_slot_states.get(handle.slot as usize) {
+            None => Err(RSessionError::EvalError(
+                "stale value handle: slot never existed".into(),
+            )),
+            Some(generation) if *generation != handle.generation => Err(
+                RSessionError::EvalError("stale value handle: slot was removed".into()),
+            ),
+            Some(_) => Ok(handle.slot),
+        }
+    }
+
+    fn ensure_handle_env(&mut self) -> Result<(), RSessionError> {
+        let expr = format!(
+            "if (!exists(\"{HANDLE_ENV_NAME}\", envir = globalenv(), inherits = FALSE)) \
+             assign(\"{HANDLE_ENV_NAME}\", new.env(parent = emptyenv()), envir = globalenv())"
+        );
+        self.eval(&expr).map(|_| ())
+    }
+
+    fn slot_exists(&mut self, slot: u32) -> Result<bool, RSessionError> {
+        let expr = format!("exists(\"h{slot}\", envir = {HANDLE_ENV_NAME})");
+        Ok(self.eval(&expr)?.trim() == "[1] TRUE")
+    }
+
+    fn assign_handle_slot(&mut self, slot: u32, expr: &str) -> Result<(), RSessionError> {
+        let wrapped = format!("{{ {}$h{slot} <- {{ {} }} }}", HANDLE_ENV_NAME, expr.trim());
+        self.eval(&wrapped).map(|_| ())
+    }
+
+    fn update_handle_slot(&mut self, slot: u32, expr: &str) -> Result<(), RSessionError> {
+        let wrapped = format!(
+            "local({{ . <- {HANDLE_ENV_NAME}$h{slot}; {HANDLE_ENV_NAME}$h{slot} <- {{ {} }} }})",
+            expr.trim()
+        );
+        self.eval(&wrapped).map(|_| ())
+    }
+
+
 
     /// Close the session.
     pub fn close(&mut self) {
@@ -460,6 +596,117 @@ impl Drop for RSession {
         self.close();
     }
 }
+
+/// Opaque, session-scoped handle to a live R value kept rooted inside the
+/// session's handle environment.
+///
+/// A handle is a plain `Copy` id (`session_id`, slot, generation): it holds
+/// no reference into the R arena, so it can be stored anywhere and outlive
+/// evaluations. Safety comes from validation at use time:
+///
+/// - a handle from another session is rejected (`foreign-session handle`),
+/// - a handle whose slot was [`removed`](RSession::remove_handle) or never
+///   existed is rejected as *stale* (slot ids are never reused; the
+///   generation counter also catches internal reuse),
+/// - the underlying R value stays garbage-collector-rooted because it lives
+///   in the reserved `..rport_handles..` environment until removed or the
+///   session closes.
+///
+/// There is deliberately no path from a `ValueHandle` back to raw `SEXP`
+/// data: reads and writes go through [`RSession::read_handle`] and
+/// [`RSession::write_handle`], which borrow the session for the guard's
+/// lifetime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ValueHandle {
+    session_id: u64,
+    slot: u32,
+    generation: u32,
+}
+
+impl ValueHandle {
+    /// The session this handle was created by.
+    pub fn owning_session(&self) -> u64 {
+        self.session_id
+    }
+}
+
+/// Shared read access to a handle's value, scoped to the session borrow.
+///
+/// The guard materializes an owned [`RValue`] snapshot when created; while it
+/// is alive the session is exclusively borrowed, so no evaluation can run
+/// concurrently and the observed snapshot cannot be invalidated.
+pub struct ReadGuard<'s> {
+    session: &'s mut RSession,
+    snapshot: EvalOutput,
+}
+
+impl std::ops::Deref for ReadGuard<'_> {
+    type Target = RValue;
+
+    fn deref(&self) -> &RValue {
+        &self.snapshot.value
+    }
+}
+
+impl std::fmt::Debug for ReadGuard<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReadGuard").field("snapshot", &self.snapshot).finish()
+    }
+}
+
+impl ReadGuard<'_> {
+    /// The captured console output produced by the read evaluation.
+    pub fn output(&self) -> &str {
+        &self.snapshot.output
+    }
+
+    /// The id of the session this guard borrows.
+    pub fn session_id(&self) -> u64 {
+        self.session.session_id()
+    }
+
+    /// The owned value snapshot.
+    pub fn value(&self) -> &RValue {
+        &self.snapshot.value
+    }
+}
+
+/// Exclusive write access to a handle's slot, scoped to the session borrow.
+///
+/// Dropping the guard releases the session borrow; the slot binding itself
+/// persists until [`RSession::remove_handle`] or session close.
+pub struct WriteGuard<'s> {
+    session: &'s mut RSession,
+    slot: u32,
+}
+
+impl std::fmt::Debug for WriteGuard<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WriteGuard").field("slot", &self.slot).finish()
+    }
+}
+
+impl WriteGuard<'_> {
+    /// Replace the slot's value with the result of evaluating `expr`.
+    ///
+    /// On error the slot keeps its previous binding.
+    pub fn set(&mut self, expr: &str) -> Result<(), RSessionError> {
+        self.session
+            .assign_handle_slot(self.slot, expr)
+    }
+
+    /// Evaluate `expr` with the slot's current value bound to `.`.
+    ///
+    /// This is the in-place mutation form: the expression sees the live
+    /// value through `.` and the slot is rebound to the expression's result.
+    pub fn update(&mut self, expr: &str) -> Result<(), RSessionError> {
+        self.session.update_handle_slot(self.slot, expr)
+    }
+}
+
+/// Name of the reserved global binding holding the handle-slot environment.
+const HANDLE_ENV_NAME: &str = "..rport_handles..";
+
 
 #[cfg(test)]
 mod tests {

@@ -1952,10 +1952,19 @@ pub(crate) unsafe fn register_namespace_s3_methods(
 ) -> Result<(), String> {
     unsafe {
         for method in &directives.s3_methods {
+            // Upstream loadNamespace strips a "pkg::" qualifier from the
+            // generic when deriving the default method function name:
+            // S3method(utils::.DollarNames, R6) registers the function
+            // `.DollarNames.R6` for generic `.DollarNames`
+            // (base/R/namespace.R: paste0(sub("^.*::", "", generic), ".", class)).
+            let local_generic = method.generic.rsplit("::").next().unwrap_or("");
+            if local_generic.is_empty() {
+                continue;
+            }
             let method_name = method
                 .method
                 .clone()
-                .unwrap_or_else(|| format!("{}.{}", method.generic, method.class));
+                .unwrap_or_else(|| format!("{}.{}", local_generic, method.class));
             let Ok(method_cstr) = CString::new(method_name.as_str()) else {
                 return Err(format!(
                     "package '{}' has invalid S3 method name '{}'",
@@ -1973,7 +1982,7 @@ pub(crate) unsafe fn register_namespace_s3_methods(
                     package, method_name
                 ));
             }
-            define_s3_method(package_env, &method.generic, &method.class, method_value)?;
+            define_s3_method(package_env, local_generic, &method.class, method_value)?;
         }
         Ok(())
     }

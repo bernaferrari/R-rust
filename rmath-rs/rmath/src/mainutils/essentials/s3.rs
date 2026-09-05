@@ -36,6 +36,51 @@ pub unsafe fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
 }
 
+/// Dispatch a generic builtin call to a class-specific S3 method when one
+/// exists and is a closure. Upstream generic functions (`print`, `format`,
+/// ...) dispatch via UseMethod before their default methods run; this
+/// port's built-in `print.<class>`-style primitives keep their dedicated
+/// handlers, so this intercepts only closure methods — the ones registered
+/// by loaded packages (e.g. R6's `print.R6ClassGenerator`, bound into the
+/// package namespace's `.__S3MethodsTable__.` and the attached search
+/// path). Returns the method's result, or `None` to keep the default path.
+pub(crate) unsafe fn apply_s3_closure_method(
+    generic: &str,
+    call: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        let first = CAR(args);
+        if first.is_null() || first == R_NilValue() {
+            return None;
+        }
+        let klass = crate::sexp::attrib_core::getAttrib(
+            first,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if klass.is_null() || klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let _klass_guard = protect(klass);
+        let method = crate::mainutils::objects::lookup_s3_method_for_classes(
+            generic, klass, rho, rho, rho, false,
+        )?;
+        if TYPEOF(method.method) != SEXPTYPE::CLOSXP {
+            return None;
+        }
+        let _method_guard = protect(method.method);
+        Some(crate::eval::closure::applyClosure(
+            call,
+            method.method,
+            args,
+            rho,
+            R_NilValue(),
+            TRUE,
+        ))
+    }
+}
+
 /// R's `methods(generic)` — list methods known to the Rust runtime.
 pub unsafe fn do_methods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {

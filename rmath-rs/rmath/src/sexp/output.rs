@@ -2049,6 +2049,9 @@ unsafe fn format_try_error(x: Sexp<'_>) -> String {
     }
 }
 
+pub(crate) fn format_environment_public(x: Sexp<'_>) -> String {
+    format_environment(x)
+}
 fn format_environment(x: Sexp<'_>) -> String {
     let raw = x.as_raw();
     let name = unsafe {

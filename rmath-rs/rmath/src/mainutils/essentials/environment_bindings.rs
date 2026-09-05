@@ -95,6 +95,79 @@ pub unsafe fn do_environmentIsLocked(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
     }
 }
 
+/// R's `list2env(x, envir = NULL, parent = parent.frame(),
+/// hash = (length(x) > 100), size = max(29L, length(x)))` — transfer the
+/// named elements of a list (or pairlist) into `envir` as bindings
+/// (upstream `base::list2env` wraps `.Internal(list2env(x, envir))`;
+/// defineVar per element, last one wins). Returns the environment.
+pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let envir_arg = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
+            CAR(CDR(args))
+        } else {
+            R_NilValue()
+        };
+
+        let x_type = TYPEOF(x);
+        let is_list = x_type == SEXPTYPE::VECSXP.as_c_int();
+        let is_pairlist = x_type == SEXPTYPE::LISTSXP.as_c_int()
+            || x_type == SEXPTYPE::NILSXP.as_c_int();
+        if !is_list && !is_pairlist {
+            base_error("invalid 'x' argument");
+        }
+
+        let envir = if envir_arg.is_null() || envir_arg == R_NilValue() {
+            // envir = NULL: fresh env under parent = parent.frame() (the
+            // caller's evaluation frame for a builtin).
+            let parent = if !_rho.is_null() && _rho != R_NilValue() {
+                _rho
+            } else {
+                crate::sexp::globals::R_GlobalEnv()
+            };
+            let _guard = protect(parent);
+            crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue())
+        } else if TYPEOF(envir_arg) == SEXPTYPE::ENVSXP.as_c_int() {
+            envir_arg
+        } else {
+            base_error("invalid 'envir' argument");
+        };
+        let _envir_guard = protect(envir);
+
+        if is_pairlist {
+            let mut cell = x;
+            while !cell.is_null() && cell != R_NilValue() {
+                let tag = TAG(cell);
+                if tag.is_null() || tag == R_NilValue() {
+                    base_error("'x' must be a named list or pairlist");
+                }
+                crate::sexp::envir::defineVar(tag, CAR(cell), envir);
+                cell = CDR(cell);
+            }
+        } else {
+            let n = XLENGTH(x);
+            let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let _names_guard = protect(names);
+            if n > 0 && (names.is_null() || names == R_NilValue() || XLENGTH(names) != n) {
+                base_error("'x' must be a named list or pairlist");
+            }
+            for i in 0..n {
+                let name = elt_to_string(names, i);
+                if name.is_empty() || name == "NA" {
+                    base_error("'x' must be a named list or pairlist");
+                }
+                let Ok(name_cstr) = CString::new(name) else {
+                    base_error("'x' must be a named list or pairlist");
+                };
+                let sym = Rf_install(name_cstr.as_ptr());
+                crate::sexp::envir::defineVar(sym, VECTOR_ELT(x, i), envir);
+            }
+        }
+
+        envir
+    }
+}
+
 unsafe fn environment_arg(value: SEXP) -> SEXP {
     unsafe {
         if value.is_null() || value == R_NilValue() || TYPEOF(value) != SEXPTYPE::ENVSXP {

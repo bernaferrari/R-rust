@@ -104,13 +104,23 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // direct builtin, so retain the key dispatch boundary explicitly:
         // a data-frame first argument must be bound column-by-column rather
         // than flattened as the VECSXP storage of an atomic matrix.
-        let first = if args.is_null() || args == R_NilValue() {
+        // GNU R's rbind finds the dispatching object after skipping NULL
+        // arguments, so `rbind(NULL, df)` binds column-by-column too —
+        // read.fortunes() seeds its accumulation with exactly that call.
+        let mut dispatch = args;
+        while !dispatch.is_null()
+            && dispatch != R_NilValue()
+            && (CAR(dispatch).is_null() || CAR(dispatch) == R_NilValue())
+        {
+            dispatch = CDR(dispatch);
+        }
+        let first = if dispatch.is_null() || dispatch == R_NilValue() {
             R_NilValue()
         } else {
-            CAR(args)
+            CAR(dispatch)
         };
         if sexp_has_class(first, "data.frame") && TYPEOF(first) == SEXPTYPE::VECSXP {
-            return rbind_data_frame(args);
+            return rbind_data_frame(dispatch);
         }
 
         let mut result_type = SEXPTYPE::LGLSXP;

@@ -1067,6 +1067,111 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
+/// R's `get0(x, envir, mode = "any", inherits = TRUE, ifnotfound = NULL)` —
+/// `get()` that returns `ifnotfound` instead of erroring when the binding
+/// is missing (upstream get0 delegates to mget with a one-element
+/// ifnotfound list and unwraps the result).
+pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let name_arg = arg_by_name_or_position(args, &["x"], 0);
+        let name = elt_to_string(name_arg, 0);
+        let env = environment_arg_or_default(args, &["envir", "pos"], 1, rho);
+        let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
+        let ifnotfound = arg_by_name_or_position(args, &["ifnotfound"], 4);
+        let fallback = if ifnotfound.is_null() {
+            R_NilValue()
+        } else {
+            ifnotfound
+        };
+        let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        let value = if inherits {
+            crate::sexp::envir::R_findVar(sym, env)
+        } else {
+            crate::sexp::envir::R_findVarInFrame(env, sym)
+        };
+        if value.is_null() || value == R_UnboundValue() {
+            fallback
+        } else {
+            value
+        }
+    }
+}
+
+/// R's `mget(x, envir, mode = "any", ifnotfound, inherits = FALSE)` —
+/// look up each name of a character vector, returning a named list.
+/// `envir` may be one environment or a list recycled along `x`; a missing
+/// `ifnotfound` errors for absent bindings, as upstream does.
+pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let x_arg = arg_by_name_or_position(args, &["x"], 0);
+        if x_arg.is_null() || x_arg == R_NilValue() || TYPEOF(x_arg) != SEXPTYPE::STRSXP {
+            base_error("invalid first argument");
+        }
+        let n = XLENGTH(x_arg);
+        let envir_arg = arg_by_name_or_position(args, &["envir"], 1);
+        let inherits = named_logical_arg(args, "inherits").unwrap_or(false);
+        let ifnotfound_arg = arg_by_name_or_position(args, &["ifnotfound"], 3);
+
+        // Single environment or recyclable list of environments.
+        let mut env_list: Vec<SEXP> = Vec::new();
+        if !envir_arg.is_null() && envir_arg != R_NilValue() {
+            if TYPEOF(envir_arg) == SEXPTYPE::ENVSXP {
+                env_list.push(envir_arg);
+            } else if TYPEOF(envir_arg) == SEXPTYPE::VECSXP {
+                for i in 0..XLENGTH(envir_arg) {
+                    let env = VECTOR_ELT(envir_arg, i);
+                    if TYPEOF(env) == SEXPTYPE::ENVSXP {
+                        env_list.push(env);
+                    }
+                }
+            }
+        } else {
+            env_list.push(crate::sexp::globals::R_GlobalEnv());
+        }
+        if env_list.is_empty() {
+            base_error("invalid 'envir' argument");
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _result_guard = protect(result);
+        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _names_guard = protect(names_vec);
+        for i in 0..n {
+            let name = elt_to_string(x_arg, i);
+            crate::sexp::accessors::SET_STRING_ELT(
+                names_vec,
+                i,
+                Rf_mkChar(CString::new(name.as_str()).unwrap_or_default().as_ptr()),
+            );
+            let sym = Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
+            let env = env_list[(i as usize) % env_list.len()];
+            let value = if inherits {
+                crate::sexp::envir::R_findVar(sym, env)
+            } else {
+                crate::sexp::envir::R_findVarInFrame(env, sym)
+            };
+            if !value.is_null() && value != R_UnboundValue() {
+                crate::sexp::accessors::SET_VECTOR_ELT(result, i, value);
+            } else if !ifnotfound_arg.is_null() && ifnotfound_arg != R_NilValue() {
+                let fallback = if TYPEOF(ifnotfound_arg) == SEXPTYPE::VECSXP {
+                    VECTOR_ELT(ifnotfound_arg, (i % XLENGTH(ifnotfound_arg)) as i64)
+                } else {
+                    ifnotfound_arg
+                };
+                crate::sexp::accessors::SET_VECTOR_ELT(result, i, fallback);
+            } else {
+                base_error(format!("value for '{name}' not found"));
+            }
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names_vec,
+        );
+        result
+    }
+}
+
 /// R's `assign(x, value, envir)` — assign value.
 pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1175,17 +1280,107 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `rm(list, envir)` — remove objects.
 pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let list = arg_by_name_or_position(args, &["list"], 0);
-        if list.is_null() || TYPEOF(list) != SEXPTYPE::STRSXP {
+        // Upstream rm is a closure: `...` dots arrive UNEVALUATED (this is
+        // an unevaluated builtin) and must each be a symbol or character
+        // string naming a binding; the named formals are evaluated here.
+        let mut names: Vec<String> = Vec::new();
+        let mut list_arg: SEXP = R_NilValue();
+        let mut pos_arg: SEXP = crate::sexp::globals::R_MissingArg();
+        let mut envir_arg: SEXP = crate::sexp::globals::R_MissingArg();
+        let mut current = args;
+        while current != R_NilValue() && !current.is_null() {
+            let tag = TAG(current);
+            let expr = CAR(current);
+            let tagged = !tag.is_null() && tag != R_NilValue();
+            if !tagged {
+                match TYPEOF(expr) {
+                    t if t == SEXPTYPE::SYMSXP => {
+                        // PRINTNAME -> string
+                        let pn = PRINTNAME(expr);
+                        if !pn.is_null() && pn != R_NilValue() {
+                            names.push(
+                                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn))
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            );
+                        }
+                    }
+                    t if t == SEXPTYPE::STRSXP && XLENGTH(expr) > 0 => {
+                        let pn = crate::sexp::accessors::STRING_ELT(expr, 0);
+                        if !pn.is_null() && pn != crate::sexp::globals::R_NaString() {
+                            names.push(
+                                std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn))
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            );
+                        }
+                    }
+                    t if t == SEXPTYPE::LANGSXP => {
+                        // Constant-folded string like '"x"' may arrive as a
+                        // call node; evaluate it and accept a string.
+                        let val = crate::eval::eval::Rf_eval(expr, rho);
+                        if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP && XLENGTH(val) > 0 {
+                            let pn = crate::sexp::accessors::STRING_ELT(val, 0);
+                            if !pn.is_null() && pn != crate::sexp::globals::R_NaString() {
+                                names.push(
+                                    std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(pn))
+                                        .to_string_lossy()
+                                        .into_owned(),
+                                );
+                            }
+                        } else {
+                            std::panic::panic_any(crate::sexp::context::RError {
+                                message: "... must contain names or character strings".into(),
+                            });
+                        }
+                    }
+                    _ => {
+                        std::panic::panic_any(crate::sexp::context::RError {
+                            message: "... must contain names or character strings".into(),
+                        });
+                    }
+                }
+            } else {
+                let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(PRINTNAME(tag)))
+                    .to_string_lossy()
+                    .into_owned();
+                match name.as_str() {
+                    "list" => list_arg = crate::eval::eval::Rf_eval(expr, rho),
+                    "pos" => pos_arg = crate::eval::eval::Rf_eval(expr, rho),
+                    "envir" => envir_arg = crate::eval::eval::Rf_eval(expr, rho),
+                    _ => {}
+                }
+            }
+            current = CDR(current);
+        }
+        // Merge an explicit list= argument into the dot names.
+        if !list_arg.is_null() && list_arg != R_NilValue() {
+            if TYPEOF(list_arg) == SEXPTYPE::STRSXP {
+                for i in 0..XLENGTH(list_arg) {
+                    names.push(elt_to_string(list_arg, i));
+                }
+            }
+        }
+        if names.is_empty() {
+            crate::sexp::globals::set_R_Visible(FALSE);
             return R_NilValue();
         }
-        let env = environment_arg_or_default(args, &["envir"], 1, rho);
-        for i in 0..XLENGTH(list) {
-            let sym = Rf_install(
-                CString::new(elt_to_string(list, i))
-                    .unwrap_or_default()
-                    .as_ptr(),
-            );
+        // Resolve the target environment: envir= wins, then pos=.
+        let env = if !envir_arg.is_null() && envir_arg != crate::sexp::globals::R_MissingArg() {
+            envir_arg
+        } else if !pos_arg.is_null() && pos_arg != crate::sexp::globals::R_MissingArg() {
+            // pos=-1 (default) means the global environment.
+            let pos_val = crate::eval::eval::Rf_eval(pos_arg, rho);
+            if !pos_val.is_null() && TYPEOF(pos_val) == SEXPTYPE::INTSXP && XLENGTH(pos_val) > 0 && INTEGER_ELT(pos_val, 0) == -1 {
+                crate::sexp::globals::R_GlobalEnv()
+            } else {
+                crate::sexp::globals::R_GlobalEnv()
+            }
+        } else {
+            rho
+        };
+        for name in names {
+            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             crate::sexp::envir::remove_binding_raw(env, sym);
         }
         crate::sexp::globals::set_R_Visible(FALSE);

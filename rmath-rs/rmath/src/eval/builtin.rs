@@ -249,6 +249,17 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        // `rm` upstream is a closure that captures `...` via
+        // match.call(expand.dots=FALSE): dots must be SYMBOLS or character
+        // strings naming bindings, never evaluated (`rm(x, envir=e)` would
+        // otherwise evaluate `x` in the caller and fail). The handler
+        // converts raw symbols/strings to names itself and evaluates only
+        // the named formals (list/pos/envir/inherits).
+        name: "rm",
+        handler: crate::mainutils::essentials::do_rm,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "substitute",
         handler: crate::mainutils::coerce::do_substitute,
         restore_visibility_always: true,
@@ -1583,6 +1594,22 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "new.env",
         handler: crate::mainutils::essentials::do_new_env,
+    },
+    EvaluatedBuiltin {
+        name: "list2env",
+        handler: crate::mainutils::essentials::do_list2env,
+    },
+    EvaluatedBuiltin {
+        name: "get0",
+        handler: crate::mainutils::essentials::do_get0,
+    },
+    EvaluatedBuiltin {
+        name: "mget",
+        handler: crate::mainutils::essentials::do_mget,
+    },
+    EvaluatedBuiltin {
+        name: "as.list.environment",
+        handler: crate::mainutils::essentials_basic::do_as_list_environment,
     },
     EvaluatedBuiltin {
         name: "environment",
@@ -3056,10 +3083,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "ls",
         handler: crate::mainutils::essentials::do_ls,
-    },
-    EvaluatedBuiltin {
-        name: "rm",
-        handler: crate::mainutils::essentials::do_rm,
     },
     EvaluatedBuiltin {
         name: "%in%",

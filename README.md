@@ -264,6 +264,32 @@ Direction, not promises — ordered by current work:
 6. **WASM evaluator scope decision**: either grow beyond the math +
    graphics core or document the core-only boundary permanently.
 
+The session-scoped `ValueHandle`/`ReadGuard`/`WriteGuard` boundary in
+`r-embed` (host-facing layer of the roadmap item above) has shipped: see
+[Session-scoped value handles](#session-scoped-value-handles).
+
+## Session-scoped value handles
+
+`r-embed` hosts that need to keep an R value live across evaluations use
+`RSession::define_handle`: the value is rooted in a reserved
+engine-internal environment and the host holds a `ValueHandle` — a `Copy`
+`(session, slot, generation)` id with **no reference into the R arena**.
+All access is use-time validated (foreign-session and stale-slot handles
+are errors, never UB) and mediated by guards:
+
+- `read_handle(&handle) -> ReadGuard` — owned `RValue` snapshot; the
+  guard exclusively borrows the session, so no evaluation can run while
+  it is alive;
+- `write_handle(&handle) -> WriteGuard` — `set(expr)` replaces the
+  binding (failed sets keep the previous value), `update(expr)` rebinds
+  with the current value in scope as `.`;
+- `remove_handle(&handle)` drops the binding and invalidates every
+  handle to that slot.
+
+The reserved `..rport_handles..` environment is filtered out of
+`global_binding_names()`; handles survive `gc()` and arbitrary later
+evaluations. Tests: `crates/r-embed/tests/value_handle.rs`.
+
 ## License and provenance
 
 GPL-2.0-or-later, matching upstream R. The full text is in

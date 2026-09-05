@@ -1,13 +1,15 @@
 //! Elementwise math: %in%, real_math1 table, sinpi/cospi family, trigonometric builtins — extracted verbatim from the former single-file module.
 use super::*;
 
-/// R's `%in%` operator — match operator.
+/// R's `%in%` operator — match operator, upstream
+/// `function(x, table) match(x, table, nomatch = 0) > 0`: an empty table
+/// yields FALSE for every element of `x` (never a zero-length result).
 pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let table = CAR(CDR(args));
 
-        if x.is_null() || x == R_NilValue() || table.is_null() || table == R_NilValue() {
+        if x.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
 
@@ -19,17 +21,24 @@ pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let _p = protect(result);
         let dst = LOGICAL(result);
 
+        let table_empty =
+            table.is_null() || table == R_NilValue() || XLENGTH(table) == 0;
         for i in 0..n {
-            let elem = elt_to_string(x, i);
-            let table_len = XLENGTH(table);
-            let mut found = false;
-            for j in 0..table_len {
-                let tbl_elem = elt_to_string(table, j);
-                if elem == tbl_elem {
-                    found = true;
-                    break;
+            let found = if table_empty {
+                false
+            } else {
+                let elem = elt_to_string(x, i);
+                let table_len = XLENGTH(table);
+                let mut found = false;
+                for j in 0..table_len {
+                    let tbl_elem = elt_to_string(table, j);
+                    if elem == tbl_elem {
+                        found = true;
+                        break;
+                    }
                 }
-            }
+                found
+            };
             *dst.add(i as usize) = if found { TRUE } else { FALSE };
         }
         result

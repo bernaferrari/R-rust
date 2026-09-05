@@ -56,11 +56,23 @@ pub unsafe fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 }
 
 /// R's `new.env(hash, parent, size)` — create a new environment.
+///
+/// Upstream formals are `function (hash = TRUE, parent = parent.frame(),
+/// size = 29L)`: the missing `parent` default evaluates to the caller's
+/// frame (`parent.frame()`), which for a builtin is the evaluation
+/// environment `rho`. Sourcing package files with `envir = <namespace>`
+/// therefore nests `new.env()` children under the namespace, matching
+/// GNU R (aaa.R's `capsule` must enclose under namespace:R6).
 pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let parent_arg = arg_by_name_or_position(args, &["parent"], 1);
         let parent = if parent_arg.is_null() || parent_arg == R_NilValue() {
-            crate::sexp::globals::R_GlobalEnv()
+            // parent = parent.frame() — the caller's evaluation frame
+            if _rho.is_null() || _rho == R_NilValue() {
+                crate::sexp::globals::R_GlobalEnv()
+            } else {
+                _rho
+            }
         } else if TYPEOF(parent_arg) == SEXPTYPE::ENVSXP {
             parent_arg
         } else {

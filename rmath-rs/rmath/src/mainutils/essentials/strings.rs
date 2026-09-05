@@ -794,12 +794,36 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_mkString(c"".as_ptr());
         }
+        // Upstream `format` is a UseMethod generic: dispatch to closure
+        // methods registered by loaded packages (R6's
+        // format.R6ClassGenerator) before the default formatting.
+        if let Some(result) =
+            crate::mainutils::essentials::apply_s3_closure_method("format", _call, args, _rho)
+        {
+            return result;
+        }
+        // format.default: environments render as their display form
+        // ("<environment: 0x...>"); closures deparse. These types have no
+        // meaningful XLENGTH — the vector loop below must not see them.
+        let x_type = TYPEOF(x);
+        if x_type == SEXPTYPE::ENVSXP {
+            if let Some(env_sexp) = crate::sexp::object::Sexp::from_raw(x) {
+                let rendered = crate::sexp::output::format_environment_public(env_sexp);
+                let cstr = CString::new(rendered).unwrap_or_default();
+                return Rf_mkString(cstr.as_ptr());
+            }
+            return Rf_mkString(c"<environment>".as_ptr() as *const std::os::raw::c_char);
+        }
+        if x_type == SEXPTYPE::CLOSXP || x_type == SEXPTYPE::SPECIALSXP
+            || x_type == SEXPTYPE::BUILTINSXP
+        {
+            return crate::mainutils::deparse::deparse_symbolic(x, true);
+        }
         // format.default formats symbolic objects by deparse:
         // call/expression/"function"/"(" -> deparse(x, backtick=TRUE),
         // name -> deparse(x, backtick=FALSE). Reaching the vector path with
         // a LANGSXP/SYMSXP walks garbage pairlist memory (XLENGTH is only
         // meaningful for vectors).
-        let x_type = TYPEOF(x);
         if x_type == SEXPTYPE::LANGSXP || x_type == SEXPTYPE::EXPRSXP || x_type == SEXPTYPE::SYMSXP
         {
             return crate::mainutils::deparse::deparse_symbolic(x, x_type != SEXPTYPE::SYMSXP);
@@ -1758,10 +1782,27 @@ pub unsafe fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             return Rf_mkString(c"".as_ptr());
         }
 
-        let mut path = PathBuf::from(package_path);
-        for part in system_file_parts(args) {
+        let parts = system_file_parts(args);
+        let mut path = PathBuf::from(&package_path);
+        for part in &parts {
             if !part.is_empty() {
                 path.push(part);
+            }
+        }
+        // Installation flattens a package's inst/ subtree into its root.
+        // This port loads source-shaped trees directly (the corpus bundles
+        // unpacked tarballs), so a missing path falls back to the inst/
+        // layout: system.file("fortunes", package = "fortunes") must find
+        // inst/fortunes just like an installed tree's fortunes/.
+        if !path.exists() && !parts.is_empty() {
+            let mut inst_path = PathBuf::from(&package_path).join("inst");
+            for part in &parts {
+                if !part.is_empty() {
+                    inst_path.push(part);
+                }
+            }
+            if inst_path.exists() {
+                path = inst_path;
             }
         }
 

@@ -14,7 +14,7 @@ pub use rmath::android::{
 };
 
 pub use packages::RPackageInfo;
-pub use session::{AndroidRuntimePaths, CancellationToken, EvalOutput, RSession};
+pub use session::{AndroidRuntimePaths, CancellationToken, EvalOutput, ReadGuard, RSession, ValueHandle, WriteGuard};
 
 use thiserror::Error;
 

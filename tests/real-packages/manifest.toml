@@ -56,3 +56,41 @@ status = "pass"
 probes = [
   "crayon::red(\"hi\") == \"hi\"",
 ]
+
+[[package]]
+name = "fortunes"
+version = "1.5-5"
+tarball = "vendor/fortunes_1.5-5.tar.gz"
+sha256 = "f8c103b826dd626d99179fde869f1997882a71d414b3155682951e4cd2000a2e"
+cran_md5 = "0371f1d1e9897bd5b63d3b644d32cc5f"
+license = "GPL-2 | GPL-3"
+needs_compilation = false
+axis = "S3-heavy data package: print dispatch on class \"fortune\", read.table over inst/ package data (sep/quote/colClasses, 400+ rows), rbind/data.frame construction, capture.output, $ on S3 objects, toLatex generic"
+status = "pass"
+probes = [
+  "identical(class(fortune(10)), \"fortune\")",
+  "grepl(\"SAS\", capture.output(print(fortune(10)))[2])",
+  "is.data.frame(read.fortunes())",
+  "nrow(read.fortunes()) > 300",
+  "grepl(\"SAS\", fortune(10)$quote)",
+]
+
+[[package]]
+name = "R6"
+version = "2.6.1"
+tarball = "vendor/R6_2.6.1.tar.gz"
+sha256 = "59c6eba8b1b912eb7e104f65053235604be853425ee67c152ac4e86a1f2073b4"
+cran_md5 = "f01b1787f12797c29194d63c9afd5d70"
+license = "MIT + file LICENSE"
+needs_compilation = false
+axis = "environment semantics: class generators as environments (new.env(parent=), enclosing-environment chains for self/super/private, environment(fn)<- rebinding copies, list2env, makeActiveBinding for active bindings and self, lockBinding/lockEnvironment, `<<-` walking env chains, clone rebuilding the env graph, S3 print dispatch on classed generators via namespace method tables)"
+status = "pass"
+probes = [
+  "q$size == 2",
+  "identical(q$items, c(1, 2))",
+  "c1$n == 2L",
+  "Derived$new()$greet() == \"base derived\"",
+  "identical(c1$clone()$n, 2L)",
+  "is.R6(q)",
+  "grepl(\"Queue\", capture.output(print(Q))[1])",
+]
