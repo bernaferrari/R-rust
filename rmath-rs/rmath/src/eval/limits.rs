@@ -67,7 +67,14 @@ impl EvalTimerGuard {
             if inst.eval_state.start_time.is_some() {
                 (false, inst as *mut RInstance)
             } else {
-                inst.eval_state.start_time = Some(Instant::now());
+                // wasm32-unknown-unknown has no monotonic clock
+                // (`Instant::now` panics): the wall-time execution limit is
+                // inert there, like upstream R without setTimeLimit.
+                #[cfg(target_arch = "wasm32")]
+                let start = None;
+                #[cfg(not(target_arch = "wasm32"))]
+                let start = Some(Instant::now());
+                inst.eval_state.start_time = start;
                 (true, inst as *mut RInstance)
             }
         });
@@ -102,8 +109,11 @@ impl EvalLimitsOverrideGuard {
                 previous_limits: inst.eval_state.limits,
                 previous_start_time: inst.eval_state.start_time,
             };
-            inst.eval_state.limits = limits;
-            inst.eval_state.start_time = Some(Instant::now());
+            #[cfg(target_arch = "wasm32")]
+            let start = None;
+            #[cfg(not(target_arch = "wasm32"))]
+            let start = Some(Instant::now());
+            inst.eval_state.start_time = start;
             guard
         })
     }

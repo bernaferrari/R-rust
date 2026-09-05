@@ -630,7 +630,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
             let mut buf: [c_char; 20] = [0; 20];
             let d = curl_version_info(CURLVERSION_NOW);
             if !d.is_null() && !(*d).version.is_null() {
-                libc::snprintf(
+                crate::rport_snprintf!(
                     buf.as_mut_ptr(),
                     20,
                     b"libcurl/%s\0".as_ptr() as *const c_char,

@@ -13,7 +13,7 @@ use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::*;
 use crate::special::mlutils::REprintf;
 use core::ffi::{c_char, c_int, c_void};
-use libc::{FD_SETSIZE, size_t, snprintf, ssize_t, strcpy, strlen};
+use libc::{FD_SETSIZE, size_t, ssize_t, strcpy, strlen};
 use std::alloc::{Layout, alloc, dealloc};
 
 // ---------------------------------------------------------------------------
@@ -379,7 +379,7 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
                 );
                 return R_FALSE;
             }
-            snprintf(
+            crate::rport_snprintf!(
                 (*con).description,
                 sz,
                 b"<-%s:%d\0".as_ptr() as *const c_char,
@@ -396,7 +396,7 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
             }
 
             // Update description: "->host:port"
-            snprintf(
+            crate::rport_snprintf!(
                 buf.as_mut_ptr(),
                 256,
                 b"->%s:%d\0".as_ptr() as *const c_char,

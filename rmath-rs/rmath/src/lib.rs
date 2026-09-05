@@ -9,6 +9,10 @@
 //! model.
 
 // C-to-Rust translation conventions (R's nmath library uses C naming)
+// `rport_snprintf!` necessarily expands its `$(, $arg)*` metavariables
+// inside an `unsafe` block to reach the C-variadic `libc::snprintf`
+// (66 call sites, all on raw pointers like the rest of this C port).
+#![allow(clippy::macro_metavars_in_unsafe)]
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 // Enable all clippy lints including pedantic
@@ -169,6 +173,56 @@
 #![allow(unused_unsafe)]
 #![allow(unknown_lints)]
 
+/// `libc::snprintf` dispatch for C-ported call sites.
+///
+/// Native targets expand to the real C-variadic `libc::snprintf` (identical
+/// behavior to the pre-macro call). wasm32 cannot *define* variadic functions
+/// in stable Rust, so it routes through the typed [`libc::snprintf_args`]
+/// engine of the local wasm-libc facade (see `rmath-rs/wasm-libc`).
+#[macro_export]
+macro_rules! rport_snprintf {
+    ($dst:expr, $n:expr, $fmt:expr $(, $arg:expr)* $(,)?) => {{
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // The lint fires at this expansion span, not the definition:
+            // allow it here. Callers pass raw pointers, as everywhere in
+            // this C port.
+            #[allow(clippy::macro_metavars_in_unsafe)]
+            unsafe { libc::snprintf($dst, $n, $fmt $(, $arg)*) }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            unsafe {
+                $crate::wasm_c::snprintf(
+                    $dst,
+                    $n,
+                    $fmt,
+                    &[$($crate::wasm_c::carg($arg)),*],
+                )
+            }
+        }
+    }};
+}
+
+/// wasm32 libc bridge: feeds typed args to the facade's printf engine.
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod wasm_c {
+    #[inline]
+    pub(crate) unsafe fn snprintf(
+        s: *mut libc::c_char,
+        n: usize,
+        fmt: *const libc::c_char,
+        args: &[libc::CArg],
+    ) -> libc::c_int {
+        unsafe { libc::snprintf_args(s, n, fmt, args) }
+    }
+
+    #[inline]
+    pub(crate) fn carg(arg: impl Into<libc::CArg>) -> libc::CArg {
+        arg.into()
+    }
+}
+
 pub mod appl;
 pub mod constants;
 pub mod dist;
@@ -177,20 +231,14 @@ pub mod error;
 pub mod fprec;
 pub mod rng;
 pub mod special;
-#[cfg(not(target_arch = "wasm32"))]
+#[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone;
-#[cfg(not(target_arch = "wasm32"))]
 #[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone_strftime;
 pub mod utils;
-#[cfg(target_arch = "wasm32")]
-mod wasm_shim;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod xdr;
 
-#[cfg(not(target_arch = "wasm32"))]
 pub mod android;
-#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod eval;
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
@@ -198,27 +246,19 @@ pub mod eval;
 pub mod graphapp;
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 pub mod intl;
-#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod library;
-#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod mainutils;
-#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod modules;
-#[cfg(not(target_arch = "wasm32"))]
 pub use mainutils as main;
 pub use rmath_nmath as nmath;
-#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod sexp;
-#[cfg(not(target_arch = "wasm32"))]
 pub use sexp::attrib_core;
 
 #[allow(dead_code, non_camel_case_types)]
 pub mod tre;
 pub mod trio;
-#[cfg(not(target_arch = "wasm32"))]
-#[allow(dead_code, non_camel_case_types)]
 pub mod unix;

@@ -141,9 +141,15 @@ fn libc_unsetenv(name: &str) -> bool {
     unsafe { libc::unsetenv(c_name.as_ptr()) == 0 }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
     static mut environ: *mut *mut c_char;
 }
+
+/// wasm32 has no process environment: a null environ makes Sys.getenv's
+/// whole-environment listing return empty, matching the facade's getenv.
+#[cfg(target_arch = "wasm32")]
+static mut environ: *mut *mut c_char = std::ptr::null_mut();
 
 /// R's `Sys.setenv(...)` — set environment variables.
 pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {

@@ -624,7 +624,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         let fmt_len_now = c_strlen(fmt.as_ptr());
                         if fmt_len_now > 0 && fmt[fmt_len_now - 1] == b'%' as c_char {
                             if has_star {
-                                let nc = libc::snprintf(
+                                let nc = crate::rport_snprintf!(
                                     bit.as_mut_ptr(),
                                     MAXLINE + 1,
                                     fmt.as_ptr(),
@@ -799,7 +799,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         let fmtp_len = c_strlen(fmtp);
                                         *fmt.as_mut_ptr().add(fmtp_len - 1) = b's' as c_char;
                                         *fmt.as_mut_ptr().add(fmtp_len) = 0;
-                                        let nc = libc::snprintf(
+                                        let nc = crate::rport_snprintf!(
                                             bit.as_mut_ptr(),
                                             MAXLINE + 1,
                                             fmt.as_ptr(),
@@ -809,8 +809,12 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                             error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     } else {
-                                        let nc =
-                                            libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, x);
+                                        let nc = crate::rport_snprintf!(
+                                            bit.as_mut_ptr(),
+                                            MAXLINE + 1,
+                                            fmtp,
+                                            x
+                                        );
                                         if nc > MAXLINE as c_int {
                                             error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
@@ -827,7 +831,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         let fmtp_len = c_strlen(fmtp);
                                         *fmt.as_mut_ptr().add(fmtp_len - 1) = b's' as c_char;
                                         *fmt.as_mut_ptr().add(fmtp_len) = 0;
-                                        let nc = libc::snprintf(
+                                        let nc = crate::rport_snprintf!(
                                             bit.as_mut_ptr(),
                                             MAXLINE + 1,
                                             fmt.as_ptr(),
@@ -837,8 +841,12 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                             error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     } else {
-                                        let nc =
-                                            libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, x);
+                                        let nc = crate::rport_snprintf!(
+                                            bit.as_mut_ptr(),
+                                            MAXLINE + 1,
+                                            fmtp,
+                                            x
+                                        );
                                         if nc > MAXLINE as c_int {
                                             error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
@@ -853,8 +861,12 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         error(b"invalid format '%s'; use format %f, %e, %g or %a for numeric objects\0".as_ptr() as *const c_char);
                                     }
                                     if R_FINITE(x) {
-                                        let nc =
-                                            libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, x);
+                                        let nc = crate::rport_snprintf!(
+                                            bit.as_mut_ptr(),
+                                            MAXLINE + 1,
+                                            fmtp,
+                                            x
+                                        );
                                         if nc > MAXLINE as c_int {
                                             error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
@@ -905,7 +917,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                             b"-Inf\0".as_ptr() as *const c_char
                                         };
 
-                                        let nc = libc::snprintf(
+                                        let nc = crate::rport_snprintf!(
                                             bit.as_mut_ptr(),
                                             MAXLINE + 1,
                                             fmtp_buf,
@@ -938,8 +950,12 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                             0,
                                         );
                                         }
-                                        let nc =
-                                            libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, ss);
+                                        let nc = crate::rport_snprintf!(
+                                            bit.as_mut_ptr(),
+                                            MAXLINE + 1,
+                                            fmtp,
+                                            ss
+                                        );
                                         if nc > MAXLINE as c_int {
                                             error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }

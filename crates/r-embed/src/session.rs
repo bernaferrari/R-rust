@@ -200,35 +200,19 @@ impl RSession {
 
     /// Return the names of bindings in the global environment.
     ///
-    /// Hosts use this for tab completion. It goes through the same
-    /// evaluator path as `ls(all.names=TRUE)` and never mutates the
-    /// session.
+    /// Hosts use this for tab completion. It is a direct snapshot of the
+    /// environment frame (`ls(all.names=TRUE)` semantics) — no evaluation
+    /// runs, so the session state is untouched.
     pub fn global_binding_names(&mut self) -> Result<Vec<String>, RSessionError> {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
-        let value = self.eval_result("ls(all.names=TRUE)")?.value;
         // The reserved handle environment is engine-internal: hosts listing
         // bindings for tab completion never see it.
-        let names = match value {
-            RValue::StringVector(names) => names,
-            RValue::Attributed { value, .. } => match *value {
-                RValue::StringVector(names) => names,
-                other => {
-                    return Err(RSessionError::EvalError(format!(
-                        "ls(all.names=TRUE) returned unexpected value: {other:?}"
-                    )))
-                }
-            },
-            other => {
-                return Err(RSessionError::EvalError(format!(
-                    "ls(all.names=TRUE) returned unexpected value: {other:?}"
-                )))
-            }
-        };
-        Ok(names
+        Ok(self
+            .inner
+            .global_binding_names()
             .into_iter()
-            .flatten()
             .filter(|name| name != HANDLE_ENV_NAME)
             .collect())
     }
@@ -547,9 +531,9 @@ impl RSession {
             None => Err(RSessionError::EvalError(
                 "stale value handle: slot never existed".into(),
             )),
-            Some(generation) if *generation != handle.generation => Err(
-                RSessionError::EvalError("stale value handle: slot was removed".into()),
-            ),
+            Some(generation) if *generation != handle.generation => Err(RSessionError::EvalError(
+                "stale value handle: slot was removed".into(),
+            )),
             Some(_) => Ok(handle.slot),
         }
     }
@@ -579,8 +563,6 @@ impl RSession {
         );
         self.eval(&wrapped).map(|_| ())
     }
-
-
 
     /// Close the session.
     pub fn close(&mut self) {
@@ -650,7 +632,9 @@ impl std::ops::Deref for ReadGuard<'_> {
 
 impl std::fmt::Debug for ReadGuard<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ReadGuard").field("snapshot", &self.snapshot).finish()
+        f.debug_struct("ReadGuard")
+            .field("snapshot", &self.snapshot)
+            .finish()
     }
 }
 
@@ -682,7 +666,9 @@ pub struct WriteGuard<'s> {
 
 impl std::fmt::Debug for WriteGuard<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WriteGuard").field("slot", &self.slot).finish()
+        f.debug_struct("WriteGuard")
+            .field("slot", &self.slot)
+            .finish()
     }
 }
 
@@ -691,8 +677,7 @@ impl WriteGuard<'_> {
     ///
     /// On error the slot keeps its previous binding.
     pub fn set(&mut self, expr: &str) -> Result<(), RSessionError> {
-        self.session
-            .assign_handle_slot(self.slot, expr)
+        self.session.assign_handle_slot(self.slot, expr)
     }
 
     /// Evaluate `expr` with the slot's current value bound to `.`.
@@ -706,7 +691,6 @@ impl WriteGuard<'_> {
 
 /// Name of the reserved global binding holding the handle-slot environment.
 const HANDLE_ENV_NAME: &str = "..rport_handles..";
-
 
 #[cfg(test)]
 mod tests {

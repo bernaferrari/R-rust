@@ -332,6 +332,7 @@ unsafe fn strdup(s: *const c_char) -> *mut c_char {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
     fn malloc(size: usize) -> *mut c_void;
     fn calloc(nmemb: usize, size: usize) -> *mut c_void;
@@ -343,7 +344,50 @@ unsafe extern "C" {
     fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char;
     fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void;
     fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_void;
-    fn snprintf(buf: *mut c_char, size: usize, fmt: *const c_char, ...) -> c_int;
+}
+
+// wasm32 has no libc to link these symbols against: route them through the
+// wasm-libc facade, with dlsym always failing (the dynload reject policy —
+// nothing is ever loaded, so nothing can be looked up).
+#[cfg(target_arch = "wasm32")]
+unsafe fn malloc(size: usize) -> *mut c_void {
+    unsafe { libc::malloc(size) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn calloc(nmemb: usize, size: usize) -> *mut c_void {
+    unsafe { libc::calloc(nmemb, size) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn free(ptr: *mut c_void) {
+    unsafe { libc::free(ptr) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
+    std::ptr::null_mut()
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn strlen(s: *const c_char) -> usize {
+    unsafe { libc::strlen(s) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn strcmp(a: *const c_char, b: *const c_char) -> c_int {
+    unsafe { libc::strcmp(a, b) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
+    unsafe { libc::strncmp(a, b, n) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char {
+    unsafe { libc::strcpy(dst, src) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
+    unsafe { libc::memcpy(dst, src, n) }
+}
+#[cfg(target_arch = "wasm32")]
+unsafe fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_void {
+    unsafe { libc::memset(dst, c, n) }
 }
 
 unsafe fn libc_malloc(size: usize) -> *mut c_void {
@@ -993,10 +1037,14 @@ unsafe fn call_dll_unload(dll_info: *mut DllInfo) {
         let name = CStr::from_ptr((*dll_info).name);
         let name_bytes = name.to_bytes();
         let buf = format!("R_unload_{}\0", std::str::from_utf8_unchecked(name_bytes));
+        #[cfg(not(target_arch = "wasm32"))]
         unsafe extern "C" {
             fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
         }
+        #[cfg(not(target_arch = "wasm32"))]
         let sym = dlsym((*dll_info).handle, buf.as_ptr() as *const c_char);
+        #[cfg(target_arch = "wasm32")]
+        let sym = crate::unix::dynload::dlsym((*dll_info).handle, buf.as_ptr() as *const c_char);
         if !sym.is_null() {
             let unload_fn: Option<unsafe extern "C" fn(*mut DllInfo)> = std::mem::transmute(sym);
             if let Some(f) = unload_fn {
@@ -1029,10 +1077,14 @@ unsafe fn delete_dll(path: *const c_char) -> bool {
         if !dll.is_null() {
             call_dll_unload(dll);
             if !(*dll).handle.is_null() {
+                #[cfg(not(target_arch = "wasm32"))]
                 unsafe extern "C" {
                     fn dlclose(handle: *mut c_void) -> c_int;
                 }
+                #[cfg(not(target_arch = "wasm32"))]
                 dlclose((*dll).handle);
+                #[cfg(target_arch = "wasm32")]
+                crate::unix::dynload::dlclose((*dll).handle);
             }
             free_dll_info(dll);
         }
@@ -1078,17 +1130,28 @@ unsafe fn AddDLL(
             // Single source of truth for RTLD flags (macOS vs Linux values
             // differ); see unix::dynload::compute_dlopen_flag.
             let flag = crate::unix::dynload::compute_dlopen_flag(_as_local, _now);
-            unsafe extern "C" {
-                fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                unsafe extern "C" {
+                    fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
+                }
+                dlopen(path, flag)
             }
-            dlopen(path, flag)
+            #[cfg(target_arch = "wasm32")]
+            {
+                crate::unix::dynload::dlopen(path, flag)
+            }
         };
 
         if handle.is_null() {
+            #[cfg(not(target_arch = "wasm32"))]
             unsafe extern "C" {
                 fn dlerror() -> *mut c_char;
             }
+            #[cfg(not(target_arch = "wasm32"))]
             let message = dlerror();
+            #[cfg(target_arch = "wasm32")]
+            let message = crate::unix::dynload::dlerror();
             with_dynload_state(|state| {
                 state.dll_error.fill(0);
                 if !message.is_null() {
@@ -1147,11 +1210,15 @@ unsafe fn call_init_routine(info: *mut DllInfo) {
         let init_name = format!("R_init_{}\0", name_str);
         let init_cstr = init_name.as_ptr() as *const c_char;
 
+        #[cfg(not(target_arch = "wasm32"))]
         unsafe extern "C" {
             fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         let sym = dlsym((*info).handle, init_cstr);
+        #[cfg(target_arch = "wasm32")]
+        let sym = crate::unix::dynload::dlsym((*info).handle, init_cstr);
         if !sym.is_null() {
             let f: unsafe extern "C" fn(*mut DllInfo) = std::mem::transmute(sym);
             f(info);

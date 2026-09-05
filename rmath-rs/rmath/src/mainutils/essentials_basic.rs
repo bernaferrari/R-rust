@@ -58,10 +58,7 @@ unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
                         let arg = if TYPEOF(arg) == SEXPTYPE::VECSXP
                             || TYPEOF(arg) == SEXPTYPE::EXPRSXP
                         {
-                            crate::mainutils::coerce::coerceVector(
-                                arg,
-                                SEXPTYPE::STRSXP.as_c_int(),
-                            )
+                            crate::mainutils::coerce::coerceVector(arg, SEXPTYPE::STRSXP.as_c_int())
                         } else {
                             arg
                         };
@@ -1313,12 +1310,7 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// environment bindings as a named list. Values are read through
 /// `R_findVarInFrame` so active bindings evaluate to their current value,
 /// matching upstream env2list. Unsorted output preserves frame order.
-pub unsafe fn do_as_list_environment(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_as_list_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::ENVSXP {

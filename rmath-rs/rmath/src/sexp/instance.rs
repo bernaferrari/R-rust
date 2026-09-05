@@ -323,7 +323,7 @@ pub struct RInstance {
     /// Per-instance embedded HTTP server socket, worker, and handler state.
     pub(crate) httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState,
     /// Per-instance X11 graphics defaults and device counters.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     pub(crate) x11_state: crate::modules::x11::dev_x11::X11RuntimeState,
     /// Per-instance Unix standard console/event callback state.
     pub(crate) sys_std_state: crate::unix::sys_std::SysStdRuntimeState,
@@ -336,10 +336,10 @@ pub struct RInstance {
     /// Per-instance main.c top-level loop and callback state.
     pub(crate) main_state: crate::mainutils::main::MainRuntimeState,
     /// Per-instance gettext catalog and domain state.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     pub(crate) intl_state: crate::intl::types::IntlRuntimeState,
     /// Per-instance GraphApp GUI compatibility runtime state.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     pub(crate) graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState,
     /// Per-instance timezone cache for the root tzone module.
     pub(crate) tzone_state: crate::tzone::TzRuntimeState,
@@ -432,7 +432,7 @@ pub struct RInstance {
     /// Per-instance grDevices PostScript/PDF font registry state.
     pub(crate) postscript_font_state: crate::library::grdevices::devps::PostScriptFontState,
     /// Per-instance grDevices Windows backend scratch state.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     pub(crate) windows_device_state: crate::library::grdevices::devwindows::WindowsDeviceState,
     /// Per-instance grid runtime state.
     pub(crate) grid_runtime_state: crate::library::grid::types::GridRuntimeState,
@@ -498,16 +498,16 @@ impl RInstance {
             internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
             libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
             httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState::default(),
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
             x11_state: crate::modules::x11::dev_x11::X11RuntimeState::default(),
             sys_std_state: crate::unix::sys_std::SysStdRuntimeState::default(),
             sys_unix_state: crate::unix::sys_unix::SysUnixRuntimeState::default(),
             unix_system_state: crate::unix::system::UnixSystemRuntimeState::default(),
             startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             main_state: crate::mainutils::main::MainRuntimeState::default(),
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
             intl_state: crate::intl::types::IntlRuntimeState::default(),
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
             graphapp_state: crate::graphapp::runtime::GraphAppRuntimeState::default(),
             tzone_state: crate::tzone::TzRuntimeState::default(),
             lbfgsb_state: crate::appl::lbfgsb::LbfgsbState::default(),
@@ -545,7 +545,7 @@ impl RInstance {
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
             windows_device_state:
                 crate::library::grdevices::devwindows::WindowsDeviceState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),

@@ -574,10 +574,7 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             // closure); otherwise fall through to the installed-package
             // path which reports the missing namespace.
             if crate::mainutils::essentials::is_builtin_package_dependency(&package_name) {
-                let probe = crate::sexp::envir::R_findVar(
-                    name,
-                    crate::sexp::globals::R_BaseEnv(),
-                );
+                let probe = crate::sexp::envir::R_findVar(name, crate::sexp::globals::R_BaseEnv());
                 if probe != crate::sexp::globals::R_UnboundValue() && !probe.is_null() {
                     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
                     return probe;

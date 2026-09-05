@@ -111,8 +111,8 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let x_type = TYPEOF(x);
         let is_list = x_type == SEXPTYPE::VECSXP.as_c_int();
-        let is_pairlist = x_type == SEXPTYPE::LISTSXP.as_c_int()
-            || x_type == SEXPTYPE::NILSXP.as_c_int();
+        let is_pairlist =
+            x_type == SEXPTYPE::LISTSXP.as_c_int() || x_type == SEXPTYPE::NILSXP.as_c_int();
         if !is_list && !is_pairlist {
             base_error("invalid 'x' argument");
         }
@@ -146,7 +146,8 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             }
         } else {
             let n = XLENGTH(x);
-            let names = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let names =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
             let _names_guard = protect(names);
             if n > 0 && (names.is_null() || names == R_NilValue() || XLENGTH(names) != n) {
                 base_error("'x' must be a named list or pairlist");

@@ -69,6 +69,13 @@ pub use self::warn::*;
 #[cfg(test)]
 mod tests;
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
     fn strtod(s: *const c_char, endptr: *mut *mut c_char) -> c_double;
+}
+
+// wasm32: route through the libc facade (no C library to link against).
+#[cfg(target_arch = "wasm32")]
+unsafe fn strtod(s: *const c_char, endptr: *mut *mut c_char) -> c_double {
+    unsafe { libc::strtod(s, endptr) }
 }

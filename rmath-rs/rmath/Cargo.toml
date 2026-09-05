@@ -29,7 +29,7 @@ altrep = []
 rmath-nmath = { path = "../nmath" }
 libm = "0.2"
 num = "0.4"
-libc = "0.2"
+libc = { path = "../wasm-libc" }
 hashbrown.workspace = true
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6"
@@ -43,6 +43,7 @@ fancy-regex = "0.19"
 faer = { version = "0.24", default-features = false, features = ["std", "linalg"], optional = true }
 
 r-graphics-engine = { path = "../../crates/r-graphics-engine", optional = true }
+
 
 [[bench]]
 name = "bench_eval"

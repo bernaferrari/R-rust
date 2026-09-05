@@ -942,7 +942,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     } else {
                         b"HTTP/1.0"
                     };
-                    libc::snprintf(
+                    crate::rport_snprintf!(
                         buf.as_mut_ptr(),
                         64,
                         b"%s %d Code %d\r\nContent-type: \0".as_ptr() as *const c_char,
@@ -997,7 +997,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     libc::fseek(f, 0, libc::SEEK_END);
                     fsz = libc::ftell(f);
                     libc::fseek(f, 0, libc::SEEK_SET);
-                    libc::snprintf(
+                    crate::rport_snprintf!(
                         buf.as_mut_ptr(),
                         64,
                         b"\r\nContent-length: %ld\r\n\r\n\0".as_ptr() as *const c_char,
@@ -1026,7 +1026,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                 }
 
                 // Regular string content
-                libc::snprintf(
+                crate::rport_snprintf!(
                     buf.as_mut_ptr(),
                     64,
                     b"\r\nContent-length: %u\r\n\r\n\0".as_ptr() as *const c_char,
@@ -1053,7 +1053,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     } else {
                         b"HTTP/1.0"
                     };
-                    libc::snprintf(
+                    crate::rport_snprintf!(
                         buf.as_mut_ptr(),
                         64,
                         b"%s %d Code %d\r\nContent-type: \0".as_ptr() as *const c_char,
@@ -1074,7 +1074,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                         i += 1;
                     }
                 }
-                libc::snprintf(
+                crate::rport_snprintf!(
                     buf.as_mut_ptr(),
                     64,
                     b"\r\nContent-length: %d\r\n\r\n\0".as_ptr() as *const c_char,

@@ -2092,9 +2092,7 @@ pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             current = CDR(current);
         }
 
-        crate::mainutils::errors::Rf_warning(
-            c"insufficient OS support on this platform".as_ptr(),
-        );
+        crate::mainutils::errors::Rf_warning(c"insufficient OS support on this platform".as_ptr());
         let n = LENGTH(paths);
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.as_c_int(), n as crate::sexp::ffi::R_xlen_t);
         let _ans_guard = protect(ans);

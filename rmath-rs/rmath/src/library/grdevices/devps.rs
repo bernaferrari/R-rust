@@ -938,7 +938,7 @@ unsafe fn LoadEncoding(
         } else {
             let rhome = std::env::var("R_HOME").ok();
             if let Some(rh) = rhome {
-                libc::snprintf(
+                crate::rport_snprintf!(
                     buf2.as_mut_ptr(),
                     buf2.len(),
                     b"%s%slibrary%sgrDevices%senc%s%s\0".as_ptr() as *const c_char,
@@ -987,7 +987,7 @@ unsafe fn LoadEncoding(
         *encname.add(copy_len) = 0;
 
         if !isPDF {
-            libc::snprintf(
+            crate::rport_snprintf!(
                 enccode,
                 5000,
                 b"/%s [\n\0".as_ptr() as *const c_char,

@@ -54,7 +54,6 @@ impl R_bcstack_t {
         self.items[self.depth]
     }
 
-
     pub unsafe fn top(&self) -> SEXP {
         if self.depth == 0 {
             return ptr::null_mut();

@@ -28,6 +28,8 @@ run_cargo() {
 run_cargo check --target "$TARGET" \
     -p rmath \
     -p r-graphics-engine \
-    -p r-device-android-headless
+    -p r-device-android-headless \
+    -p r-embed \
+    -p r-wasm
 
 echo "WASM toolchain check passed for $TARGET."

@@ -183,8 +183,10 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !moreargs.is_null() && moreargs != R_NilValue() {
             let t = TYPEOF(moreargs);
             if t == SEXPTYPE::VECSXP {
-                let names =
-                    crate::sexp::attrib_core::getAttrib(moreargs, crate::sexp::attrib_core::R_NamesSymbol());
+                let names = crate::sexp::attrib_core::getAttrib(
+                    moreargs,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
                 for j in 0..XLENGTH(moreargs) {
                     let tag = if !names.is_null()
                         && names != R_NilValue()
@@ -235,10 +237,10 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let mut cell_guards: Vec<ProtectGuard> = Vec::new();
 
             let push_cell = |elt: SEXP,
-                                 tag: SEXP,
-                                 call_args: &mut SEXP,
-                                 tail: &mut SEXP,
-                                 guards: &mut Vec<ProtectGuard>| {
+                             tag: SEXP,
+                             call_args: &mut SEXP,
+                             tail: &mut SEXP,
+                             guards: &mut Vec<ProtectGuard>| {
                 let cell = Rf_cons(elt, R_NilValue());
                 guards.push(protect(cell));
                 if !tag.is_null() && tag != R_NilValue() {
@@ -254,7 +256,13 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
             for (k, &(v, vtag)) in varyings.iter().enumerate() {
                 let idx = i % lengths[k];
-                push_cell(varying_element(v, idx), vtag, &mut call_args, &mut tail, &mut cell_guards);
+                push_cell(
+                    varying_element(v, idx),
+                    vtag,
+                    &mut call_args,
+                    &mut tail,
+                    &mut cell_guards,
+                );
             }
             for &(val, mtag) in &more_elts {
                 push_cell(val, mtag, &mut call_args, &mut tail, &mut cell_guards);
@@ -292,8 +300,7 @@ mod tests {
             let mut status: c_int = 0;
             let srcfile = Rf_mkString(c"<text>".as_ptr());
             let _srcfile_guard = protect(srcfile);
-            let parsed =
-                crate::mainutils::gram_main::R_ParseVector(text, -1, &mut status, srcfile);
+            let parsed = crate::mainutils::gram_main::R_ParseVector(text, -1, &mut status, srcfile);
             assert_eq!(status, 1, "parse failed for {code:?}");
             let _parsed_guard = protect(parsed);
             crate::eval::eval::Rf_eval(VECTOR_ELT(parsed, 0), R_GlobalEnv())
@@ -304,9 +311,7 @@ mod tests {
     unsafe fn real_elements(x: SEXP) -> Vec<f64> {
         unsafe {
             let n = XLENGTH(x);
-            (0..n)
-                .map(|i| *REAL(VECTOR_ELT(x, i)) as f64)
-                .collect()
+            (0..n).map(|i| *REAL(VECTOR_ELT(x, i)) as f64).collect()
         }
     }
 
@@ -360,7 +365,8 @@ mod tests {
             let _fun_guard = protect(fun);
             let values = eval_r("list(\"World\", \"!\")");
             let _values_guard = protect(values);
-            let renders = eval_r("list(function(x) paste0(x, \"?\"), function(x) paste0(x, \"!\"))");
+            let renders =
+                eval_r("list(function(x) paste0(x, \"?\"), function(x) paste0(x, \"!\"))");
             let _renders_guard = protect(renders);
 
             let args = crate::sexp::memory_ext::allocList(3);
@@ -383,10 +389,7 @@ mod tests {
                     0,
                 ))
             };
-            assert_eq!(
-                std::ffi::CStr::from_ptr(s(0)).to_bytes(),
-                b"World?"
-            );
+            assert_eq!(std::ffi::CStr::from_ptr(s(0)).to_bytes(), b"World?");
             assert_eq!(std::ffi::CStr::from_ptr(s(1)).to_bytes(), b"!!");
         }
     }

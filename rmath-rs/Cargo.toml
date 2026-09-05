@@ -1,5 +1,6 @@
 [workspace]
 members = ["rmath", "rmath-test"]
+exclude = ["wasm-libc"]
 resolver = "2"
 
 [workspace.dependencies]

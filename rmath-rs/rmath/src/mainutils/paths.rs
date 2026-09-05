@@ -41,6 +41,12 @@ impl RuntimePathPolicy {
 
         RuntimePathPolicy {
             library_paths,
+            // wasm32 has no environment or OS temp dir (std::env::temp_dir
+            // panics there): a fixed path keeps the policy shaped while the
+            // libc facade rejects any actual filesystem use cleanly.
+            #[cfg(target_arch = "wasm32")]
+            temp_dir: PathBuf::from("/tmp"),
+            #[cfg(not(target_arch = "wasm32"))]
             temp_dir: std::env::temp_dir(),
             cache_dir: None,
         }

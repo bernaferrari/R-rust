@@ -1177,13 +1177,20 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 // perl run with capture groups: one full-capture match
                 // fills the overall position and every group column.
                 let caps = crate::mainutils::grep::perl_captures(&pat, &txt, ignore_case);
-                match caps.as_ref().and_then(|c| c.first()).and_then(|c| c.as_ref()) {
+                match caps
+                    .as_ref()
+                    .and_then(|c| c.first())
+                    .and_then(|c| c.as_ref())
+                {
                     Some(whole) => {
                         *INTEGER(result).add(i as usize) = (whole.start + 1) as c_int;
                         *INTEGER(match_len).add(i as usize) = (whole.end - whole.start) as c_int;
                         for g in 0..capture_count {
                             let ind = i as usize + g * n as usize;
-                            match caps.as_ref().and_then(|c| c.get(g + 1)).and_then(|c| c.as_ref())
+                            match caps
+                                .as_ref()
+                                .and_then(|c| c.get(g + 1))
+                                .and_then(|c| c.as_ref())
                             {
                                 Some(cm) => {
                                     *INTEGER(capture_start).add(ind) = (cm.start + 1) as c_int;

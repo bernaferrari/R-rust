@@ -1,0 +1,13 @@
+[package]
+name = "libc"
+version = "0.0.0"
+edition = "2024"
+description = "Target-dispatch libc for rmath: re-exports crates.io libc natively, pure-Rust facade on wasm32-unknown-unknown (private path dependency; not published)"
+
+[lib]
+name = "libc"
+
+# Native targets use the real system bindings; wasm32 gets the in-crate
+# `facade` module instead (no dependency needed there).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+real_libc = { package = "libc", version = "0.2" }

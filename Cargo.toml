@@ -5,7 +5,7 @@ members = [
   "crates/r-embed",
   "crates/r-graphics-engine",
   "crates/r-host-cli",
-  "crates/r-uniffi",
+  "crates/r-wasm",
   "rmath-rs/nmath",
   "rmath-rs/rmath",
   "rmath-rs/rmath-test",

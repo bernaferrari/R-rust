@@ -1395,7 +1395,9 @@ impl<'arena> Parser<'arena> {
             // EatLines (gram.y): a newline before a binary operator
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
-            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+            if self.peek() == &Token::Newline
+                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+            {
                 break;
             }
             self.skip_newlines();
@@ -1420,7 +1422,9 @@ impl<'arena> Parser<'arena> {
             // EatLines (gram.y): a newline before a binary operator
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
-            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+            if self.peek() == &Token::Newline
+                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+            {
                 return Ok(left);
             }
             self.skip_newlines();
@@ -1454,7 +1458,9 @@ impl<'arena> Parser<'arena> {
             // EatLines (gram.y): a newline before a binary operator
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
-            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+            if self.peek() == &Token::Newline
+                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+            {
                 return Ok(left);
             }
             self.skip_newlines();
@@ -1529,7 +1535,9 @@ impl<'arena> Parser<'arena> {
         let mut left = self.parse_multiplication()?;
         loop {
             // EatLines (gram.y): see the group gate in parse_tilde below.
-            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+            if self.peek() == &Token::Newline
+                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+            {
                 return Ok(left);
             }
             self.skip_newlines();
@@ -1552,7 +1560,9 @@ impl<'arena> Parser<'arena> {
             // EatLines (gram.y): a newline before a binary operator
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
-            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+            if self.peek() == &Token::Newline
+                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+            {
                 return Ok(left);
             }
             self.skip_newlines();
@@ -1580,7 +1590,9 @@ impl<'arena> Parser<'arena> {
             // EatLines (gram.y): a newline before a binary operator
             // continues the expression only inside a group (`(`/`[`/`{`).
             // At top level the newline terminates the expression.
-            if self.peek() == &Token::Newline && !self.inside_group.get(self.pos).copied().unwrap_or(false) {
+            if self.peek() == &Token::Newline
+                && !self.inside_group.get(self.pos).copied().unwrap_or(false)
+            {
                 return Ok(left);
             }
             self.skip_newlines();
@@ -3109,7 +3121,6 @@ mod tests {
         assert!(error.to_string().contains("allocation"), "{error}");
         assert!(error.to_string().contains("(<input>:1:"), "{error}");
     }
-
 
     #[test]
     fn zz_strict_gate_unit() {

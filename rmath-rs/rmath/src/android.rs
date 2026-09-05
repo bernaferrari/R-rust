@@ -247,6 +247,13 @@ impl RSession {
         }
     }
 
+    /// Snapshot the global environment's binding names (`ls(all.names=TRUE)`).
+    ///
+    /// Owned strings only — no raw `SEXP` crosses this boundary.
+    pub fn global_binding_names(&mut self) -> Vec<String> {
+        self.core.global_binding_names()
+    }
+
     pub fn set_cancellation_token(&mut self, token: Option<CancellationToken>) {
         self.core.set_cancellation_token(token);
     }

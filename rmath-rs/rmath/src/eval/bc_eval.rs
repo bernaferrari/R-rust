@@ -448,11 +448,7 @@ unsafe fn stack_pop_checked(stack: &mut R_bcstack_t, context: &str) -> SEXP {
 /// BEFORE the argument values were popped, so a value recorded at depth
 /// `d` is the cell created on pop `top - 1 - d` (0-based, top-first).
 /// Consumed entries are removed; unmatched entries (stale) are dropped.
-unsafe fn apply_pending_arg_tags(
-    pending: &mut Vec<(usize, SEXP)>,
-    top: usize,
-    cells: &[SEXP],
-) {
+unsafe fn apply_pending_arg_tags(pending: &mut Vec<(usize, SEXP)>, top: usize, cells: &[SEXP]) {
     if pending.is_empty() {
         return;
     }
@@ -748,8 +744,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     stack.push(prom);
                 }
 
-                opcodes::OP_DOMISSING => {
-                }
+                opcodes::OP_DOMISSING => {}
 
                 opcodes::OP_SETTAG => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "SETTAG");

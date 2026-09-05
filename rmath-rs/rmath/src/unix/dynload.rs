@@ -1,6 +1,11 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    non_camel_case_types,
+    dead_code
+)]
 
 //! Port of R's src/unix/dynload.c -- Unix dynamic loading via dlopen/dlsym.
 //!
@@ -45,6 +50,14 @@ const RTLD_LAZY: c_int = 0x1;
 const RTLD_GLOBAL: c_int = 0x8;
 #[cfg(target_os = "macos")]
 const RTLD_LOCAL: c_int = 0x4;
+#[cfg(target_arch = "wasm32")]
+const RTLD_NOW: c_int = 0x2;
+#[cfg(target_arch = "wasm32")]
+const RTLD_LAZY: c_int = 0x1;
+#[cfg(target_arch = "wasm32")]
+const RTLD_GLOBAL: c_int = 0x100;
+#[cfg(target_arch = "wasm32")]
+const RTLD_LOCAL: c_int = 0x0;
 
 // ---------------------------------------------------------------------------
 // OS dynamic symbol vtable
@@ -148,6 +161,26 @@ unsafe extern "C" {
     fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
     fn dlclose(handle: *mut c_void) -> c_int;
     fn dlerror() -> *mut c_char;
+}
+
+/// wasm32 sandbox: dynamic loading is unsupported — same reject policy as the
+/// Android sandbox. `dyn.load` fails cleanly; nothing is ever loaded.
+#[cfg(target_arch = "wasm32")]
+pub(crate) unsafe fn dlopen(_filename: *const c_char, _flag: c_int) -> *mut c_void {
+    std::ptr::null_mut()
+}
+#[cfg(target_arch = "wasm32")]
+pub(crate) unsafe fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
+    std::ptr::null_mut()
+}
+#[cfg(target_arch = "wasm32")]
+pub(crate) unsafe fn dlclose(_handle: *mut c_void) -> c_int {
+    0
+}
+#[cfg(target_arch = "wasm32")]
+pub(crate) unsafe fn dlerror() -> *mut c_char {
+    static MSG: &[u8] = b"dynamic loading is not supported on this platform\0";
+    MSG.as_ptr() as *mut c_char
 }
 
 unsafe fn libc_dlopen(path: *const c_char, flag: c_int) -> *mut c_void {

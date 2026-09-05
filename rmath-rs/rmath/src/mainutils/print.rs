@@ -976,7 +976,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 let name_len = libc::strlen(name_chars);
                                 if taglen + name_len > TAGBUFLEN {
                                     if taglen <= TAGBUFLEN {
-                                        libc::snprintf(
+                                        crate::rport_snprintf!(
                                             ptag,
                                             sz,
                                             b"$...\0".as_ptr() as *const c_char,
@@ -985,13 +985,13 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 } else {
                                     let na_str = NA_STRING_local();
                                     if name_elt == na_str {
-                                        libc::snprintf(
+                                        crate::rport_snprintf!(
                                             ptag,
                                             sz,
                                             b"$<NA>\0".as_ptr() as *const c_char,
                                         );
                                     } else if isValidName(name_chars) {
-                                        libc::snprintf(
+                                        crate::rport_snprintf!(
                                             ptag,
                                             sz,
                                             b"$%s\0".as_ptr() as *const c_char,
@@ -1001,21 +1001,21 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                         let enc =
                                             crate::mainutils::printutils::EncodeChar(name_elt);
                                         if !enc.is_null() && isValidName(enc) {
-                                            libc::snprintf(
+                                            crate::rport_snprintf!(
                                                 ptag,
                                                 sz,
                                                 b"$%s\0".as_ptr() as *const c_char,
                                                 enc,
                                             );
                                         } else if !enc.is_null() {
-                                            libc::snprintf(
+                                            crate::rport_snprintf!(
                                                 ptag,
                                                 sz,
                                                 b"$`%s`\0".as_ptr() as *const c_char,
                                                 enc,
                                             );
                                         } else {
-                                            libc::snprintf(
+                                            crate::rport_snprintf!(
                                                 ptag,
                                                 sz,
                                                 b"$...\0".as_ptr() as *const c_char,
@@ -1027,14 +1027,14 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
                                 if taglen + iw as usize > TAGBUFLEN {
                                     if taglen <= TAGBUFLEN {
-                                        libc::snprintf(
+                                        crate::rport_snprintf!(
                                             ptag,
                                             sz,
                                             b"$...\0".as_ptr() as *const c_char,
                                         );
                                     }
                                 } else {
-                                    libc::snprintf(
+                                    crate::rport_snprintf!(
                                         ptag,
                                         sz,
                                         b"[[%lld]]\0".as_ptr() as *const c_char,
@@ -1046,10 +1046,14 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                             let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
                             if taglen + iw as usize > TAGBUFLEN {
                                 if taglen <= TAGBUFLEN {
-                                    libc::snprintf(ptag, sz, b"$...\0".as_ptr() as *const c_char);
+                                    crate::rport_snprintf!(
+                                        ptag,
+                                        sz,
+                                        b"$...\0".as_ptr() as *const c_char
+                                    );
                                 }
                             } else {
-                                libc::snprintf(
+                                crate::rport_snprintf!(
                                     ptag,
                                     sz,
                                     b"[[%lld]]\0".as_ptr() as *const c_char,
@@ -1061,10 +1065,14 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                         let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
                         if taglen + iw as usize > TAGBUFLEN {
                             if taglen <= TAGBUFLEN {
-                                libc::snprintf(ptag, sz, b"$...\0".as_ptr() as *const c_char);
+                                crate::rport_snprintf!(
+                                    ptag,
+                                    sz,
+                                    b"$...\0".as_ptr() as *const c_char
+                                );
                             }
                         } else {
-                            libc::snprintf(
+                            crate::rport_snprintf!(
                                 ptag,
                                 sz,
                                 b"[[%lld]]\0".as_ptr() as *const c_char,
@@ -1212,14 +1220,14 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     let name_len = libc::strlen(name_chars);
                     if taglen + name_len > TAGBUFLEN {
                         if taglen <= TAGBUFLEN {
-                            libc::snprintf(ptag, sz, b"$...\0".as_ptr() as *const c_char);
+                            crate::rport_snprintf!(ptag, sz, b"$...\0".as_ptr() as *const c_char);
                         }
                     } else {
                         let na_str = NA_STRING_local();
                         if pname == na_str {
-                            libc::snprintf(ptag, sz, b"$<NA>\0".as_ptr() as *const c_char);
+                            crate::rport_snprintf!(ptag, sz, b"$<NA>\0".as_ptr() as *const c_char);
                         } else if isValidName(name_chars) {
-                            libc::snprintf(
+                            crate::rport_snprintf!(
                                 ptag,
                                 sz,
                                 b"$%s\0".as_ptr() as *const c_char,
@@ -1228,11 +1236,25 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                         } else {
                             let enc = crate::mainutils::printutils::EncodeChar(pname);
                             if !enc.is_null() && isValidName(enc) {
-                                libc::snprintf(ptag, sz, b"$%s\0".as_ptr() as *const c_char, enc);
+                                crate::rport_snprintf!(
+                                    ptag,
+                                    sz,
+                                    b"$%s\0".as_ptr() as *const c_char,
+                                    enc
+                                );
                             } else if !enc.is_null() {
-                                libc::snprintf(ptag, sz, b"$`%s`\0".as_ptr() as *const c_char, enc);
+                                crate::rport_snprintf!(
+                                    ptag,
+                                    sz,
+                                    b"$`%s`\0".as_ptr() as *const c_char,
+                                    enc
+                                );
                             } else {
-                                libc::snprintf(ptag, sz, b"$...\0".as_ptr() as *const c_char);
+                                crate::rport_snprintf!(
+                                    ptag,
+                                    sz,
+                                    b"$...\0".as_ptr() as *const c_char
+                                );
                             }
                         }
                     }
@@ -1240,10 +1262,10 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     let iw = crate::mainutils::printutils::IndexWidth_xlen(i as i64);
                     if taglen + iw as usize > TAGBUFLEN {
                         if taglen <= TAGBUFLEN {
-                            libc::snprintf(ptag, sz, b"$...\0".as_ptr() as *const c_char);
+                            crate::rport_snprintf!(ptag, sz, b"$...\0".as_ptr() as *const c_char);
                         }
                     } else {
-                        libc::snprintf(ptag, sz, b"[[%d]]\0".as_ptr() as *const c_char, i);
+                        crate::rport_snprintf!(ptag, sz, b"[[%d]]\0".as_ptr() as *const c_char, i);
                     }
                 }
 
@@ -1342,14 +1364,14 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 let enc = crate::mainutils::printutils::EncodeChar(pname);
                 if !enc.is_null() {
                     if useSlots {
-                        libc::snprintf(
+                        crate::rport_snprintf!(
                             ptag_start,
                             space,
                             b"Slot \"%s\":\0".as_ptr() as *const c_char,
                             enc,
                         );
                     } else {
-                        libc::snprintf(
+                        crate::rport_snprintf!(
                             ptag_start,
                             space,
                             b"attr(,\"%s\")\0".as_ptr() as *const c_char,

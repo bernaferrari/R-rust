@@ -28,3 +28,4 @@ Rplots.pdf
 
 # Internal work notes (upstream-sync diffs stay tracked)
 /plans/*.md
+crates/r-wasm/pkg/

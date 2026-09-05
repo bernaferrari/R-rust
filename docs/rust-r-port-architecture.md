@@ -166,6 +166,16 @@ out, no raw `SEXP` in user-facing signatures, one session per worker
 thread. The facade is experimental: it inherits the GC discipline
 verified in the sections above but has no independent audit yet.
 
+Long-lived values cross this boundary as `ValueHandle`s: `Copy`
+`(session, slot, generation)` ids with no reference into the arena. The
+value itself stays rooted in a reserved engine-internal environment;
+`read_handle`/`write_handle` return session-borrowed guards
+(`ReadGuard` snapshots the owned value, `WriteGuard::set`/`update`
+rebind it), and use-time validation turns foreign-session or stale-slot
+handles into errors instead of undefined behavior. This is the
+host-facing half of the generation-aware-rooting roadmap item; the
+crate-internal protect-stack half is documented above.
+
 ### Crate-scale split (deferred)
 
 Decision: the core stays a modular monolith in the single `rmath` crate

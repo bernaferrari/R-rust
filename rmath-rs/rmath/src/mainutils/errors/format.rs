@@ -9,8 +9,7 @@ use super::*;
 
 // ---------------------------------------------------------------------------
 // C library bindings
-// ---------------------------------------------------------------------------
-
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
     /// C's vsnprintf — format a string into a buffer with a va_list.
     /// On macOS, va_list is a pointer type.
@@ -21,6 +20,33 @@ unsafe extern "C" {
         format: *const c_char,
         ap: *mut c_void,
     ) -> c_int;
+}
+
+/// wasm32 stand-in for C's vsnprintf.
+///
+/// Stable Rust cannot build a real `va_list`, so every caller in this port
+/// passes a NULL `ap` with an already-formatted message (see
+/// `format_varargs`). Mirror that contract: copy the format string as the
+/// final message, honoring the size/truncation-return semantics.
+#[cfg(target_arch = "wasm32")]
+pub(super) unsafe fn vsnprintf_c(
+    buf: *mut c_char,
+    size: usize,
+    format: *const c_char,
+    _ap: *mut c_void,
+) -> c_int {
+    unsafe {
+        if format.is_null() {
+            return 0;
+        }
+        let bytes = CStr::from_ptr(format).to_bytes();
+        if size > 0 && !buf.is_null() {
+            let len = bytes.len().min(size - 1);
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, len);
+            *buf.add(len) = 0;
+        }
+        bytes.len() as c_int
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -149,7 +149,7 @@ pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 unsafe fn bindtextdomain_impl(
     domain_ptr: *const std::os::raw::c_char,
     dirname_ptr: *const std::os::raw::c_char,
@@ -157,7 +157,7 @@ unsafe fn bindtextdomain_impl(
     unsafe { crate::intl::bindtextdom::libintl_bindtextdomain(domain_ptr, dirname_ptr) }
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_arch = "wasm32"))]
 unsafe fn bindtextdomain_impl(
     domain_ptr: *const std::os::raw::c_char,
     dirname_ptr: *const std::os::raw::c_char,

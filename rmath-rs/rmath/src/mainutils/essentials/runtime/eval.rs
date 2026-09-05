@@ -55,11 +55,7 @@ pub unsafe fn do_local(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             envir_arg
         };
-        let env = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            parent,
-            R_NilValue(),
-        );
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
         if env.is_null() {
             return R_NilValue();
         }
@@ -205,7 +201,8 @@ unsafe fn parse_source_strings(source: &[String]) -> SEXP {
 pub(crate) unsafe fn parse_source_expression_vector(source: &str) -> SEXP {
     unsafe {
         let parsed = crate::sexp::memory::with_arena(|arena| {
-            crate::eval::parser::parse_expressions_strict(source, arena).map_err(|err| err.to_string())
+            crate::eval::parser::parse_expressions_strict(source, arena)
+                .map_err(|err| err.to_string())
         })
         .unwrap_or_else(|message| std::panic::panic_any(RError { message }));
 

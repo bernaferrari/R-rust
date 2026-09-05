@@ -1371,7 +1371,11 @@ pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if !pos_arg.is_null() && pos_arg != crate::sexp::globals::R_MissingArg() {
             // pos=-1 (default) means the global environment.
             let pos_val = crate::eval::eval::Rf_eval(pos_arg, rho);
-            if !pos_val.is_null() && TYPEOF(pos_val) == SEXPTYPE::INTSXP && XLENGTH(pos_val) > 0 && INTEGER_ELT(pos_val, 0) == -1 {
+            if !pos_val.is_null()
+                && TYPEOF(pos_val) == SEXPTYPE::INTSXP
+                && XLENGTH(pos_val) > 0
+                && INTEGER_ELT(pos_val, 0) == -1
+            {
                 crate::sexp::globals::R_GlobalEnv()
             } else {
                 crate::sexp::globals::R_GlobalEnv()

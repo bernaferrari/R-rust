@@ -169,7 +169,10 @@ pub unsafe fn do_substring(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
         let new_args = Rf_cons(
             rep,
-            Rf_cons(first_arg, Rf_cons(last_arg, crate::sexp::globals::R_NilValue())),
+            Rf_cons(
+                first_arg,
+                Rf_cons(last_arg, crate::sexp::globals::R_NilValue()),
+            ),
         );
         let _args_guard = protect(new_args);
         do_substr(_call, _op, new_args, _rho)
@@ -656,8 +659,7 @@ pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             // NA split token doesn't split: whole string as the only token.
             let na_split = tlen > 0
                 && TYPEOF(split_arg) == SEXPTYPE::STRSXP
-                && STRING_ELT(split_arg, (i % tlen) as i64)
-                    == crate::sexp::globals::R_NaString();
+                && STRING_ELT(split_arg, (i % tlen) as i64) == crate::sexp::globals::R_NaString();
             let split = if tlen == 0 {
                 String::new()
             } else {
@@ -814,7 +816,8 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
             return Rf_mkString(c"<environment>".as_ptr() as *const std::os::raw::c_char);
         }
-        if x_type == SEXPTYPE::CLOSXP || x_type == SEXPTYPE::SPECIALSXP
+        if x_type == SEXPTYPE::CLOSXP
+            || x_type == SEXPTYPE::SPECIALSXP
             || x_type == SEXPTYPE::BUILTINSXP
         {
             return crate::mainutils::deparse::deparse_symbolic(x, true);

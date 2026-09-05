@@ -72,8 +72,8 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let named = tag_name(current);
-            let is_x = named.as_deref() == Some("X")
-                || (named.is_none() && !x_named && positional == 0);
+            let is_x =
+                named.as_deref() == Some("X") || (named.is_none() && !x_named && positional == 0);
             let is_fun = named.as_deref() == Some("FUN")
                 || (named.is_none() && !fun_named && positional == 1);
             if !is_x && !is_fun {
@@ -166,10 +166,9 @@ pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let named = tag_name(current);
-            let is_vapply_formal = matches!(
-                named.as_deref(),
-                Some("FUN.VALUE") | Some("USE.NAMES")
-            ) || (named.is_none() && positional == 2);
+            let is_vapply_formal =
+                matches!(named.as_deref(), Some("FUN.VALUE") | Some("USE.NAMES"))
+                    || (named.is_none() && positional == 2);
             if !is_vapply_formal {
                 let cell = Rf_cons(CAR(current), R_NilValue());
                 guards.push(protect(cell));
@@ -1059,7 +1058,6 @@ unsafe fn set_tapply_dim_attrs(result: SEXP, indexes: &[TapplyIndex]) {
         );
     }
 }
-
 
 /// R's `outer(X, Y, FUN="*")` — outer product. Returns a matrix of length(X) x length(Y).
 ///

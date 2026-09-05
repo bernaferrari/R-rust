@@ -252,7 +252,9 @@ impl Drop for ProtectScope {
     fn drop(&mut self) {
         self.with_instance(|inst| {
             inst.protect_stack.borrow_mut().truncate(self.depth);
-            inst.protect_stack_generations.borrow_mut().truncate(self.depth);
+            inst.protect_stack_generations
+                .borrow_mut()
+                .truncate(self.depth);
             inst.protect_slot_free
                 .borrow_mut()
                 .retain(|&index| index < self.depth);
@@ -424,6 +426,32 @@ impl RSession {
     /// Returns `None` if the global environment pointer is null.
     pub fn global_env(&self) -> Option<Sexp<'_>> {
         self.sexp(self.inst().global_env)
+    }
+
+    /// Snapshot the binding names of the global environment as owned strings.
+    ///
+    /// Walks the frame pairlist exactly like R's `ls(all.names = TRUE)`:
+    /// every bound (non-`R_UnboundValue`) symbol, dot-prefixed names included,
+    /// sorted lexicographically. No raw `SEXP` crosses the boundary.
+    pub fn global_binding_names(&mut self) -> Vec<String> {
+        self.with_active(|| unsafe {
+            let mut names = Vec::new();
+            let env = self.inst().global_env;
+            let mut frame = crate::sexp::accessors::FRAME(env);
+            while !frame.is_null() && frame != R_NilValue() {
+                let value = crate::sexp::accessors::CAR(frame);
+                if value != R_UnboundValue()
+                    && let Some(name) = crate::sexp::symbol::symbol_name_from_ptr(
+                        crate::sexp::accessors::TAG(frame),
+                    )
+                {
+                    names.push(name);
+                }
+                frame = crate::sexp::accessors::CDR(frame);
+            }
+            names.sort();
+            names
+        })
     }
 
     /// Get the base environment.

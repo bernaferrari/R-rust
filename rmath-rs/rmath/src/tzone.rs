@@ -1,7 +1,4 @@
-#![allow(unreachable_code, clippy::comparison_to_empty, clippy::manual_memcpy)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
-#![allow(non_camel_case_types)]
+#![allow(unreachable_code, clippy::comparison_to_empty, clippy::manual_memcpy, non_camel_case_types)]
 /*
  * Rust port of R's timezone library (src/extra/tzone/localtime.c).
  *

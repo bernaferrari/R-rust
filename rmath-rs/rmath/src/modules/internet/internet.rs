@@ -7,6 +7,7 @@ use core::ffi::{c_char, c_double, c_int, c_void};
 use std::ffi::{CStr, CString};
 use std::io::{Read, Write as IoWrite};
 use std::net::TcpStream;
+#[cfg(not(target_arch = "wasm32"))]
 use std::os::unix::io::IntoRawFd;
 use std::ptr;
 
@@ -351,7 +352,12 @@ unsafe fn http_open(
             }
         }
 
-        // Convert the TcpStream into a raw file descriptor that we own
+        // Convert the TcpStream into a raw file descriptor that we own.
+        // wasm32 has no file descriptors (no sockets at all); http_open is
+        // unreachable there because every connect fails beforehand.
+        #[cfg(target_arch = "wasm32")]
+        let raw_fd: c_int = -1;
+        #[cfg(not(target_arch = "wasm32"))]
         let raw_fd = stream.into_raw_fd();
 
         // Allocate the inetconn context

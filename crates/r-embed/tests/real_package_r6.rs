@@ -11,7 +11,7 @@
 use r_embed::RSession;
 
 #[test]
-fn real_package_r6() {
+fn real_package_corpus_r6() {
     let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED")
         .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
     let app = std::env::var("RPORT_REAL_PKG_APP")

@@ -303,8 +303,10 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         // compact row names when the new column is longer, and recycle
         // shorter ones like upstream `$<-.data.frame` -> `[[<-`.
         if sexp_has_class(out, "data.frame") {
-            let rownames =
-                crate::sexp::attrib_core::getAttrib(out, crate::sexp::attrib_core::R_RowNamesSymbol());
+            let rownames = crate::sexp::attrib_core::getAttrib(
+                out,
+                crate::sexp::attrib_core::R_RowNamesSymbol(),
+            );
             let rows: R_xlen_t = if rownames.is_null() || rownames == R_NilValue() {
                 0
             } else if TYPEOF(rownames) == SEXPTYPE::INTSXP
@@ -346,9 +348,7 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else if rows % value_len == 0 {
                 rows
             } else {
-                base_error(format!(
-                    "replacement has {value_len} rows, data has {rows}"
-                ))
+                base_error(format!("replacement has {value_len} rows, data has {rows}"))
             };
             if new_rows != rows {
                 crate::mainutils::essentials::functional::set_compact_row_names(out, new_rows);

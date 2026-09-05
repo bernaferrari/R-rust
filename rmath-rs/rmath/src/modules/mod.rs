@@ -18,5 +18,5 @@ pub mod lapack;
     unused_assignments,
     non_camel_case_types
 )]
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 pub(crate) mod x11;

@@ -21,8 +21,7 @@ pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let _p = protect(result);
         let dst = LOGICAL(result);
 
-        let table_empty =
-            table.is_null() || table == R_NilValue() || XLENGTH(table) == 0;
+        let table_empty = table.is_null() || table == R_NilValue() || XLENGTH(table) == 0;
         for i in 0..n {
             let found = if table_empty {
                 false

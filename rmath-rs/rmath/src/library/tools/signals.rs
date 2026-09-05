@@ -69,7 +69,7 @@ pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
         let pid = INTEGER(sspid);
         let res = INTEGER(sres);
 
-        #[cfg(all(unix, not(target_os = "windows")))]
+        #[cfg(not(target_os = "windows"))]
         {
             for i in 0..ns {
                 let p = *pid.add(i as usize);

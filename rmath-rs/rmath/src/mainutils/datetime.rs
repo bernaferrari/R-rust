@@ -31,10 +31,22 @@ use std::os::raw::{c_char, c_double, c_int, c_long};
 use libc::{localtime_r, mktime, strftime, time_t, tm as libc_tm};
 
 // FFI for tzname global variable
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
     static tzname: [*mut c_char; 2];
     fn tzset();
 }
+
+// wasm32: no timezone database — UTC only. tzname reads as empty and
+// tzset is a no-op, matching the libc facade (localtime == gmtime == UTC).
+#[cfg(target_arch = "wasm32")]
+struct WasmTzname([*mut c_char; 2]);
+#[cfg(target_arch = "wasm32")]
+unsafe impl Sync for WasmTzname {}
+#[cfg(target_arch = "wasm32")]
+static tzname: WasmTzname = WasmTzname([std::ptr::null_mut(); 2]);
+#[cfg(target_arch = "wasm32")]
+unsafe fn tzset() {}
 
 use crate::mainutils::rstrptime::R_strptime;
 use crate::sexp::accessors::*;
@@ -805,8 +817,11 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 let mut ctm: libc_tm = std::mem::zeroed();
                 let res = localtime_r(&t, &mut ctm);
                 if !res.is_null() {
-                    // Use tzname
+                    // Use tzname (wasm reads it through the Sync wrapper).
                     let tzname_idx = if ctm.tm_isdst > 0 { 1 } else { 0 };
+                    #[cfg(target_arch = "wasm32")]
+                    let tzname_ptr = tzname.0[tzname_idx];
+                    #[cfg(not(target_arch = "wasm32"))]
                     let tzname_ptr = tzname[tzname_idx];
                     if !tzname_ptr.is_null() {
                         CStr::from_ptr(tzname_ptr).to_string_lossy().into_owned()
@@ -1431,6 +1446,9 @@ fn mk_char_str(s: &str) -> CString {
 /// Read `tzname[idx]` as an owned string.
 fn tzname_str(idx: usize) -> String {
     unsafe {
+        #[cfg(target_arch = "wasm32")]
+        let p = tzname.0[idx];
+        #[cfg(not(target_arch = "wasm32"))]
         let p = tzname[idx];
         if p.is_null() {
             String::new()

@@ -55,10 +55,8 @@ pub(crate) unsafe fn apply_s3_closure_method(
         if first.is_null() || first == R_NilValue() {
             return None;
         }
-        let klass = crate::sexp::attrib_core::getAttrib(
-            first,
-            crate::sexp::attrib_core::R_ClassSymbol(),
-        );
+        let klass =
+            crate::sexp::attrib_core::getAttrib(first, crate::sexp::attrib_core::R_ClassSymbol());
         if klass.is_null() || klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP {
             return None;
         }

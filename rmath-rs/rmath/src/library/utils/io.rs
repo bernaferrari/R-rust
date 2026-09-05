@@ -361,7 +361,7 @@ unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
     unsafe {
         let mut endp: *mut c_char = ptr::null_mut();
         *errno_ptr() = 0;
-        let res = libc::strtol(nptr, &mut endp, base);
+        let res = libc::strtol(nptr, &mut endp, base) as i64;
         if !endp.is_null() && *endp != 0 {
             return NA_INTEGER();
         }
@@ -1080,7 +1080,7 @@ unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
         // Rf_error in our Rust port takes a single format string
         // Build the full message using snprintf
         let mut buf = [0 as libc::c_char; 512];
-        libc::snprintf(buf.as_mut_ptr(), 512, fmt, arg);
+        crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
         Rf_error(buf.as_ptr());
     }
 }
@@ -1089,7 +1089,7 @@ unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
 unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
     unsafe {
         let mut buf = [0 as libc::c_char; 512];
-        libc::snprintf(buf.as_mut_ptr(), 512, fmt, arg);
+        crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
         Rf_error(buf.as_ptr());
     }
 }
@@ -1098,7 +1098,7 @@ unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
 unsafe fn r_warning(fmt: *const c_char, arg: *const c_char) {
     unsafe {
         let mut buf = [0 as libc::c_char; 512];
-        libc::snprintf(buf.as_mut_ptr(), 512, fmt, arg);
+        crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
         Rf_warning(buf.as_ptr());
     }
 }
@@ -1979,7 +1979,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
                 // Check for embedded nulls (strlen < nbuf)
                 if libc::strlen(buf) < nbuf {
                     let mut warn_buf = [0 as libc::c_char; 256];
-                    libc::snprintf(
+                    crate::rport_snprintf!(
                         warn_buf.as_mut_ptr(),
                         256,
                         b"line %d appears to contain embedded nulls\0".as_ptr() as *const c_char,
@@ -2146,7 +2146,7 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             for j in 0..nc as usize {
                 let xj = VECTOR_ELT(x, j as R_xlen_t);
                 if LENGTH(xj) != nr {
-                    libc::snprintf(
+                    crate::rport_snprintf!(
                         encode_buf.as_mut_ptr(),
                         512,
                         b"corrupt data frame -- length of column %d does not match nrows\0".as_ptr()

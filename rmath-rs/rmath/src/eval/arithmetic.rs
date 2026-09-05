@@ -831,7 +831,6 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Factor operands and stock group-generic behavior
 // ---------------------------------------------------------------------------
@@ -1466,7 +1465,6 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
         let _ = result_mut.freeze();
         propagate_unary_vector_attributes(result_raw, x, n);
         result_raw
-
     }
 }
 

@@ -3463,9 +3463,27 @@ mod wasm_m1_tests {
     #[test]
     fn stats_fourier_entries_use_native_handlers() {
         for name in [
-            "runif", "rnorm", "fft", "mvfft", "rpois", "rexp", "rchisq", "rgeom", "rt",
-            "rsignrank", "rbeta", "rbinom", "rcauchy", "rf", "rgamma", "rlnorm", "rlogis",
-            "rnbinom", "rweibull", "rwilcox", "rhyper",
+            "runif",
+            "rnorm",
+            "fft",
+            "mvfft",
+            "rpois",
+            "rexp",
+            "rchisq",
+            "rgeom",
+            "rt",
+            "rsignrank",
+            "rbeta",
+            "rbinom",
+            "rcauchy",
+            "rf",
+            "rgamma",
+            "rlnorm",
+            "rlogis",
+            "rnbinom",
+            "rweibull",
+            "rwilcox",
+            "rhyper",
         ] {
             assert!(
                 EVALUATED_BUILTINS
@@ -3478,9 +3496,27 @@ mod wasm_m1_tests {
             EVALUATED_BUILTINS
                 .iter()
                 .filter(|b| [
-                    "runif", "rnorm", "fft", "mvfft", "rpois", "rexp", "rchisq", "rgeom",
-                    "rt", "rsignrank", "rbeta", "rbinom", "rcauchy", "rf", "rgamma",
-                    "rlnorm", "rlogis", "rnbinom", "rweibull", "rwilcox", "rhyper",
+                    "runif",
+                    "rnorm",
+                    "fft",
+                    "mvfft",
+                    "rpois",
+                    "rexp",
+                    "rchisq",
+                    "rgeom",
+                    "rt",
+                    "rsignrank",
+                    "rbeta",
+                    "rbinom",
+                    "rcauchy",
+                    "rf",
+                    "rgamma",
+                    "rlnorm",
+                    "rlogis",
+                    "rnbinom",
+                    "rweibull",
+                    "rwilcox",
+                    "rhyper",
                 ]
                 .contains(&b.name))
                 .count(),

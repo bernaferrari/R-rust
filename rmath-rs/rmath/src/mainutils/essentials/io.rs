@@ -41,9 +41,7 @@ fn resolve_package_relative_path(file_path: String) -> String {
         return file_path;
     }
     crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.loading_package_dir
-            .as_ref()
-            .map(|dir| dir.join(given))
+        inst.loading_package_dir.as_ref().map(|dir| dir.join(given))
     })
     .map(|joined| joined.to_string_lossy().into_owned())
     .unwrap_or(file_path)
@@ -1643,14 +1641,12 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let header_arg = arg_by_name_or_position(args, &["header"], 1);
         let sep_arg = arg_by_name_or_position(args, &["sep"], 2);
         let quote_arg = arg_by_name_or_position(args, &["quote"], 3);
-        let col_classes_arg =
-            arg_by_name_or_position(args, &["colClasses"], named_only);
+        let col_classes_arg = arg_by_name_or_position(args, &["colClasses"], named_only);
         let na_strings_arg =
             arg_by_name_or_position(args, &["na.strings", "NA.strings"], named_only);
         let comment_arg = arg_by_name_or_position(args, &["comment.char"], named_only);
         let strip_white_arg = arg_by_name_or_position(args, &["strip.white"], named_only);
-        let blank_skip_arg =
-            arg_by_name_or_position(args, &["blank.lines.skip"], named_only);
+        let blank_skip_arg = arg_by_name_or_position(args, &["blank.lines.skip"], named_only);
         let fill_arg = arg_by_name_or_position(args, &["fill"], named_only);
         let nrows_arg = arg_by_name_or_position(args, &["nrows"], named_only);
         let skip_arg = arg_by_name_or_position(args, &["skip"], named_only);
@@ -1677,7 +1673,8 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         } else {
             elt_to_string(comment_arg, 0)
         };
-        let na_strings: Vec<String> = if na_strings_arg.is_null() || na_strings_arg == R_NilValue() {
+        let na_strings: Vec<String> = if na_strings_arg.is_null() || na_strings_arg == R_NilValue()
+        {
             vec!["NA".to_string()]
         } else if TYPEOF(na_strings_arg) == SEXPTYPE::STRSXP {
             (0..XLENGTH(na_strings_arg))
@@ -1710,13 +1707,19 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             real_or_default(skip_arg, 0.0).max(0.0) as usize
         };
 
-        let content: String = if !text_arg.is_null() && text_arg != R_NilValue() && TYPEOF(text_arg) == SEXPTYPE::STRSXP {
+        let content: String = if !text_arg.is_null()
+            && text_arg != R_NilValue()
+            && TYPEOF(text_arg) == SEXPTYPE::STRSXP
+        {
             (0..XLENGTH(text_arg))
                 .map(|i| elt_to_string(text_arg, i))
                 .collect::<Vec<_>>()
                 .join("\n")
         } else {
-            if file_arg.is_null() || file_arg == R_NilValue() || TYPEOF(file_arg) != SEXPTYPE::STRSXP {
+            if file_arg.is_null()
+                || file_arg == R_NilValue()
+                || TYPEOF(file_arg) != SEXPTYPE::STRSXP
+            {
                 scan_error("invalid 'file' argument");
             }
             let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
@@ -1779,20 +1782,12 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let mut padded: Vec<Vec<TableField>> = Vec::with_capacity(data.len());
         for (i, row) in data.iter().enumerate() {
             if row.len() > ncols {
-                scan_error(format!(
-                    "line {} did not have {} elements",
-                    i + 1,
-                    ncols
-                ));
+                scan_error(format!("line {} did not have {} elements", i + 1, ncols));
             }
             let mut row = row.clone();
             while row.len() < ncols {
                 if !fill && header {
-                    scan_error(format!(
-                        "line {} did not have {} elements",
-                        i + 1,
-                        ncols
-                    ));
+                    scan_error(format!("line {} did not have {} elements", i + 1, ncols));
                 }
                 row.push(TableField {
                     text: String::new(),
@@ -1808,18 +1803,19 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         // Optional row.names: a single integer names the column to use,
         // a character vector supplies the names directly.
-        let row_names_column: Option<usize> = if !row_names_arg.is_null() && row_names_arg != R_NilValue() {
-            let row_names_type = TYPEOF(row_names_arg);
-            if row_names_type == SEXPTYPE::INTSXP && XLENGTH(row_names_arg) == 1 {
-                Some(INTEGER_ELT(row_names_arg, 0).unsigned_abs() as usize)
-            } else if row_names_type == SEXPTYPE::REALSXP && XLENGTH(row_names_arg) == 1 {
-                Some(REAL_ELT(row_names_arg, 0) as usize)
+        let row_names_column: Option<usize> =
+            if !row_names_arg.is_null() && row_names_arg != R_NilValue() {
+                let row_names_type = TYPEOF(row_names_arg);
+                if row_names_type == SEXPTYPE::INTSXP && XLENGTH(row_names_arg) == 1 {
+                    Some(INTEGER_ELT(row_names_arg, 0).unsigned_abs() as usize)
+                } else if row_names_type == SEXPTYPE::REALSXP && XLENGTH(row_names_arg) == 1 {
+                    Some(REAL_ELT(row_names_arg, 0) as usize)
+                } else {
+                    None
+                }
             } else {
                 None
-            }
-        } else {
-            None
-        };
+            };
 
         let mut out_names: Vec<String> = Vec::new();
         let mut out_cols: Vec<SEXP> = Vec::new();
@@ -1948,11 +1944,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                 SET_STRING_ELT(labels, i, charsxp);
             }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                Rf_install(c"row.names".as_ptr()),
-                labels,
-            );
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"row.names".as_ptr()), labels);
         } else {
             crate::mainutils::essentials::functional::set_compact_row_names(result, nrow);
         }

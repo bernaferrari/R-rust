@@ -19,6 +19,9 @@
 //! - `do_bcprofstart` / `do_bcprofstop` / `do_bcprofcounts` -- BC profiling
 //! - `dobcprof` / `dobcprof_null` -- BC profiling signal handlers
 
+// wasm32 stubs (below) leave a few native-only imports unused.
+#![cfg_attr(target_arch = "wasm32", allow(unused_imports))]
+
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
@@ -911,11 +914,7 @@ fn profile_thread_entry(interval_us: u64, terminate_rx: std::sync::mpsc::Receive
 /// WASM M1 no-op stub: no SIGPROF timer thread on wasm.
 #[cfg(target_arch = "wasm32")]
 #[allow(dead_code)]
-fn profile_thread_entry(
-    _interval_us: u64,
-    _terminate_rx: std::sync::mpsc::Receiver<()>,
-) {
-}
+fn profile_thread_entry(_interval_us: u64, _terminate_rx: std::sync::mpsc::Receiver<()>) {}
 
 // ---------------------------------------------------------------------------
 // R_EndProfiling -- stop profiling (full implementation)

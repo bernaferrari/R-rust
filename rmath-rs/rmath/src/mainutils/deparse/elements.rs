@@ -50,30 +50,30 @@ pub unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *
         let mut re_buf = [0 as libc::c_char; 64];
         let mut im_buf = [0 as libc::c_char; 64];
         if R_FINITE(x.r) {
-            libc::snprintf(
+            crate::rport_snprintf!(
                 re_buf.as_mut_ptr(),
                 64,
                 b"%.17g\0".as_ptr() as *const c_char,
                 x.r,
             );
         } else if ISNAN(x.r) {
-            libc::snprintf(re_buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
+            crate::rport_snprintf!(re_buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
         } else {
-            libc::snprintf(re_buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
+            crate::rport_snprintf!(re_buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
         }
         if R_FINITE(x.i) {
-            libc::snprintf(
+            crate::rport_snprintf!(
                 im_buf.as_mut_ptr(),
                 64,
                 b"%.17g\0".as_ptr() as *const c_char,
                 x.i,
             );
         } else if ISNAN(x.i) {
-            libc::snprintf(im_buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
+            crate::rport_snprintf!(im_buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
         } else {
-            libc::snprintf(im_buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
+            crate::rport_snprintf!(im_buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
         }
-        libc::snprintf(
+        crate::rport_snprintf!(
             buff,
             NB2 as usize,
             b"complex(real=%s, imaginary=%s)\0".as_ptr() as *const c_char,
@@ -94,9 +94,14 @@ pub unsafe fn format_int_element(val: c_int) -> *const c_char {
         with_deparse_runtime(|state| {
             let buf = &mut state.int_buf;
             if val == NA_INTEGER {
-                libc::snprintf(buf.as_mut_ptr(), 32, b"NA\0".as_ptr() as *const c_char);
+                crate::rport_snprintf!(buf.as_mut_ptr(), 32, b"NA\0".as_ptr() as *const c_char);
             } else {
-                libc::snprintf(buf.as_mut_ptr(), 32, b"%d\0".as_ptr() as *const c_char, val);
+                crate::rport_snprintf!(
+                    buf.as_mut_ptr(),
+                    32,
+                    b"%d\0".as_ptr() as *const c_char,
+                    val
+                );
             }
             buf.as_ptr() as *const c_char
         })
@@ -109,7 +114,7 @@ pub unsafe fn format_logical_element(val: c_int) -> *const c_char {
         with_deparse_runtime(|state| {
             let buf = &mut state.logical_buf;
             if val == NA_INTEGER {
-                libc::snprintf(buf.as_mut_ptr(), 8, b"NA\0".as_ptr() as *const c_char);
+                crate::rport_snprintf!(buf.as_mut_ptr(), 8, b"NA\0".as_ptr() as *const c_char);
             } else if val != 0 {
                 buf[0] = b'T' as c_char;
                 buf[1] = b'R' as c_char;
@@ -133,17 +138,17 @@ pub unsafe fn format_logical_element(val: c_int) -> *const c_char {
 pub unsafe fn write_real_element(buf: &mut [c_char; 64], val: f64) {
     unsafe {
         if ISNAN(val) && (val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN) {
-            libc::snprintf(buf.as_mut_ptr(), 64, b"NA\0".as_ptr() as *const c_char);
+            crate::rport_snprintf!(buf.as_mut_ptr(), 64, b"NA\0".as_ptr() as *const c_char);
         } else if ISNAN(val) {
-            libc::snprintf(buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
+            crate::rport_snprintf!(buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
         } else if !R_FINITE(val) {
             if val > 0.0 {
-                libc::snprintf(buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
+                crate::rport_snprintf!(buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
             } else {
-                libc::snprintf(buf.as_mut_ptr(), 64, b"-Inf\0".as_ptr() as *const c_char);
+                crate::rport_snprintf!(buf.as_mut_ptr(), 64, b"-Inf\0".as_ptr() as *const c_char);
             }
         } else {
-            libc::snprintf(
+            crate::rport_snprintf!(
                 buf.as_mut_ptr(),
                 64,
                 b"%.17g\0".as_ptr() as *const c_char,
@@ -233,7 +238,7 @@ pub unsafe fn format_raw_element(val: Rbyte) -> *const c_char {
     unsafe {
         with_deparse_runtime(|state| {
             let buf = &mut state.raw_buf;
-            libc::snprintf(
+            crate::rport_snprintf!(
                 buf.as_mut_ptr(),
                 8,
                 b"0x%02x\0".as_ptr() as *const c_char,
@@ -464,7 +469,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             } else if (d.opts & HEXNUMERIC != 0) && R_FINITE(v) {
                                 with_deparse_runtime(|state| {
                                     let hex_buf = &mut state.hex_buf;
-                                    libc::snprintf(
+                                    crate::rport_snprintf!(
                                         hex_buf.as_mut_ptr(),
                                         64,
                                         b"%a\0".as_ptr() as *const c_char,
@@ -475,7 +480,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(v) {
                                 with_deparse_runtime(|state| {
                                     let dig_buf = &mut state.dig_buf;
-                                    libc::snprintf(
+                                    crate::rport_snprintf!(
                                         dig_buf.as_mut_ptr(),
                                         64,
                                         b"%.17g\0".as_ptr() as *const c_char,
@@ -503,7 +508,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             } else if (d.opts & HEXNUMERIC != 0) && R_FINITE(c.r) && R_FINITE(c.i) {
                                 with_deparse_runtime(|state| {
                                     let hex_cplx = &mut state.hex_cplx;
-                                    libc::snprintf(
+                                    crate::rport_snprintf!(
                                         hex_cplx.as_mut_ptr(),
                                         128,
                                         b"%a + %ai\0".as_ptr() as *const c_char,
@@ -515,7 +520,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(c.r) && R_FINITE(c.i) {
                                 with_deparse_runtime(|state| {
                                     let dig_cplx = &mut state.dig_cplx;
-                                    libc::snprintf(
+                                    crate::rport_snprintf!(
                                         dig_cplx.as_mut_ptr(),
                                         128,
                                         b"%.17g%+.17gi\0".as_ptr() as *const c_char,
@@ -531,7 +536,7 @@ pub unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                                     let mut im_buf = [0 as c_char; 64];
                                     write_real_element(&mut re_buf, c.r);
                                     write_real_element(&mut im_buf, c.i);
-                                    libc::snprintf(
+                                    crate::rport_snprintf!(
                                         cplx_buf2.as_mut_ptr(),
                                         256,
                                         b"%s%s%si\0".as_ptr() as *const c_char,

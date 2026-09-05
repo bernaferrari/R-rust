@@ -144,9 +144,7 @@ unsafe fn file_arg(args: SEXP) -> SEXP {
         let mut cell = args;
         while !cell.is_null() && cell != R_NilValue() {
             let tag = TAG(cell);
-            if !tag.is_null()
-                && tag_name_is(tag, "file")
-            {
+            if !tag.is_null() && tag_name_is(tag, "file") {
                 return CAR(cell);
             }
             cell = CDR(cell);
