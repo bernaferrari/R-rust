@@ -777,6 +777,17 @@ where
     // sound design is interior mutability: this accessor must hand out
     // `&RInstance` and every ambiently-written field becomes UnsafeCell —
     // an engine-wide sweep tracked as the follow-up redesign.
+    // Additional verified dead end (2026-09, design analysis): wrapping
+    // the whole RInstance in one UnsafeCell<RInstance> and deriving every
+    // ambient &mut via cell.get() does NOT fix it — two overlapping
+    // get()-derived &mut RInstance still alias (std documents get() as
+    // raw-pointer semantics; RefCell exists precisely because overlapping
+    // &mut from get() is UB), and the reentrant write still pops the
+    // first derivation's protector. Per-field cells avoid cross-field
+    // protector conflicts but require a read-path design (Deref<Target=T>
+    // through the mutable interior is itself unsound) and with_arena's
+    // &mut Arena lend must not be reentered by GC — i.e. a real RFC-level
+    // design, not a mechanical sweep.
     // OLD NOTE (superseded): this wildcard re-acquisition is UB
     // under both Stacked Borrows and Tree Borrows when it fires during a
     // strongly-protected lend — e.g. register_essentials_builtins'
