@@ -32,6 +32,54 @@ jobs:
           MIRIFLAGS: -Zmiri-ignore-leaks
         run: "cargo +nightly miri test -p rmath sexp::"
 
+  miri-modules:
+    name: Miri (session-constructing modules)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - filter: "serialize::"
+            isolation: ""
+          - filter: "connections::"
+            isolation: ""
+          # tzone's wall-clock default resolves /etc/localtime via
+          # readlink — an fs syscall Miri only allows with isolation
+          # disabled. Environment limitation, not aliasing.
+          - filter: "tzone::"
+            isolation: "-Zmiri-disable-isolation"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Miri on ${{ matrix.filter }} (P1/P2 aliasing discipline)
+        env:
+          MIRIFLAGS: -Zmiri-ignore-leaks ${{ matrix.isolation }}
+        run: 'cargo +nightly miri test -p rmath --lib "${{ matrix.filter }}"'
+
+  miri-gc-torture:
+    name: Miri (GC-torture x serialize reentrancy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Miri on the tortured serialize round-trip
+        env:
+          # gctorture(TRUE) forces a full mark/sweep per allocation: the
+          # serialize callbacks run inside with_arena lends, so this job is
+          # the standing evidence for the P1 reentrancy discipline.
+          MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-disable-isolation
+        run: "cargo +nightly miri test -p rmath --test serialize_torture"
+
   gc-torture:
     name: GC torture stress (exact R oracle)
     runs-on: ubuntu-24.04
@@ -79,7 +127,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: r-lib/actions/setup-r@v2
+
+      - name: Install R ${{ matrix.r-version }}
+        uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.r-version }}
 
