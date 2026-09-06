@@ -5,28 +5,36 @@ input to `RSession::eval` / `define_handle` / guards must never escape as
 a Rust panic — only `RSessionError` crosses.
 
 - `eval_boundary`: structured R-ish scripts (token grammar in `src/lib.rs`)
-  fed to a long-lived session.
+  fed to a long-lived thread-local session.
 - `handle_boundary`: full handle lifecycle per input, ending in a stale
   read that must error.
 
 `crates/r-embed/tests/boundary_stress.rs` checks the same invariant
-deterministically (fixed seed) on every CI run.
+deterministically (fixed seed) on every CI run; the initial version of
+that stress test found three real escaping-panic bugs (top-level
+`break`/`next`, top-level `return(v)`, empty-script rooting).
 
-## Runbook (and the current constraint)
+## Running
 
 ```
 cargo +nightly fuzz run eval_boundary -- -max_total_time=300 -rss_limit_mb=16384 -malloc_limit_mb=8192
 cargo +nightly fuzz run handle_boundary -- -max_total_time=300 -rss_limit_mb=16384 -malloc_limit_mb=8192
 ```
 
-Known constraint on this engine: under ASan the interpreter's session
-initialization is minutes-slow (the process reserves gigabytes; libFuzzer
-with the default `-rss_limit_mb=2048`/`-malloc_limit_mb` OOMs on the very
-first `malloc(4294967296)` arena reservation — raise both as above), and
-`-s none` currently fails to link the engine's static archive. Until the
-init cost is reduced (or a small-arena fuzz profile lands), prefer the
-deterministic stress test for routine runs and budget long ASan sessions
-for dedicated fuzzing days.
+Baseline runs (2026-09, M2 Max): eval_boundary 13,250 execs / 4,375 cov /
+531 corpus / 0 crashes in 241s; handle_boundary 10,100 execs / 6,928 cov /
+622 corpus / 0 crashes in 241s.
 
-The `fuzz/corpus/` and `fuzz/artifacts/` directories are inputs/outputs,
-not source; artifacts committed here would be findings.
+Notes:
+
+- Keep the `-rss_limit_mb` / `-malloc_limit_mb` overrides: session init
+  reserves gigabytes and libFuzzer's defaults (2 GB) trip on the
+  reservation even though it never becomes RSS.
+- When writing `Unstructured`-driven generators: an exhausted
+  `Unstructured` keeps yielding default values forever — always bound
+  token loops with `while !u.is_empty()`. An unbounded loop here was the
+  original "ASan init hang" (unbounded String growth produced the giant
+  mallocs), not the engine.
+
+`fuzz/corpus/` is the seed corpus; `fuzz/artifacts/` holds findings
+(crash-/oom-/timeout- prefixed files) — commit only deliberate seeds.

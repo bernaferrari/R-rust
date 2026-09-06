@@ -26,7 +26,11 @@ fuzz_target!(|data: &[u8]| {
         let Some(session) = slot.as_mut() else { return };
         let mut u = Unstructured::new(data);
         let mut script = String::new();
-        while let Ok(token) = Token::arbitrary(&mut u) {
+        // Exhausted Unstructured keeps yielding default tokens forever;
+        // stop at the data boundary (the earlier unbounded loop here was
+        // the source of the giant mallocs under ASan).
+        while !u.is_empty() {
+            let Ok(token) = Token::arbitrary(&mut u) else { break };
             script.push_str(&rport_fuzz::render_token(&token));
         }
         // Errors are fine; panics escaping eval() are the bug class.

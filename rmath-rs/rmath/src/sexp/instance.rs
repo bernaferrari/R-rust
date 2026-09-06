@@ -768,7 +768,16 @@ where
     // re-bases on the topmost live exposed tag instead, so ambient
     // re-acquisition under a live lend re-bases on that lend. The instance
     // root provenance is exposed at every `set/replace_current_instance`.
-    // KNOWN MIRI FINDING (2026-09): this wildcard re-acquisition is UB
+    // KNOWN MIRI FINDING (2026-09, root-caused): this ambient re-entry is
+    // UB under BOTH Stacked and Tree Borrows, and NO scoped variant fixes
+    // it — any fn-signature `&mut RInstance` anywhere in an active call
+    // chain is a SB protector, and a reentrant ambient write (protect
+    // push, GC bookkeeping) must pop it. Verified dead ends: deriving the
+    // raw before borrows, `&raw mut`, addr_of_mut field lends. The only
+    // sound design is interior mutability: this accessor must hand out
+    // `&RInstance` and every ambiently-written field becomes UnsafeCell —
+    // an engine-wide sweep tracked as the follow-up redesign.
+    // OLD NOTE (superseded): this wildcard re-acquisition is UB
     // under both Stacked Borrows and Tree Borrows when it fires during a
     // strongly-protected lend — e.g. register_essentials_builtins'
     // ProtectGuard drop inside session init. Any Miri module expansion
