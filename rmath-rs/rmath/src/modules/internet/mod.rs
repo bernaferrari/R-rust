@@ -8,6 +8,7 @@
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod internet;
 #[allow(
     dead_code,
@@ -17,6 +18,7 @@ pub(crate) mod internet;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod libcurl;
 #[allow(
     dead_code,
@@ -26,6 +28,7 @@ pub(crate) mod libcurl;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_arch = "wasm32"))]
 mod libcurl_wrap;
 #[allow(
     dead_code,
@@ -35,6 +38,7 @@ mod libcurl_wrap;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod rhttpd;
 #[allow(
     dead_code,
@@ -44,6 +48,7 @@ pub(crate) mod rhttpd;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod rsock;
 #[allow(
     dead_code,
@@ -53,6 +58,7 @@ pub(crate) mod rsock;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_arch = "wasm32"))]
 mod sock;
 #[allow(
     dead_code,
@@ -62,4 +68,5 @@ mod sock;
     unused_assignments,
     non_camel_case_types
 )]
+#[cfg(not(target_arch = "wasm32"))]
 mod sockconn;

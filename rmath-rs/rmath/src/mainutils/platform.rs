@@ -1630,6 +1630,7 @@ pub unsafe fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         };
 
         // Attempt to set locale via libc
+        #[cfg(not(target_arch = "wasm32"))]
         let result = libc::setlocale(
             match cat_name {
                 "LC_ALL" => libc::LC_ALL,
@@ -1647,6 +1648,13 @@ pub unsafe fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 loc_str.as_ptr() as *const _
             },
         );
+        // wasm32: no locale subsystem in the sandbox; the "C" locale is
+        // always in effect and every set request reports "C".
+        #[cfg(target_arch = "wasm32")]
+        let result: *const core::ffi::c_char = {
+            let _ = (cat_name, loc_str);
+            c"C".as_ptr()
+        };
 
         if result.is_null() {
             Rf_mkString(b"\0".as_ptr() as *const _)
@@ -1668,6 +1676,7 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
 
+        #[cfg(not(target_arch = "wasm32"))]
         let lc = libc::localeconv();
         let ans = Rf_allocVector3(SEXPTYPE::STRSXP, 7);
         let _ans_guard = protect(ans);
@@ -1683,6 +1692,7 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
             "positive_sign",
             "negative_sign",
         ];
+        #[cfg(not(target_arch = "wasm32"))]
         let field_ptrs: [*const c_char; 7] = [
             (*lc).decimal_point,
             (*lc).thousands_sep,
@@ -1691,6 +1701,19 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
             (*lc).mon_decimal_point,
             (*lc).positive_sign,
             (*lc).negative_sign,
+        ];
+        // wasm32: no locale subsystem; report the C-locale conventions —
+        // the same values do_Sys_localeconv() documents as the portable
+        // fallback ("." decimal point, empty separators/signs/symbols).
+        #[cfg(target_arch = "wasm32")]
+        let field_ptrs: [*const c_char; 7] = [
+            c".".as_ptr(),
+            c"".as_ptr(),
+            c"".as_ptr(),
+            c"".as_ptr(),
+            c"".as_ptr(),
+            c"".as_ptr(),
+            c"".as_ptr(),
         ];
 
         for (i, (name, val)) in field_names.iter().zip(field_ptrs.iter()).enumerate() {

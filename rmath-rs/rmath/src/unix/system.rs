@@ -92,9 +92,9 @@ pub(crate) struct UnixSystemRuntimeState {
     history_file: CString,
     history_size: c_int,
     restore_history: c_int,
-    input_file: *mut libc::FILE,
-    output_file: *mut libc::FILE,
-    console_file: *mut libc::FILE,
+    input_file: *mut crate::mainutils::rfile::RFile,
+    output_file: *mut crate::mainutils::rfile::RFile,
+    console_file: *mut crate::mainutils::rfile::RFile,
     gui_type: Option<CString>,
     cstack_dir: c_int,
     cstack_limit: usize,
@@ -500,7 +500,10 @@ unsafe fn R_isatty(_fd: c_int) -> c_int {
 unsafe fn R_isWriteableDir(_path: *const c_char) -> c_int {
     0
 }
-unsafe fn R_fopen(_path: *const c_char, _mode: *const c_char) -> *mut libc::FILE {
+unsafe fn R_fopen(
+    _path: *const c_char,
+    _mode: *const c_char,
+) -> *mut crate::mainutils::rfile::RFile {
     ptr::null_mut()
 }
 unsafe fn R_setStartTime() {}
@@ -618,18 +621,19 @@ pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
                 break;
             }
             if *arg == b'-' as c_char {
-                if libc::strcmp(arg, b"--no-readline\0".as_ptr() as *const c_char) == 0 {
+                let arg_bytes = std::ffi::CStr::from_ptr(arg).to_bytes();
+                if arg_bytes == b"--no-readline" {
                     with_system_state(|state| state.using_readline = 0);
-                } else if libc::strcmp(arg, b"--vanilla\0".as_ptr() as *const c_char) == 0 {
+                } else if arg_bytes == b"--vanilla" {
                     save_action = SA_NOSAVE;
-                } else if libc::strcmp(arg, b"--save\0".as_ptr() as *const c_char) == 0 {
+                } else if arg_bytes == b"--save" {
                     save_action = SA_SAVE;
-                } else if libc::strcmp(arg, b"--nosave\0".as_ptr() as *const c_char) == 0 {
+                } else if arg_bytes == b"--nosave" {
                     save_action = SA_NOSAVE;
-                } else if libc::strcmp(arg, b"--interactive\0".as_ptr() as *const c_char) == 0 {
+                } else if arg_bytes == b"--interactive" {
                     force_interactive = true;
                     break;
-                } else if libc::strcmp(arg, b"--args\0".as_ptr() as *const c_char) == 0 {
+                } else if arg_bytes == b"--args" {
                     break;
                 }
             }

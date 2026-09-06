@@ -29,7 +29,6 @@ altrep = []
 rmath-nmath = { path = "../nmath" }
 libm = "0.2"
 num = "0.4"
-libc = { path = "../wasm-libc" }
 hashbrown.workspace = true
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6"
@@ -43,6 +42,12 @@ fancy-regex = "0.19"
 faer = { version = "0.24", default-features = false, features = ["std", "linalg"], optional = true }
 
 r-graphics-engine = { path = "../../crates/r-graphics-engine", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# libc is native-only: the portable engine surface (types, printf, heap,
+# env, time, string/mem, stdio) is libc-free; the remaining libc users
+# (process control, sockets, real-libcurl FFI) are cfg-gated off wasm32.
+libc = "0.2"
 
 
 [[bench]]

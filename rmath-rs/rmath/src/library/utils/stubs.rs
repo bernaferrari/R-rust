@@ -587,6 +587,7 @@ pub unsafe fn crc64(in_: SEXP) -> SEXP {
 // Uses getaddrinfo() for IPv4 resolution (modern replacement for
 // deprecated gethostbyname).
 // ---------------------------------------------------------------------------
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn nsl(hostname: SEXP) -> SEXP {
     unsafe {
         if !isString(hostname) || LENGTH(hostname) != 1 {
@@ -654,6 +655,32 @@ pub unsafe fn nsl(hostname: SEXP) -> SEXP {
 
         let c_ip = CString::new(ip).unwrap_or_default();
         Rf_mkString(c_ip.as_ptr())
+    }
+}
+
+/// wasm32: no sockets or resolver in the sandbox — after the same argument
+/// validation, nsl() always reports resolution failure (NULL + warning),
+/// matching the native getaddrinfo failure path.
+#[cfg(target_arch = "wasm32")]
+pub unsafe fn nsl(hostname: SEXP) -> SEXP {
+    unsafe {
+        if !isString(hostname) || LENGTH(hostname) != 1 {
+            let msg = c"'hostname' must be a character vector of length 1";
+            Rf_error(msg.as_ptr());
+        }
+
+        let s = STRING_ELT(hostname, 0);
+        let c_ptr = CHAR(s);
+        if c_ptr.is_null() {
+            let msg = c"'hostname' must be a character vector of length 1";
+            Rf_error(msg.as_ptr());
+        }
+
+        let name = CStr::from_ptr(c_ptr).to_string_lossy();
+        let msg = CString::new(format!("nsl() was unable to resolve host '{}'", name))
+            .unwrap_or_default();
+        Rf_warning(msg.as_ptr());
+        R_NilValue()
     }
 }
 

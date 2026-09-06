@@ -209,7 +209,8 @@ unsafe fn charsxp_identical(x: SEXP, y: SEXP) -> bool {
         if len <= 0 {
             return true;
         }
-        libc::memcmp(CHAR(x) as *const _, CHAR(y) as *const _, len as usize) == 0
+        std::slice::from_raw_parts(CHAR(x) as *const u8, len as usize)
+            == std::slice::from_raw_parts(CHAR(y) as *const u8, len as usize)
     }
 }
 
@@ -309,7 +310,9 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             if size == 0 {
                 return 1;
             }
-            return if libc::memcmp(lx as *const _, ly as *const _, size) == 0 {
+            return if std::slice::from_raw_parts(lx, nx as usize)
+                == std::slice::from_raw_parts(ly, nx as usize)
+            {
                 1
             } else {
                 0
@@ -333,7 +336,9 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             if size == 0 {
                 return 1;
             }
-            return if libc::memcmp(ix as *const _, iy as *const _, size) == 0 {
+            return if std::slice::from_raw_parts(ix, nx as usize)
+                == std::slice::from_raw_parts(iy, nx as usize)
+            {
                 1
             } else {
                 0
@@ -512,7 +517,9 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             if size == 0 {
                 return 1;
             }
-            return if libc::memcmp(rx as *const _, ry as *const _, size) == 0 {
+            return if std::slice::from_raw_parts(rx, nx as usize)
+                == std::slice::from_raw_parts(ry, nx as usize)
+            {
                 1
             } else {
                 0

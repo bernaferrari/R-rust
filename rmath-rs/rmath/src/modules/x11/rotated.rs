@@ -16,7 +16,6 @@
 //! Ported from r-source/src/modules/X11/rotated.c
 
 use core::ffi::{c_char, c_double, c_int, c_void};
-use libc::{free, malloc, strlen};
 
 use crate::sexp::instance::with_required_current_instance;
 
@@ -124,7 +123,7 @@ unsafe fn count_line_sections(text: *const c_char, align: c_int) -> c_int {
     if align == ALIGN_NONE {
         return 1;
     }
-    let len = unsafe { strlen(text) };
+    let len = unsafe { std::ffi::CStr::from_ptr(text).to_bytes().len() };
     if len < 2 {
         return 1;
     }
@@ -298,7 +297,9 @@ pub unsafe fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
     if !str.is_null() && n > 0 {
         let copy_len = XV_COPYRIGHT.len().min(n as usize) - 1;
         unsafe {
-            libc::strncpy(str, XV_COPYRIGHT.as_ptr() as *const c_char, copy_len);
+            // strncpy of copy_len content bytes (src is never shorter), then
+            // the explicit NUL below terminates like the C original
+            core::ptr::copy_nonoverlapping(XV_COPYRIGHT.as_ptr() as *const c_char, str, copy_len);
             *str.add(copy_len) = 0; // null terminate
         }
     }

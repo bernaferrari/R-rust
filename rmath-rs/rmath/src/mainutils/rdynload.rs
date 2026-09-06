@@ -367,27 +367,65 @@ unsafe fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn strlen(s: *const c_char) -> usize {
-    unsafe { libc::strlen(s) }
+    unsafe {
+        let mut n = 0usize;
+        while *s.add(n) != 0 {
+            n += 1;
+        }
+        n
+    }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn strcmp(a: *const c_char, b: *const c_char) -> c_int {
-    unsafe { libc::strcmp(a, b) }
+    unsafe {
+        let ab = CStr::from_ptr(a).to_bytes();
+        let bb = CStr::from_ptr(b).to_bytes();
+        match ab.cmp(bb) {
+            std::cmp::Ordering::Less => -1,
+            std::cmp::Ordering::Equal => 0,
+            std::cmp::Ordering::Greater => 1,
+        }
+    }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
-    unsafe { libc::strncmp(a, b, n) }
+    unsafe {
+        let mut i = 0usize;
+        while i < n {
+            let ca = *a.add(i) as u8;
+            let cb = *b.add(i) as u8;
+            if ca != cb {
+                return ca as c_int - cb as c_int;
+            }
+            if ca == 0 {
+                return 0;
+            }
+            i += 1;
+        }
+        0
+    }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char {
-    unsafe { libc::strcpy(dst, src) }
+    unsafe {
+        let bytes = CStr::from_ptr(src).to_bytes_with_nul();
+        ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, dst, bytes.len());
+        dst
+    }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn memcpy(dst: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
-    unsafe { libc::memcpy(dst, src, n) }
+    unsafe {
+        ptr::copy(src as *const u8, dst as *mut u8, n);
+        dst
+    }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn memset(dst: *mut c_void, c: c_int, n: usize) -> *mut c_void {
-    unsafe { libc::memset(dst, c, n) }
+    unsafe {
+        ptr::write_bytes(dst as *mut u8, c as u8, n);
+        dst
+    }
 }
 
 unsafe fn libc_malloc(size: usize) -> *mut c_void {

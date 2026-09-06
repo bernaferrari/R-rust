@@ -13,9 +13,10 @@
 //!   PDF(SEXP args) -> SEXP
 
 use std::ffi::CStr;
-use std::io::Write as _;
 use std::os::raw::{c_char, c_double, c_int, c_short, c_uchar, c_uint, c_void};
 use std::ptr;
+
+use crate::mainutils::rfile::{RFile, r_fclose, r_feof, r_fgets, r_fopen};
 
 use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
@@ -45,6 +46,172 @@ const MB_LEN_MAX: usize = 6;
 fn unsupported(name: &str) -> ! {
     Rf_error_unimplemented(name);
     unreachable!("Rf_error_unimplemented returned")
+}
+
+// =========================================================================
+// libc-free C string helpers (see sprintf_main.rs for the established shape)
+// =========================================================================
+
+/// C `strlen` over a NUL-terminated byte string.
+unsafe fn c_strlen(s: *const c_char) -> usize {
+    unsafe {
+        if s.is_null() {
+            return 0;
+        }
+        let mut len: usize = 0;
+        let mut p = s;
+        while *p != 0 {
+            len += 1;
+            p = p.add(1);
+        }
+        len
+    }
+}
+
+/// C `strcmp` comparing bytes as unsigned chars.
+unsafe fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
+    unsafe {
+        let empty = b"\0";
+        let mut pa = if a.is_null() {
+            empty.as_ptr() as *const c_char
+        } else {
+            a
+        };
+        let mut pb = if b.is_null() {
+            empty.as_ptr() as *const c_char
+        } else {
+            b
+        };
+        loop {
+            let ca = *pa as u8;
+            let cb = *pb as u8;
+            if ca != cb {
+                return ca as c_int - cb as c_int;
+            }
+            if ca == 0 {
+                return 0;
+            }
+            pa = pa.add(1);
+            pb = pb.add(1);
+        }
+    }
+}
+
+/// C `strcpy`: copy `src` including the NUL terminator.
+unsafe fn c_strcpy(dest: *mut c_char, src: *const c_char) {
+    unsafe {
+        if dest.is_null() || src.is_null() {
+            return;
+        }
+        let mut d = dest;
+        let mut s = src;
+        loop {
+            let c = *s;
+            *d = c;
+            if c == 0 {
+                break;
+            }
+            d = d.add(1);
+            s = s.add(1);
+        }
+    }
+}
+
+/// C `strncpy`: copy at most `n` bytes; pads the remainder with NULs.
+unsafe fn c_strncpy(dest: *mut c_char, src: *const c_char, n: usize) {
+    unsafe {
+        if dest.is_null() || src.is_null() {
+            return;
+        }
+        let mut i: usize = 0;
+        while i < n && *src.add(i) != 0 {
+            *dest.add(i) = *src.add(i);
+            i += 1;
+        }
+        while i < n {
+            *dest.add(i) = 0;
+            i += 1;
+        }
+    }
+}
+
+/// C `strcat`: append `src` (including NUL) to the NUL-terminated `dest`.
+unsafe fn c_strcat(dest: *mut c_char, src: *const c_char) {
+    unsafe {
+        if dest.is_null() || src.is_null() {
+            return;
+        }
+        let mut d = dest;
+        while *d != 0 {
+            d = d.add(1);
+        }
+        let mut s = src;
+        loop {
+            let c = *s;
+            *d = c;
+            if c == 0 {
+                break;
+            }
+            d = d.add(1);
+            s = s.add(1);
+        }
+    }
+}
+
+/// C `strchr`: pointer to the first occurrence of `c` (NUL matches the
+/// terminator), or NULL.
+unsafe fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
+    unsafe {
+        if s.is_null() {
+            return ptr::null_mut();
+        }
+        let target = c as u8;
+        let mut p = s;
+        loop {
+            let ch = *p as u8;
+            if ch == target {
+                return p as *mut c_char;
+            }
+            if ch == 0 {
+                return ptr::null_mut();
+            }
+            p = p.add(1);
+        }
+    }
+}
+
+/// C `strrchr`: pointer to the last occurrence of `c`, or NULL.
+unsafe fn c_strrchr(s: *const c_char, c: c_int) -> *mut c_char {
+    unsafe {
+        if s.is_null() {
+            return ptr::null_mut();
+        }
+        let target = c as u8;
+        let mut last: *mut c_char = ptr::null_mut();
+        let mut p = s;
+        loop {
+            let ch = *p as u8;
+            if ch == target {
+                last = p as *mut c_char;
+            }
+            if ch == 0 {
+                break;
+            }
+            p = p.add(1);
+        }
+        last
+    }
+}
+
+/// C `memcpy`: copy `n` bytes between non-overlapping regions.
+unsafe fn c_memcpy(dest: *mut c_void, src: *const c_void, n: usize) {
+    unsafe { ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, n) }
+}
+
+/// C `isspace` in the C locale.
+#[inline]
+fn c_isspace(c: c_int) -> c_int {
+    matches!(c as u8, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r') as c_int
 }
 
 // Color type and macros
@@ -552,10 +719,10 @@ unsafe fn KeyType(s: *const c_char) -> AFMKey {
 unsafe fn SkipToNextItem(p: *mut c_char) -> *mut c_char {
     unsafe {
         let mut p = p;
-        while *p != 0 && libc::isspace(*p as c_int) == 0 {
+        while *p != 0 && c_isspace(*p as c_int) == 0 {
             p = p.add(1);
         }
-        while *p != 0 && libc::isspace(*p as c_int) != 0 {
+        while *p != 0 && c_isspace(*p as c_int) != 0 {
             p = p.add(1);
         }
         p
@@ -571,7 +738,7 @@ unsafe fn SkipToNextKey(p: *mut c_char) -> *mut c_char {
         if *p != 0 {
             p = p.add(1);
         }
-        while *p != 0 && libc::isspace(*p as c_int) != 0 {
+        while *p != 0 && c_isspace(*p as c_int) != 0 {
             p = p.add(1);
         }
         p
@@ -673,8 +840,8 @@ unsafe fn GetCharInfo(
             nchar = -1;
             nchar2 = -1;
             for i in 0..256 {
-                if libc::strcmp(charname.as_ptr(), encnames[i].cname.as_ptr()) == 0 {
-                    libc::strcpy(charnames[i].cname.as_mut_ptr(), charname.as_ptr());
+                if c_strcmp(charname.as_ptr(), encnames[i].cname.as_ptr()) == 0 {
+                    c_strcpy(charnames[i].cname.as_mut_ptr(), charname.as_ptr());
                     if nchar == -1 {
                         nchar = i as c_int;
                     } else {
@@ -776,22 +943,22 @@ unsafe fn GetKPX(
             }
         }
 
-        if libc::strcmp(c1name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
-            || libc::strcmp(c2name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
+        if c_strcmp(c1name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
+            || c_strcmp(c2name.as_ptr(), b"space\0".as_ptr() as *const c_char) == 0
         {
             return 0;
         }
 
         let mut done: c_int = 0;
         for i in 0..256 {
-            if libc::strcmp(c1name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
+            if c_strcmp(c1name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
                 (*metrics.KernPairs.add(nkp as usize)).c1 = i as c_uchar;
                 done += 1;
                 break;
             }
         }
         for i in 0..256 {
-            if libc::strcmp(c2name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
+            if c_strcmp(c2name.as_ptr(), charnames[i].cname.as_ptr()) == 0 {
                 (*metrics.KernPairs.add(nkp as usize)).c2 = i as c_uchar;
                 done += 1;
                 break;
@@ -813,7 +980,7 @@ struct EncodingInputState {
 }
 
 unsafe fn GetNextItem(
-    fp: *mut libc::FILE,
+    fp: *mut RFile,
     dest: *mut c_char,
     c: c_int,
     state: *mut EncodingInputState,
@@ -823,17 +990,17 @@ unsafe fn GetNextItem(
             (*state).p = ptr::null_mut();
         }
         loop {
-            if libc::feof(fp) != 0 {
+            if r_feof(fp) != 0 {
                 (*state).p = ptr::null_mut();
                 return 1;
             }
             if (*state).p.is_null() || *(*state).p == b'\n' as c_char || *(*state).p == 0 {
-                (*state).p = libc::fgets((*state).buf.as_mut_ptr(), 1000, fp);
+                (*state).p = r_fgets((*state).buf.as_mut_ptr(), 1000, fp);
             }
             if (*state).p.is_null() {
                 return 1;
             }
-            while *(*state).p != 0 && libc::isspace(*(*state).p as c_int) != 0 {
+            while *(*state).p != 0 && c_isspace(*(*state).p as c_int) != 0 {
                 (*state).p = (*state).p.add(1);
             }
             if *(*state).p == 0 || *(*state).p == b'%' as c_char || *(*state).p == b'\n' as c_char {
@@ -841,7 +1008,7 @@ unsafe fn GetNextItem(
                 continue;
             }
             (*state).p0 = (*state).p;
-            while *(*state).p != 0 && libc::isspace(*(*state).p as c_int) == 0 {
+            while *(*state).p != 0 && c_isspace(*(*state).p as c_int) == 0 {
                 (*state).p = (*state).p.add(1);
             }
             if *(*state).p != 0 {
@@ -849,9 +1016,9 @@ unsafe fn GetNextItem(
                 (*state).p = (*state).p.add(1);
             }
             if c == 45 {
-                libc::strcpy(dest, b"/minus\0".as_ptr() as *const c_char);
+                c_strcpy(dest, b"/minus\0".as_ptr() as *const c_char);
             } else {
-                libc::strcpy(dest, (*state).p0);
+                c_strcpy(dest, (*state).p0);
             }
             break;
         }
@@ -862,22 +1029,22 @@ unsafe fn GetNextItem(
 unsafe fn pathcmp(encpath: *const c_char, comparison: &str) -> c_int {
     unsafe {
         let mut pathcopy: [c_char; R_PATH_MAX] = [0; R_PATH_MAX];
-        libc::strcpy(pathcopy.as_mut_ptr(), encpath);
+        c_strcpy(pathcopy.as_mut_ptr(), encpath);
         // strip path
         let mut p1: *mut c_char = pathcopy.as_mut_ptr();
         loop {
-            let p2 = libc::strchr(p1, FILESEP[0] as c_int);
+            let p2 = c_strchr(p1, FILESEP[0] as c_int);
             if p2.is_null() {
                 break;
             }
             p1 = p2.add(1);
         }
         // strip suffix
-        let p2 = libc::strchr(p1, b'.' as c_int);
+        let p2 = c_strchr(p1, b'.' as c_int);
         if !p2.is_null() {
             *p2 = 0;
         }
-        libc::strcmp(
+        c_strcmp(
             p1,
             CStr::from_bytes_with_nul(comparison.as_bytes())
                 .unwrap_or_else(|_| unsafe { CStr::from_ptr(b"\0".as_ptr() as *const c_char) })
@@ -888,24 +1055,24 @@ unsafe fn pathcmp(encpath: *const c_char, comparison: &str) -> c_int {
 
 unsafe fn seticonvName(encpath: *const c_char, convname: *mut c_char) {
     unsafe {
-        libc::strcpy(convname, b"latin1\0".as_ptr() as *const c_char);
+        c_strcpy(convname, b"latin1\0".as_ptr() as *const c_char);
         if pathcmp(encpath, "ISOLatin1") == 0 {
-            libc::strcpy(convname, b"latin1\0".as_ptr() as *const c_char);
+            c_strcpy(convname, b"latin1\0".as_ptr() as *const c_char);
         } else if pathcmp(encpath, "WinAnsi") == 0 {
-            libc::strcpy(convname, b"cp1252\0".as_ptr() as *const c_char);
+            c_strcpy(convname, b"cp1252\0".as_ptr() as *const c_char);
         } else if pathcmp(encpath, "ISOLatin2") == 0 {
-            libc::strcpy(convname, b"latin2\0".as_ptr() as *const c_char);
+            c_strcpy(convname, b"latin2\0".as_ptr() as *const c_char);
         } else if pathcmp(encpath, "ISOLatin7") == 0 {
-            libc::strcpy(convname, b"latin7\0".as_ptr() as *const c_char);
+            c_strcpy(convname, b"latin7\0".as_ptr() as *const c_char);
         } else if pathcmp(encpath, "ISOLatin9") == 0 {
-            libc::strcpy(convname, b"latin-9\0".as_ptr() as *const c_char);
+            c_strcpy(convname, b"latin-9\0".as_ptr() as *const c_char);
         } else if pathcmp(encpath, "Greek") == 0 {
-            libc::strcpy(convname, b"iso-8859-7\0".as_ptr() as *const c_char);
+            c_strcpy(convname, b"iso-8859-7\0".as_ptr() as *const c_char);
         } else if pathcmp(encpath, "Cyrillic") == 0 {
-            libc::strcpy(convname, b"iso-8859-5\0".as_ptr() as *const c_char);
+            c_strcpy(convname, b"iso-8859-5\0".as_ptr() as *const c_char);
         } else {
-            libc::strcpy(convname, encpath);
-            let p = libc::strrchr(convname, b'.' as c_int);
+            c_strcpy(convname, encpath);
+            let p = c_strrchr(convname, b'.' as c_int);
             if !p.is_null() {
                 *p = 0;
             }
@@ -934,8 +1101,8 @@ unsafe fn LoadEncoding(
         seticonvName(encpath, encconvname);
 
         let mut buf2: [c_char; R_PATH_MAX + 64] = [0; R_PATH_MAX + 64];
-        if !libc::strchr(encpath, FILESEP[0] as c_int).is_null() {
-            libc::strcpy(buf2.as_mut_ptr(), encpath);
+        if !c_strchr(encpath, FILESEP[0] as c_int).is_null() {
+            c_strcpy(buf2.as_mut_ptr(), encpath);
         } else {
             let rhome = std::env::var("R_HOME").ok();
             if let Some(rh) = rhome {
@@ -956,15 +1123,15 @@ unsafe fn LoadEncoding(
             }
         }
 
-        let fp = libc::fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
+        let fp = r_fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
         if fp.is_null() {
-            let len = libc::strlen(buf2.as_ptr());
+            let len = c_strlen(buf2.as_ptr());
             buf2[len] = b'.' as c_char;
             buf2[len + 1] = b'e' as c_char;
             buf2[len + 2] = b'n' as c_char;
             buf2[len + 3] = b'c' as c_char;
             buf2[len + 4] = 0;
-            let fp2 = libc::fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
+            let fp2 = r_fopen(buf2.as_ptr(), b"r\0".as_ptr() as *const c_char);
             if fp2.is_null() {
                 return 0;
             }
@@ -975,13 +1142,13 @@ unsafe fn LoadEncoding(
         }
 
         if GetNextItem(fp, buf.as_mut_ptr(), -1, &mut state) != 0 {
-            libc::fclose(fp);
+            r_fclose(fp);
             return 0;
         }
         // encname = buf+1 (skip leading /)
-        let slen = libc::strlen(buf.as_ptr());
+        let slen = c_strlen(buf.as_ptr());
         let copy_len = slen.min(99);
-        libc::memcpy(
+        c_memcpy(
             encname as *mut c_void,
             buf.as_ptr().add(1) as *const c_void,
             copy_len,
@@ -999,35 +1166,35 @@ unsafe fn LoadEncoding(
         }
 
         if GetNextItem(fp, buf.as_mut_ptr(), 0, &mut state) != 0 {
-            libc::fclose(fp);
+            r_fclose(fp);
             return 0;
         }
         for i in 0..256 {
             if GetNextItem(fp, buf.as_mut_ptr(), i as c_int, &mut state) != 0 {
-                libc::fclose(fp);
+                r_fclose(fp);
                 return 0;
             }
-            let slen = libc::strlen(buf.as_ptr());
+            let slen = c_strlen(buf.as_ptr());
             let copy_len = slen.min(39);
-            libc::memcpy(
+            c_memcpy(
                 (*encnames.add(i)).cname.as_mut_ptr() as *mut c_void,
                 buf.as_ptr().add(1) as *const c_void,
                 copy_len,
             );
             (*encnames.add(i)).cname[copy_len] = 0;
-            libc::strcat(enccode, b" /\0".as_ptr() as *const c_char);
-            libc::strcat(enccode, (*encnames.add(i)).cname.as_ptr());
+            c_strcat(enccode, b" /\0".as_ptr() as *const c_char);
+            c_strcat(enccode, (*encnames.add(i)).cname.as_ptr());
             if i % 8 == 7 {
-                libc::strcat(enccode, b"\n\0".as_ptr() as *const c_char);
+                c_strcat(enccode, b"\n\0".as_ptr() as *const c_char);
             }
         }
         if GetNextItem(fp, buf.as_mut_ptr(), 0, &mut state) != 0 {
-            libc::fclose(fp);
+            r_fclose(fp);
             return 0;
         }
-        libc::fclose(fp);
+        r_fclose(fp);
         if !isPDF {
-            libc::strcat(enccode, b"]\n\0".as_ptr() as *const c_char);
+            c_strcat(enccode, b"]\n\0".as_ptr() as *const c_char);
         }
         1
     }
@@ -1294,18 +1461,18 @@ unsafe fn freeDeviceEncList(el: encodinglist) {
 
 unsafe fn safestrcpy(dest: *mut c_char, src: *const c_char, maxlen: usize) {
     unsafe {
-        let slen = libc::strlen(src);
+        let slen = c_strlen(src);
         if slen < maxlen {
-            libc::strcpy(dest, src);
+            c_strcpy(dest, src);
         } else {
-            libc::strncpy(dest, src, maxlen - 1);
+            c_strncpy(dest, src, maxlen - 1);
             *dest.add(maxlen - 1) = 0;
         }
     }
 }
 
 unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
-    unsafe { libc::strcmp(a, b) == 0 }
+    unsafe { c_strcmp(a, b) == 0 }
 }
 
 // =========================================================================
@@ -1460,7 +1627,7 @@ unsafe fn isType1Font(
     defaultFont: type1fontfamily,
 ) -> bool {
     unsafe {
-        if libc::strlen(family) == 0 {
+        if c_strlen(family) == 0 {
             return !defaultFont.is_null();
         }
         let ft = getFontType(family, _fontdbname);
@@ -1477,7 +1644,7 @@ unsafe fn isCIDFont(
     defaultCIDFont: cidfontfamily,
 ) -> bool {
     unsafe {
-        if libc::strlen(family) == 0 {
+        if c_strlen(family) == 0 {
             return !defaultCIDFont.is_null();
         }
         let ft = getFontType(family, _fontdbname);
@@ -1556,7 +1723,7 @@ unsafe fn findDeviceCIDFont(
         let mut font: cidfontfamily = ptr::null_mut();
         let mut found = false;
         *index = 0;
-        if libc::strlen(name) > 0 {
+        if c_strlen(name) > 0 {
             while !fontlist.is_null() && !found {
                 found = streql(name, (*(*fontlist).cidfamily).fxname.as_ptr());
                 if found {
@@ -1584,7 +1751,7 @@ unsafe fn findDeviceFont(
         let mut font: type1fontfamily = ptr::null_mut();
         let mut found = false;
         *index = 0;
-        if libc::strlen(name) > 0 {
+        if c_strlen(name) > 0 {
             while !fontlist.is_null() && !found {
                 found = streql(name, (*(*fontlist).family).fxname.as_ptr());
                 if found {
@@ -1875,7 +2042,7 @@ struct PostScriptDesc {
     command: [c_char; 2 * R_PATH_MAX],
     title: [c_char; 1024],
     colormodel: [c_char; 30],
-    psfp: *mut libc::FILE,
+    psfp: *mut RFile,
     onefile: bool,
     paperspecial: bool,
     warn_trans: bool,
@@ -1924,7 +2091,7 @@ struct PDFDesc {
     pageheight: f64,
     pagecentre: bool,
     onefile: bool,
-    pdffp: *mut libc::FILE,
+    pdffp: *mut RFile,
     current: PDFCurrent,
     colAlpha: [c_short; 256],
     fillAlpha: [c_short; 256],

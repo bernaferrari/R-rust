@@ -16,6 +16,8 @@
 
 use core::ffi::{c_char, c_int, c_uint, c_void};
 
+use crate::mainutils::rfile::{RFile, r_fputc, r_fwrite};
+
 // ── Color channel extraction macros ──────────────────────────────────
 
 /// Compute bit shifts for BGR vs RGB color order.
@@ -49,24 +51,24 @@ fn get_alpha(col: u32) -> u8 {
 const BMP_HEADERSIZE: u32 = 54;
 
 /// Write a little-endian 16-bit word to a FILE.
-unsafe fn bmpw(x: u16, fp: *mut c_void) {
+unsafe fn bmpw(x: u16, fp: *mut RFile) {
     let bytes = x.to_le_bytes();
     unsafe {
-        libc::fwrite(bytes.as_ptr() as *const c_void, 2, 1, fp as *mut libc::FILE);
+        r_fwrite(bytes.as_ptr() as *const c_void, 2, 1, fp);
     }
 }
 
 /// Write a little-endian 32-bit double word to a FILE.
-unsafe fn bmpdw(x: u32, fp: *mut c_void) {
+unsafe fn bmpdw(x: u32, fp: *mut RFile) {
     let bytes = x.to_le_bytes();
     unsafe {
-        libc::fwrite(bytes.as_ptr() as *const c_void, 4, 1, fp as *mut libc::FILE);
+        r_fwrite(bytes.as_ptr() as *const c_void, 4, 1, fp);
     }
 }
 
 /// Write a single byte to a FILE.
-unsafe fn bmpputc(a: u8, fp: *mut c_void) -> bool {
-    unsafe { libc::fputc(a as c_int, fp as *mut libc::FILE) != libc::EOF }
+unsafe fn bmpputc(a: u8, fp: *mut RFile) -> bool {
+    unsafe { r_fputc(a as c_int, fp) != -1 }
 }
 
 // ── Real BMP writer implementation ───────────────────────────────────
@@ -86,7 +88,7 @@ pub(crate) unsafe fn save_as_bmp(
     height: c_int,
     gp: Option<unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_uint>,
     bgr: c_int,
-    fp: *mut c_void,
+    fp: *mut RFile,
     res: c_int,
 ) -> c_int {
     if fp.is_null() || width <= 0 || height <= 0 {
@@ -310,7 +312,7 @@ unsafe fn R_SaveAsPng(
     _height: c_int,
     _gp: Option<unsafe extern "C" fn(*mut c_void, c_int, c_int) -> u32>,
     _bgr: c_int,
-    _fp: *mut c_void,
+    _fp: *mut RFile,
     _transparent: u32,
     _res: c_int,
 ) -> c_int {
@@ -326,7 +328,7 @@ unsafe fn R_SaveAsJpeg(
     _gp: Option<unsafe extern "C" fn(*mut c_void, c_int, c_int) -> u32>,
     _bgr: c_int,
     _quality: c_int,
-    _outfile: *mut c_void,
+    _outfile: *mut RFile,
     _res: c_int,
 ) -> c_int {
     0
@@ -355,7 +357,7 @@ unsafe fn R_SaveAsBmp(
     height: c_int,
     gp: Option<unsafe extern "C" fn(*mut c_void, c_int, c_int) -> u32>,
     bgr: c_int,
-    fp: *mut c_void,
+    fp: *mut RFile,
     res: c_int,
 ) -> c_int {
     unsafe { save_as_bmp(d, width, height, gp, bgr, fp, res) }

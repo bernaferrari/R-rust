@@ -753,7 +753,7 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
         if a.is_null() || b.is_null() {
             return false;
         }
-        libc::strcmp(a, b) == 0
+        std::ffi::CStr::from_ptr(a).to_bytes() == std::ffi::CStr::from_ptr(b).to_bytes()
     }
 }
 

@@ -46,7 +46,9 @@ unsafe fn slot_name_matches(names: SEXP, index: c_int, name: SEXP) -> bool {
             return false;
         }
         let current = CHAR(current);
-        !current.is_null() && libc::strcmp(current, wanted) == 0
+        !current.is_null()
+            && std::ffi::CStr::from_ptr(current).to_bytes()
+                == std::ffi::CStr::from_ptr(wanted).to_bytes()
     }
 }
 

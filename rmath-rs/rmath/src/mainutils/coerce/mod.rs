@@ -74,8 +74,58 @@ unsafe extern "C" {
     fn strtod(s: *const c_char, endptr: *mut *mut c_char) -> c_double;
 }
 
-// wasm32: route through the libc facade (no C library to link against).
+// wasm32: no C library to link against — port of the C-locale strtod(3)
+// semantics the coercers rely on (leading whitespace skipped, decimal and
+// exponent forms, inf/nan spellings; endptr marks the first byte after the
+// longest valid prefix, or nptr when nothing parses).
 #[cfg(target_arch = "wasm32")]
 unsafe fn strtod(s: *const c_char, endptr: *mut *mut c_char) -> c_double {
-    unsafe { libc::strtod(s, endptr) }
+    unsafe {
+        let b = CStr::from_ptr(s).to_bytes();
+        let mut i = 0;
+        while i < b.len() && b[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let num_start = i;
+        let mut seen_digit = false;
+        let mut seen_dot = false;
+        let mut seen_exp = false;
+        while i < b.len() {
+            let c = b[i];
+            match c {
+                b'0'..=b'9' => seen_digit = true,
+                b'+' | b'-' if i == num_start || (seen_exp && matches!(b[i - 1], b'e' | b'E')) => {}
+                b'.' if !seen_dot && !seen_exp => seen_dot = true,
+                b'e' | b'E' if seen_digit && !seen_exp => seen_exp = true,
+                _ => break,
+            }
+            i += 1;
+        }
+        // Rust's parser accepts "inf"/"nan" too; C does as well.
+        let text = std::str::from_utf8(&b[num_start..i]).unwrap_or("");
+        let val: c_double = text.parse().unwrap_or_else(|_| {
+            // try inf/nan spellings that Rust parses
+            let t = text.to_ascii_lowercase();
+            if t.starts_with("inf") || t.starts_with("+inf") || t.starts_with("-inf") {
+                if t.starts_with('-') {
+                    f64::NEG_INFINITY
+                } else {
+                    f64::INFINITY
+                }
+            } else if t.starts_with("nan") {
+                f64::NAN
+            } else {
+                0.0
+            }
+        });
+        if !endptr.is_null() {
+            let end = if text.is_empty() {
+                s
+            } else {
+                b.as_ptr().add(i) as *const c_char
+            };
+            *endptr = end as *mut c_char;
+        }
+        val
+    }
 }

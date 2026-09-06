@@ -92,7 +92,11 @@ pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
         if cx.is_null() || cy.is_null() {
             return 0;
         }
-        if libc::strcmp(cx, cy) == 0 { 1 } else { 0 }
+        if CStr::from_ptr(cx).to_bytes() == CStr::from_ptr(cy).to_bytes() {
+            1
+        } else {
+            0
+        }
     }
 }
 

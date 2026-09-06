@@ -369,7 +369,10 @@ pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         if crate::mainutils::main::R_Interactive() == 0 {
             if !prompt_ptr.is_null() {
-                crate::unix::system::R_WriteConsole(prompt_ptr, libc::strlen(prompt_ptr) as c_int);
+                crate::unix::system::R_WriteConsole(
+                    prompt_ptr,
+                    std::ffi::CStr::from_ptr(prompt_ptr).to_bytes().len() as c_int,
+                );
             }
             crate::unix::system::R_WriteConsole(b"\n\0".as_ptr() as *const c_char, 1);
             return Rf_mkString(b"\0".as_ptr() as *const c_char);

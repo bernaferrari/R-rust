@@ -131,7 +131,11 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
         if a.is_null() || b.is_null() {
             return 0;
         }
-        if libc::strcmp(a, b) == 0 { 1 } else { 0 }
+        if std::ffi::CStr::from_ptr(a).to_bytes() == std::ffi::CStr::from_ptr(b).to_bytes() {
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -474,6 +478,24 @@ unsafe fn hcl2rgb(
 // String matching
 // ---------------------------------------------------------------------------
 
+/// C-locale tolower(3) for the ASCII palette-name comparison: libc on
+/// native targets, the portable ASCII table on wasm32.
+#[cfg(not(target_arch = "wasm32"))]
+#[inline]
+fn c_tolower(c: c_int) -> c_int {
+    unsafe { libc::tolower(c) }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[inline]
+fn c_tolower(c: c_int) -> c_int {
+    if (0..128).contains(&c) {
+        (c as u8).to_ascii_lowercase() as c_int
+    } else {
+        c
+    }
+}
+
 unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
     unsafe {
         let mut si = 0usize;
@@ -492,7 +514,7 @@ unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
                 ti += 1;
                 continue;
             }
-            if libc::tolower(sc as c_int) != libc::tolower(tc as c_int) {
+            if c_tolower(sc as c_int) != c_tolower(tc as c_int) {
                 return 0;
             }
             si += 1;
@@ -530,7 +552,7 @@ unsafe fn rgb2col(rgb: *const c_char) -> rcolor {
         if *rgb != b'#' as core::ffi::c_char {
             Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
         }
-        let len = libc::strlen(rgb);
+        let len = std::ffi::CStr::from_ptr(rgb).to_bytes().len();
         let mut r: u32 = 0;
         let mut g: u32 = 0;
         let mut b: u32 = 0;
@@ -3221,9 +3243,8 @@ const COLOR_DATA: [ColorDataBaseEntry; 657] = [
 
 unsafe fn name2col(nm: *const c_char) -> rcolor {
     unsafe {
-        if libc::strcmp(nm, b"NA\0".as_ptr() as *const c_char) == 0
-            || libc::strcmp(nm, b"transparent\0".as_ptr() as *const c_char) == 0
-        {
+        let nm_bytes = std::ffi::CStr::from_ptr(nm).to_bytes();
+        if nm_bytes == b"NA".as_slice() || nm_bytes == b"transparent".as_slice() {
             return R_TRANWHITE;
         }
         for entry in COLOR_DATA_BASE.iter() {
@@ -3246,7 +3267,12 @@ unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
         }
         if (*s as c_int) >= b'0' as c_int && (*s as c_int) <= b'9' as c_int {
             let mut ptr: *mut c_char = std::ptr::null_mut();
+            #[cfg(not(target_arch = "wasm32"))]
             let indx = libc::strtod(s, &mut ptr) as c_int;
+            // wasm32: no libc; the palette-index path parses plain
+            // integers, which the engine's R_strtod reads identically.
+            #[cfg(target_arch = "wasm32")]
+            let indx = crate::mainutils::util_main::R_strtod(s, &mut ptr) as c_int;
             if !ptr.is_null() && *ptr != 0 {
                 Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
             }

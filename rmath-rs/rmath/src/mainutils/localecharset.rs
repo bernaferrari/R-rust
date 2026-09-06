@@ -85,10 +85,17 @@ pub unsafe fn locale2charset(locale: *const std::os::raw::c_char) -> *const std:
             s == "NULL"
         } {
             // Get current locale
-            match CStr::from_ptr(libc::setlocale(libc::LC_CTYPE, std::ptr::null())).to_str() {
-                Ok(s) => s,
-                Err(_) => return b"ASCII\0".as_ptr() as *const std::os::raw::c_char,
-            }
+            #[cfg(not(target_arch = "wasm32"))]
+            let cur =
+                match CStr::from_ptr(libc::setlocale(libc::LC_CTYPE, std::ptr::null())).to_str() {
+                    Ok(s) => s,
+                    Err(_) => return b"ASCII\0".as_ptr() as *const std::os::raw::c_char,
+                };
+            // wasm32: no locale subsystem in the sandbox; engine strings
+            // are always UTF-8 (maps to the "UTF-8" encoding below).
+            #[cfg(target_arch = "wasm32")]
+            let cur: &str = "C.UTF-8";
+            cur
         } else {
             match CStr::from_ptr(locale).to_str() {
                 Ok(s) => s,

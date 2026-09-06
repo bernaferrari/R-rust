@@ -80,7 +80,11 @@ unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
         if s1.is_null() || s2.is_null() {
             return if s1.is_null() && s2.is_null() { 1 } else { 0 };
         }
-        if libc::strcmp(s1, s2) == 0 { 1 } else { 0 }
+        if CStr::from_ptr(s1).to_bytes() == CStr::from_ptr(s2).to_bytes() {
+            1
+        } else {
+            0
+        }
     }
 }
 

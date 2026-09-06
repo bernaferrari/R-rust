@@ -46,7 +46,7 @@ pub unsafe fn Rmd5(files: SEXP) -> SEXP {
             let mut resblock = [0u8; 16];
             let result = md5_buffer(
                 raw_bytes.as_ptr(),
-                raw_len as libc::size_t,
+                raw_len as usize,
                 resblock.as_mut_ptr() as *mut c_void,
             );
             if result.is_null() {
@@ -90,7 +90,7 @@ pub unsafe fn Rmd5(files: SEXP) -> SEXP {
                     let mut resblock = [0u8; 16];
                     let result = md5_buffer(
                         data.as_ptr(),
-                        data.len() as libc::size_t,
+                        data.len() as usize,
                         resblock.as_mut_ptr() as *mut c_void,
                     );
                     if result.is_null() {

@@ -381,7 +381,7 @@ pub unsafe fn deparse1line(call: SEXP, abbrev: bool) -> SEXP {
                 if !s.is_null() {
                     let name = CHAR(s);
                     if !name.is_null() {
-                        total_len += libc::strlen(name);
+                        total_len += std::ffi::CStr::from_ptr(name).to_bytes().len();
                     }
                 }
                 total_len += 1; // newline

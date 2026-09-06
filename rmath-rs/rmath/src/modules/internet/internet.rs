@@ -3,6 +3,7 @@
 // Unix implementation with real file:// download and raw socket HTTP GET.
 // Windows-specific functions (wininet) remain as stubs.
 
+use crate::mainutils::rfile::{r_fclose, r_fopen, r_fread, r_fwrite};
 use core::ffi::{c_char, c_double, c_int, c_void};
 use std::ffi::{CStr, CString};
 use std::io::{Read, Write as IoWrite};
@@ -478,11 +479,15 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
 
         // Determine if binary mode
         let binary = mode_str.len() >= 2 && mode_str.ends_with('b');
-        let read_mode = if binary { "rb" } else { "r" };
+        let read_mode: *const c_char = if binary {
+            b"rb\0".as_ptr() as *const c_char
+        } else {
+            b"r\0".as_ptr() as *const c_char
+        };
 
         // Open source file
         let src_path = CString::new(path).unwrap_or_default();
-        let src_file = libc::fopen(src_path.as_ptr(), read_mode.as_ptr() as *const c_char);
+        let src_file = r_fopen(src_path.as_ptr(), read_mode);
         if src_file.is_null() {
             let errno_val = std::io::Error::last_os_error();
             let msg = format!("cannot open URL '{}', reason '{}'", url_str, errno_val);
@@ -492,9 +497,9 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
 
         // Open dest file
         let dst_path = CString::new(file_str).unwrap_or_default();
-        let dst_file = libc::fopen(dst_path.as_ptr(), mode);
+        let dst_file = r_fopen(dst_path.as_ptr(), mode);
         if dst_file.is_null() {
-            libc::fclose(src_file);
+            r_fclose(src_file);
             let errno_val = std::io::Error::last_os_error();
             let msg = format!(
                 "cannot open destfile '{}', reason '{}'",
@@ -507,21 +512,21 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
         // Copy data
         let mut buf = vec![0u8; CPBUFSIZE];
         loop {
-            let nread = libc::fread(buf.as_mut_ptr() as *mut c_void, 1, CPBUFSIZE, src_file);
+            let nread = r_fread(buf.as_mut_ptr() as *mut c_void, 1, CPBUFSIZE, src_file);
             if nread == 0 {
                 break;
             }
-            let nwritten = libc::fwrite(buf.as_ptr() as *const c_void, 1, nread, dst_file);
+            let nwritten = r_fwrite(buf.as_ptr() as *const c_void, 1, nread, dst_file);
             if nwritten != nread {
-                libc::fclose(dst_file);
-                libc::fclose(src_file);
+                r_fclose(dst_file);
+                r_fclose(src_file);
                 let msg = c"write failed";
                 Rf_error(msg.as_ptr());
             }
         }
 
-        libc::fclose(dst_file);
-        libc::fclose(src_file);
+        r_fclose(dst_file);
+        r_fclose(src_file);
         0
     }
 }
@@ -548,7 +553,7 @@ unsafe fn http_download(
 
         // Open dest file
         let dst_path = CString::new(file_str).unwrap_or_default();
-        let dst_file = libc::fopen(dst_path.as_ptr(), mode);
+        let dst_file = r_fopen(dst_path.as_ptr(), mode);
         if dst_file.is_null() {
             let errno_val = std::io::Error::last_os_error();
             let msg = format!(
@@ -587,7 +592,7 @@ unsafe fn http_download(
         // Open HTTP connection
         let ctxt = http_open(url, ptr::null(), headers_ptr, 1);
         if ctxt.is_null() {
-            libc::fclose(dst_file);
+            r_fclose(dst_file);
             // Check if mode contains 'w' to clean up partial file
             if mode_str.contains('w') {
                 let _ = std::fs::remove_file(file_str);
@@ -614,10 +619,10 @@ unsafe fn http_download(
                 break;
             }
 
-            let nwritten = libc::fwrite(buf.as_ptr() as *const c_void, 1, nread as usize, dst_file);
+            let nwritten = r_fwrite(buf.as_ptr() as *const c_void, 1, nread as usize, dst_file);
             if nwritten as isize != nread {
                 http_close(ctxt);
-                libc::fclose(dst_file);
+                r_fclose(dst_file);
                 let msg = c"write failed";
                 Rf_error(msg.as_ptr());
             }
@@ -652,7 +657,7 @@ unsafe fn http_download(
             }
         }
 
-        libc::fclose(dst_file);
+        r_fclose(dst_file);
 
         // Warn if downloaded length doesn't match reported length
         if total > 0 && total != nbytes {

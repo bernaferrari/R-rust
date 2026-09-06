@@ -44,6 +44,7 @@ use crate::mainutils::printutils::EncodeElement0;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
 
 /// Get errno pointer (macOS uses __error(), Linux/Android use __errno_location).
+#[cfg(not(target_arch = "wasm32"))]
 #[inline]
 unsafe fn errno_ptr() -> *mut c_int {
     unsafe {
@@ -58,6 +59,90 @@ unsafe fn errno_ptr() -> *mut c_int {
             }
             __errno_location()
         }
+    }
+}
+
+/// wasm32-only strtol(3) replacement with C-locale semantics (leading
+/// whitespace, optional sign, "0x" prefix under base 16/0, octal detection
+/// under base 0). Port of the former wasm-libc facade parser: no errno —
+/// the caller reports overflow through its range check.
+#[cfg(target_arch = "wasm32")]
+unsafe fn c_strtol(nptr: *const c_char, endptr: *mut *mut c_char, base: c_int) -> i64 {
+    unsafe {
+        let b = CStr::from_ptr(nptr).to_bytes();
+        let mut i = 0;
+        while i < b.len() && b[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let start_after_ws = i;
+        let mut neg = false;
+        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+            neg = b[i] == b'-';
+            i += 1;
+        }
+        let mut radix = base as u32;
+        if (radix == 16 || radix == 0)
+            && i + 1 < b.len()
+            && b[i] == b'0'
+            && (b[i + 1] | 0x20) == b'x'
+        {
+            i += 2;
+            radix = 16;
+        } else if radix == 0 {
+            radix = if i < b.len() && b[i] == b'0' { 8 } else { 10 };
+        }
+        let mut val: i128 = 0;
+        let mut any = false;
+        while i < b.len() {
+            let Some(d) = (b[i] as char).to_digit(radix) else {
+                break;
+            };
+            val = val * radix as i128 + i128::from(d);
+            any = true;
+            i += 1;
+        }
+        let end = if any {
+            b.as_ptr().add(i)
+        } else {
+            b.as_ptr().add(start_after_ws)
+        };
+        if !endptr.is_null() {
+            *endptr = end as *mut c_char;
+        }
+        let signed = if neg { -val } else { val };
+        signed as i64
+    }
+}
+
+/// C-locale isspace(3): libc on native targets, portable ASCII table on
+/// wasm32 (same six characters: space, \t, \n, \v, \f, \r).
+#[cfg(not(target_arch = "wasm32"))]
+#[inline]
+unsafe fn c_isspace(c: c_int) -> c_int {
+    unsafe { libc::isspace(c) }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[inline]
+fn c_isspace(c: c_int) -> c_int {
+    matches!(c, 0x20 | 0x09..=0x0d) as c_int
+}
+
+/// ASCII case-insensitive prefix compare: libc strncasecmp(3) on native
+/// targets, a portable eq_ignore_ascii_case on wasm32. `lit` is an ASCII
+/// literal without its NUL terminator.
+#[cfg(not(target_arch = "wasm32"))]
+#[inline]
+unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
+    unsafe { libc::strncasecmp(s, lit.as_ptr() as *const c_char, lit.len()) == 0 }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[inline]
+unsafe fn c_strncasecmp_eq(s: *const c_char, lit: &[u8]) -> bool {
+    unsafe {
+        let bytes = CStr::from_ptr(s).to_bytes();
+        bytes.len() >= lit.len() && bytes[..lit.len()].eq_ignore_ascii_case(lit)
     }
 }
 
@@ -341,7 +426,7 @@ fn Rspace(c: c_uint) -> bool {
 unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
     unsafe {
         if mode == 0 {
-            let len = libc::strlen(buf);
+            let len = CStr::from_ptr(buf).to_bytes().len();
             if len == 0 {
                 return 1;
             }
@@ -349,7 +434,7 @@ unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
         let n = LENGTH(d.NAstrings);
         for i in 0..n {
             let s = CHAR(STRING_ELT(d.NAstrings, i as R_xlen_t));
-            if libc::strcmp(buf, s) == 0 {
+            if CStr::from_ptr(buf).to_bytes() == CStr::from_ptr(s).to_bytes() {
                 return 1;
             }
         }
@@ -361,18 +446,34 @@ unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
 unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
     unsafe {
         let mut endp: *mut c_char = ptr::null_mut();
-        *errno_ptr() = 0;
-        let res = libc::strtol(nptr, &mut endp, base) as i64;
-        if !endp.is_null() && *endp != 0 {
-            return NA_INTEGER();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            *errno_ptr() = 0;
+            let res = libc::strtol(nptr, &mut endp, base) as i64;
+            if !endp.is_null() && *endp != 0 {
+                return NA_INTEGER();
+            }
+            if res > c_int::MAX as i64 || res < c_int::MIN as i64 {
+                return NA_INTEGER();
+            }
+            if *errno_ptr() != 0 {
+                return NA_INTEGER();
+            }
+            res as c_int
         }
-        if res > c_int::MAX as i64 || res < c_int::MIN as i64 {
-            return NA_INTEGER();
+        // wasm32: no libc; the portable parser reports bad input through
+        // the trailing-character check and overflow through the range check.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let res = c_strtol(nptr, &mut endp, base);
+            if !endp.is_null() && *endp != 0 {
+                return NA_INTEGER();
+            }
+            if res > c_int::MAX as i64 || res < c_int::MIN as i64 {
+                return NA_INTEGER();
+            }
+            res as c_int
         }
-        if *errno_ptr() != 0 {
-            return NA_INTEGER();
-        }
-        res as c_int
     }
 }
 
@@ -401,12 +502,12 @@ unsafe fn Strtod(
         let mut p = nptr;
 
         /* skip whitespace */
-        while libc::isspace(*p as c_int) != 0 {
+        while c_isspace(*p as c_int) != 0 {
             p = p.add(1);
         }
 
         /* check for NA */
-        if na != 0 && libc::strncmp(p, b"NA\0".as_ptr() as *const c_char, 2) == 0 {
+        if na != 0 && CStr::from_ptr(p).to_bytes().starts_with(b"NA") {
             ans = NA_REAL();
             p = p.add(2);
             if !endptr.is_null() {
@@ -428,21 +529,21 @@ unsafe fn Strtod(
         }
 
         /* check for NaN, Inf, infinity */
-        if libc::strncasecmp(p, b"NaN\0".as_ptr() as *const c_char, 3) == 0 {
+        if c_strncasecmp_eq(p, b"NaN") {
             ans = f64::NAN;
             p = p.add(3);
             if !endptr.is_null() {
                 *endptr = p as *mut c_char;
             }
             return sign as c_double * ans;
-        } else if libc::strncasecmp(p, b"infinity\0".as_ptr() as *const c_char, 8) == 0 {
+        } else if c_strncasecmp_eq(p, b"infinity") {
             ans = f64::INFINITY;
             p = p.add(8);
             if !endptr.is_null() {
                 *endptr = p as *mut c_char;
             }
             return sign as c_double * ans;
-        } else if libc::strncasecmp(p, b"Inf\0".as_ptr() as *const c_char, 3) == 0 {
+        } else if c_strncasecmp_eq(p, b"Inf") {
             ans = f64::INFINITY;
             p = p.add(3);
             if !endptr.is_null() {
@@ -454,7 +555,7 @@ unsafe fn Strtod(
         let mut expn: c_int = 0;
 
         /* Hexadecimal "0x..." */
-        if libc::strlen(p) > 2
+        if CStr::from_ptr(p).to_bytes().len() > 2
             && *p == '0' as c_char
             && (*p.add(1) == 'x' as c_char || *p.add(1) == 'X' as c_char)
         {
@@ -894,9 +995,7 @@ unsafe fn scanchar(inQuote: bool, d: &mut LocalData) -> c_int {
                     _ => {
                         // Any other char and even EOF escapes to itself,
                         // but need to preserve \" etc inside quotes.
-                        if inQuote
-                            && libc::strchr(d.quoteset.as_ptr(), next as c_int).is_null() == false
-                        {
+                        if inQuote && strchr_quoteset(&d.quoteset, next) {
                             unscanchar(next, d);
                             '\\' as c_int
                         } else {
@@ -1045,7 +1144,7 @@ unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
         let what_str = what_cstr.to_str().unwrap_or("");
         for i in 0..len {
             let s = CHAR(STRING_ELT(klass, i as R_xlen_t));
-            if libc::strcmp(s, _what) == 0 {
+            if what_cstr.to_bytes() == CStr::from_ptr(s).to_bytes() {
                 return true;
             }
         }
@@ -1206,7 +1305,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
         }
         let p = translateChar(STRING_ELT(comstr, 0));
         data.comchar = NO_COMCHAR;
-        let plen = libc::strlen(p);
+        let plen = CStr::from_ptr(p).to_bytes().len();
         if plen > 1 {
             r_error(
                 b"invalid '%s' argument\0".as_ptr() as *const c_char,
@@ -1240,8 +1339,13 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
         // Parse quotes
         if isString(quotes) {
             let sc = translateChar(STRING_ELT(quotes, 0));
-            if libc::strlen(sc) > 0 {
-                libc::strcpy(data.quoteset.as_mut_ptr(), sc);
+            let qbytes = CStr::from_ptr(sc).to_bytes();
+            if !qbytes.is_empty() {
+                // strcpy into the 10-byte quoteset, capped at 9 chars + NUL
+                // (a longer quote set overflows in C, which we do not reproduce)
+                let n = qbytes.len().min(data.quoteset.len() - 1);
+                ptr::copy_nonoverlapping(qbytes.as_ptr(), data.quoteset.as_mut_ptr() as *mut u8, n);
+                data.quoteset[n] = 0;
             } else {
                 data.quoteset[0] = 0;
             }
@@ -1475,13 +1579,13 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut exact = false;
         if isString(numerals) {
             let tmp = CHAR(STRING_ELT(numerals, 0));
-            if libc::strcmp(tmp, b"allow.loss\0".as_ptr() as *const c_char) == 0 {
+            if CStr::from_ptr(tmp).to_bytes() == b"allow.loss".as_slice() {
                 i_exact = 0;
                 exact = false;
-            } else if libc::strcmp(tmp, b"warn.loss\0".as_ptr() as *const c_char) == 0 {
+            } else if CStr::from_ptr(tmp).to_bytes() == b"warn.loss".as_slice() {
                 i_exact = NA_LOGICAL();
                 exact = false;
-            } else if libc::strcmp(tmp, b"no.loss\0".as_ptr() as *const c_char) == 0 {
+            } else if CStr::from_ptr(tmp).to_bytes() == b"no.loss".as_slice() {
                 i_exact = 1;
                 exact = true;
             }
@@ -1518,7 +1622,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         for i in 0..len {
             let tmp = CHAR(STRING_ELT(cvec, i as R_xlen_t));
             let is_na = STRING_ELT(cvec, i as R_xlen_t) == NA_STRING()
-                || libc::strlen(tmp) == 0
+                || CStr::from_ptr(tmp).to_bytes().is_empty()
                 || isBlankString(tmp) != 0
                 || isNAstring(tmp, 1, &data) != 0;
             if !is_na {
@@ -1550,7 +1654,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
                 if STRING_ELT(cvec, i) == NA_STRING()
-                    || libc::strlen(tmp) == 0
+                    || CStr::from_ptr(tmp).to_bytes().is_empty()
                     || isBlankString(tmp) != 0
                     || isNAstring(tmp, 1, &data) != 0
                 {
@@ -1584,7 +1688,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
                 if STRING_ELT(cvec, i) == NA_STRING()
-                    || libc::strlen(tmp) == 0
+                    || CStr::from_ptr(tmp).to_bytes().is_empty()
                     || isBlankString(tmp) != 0
                     || isNAstring(tmp, 1, &data) != 0
                 {
@@ -1615,7 +1719,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
                 if STRING_ELT(cvec, i) == NA_STRING()
-                    || libc::strlen(tmp) == 0
+                    || CStr::from_ptr(tmp).to_bytes().is_empty()
                     || isBlankString(tmp) != 0
                     || isNAstring(tmp, 1, &data) != 0
                 {
@@ -1647,7 +1751,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             for i in 0..len as R_xlen_t {
                 let tmp = CHAR(STRING_ELT(cvec, i));
                 if STRING_ELT(cvec, i) == NA_STRING()
-                    || libc::strlen(tmp) == 0
+                    || CStr::from_ptr(tmp).to_bytes().is_empty()
                     || isBlankString(tmp) != 0
                     || isNAstring(tmp, 1, &data) != 0
                 {
@@ -1804,8 +1908,13 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
         // Parse quotes
         if isString(quotes) {
             let sc = translateChar(STRING_ELT(quotes, 0));
-            if libc::strlen(sc) > 0 {
-                libc::strcpy(data.quoteset.as_mut_ptr(), sc);
+            let qbytes = CStr::from_ptr(sc).to_bytes();
+            if !qbytes.is_empty() {
+                // strcpy into the 10-byte quoteset, capped at 9 chars + NUL
+                // (a longer quote set overflows in C, which we do not reproduce)
+                let n = qbytes.len().min(data.quoteset.len() - 1);
+                ptr::copy_nonoverlapping(qbytes.as_ptr(), data.quoteset.as_mut_ptr() as *mut u8, n);
+                data.quoteset[n] = 0;
             } else {
                 data.quoteset[0] = 0;
             }
@@ -1827,7 +1936,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
         }
         let p = translateChar(STRING_ELT(comstr, 0));
         data.comchar = NO_COMCHAR;
-        let plen = libc::strlen(p);
+        let plen = CStr::from_ptr(p).to_bytes().len();
         if plen > 1 {
             r_error(
                 b"invalid '%s' argument\0".as_ptr() as *const c_char,
@@ -2100,7 +2209,7 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let ceol = translateChar(STRING_ELT(eol, 0));
         let cna = translateChar(STRING_ELT(na, 0));
         let sdec = translateChar(STRING_ELT(dec, 0));
-        if libc::strlen(sdec) != 1 {
+        if CStr::from_ptr(sdec).to_bytes().len() != 1 {
             r_error(
                 b"'dec' must be a single character\0".as_ptr() as *const c_char,
                 ptr::null(),

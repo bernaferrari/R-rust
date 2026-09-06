@@ -19,12 +19,15 @@
  *  Ported from r-source/src/library/utils/src/sock.c
  */
 
+#![cfg(not(target_arch = "wasm32"))]
+
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use crate::attrib_core::setAttrib;
 use crate::main::coerce::asInteger;
 use crate::mainutils::errors::Rf_error;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::modules::internet::rsock::{
     in_Rsockclose, in_Rsockconnect, in_Rsocklisten, in_Rsockopen, in_Rsockread, in_Rsockwrite,
 };
@@ -131,7 +134,7 @@ pub unsafe fn sockwrite(sport: SEXP, sstring: SEXP) -> SEXP {
         let mut buf = translateChar(STRING_ELT(sstring, 0)) as *mut c_char;
         let mut abuf = &mut buf as *mut *mut c_char;
         let mut start: c_int = 0;
-        let mut len = libc::strlen(buf) as c_int;
+        let mut len = std::ffi::CStr::from_ptr(buf).to_bytes().len() as c_int;
         let mut end = len;
         in_Rsockwrite(&mut sock, abuf, &mut start, &mut end, &mut len);
         Rf_ScalarInteger(len)

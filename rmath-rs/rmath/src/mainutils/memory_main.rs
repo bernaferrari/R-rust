@@ -1014,7 +1014,9 @@ pub unsafe fn readline(prompt: *const c_char) -> *mut c_char {
             .position(|&byte| byte == 0)
             .unwrap_or(buffer.len());
         let line = std::ffi::CString::new(&buffer[..nul]).unwrap_or_default();
-        libc::strdup(line.as_ptr())
+        // strdup equivalent: hand out the NUL-terminated heap buffer itself
+        // (nothing in this port frees the readline result, so ownership just leaks)
+        line.into_raw()
     }
 }
 

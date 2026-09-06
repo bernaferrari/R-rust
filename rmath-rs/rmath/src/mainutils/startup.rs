@@ -17,7 +17,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
-use libc::FILE;
+use crate::mainutils::rfile::{RFile, r_fopen};
 
 use crate::mainutils::sysutils::R_HomeDir;
 use crate::sexp::instance::with_current_instance;
@@ -134,7 +134,7 @@ pub unsafe fn R_SaveGlobalEnv() {
 
 // Open a library file from the standard R library path.
 // Builds the path: <R_HOME>/library/base/R/<file> and opens it for reading.
-pub unsafe fn R_OpenLibraryFile(file: *const c_char) -> *mut FILE {
+pub unsafe fn R_OpenLibraryFile(file: *const c_char) -> *mut RFile {
     unsafe {
         if file.is_null() {
             return ptr::null_mut();
@@ -147,7 +147,7 @@ pub unsafe fn R_OpenLibraryFile(file: *const c_char) -> *mut FILE {
         if let Some(home) = R_HomeDir() {
             let path = format!("{}/library/base/R/{}", home, file_str);
             if let Ok(cpath) = CString::new(path) {
-                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
             }
         }
         ptr::null_mut()
@@ -186,12 +186,12 @@ pub unsafe fn R_LibraryFileName(
 }
 
 // Open the R profile init file (Rprofile) in the system.
-pub unsafe fn R_OpenSysInitFile() -> *mut FILE {
+pub unsafe fn R_OpenSysInitFile() -> *mut RFile {
     unsafe {
         if let Some(home) = R_HomeDir() {
             let path = format!("{}/library/base/R/Rprofile", home);
             if let Ok(cpath) = CString::new(path) {
-                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
             }
         }
         ptr::null_mut()
@@ -238,7 +238,7 @@ mod tests {
 }
 
 // Open the site init file (Rprofile.site) if enabled.
-pub unsafe fn R_OpenSiteFile() -> *mut FILE {
+pub unsafe fn R_OpenSiteFile() -> *mut RFile {
     unsafe {
         // Simple, straightforward implementation mirroring the C logic but without
         // complex expansion/ARCH handling.
@@ -254,13 +254,13 @@ pub unsafe fn R_OpenSiteFile() -> *mut FILE {
                 return ptr::null_mut();
             }
             if let Ok(cpath) = CString::new(p) {
-                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
             }
         }
         if let Some(home) = R_HomeDir() {
             let path = format!("{}/etc/Rprofile.site", home);
             if let Ok(cpath) = CString::new(path) {
-                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+                return r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
             }
         }
         ptr::null_mut()

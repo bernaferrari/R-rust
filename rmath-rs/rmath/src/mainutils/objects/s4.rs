@@ -77,7 +77,9 @@ pub(crate) unsafe fn named_vec_elt(x: SEXP, name: &str) -> SEXP {
                 continue;
             }
             let current = CHAR(current);
-            if !current.is_null() && libc::strcmp(current, wanted.as_ptr()) == 0 {
+            if !current.is_null()
+                && std::ffi::CStr::from_ptr(current).to_bytes() == wanted.as_bytes()
+            {
                 return VECTOR_ELT(x, i as R_xlen_t);
             }
         }

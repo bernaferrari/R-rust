@@ -1,7 +1,7 @@
 # libc budgets for scripts/libc_ratchet.sh — counts only go DOWN.
-# Zeroed rows are hard requirements (de-libc stages A–D); nonzero rows are
-# the remaining translation-residue surface (string/mem over raw pointers,
-# the FILE*/connections layer) to be driven to zero by future stages.
+# Zeroed rows are hard requirements (de-libc stages A-D + the string-mem
+# and FILE* waves); the two nonzero rows are the single justified
+# libcurl FFI cluster (CURLOPT_WRITEDATA takes a real libc FILE*).
 # Comment-only lines are excluded by the gate.
 #
 # category<TAB>budget
@@ -10,5 +10,5 @@ heap	0
 env	0
 time_fns	0
 c_type_aliases	0
-string_mem	180
-stdio_FILE	104
+string_mem	1
+stdio_FILE	4

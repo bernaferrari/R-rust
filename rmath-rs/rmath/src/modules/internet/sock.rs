@@ -342,7 +342,10 @@ pub(crate) unsafe fn Sock_listen(
                 *cname.add(copy_len) = 0;
             } else {
                 // getnameinfo null-terminates; copy up to buflen-1
-                let nlen = libc::strlen(name_buf.as_ptr() as *const c_char);
+                let nlen = name_buf
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(name_buf.len());
                 let max_len = std::cmp::min(nlen, (buflen - 1) as usize);
                 core::ptr::copy_nonoverlapping(name_buf.as_ptr(), cname, max_len);
                 *cname.add(max_len) = 0;

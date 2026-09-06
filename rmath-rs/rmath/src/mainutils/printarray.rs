@@ -122,7 +122,7 @@ unsafe fn strwidth(s: *const c_char) -> c_int {
         if s.is_null() {
             return 0;
         }
-        let len = libc::strlen(s);
+        let len = std::ffi::CStr::from_ptr(s).to_bytes().len();
         if len == 0 {
             return 0;
         }

@@ -54,12 +54,10 @@ pub(crate) unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
                         let b_tag_name = PRINTNAME(b_tag);
                         let b_tag_name_c = translateChar(b_tag_name);
                         if !tag_name_c.is_null() && !b_tag_name_c.is_null() {
-                            let tlen = libc::strlen(tag_name_c);
-                            if tlen > 0 {
-                                let blen = libc::strlen(b_tag_name_c);
-                                if blen >= tlen
-                                    && libc::strncmp(b_tag_name_c, tag_name_c, tlen) == 0
-                                {
+                            let tag_bytes = std::ffi::CStr::from_ptr(tag_name_c).to_bytes();
+                            if !tag_bytes.is_empty() {
+                                let b_bytes = std::ffi::CStr::from_ptr(b_tag_name_c).to_bytes();
+                                if b_bytes.starts_with(tag_bytes) {
                                     if !s.is_null() {
                                         s = CAR(b_iter); // ambiguous match
                                         break;

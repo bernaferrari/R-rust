@@ -18,6 +18,7 @@ use crate::main::errors::Rf_error;
 use crate::main::relop::NA_STRING;
 use crate::main::util_main::asChar;
 use crate::mainutils::graphics_ffi::{DevDesc, GEDevDesc, pDevDesc, pGEDevDesc, pGEcontext};
+use crate::mainutils::rfile::{RFile, r_fclose, r_fopen, r_fputc, r_fwrite};
 use crate::sexp::accessors::{CAR, CDR, CHAR};
 use crate::sexp::ffi::{NA_LOGICAL, SEXP};
 use crate::sexp::globals::R_NilValue;
@@ -30,8 +31,8 @@ unsafe fn translateCharFP(s: SEXP) -> *const c_char {
     unsafe { CHAR(s) }
 }
 
-unsafe fn R_fopen(path: *const c_char, mode: *const c_char) -> *mut libc::FILE {
-    unsafe { libc::fopen(path, mode) }
+unsafe fn R_fopen(path: *const c_char, mode: *const c_char) -> *mut RFile {
+    unsafe { r_fopen(path, mode) }
 }
 
 unsafe fn R_CheckDeviceAvailable() {
@@ -80,15 +81,15 @@ fn in2dots(x: c_double) -> c_double {
 /* ==================== File writing helpers ==================== */
 
 /// Helper to write a formatted string to a FILE*.
-/// Uses Rust's format! and then writes via libc::fputs.
+/// Uses Rust's format! and then writes via the RFile layer.
 /// Returns the number of bytes written, or -1 on error.
 #[inline]
-unsafe fn fprintf(fp: *mut libc::FILE, fmt: std::fmt::Arguments<'_>) -> c_int {
+unsafe fn fprintf(fp: *mut RFile, fmt: std::fmt::Arguments<'_>) -> c_int {
     unsafe {
         let s = fmt.to_string();
         let bytes = s.as_bytes();
         let n = bytes.len();
-        if libc::fputs(s.as_ptr() as *const c_char, fp) == libc::EOF {
+        if r_fwrite(bytes.as_ptr() as *const c_void, 1, n, fp) != n {
             return -1;
         }
         n as c_int
@@ -97,8 +98,8 @@ unsafe fn fprintf(fp: *mut libc::FILE, fmt: std::fmt::Arguments<'_>) -> c_int {
 
 /// Helper to write a single char to a FILE*.
 #[inline]
-unsafe fn fputc_ch(c: u8, fp: *mut libc::FILE) -> c_int {
-    unsafe { libc::fputc(c as c_int, fp) }
+unsafe fn fputc_ch(c: u8, fp: *mut RFile) -> c_int {
+    unsafe { r_fputc(c as c_int, fp) }
 }
 
 /* ==================== Device-specific descriptor ==================== */
@@ -108,7 +109,7 @@ unsafe fn fputc_ch(c: u8, fp: *mut libc::FILE) -> c_int {
 /// In the C code this is heap-allocated and attached to DevDesc->deviceSpecific.
 #[repr(C)]
 struct picTeXDesc {
-    texfp: *mut libc::FILE,
+    texfp: *mut RFile,
     filename: [c_char; 128],
     pageno: c_int,
     landscape: c_int,
@@ -462,7 +463,7 @@ unsafe extern "C" fn PicTeX_Close(dd: pDevDesc) {
     unsafe {
         let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
         fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n"));
-        libc::fclose((*ptd).texfp);
+        r_fclose((*ptd).texfp);
         drop(Box::from_raw(ptd));
     }
 }

@@ -7,7 +7,6 @@
 //!
 //! Original file: r-source/src/main/objects.c (1,879 lines)
 
-pub(crate) use libc;
 pub(crate) use std::collections::{HashMap, HashSet};
 pub(crate) use std::ffi::{CStr, CString};
 pub(crate) use std::os::raw::{c_char, c_int};

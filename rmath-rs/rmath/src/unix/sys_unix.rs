@@ -15,9 +15,11 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
+use crate::mainutils::rfile::{RFile, r_fopen};
 use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar, Rf_mkString};
 use crate::sexp::ffi::SEXP;
+#[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
 
@@ -91,8 +93,8 @@ pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
 
         let home = if user_part.is_empty() {
             // ~ or ~/path: use HOME env var
-            match env::var("HOME") {
-                Ok(ref v) if !v.is_empty() => v.clone(),
+            match &env::var("HOME") {
+                Ok(v) if !v.is_empty() => v.clone(),
                 Ok(_) | Err(_) => {
                     // On Android (and other systems without a full passwd db),
                     // getpwuid may return NULL. Try common env fallbacks first.
@@ -104,7 +106,7 @@ pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
                         let _ = env::var("USER"); // suppress unused warning
                         return s; // can't expand
                     }
-                    #[cfg(not(target_os = "android"))]
+                    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
                     {
                         let pw = libc::getpwuid(libc::getuid());
                         if pw.is_null() {
@@ -113,17 +115,32 @@ pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
                         let pw_dir = CStr::from_ptr((*pw).pw_dir);
                         pw_dir.to_string_lossy().into_owned()
                     }
+                    // wasm32: no passwd database in the sandbox; leave the
+                    // path unexpanded rather than guessing.
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        return s; // can't expand
+                    }
                 }
             }
         } else {
             // ~user: look up in passwd
-            let user_cstr = CString::new(user_part).unwrap_or_default();
-            let pw = libc::getpwnam(user_cstr.as_ptr());
-            if pw.is_null() {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let user_cstr = CString::new(user_part).unwrap_or_default();
+                let pw = libc::getpwnam(user_cstr.as_ptr());
+                if pw.is_null() {
+                    return s; // user not found
+                }
+                let pw_dir = CStr::from_ptr((*pw).pw_dir);
+                pw_dir.to_string_lossy().into_owned()
+            }
+            // wasm32: no passwd database in the sandbox; leave the path
+            // unexpanded rather than guessing.
+            #[cfg(target_arch = "wasm32")]
+            {
                 return s; // user not found
             }
-            let pw_dir = CStr::from_ptr((*pw).pw_dir);
-            pw_dir.to_string_lossy().into_owned()
         };
 
         // Build expanded path
@@ -173,11 +190,21 @@ unsafe fn currentTime() -> c_double {
             libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
             ts.tv_sec as c_double + ts.tv_nsec as c_double * 1e-9
         }
-        #[cfg(not(target_os = "android"))]
+        #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
         {
             let mut tv: libc::timeval = std::mem::zeroed();
             libc::gettimeofday(&mut tv, ptr::null_mut());
             tv.tv_sec as c_double + tv.tv_usec as c_double * 1e-6
+        }
+        // wasm32: no libc clocks; the portable wall clock drives elapsed
+        // time (the only field the sandbox reports).
+        #[cfg(target_arch = "wasm32")]
+        {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            match SystemTime::now().duration_since(UNIX_EPOCH) {
+                Ok(d) => d.as_secs() as c_double + f64::from(d.subsec_nanos()) * 1e-9,
+                Err(_) => 0.0,
+            }
         }
     }
 }
@@ -185,7 +212,12 @@ unsafe fn currentTime() -> c_double {
 /// Record the start time for proc.time().
 pub unsafe fn R_setStartTime() {
     unsafe {
+        #[cfg(not(target_arch = "wasm32"))]
         let clock_ticks = libc::sysconf(libc::_SC_CLK_TCK) as c_double;
+        // wasm32: no sysconf; keep the default 100 ticks/second assumption
+        // recorded in SysUnixRuntimeState::default().
+        #[cfg(target_arch = "wasm32")]
+        let clock_ticks: c_double = 100.0;
         let start_time = currentTime();
         with_sys_unix_state(|state| {
             state.clk_tck = clock_ticks;
@@ -201,19 +233,31 @@ pub unsafe fn R_getProcTime(data: *mut c_double) {
         let et = currentTime() - start_time;
         *data.add(2) = 1e-3 * (1000.0 * et).round();
 
-        let mut self_usage: libc::rusage = std::mem::zeroed();
-        let mut children_usage: libc::rusage = std::mem::zeroed();
-        libc::getrusage(libc::RUSAGE_SELF, &mut self_usage);
-        libc::getrusage(libc::RUSAGE_CHILDREN, &mut children_usage);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut self_usage: libc::rusage = std::mem::zeroed();
+            let mut children_usage: libc::rusage = std::mem::zeroed();
+            libc::getrusage(libc::RUSAGE_SELF, &mut self_usage);
+            libc::getrusage(libc::RUSAGE_CHILDREN, &mut children_usage);
 
-        *data.add(0) = self_usage.ru_utime.tv_sec as c_double
-            + 1e-3 * (self_usage.ru_utime.tv_usec / 1000) as c_double;
-        *data.add(1) = self_usage.ru_stime.tv_sec as c_double
-            + 1e-3 * (self_usage.ru_stime.tv_usec / 1000) as c_double;
-        *data.add(3) = children_usage.ru_utime.tv_sec as c_double
-            + 1e-3 * (children_usage.ru_utime.tv_usec / 1000) as c_double;
-        *data.add(4) = children_usage.ru_stime.tv_sec as c_double
-            + 1e-3 * (children_usage.ru_stime.tv_usec / 1000) as c_double;
+            *data.add(0) = self_usage.ru_utime.tv_sec as c_double
+                + 1e-3 * (self_usage.ru_utime.tv_usec / 1000) as c_double;
+            *data.add(1) = self_usage.ru_stime.tv_sec as c_double
+                + 1e-3 * (self_usage.ru_stime.tv_usec / 1000) as c_double;
+            *data.add(3) = children_usage.ru_utime.tv_sec as c_double
+                + 1e-3 * (children_usage.ru_utime.tv_usec / 1000) as c_double;
+            *data.add(4) = children_usage.ru_stime.tv_sec as c_double
+                + 1e-3 * (children_usage.ru_stime.tv_usec / 1000) as c_double;
+        }
+        // wasm32: no resource accounting in the sandbox; user/system CPU
+        // times (own and children) report as 0.
+        #[cfg(target_arch = "wasm32")]
+        {
+            *data.add(0) = 0.0;
+            *data.add(1) = 0.0;
+            *data.add(3) = 0.0;
+            *data.add(4) = 0.0;
+        }
     }
 }
 
@@ -232,25 +276,60 @@ pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
         let ans = Rf_allocVector(STRSXP_VAL, 8);
         let ansnames = Rf_allocVector(STRSXP_VAL, 8);
 
-        let mut utsname: libc::utsname = std::mem::zeroed();
-        if libc::uname(&mut utsname) == -1 {
-            return R_NilValue();
-        }
-
-        let sysname = CStr::from_ptr(utsname.sysname.as_ptr()).to_string_lossy();
-        let release = CStr::from_ptr(utsname.release.as_ptr()).to_string_lossy();
-        let version = CStr::from_ptr(utsname.version.as_ptr()).to_string_lossy();
-        let nodename = CStr::from_ptr(utsname.nodename.as_ptr()).to_string_lossy();
-        let machine = CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy();
+        #[cfg(not(target_arch = "wasm32"))]
+        let (sysname, release, version, nodename, machine) = {
+            let mut utsname: libc::utsname = std::mem::zeroed();
+            if libc::uname(&mut utsname) == -1 {
+                return R_NilValue();
+            }
+            (
+                CStr::from_ptr(utsname.sysname.as_ptr())
+                    .to_string_lossy()
+                    .into_owned(),
+                CStr::from_ptr(utsname.release.as_ptr())
+                    .to_string_lossy()
+                    .into_owned(),
+                CStr::from_ptr(utsname.version.as_ptr())
+                    .to_string_lossy()
+                    .into_owned(),
+                CStr::from_ptr(utsname.nodename.as_ptr())
+                    .to_string_lossy()
+                    .into_owned(),
+                CStr::from_ptr(utsname.machine.as_ptr())
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        };
+        // wasm32: no uname(2); report the same neutral identity the
+        // non-unix Sys.info() fallback uses (runtime/sys.rs).
+        #[cfg(target_arch = "wasm32")]
+        let (sysname, release, version, nodename, machine): (
+            String,
+            String,
+            String,
+            String,
+            String,
+        ) = (
+            std::env::consts::OS.to_string(),
+            String::new(),
+            String::new(),
+            env::var("HOSTNAME").unwrap_or_default(),
+            std::env::consts::ARCH.to_string(),
+        );
 
         // Get login name
         let login = c"unknown";
+        #[cfg(not(target_arch = "wasm32"))]
         let login_ptr = libc::getlogin();
+        #[cfg(not(target_arch = "wasm32"))]
         let login_cstr = if !login_ptr.is_null() {
             CStr::from_ptr(login_ptr)
         } else {
             login
         };
+        // wasm32: no utmp in the sandbox.
+        #[cfg(target_arch = "wasm32")]
+        let login_cstr: &CStr = login;
 
         // Get user name: try env vars first (needed on Android where getpwuid returns NULL)
         let user_env = env::var("USER")
@@ -262,17 +341,31 @@ pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
             None
         };
         let user_cstr = {
-            let pw = libc::getpwuid(libc::getuid());
-            if !pw.is_null() {
-                CStr::from_ptr((*pw).pw_name)
-            } else if let Some(ref c) = user_env_cstr {
-                c.as_c_str()
-            } else {
-                login_cstr
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let pw = libc::getpwuid(libc::getuid());
+                if !pw.is_null() {
+                    CStr::from_ptr((*pw).pw_name)
+                } else if let Some(c) = &user_env_cstr {
+                    c.as_c_str()
+                } else {
+                    login_cstr
+                }
+            }
+            // wasm32: no passwd database; USER/LOGNAME env if present,
+            // else the neutral "unknown" login.
+            #[cfg(target_arch = "wasm32")]
+            {
+                if let Some(c) = &user_env_cstr {
+                    c.as_c_str()
+                } else {
+                    login_cstr
+                }
             }
         };
 
         // Get effective user name
+        #[cfg(not(target_arch = "wasm32"))]
         let euser_cstr = {
             let pw = libc::getpwuid(libc::geteuid());
             if !pw.is_null() {
@@ -281,6 +374,10 @@ pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
                 login_cstr
             }
         };
+        // wasm32: no passwd database; the effective user is the same
+        // neutral "unknown" login.
+        #[cfg(target_arch = "wasm32")]
+        let euser_cstr: &CStr = login_cstr;
 
         SET_STRING_ELT(ans, 0, Rf_mkChar(sysname.as_ptr() as *const c_char));
         SET_STRING_ELT(ans, 1, Rf_mkChar(release.as_ptr() as *const c_char));
@@ -369,7 +466,7 @@ pub fn fpu_setup(start: c_int) {
 
 /// Open the R initialization file (.Rprofile).
 /// Checks R_PROFILE_USER env var, then ./.Rprofile, then ~/.Rprofile.
-pub unsafe fn R_OpenInitFile() -> *mut libc::FILE {
+pub unsafe fn R_OpenInitFile() -> *mut RFile {
     unsafe {
         let load_init_file =
             with_required_current_instance(|instance| instance.startup_state.load_init_file != 0);
@@ -385,7 +482,7 @@ pub unsafe fn R_OpenInitFile() -> *mut libc::FILE {
             let expanded = R_ExpandFileName(CString::new(profile).unwrap_or_default().as_ptr());
             let path = CStr::from_ptr(expanded);
             let mode = b"r\0".as_ptr() as *const c_char;
-            let fp = libc::fopen(path.as_ptr(), mode);
+            let fp = r_fopen(path.as_ptr(), mode);
             if !fp.is_null() {
                 return fp;
             }
@@ -395,7 +492,7 @@ pub unsafe fn R_OpenInitFile() -> *mut libc::FILE {
         // Try ./.Rprofile
         let dot_path = b".Rprofile\0".as_ptr() as *const c_char;
         let mode = b"r\0".as_ptr() as *const c_char;
-        let fp = libc::fopen(dot_path, mode);
+        let fp = r_fopen(dot_path, mode);
         if !fp.is_null() {
             return fp;
         }
@@ -403,7 +500,7 @@ pub unsafe fn R_OpenInitFile() -> *mut libc::FILE {
         // Try ~/.Rprofile
         if let Ok(home) = env::var("HOME") {
             let full_path = format!("{}/.Rprofile\0", home);
-            let fp = libc::fopen(full_path.as_ptr() as *const c_char, mode);
+            let fp = r_fopen(full_path.as_ptr() as *const c_char, mode);
             if !fp.is_null() {
                 return fp;
             }

@@ -1936,10 +1936,8 @@ fn wasm_m3_oracle_shape() {
 #[test]
 fn real_package_corpus() {
     // Headless corpus runs declare themselves color-less (CI convention):
-    // terminal-detection packages short-circuit via the documented NO_COLOR
     // contract instead of probing tty/RStudio internals.
     // SAFETY: test-process setup before any threads exist.
-    unsafe { std::env::set_var("NO_COLOR", "1") };
     let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED")
         .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
     let app =

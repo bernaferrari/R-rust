@@ -230,20 +230,25 @@ pub unsafe fn OneIndex(
                         if tmp.is_null() || *tmp == 0 {
                             continue;
                         }
-                        if libc::strcmp(tmp, ss) == 0 {
+                        if std::ffi::CStr::from_ptr(tmp).to_bytes()
+                            == std::ffi::CStr::from_ptr(ss).to_bytes()
+                        {
                             _indx = i;
                             break;
                         }
                     }
                     // Try partial match if partial > 0
                     if partial != 0 && _indx == -1 && !ss.is_null() {
-                        let slen = libc::strlen(ss);
+                        let ss_bytes = std::ffi::CStr::from_ptr(ss).to_bytes();
                         for i in 0..nx {
                             let tmp = CHAR(STRING_ELT(names, i));
                             if tmp.is_null() || *tmp == 0 {
                                 continue;
                             }
-                            if libc::strncmp(tmp, ss, slen) == 0 {
+                            if std::ffi::CStr::from_ptr(tmp)
+                                .to_bytes()
+                                .starts_with(ss_bytes)
+                            {
                                 if _indx == -1 {
                                     _indx = i;
                                 } else {
@@ -276,7 +281,9 @@ pub unsafe fn OneIndex(
                         if tmp.is_null() {
                             continue;
                         }
-                        if libc::strcmp(tmp, sname) == 0 {
+                        if std::ffi::CStr::from_ptr(tmp).to_bytes()
+                            == std::ffi::CStr::from_ptr(sname).to_bytes()
+                        {
                             _indx = i;
                             break;
                         }
@@ -394,14 +401,16 @@ pub unsafe fn get1index(
                         if tmp.is_null() {
                             continue;
                         }
-                        if libc::strcmp(tmp, ss) == 0 {
+                        if std::ffi::CStr::from_ptr(tmp).to_bytes()
+                            == std::ffi::CStr::from_ptr(ss).to_bytes()
+                        {
                             indx = i;
                             break;
                         }
                     }
                     // Try partial match if pok > 0
                     if _pok != 0 && indx == -1 {
-                        let slen = libc::strlen(ss);
+                        let ss_bytes = std::ffi::CStr::from_ptr(ss).to_bytes();
                         for i in 0..names_len {
                             let name_elt = STRING_ELT(names, i);
                             if name_elt.is_null() || name_elt == R_NilValue() {
@@ -411,7 +420,10 @@ pub unsafe fn get1index(
                             if tmp.is_null() {
                                 continue;
                             }
-                            if libc::strncmp(tmp, ss, slen) == 0 {
+                            if std::ffi::CStr::from_ptr(tmp)
+                                .to_bytes()
+                                .starts_with(ss_bytes)
+                            {
                                 if indx == -1 {
                                     indx = i;
                                 } else {
@@ -439,7 +451,9 @@ pub unsafe fn get1index(
                     if tmp.is_null() {
                         continue;
                     }
-                    if libc::strcmp(tmp, sname) == 0 {
+                    if std::ffi::CStr::from_ptr(tmp).to_bytes()
+                        == std::ffi::CStr::from_ptr(sname).to_bytes()
+                    {
                         indx = i;
                         break;
                     }

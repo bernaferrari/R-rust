@@ -13,9 +13,8 @@
  *  (at your option) any later version.
  */
 
+use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
 use core::ffi::{c_int, c_void};
-use libc::{FILE, size_t};
-use libc::{ferror, fread};
 
 const BUF_SIZE: usize = 4096;
 
@@ -120,7 +119,7 @@ fn sha256_process_block(buffer: &[u8], ctx: &mut Sha256Ctx) {
         let mut t: usize = 0;
         while t < 16 {
             let off = t * 4;
-            w[t] = u32::from_le_bytes([block[off], block[off + 1], block[off + 2], block[off + 3]]);
+            w[t] = u32::from_be_bytes([block[off], block[off + 1], block[off + 2], block[off + 3]]);
             t += 1;
         }
         t = 16;
@@ -211,8 +210,8 @@ fn sha256_finish_ctx(ctx: &mut Sha256Ctx, resbuf: &mut [u8; 32]) {
     let len_off = bytes as usize + pad;
     let bit_len_low = ctx.total[0] << 3;
     let bit_len_high = (ctx.total[1] << 3) | (ctx.total[0] >> 29);
-    ctx.buffer[len_off..len_off + 4].copy_from_slice(&bit_len_high.to_le_bytes());
-    ctx.buffer[len_off + 4..len_off + 8].copy_from_slice(&bit_len_low.to_le_bytes());
+    ctx.buffer[len_off..len_off + 4].copy_from_slice(&bit_len_high.to_be_bytes());
+    ctx.buffer[len_off + 4..len_off + 8].copy_from_slice(&bit_len_low.to_be_bytes());
 
     // Process last bytes
     let block = ctx.buffer;
@@ -220,7 +219,7 @@ fn sha256_finish_ctx(ctx: &mut Sha256Ctx, resbuf: &mut [u8; 32]) {
 
     // Put result from CTX in first 32 bytes following RESBUF
     for (i, word) in ctx.H.iter().enumerate() {
-        resbuf[i * 4..i * 4 + 4].copy_from_slice(&word.to_le_bytes());
+        resbuf[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
     }
 }
 
@@ -280,7 +279,7 @@ pub unsafe fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
 }
 
 /// Feed arbitrary bytes into the SHA256 computation.
-pub unsafe fn Rsha256_process_bytes(buffer: *const c_void, len: size_t, ctx: *mut Sha256Ctx) {
+pub unsafe fn Rsha256_process_bytes(buffer: *const c_void, len: usize, ctx: *mut Sha256Ctx) {
     let input = if len == 0 {
         &[]
     } else {
@@ -301,7 +300,7 @@ pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *m
 
 /// Compute SHA256 message digest for bytes read from STREAM.
 /// Returns 0 on success, 1 on error.
-pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
+pub unsafe fn Rsha256_stream(stream: *mut RFile, resblock: *mut c_void) -> c_int {
     let mut ctx = Sha256Ctx {
         H: [0; 8],
         total: [0; 2],
@@ -314,11 +313,11 @@ pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int 
     sha256_init_ctx(&mut ctx);
 
     loop {
-        let mut n: size_t = 0;
+        let mut n: usize = 0;
         // Read next block
         while sum < BUF_SIZE {
             n = unsafe {
-                fread(
+                r_fread(
                     buffer[sum..].as_mut_ptr() as *mut c_void,
                     1,
                     BUF_SIZE - sum,
@@ -332,7 +331,7 @@ pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int 
         }
 
         if n == 0 {
-            if unsafe { ferror(stream) } != 0 {
+            if unsafe { r_ferror(stream) } != 0 {
                 return 1;
             }
             if sum < BUF_SIZE {
@@ -353,4 +352,39 @@ pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int 
     let resbuf = unsafe { &mut *(resblock as *mut [u8; 32]) };
     sha256_finish_ctx(&mut ctx, resbuf);
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mainutils::rfile::r_fopen;
+
+    /// Rsha256_stream over an RFile must produce the FIPS 180-2 digest of
+    /// "abc" (guards the libc-free read path feeding the hash).
+    #[test]
+    fn sha256_stream_golden_digest_over_rfile() {
+        let path = std::env::temp_dir().join(format!(
+            "rport-sha256-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"abc").unwrap();
+        let cpath = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
+        unsafe {
+            let f = r_fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const core::ffi::c_char);
+            assert!(!f.is_null());
+            let mut digest = [0u8; 32];
+            assert_eq!(Rsha256_stream(f, digest.as_mut_ptr() as *mut c_void), 0);
+            crate::mainutils::rfile::r_fclose(f);
+            assert_eq!(
+                digest
+                    .iter()
+                    .fold(String::new(), |acc, b| acc + &format!("{b:02x}")),
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
+    }
 }

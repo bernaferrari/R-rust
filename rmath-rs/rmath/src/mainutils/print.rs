@@ -77,7 +77,13 @@ fn current_print_data_clone() -> R_PrintData {
 }
 
 unsafe fn tagbuf_strlen() -> usize {
-    unsafe { with_print_runtime(|state| libc::strlen(state.tagbuf.as_ptr() as *const c_char)) }
+    unsafe {
+        with_print_runtime(|state| {
+            CStr::from_ptr(state.tagbuf.as_ptr() as *const c_char)
+                .to_bytes()
+                .len()
+        })
+    }
 }
 
 unsafe fn tagbuf_set(idx: usize, val: c_char) {
@@ -529,7 +535,9 @@ unsafe fn advancePrintArgs(
 unsafe fn save_tagbuf(save: &mut [u8; TAGBUFLEN0 * 2]) {
     unsafe {
         with_print_runtime(|state| {
-            let len = libc::strlen(state.tagbuf.as_ptr() as *const c_char);
+            let len = CStr::from_ptr(state.tagbuf.as_ptr() as *const c_char)
+                .to_bytes()
+                .len();
             if len < save.len() {
                 ptr::copy_nonoverlapping(state.tagbuf.as_ptr(), save.as_mut_ptr(), len + 1);
             } else {
@@ -542,7 +550,9 @@ unsafe fn save_tagbuf(save: &mut [u8; TAGBUFLEN0 * 2]) {
 unsafe fn restore_tagbuf(save: &[u8; TAGBUFLEN0 * 2]) {
     unsafe {
         with_print_runtime(|state| {
-            let len = libc::strlen(save.as_ptr() as *const c_char);
+            let len = CStr::from_ptr(save.as_ptr() as *const c_char)
+                .to_bytes()
+                .len();
             if len < TAGBUFLEN0 * 2 {
                 ptr::copy_nonoverlapping(save.as_ptr(), state.tagbuf.as_mut_ptr(), len + 1);
             }
@@ -989,7 +999,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                         if !name_elt.is_null() && name_elt != R_NilValue() {
                             let name_chars = CHAR(name_elt);
                             if !name_chars.is_null() && *name_chars != 0 {
-                                let name_len = libc::strlen(name_chars);
+                                let name_len = CStr::from_ptr(name_chars).to_bytes().len();
                                 if taglen + name_len > TAGBUFLEN {
                                     if taglen <= TAGBUFLEN {
                                         write_tag(ptag, sz, "$...");
@@ -1194,7 +1204,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                 if tag != R_NilValue() && isSymbol(tag) != 0 {
                     let pname = PRINTNAME(tag);
                     let name_chars = CHAR(pname);
-                    let name_len = libc::strlen(name_chars);
+                    let name_len = CStr::from_ptr(name_chars).to_bytes().len();
                     if taglen + name_len > TAGBUFLEN {
                         if taglen <= TAGBUFLEN {
                             write_tag(ptag, sz, "$...");

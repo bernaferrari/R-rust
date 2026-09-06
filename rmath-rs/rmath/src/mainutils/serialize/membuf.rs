@@ -1,4 +1,5 @@
 use super::*;
+use crate::mainutils::rfile::{RFile, r_fflush, r_fgetc, r_fputc, r_fread, r_fwrite};
 
 // ---------------------------------------------------------------------------
 // Memory buffer operations
@@ -248,8 +249,8 @@ pub unsafe fn InitBConOutPStream(
 pub unsafe fn flush_bcon_buffer(bbs: *mut c_void) {
     unsafe {
         if !bbs.is_null() {
-            let fp = bbs as *mut libc::FILE;
-            libc::fflush(fp);
+            let fp = bbs as *mut RFile;
+            r_fflush(fp);
         }
     }
 }
@@ -263,11 +264,11 @@ pub unsafe extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
         if stream.is_null() {
             return;
         }
-        let fp = (*stream).data as *mut libc::FILE;
+        let fp = (*stream).data as *mut RFile;
         if fp.is_null() {
             return;
         }
-        libc::fputc(c, fp);
+        r_fputc(c, fp);
     }
 }
 
@@ -276,11 +277,11 @@ pub unsafe extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
         }
-        let fp = (*stream).data as *mut libc::FILE;
+        let fp = (*stream).data as *mut RFile;
         if fp.is_null() {
             error("write failed");
         }
-        let wrote = libc::fwrite(buf, 1, length as usize, fp);
+        let wrote = r_fwrite(buf, 1, length as usize, fp);
         if wrote != length as usize {
             error("write failed");
         }
@@ -292,11 +293,11 @@ pub unsafe extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
         if stream.is_null() {
             return -1;
         }
-        let fp = (*stream).data as *mut libc::FILE;
+        let fp = (*stream).data as *mut RFile;
         if fp.is_null() {
             return -1;
         }
-        libc::fgetc(fp)
+        r_fgetc(fp)
     }
 }
 
@@ -305,11 +306,11 @@ pub unsafe extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, le
         if stream.is_null() || buf.is_null() || length <= 0 {
             return;
         }
-        let fp = (*stream).data as *mut libc::FILE;
+        let fp = (*stream).data as *mut RFile;
         if fp.is_null() {
             error("read error");
         }
-        let read_n = libc::fread(buf, 1, length as usize, fp);
+        let read_n = r_fread(buf, 1, length as usize, fp);
         if read_n != length as usize {
             error("read error");
         }
@@ -333,10 +334,10 @@ pub unsafe fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) 
         if con.is_null() || buf.is_null() || n == 0 {
             return 0;
         }
-        let fp = con as *mut libc::FILE;
+        let fp = con as *mut RFile;
         if fp.is_null() {
             return 0;
         }
-        libc::fwrite(buf, 1, n, fp)
+        r_fwrite(buf, 1, n, fp)
     }
 }

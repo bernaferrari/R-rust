@@ -278,7 +278,7 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
         if a.is_null() || b.is_null() {
             return false;
         }
-        libc::strcmp(a, b) == 0
+        std::ffi::CStr::from_ptr(a).to_bytes() == std::ffi::CStr::from_ptr(b).to_bytes()
     }
 }
 
@@ -432,6 +432,12 @@ unsafe fn handle_cleanup(data: *mut c_void) {
 // ============================================================
 
 /// download_cleanup_info - holds state for multi-URL download cleanup
+///
+/// `out` holds real libc `FILE*` handles: they are handed to the
+/// system libcurl via `CURLOPT_WRITEDATA` (which does its own `fwrite`
+/// internally), so they MUST stay libc `FILE*` and be opened/closed
+/// with `libc::fopen`/`libc::fclose`. This is the engine's only
+/// intentional stdio FFI boundary.
 struct download_cleanup_info {
     headers: *mut curl_slist,
     mhnd: *mut CURLM,
@@ -472,7 +478,9 @@ unsafe fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
                 // Delete file if status != 200 and no data downloaded
                 if status != 200 && dl == 0.0 {
                     let fname = translateChar(STRING_ELT(c_ref.sfile, i as R_xlen_t));
-                    libc::unlink(fname);
+                    let _ = std::fs::remove_file(
+                        std::ffi::CStr::from_ptr(fname).to_string_lossy().as_ref(),
+                    );
                 }
             }
 
@@ -840,6 +848,7 @@ unsafe fn download_add_url(
         let file = translateChar(STRING_ELT(c_ref.sfile, i as R_xlen_t));
         let expanded = R_ExpandFileName(file);
         let out_ptr = c_ref.out.add(i as usize);
+        // Real libc FILE*: passed to libcurl below via CURLOPT_WRITEDATA.
         *out_ptr = libc::fopen(expanded, mode);
         if out_ptr.is_null() || (*out_ptr).is_null() {
             if mustwork != 0 {

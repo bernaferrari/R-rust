@@ -215,7 +215,7 @@ pub(crate) unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
         if ca.is_null() || cb.is_null() {
             return FALSE;
         }
-        if libc::strcmp(ca, cb) == 0 {
+        if std::ffi::CStr::from_ptr(ca).to_bytes() == std::ffi::CStr::from_ptr(cb).to_bytes() {
             TRUE
         } else {
             FALSE
@@ -240,7 +240,10 @@ pub(crate) unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int
             let elt = STRING_ELT(klass, i as R_xlen_t);
             if !elt.is_null() {
                 let cs = CHAR(elt);
-                if !cs.is_null() && libc::strcmp(cs, what) == 0 {
+                if !cs.is_null()
+                    && std::ffi::CStr::from_ptr(cs).to_bytes()
+                        == std::ffi::CStr::from_ptr(what).to_bytes()
+                {
                     return i;
                 }
             }

@@ -65,7 +65,10 @@ pub unsafe fn inherits2(x: SEXP, what: *const c_char) -> c_int {
             let nclass = length(klass);
             for i in 0..nclass {
                 let cs = CHAR(STRING_ELT(klass, i as R_xlen_t));
-                if !cs.is_null() && libc::strcmp(cs, what) == 0 {
+                if !cs.is_null()
+                    && std::ffi::CStr::from_ptr(cs).to_bytes()
+                        == std::ffi::CStr::from_ptr(what).to_bytes()
+                {
                     return TRUE;
                 }
             }
@@ -391,7 +394,9 @@ pub unsafe fn R_check_class_and_super(x: SEXP, valid: *const *const c_char, _rho
                 while !(*valid.offset(ans as isize)).is_null()
                     && *(*valid.offset(ans as isize)) != 0
                 {
-                    if libc::strcmp(class_cstr, *valid.offset(ans as isize)) == 0 {
+                    if std::ffi::CStr::from_ptr(class_cstr).to_bytes()
+                        == std::ffi::CStr::from_ptr(*valid.offset(ans as isize)).to_bytes()
+                    {
                         return ans;
                     }
                     ans += 1;

@@ -21,11 +21,13 @@
 
 use std::os::raw::{c_double, c_int};
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::modules::internet::internet::in_do_download;
 use crate::sexp::accessors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub unsafe fn download(args: SEXP) -> SEXP {
     unsafe { in_do_download(CDR(args)) }
 }

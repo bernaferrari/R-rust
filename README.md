@@ -290,6 +290,17 @@ The reserved `..rport_handles..` environment is filtered out of
 `global_binding_names()`; handles survive `gc()` and arbitrary later
 evaluations. Tests: `crates/r-embed/tests/value_handle.rs`.
 
+**libc ratchet**: `scripts/libc_ratchet.sh` enforces the zero-libc
+engine budget (`scripts/libc-budget.txt`): printf/heap/env/time/type
+aliases are hard-zero; string-mem and stdio sit at 1 and 4 (one
+justified libcurl FFI cluster). **Boundary stress**:
+`crates/r-embed/tests/boundary_stress.rs` deterministically proves the
+embedding invariant (arbitrary scripts never escape as Rust panics) —
+it found and fixed three real escaping-panic bugs (top-level
+`break`/`next`, top-level `return(v)`, empty-script rooting).
+`fuzz/` holds the coverage-guided libFuzzer harnesses for the same
+invariant (see `fuzz/README.md` for the sanitizer-budget runbook).
+
 ## License and provenance
 
 GPL-2.0-or-later, matching upstream R. The full text is in

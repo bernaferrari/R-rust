@@ -298,7 +298,11 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
         if a.is_null() || b.is_null() {
             return FALSE;
         }
-        if libc::strcmp(a, b) == 0 { TRUE } else { FALSE }
+        if std::ffi::CStr::from_ptr(a).to_bytes() == std::ffi::CStr::from_ptr(b).to_bytes() {
+            TRUE
+        } else {
+            FALSE
+        }
     }
 }
 
@@ -382,7 +386,10 @@ unsafe fn stringPositionTr(klass: SEXP, what: *const c_char) -> c_int {
             let elt = STRING_ELT(klass, i as R_xlen_t);
             if !elt.is_null() {
                 let cs = CHAR(elt);
-                if !cs.is_null() && libc::strcmp(cs, what) == 0 {
+                if !cs.is_null()
+                    && std::ffi::CStr::from_ptr(cs).to_bytes()
+                        == std::ffi::CStr::from_ptr(what).to_bytes()
+                {
                     return i;
                 }
             }
@@ -718,7 +725,11 @@ pub unsafe fn DispatchGroup(
             if !pname.is_null() {
                 let cs = CHAR(pname);
                 if !cs.is_null() {
-                    let dot = libc::strchr(cs, '.' as c_int);
+                    let cs_bytes = std::ffi::CStr::from_ptr(cs).to_bytes();
+                    let dot = match cs_bytes.iter().position(|&c| c == b'.') {
+                        Some(idx) => cs.add(idx),
+                        None => ptr::null(),
+                    };
                     if !dot.is_null() {
                         let after_dot = dot.add(1);
                         if streql(after_dot, b"default\x00".as_ptr() as *const c_char) != FALSE {

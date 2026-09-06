@@ -578,7 +578,14 @@ pub unsafe fn scmp(x: *mut c_void, y: *mut c_void, nalast: bool) -> c_int {
         if cx.is_null() || cy.is_null() {
             return 0;
         }
-        libc::strcmp(cx, cy)
+        match std::ffi::CStr::from_ptr(cx)
+            .to_bytes()
+            .cmp(std::ffi::CStr::from_ptr(cy).to_bytes())
+        {
+            std::cmp::Ordering::Less => -1,
+            std::cmp::Ordering::Equal => 0,
+            std::cmp::Ordering::Greater => 1,
+        }
     }
 }
 

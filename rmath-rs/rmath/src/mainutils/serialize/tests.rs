@@ -4,6 +4,7 @@ use super::*;
 // Tests
 // ---------------------------------------------------------------------------
 
+use crate::mainutils::rfile::{SEEK_END, r_fclose, r_fflush, r_fseek, r_ftell, r_rewind};
 use crate::sexp::envir::R_NewHashedEnv;
 use crate::sexp::envir::defineVar;
 use crate::sexp::globals::{
@@ -358,11 +359,29 @@ fn test_writebc_readbc_round_trip() {
     }
 }
 
+/// Open a fresh read/write temp file (replaces libc tmpfile in tests):
+/// returns the path (for cleanup) and an RFile opened in "wb+" mode.
+unsafe fn tmp_rfile() -> (std::path::PathBuf, *mut crate::mainutils::rfile::RFile) {
+    let path = std::env::temp_dir().join(format!(
+        "rport-serialize-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
+    let fp = unsafe {
+        crate::mainutils::rfile::r_fopen(c_path.as_ptr(), b"wb+\0".as_ptr() as *const c_char)
+    };
+    (path, fp)
+}
+
 #[test]
 fn test_conn_stream_file_callbacks() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        let fp = libc::tmpfile();
+        let (path, fp) = tmp_rfile();
         assert!(!fp.is_null());
 
         let mut out_stream: R_outpstream_st = mem::zeroed();
@@ -381,8 +400,8 @@ fn test_conn_stream_file_callbacks() {
             bytes.as_ptr() as *const c_void,
             bytes.len() as c_int,
         );
-        libc::fflush(fp);
-        libc::rewind(fp);
+        r_fflush(fp);
+        r_rewind(fp);
 
         let mut in_stream: R_inpstream_st = mem::zeroed();
         R_InitConnInPStream(
@@ -401,7 +420,8 @@ fn test_conn_stream_file_callbacks() {
         );
         assert_eq!(got, bytes);
 
-        libc::fclose(fp);
+        r_fclose(fp);
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -409,7 +429,7 @@ fn test_conn_stream_file_callbacks() {
 fn test_r_write_connection_file_round_trip() {
     let _session = crate::sexp::session::RSession::new();
     unsafe {
-        let fp = libc::tmpfile();
+        let (path, fp) = tmp_rfile();
         assert!(!fp.is_null());
         let bytes = b"hello";
         let wrote = R_WriteConnection(
@@ -418,11 +438,12 @@ fn test_r_write_connection_file_round_trip() {
             bytes.len(),
         );
         assert_eq!(wrote, bytes.len());
-        libc::fflush(fp);
-        libc::fseek(fp, 0, libc::SEEK_END);
-        let size = libc::ftell(fp);
-        assert_eq!(size, bytes.len() as ::core::ffi::c_long);
-        libc::fclose(fp);
+        r_fflush(fp);
+        r_fseek(fp, 0, SEEK_END);
+        let size = r_ftell(fp);
+        assert_eq!(size, bytes.len() as i64);
+        r_fclose(fp);
+        let _ = std::fs::remove_file(path);
     }
 }
 

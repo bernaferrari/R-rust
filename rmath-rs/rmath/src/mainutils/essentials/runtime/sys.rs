@@ -36,6 +36,47 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
+// Locale plumbing (libc setlocale on native; fixed values on wasm32)
+// ---------------------------------------------------------------------------
+
+/// Locale category codes forwarded to libc `setlocale(3)` on native targets.
+/// The wasm32 sandbox has no locale subsystem, so the glibc numbering is
+/// used there as a stable private encoding (the only consumer is the
+/// setlocale stub below, which ignores it).
+#[cfg(not(target_arch = "wasm32"))]
+use libc::{LC_ALL, LC_COLLATE, LC_CTYPE, LC_MESSAGES, LC_MONETARY, LC_NUMERIC, LC_TIME};
+
+#[cfg(target_arch = "wasm32")]
+const LC_CTYPE: c_int = 0;
+#[cfg(target_arch = "wasm32")]
+const LC_NUMERIC: c_int = 1;
+#[cfg(target_arch = "wasm32")]
+const LC_TIME: c_int = 2;
+#[cfg(target_arch = "wasm32")]
+const LC_COLLATE: c_int = 3;
+#[cfg(target_arch = "wasm32")]
+const LC_MONETARY: c_int = 4;
+#[cfg(target_arch = "wasm32")]
+const LC_MESSAGES: c_int = 5;
+#[cfg(target_arch = "wasm32")]
+const LC_ALL: c_int = 6;
+
+/// Query or set the process locale via libc `setlocale(3)`.
+#[cfg(not(target_arch = "wasm32"))]
+#[inline]
+unsafe fn r_setlocale(category: c_int, locale: *const c_char) -> *mut c_char {
+    unsafe { libc::setlocale(category, locale) }
+}
+
+/// wasm32 stub: every query resolves to the "C" locale and setting any
+/// locale leaves it unchanged ("C" is the effective locale either way).
+#[cfg(target_arch = "wasm32")]
+#[inline]
+unsafe fn r_setlocale(_category: c_int, _locale: *const c_char) -> *mut c_char {
+    b"C\0".as_ptr() as *mut c_char
+}
+
+// ---------------------------------------------------------------------------
 // Complete R runtime — Sys.* functions, R.home
 // ---------------------------------------------------------------------------
 
@@ -804,7 +845,7 @@ pub unsafe fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
             Some(locale) => locale.as_ptr(),
             None => std::ptr::null(),
         };
-        let result = libc::setlocale(category, locale_ptr);
+        let result = r_setlocale(category, locale_ptr);
         if result.is_null() {
             Rf_mkString(b"\0".as_ptr() as *const c_char)
         } else {
@@ -816,7 +857,7 @@ pub unsafe fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 unsafe fn locale_category_from_arg(category: SEXP) -> c_int {
     unsafe {
         if category.is_null() || category == R_NilValue() {
-            return libc::LC_ALL;
+            return LC_ALL;
         }
 
         match TYPEOF(category) {
@@ -825,13 +866,13 @@ unsafe fn locale_category_from_arg(category: SEXP) -> c_int {
                 locale_category_from_name(&name)
             }
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => match *INTEGER(category) {
-                1 => libc::LC_ALL,
-                2 => libc::LC_COLLATE,
-                3 => libc::LC_CTYPE,
-                4 => libc::LC_MONETARY,
-                5 => libc::LC_NUMERIC,
-                6 => libc::LC_TIME,
-                7 => libc::LC_MESSAGES,
+                1 => LC_ALL,
+                2 => LC_COLLATE,
+                3 => LC_CTYPE,
+                4 => LC_MONETARY,
+                5 => LC_NUMERIC,
+                6 => LC_TIME,
+                7 => LC_MESSAGES,
                 _ => base_error("invalid 'category' argument"),
             },
             _ => base_error("invalid 'category' argument"),
@@ -841,13 +882,13 @@ unsafe fn locale_category_from_arg(category: SEXP) -> c_int {
 
 fn locale_category_from_name(name: &str) -> c_int {
     match name {
-        "LC_ALL" => libc::LC_ALL,
-        "LC_COLLATE" => libc::LC_COLLATE,
-        "LC_CTYPE" => libc::LC_CTYPE,
-        "LC_MONETARY" => libc::LC_MONETARY,
-        "LC_NUMERIC" => libc::LC_NUMERIC,
-        "LC_TIME" => libc::LC_TIME,
-        "LC_MESSAGES" => libc::LC_MESSAGES,
+        "LC_ALL" => LC_ALL,
+        "LC_COLLATE" => LC_COLLATE,
+        "LC_CTYPE" => LC_CTYPE,
+        "LC_MONETARY" => LC_MONETARY,
+        "LC_NUMERIC" => LC_NUMERIC,
+        "LC_TIME" => LC_TIME,
+        "LC_MESSAGES" => LC_MESSAGES,
         _ => base_error("invalid 'category' argument"),
     }
 }
@@ -868,7 +909,7 @@ unsafe fn locale_string_arg(locale: SEXP) -> Option<CString> {
 
 unsafe fn locale_string_from_libc(category: c_int) -> SEXP {
     unsafe {
-        let result = libc::setlocale(category, std::ptr::null());
+        let result = r_setlocale(category, std::ptr::null());
         if result.is_null() {
             Rf_mkString(b"\0".as_ptr() as *const c_char)
         } else {

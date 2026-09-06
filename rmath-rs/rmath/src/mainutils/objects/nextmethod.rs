@@ -402,7 +402,8 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
             for ii in 0..LENGTH(method) {
                 let bb = translateChar(STRING_ELT(method, ii as R_xlen_t));
-                if !bb.is_null() && *bb != 0 && libc::strlen(bb) > 0 {
+                if !bb.is_null() && *bb != 0 && !std::ffi::CStr::from_ptr(bb).to_bytes().is_empty()
+                {
                     b = bb;
                     method_idx = ii;
                     break;
@@ -410,7 +411,11 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
             for jj in method_idx..LENGTH(method) {
                 let bb = translateChar(STRING_ELT(method, jj as R_xlen_t));
-                if !bb.is_null() && libc::strlen(bb) > 0 && libc::strcmp(b, bb) != 0 {
+                if !bb.is_null()
+                    && !std::ffi::CStr::from_ptr(bb).to_bytes().is_empty()
+                    && std::ffi::CStr::from_ptr(b).to_bytes()
+                        != std::ffi::CStr::from_ptr(bb).to_bytes()
+                {
                     crate::mainutils::errors::Rf_warning(
                         b"Incompatible methods ignored\0".as_ptr() as *const c_char,
                     );
@@ -521,7 +526,8 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             _method_name_guard = protect(method_name);
             for jj in 0..LENGTH(method_name) {
                 let mc = CHAR(STRING_ELT(method_name, jj as R_xlen_t));
-                if !mc.is_null() && *mc != 0 && libc::strlen(mc) > 0 {
+                if !mc.is_null() && *mc != 0 && !std::ffi::CStr::from_ptr(mc).to_bytes().is_empty()
+                {
                     SET_STRING_ELT(method_name, jj as R_xlen_t, PRINTNAME(nextfunSignature));
                 }
             }

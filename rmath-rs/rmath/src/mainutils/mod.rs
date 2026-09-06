@@ -78,6 +78,7 @@ pub mod raw_heap;
 pub mod rdynload;
 pub mod registration;
 pub mod relop;
+pub mod rfile;
 pub mod rlocale;
 pub mod rng;
 pub mod rng_dispatch;

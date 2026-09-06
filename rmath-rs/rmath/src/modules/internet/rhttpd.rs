@@ -5,6 +5,9 @@ use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::eval::eval::Rf_eval;
 use crate::main::coerce::asInteger;
 use crate::main::errors::Rf_error;
+use crate::mainutils::rfile::{
+    RFile, SEEK_END, SEEK_SET, r_fclose, r_feof, r_fopen, r_fread, r_fseek, r_ftell,
+};
 use crate::sexp::accessors::translateChar;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::{
@@ -20,9 +23,9 @@ use crate::sexp::symbol::Rf_install as install;
 use crate::sexp::*;
 use core::ffi::{c_char, c_int, c_long, c_uint, c_void};
 use libc::{
-    AF_INET, FILE, INADDR_ANY, IPPROTO_TCP, SO_REUSEADDR, SOCK_STREAM, SOL_SOCKET, accept, bind,
-    close, htonl, htons, in_addr, listen, recv, send, setsockopt, size_t, sockaddr, sockaddr_in,
-    socket, socklen_t, ssize_t,
+    AF_INET, INADDR_ANY, IPPROTO_TCP, SO_REUSEADDR, SOCK_STREAM, SOL_SOCKET, accept, bind, close,
+    htonl, htons, in_addr, listen, recv, send, setsockopt, size_t, sockaddr, sockaddr_in, socket,
+    socklen_t, ssize_t,
 };
 use std::alloc::{Layout, alloc, dealloc};
 
@@ -294,7 +297,7 @@ unsafe fn free_c_string(s: *mut c_char) {
         if s.is_null() {
             return;
         }
-        let len = libc::strlen(s) + 1;
+        let len = c_strlen(s) + 1;
         let layout = Layout::from_size_align_unchecked(len, 1);
         dealloc(s as *mut u8, layout);
     }
@@ -306,14 +309,181 @@ unsafe fn alloc_c_string(s: *const c_char) -> *mut c_char {
         if s.is_null() {
             return std::ptr::null_mut();
         }
-        let len = libc::strlen(s) + 1;
+        let len = c_strlen(s) + 1;
         let layout = Layout::from_size_align_unchecked(len, 1);
         let dst = alloc(layout) as *mut c_char;
         if !dst.is_null() {
-            libc::memcpy(dst as *mut c_void, s as *const c_void, len);
+            std::ptr::copy_nonoverlapping(s as *const u8, dst as *mut u8, len);
         }
         dst
     }
+}
+
+// ---------------------------------------------------------------------------
+// libc-free C string helpers (see sprintf_main.rs for the established shape)
+// ---------------------------------------------------------------------------
+
+/// C `strlen` over a NUL-terminated byte string.
+unsafe fn c_strlen(s: *const c_char) -> usize {
+    unsafe {
+        if s.is_null() {
+            return 0;
+        }
+        let mut len: usize = 0;
+        let mut p = s;
+        while *p != 0 {
+            len += 1;
+            p = p.add(1);
+        }
+        len
+    }
+}
+
+/// C `strcmp` comparing bytes as unsigned chars.
+unsafe fn c_strcmp(a: *const c_char, b: *const c_char) -> c_int {
+    unsafe {
+        let empty = b"\0";
+        let mut pa = if a.is_null() {
+            empty.as_ptr() as *const c_char
+        } else {
+            a
+        };
+        let mut pb = if b.is_null() {
+            empty.as_ptr() as *const c_char
+        } else {
+            b
+        };
+        loop {
+            let ca = *pa as u8;
+            let cb = *pb as u8;
+            if ca != cb {
+                return ca as c_int - cb as c_int;
+            }
+            if ca == 0 {
+                return 0;
+            }
+            pa = pa.add(1);
+            pb = pb.add(1);
+        }
+    }
+}
+
+/// C `strncmp` comparing at most `n` bytes, stopping at a NUL.
+unsafe fn c_strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int {
+    unsafe {
+        if n == 0 {
+            return 0;
+        }
+        let empty = b"\0";
+        let pa = if a.is_null() {
+            empty.as_ptr() as *const c_char
+        } else {
+            a
+        };
+        let pb = if b.is_null() {
+            empty.as_ptr() as *const c_char
+        } else {
+            b
+        };
+        let mut i: usize = 0;
+        while i < n {
+            let ca = *pa.add(i) as u8;
+            let cb = *pb.add(i) as u8;
+            if ca != cb {
+                return ca as c_int - cb as c_int;
+            }
+            if ca == 0 {
+                return 0;
+            }
+            i += 1;
+        }
+        0
+    }
+}
+
+/// C `strchr`: pointer to the first occurrence of `c` (NUL matches the
+/// terminator), or NULL.
+unsafe fn c_strchr(s: *const c_char, c: c_int) -> *mut c_char {
+    unsafe {
+        if s.is_null() {
+            return std::ptr::null_mut();
+        }
+        let target = c as u8;
+        let mut p = s;
+        loop {
+            let ch = *p as u8;
+            if ch == target {
+                return p as *mut c_char;
+            }
+            if ch == 0 {
+                return std::ptr::null_mut();
+            }
+            p = p.add(1);
+        }
+    }
+}
+
+/// C `strcpy`: copy `src` including the NUL terminator.
+unsafe fn c_strcpy(dest: *mut c_char, src: *const c_char) {
+    unsafe {
+        if dest.is_null() || src.is_null() {
+            return;
+        }
+        let mut d = dest;
+        let mut s = src;
+        loop {
+            let c = *s;
+            *d = c;
+            if c == 0 {
+                break;
+            }
+            d = d.add(1);
+            s = s.add(1);
+        }
+    }
+}
+
+/// C `atol`: skip leading whitespace, optional sign, parse decimal digits.
+unsafe fn c_atol(s: *const c_char) -> c_long {
+    unsafe {
+        if s.is_null() {
+            return 0;
+        }
+        let mut p = s;
+        while matches!(*p as u8, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c) {
+            p = p.add(1);
+        }
+        let mut neg = false;
+        if *p as u8 == b'-' {
+            neg = true;
+            p = p.add(1);
+        } else if *p as u8 == b'+' {
+            p = p.add(1);
+        }
+        let mut val: c_long = 0;
+        let mut ch = *p as u8;
+        while ch.is_ascii_digit() {
+            val = val.saturating_mul(10).saturating_add((ch - b'0') as c_long);
+            p = p.add(1);
+            ch = *p as u8;
+        }
+        if neg { -val } else { val }
+    }
+}
+
+/// C `memcpy`: copy `n` bytes between non-overlapping regions.
+unsafe fn c_memcpy(dest: *mut c_void, src: *const c_void, n: usize) {
+    unsafe { std::ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, n) }
+}
+
+/// C `memmove`: copy `n` bytes between possibly-overlapping regions.
+unsafe fn c_memmove(dest: *mut c_void, src: *const c_void, n: usize) {
+    unsafe { std::ptr::copy(src as *const u8, dest as *mut u8, n) }
+}
+
+/// C `memset`: fill `n` bytes with `c`.
+unsafe fn c_memset(s: *mut c_void, c: c_int, n: usize) {
+    unsafe { std::ptr::write_bytes(s as *mut u8, c as u8, n) }
 }
 
 /// Allocate `size` bytes of raw memory using Rust std::alloc.
@@ -398,7 +568,7 @@ unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
         let mut pos: isize = 0;
         while !buf.is_null() {
             if (*buf).length > 0 {
-                libc::memcpy(
+                c_memcpy(
                     dst.offset(pos) as *mut c_void,
                     (*buf).data.as_mut_ptr() as *const c_void,
                     (*buf).length,
@@ -489,7 +659,7 @@ unsafe fn remove_worker(c: *mut HttpdConn) {
 /// Build a sockaddr_in structure
 unsafe fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mut sockaddr {
     unsafe {
-        libc::memset(sa as *mut c_void, 0, core::mem::size_of::<sockaddr_in>());
+        c_memset(sa as *mut c_void, 0, core::mem::size_of::<sockaddr_in>());
         (*sa).sin_family = AF_INET as libc::sa_family_t;
         (*sa).sin_port = htons(port as u16);
         (*sa).sin_addr.s_addr = if !ip.is_null() {
@@ -529,16 +699,16 @@ unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
 unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
     unsafe {
         let sig = http_sig(&*c);
-        let l = libc::strlen(text);
+        let l = c_strlen(text);
         let mut local_buf = [0 as c_char; 96];
         // reduce the number of packets by sending the payload en-block from buf
         if l < local_buf.len() - 10 {
-            libc::memcpy(
+            c_memcpy(
                 local_buf.as_mut_ptr() as *mut c_void,
                 sig.as_ptr() as *const c_void,
                 8,
             );
-            libc::strcpy(local_buf.as_mut_ptr().offset(8), text);
+            c_strcpy(local_buf.as_mut_ptr().offset(8), text);
             send_response((*c).sock, local_buf.as_ptr(), l + 8);
         } else {
             with_httpd_state(|state| state.ignore_sigpipe = 1);
@@ -728,7 +898,7 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
             let res = Rf_allocVector(SEXPTYPE::RAWSXP, (*c).content_length as c_int);
             let _res_guard = protect(res);
             if (*c).content_length > 0 {
-                libc::memcpy(
+                c_memcpy(
                     RAW(res) as *mut c_void,
                     (*c).body as *const c_void,
                     (*c).content_length as size_t,
@@ -772,7 +942,7 @@ unsafe fn fin_request(c: *mut HttpdConn) {
 /// Returns an httpd handler (closure) for a given path.
 unsafe fn handler_for_path(path: *const c_char) -> SEXP {
     unsafe {
-        if !path.is_null() && libc::strncmp(path, b"/custom/\0".as_ptr() as *const c_char, 8) == 0 {
+        if !path.is_null() && c_strncmp(path, b"/custom/\0".as_ptr() as *const c_char, 8) == 0 {
             let mut c = path.offset(8);
             let e = c;
             while *c != 0 && *c != b'/' as c_char {
@@ -781,7 +951,7 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
             let name_len = c.offset_from(e) as isize;
             if name_len > 0 && name_len < 64 {
                 let mut fn_buf = [0 as c_char; 64];
-                libc::memcpy(
+                c_memcpy(
                     fn_buf.as_mut_ptr() as *mut c_void,
                     e as *const c_void,
                     name_len as size_t,
@@ -901,7 +1071,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     .as_ptr() as *const c_char,
             );
             if (*c).method != METHOD_HEAD {
-                send_response((*c).sock, s, libc::strlen(s));
+                send_response((*c).sock, s, c_strlen(s));
             }
             (*c).attr |= CONNECTION_CLOSE;
             vmaxset(vmax);
@@ -947,9 +1117,9 @@ unsafe fn process_request_(ptr: *mut c_void) {
                         b"%s %d Code %d\r\nContent-type: ",
                         &[sig.as_slice().into(), code.into(), code.into()],
                     );
-                    send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
+                    send_response((*c).sock, buf.as_ptr(), c_strlen(buf.as_ptr()));
                 }
-                send_response((*c).sock, ct, libc::strlen(ct));
+                send_response((*c).sock, ct, c_strlen(ct));
 
                 // Append custom headers
                 if s_headers != R_NilValue() {
@@ -958,7 +1128,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     while i < n {
                         let hs = translateCharUTF8(STRING_ELT(s_headers, i as R_xlen_t));
                         send_response((*c).sock, b"\r\n\0".as_ptr() as *const c_char, 2);
-                        send_response((*c).sock, hs, libc::strlen(hs));
+                        send_response((*c).sock, hs, c_strlen(hs));
                         i += 1;
                     }
                 }
@@ -966,20 +1136,20 @@ unsafe fn process_request_(ptr: *mut c_void) {
                 // Special content - a file: either list(file="") or list(c("*FILE*", ""))
                 if TYPEOF(x_names) == SEXPTYPE::STRSXP
                     && LENGTH(x_names) > 0
-                    && libc::strcmp(
+                    && c_strcmp(
                         translateChar(STRING_ELT(x_names, 0)),
                         b"file\0".as_ptr() as *const c_char,
                     ) == 0
                 {
                     fn_ptr = translateChar(STRING_ELT(y, 0));
                 }
-                if LENGTH(y) > 1 && libc::strcmp(cs, b"*FILE*\0".as_ptr() as *const c_char) == 0 {
+                if LENGTH(y) > 1 && c_strcmp(cs, b"*FILE*\0".as_ptr() as *const c_char) == 0 {
                     fn_ptr = translateChar(STRING_ELT(y, 1));
                 }
 
                 if !fn_ptr.is_null() {
                     // Serve a file
-                    let f = libc::fopen(fn_ptr, b"rb\0".as_ptr() as *const c_char);
+                    let f = r_fopen(fn_ptr, b"rb\0".as_ptr() as *const c_char);
                     let mut fsz: c_long = 0;
                     if f.is_null() {
                         send_response(
@@ -991,23 +1161,23 @@ unsafe fn process_request_(ptr: *mut c_void) {
                         vmaxset(vmax);
                         return;
                     }
-                    libc::fseek(f, 0, libc::SEEK_END);
-                    fsz = libc::ftell(f);
-                    libc::fseek(f, 0, libc::SEEK_SET);
+                    r_fseek(f, 0, SEEK_END);
+                    fsz = r_ftell(f) as c_long;
+                    r_fseek(f, 0, SEEK_SET);
                     crate::mainutils::r_format::r_snprintf_c(
                         &mut buf,
                         b"\r\nContent-length: %ld\r\n\r\n",
                         &[fsz.into()],
                     );
-                    send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
+                    send_response((*c).sock, buf.as_ptr(), c_strlen(buf.as_ptr()));
                     if (*c).method != METHOD_HEAD {
                         let mut fbuf = vec![0u8; 32768];
                         let mut remaining = fsz as size_t;
-                        while remaining > 0 && libc::feof(f) == 0 {
+                        while remaining > 0 && r_feof(f) == 0 {
                             let rd = if remaining > 32768 { 32768 } else { remaining };
-                            if libc::fread(fbuf.as_mut_ptr() as *mut c_void, 1, rd, f) != rd {
+                            if r_fread(fbuf.as_mut_ptr() as *mut c_void, 1, rd, f) != rd {
                                 (*c).attr |= CONNECTION_CLOSE;
-                                libc::fclose(f);
+                                r_fclose(f);
                                 vmaxset(vmax);
                                 return;
                             }
@@ -1015,7 +1185,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                             remaining -= rd;
                         }
                     }
-                    libc::fclose(f);
+                    r_fclose(f);
                     fin_request(c);
                     vmaxset(vmax);
                     return;
@@ -1025,11 +1195,11 @@ unsafe fn process_request_(ptr: *mut c_void) {
                 crate::mainutils::r_format::r_snprintf_c(
                     &mut buf,
                     b"\r\nContent-length: %u\r\n\r\n",
-                    &[(libc::strlen(cs) as c_uint).into()],
+                    &[(c_strlen(cs) as c_uint).into()],
                 );
-                send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
+                send_response((*c).sock, buf.as_ptr(), c_strlen(buf.as_ptr()));
                 if (*c).method != METHOD_HEAD {
-                    send_response((*c).sock, cs, libc::strlen(cs));
+                    send_response((*c).sock, cs, c_strlen(cs));
                 }
                 fin_request(c);
                 vmaxset(vmax);
@@ -1053,16 +1223,16 @@ unsafe fn process_request_(ptr: *mut c_void) {
                         b"%s %d Code %d\r\nContent-type: ",
                         &[sig.as_slice().into(), code.into(), code.into()],
                     );
-                    send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
+                    send_response((*c).sock, buf.as_ptr(), c_strlen(buf.as_ptr()));
                 }
-                send_response((*c).sock, ct, libc::strlen(ct));
+                send_response((*c).sock, ct, c_strlen(ct));
                 if s_headers != R_NilValue() {
                     let mut i: c_uint = 0;
                     let n = LENGTH(s_headers) as c_uint;
                     while i < n {
                         let hs = translateCharUTF8(STRING_ELT(s_headers, i as R_xlen_t));
                         send_response((*c).sock, b"\r\n\0".as_ptr() as *const c_char, 2);
-                        send_response((*c).sock, hs, libc::strlen(hs));
+                        send_response((*c).sock, hs, c_strlen(hs));
                         i += 1;
                     }
                 }
@@ -1071,7 +1241,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     b"\r\nContent-length: %d\r\n\r\n",
                     &[LENGTH(y).into()],
                 );
-                send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
+                send_response((*c).sock, buf.as_ptr(), c_strlen(buf.as_ptr()));
                 if (*c).method != METHOD_HEAD {
                     send_response((*c).sock, cs as *const c_char, LENGTH(y) as size_t);
                 }
@@ -1104,9 +1274,9 @@ unsafe fn process_request(c: *mut HttpdConn) {
 /// Remove . and (most) .. from "p" following RFC 3986, 5.2.4.
 unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
     unsafe {
-        let in_len = libc::strlen(p);
+        let in_len = c_strlen(p);
         let mut inp_buf = Vec::with_capacity(in_len + 1);
-        libc::memcpy(
+        c_memcpy(
             inp_buf.as_mut_ptr() as *mut c_void,
             p as *const c_void,
             in_len + 1,
@@ -1193,10 +1363,10 @@ unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
         }
 
         inp_buf.set_len(0); // prevent double-free of Vec data
-        let len = libc::strlen(out_buf.as_ptr() as *const c_char) + 1;
+        let len = c_strlen(out_buf.as_ptr() as *const c_char) + 1;
         let layout = Layout::from_size_align_unchecked(len, 1);
         let result = alloc(layout) as *mut c_char;
-        libc::memcpy(
+        c_memcpy(
             result as *mut c_void,
             out_buf.as_ptr() as *const c_void,
             len,
@@ -1309,7 +1479,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                     // move the body part to the beginning of the buffer
                     let shift = s.offset_from((*c).line_buf.as_mut_ptr()) as size_t;
                     (*c).line_pos -= shift;
-                    libc::memmove(
+                    c_memmove(
                         (*c).line_buf.as_mut_ptr() as *mut c_void,
                         s as *const c_void,
                         (*c).line_pos,
@@ -1346,7 +1516,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                         (*c).line_pos
                     };
                     if (*c).body_pos > 0 {
-                        libc::memcpy(
+                        c_memcpy(
                             (*c).body as *mut c_void,
                             (*c).line_buf.as_mut_ptr() as *const c_void,
                             (*c).body_pos,
@@ -1380,7 +1550,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                         // move the line to the beginning of the buffer
                         let shift = bol.offset_from((*c).line_buf.as_mut_ptr()) as size_t;
                         (*c).line_pos -= shift;
-                        libc::memmove(
+                        c_memmove(
                             (*c).line_buf.as_mut_ptr() as *mut c_void,
                             bol as *const c_void,
                             (*c).line_pos,
@@ -1399,11 +1569,11 @@ unsafe fn worker_input_handler(data: *mut c_void) {
 
                         if (*c).part == PART_REQUEST {
                             // --- Process request line ---
-                            let rll = libc::strlen(bol);
-                            let mut url = libc::strchr(bol, b' ' as c_int);
+                            let rll = c_strlen(bol);
+                            let mut url = c_strchr(bol, b' ' as c_int);
                             if url.is_null()
                                 || rll < 14
-                                || libc::strncmp(
+                                || c_strncmp(
                                     bol.offset(rll as isize - 9),
                                     b" HTTP/1.\0".as_ptr() as *const c_char,
                                     8,
@@ -1420,7 +1590,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                             url = url.offset(1);
                             *bol.offset(rll as isize - 9) = 0; // cut off " HTTP/1.x"
                             (*c).url = remove_dot_segments(url);
-                            if libc::strncmp(
+                            if c_strncmp(
                                 bol.offset(rll as isize - 3),
                                 b"1.0\0".as_ptr() as *const c_char,
                                 3,
@@ -1428,18 +1598,17 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                             {
                                 (*c).attr |= HTTP_1_0;
                             }
-                            if libc::strncmp(bol, b"GET \0".as_ptr() as *const c_char, 4) == 0 {
+                            if c_strncmp(bol, b"GET \0".as_ptr() as *const c_char, 4) == 0 {
                                 (*c).method = METHOD_GET;
                             }
-                            if libc::strncmp(bol, b"POST \0".as_ptr() as *const c_char, 5) == 0 {
+                            if c_strncmp(bol, b"POST \0".as_ptr() as *const c_char, 5) == 0 {
                                 (*c).method = METHOD_POST;
                             }
-                            if libc::strncmp(bol, b"HEAD \0".as_ptr() as *const c_char, 5) == 0 {
+                            if c_strncmp(bol, b"HEAD \0".as_ptr() as *const c_char, 5) == 0 {
                                 (*c).method = METHOD_HEAD;
                             }
                             // only custom handlers can use other methods
-                            if libc::strncmp((*c).url, b"/custom/\0".as_ptr() as *const c_char, 8)
-                                == 0
+                            if c_strncmp((*c).url, b"/custom/\0".as_ptr() as *const c_char, 8) == 0
                             {
                                 let mend = url.offset(-1);
                                 if (*c).headers.is_null() {
@@ -1452,7 +1621,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                         if (*c).method == 0 {
                                             (*c).method = METHOD_OTHER;
                                         }
-                                        libc::memcpy(
+                                        c_memcpy(
                                             (*(*c).headers)
                                                 .data
                                                 .as_mut_ptr()
@@ -1464,7 +1633,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                         (*(*c).headers).length += 16;
                                         let mlen = mend.offset_from(bol) as size_t;
                                         if mlen > 0 {
-                                            libc::memcpy(
+                                            c_memcpy(
                                                 (*(*c).headers)
                                                     .data
                                                     .as_mut_ptr()
@@ -1500,12 +1669,12 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                 (*c).headers = alloc_buffer(1024, std::ptr::null_mut());
                             }
                             if !(*c).headers.is_null() {
-                                let l = libc::strlen(bol);
+                                let l = c_strlen(bol);
                                 if l > 0 {
                                     if (*(*c).headers).length + l + 1 > (*(*c).headers).size {
                                         let fits = (*(*c).headers).size - (*(*c).headers).length;
                                         if fits > 0 {
-                                            libc::memcpy(
+                                            c_memcpy(
                                                 (*(*c).headers)
                                                     .data
                                                     .as_mut_ptr()
@@ -1520,7 +1689,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                             (*c).headers = new_buf;
                                             let leftover = l - fits;
                                             if leftover > 0 {
-                                                libc::memcpy(
+                                                c_memcpy(
                                                     (*(*c).headers).data.as_mut_ptr()
                                                         as *mut c_void,
                                                     bol.add(fits) as *const c_void,
@@ -1535,7 +1704,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                             (*(*c).headers).length += 1;
                                         }
                                     } else {
-                                        libc::memcpy(
+                                        c_memcpy(
                                             (*(*c).headers)
                                                 .data
                                                 .as_mut_ptr()
@@ -1566,15 +1735,12 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                 while *k == b' ' as c_char || *k == b'\t' as c_char {
                                     k = k.offset(1);
                                 }
-                                if libc::strcmp(bol, b"content-length\0".as_ptr() as *const c_char)
-                                    == 0
+                                if c_strcmp(bol, b"content-length\0".as_ptr() as *const c_char) == 0
                                 {
                                     (*c).attr |= CONTENT_LENGTH;
-                                    (*c).content_length = libc::atol(k);
+                                    (*c).content_length = c_atol(k);
                                 }
-                                if libc::strcmp(bol, b"content-type\0".as_ptr() as *const c_char)
-                                    == 0
-                                {
+                                if c_strcmp(bol, b"content-type\0".as_ptr() as *const c_char) == 0 {
                                     let mut l = k;
                                     // convert to lowercase up to ';'
                                     while *l != 0 && *l != b';' as c_char {
@@ -1586,7 +1752,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                     (*c).attr |= CONTENT_TYPE;
                                     free_c_string((*c).content_type);
                                     (*c).content_type = alloc_c_string(k);
-                                    if libc::strncmp(
+                                    if c_strncmp(
                                         k,
                                         b"application/x-www-form-urlencoded\0".as_ptr()
                                             as *const c_char,
@@ -1596,11 +1762,10 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                         (*c).attr |= CONTENT_FORM_UENC;
                                     }
                                 }
-                                if libc::strcmp(bol, b"host\0".as_ptr() as *const c_char) == 0 {
+                                if c_strcmp(bol, b"host\0".as_ptr() as *const c_char) == 0 {
                                     (*c).attr |= HOST_HEADER;
                                 }
-                                if libc::strcmp(bol, b"connection\0".as_ptr() as *const c_char) == 0
-                                {
+                                if c_strcmp(bol, b"connection\0".as_ptr() as *const c_char) == 0 {
                                     let mut l = k;
                                     while *l != 0 {
                                         if *l >= b'A' as c_char && *l <= b'Z' as c_char {
@@ -1608,9 +1773,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                                         }
                                         l = l.offset(1);
                                     }
-                                    if libc::strncmp(k, b"close\0".as_ptr() as *const c_char, 5)
-                                        == 0
-                                    {
+                                    if c_strncmp(k, b"close\0".as_ptr() as *const c_char, 5) == 0 {
                                         (*c).attr |= CONNECTION_CLOSE;
                                     }
                                 }
@@ -1685,7 +1848,7 @@ unsafe fn worker_input_handler(data: *mut c_void) {
                     if (*c).line_pos <= sh {
                         (*c).line_pos = 0;
                     } else {
-                        libc::memmove(
+                        c_memmove(
                             (*c).line_buf.as_mut_ptr() as *mut c_void,
                             (*c).line_buf.as_mut_ptr().add(sh) as *const c_void,
                             (*c).line_pos - sh,

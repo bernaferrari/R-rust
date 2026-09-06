@@ -133,6 +133,18 @@ where
         Err(payload) => match payload.downcast::<RSignal>() {
             Ok(signal) => match *signal {
                 RSignal::Error { message } => Err(REvalError { message }),
+                // A break/next escaping every loop context is an R-level
+                // error (upstream: "no loop for break/next, jumping to
+                // the top level"), never an escaping Rust panic — the
+                RSignal::Break | RSignal::Next => Err(REvalError {
+                    message: "no loop for break/next, jumping to the top level".to_string(),
+                }),
+                // Top-level return(value) is likewise an R-level error
+                // (upstream: "no function to return from, jumping to
+                // top level"), never an escaping panic.
+                RSignal::Return(_) => Err(REvalError {
+                    message: "no function to return from, jumping to top level".to_string(),
+                }),
                 other => std::panic::panic_any(other),
             },
             Err(payload) => match payload.downcast::<RError>() {
@@ -700,10 +712,12 @@ impl RSession {
                     // print with the error in the embedding layer instead.
                     break;
                 }
-                let _expr_guard = result
-                    .as_ref()
-                    .ok()
-                    .map(|value| RootedSexp::root(value.clone()));
+                let _expr_guard = result.as_ref().ok().map(|value| {
+                    // Immortals (R_NilValue & friends) are static and
+                    // need no rooting; rooting them panics with
+                    // UnownedHandle (empty scripts surface NULL here).
+                    RootedSexp::try_root(value.clone()).ok()
+                });
                 // main.c REPL loop: upstream auto-prints EVERY visible
                 // top-level expression (PrintValueEnv), not just the final
                 // one. Intermediate values render through the same formatter
@@ -730,10 +744,12 @@ impl RSession {
                 }
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
-            let _result_guard = result
-                .as_ref()
-                .ok()
-                .map(|value| RootedSexp::root(value.clone()));
+            let _result_guard = result.as_ref().ok().map(|value| {
+                // Immortals (R_NilValue & friends) are static and
+                // need no rooting; rooting them panics with
+                // UnownedHandle (empty scripts surface NULL here).
+                RootedSexp::try_root(value.clone()).ok()
+            });
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.inst().eval_state.visible != 0;
             let output = self.inst().output_capture.borrow_mut().stop();
@@ -812,10 +828,12 @@ impl RSession {
                     // an uncaught error stops remaining expressions.
                     break;
                 }
-                let _expr_guard = result
-                    .as_ref()
-                    .ok()
-                    .map(|value| RootedSexp::root(value.clone()));
+                let _expr_guard = result.as_ref().ok().map(|value| {
+                    // Immortals (R_NilValue & friends) are static and
+                    // need no rooting; rooting them panics with
+                    // UnownedHandle (empty scripts surface NULL here).
+                    RootedSexp::try_root(value.clone()).ok()
+                });
                 // Same per-expression auto-print as the plain script loop
                 // above: every visible non-final top-level statement renders
                 // into the captured stream, preserving print()/auto-print
@@ -836,10 +854,12 @@ impl RSession {
                 }
                 crate::sexp::gengc::run_pending_gc_if_quiescent();
             }
-            let _result_guard = result
-                .as_ref()
-                .ok()
-                .map(|value| RootedSexp::root(value.clone()));
+            let _result_guard = result.as_ref().ok().map(|value| {
+                // Immortals (R_NilValue & friends) are static and
+                // need no rooting; rooting them panics with
+                // UnownedHandle (empty scripts surface NULL here).
+                RootedSexp::try_root(value.clone()).ok()
+            });
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.inst().eval_state.visible != 0;
             let output = self.inst().output_capture.borrow_mut().stop();
@@ -896,10 +916,12 @@ impl RSession {
             let _toplevel_no_guard = ToplevelExprNoGuard;
             crate::mainutils::errors::set_toplevel_expr_no(1);
             let result = self.eval_sexp(expr);
-            let _result_guard = result
-                .as_ref()
-                .ok()
-                .map(|value| RootedSexp::root(value.clone()));
+            let _result_guard = result.as_ref().ok().map(|value| {
+                // Immortals (R_NilValue & friends) are static and
+                // need no rooting; rooting them panics with
+                // UnownedHandle (empty scripts surface NULL here).
+                RootedSexp::try_root(value.clone()).ok()
+            });
             crate::sexp::gengc::run_pending_gc_if_quiescent();
             let visible = self.inst().eval_state.visible != 0;
             let output = self.inst().output_capture.borrow_mut().stop();

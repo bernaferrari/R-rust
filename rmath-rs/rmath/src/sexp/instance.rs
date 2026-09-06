@@ -317,10 +317,13 @@ pub struct RInstance {
     /// Per-instance LAPACK module dispatcher.
     pub(crate) lapack_state: crate::mainutils::lapack::LapackRuntimeState,
     /// Per-instance internet module state.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) internet_state: crate::modules::internet::internet::InternetRuntimeState,
     /// Per-instance libcurl module scratch/progress state.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState,
     /// Per-instance embedded HTTP server socket, worker, and handler state.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState,
     /// Per-instance X11 graphics defaults and device counters.
     #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
@@ -495,8 +498,11 @@ impl RInstance {
             altrep_state: crate::mainutils::altrep::AltrepRuntimeState::default(),
             serialize_state: crate::mainutils::serialize::SerializeRuntimeState::default(),
             lapack_state: crate::mainutils::lapack::LapackRuntimeState::default(),
+            #[cfg(not(target_arch = "wasm32"))]
             internet_state: crate::modules::internet::internet::InternetRuntimeState::default(),
+            #[cfg(not(target_arch = "wasm32"))]
             libcurl_state: crate::modules::internet::libcurl::LibcurlRuntimeState::default(),
+            #[cfg(not(target_arch = "wasm32"))]
             httpd_state: crate::modules::internet::rhttpd::HttpdRuntimeState::default(),
             #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
             x11_state: crate::modules::x11::dev_x11::X11RuntimeState::default(),
@@ -559,7 +565,12 @@ impl RInstance {
             vmax: Vec::new(),
         };
 
-        instance.initialize_base_bindings();
+        // Derive the raw pointer before any &mut borrow is outstanding:
+        // the thread-local current-instance alias then has a single,
+        // Miri-clean provenance chain (re-borrowing `&mut instance`
+        // across the raw-pointer window violates Stacked Borrows).
+        let instance_ptr: *mut RInstance = &raw mut instance;
+        Self::initialize_base_bindings_via(instance_ptr);
         instance.initialized = true;
         instance
     }
@@ -569,6 +580,17 @@ impl RInstance {
         let previous = unsafe { replace_current_instance(Some(self as *mut RInstance)) };
         unsafe {
             super::init::initialize_base_bindings(self.base_env);
+            replace_current_instance(previous);
+        }
+    }
+
+    /// Raw-pointer variant used during construction: the pointer's
+    /// provenance is derived before any outstanding `&mut` borrow, keeping
+    /// the thread-local alias Miri-clean under Stacked Borrows.
+    fn initialize_base_bindings_via(instance: *mut RInstance) {
+        let previous = unsafe { replace_current_instance(Some(instance)) };
+        unsafe {
+            super::init::initialize_base_bindings((*instance).base_env);
             replace_current_instance(previous);
         }
     }
@@ -676,6 +698,9 @@ impl Drop for RInstance {
             }
         }
         if self.eval_state.profiling.profile_outfile >= 0 {
+            // Native only: on wasm32 the profiling stubs never open an
+            // output file, so there is nothing to close.
+            #[cfg(not(target_arch = "wasm32"))]
             unsafe {
                 libc::close(self.eval_state.profiling.profile_outfile);
             }
@@ -743,6 +768,13 @@ where
     // re-bases on the topmost live exposed tag instead, so ambient
     // re-acquisition under a live lend re-bases on that lend. The instance
     // root provenance is exposed at every `set/replace_current_instance`.
+    // KNOWN MIRI FINDING (2026-09): this wildcard re-acquisition is UB
+    // under both Stacked Borrows and Tree Borrows when it fires during a
+    // strongly-protected lend — e.g. register_essentials_builtins'
+    // ProtectGuard drop inside session init. Any Miri module expansion
+    // beyond instance-free tests is blocked on redesigning this to
+    // interior mutability (UnsafeCell). Repro:
+    //   MIRIFLAGS=-Zmiri-ignore-leaks cargo +nightly miri test -p rmath --lib serialize::
     unsafe { f(&mut *std::ptr::with_exposed_provenance::<RInstance>(ptr.addr()).cast_mut()) }
 }
 

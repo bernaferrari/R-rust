@@ -7,9 +7,10 @@
 //! but top-level task callbacks are tracked per session.
 
 use std::ffi::CString;
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_int;
 
 use crate::eval::eval::Rf_eval;
+use crate::mainutils::rfile::{RFile, r_ferror, r_fread};
 use crate::sexp::accessors::{CAR, INTEGER_ELT, LENGTH, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH};
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_cons, Rf_mkString};
 use crate::sexp::context::RError;
@@ -175,26 +176,20 @@ fn main_error(message: impl Into<String>) -> ! {
     });
 }
 
-unsafe fn read_c_file_to_string(fp: *mut c_void) -> Result<String, String> {
+unsafe fn read_c_file_to_string(fp: *mut RFile) -> Result<String, String> {
     unsafe {
         if fp.is_null() {
             return Err("file pointer is NULL".to_string());
         }
-        let file = fp.cast::<libc::FILE>();
         let mut bytes = Vec::new();
         let mut buffer = [0u8; 8192];
         loop {
-            let read = libc::fread(
-                buffer.as_mut_ptr().cast(),
-                1,
-                buffer.len(),
-                file.cast::<libc::FILE>(),
-            );
+            let read = r_fread(buffer.as_mut_ptr().cast(), 1, buffer.len(), fp);
             if read > 0 {
                 bytes.extend_from_slice(&buffer[..read]);
             }
             if read < buffer.len() {
-                if libc::ferror(file) != 0 {
+                if r_ferror(fp) != 0 {
                     return Err("failed reading R source file".to_string());
                 }
                 break;
@@ -237,7 +232,7 @@ unsafe fn parse_source_to_exprs(source: &str, n: c_int, status: *mut c_int) -> S
 /// Run the REPL reading from a file.
 ///
 /// This is the equivalent of R's `R_ReplFile()` from main.c.
-pub unsafe fn R_ReplFile(fp: *mut c_void, rho: SEXP) {
+pub unsafe fn R_ReplFile(fp: *mut RFile, rho: SEXP) {
     unsafe {
         let source = read_c_file_to_string(fp).unwrap_or_else(|message| main_error(message));
         if source.trim().is_empty() {
@@ -305,7 +300,7 @@ pub unsafe fn Rf_mainloop() {
 // R_Parse1File — parse one expression from file
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_Parse1File(fp: *mut c_void, _prompt: c_int, status: *mut c_int) -> SEXP {
+pub unsafe fn R_Parse1File(fp: *mut RFile, _prompt: c_int, status: *mut c_int) -> SEXP {
     unsafe {
         let source = match read_c_file_to_string(fp) {
             Ok(source) => source,
@@ -575,6 +570,8 @@ pub unsafe fn R_GetNSize() -> u64 {
 
 #[cfg(test)]
 mod tests {
+
+    use crate::mainutils::rfile::{r_fclose, r_fopen};
     use std::path::PathBuf;
 
     use crate::sexp::session::RSession;
@@ -590,7 +587,7 @@ mod tests {
             .clone()
     }
 
-    fn open_c_source(contents: &str) -> (PathBuf, *mut libc::FILE) {
+    fn open_c_source(contents: &str) -> (PathBuf, *mut RFile) {
         let path = std::env::temp_dir().join(format!(
             "rport-main-test-{}-{}.R",
             std::process::id(),
@@ -601,14 +598,14 @@ mod tests {
         ));
         std::fs::write(&path, contents).expect("write test source");
         let c_path = CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        let fp = unsafe { libc::fopen(c_path.as_ptr(), c"r".as_ptr()) };
+        let fp = unsafe { r_fopen(c_path.as_ptr(), c"r".as_ptr()) };
         assert!(!fp.is_null(), "failed to open source file");
         (path, fp)
     }
 
-    unsafe fn close_c_source(path: PathBuf, fp: *mut libc::FILE) {
+    unsafe fn close_c_source(path: PathBuf, fp: *mut RFile) {
         unsafe {
-            libc::fclose(fp);
+            r_fclose(fp);
         }
         let _ = std::fs::remove_file(path);
     }
@@ -632,7 +629,7 @@ mod tests {
         let (path, fp) = open_c_source("1 + 2\n");
         unsafe {
             let mut status = -1;
-            let expr = R_Parse1File(fp.cast::<c_void>(), 0, &mut status);
+            let expr = R_Parse1File(fp, 0, &mut status);
             assert_eq!(status, PARSE_OK);
             assert!(!expr.is_null());
             assert_ne!(expr, R_NilValue());
@@ -648,7 +645,7 @@ mod tests {
         let _session = RSession::new();
         let (path, fp) = open_c_source("repl_file_value <- 41\n");
         unsafe {
-            R_ReplFile(fp.cast::<c_void>(), crate::sexp::globals::R_GlobalEnv());
+            R_ReplFile(fp, crate::sexp::globals::R_GlobalEnv());
             let sym = Rf_install(c"repl_file_value".as_ptr());
             let value =
                 crate::sexp::envir::R_findVarInFrame(crate::sexp::globals::R_GlobalEnv(), sym);

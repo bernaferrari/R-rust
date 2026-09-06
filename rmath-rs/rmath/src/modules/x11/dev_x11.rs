@@ -666,7 +666,7 @@ unsafe fn _R_SaveAsBmp(
     height: c_int,
     gp: Option<unsafe extern "C" fn(*mut c_void, c_int, c_int) -> u32>,
     bgr: c_int,
-    fp: *mut c_void,
+    fp: *mut crate::mainutils::rfile::RFile,
     res: c_int,
 ) -> c_int {
     unsafe { super::rbitmap::save_as_bmp(d, width, height, gp, bgr, fp, res) }

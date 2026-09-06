@@ -449,17 +449,26 @@ pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 
 /// Get the hostname of the current machine.
 fn get_hostname() -> String {
-    use std::ffi::CStr;
-    let mut buf = [0u8; 256];
-    unsafe {
-        if libc::gethostname(buf.as_mut_ptr() as *mut c_char, buf.len()) == 0 {
-            CStr::from_ptr(buf.as_ptr() as *const c_char)
-                .to_str()
-                .unwrap_or("unknown")
-                .to_string()
-        } else {
-            "unknown".to_string()
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::ffi::CStr;
+        let mut buf = [0u8; 256];
+        unsafe {
+            if libc::gethostname(buf.as_mut_ptr() as *mut c_char, buf.len()) == 0 {
+                CStr::from_ptr(buf.as_ptr() as *const c_char)
+                    .to_str()
+                    .unwrap_or("unknown")
+                    .to_string()
+            } else {
+                "unknown".to_string()
+            }
         }
+    }
+    // wasm32: no hostname in the sandbox; report the same neutral
+    // "unknown" the native failure path uses.
+    #[cfg(target_arch = "wasm32")]
+    {
+        "unknown".to_string()
     }
 }
 

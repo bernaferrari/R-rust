@@ -320,7 +320,7 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
         if a.is_null() || b.is_null() {
             return false;
         }
-        libc::strcmp(a, b) == 0
+        CStr::from_ptr(a).to_bytes() == CStr::from_ptr(b).to_bytes()
     }
 }
 
@@ -868,14 +868,13 @@ unsafe fn define_platform_binding() {
             SET_STRING_ELT(
                 names,
                 i as i64,
-                Rf_mkChar(std::ffi::CString::new(*value).unwrap().as_ptr()),
+                Rf_mkChar(std::ffi::CString::new(*key).unwrap().as_ptr()),
             );
             SET_VECTOR_ELT(
                 plat,
                 i as i64,
                 Rf_mkString(std::ffi::CString::new(*value).unwrap().as_ptr()),
             );
-            let _ = key;
         }
         setAttrib(plat, R_NamesSymbol(), names);
         defineVar(

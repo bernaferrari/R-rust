@@ -389,6 +389,7 @@ fn mark_instance_roots(instance: &mut instance::RInstance) {
     mark_reachable(instance.dynload_state.symbol_eptrs);
     mark_reachable(instance.dynload_state.c_entry_table);
 
+    #[cfg(not(target_arch = "wasm32"))]
     instance.httpd_state.visit_roots(|obj| mark_reachable(*obj));
 
     mark_reachable(instance.grid_runtime_state.current_grid_state);
@@ -857,6 +858,7 @@ fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &Has
     update_field(&mut instance.dynload_state.symbol_eptrs, old_to_new);
     update_field(&mut instance.dynload_state.c_entry_table, old_to_new);
 
+    #[cfg(not(target_arch = "wasm32"))]
     instance
         .httpd_state
         .visit_roots(|obj| update_field(obj, old_to_new));

@@ -19,13 +19,18 @@ pub unsafe fn print2buff(strng: *const c_char, d: *mut LocalParseData) {
             d.startline = false;
             printtab2buff(d.indent, d);
         }
-        let tlen = libc::strlen(strng);
+        let sbytes = std::ffi::CStr::from_ptr(strng).to_bytes();
+        let tlen = sbytes.len();
         // Allocate buffer
         R_AllocStringBuffer(0, &mut d.buffer);
-        let bufflen = libc::strlen(d.buffer.data);
+        let bufflen = std::ffi::CStr::from_ptr(d.buffer.data).to_bytes().len();
         R_AllocStringBuffer(bufflen + tlen, &mut d.buffer);
-        // Append string
-        libc::strcat(d.buffer.data, strng);
+        // Append string (payload plus the terminating NUL, like strcat)
+        std::ptr::copy_nonoverlapping(
+            sbytes.as_ptr(),
+            d.buffer.data.add(bufflen) as *mut u8,
+            tlen + 1,
+        );
         d.len += tlen as c_int;
     }
 }

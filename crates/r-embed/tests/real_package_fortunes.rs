@@ -9,7 +9,6 @@ use r_embed::RSession;
 #[test]
 fn real_package_corpus_fortunes() {
     // SAFETY: test-process setup before any threads exist.
-    unsafe { std::env::set_var("NO_COLOR", "1") };
     let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED")
         .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
     let app =

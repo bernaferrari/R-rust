@@ -27,10 +27,11 @@ pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
         let ns = LENGTH(sspid) as u32;
         let sres = Rf_allocVector(SEXPTYPE::LGLSXP, ns as c_int);
         let _sres_guard = protect(sres);
+        #[cfg(not(any(target_os = "windows", target_arch = "wasm32")))]
         let pid = INTEGER(sspid);
         let res = LOGICAL(sres);
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(all(not(target_os = "windows"), not(target_arch = "wasm32")))]
         {
             for i in 0..ns {
                 *res.add(i as usize) = FALSE;
@@ -42,6 +43,24 @@ pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
                         }
                     }
                 }
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = (signal, spid);
+            crate::mainutils::errors::Rf_error(
+                b"ps_kill is not supported on Windows\0".as_ptr() as *const _
+            );
+            return crate::sexp::globals::R_NilValue();
+        }
+        // wasm32: no signals in the sandbox; every target reports "not
+        // killed" (FALSE), the value the native loop records when kill(2)
+        // is unavailable/fails.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = signal;
+            for i in 0..ns {
+                *res.add(i as usize) = FALSE;
             }
         }
         #[cfg(target_os = "windows")]
@@ -66,10 +85,11 @@ pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
         let ns = LENGTH(sspid) as u32;
         let sres = Rf_allocVector(SEXPTYPE::INTSXP, ns as c_int);
         let _sres_guard = protect(sres);
+        #[cfg(not(any(target_os = "windows", target_arch = "wasm32")))]
         let pid = INTEGER(sspid);
         let res = INTEGER(sres);
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(all(not(target_os = "windows"), not(target_arch = "wasm32")))]
         {
             for i in 0..ns {
                 let p = *pid.add(i as usize);
@@ -96,10 +116,20 @@ pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
         }
         #[cfg(target_os = "windows")]
         {
+            let _ = val;
             crate::mainutils::errors::Rf_error(
                 b"ps_priority is not supported on Windows\0".as_ptr() as *const _,
             );
             return crate::sexp::globals::R_NilValue();
+        }
+        // wasm32: no process priorities in the sandbox; every element
+        // reports NA ("unknown") and set requests are ignored.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = val;
+            for i in 0..ns {
+                *res.add(i as usize) = NA_INTEGER;
+            }
         }
 
         sres

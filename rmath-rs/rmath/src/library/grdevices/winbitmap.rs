@@ -15,6 +15,8 @@
 use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
 
+use crate::mainutils::rfile::{RFile, SEEK_SET, r_fclose, r_fflush, r_fopen, r_fread, r_fseek};
+
 // ---------------------------------------------------------------------------
 // Cross-platform stubs (always compiled, always exported)
 // ---------------------------------------------------------------------------
@@ -34,7 +36,7 @@ pub unsafe fn R_SaveAsPng(
     _height: c_int,
     _gp: Option<unsafe extern "C" fn(*mut std::ffi::c_void, c_int, c_int) -> c_uint>,
     _bgr: c_int,
-    _fp: *mut libc::FILE,
+    _fp: *mut RFile,
     _transparent: c_uint,
     _res: c_int,
 ) -> c_int {
@@ -51,7 +53,7 @@ pub unsafe fn R_SaveAsJpeg(
     _gp: Option<unsafe extern "C" fn(*mut std::ffi::c_void, c_int, c_int) -> c_uint>,
     _bgr: c_int,
     _quality: c_int,
-    _outfile: *mut libc::FILE,
+    _outfile: *mut RFile,
     _res: c_int,
 ) -> c_int {
     0
@@ -86,10 +88,10 @@ pub unsafe fn R_SaveAsBmp(
     height: c_int,
     gp: Option<unsafe extern "C" fn(*mut std::ffi::c_void, c_int, c_int) -> c_uint>,
     bgr: c_int,
-    fp: *mut libc::FILE,
+    fp: *mut RFile,
     res: c_int,
 ) -> c_int {
-    unsafe { crate::modules::x11::rbitmap::save_as_bmp(d, width, height, gp, bgr, fp.cast(), res) }
+    unsafe { crate::modules::x11::rbitmap::save_as_bmp(d, width, height, gp, bgr, fp, res) }
 }
 
 /// Return the libpng version string, or "" if not available.
@@ -113,6 +115,7 @@ pub fn R_tiffVersion() -> *const c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CString;
     use std::ffi::c_void;
 
     unsafe extern "C" fn test_pixel(_device: *mut c_void, row: c_int, col: c_int) -> c_uint {
@@ -124,14 +127,14 @@ mod tests {
         }
     }
 
-    unsafe fn read_tmpfile(fp: *mut libc::FILE) -> Vec<u8> {
+    unsafe fn read_tmpfile(fp: *mut RFile) -> Vec<u8> {
         unsafe {
-            libc::fflush(fp);
-            libc::fseek(fp, 0, libc::SEEK_SET);
+            r_fflush(fp);
+            r_fseek(fp, 0, SEEK_SET);
             let mut output = Vec::new();
             let mut buffer = [0u8; 256];
             loop {
-                let read = libc::fread(buffer.as_mut_ptr().cast(), 1, buffer.len(), fp);
+                let read = r_fread(buffer.as_mut_ptr().cast(), 1, buffer.len(), fp);
                 if read == 0 {
                     break;
                 }
@@ -144,14 +147,15 @@ mod tests {
     #[test]
     fn save_as_bmp_writes_cross_platform_bitmap() {
         unsafe {
-            let fp = libc::tmpfile();
+            let (path, fp) = tmp_rfile();
             assert!(!fp.is_null());
 
             let status = R_SaveAsBmp(std::ptr::null_mut(), 2, 2, Some(test_pixel), 0, fp, 72);
             assert_eq!(status, 1);
 
             let bytes = read_tmpfile(fp);
-            libc::fclose(fp);
+            r_fclose(fp);
+            let _ = std::fs::remove_file(path);
 
             assert_eq!(&bytes[0..2], b"BM");
             let file_size = u32::from_le_bytes(bytes[2..6].try_into().unwrap()) as usize;
@@ -178,5 +182,20 @@ mod tests {
                 0
             );
         }
+    }
+
+    /// Open a fresh write temp file (replaces libc tmpfile in tests).
+    unsafe fn tmp_rfile() -> (std::path::PathBuf, *mut RFile) {
+        let path = std::env::temp_dir().join(format!(
+            "rport-winbitmap-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let c_path = CString::new(path.to_string_lossy().as_bytes()).unwrap();
+        let fp = unsafe { r_fopen(c_path.as_ptr(), b"wb+\0".as_ptr() as *const c_char) };
+        (path, fp)
     }
 }

@@ -1,0 +1,25 @@
+[package]
+name = "rport-fuzz"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+r-embed = { path = "../crates/r-embed" }
+
+[[bin]]
+name = "eval_boundary"
+path = "fuzz_targets/eval_boundary.rs"
+
+[[bin]]
+name = "handle_boundary"
+path = "fuzz_targets/handle_boundary.rs"
+
+# Detach from the root workspace: the fuzzer builds with sanitizers and
+# must not gate the normal workspace's dependency resolution.
+[workspace]
