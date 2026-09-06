@@ -794,6 +794,21 @@ pub unsafe fn do_isseekable(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 // do_isatty — isatty(con)
 // ---------------------------------------------------------------------------
 
+/// base::stdin() — standard input connection number (upstream: 0).
+pub unsafe fn do_stdin(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsafe { Rf_ScalarInteger(0) }
+}
+
+/// base::stdout() — standard output connection number (upstream: 1).
+pub unsafe fn do_stdout(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsafe { Rf_ScalarInteger(1) }
+}
+
+/// base::stderr() — standard error connection number (upstream: 2).
+pub unsafe fn do_stderr(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsafe { Rf_ScalarInteger(2) }
+}
+
 pub unsafe fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }

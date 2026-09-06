@@ -54,7 +54,7 @@ mkdir -p "$APP" "$CACHE"
 LOG="$REPORT_DIR/run.log"
 status=0
 if env RPORT_REAL_PKG_BUNDLED="$BUNDLED" RPORT_REAL_PKG_APP="$APP" RPORT_REAL_PKG_CACHE="$CACHE" \
-    cargo test -p r-embed real_package_corpus -- --nocapture >"$LOG" 2>&1; then
+    NO_COLOR=1 cargo test -p r-embed real_package_corpus -- --nocapture >"$LOG" 2>&1; then
     status=0
 else
     status=$?

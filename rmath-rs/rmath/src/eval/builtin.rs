@@ -1838,6 +1838,22 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_write_table,
     },
     EvaluatedBuiltin {
+        name: "stdin",
+        handler: crate::mainutils::connections::do_stdin,
+    },
+    EvaluatedBuiltin {
+        name: "stdout",
+        handler: crate::mainutils::connections::do_stdout,
+    },
+    EvaluatedBuiltin {
+        name: "stderr",
+        handler: crate::mainutils::connections::do_stderr,
+    },
+    EvaluatedBuiltin {
+        name: "isatty",
+        handler: crate::mainutils::connections::do_isatty,
+    },
+    EvaluatedBuiltin {
         name: "readLines",
         handler: crate::mainutils::connections::do_readLines,
     },

@@ -11,8 +11,8 @@
    later version.
 */
 
-use libc::{FILE, size_t};
 use core::ffi::{c_int, c_void};
+use libc::{FILE, size_t};
 use libc::{ferror, fread};
 
 type md5_uint32 = u32;

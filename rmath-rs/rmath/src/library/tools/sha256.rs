@@ -13,8 +13,8 @@
  *  (at your option) any later version.
  */
 
-use libc::{FILE, size_t};
 use core::ffi::{c_int, c_void};
+use libc::{FILE, size_t};
 use libc::{ferror, fread};
 
 const BUF_SIZE: usize = 4096;

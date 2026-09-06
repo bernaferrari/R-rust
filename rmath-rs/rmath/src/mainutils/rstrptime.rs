@@ -408,9 +408,9 @@ fn strptime_internal(
                     }
                 }
                 // localtime_r replaces the tm contents, as in trunk.
-                let mut ctm: libc::tm = unsafe { std::mem::zeroed() };
-                let secs_t = secs as libc::time_t;
-                if unsafe { libc::localtime_r(&secs_t, &mut ctm) }.is_null() {
+                let mut ctm: crate::tzone::stm = unsafe { std::mem::zeroed() };
+                let secs_t = secs as i64;
+                if unsafe { crate::tzone::R_localtime_r(&secs_t, &mut ctm) }.is_null() {
                     return None;
                 }
                 tm.tm_sec = ctm.tm_sec;
@@ -422,7 +422,9 @@ fn strptime_internal(
                 tm.tm_wday = ctm.tm_wday;
                 tm.tm_yday = ctm.tm_yday;
                 tm.tm_isdst = ctm.tm_isdst;
-                tm.tm_gmtoff = ctm.tm_gmtoff;
+                // tzone's stm uses a fixed i64 gmtoff; the local stm field
+                // is c_long (i32 under the wasm facade).
+                tm.tm_gmtoff = ctm.tm_gmtoff as _;
             }
             'S' => {
                 tm.tm_sec = get_number(rp, &mut pos, 0, 61, 2)?;

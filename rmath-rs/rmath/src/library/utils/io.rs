@@ -20,6 +20,7 @@
  *  Ported from r-source/src/library/utils/src/io.c
  */
 
+use crate::mainutils::r_format::CArg;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 use std::ptr;
@@ -1080,7 +1081,13 @@ unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
         // Rf_error in our Rust port takes a single format string
         // Build the full message using snprintf
         let mut buf = [0 as core::ffi::c_char; 512];
-        crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
+        let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
+        let args: Vec<crate::mainutils::r_format::CArg> = if arg.is_null() {
+            vec![]
+        } else {
+            vec![CArg::Str(CStr::from_ptr(arg).to_bytes())]
+        };
+        crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
         Rf_error(buf.as_ptr());
     }
 }
@@ -1089,7 +1096,8 @@ unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
 unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
     unsafe {
         let mut buf = [0 as core::ffi::c_char; 512];
-        crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
+        let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
+        crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &[arg.into()]);
         Rf_error(buf.as_ptr());
     }
 }
@@ -1098,7 +1106,13 @@ unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
 unsafe fn r_warning(fmt: *const c_char, arg: *const c_char) {
     unsafe {
         let mut buf = [0 as core::ffi::c_char; 512];
-        crate::rport_snprintf!(buf.as_mut_ptr(), 512, fmt, arg);
+        let fmt_b = CStr::from_ptr(fmt).to_bytes().to_vec();
+        let args: Vec<crate::mainutils::r_format::CArg> = if arg.is_null() {
+            vec![]
+        } else {
+            vec![CArg::Str(CStr::from_ptr(arg).to_bytes())]
+        };
+        crate::mainutils::r_format::r_snprintf_c(&mut buf, &fmt_b, &args);
         Rf_warning(buf.as_ptr());
     }
 }
@@ -1853,13 +1867,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
         // We assume the connection is properly set up from R level.
 
         let mut buf_size: usize = BUF_SIZE;
-        let mut buf = libc::malloc(buf_size) as *mut c_char;
-        if buf.is_null() {
-            r_error(
-                b"cannot allocate buffer in 'readTableHead'\0".as_ptr() as *const c_char,
-                ptr::null(),
-            );
-        }
+        let mut buf: Vec<c_char> = vec![0; buf_size];
 
         let mut ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
         let _ans_guard = protect(ans);
@@ -1884,33 +1892,23 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
                 // Grow buffer if needed
                 if nbuf >= buf_size - 3 {
                     buf_size *= 2;
-                    let tmp = libc::realloc(buf as *mut c_void, buf_size) as *mut c_char;
-                    if tmp.is_null() {
-                        libc::free(buf as *mut c_void);
-                        r_error(
-                            b"cannot allocate buffer in 'readTableHead'\0".as_ptr()
-                                as *const c_char,
-                            ptr::null(),
-                        );
-                    }
-                    buf = tmp;
+                    buf.resize(buf_size, 0);
                 }
 
                 // Handle quotes
                 if quote != 0 {
                     if data.sepchar == 0 && c == '\\' as c_int {
                         // all escapes should be passed through
-                        *buf.add(nbuf) = c as c_char;
+                        buf[nbuf] = c as c_char;
                         nbuf += 1;
                         let c2 = scanchar(true, &mut data);
                         if c2 == R_EOF_VAL {
-                            libc::free(buf as *mut c_void);
                             r_error(
                                 b"\\ followed by EOF\0".as_ptr() as *const c_char,
                                 ptr::null(),
                             );
                         }
-                        *buf.add(nbuf) = c2 as c_char;
+                        buf[nbuf] = c2 as c_char;
                         nbuf += 1;
                         continue;
                     } else if c == quote {
@@ -1920,7 +1918,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
                             // Check for doubled quote
                             let c2 = scanchar(true, &mut data);
                             if c2 == quote {
-                                *buf.add(nbuf) = c as c_char;
+                                buf[nbuf] = c as c_char;
                                 nbuf += 1;
                             } else {
                                 unscanchar(c2, &mut data);
@@ -1949,18 +1947,17 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
                     skip = true;
                 }
                 if quote != 0 || c != '\n' as c_int {
-                    *buf.add(nbuf) = c as c_char;
+                    buf[nbuf] = c as c_char;
                     nbuf += 1;
                 } else {
                     last_c = c;
                     break;
                 }
             }
-            *buf.add(nbuf) = 0;
+            buf[nbuf] = 0;
 
             if data.ttyflag != 0 && empty {
                 // No more lines from tty
-                libc::free(buf as *mut c_void);
                 // Trim result to actual number read
                 if nread < nlines {
                     let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, nread);
@@ -1974,22 +1971,21 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
             }
 
             if !empty || (last_c != R_EOF_VAL && blskip == 0) {
-                SET_STRING_ELT(ans, nread as R_xlen_t, Rf_mkChar(buf));
+                SET_STRING_ELT(ans, nread as R_xlen_t, Rf_mkChar(buf.as_ptr()));
                 nread += 1;
                 // Check for embedded nulls (strlen < nbuf)
-                if libc::strlen(buf) < nbuf {
+                let strlen = buf.iter().take_while(|&&c| c != 0).count();
+                if strlen < nbuf {
                     let mut warn_buf = [0 as core::ffi::c_char; 256];
-                    crate::rport_snprintf!(
-                        warn_buf.as_mut_ptr(),
-                        256,
-                        b"line %d appears to contain embedded nulls\0".as_ptr() as *const c_char,
-                        nread as c_int,
+                    crate::mainutils::r_format::r_snprintf_c(
+                        &mut warn_buf,
+                        b"line %d appears to contain embedded nulls\0",
+                        &[nread.into()],
                     );
                     Rf_warning(warn_buf.as_ptr());
                 }
             }
             if last_c == R_EOF_VAL {
-                libc::free(buf as *mut c_void);
                 // Trim result to actual number read
                 if nread < nlines {
                     let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, nread);
@@ -2003,7 +1999,6 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
             }
         }
 
-        libc::free(buf as *mut c_void);
         ans
     }
 }
@@ -2146,12 +2141,10 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             for j in 0..nc as usize {
                 let xj = VECTOR_ELT(x, j as R_xlen_t);
                 if LENGTH(xj) != nr {
-                    crate::rport_snprintf!(
-                        encode_buf.as_mut_ptr(),
-                        512,
-                        b"corrupt data frame -- length of column %d does not match nrows\0".as_ptr()
-                            as *const c_char,
-                        j + 1,
+                    crate::mainutils::r_format::r_snprintf_c(
+                        &mut encode_buf,
+                        b"corrupt data frame -- length of column %d does not match nrows\0",
+                        &[(j + 1).into()],
                     );
                     Rf_error(encode_buf.as_ptr());
                 }

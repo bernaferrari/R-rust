@@ -12,6 +12,7 @@ use crate::sexp::protect::protect;
 use crate::sexp::*;
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
 use libc::{FILE, size_t, ssize_t};
+use std::ffi::{CStr, CString};
 
 // ============================================================
 // libcurl FFI types and constants
@@ -598,9 +599,12 @@ unsafe fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
 unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
     unsafe {
         if verify != 0 {
-            let capath = libc::getenv(b"CURL_CA_BUNDLE\0".as_ptr() as *const c_char);
-            if !capath.is_null() && *capath != 0 {
-                curl_easy_setopt(hnd, CURLOPT_CAINFO, capath);
+            if let Ok(bundle) = std::env::var("CURL_CA_BUNDLE") {
+                if !bundle.is_empty() {
+                    if let Ok(c) = CString::new(bundle) {
+                        curl_easy_setopt(hnd, CURLOPT_CAINFO, c.as_ptr());
+                    }
+                }
             }
         } else {
             curl_easy_setopt(hnd, CURLOPT_SSL_VERIFYHOST, 0);
@@ -630,11 +634,10 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
             let mut buf: [c_char; 20] = [0; 20];
             let d = curl_version_info(CURLVERSION_NOW);
             if !d.is_null() && !(*d).version.is_null() {
-                crate::rport_snprintf!(
-                    buf.as_mut_ptr(),
-                    20,
-                    b"libcurl/%s\0".as_ptr() as *const c_char,
-                    (*d).version,
+                crate::mainutils::r_format::r_snprintf_c(
+                    &mut buf,
+                    b"libcurl/%s",
+                    &[CStr::from_ptr((*d).version).into()],
                 );
                 curl_easy_setopt(hnd, CURLOPT_USERAGENT, buf.as_ptr());
             }

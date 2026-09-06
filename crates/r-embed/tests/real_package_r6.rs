@@ -12,12 +12,14 @@ use r_embed::RSession;
 
 #[test]
 fn real_package_corpus_r6() {
+    // SAFETY: test-process setup before any threads exist.
+    unsafe { std::env::set_var("NO_COLOR", "1") };
     let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED")
         .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
-    let app = std::env::var("RPORT_REAL_PKG_APP")
-        .unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
-    let cache = std::env::var("RPORT_REAL_PKG_CACHE")
-        .unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
+    let app =
+        std::env::var("RPORT_REAL_PKG_APP").unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
+    let cache =
+        std::env::var("RPORT_REAL_PKG_CACHE").unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
     let mut session = RSession::new().expect("session");
     session
         .configure_android_paths(&app, &cache, Some(&bundled))
@@ -104,10 +106,7 @@ c1 <- Counter$new()$inc()$inc()
         "[1] TRUE"
     );
     // R6: S3 class attribute marks R6 objects.
-    assert_eq!(
-        session.eval("is.R6(q)").expect("R6 is.R6"),
-        "[1] TRUE"
-    );
+    assert_eq!(session.eval("is.R6(q)").expect("R6 is.R6"), "[1] TRUE");
     // R7: print dispatches to the generator's S3 print method.
     assert_eq!(
         session

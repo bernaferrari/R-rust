@@ -316,7 +316,7 @@ unsafe fn alloc_c_string(s: *const c_char) -> *mut c_char {
     }
 }
 
-/// Allocate `size` bytes of raw memory using std::alloc instead of libc::malloc.
+/// Allocate `size` bytes of raw memory using Rust std::alloc.
 unsafe fn alloc_raw(size: size_t) -> *mut c_void {
     unsafe {
         if size == 0 {
@@ -359,7 +359,7 @@ unsafe fn free_buffer(buf: *mut Buffer) {
 }
 
 /// Allocate a new buffer with `size` bytes of data space after the Buffer header.
-/// Uses std::alloc instead of libc::malloc to avoid libc allocator dependency.
+/// Uses Rust std::alloc to avoid any C allocator dependency.
 unsafe fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
     unsafe {
         let total_size = core::mem::size_of::<Buffer>() + size as usize;
@@ -942,13 +942,10 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     } else {
                         b"HTTP/1.0"
                     };
-                    crate::rport_snprintf!(
-                        buf.as_mut_ptr(),
-                        64,
-                        b"%s %d Code %d\r\nContent-type: \0".as_ptr() as *const c_char,
-                        sig.as_ptr(),
-                        code,
-                        code,
+                    crate::mainutils::r_format::r_snprintf_c(
+                        &mut buf,
+                        b"%s %d Code %d\r\nContent-type: ",
+                        &[sig.as_slice().into(), code.into(), code.into()],
                     );
                     send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
                 }
@@ -997,11 +994,10 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     libc::fseek(f, 0, libc::SEEK_END);
                     fsz = libc::ftell(f);
                     libc::fseek(f, 0, libc::SEEK_SET);
-                    crate::rport_snprintf!(
-                        buf.as_mut_ptr(),
-                        64,
-                        b"\r\nContent-length: %ld\r\n\r\n\0".as_ptr() as *const c_char,
-                        fsz,
+                    crate::mainutils::r_format::r_snprintf_c(
+                        &mut buf,
+                        b"\r\nContent-length: %ld\r\n\r\n",
+                        &[fsz.into()],
                     );
                     send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
                     if (*c).method != METHOD_HEAD {
@@ -1026,11 +1022,10 @@ unsafe fn process_request_(ptr: *mut c_void) {
                 }
 
                 // Regular string content
-                crate::rport_snprintf!(
-                    buf.as_mut_ptr(),
-                    64,
-                    b"\r\nContent-length: %u\r\n\r\n\0".as_ptr() as *const c_char,
-                    libc::strlen(cs) as c_uint,
+                crate::mainutils::r_format::r_snprintf_c(
+                    &mut buf,
+                    b"\r\nContent-length: %u\r\n\r\n",
+                    &[(libc::strlen(cs) as c_uint).into()],
                 );
                 send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
                 if (*c).method != METHOD_HEAD {
@@ -1053,13 +1048,10 @@ unsafe fn process_request_(ptr: *mut c_void) {
                     } else {
                         b"HTTP/1.0"
                     };
-                    crate::rport_snprintf!(
-                        buf.as_mut_ptr(),
-                        64,
-                        b"%s %d Code %d\r\nContent-type: \0".as_ptr() as *const c_char,
-                        sig.as_ptr(),
-                        code,
-                        code,
+                    crate::mainutils::r_format::r_snprintf_c(
+                        &mut buf,
+                        b"%s %d Code %d\r\nContent-type: ",
+                        &[sig.as_slice().into(), code.into(), code.into()],
                     );
                     send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
                 }
@@ -1074,11 +1066,10 @@ unsafe fn process_request_(ptr: *mut c_void) {
                         i += 1;
                     }
                 }
-                crate::rport_snprintf!(
-                    buf.as_mut_ptr(),
-                    64,
-                    b"\r\nContent-length: %d\r\n\r\n\0".as_ptr() as *const c_char,
-                    LENGTH(y),
+                crate::mainutils::r_format::r_snprintf_c(
+                    &mut buf,
+                    b"\r\nContent-length: %d\r\n\r\n",
+                    &[LENGTH(y).into()],
                 );
                 send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
                 if (*c).method != METHOD_HEAD {

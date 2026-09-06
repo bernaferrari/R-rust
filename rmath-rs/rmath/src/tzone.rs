@@ -1,4 +1,9 @@
-#![allow(unreachable_code, clippy::comparison_to_empty, clippy::manual_memcpy, non_camel_case_types)]
+#![allow(
+    unreachable_code,
+    clippy::comparison_to_empty,
+    clippy::manual_memcpy,
+    non_camel_case_types
+)]
 /*
  * Rust port of R's timezone library (src/extra/tzone/localtime.c).
  *
@@ -629,9 +634,28 @@ fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 {
         name_to_use = &fullname;
     }
 
-    // Check access / try to open
+    // Check access / try to open. Search order for relative names:
+    // configured zoneinfo dir, then the platform zoneinfo database
+    // (/usr/share/zoneinfo on macOS/Linux — what the system libc would
+    // use), then UTC.
     let mut file = match File::open(name_to_use) {
         Ok(f) => f,
+        Err(_) if name.is_some() => {
+            // Explicit named zone: fall back to the platform zoneinfo
+            // database (/usr/share/zoneinfo on macOS/Linux). The unnamed
+            // wall-clock default keeps the embedded engine's UTC
+            // semantics instead of adopting the host zone.
+            let system_candidate = format!("/usr/share/zoneinfo/{}", name_stripped);
+            match File::open(&system_candidate) {
+                Ok(f) => f,
+                Err(_) => {
+                    rf_warning(&format!("unknown timezone '{}'", sname));
+                    return -1;
+                }
+            }
+        }
+        // Unnamed (wall-clock) loads keep the previous behavior: warn and
+        // fail upward so the caller falls back to gmtload.
         Err(_) => {
             rf_warning(&format!("unknown timezone '{}'", sname));
             return -1;

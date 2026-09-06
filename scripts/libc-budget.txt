@@ -1,0 +1,14 @@
+# libc budgets for scripts/libc_ratchet.sh — counts only go DOWN.
+# Zeroed rows are hard requirements (de-libc stages A–D); nonzero rows are
+# the remaining translation-residue surface (string/mem over raw pointers,
+# the FILE*/connections layer) to be driven to zero by future stages.
+# Comment-only lines are excluded by the gate.
+#
+# category<TAB>budget
+variadic_printf	0
+heap	0
+env	0
+time_fns	0
+c_type_aliases	0
+string_mem	180
+stdio_FILE	104

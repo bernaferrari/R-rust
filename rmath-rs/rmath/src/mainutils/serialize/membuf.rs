@@ -17,11 +17,26 @@ pub unsafe fn resize_buffer(mb: *mut membuf_st, needed: R_size_t) {
             return;
         }
         let new_size = std::cmp::max(needed, (*mb).size * 2);
-        let new_buf = libc::realloc((*mb).buf as *mut c_void, new_size) as *mut u8;
-        if !new_buf.is_null() {
-            (*mb).buf = new_buf;
-            (*mb).size = new_size;
-        }
+        // `buf` is a Vec<u8> handed out as a raw pointer; `size` always
+        // equals its capacity so it can be reconstructed here and in
+        // free_mem_buffer. (Input streams alias foreign memory and never
+        // resize, matching the C original.)
+        let mut v: Vec<u8> = if (*mb).buf.is_null() {
+            Vec::with_capacity(new_size)
+        } else {
+            let mut v = Vec::from_raw_parts((*mb).buf, 0, (*mb).size);
+            // reserve_exact(additional) only guarantees capacity >=
+            // len + additional; len is 0 here, so the argument must be
+            // the TOTAL requirement. The previous
+            // `new_size - v.capacity()` delta under-allocated whenever
+            // new_size > 2 * capacity: the following raw writes overflowed
+            // the heap (silent allocator abort).
+            v.reserve_exact(new_size);
+            v
+        };
+        (*mb).buf = v.as_mut_ptr();
+        (*mb).size = v.capacity();
+        std::mem::forget(v);
     }
 }
 
@@ -184,7 +199,7 @@ pub unsafe fn free_mem_buffer(data: *mut c_void) {
         }
         let mb = data as *mut membuf_st;
         if !(*mb).buf.is_null() {
-            libc::free((*mb).buf as *mut c_void);
+            drop(Vec::from_raw_parts((*mb).buf, 0, (*mb).size));
             (*mb).buf = ptr::null_mut();
         }
     }

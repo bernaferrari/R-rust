@@ -290,10 +290,10 @@ pub unsafe fn S_realloc(
 /// This is the equivalent of R's `R_malloc_gc()`.
 pub unsafe fn R_malloc_gc(n: usize) -> *mut c_void {
     unsafe {
-        let p = libc::malloc(n);
+        let p = crate::mainutils::raw_heap::malloc(n);
         if p.is_null() {
             R_gc();
-            return libc::malloc(n);
+            return crate::mainutils::raw_heap::malloc(n);
         }
         p
     }
@@ -304,10 +304,10 @@ pub unsafe fn R_malloc_gc(n: usize) -> *mut c_void {
 /// This is the equivalent of R's `R_calloc_gc()`.
 pub unsafe fn R_calloc_gc(n: usize, s: usize) -> *mut c_void {
     unsafe {
-        let p = libc::calloc(n, s);
+        let p = crate::mainutils::raw_heap::calloc(n, s);
         if p.is_null() {
             R_gc();
-            return libc::calloc(n, s);
+            return crate::mainutils::raw_heap::calloc(n, s);
         }
         p
     }
@@ -318,10 +318,10 @@ pub unsafe fn R_calloc_gc(n: usize, s: usize) -> *mut c_void {
 /// This is the equivalent of R's `R_realloc_gc()`.
 pub unsafe fn R_realloc_gc(p: *mut c_void, n: usize) -> *mut c_void {
     unsafe {
-        let q = libc::realloc(p, n);
+        let q = crate::mainutils::raw_heap::realloc(p, n);
         if q.is_null() {
             R_gc();
-            return libc::realloc(p, n);
+            return crate::mainutils::raw_heap::realloc(p, n);
         }
         q
     }
@@ -336,7 +336,7 @@ pub unsafe fn R_realloc_gc(p: *mut c_void, n: usize) -> *mut c_void {
 /// This is the equivalent of R's `R_chk_calloc()`.
 pub unsafe fn R_chk_calloc(nelem: usize, elsize: usize) -> *mut c_void {
     unsafe {
-        let p = libc::calloc(nelem, elsize);
+        let p = crate::mainutils::raw_heap::calloc(nelem, elsize);
         if p.is_null() {
             static MSG: &[u8] = b"memory allocation failed (calloc)\0";
             crate::mainutils::errors::Rf_error(MSG.as_ptr() as *const c_char);
@@ -350,11 +350,7 @@ pub unsafe fn R_chk_calloc(nelem: usize, elsize: usize) -> *mut c_void {
 /// This is the equivalent of R's `R_chk_realloc()`.
 pub unsafe fn R_chk_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     unsafe {
-        let p = if !ptr.is_null() {
-            libc::realloc(ptr, size)
-        } else {
-            libc::malloc(size)
-        };
+        let p = crate::mainutils::raw_heap::realloc(ptr, size);
         if p.is_null() {
             static MSG: &[u8] = b"memory allocation failed (realloc)\0";
             crate::mainutils::errors::Rf_error(MSG.as_ptr() as *const c_char);
@@ -369,7 +365,7 @@ pub unsafe fn R_chk_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
 pub unsafe fn R_chk_free(ptr: *mut c_void) {
     unsafe {
         if !ptr.is_null() {
-            libc::free(ptr);
+            crate::mainutils::raw_heap::free(ptr);
         }
     }
 }
@@ -1070,21 +1066,23 @@ pub unsafe fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut
             newsize += bsize;
         }
 
-        if buf.data.is_null() {
-            buf.data = libc::malloc(newsize) as *mut c_char;
-            if !buf.data.is_null() {
-                *buf.data = 0;
-            }
+        // The buffer is a Vec<u8> handed out as a raw pointer; `bufsize`
+        // always equals its capacity so it can be reconstructed on the
+        // next grow and in R_FreeStringBuffer. Only a fresh block is
+        // NUL-terminated here; growth keeps the accumulated contents.
+        let mut v: Vec<u8> = if buf.data.is_null() {
+            let mut v = Vec::with_capacity(newsize);
+            v.push(0);
+            v
         } else {
-            buf.data = libc::realloc(buf.data as *mut c_void, newsize) as *mut c_char;
-        }
+            let mut v = Vec::from_raw_parts(buf.data as *mut u8, 0, buf.bufsize);
+            v.reserve_exact(newsize - v.capacity());
+            v
+        };
+        buf.data = v.as_mut_ptr() as *mut c_char;
+        buf.bufsize = v.capacity();
+        std::mem::forget(v);
 
-        if buf.data.is_null() {
-            buf.bufsize = 0;
-            error("could not allocate memory in R_AllocStringBuffer");
-        }
-
-        buf.bufsize = newsize;
         buf.data as *mut c_void
     }
 }
@@ -1099,7 +1097,7 @@ pub unsafe fn R_FreeStringBuffer(buf: *mut R_StringBuffer) {
         }
         let buf = &mut *buf;
         if !buf.data.is_null() {
-            libc::free(buf.data as *mut c_void);
+            drop(Vec::from_raw_parts(buf.data as *mut u8, 0, buf.bufsize));
             buf.data = ptr::null_mut();
         }
         buf.bufsize = 0;
@@ -1117,17 +1115,13 @@ pub unsafe fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
         let buf = &mut *buf;
         if buf.bufsize > buf.defaultSize {
             if !buf.data.is_null() {
-                libc::free(buf.data as *mut c_void);
+                drop(Vec::from_raw_parts(buf.data as *mut u8, 0, buf.bufsize));
                 buf.data = ptr::null_mut();
             }
             buf.bufsize = 0;
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Multi-set preservation (for bison-generated parsers)
-// ---------------------------------------------------------------------------
 
 /// Create a new multi-set for protecting objects.
 ///

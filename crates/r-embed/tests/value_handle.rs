@@ -14,11 +14,11 @@ fn real(x: &[f64]) -> rmath::android::RValue {
 #[test]
 fn define_read_roundtrip_survives_gc_and_evals() {
     let mut session = RSession::new().expect("session");
-    let handle = session
-        .define_handle("c(1, 2, 3) + 0.5")
-        .expect("define");
+    let handle = session.define_handle("c(1, 2, 3) + 0.5").expect("define");
 
-    session.eval("x <- rnorm(100); gc(); rm(x); gc()").expect("noise");
+    session
+        .eval("x <- rnorm(100); gc(); rm(x); gc()")
+        .expect("noise");
     let guard = session.read_handle(&handle).expect("read after gc");
     assert_eq!(*guard, real(&[1.5, 2.5, 3.5]));
     // The guard exclusively borrows the session: session_id() must be

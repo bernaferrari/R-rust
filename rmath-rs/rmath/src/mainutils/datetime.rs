@@ -28,7 +28,14 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_long};
 
-use libc::{localtime_r, mktime, strftime, time_t, tm as libc_tm};
+// Timezone/datetime go through the ported tzone layer (R's own
+// extra/tzone) instead of libc: one implementation on every host.
+use crate::tzone::stm as tz_tm;
+use crate::tzone::{R_gmtime_r, R_localtime_r, R_mktime, R_tzname};
+use crate::tzone_strftime::R_strftime;
+use crate::tzone_strftime::stm as sf_tm;
+
+type time_t = i64;
 
 // FFI for tzname global variable
 #[cfg(not(target_arch = "wasm32"))]
@@ -596,8 +603,7 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
         return timegm00(tm);
     }
 
-    // Use system mktime for local time
-    let mut ctm: libc_tm = unsafe { std::mem::zeroed() };
+    let mut ctm: tz_tm = unsafe { std::mem::zeroed() };
     ctm.tm_sec = tm.tm_sec;
     ctm.tm_min = tm.tm_min;
     ctm.tm_hour = tm.tm_hour;
@@ -605,18 +611,14 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
     ctm.tm_mon = tm.tm_mon;
     ctm.tm_year = tm.tm_year;
     ctm.tm_isdst = tm.tm_isdst;
-
-    let result = unsafe { mktime(&mut ctm) };
-
-    // Copy back normalized values
+    let result = unsafe { R_mktime(&mut ctm) };
+    // Copy back normalized values.
     tm.tm_sec = ctm.tm_sec;
     tm.tm_min = ctm.tm_min;
     tm.tm_hour = ctm.tm_hour;
     tm.tm_mday = ctm.tm_mday;
     tm.tm_mon = ctm.tm_mon;
     tm.tm_year = ctm.tm_year;
-    tm.tm_wday = ctm.tm_wday;
-    tm.tm_yday = ctm.tm_yday;
     tm.tm_isdst = ctm.tm_isdst;
 
     if result == -1 {
@@ -672,12 +674,12 @@ fn localtime0(tp: *const c_double, local: bool, ltm: &mut stm) -> bool {
         t -= 1;
     }
 
-    let mut ctm: libc_tm = unsafe { std::mem::zeroed() };
+    let mut ctm: tz_tm = unsafe { std::mem::zeroed() };
     let res = unsafe {
         if local {
-            localtime_r(&t, &mut ctm)
+            R_localtime_r(&t, &mut ctm)
         } else {
-            libc::gmtime_r(&t, &mut ctm)
+            R_gmtime_r(&t, &mut ctm)
         }
     };
 
@@ -814,15 +816,12 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 if d < 0.0 && d != (t as c_double) {
                     t -= 1;
                 }
-                let mut ctm: libc_tm = std::mem::zeroed();
-                let res = localtime_r(&t, &mut ctm);
+                let mut ctm: tz_tm = std::mem::zeroed();
+                let res = unsafe { R_localtime_r(&t, &mut ctm) };
                 if !res.is_null() {
-                    // Use tzname (wasm reads it through the Sync wrapper).
+                    // R_tzname abstracts the platform tzname global.
                     let tzname_idx = if ctm.tm_isdst > 0 { 1 } else { 0 };
-                    #[cfg(target_arch = "wasm32")]
-                    let tzname_ptr = tzname.0[tzname_idx];
-                    #[cfg(not(target_arch = "wasm32"))]
-                    let tzname_ptr = tzname[tzname_idx];
+                    let tzname_ptr = unsafe { *R_tzname().add(tzname_idx) };
                     if !tzname_ptr.is_null() {
                         CStr::from_ptr(tzname_ptr).to_string_lossy().into_owned()
                     } else {
@@ -979,7 +978,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             let secs = *REAL(VECTOR_ELT(x, 0)).add(iu % nlen[0] as usize);
             let fsecs = secs.floor();
 
-            let mut ctm: libc_tm = std::mem::zeroed();
+            let mut ctm: tz_tm = std::mem::zeroed();
 
             if R_FINITE(secs) && fsecs >= c_int::MIN as c_double && fsecs <= c_int::MAX as c_double
             {
@@ -1052,13 +1051,26 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
                             .unwrap_or("%Y-%m-%d %H:%M:%S")
                     };
 
+                    let mut sf_tm_ctm: sf_tm = std::mem::zeroed();
+                    sf_tm_ctm.tm_sec = ctm.tm_sec;
+                    sf_tm_ctm.tm_min = ctm.tm_min;
+                    sf_tm_ctm.tm_hour = ctm.tm_hour;
+                    sf_tm_ctm.tm_mday = ctm.tm_mday;
+                    sf_tm_ctm.tm_mon = ctm.tm_mon;
+                    sf_tm_ctm.tm_year = ctm.tm_year;
+                    sf_tm_ctm.tm_wday = ctm.tm_wday;
+                    sf_tm_ctm.tm_yday = ctm.tm_yday;
+                    sf_tm_ctm.tm_isdst = ctm.tm_isdst;
                     let mut buf = [0u8; 2049];
-                    let res = strftime(
-                        buf.as_mut_ptr() as *mut c_char,
-                        2048,
-                        CString::new(fmt_cstr).unwrap_or_default().as_ptr(),
-                        &ctm,
-                    );
+                    let res = unsafe {
+                        R_strftime(
+                            buf.as_mut_ptr(),
+                            2048,
+                            CString::new(fmt_cstr).unwrap_or_default().as_ptr()
+                                as *const core::ffi::c_char,
+                            &sf_tm_ctm,
+                        )
+                    };
 
                     if res == 0 {
                         let cstr = c"";
@@ -1088,9 +1100,14 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 /// Ported from `glibc_fix()` in datetime.c.
 fn glibc_fix(tm: &mut stm, invalid: &mut bool) {
     unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let mut tm0: libc_tm = std::mem::zeroed();
-        if libc::localtime_r(&t, &mut tm0).is_null() {
+        // SystemTime works on every target (wasm yields the epoch,
+        // matching the previous wasm-libc facade behavior).
+        let t: time_t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut tm0: tz_tm = std::mem::zeroed();
+        if unsafe { R_localtime_r(&t, &mut tm0) }.is_null() {
             return;
         }
         if tm.tm_year == NA_INTEGER {
@@ -1826,7 +1843,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
             {
                 *REAL(ans).add(iu) = NA_REAL;
             } else {
-                let mut ctm: libc_tm = std::mem::zeroed();
+                let mut ctm: tz_tm = std::mem::zeroed();
                 ctm.tm_year = yr - 1900;
                 ctm.tm_mon = mo - 1;
                 ctm.tm_mday = dy;
@@ -1835,7 +1852,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
                 ctm.tm_sec = sc as c_int;
                 ctm.tm_isdst = -1;
 
-                let t = mktime(&mut ctm);
+                let t = unsafe { R_mktime(&mut ctm) };
                 if t == -1 {
                     *REAL(ans).add(iu) = NA_REAL;
                 } else {
@@ -2194,6 +2211,9 @@ mod tests {
 
     #[test]
     fn test_mktime0_epoch_local() {
+        // R_mktime reads the session's tzone globals; unit tests must hold
+        // a session exactly like tzone's own tests do.
+        let _session = crate::sexp::session::RSession::new();
         let mut tm = stm::new();
         tm.tm_mday = 1;
         tm.tm_mon = 0;

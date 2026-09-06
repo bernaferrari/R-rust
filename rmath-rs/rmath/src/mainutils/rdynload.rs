@@ -351,15 +351,15 @@ unsafe extern "C" {
 // nothing is ever loaded, so nothing can be looked up).
 #[cfg(target_arch = "wasm32")]
 unsafe fn malloc(size: usize) -> *mut c_void {
-    unsafe { libc::malloc(size) }
+    unsafe { crate::mainutils::raw_heap::malloc(size) }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn calloc(nmemb: usize, size: usize) -> *mut c_void {
-    unsafe { libc::calloc(nmemb, size) }
+    unsafe { crate::mainutils::raw_heap::calloc(nmemb, size) }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn free(ptr: *mut c_void) {
-    unsafe { libc::free(ptr) }
+    unsafe { crate::mainutils::raw_heap::free(ptr) }
 }
 #[cfg(target_arch = "wasm32")]
 unsafe fn dlsym(_handle: *mut c_void, _symbol: *const c_char) -> *mut c_void {

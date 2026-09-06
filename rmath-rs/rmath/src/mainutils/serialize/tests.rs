@@ -421,7 +421,7 @@ fn test_r_write_connection_file_round_trip() {
         libc::fflush(fp);
         libc::fseek(fp, 0, libc::SEEK_END);
         let size = libc::ftell(fp);
-        assert_eq!(size, bytes.len() as libc::c_long);
+        assert_eq!(size, bytes.len() as ::core::ffi::c_long);
         libc::fclose(fp);
     }
 }

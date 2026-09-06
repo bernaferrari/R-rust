@@ -62,7 +62,9 @@ unsafe fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
 unsafe fn HT_TypeFromString(x: SEXP) -> c_int {
     unsafe {
         if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
-            Rf_error(b"hash table type must be a scalar string\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error(
+                b"hash table type must be a scalar string\0".as_ptr() as *const core::ffi::c_char
+            );
         }
         let s = CHAR(STRING_ELT(x, 0));
         let s_str = std::ffi::CStr::from_ptr(s);

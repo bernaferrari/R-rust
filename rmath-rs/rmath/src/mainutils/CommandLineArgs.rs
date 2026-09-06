@@ -520,29 +520,21 @@ mod tests {
     }
 
     /// Helper: build a null-terminated argv array from Rust strings.
-    /// Uses libc::malloc so we can safely free after R_common_command_line
-    /// rearranges the pointers in the array (no CString ownership tracking).
+    /// Each string is a `CString` handed out as a raw pointer so it can be
+    /// freed after R_common_command_line rearranges the pointer array.
     unsafe fn make_argv(args: &[&str]) -> Vec<*mut c_char> {
         args.iter()
-            .map(|s| {
-                let cstr = CString::new(*s).unwrap_or_default();
-                let len = cstr.as_bytes_with_nul().len();
-                let ptr = unsafe { libc::malloc(len) as *mut c_char };
-                unsafe { ptr::copy_nonoverlapping(cstr.as_ptr(), ptr, len) };
-                ptr
-            })
+            .map(|s| CString::new(*s).unwrap_or_default().into_raw())
             .collect()
     }
 
     /// Helper: free argv array built by make_argv.
-    /// Uses libc::free (not CString::from_raw) to avoid double-free issues
-    /// when R_common_command_line has rearranged pointers in the array.
     /// We collect unique pointers to avoid freeing duplicates.
     unsafe fn free_argv(argv: &mut Vec<*mut c_char>) {
         let mut seen = std::collections::HashSet::new();
         for &p in argv.iter() {
             if !p.is_null() && seen.insert(p) {
-                unsafe { libc::free(p as *mut c_void) };
+                drop(unsafe { CString::from_raw(p) });
             }
         }
     }

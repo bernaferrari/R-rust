@@ -8,12 +8,14 @@ use r_embed::RSession;
 
 #[test]
 fn real_package_corpus_fortunes() {
+    // SAFETY: test-process setup before any threads exist.
+    unsafe { std::env::set_var("NO_COLOR", "1") };
     let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED")
         .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
-    let app = std::env::var("RPORT_REAL_PKG_APP")
-        .unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
-    let cache = std::env::var("RPORT_REAL_PKG_CACHE")
-        .unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
+    let app =
+        std::env::var("RPORT_REAL_PKG_APP").unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
+    let cache =
+        std::env::var("RPORT_REAL_PKG_CACHE").unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
     let mut session = RSession::new().expect("session");
     session
         .configure_android_paths(&app, &cache, Some(&bundled))
@@ -23,7 +25,9 @@ fn real_package_corpus_fortunes() {
     // S3 print dispatch on class "fortune", read.table over the package's
     // inst/ CSV (sep/quote/colClasses, 400+ rows), rbind/data.frame
     // construction, capture.output, and $ on the S3 object.
-    session.load_package("fortunes").expect("fortunes must load");
+    session
+        .load_package("fortunes")
+        .expect("fortunes must load");
     assert_eq!(
         session
             .eval("identical(class(fortune(10)), \"fortune\")")

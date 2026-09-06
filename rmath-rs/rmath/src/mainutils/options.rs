@@ -830,7 +830,59 @@ pub unsafe fn InitOptions() {
         });
         if initialized_now {
             refresh_options_binding();
+            define_platform_binding();
         }
+    }
+}
+
+/// Define the base-env `.Platform` list (upstream platform.c). Embedded
+/// sessions report a Unix-ish, non-GUI, source-package platform; terminal
+/// detection packages (crayon & friends) read $GUI/$OS.type at load.
+unsafe fn define_platform_binding() {
+    unsafe {
+        let fields: [(&str, &str); 8] = [
+            ("OS.type", "unix"),
+            ("file.sep", "/"),
+            ("dynlib.ext", ".so"),
+            ("GUI", "unknown"),
+            (
+                "endian",
+                if cfg!(target_endian = "little") {
+                    "little"
+                } else {
+                    "big"
+                },
+            ),
+            ("type", "unix"),
+            ("pkgType", "source"),
+            ("path.sep", ":"),
+        ];
+        let plat = Rf_allocVector3(SEXPTYPE::VECSXP, fields.len() as i64);
+        if plat.is_null() {
+            return;
+        }
+        let _plat_guard = protect(plat);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, fields.len() as i64);
+        let _names_guard = protect(names);
+        for (i, (key, value)) in fields.iter().enumerate() {
+            SET_STRING_ELT(
+                names,
+                i as i64,
+                Rf_mkChar(std::ffi::CString::new(*value).unwrap().as_ptr()),
+            );
+            SET_VECTOR_ELT(
+                plat,
+                i as i64,
+                Rf_mkString(std::ffi::CString::new(*value).unwrap().as_ptr()),
+            );
+            let _ = key;
+        }
+        setAttrib(plat, R_NamesSymbol(), names);
+        defineVar(
+            Rf_install(std::ffi::CString::new(".Platform").unwrap().as_ptr()),
+            plat,
+            R_BaseEnv(),
+        );
     }
 }
 

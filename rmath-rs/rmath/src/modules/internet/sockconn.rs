@@ -12,7 +12,7 @@ use super::sock::R_set_nodelay;
 use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::*;
 use crate::special::mlutils::REprintf;
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{CStr, c_char, c_int, c_void};
 use libc::{FD_SETSIZE, size_t, ssize_t, strcpy, strlen};
 use std::alloc::{Layout, alloc, dealloc};
 
@@ -138,7 +138,7 @@ pub struct servsockconn {
 type Rservsockconn = *mut servsockconn;
 
 // ---------------------------------------------------------------------------
-// Internal allocation helpers (using std::alloc instead of libc::malloc/free)
+// Internal allocation helpers (Rust std::alloc, no C heap involved)
 // ---------------------------------------------------------------------------
 
 unsafe fn alloc_c_string(len: usize) -> *mut c_char {
@@ -339,9 +339,8 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
                 R_SockClose(sock1);
 
                 if sock < 0 {
-                    REprintf(
-                        b"problem in listening on this socket\n\0".as_ptr() as *const core::ffi::c_char
-                    );
+                    REprintf(b"problem in listening on this socket\n\0".as_ptr()
+                        as *const core::ffi::c_char);
                     return R_FALSE;
                 }
             } else {
@@ -374,17 +373,14 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
             let sz = buf_len + 10;
             (*con).description = alloc_c_string(sz);
             if (*con).description.is_null() {
-                REprintf(
-                    b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char
-                );
+                REprintf(b"allocation of socket connection failed\n\0".as_ptr()
+                    as *const core::ffi::c_char);
                 return R_FALSE;
             }
-            crate::rport_snprintf!(
-                (*con).description,
-                sz,
-                b"<-%s:%d\0".as_ptr() as *const c_char,
-                buf.as_ptr(),
-                (*this).port,
+            crate::mainutils::r_format::r_snprintf_c(
+                std::slice::from_raw_parts_mut((*con).description, sz),
+                b"<-%s:%d",
+                &[CStr::from_ptr(buf.as_ptr()).into(), (*this).port.into()],
             );
         } else {
             // Client mode: connect to a remote host
@@ -396,12 +392,13 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
             }
 
             // Update description: "->host:port"
-            crate::rport_snprintf!(
-                buf.as_mut_ptr(),
-                256,
-                b"->%s:%d\0".as_ptr() as *const c_char,
-                (*con).description,
-                (*this).port,
+            crate::mainutils::r_format::r_snprintf_c(
+                &mut buf,
+                b"->%s:%d",
+                &[
+                    CStr::from_ptr((*con).description).into(),
+                    (*this).port.into(),
+                ],
             );
             strcpy((*con).description, buf.as_ptr());
         }
@@ -664,7 +661,9 @@ pub(crate) unsafe fn in_R_newsock(
         // Allocate the Rconn struct
         let new = alloc_boxed::<Rconn>();
         if new.is_null() {
-            REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char);
+            REprintf(
+                b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char
+            );
             return core::ptr::null_mut();
         }
 
@@ -672,7 +671,9 @@ pub(crate) unsafe fn in_R_newsock(
         (*new).class = alloc_c_string(10);
         if (*new).class.is_null() {
             free_boxed(new);
-            REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char);
+            REprintf(
+                b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char
+            );
             return core::ptr::null_mut();
         }
         strcpy((*new).class, b"sockconn\0".as_ptr() as *const c_char);
@@ -684,7 +685,9 @@ pub(crate) unsafe fn in_R_newsock(
         if (*new).description.is_null() {
             free_c_string((*new).class);
             free_boxed(new);
-            REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char);
+            REprintf(
+                b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char
+            );
             return core::ptr::null_mut();
         }
         if !host.is_null() {
@@ -711,7 +714,9 @@ pub(crate) unsafe fn in_R_newsock(
             free_c_string((*new).description);
             free_c_string((*new).class);
             free_boxed(new);
-            REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char);
+            REprintf(
+                b"allocation of socket connection failed\n\0".as_ptr() as *const core::ffi::c_char
+            );
             return core::ptr::null_mut();
         }
 
@@ -820,9 +825,8 @@ pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
             free_c_string((*new).description);
             free_c_string((*new).class);
             free_boxed(new);
-            REprintf(
-                b"file descriptor is too large for select()\n\0".as_ptr() as *const core::ffi::c_char
-            );
+            REprintf(b"file descriptor is too large for select()\n\0".as_ptr()
+                as *const core::ffi::c_char);
             return core::ptr::null_mut();
         }
 

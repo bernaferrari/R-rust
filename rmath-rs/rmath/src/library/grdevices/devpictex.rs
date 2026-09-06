@@ -463,7 +463,7 @@ unsafe extern "C" fn PicTeX_Close(dd: pDevDesc) {
         let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
         fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n"));
         libc::fclose((*ptd).texfp);
-        libc::free(ptd as *mut c_void);
+        drop(Box::from_raw(ptd));
     }
 }
 
@@ -877,20 +877,13 @@ unsafe fn PicTeXDeviceDriver(
 ) -> bool {
     unsafe {
         // Allocate device-specific structure
-        let ptd: *mut picTeXDesc =
-            libc::malloc(std::mem::size_of::<picTeXDesc>()) as *mut picTeXDesc;
-        if ptd.is_null() {
-            return false;
-        }
-
-        // Initialize to zero
-        ptr::write_bytes(ptd, 0, 1);
+        let ptd: *mut picTeXDesc = Box::into_raw(Box::new(std::mem::zeroed::<picTeXDesc>()));
 
         // Open the output file
         let expanded = R_ExpandFileName(filename);
         let fp = R_fopen(expanded, b"w\0".as_ptr() as *const c_char);
         if fp.is_null() {
-            libc::free(ptd as *mut c_void);
+            drop(Box::from_raw(ptd));
             return false;
         }
 

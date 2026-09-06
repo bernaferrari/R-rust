@@ -111,34 +111,35 @@ pub unsafe fn do_Sys_getenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// Read a variable live via libc getenv (sees Sys.setenv writes).
 fn libc_getenv(name: &str) -> Option<String> {
-    let c_name = CString::new(name).ok()?;
-    unsafe {
-        let val = libc::getenv(c_name.as_ptr());
-        if val.is_null() {
-            None
-        } else {
-            Some(CStr::from_ptr(val).to_string_lossy().into_owned())
-        }
+    // std::env is the live process environment on native hosts (upstream
+    // Sys.setenv semantics: system() children see the writes) and a
+    // permanently-empty environment on wasm — no libc.
+    if name.contains('\0') {
+        return None;
     }
+    std::env::var(name).ok()
 }
 
-/// Set a variable live via libc setenv (overwrites); false on invalid input.
+/// Set a variable live via std::env::set_var (overwrites); false on invalid
+/// input. Empty names are rejected like libc setenv.
 fn libc_setenv(name: &str, value: &str) -> bool {
-    let Ok(c_name) = CString::new(name) else {
+    if name.is_empty() || name.contains('=') || name.contains('\0') || value.contains('\0') {
         return false;
-    };
-    let Ok(c_value) = CString::new(value) else {
-        return false;
-    };
-    unsafe { libc::setenv(c_name.as_ptr(), c_value.as_ptr(), 1) == 0 }
+    }
+    // SAFETY: single-threaded engine session; no concurrent reader of the
+    // process environment exists in-process.
+    unsafe { std::env::set_var(name, value) };
+    true
 }
 
-/// Unset a variable live via libc unsetenv; false on invalid input.
+/// Unset a variable live via std::env::remove_var; false on invalid input.
 fn libc_unsetenv(name: &str) -> bool {
-    let Ok(c_name) = CString::new(name) else {
+    if name.is_empty() || name.contains('=') || name.contains('\0') {
         return false;
-    };
-    unsafe { libc::unsetenv(c_name.as_ptr()) == 0 }
+    }
+    // SAFETY: see libc_setenv.
+    unsafe { std::env::remove_var(name) };
+    true
 }
 
 #[cfg(not(target_arch = "wasm32"))]

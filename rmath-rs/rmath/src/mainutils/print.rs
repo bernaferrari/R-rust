@@ -14,6 +14,7 @@ use crate::eval::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, R_RowNamesSymbol,
     getAttrib, isObject as isObject_fn,
 };
+use crate::mainutils::r_format::{CArg, r_sprintf};
 use crate::sexp::accessors::{
     ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL,
     SET_STRING_ELT, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
@@ -95,6 +96,21 @@ unsafe fn tagbuf_clear() {
 
 unsafe fn tagbuf_ptr_at(offset: usize) -> *mut c_char {
     with_print_runtime(|state| state.tagbuf.as_mut_ptr().wrapping_add(offset) as *mut c_char)
+}
+
+/// Bounded, NUL-terminated write into the tag buffer, matching C `snprintf`
+/// size semantics: at most `sz - 1` payload bytes plus a NUL; `sz == 0`
+/// writes nothing.
+unsafe fn write_tag(ptag: *mut c_char, sz: usize, s: &str) {
+    unsafe {
+        if sz == 0 {
+            return;
+        }
+        let bytes = s.as_bytes();
+        let n = (sz - 1).min(bytes.len());
+        ptr::copy_nonoverlapping(bytes.as_ptr(), ptag as *mut u8, n);
+        *ptag.add(n) = 0;
+    }
 }
 
 unsafe fn tagbuf_string() -> String {
@@ -976,50 +992,35 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 let name_len = libc::strlen(name_chars);
                                 if taglen + name_len > TAGBUFLEN {
                                     if taglen <= TAGBUFLEN {
-                                        crate::rport_snprintf!(
-                                            ptag,
-                                            sz,
-                                            b"$...\0".as_ptr() as *const c_char,
-                                        );
+                                        write_tag(ptag, sz, "$...");
                                     }
                                 } else {
                                     let na_str = NA_STRING_local();
                                     if name_elt == na_str {
-                                        crate::rport_snprintf!(
-                                            ptag,
-                                            sz,
-                                            b"$<NA>\0".as_ptr() as *const c_char,
-                                        );
+                                        write_tag(ptag, sz, "$<NA>");
                                     } else if isValidName(name_chars) {
-                                        crate::rport_snprintf!(
-                                            ptag,
-                                            sz,
-                                            b"$%s\0".as_ptr() as *const c_char,
-                                            name_chars,
+                                        let out = r_sprintf(
+                                            "$%s",
+                                            &[CArg::Str(CStr::from_ptr(name_chars).to_bytes())],
                                         );
+                                        write_tag(ptag, sz, &out);
                                     } else {
                                         let enc =
                                             crate::mainutils::printutils::EncodeChar(name_elt);
                                         if !enc.is_null() && isValidName(enc) {
-                                            crate::rport_snprintf!(
-                                                ptag,
-                                                sz,
-                                                b"$%s\0".as_ptr() as *const c_char,
-                                                enc,
+                                            let out = r_sprintf(
+                                                "$%s",
+                                                &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
                                             );
+                                            write_tag(ptag, sz, &out);
                                         } else if !enc.is_null() {
-                                            crate::rport_snprintf!(
-                                                ptag,
-                                                sz,
-                                                b"$`%s`\0".as_ptr() as *const c_char,
-                                                enc,
+                                            let out = r_sprintf(
+                                                "$`%s`",
+                                                &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
                                             );
+                                            write_tag(ptag, sz, &out);
                                         } else {
-                                            crate::rport_snprintf!(
-                                                ptag,
-                                                sz,
-                                                b"$...\0".as_ptr() as *const c_char,
-                                            );
+                                            write_tag(ptag, sz, "$...");
                                         }
                                     }
                                 }
@@ -1027,57 +1028,33 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
                                 if taglen + iw as usize > TAGBUFLEN {
                                     if taglen <= TAGBUFLEN {
-                                        crate::rport_snprintf!(
-                                            ptag,
-                                            sz,
-                                            b"$...\0".as_ptr() as *const c_char,
-                                        );
+                                        write_tag(ptag, sz, "$...");
                                     }
                                 } else {
-                                    crate::rport_snprintf!(
-                                        ptag,
-                                        sz,
-                                        b"[[%lld]]\0".as_ptr() as *const c_char,
-                                        i + 1,
-                                    );
+                                    let out = r_sprintf("[[%lld]]", &[(i + 1).into()]);
+                                    write_tag(ptag, sz, &out);
                                 }
                             }
                         } else {
                             let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
                             if taglen + iw as usize > TAGBUFLEN {
                                 if taglen <= TAGBUFLEN {
-                                    crate::rport_snprintf!(
-                                        ptag,
-                                        sz,
-                                        b"$...\0".as_ptr() as *const c_char
-                                    );
+                                    write_tag(ptag, sz, "$...");
                                 }
                             } else {
-                                crate::rport_snprintf!(
-                                    ptag,
-                                    sz,
-                                    b"[[%lld]]\0".as_ptr() as *const c_char,
-                                    i + 1,
-                                );
+                                let out = r_sprintf("[[%lld]]", &[(i + 1).into()]);
+                                write_tag(ptag, sz, &out);
                             }
                         }
                     } else {
                         let iw = crate::mainutils::printutils::IndexWidth_xlen(i);
                         if taglen + iw as usize > TAGBUFLEN {
                             if taglen <= TAGBUFLEN {
-                                crate::rport_snprintf!(
-                                    ptag,
-                                    sz,
-                                    b"$...\0".as_ptr() as *const c_char
-                                );
+                                write_tag(ptag, sz, "$...");
                             }
                         } else {
-                            crate::rport_snprintf!(
-                                ptag,
-                                sz,
-                                b"[[%lld]]\0".as_ptr() as *const c_char,
-                                i + 1,
-                            );
+                            let out = r_sprintf("[[%lld]]", &[(i + 1).into()]);
+                            write_tag(ptag, sz, &out);
                         }
                     }
 
@@ -1220,41 +1197,32 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     let name_len = libc::strlen(name_chars);
                     if taglen + name_len > TAGBUFLEN {
                         if taglen <= TAGBUFLEN {
-                            crate::rport_snprintf!(ptag, sz, b"$...\0".as_ptr() as *const c_char);
+                            write_tag(ptag, sz, "$...");
                         }
                     } else {
                         let na_str = NA_STRING_local();
                         if pname == na_str {
-                            crate::rport_snprintf!(ptag, sz, b"$<NA>\0".as_ptr() as *const c_char);
+                            write_tag(ptag, sz, "$<NA>");
                         } else if isValidName(name_chars) {
-                            crate::rport_snprintf!(
-                                ptag,
-                                sz,
-                                b"$%s\0".as_ptr() as *const c_char,
-                                name_chars,
+                            let out = r_sprintf(
+                                "$%s",
+                                &[CArg::Str(CStr::from_ptr(name_chars).to_bytes())],
                             );
+                            write_tag(ptag, sz, &out);
                         } else {
                             let enc = crate::mainutils::printutils::EncodeChar(pname);
                             if !enc.is_null() && isValidName(enc) {
-                                crate::rport_snprintf!(
-                                    ptag,
-                                    sz,
-                                    b"$%s\0".as_ptr() as *const c_char,
-                                    enc
-                                );
+                                let out =
+                                    r_sprintf("$%s", &[CArg::Str(CStr::from_ptr(enc).to_bytes())]);
+                                write_tag(ptag, sz, &out);
                             } else if !enc.is_null() {
-                                crate::rport_snprintf!(
-                                    ptag,
-                                    sz,
-                                    b"$`%s`\0".as_ptr() as *const c_char,
-                                    enc
+                                let out = r_sprintf(
+                                    "$`%s`",
+                                    &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
                                 );
+                                write_tag(ptag, sz, &out);
                             } else {
-                                crate::rport_snprintf!(
-                                    ptag,
-                                    sz,
-                                    b"$...\0".as_ptr() as *const c_char
-                                );
+                                write_tag(ptag, sz, "$...");
                             }
                         }
                     }
@@ -1262,10 +1230,11 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     let iw = crate::mainutils::printutils::IndexWidth_xlen(i as i64);
                     if taglen + iw as usize > TAGBUFLEN {
                         if taglen <= TAGBUFLEN {
-                            crate::rport_snprintf!(ptag, sz, b"$...\0".as_ptr() as *const c_char);
+                            write_tag(ptag, sz, "$...");
                         }
                     } else {
-                        crate::rport_snprintf!(ptag, sz, b"[[%d]]\0".as_ptr() as *const c_char, i);
+                        let out = r_sprintf("[[%d]]", &[i.into()]);
+                        write_tag(ptag, sz, &out);
                     }
                 }
 
@@ -1364,19 +1333,15 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 let enc = crate::mainutils::printutils::EncodeChar(pname);
                 if !enc.is_null() {
                     if useSlots {
-                        crate::rport_snprintf!(
-                            ptag_start,
-                            space,
-                            b"Slot \"%s\":\0".as_ptr() as *const c_char,
-                            enc,
-                        );
+                        let out =
+                            r_sprintf("Slot \"%s\":", &[CArg::Str(CStr::from_ptr(enc).to_bytes())]);
+                        write_tag(ptag_start, space, &out);
                     } else {
-                        crate::rport_snprintf!(
-                            ptag_start,
-                            space,
-                            b"attr(,\"%s\")\0".as_ptr() as *const c_char,
-                            enc,
+                        let out = r_sprintf(
+                            "attr(,\"%s\")",
+                            &[CArg::Str(CStr::from_ptr(enc).to_bytes())],
                         );
+                        write_tag(ptag_start, space, &out);
                     }
                 }
             }

@@ -111,9 +111,8 @@ fn qansari(len: c_int, p: &[f64], q: &mut [f64], m: c_int, n: c_int) {
     for (i, xi) in p.iter().copied().enumerate().take(len as usize) {
         if xi < 0.0 || xi > 1.0 {
             unsafe {
-                Rf_error(
-                    b"probabilities outside [0,1] in qansari()\0".as_ptr() as *const core::ffi::c_char
-                );
+                Rf_error(b"probabilities outside [0,1] in qansari()\0".as_ptr()
+                    as *const core::ffi::c_char);
             }
         }
         if xi == 0.0 {

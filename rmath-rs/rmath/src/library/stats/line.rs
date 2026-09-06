@@ -165,7 +165,11 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
         let _ans_guard = protect(ans);
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
         setAttrib(ans, R_NamesSymbol(), nm);
-        SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const core::ffi::c_char));
+        SET_STRING_ELT(
+            nm,
+            0,
+            Rf_mkChar(b"call\0".as_ptr() as *const core::ffi::c_char),
+        );
         SET_STRING_ELT(
             nm,
             1,

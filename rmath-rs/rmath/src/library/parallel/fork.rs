@@ -144,7 +144,7 @@ impl Drop for ForkRuntimeState {
             while !ci.is_null() {
                 let next = (*ci).next;
                 close_fds_child_ci(ci);
-                libc::free(ci as *mut c_void);
+                drop(Box::from_raw(ci));
                 ci = next;
             }
             self.children = ptr::null_mut();
@@ -402,7 +402,7 @@ unsafe fn compact_children() {
                 } else {
                     with_fork_state(|state| state.children = next);
                 }
-                libc::free(ci as *mut c_void);
+                drop(Box::from_raw(ci));
                 ci = next;
             } else {
                 prev = ci;
@@ -517,10 +517,7 @@ unsafe fn mc_select(
 pub unsafe fn mc_prepare_cleanup() -> SEXP {
     unsafe {
         compact_children();
-        let ci = libc::malloc(std::mem::size_of::<child_info_t>()) as *mut child_info_t;
-        if ci.is_null() {
-            crate::main::errors::Rf_error(b"memory allocation error\0".as_ptr() as *const c_char);
-        }
+        let ci = Box::into_raw(Box::new(std::mem::zeroed::<child_info_t>()));
         (*ci).waitedfor = 1;
         (*ci).detached = 1;
         (*ci).pid = -1;
@@ -699,7 +696,7 @@ pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
                 while !with_fork_state(|state| state.children).is_null() {
                     close_fds_child_ci(with_fork_state(|state| state.children));
                     let next = (*with_fork_state(|state| state.children)).next;
-                    libc::free(with_fork_state(|state| state.children) as *mut c_void);
+                    drop(Box::from_raw(with_fork_state(|state| state.children)));
                     with_fork_state(|state| state.children = next);
                 }
 
@@ -730,12 +727,7 @@ pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
                 }
             } else {
                 // Master process
-                let ci = libc::malloc(std::mem::size_of::<child_info_t>()) as *mut child_info_t;
-                if ci.is_null() {
-                    crate::main::errors::Rf_error(
-                        b"memory allocation error\0".as_ptr() as *const c_char
-                    );
-                }
+                let ci = Box::into_raw(Box::new(std::mem::zeroed::<child_info_t>()));
                 (*ci).pid = pid;
                 (*ci).ppid = libc::getpid();
                 (*ci).waitedfor = 0;

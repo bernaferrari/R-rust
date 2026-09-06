@@ -203,7 +203,10 @@ unsafe fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
             SET_STRING_ELT(
                 nm,
                 i as R_xlen_t,
-                Rf_mkCharLen(name.as_ptr() as *const core::ffi::c_char, name.len() as c_int),
+                Rf_mkCharLen(
+                    name.as_ptr() as *const core::ffi::c_char,
+                    name.len() as c_int,
+                ),
             );
         }
         ans
@@ -230,7 +233,9 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
             ny = (XLENGTH(y) as i64 / n as i64) as c_int;
         }
         if asBool(chk) && n * ny != XLENGTH(y) as c_int {
-            Rf_error(b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const core::ffi::c_char);
+            Rf_error(
+                b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const core::ffi::c_char
+            );
         }
 
         /* These lose attributes, so do after we have extracted dims */

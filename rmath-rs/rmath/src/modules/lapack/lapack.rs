@@ -393,7 +393,11 @@ unsafe extern "C" {
     );
 
     /// ILAVER - returns the LAPACK version
-    pub fn ilaver_(major: *mut core::ffi::c_int, minor: *mut core::ffi::c_int, patch: *mut core::ffi::c_int);
+    pub fn ilaver_(
+        major: *mut core::ffi::c_int,
+        minor: *mut core::ffi::c_int,
+        patch: *mut core::ffi::c_int,
+    );
 
     // --- BLAS routines ---
 

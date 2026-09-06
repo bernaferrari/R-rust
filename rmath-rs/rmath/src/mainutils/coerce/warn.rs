@@ -306,7 +306,8 @@ pub unsafe fn CoercionWarning(warn: c_int) {
     if warn & WARN_INT_NA != 0 {
         unsafe {
             crate::mainutils::errors::Rf_warning(
-                b"NAs introduced by coercion to integer range\0".as_ptr() as *const core::ffi::c_char,
+                b"NAs introduced by coercion to integer range\0".as_ptr()
+                    as *const core::ffi::c_char,
             );
         }
     }

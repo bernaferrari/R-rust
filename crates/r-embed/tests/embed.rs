@@ -1774,7 +1774,10 @@ const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
         namespace: "export(pxmulti_value)\n",
         sources: &[
             ("aa-first.R", "pxmulti_seed <- 120L\n"),
-            ("bb-second.R", "pxmulti_value <- function() pxmulti_seed + 3L\n"),
+            (
+                "bb-second.R",
+                "pxmulti_value <- function() pxmulti_seed + 3L\n",
+            ),
         ],
         data_sources: &[],
         extra: None,
@@ -1790,10 +1793,7 @@ const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
         blurb: "Exercises getNamespace and programmatic symbol lookup.",
         desc_extra: "",
         namespace: "export(pxnslookup_value)\n",
-        sources: &[(
-            "nslookup.R",
-            "pxnslookup_value <- function() 124L\n",
-        )],
+        sources: &[("nslookup.R", "pxnslookup_value <- function() 124L\n")],
         data_sources: &[],
         extra: None,
         probe: "list(is.environment(getNamespace(\"pxnslookup\")), get(\"pxnslookup_value\", envir = asNamespace(\"pxnslookup\"))())",
@@ -1825,8 +1825,15 @@ const SYNTHETIC_PACKAGE_FEATURE_MATRIX: &[SyntheticPkgEntry] = &[
 ];
 #[test]
 fn synthetic_package_feature_matrix() {
-    assert_eq!(SYNTHETIC_PACKAGE_FEATURE_MATRIX.len(), 25, "ledger must hold 25 packages");
-    let mut names: Vec<&str> = SYNTHETIC_PACKAGE_FEATURE_MATRIX.iter().map(|entry| entry.name).collect();
+    assert_eq!(
+        SYNTHETIC_PACKAGE_FEATURE_MATRIX.len(),
+        25,
+        "ledger must hold 25 packages"
+    );
+    let mut names: Vec<&str> = SYNTHETIC_PACKAGE_FEATURE_MATRIX
+        .iter()
+        .map(|entry| entry.name)
+        .collect();
     names.sort_unstable();
     names.dedup();
     assert_eq!(names.len(), 25, "ledger package names must be unique");
@@ -1928,9 +1935,17 @@ fn wasm_m3_oracle_shape() {
 /// Statuses mirror the manifest: pass/partial/blocked with exact blockers.
 #[test]
 fn real_package_corpus() {
-    let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED").unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
-    let app = std::env::var("RPORT_REAL_PKG_APP").unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
-    let cache = std::env::var("RPORT_REAL_PKG_CACHE").unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
+    // Headless corpus runs declare themselves color-less (CI convention):
+    // terminal-detection packages short-circuit via the documented NO_COLOR
+    // contract instead of probing tty/RStudio internals.
+    // SAFETY: test-process setup before any threads exist.
+    unsafe { std::env::set_var("NO_COLOR", "1") };
+    let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED")
+        .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
+    let app =
+        std::env::var("RPORT_REAL_PKG_APP").unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
+    let cache =
+        std::env::var("RPORT_REAL_PKG_CACHE").unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
     let mut session = RSession::new().expect("session");
     session
         .configure_android_paths(&app, &cache, Some(&bundled))
@@ -1940,24 +1955,38 @@ fn real_package_corpus() {
     // section, inverted-section) match the oracle exactly.
     session.load_package("whisker").expect("whisker must load");
     assert_eq!(
-        session.eval("whisker.render(\"Hello {{name}}!\", list(name=\"World\"))").expect("whisker render"),
+        session
+            .eval("whisker.render(\"Hello {{name}}!\", list(name=\"World\"))")
+            .expect("whisker render"),
         "[1] \"Hello World!\""
     );
     assert_eq!(
-        session.eval("whisker.render(\"{{#show}}yes{{/show}}\", list(show=TRUE))").expect("whisker section"),
+        session
+            .eval("whisker.render(\"{{#show}}yes{{/show}}\", list(show=TRUE))")
+            .expect("whisker section"),
         "[1] \"yes\""
     );
     assert_eq!(
-        session.eval("whisker.render(\"{{^hide}}vis{{/hide}}\", list(hide=FALSE))").expect("whisker inverted"),
+        session
+            .eval("whisker.render(\"{{^hide}}vis{{/hide}}\", list(hide=FALSE))")
+            .expect("whisker inverted"),
         "[1] \"vis\""
     );
 
     // praise 1.0.0 — pass: word interpolates via regexpr(perl=TRUE)
     // capture attribution (see conformance case 561).
     session.load_package("praise").expect("praise must load");
-    let praise_out = session.eval("praise(\"You are ${adjective}\")").expect("praise eval");
-    assert!(praise_out.starts_with("[1] \"You are "), "praise must interpolate a word: {praise_out}");
-    assert!(praise_out.trim_end_matches('\"').len() > "[1] \"You are ".len(), "praise word must be non-empty: {praise_out}");
+    let praise_out = session
+        .eval("praise(\"You are ${adjective}\")")
+        .expect("praise eval");
+    assert!(
+        praise_out.starts_with("[1] \"You are "),
+        "praise must interpolate a word: {praise_out}"
+    );
+    assert!(
+        praise_out.trim_end_matches('\"').len() > "[1] \"You are ".len(),
+        "praise word must be non-empty: {praise_out}"
+    );
 
     // crayon 1.5.3 — pass: loads and red() renders (oracle: [1] "hi").
     session.load_package("crayon").expect("crayon must load");

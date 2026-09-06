@@ -353,9 +353,8 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
     unsafe {
         let d = getAttrib(z, R_DimSymbol());
         if d.is_null() || d == R_NilValue() || LENGTH(d) != 2 {
-            Rf_error(
-                b"vector-valued (multivariate) series required\0".as_ptr() as *const core::ffi::c_char
-            );
+            Rf_error(b"vector-valued (multivariate) series required\0".as_ptr()
+                as *const core::ffi::c_char);
         }
         let n = *INTEGER(d);
         let p = *INTEGER(d).add(1);
@@ -471,7 +470,8 @@ fn nextn0_64(mut n: u64, f: &[c_int]) -> u64 {
     if n >= u64::MAX {
         unsafe {
             crate::main::errors::Rf_warning(
-                b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr() as *const core::ffi::c_char,
+                b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr()
+                    as *const core::ffi::c_char,
             );
         }
         return 0;

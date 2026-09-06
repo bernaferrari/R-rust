@@ -61,9 +61,8 @@ pub unsafe fn logit_link(mu: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(mu);
         if n == 0 || TYPEOF(mu) != SEXPTYPE::REALSXP {
-            crate::main::errors::Rf_error(
-                b"Argument must be a nonempty numeric vector\0".as_ptr() as *const core::ffi::c_char
-            );
+            crate::main::errors::Rf_error(b"Argument must be a nonempty numeric vector\0".as_ptr()
+                as *const core::ffi::c_char);
         }
         let ans = shallow_duplicate(mu);
         let _ans_guard = protect(ans);
@@ -85,9 +84,8 @@ pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
                 || TYPEOF(eta) == SEXPTYPE::INTSXP
                 || TYPEOF(eta) == SEXPTYPE::LGLSXP)
         {
-            crate::main::errors::Rf_error(
-                b"Argument must be a nonempty numeric vector\0".as_ptr() as *const core::ffi::c_char
-            );
+            crate::main::errors::Rf_error(b"Argument must be a nonempty numeric vector\0".as_ptr()
+                as *const core::ffi::c_char);
         }
         let mut guards = Vec::with_capacity(2);
         let mut eta = eta;
@@ -123,9 +121,8 @@ pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
                 || TYPEOF(eta) == SEXPTYPE::INTSXP
                 || TYPEOF(eta) == SEXPTYPE::LGLSXP)
         {
-            crate::main::errors::Rf_error(
-                b"Argument must be a nonempty numeric vector\0".as_ptr() as *const core::ffi::c_char
-            );
+            crate::main::errors::Rf_error(b"Argument must be a nonempty numeric vector\0".as_ptr()
+                as *const core::ffi::c_char);
         }
         let mut guards = Vec::with_capacity(2);
         let mut eta = eta;

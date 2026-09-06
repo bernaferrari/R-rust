@@ -419,13 +419,17 @@ pub unsafe fn processevents() -> SEXP {
 #[cfg(target_os = "macos")]
 pub unsafe fn tzcode_type() -> SEXP {
     unsafe {
-        crate::sexp::constructors::Rf_mkString(b"system (macOS)\0".as_ptr() as *const core::ffi::c_char)
+        crate::sexp::constructors::Rf_mkString(
+            b"system (macOS)\0".as_ptr() as *const core::ffi::c_char
+        )
     }
 }
 
 #[cfg(not(target_os = "macos"))]
 pub unsafe fn tzcode_type() -> SEXP {
-    unsafe { crate::sexp::constructors::Rf_mkString(b"system\0".as_ptr() as *const core::ffi::c_char) }
+    unsafe {
+        crate::sexp::constructors::Rf_mkString(b"system\0".as_ptr() as *const core::ffi::c_char)
+    }
 }
 
 // ---------------------------------------------------------------------------

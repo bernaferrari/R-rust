@@ -13,9 +13,9 @@
  *  correctly with line ending translation.
  */
 
+use core::ffi::c_int;
 #[cfg(target_os = "windows")]
 use libc::{_O_TEXT, _setmode, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO};
-use core::ffi::c_int;
 
 /// Windows-only constructor: resets stdout and stderr to text mode.
 ///

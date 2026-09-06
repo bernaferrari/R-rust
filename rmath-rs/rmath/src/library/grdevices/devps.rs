@@ -21,6 +21,7 @@ use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
 use crate::main::errors::{Rf_error, Rf_error_unimplemented};
 use crate::main::relop::NA_STRING;
+use crate::mainutils::r_format::CArg;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, R_FINITE, R_xlen_t, SEXP, SEXPTYPE};
@@ -938,16 +939,17 @@ unsafe fn LoadEncoding(
         } else {
             let rhome = std::env::var("R_HOME").ok();
             if let Some(rh) = rhome {
-                crate::rport_snprintf!(
-                    buf2.as_mut_ptr(),
-                    buf2.len(),
-                    b"%s%slibrary%sgrDevices%senc%s%s\0".as_ptr() as *const c_char,
-                    rh.as_ptr(),
-                    FILESEP[0] as c_int,
-                    FILESEP[0] as c_int,
-                    FILESEP[0] as c_int,
-                    FILESEP[0] as c_int,
-                    encpath,
+                crate::mainutils::r_format::r_snprintf_c(
+                    &mut buf2,
+                    b"%s%slibrary%sgrDevices%senc%s%s",
+                    &[
+                        CArg::Str(rh.as_bytes()),
+                        CArg::Str(FILESEP),
+                        CArg::Str(FILESEP),
+                        CArg::Str(FILESEP),
+                        CArg::Str(FILESEP),
+                        CArg::Str(CStr::from_ptr(encpath).to_bytes()),
+                    ],
                 );
             } else {
                 return 0;
@@ -987,11 +989,10 @@ unsafe fn LoadEncoding(
         *encname.add(copy_len) = 0;
 
         if !isPDF {
-            crate::rport_snprintf!(
-                enccode,
-                5000,
-                b"/%s [\n\0".as_ptr() as *const c_char,
-                encname,
+            crate::mainutils::r_format::r_snprintf_c(
+                std::slice::from_raw_parts_mut(enccode, 5000),
+                b"/%s [\n",
+                &[CArg::Str(CStr::from_ptr(encname).to_bytes())],
             );
         } else {
             *enccode = 0;
@@ -1139,81 +1140,52 @@ unsafe fn PostScriptCIDMetricInfo(c: c_int, ascent: *mut f64, descent: *mut f64,
 // =========================================================================
 
 unsafe fn makeCIDFont() -> cidfontinfo {
-    unsafe {
-        let font = libc::malloc(std::mem::size_of::<CIDFontInfo>()) as cidfontinfo;
-        if !font.is_null() {
-            (*font).name = [0; 50];
-        }
-        font
-    }
+    unsafe { Box::into_raw(Box::new(CIDFontInfo { name: [0; 50] })) }
 }
 
 unsafe fn makeType1Font() -> type1fontinfo {
     unsafe {
-        let font = libc::malloc(std::mem::size_of::<Type1FontInfo>()) as type1fontinfo;
-        if !font.is_null() {
-            (*font).name = [0; 50];
-            (*font).metrics.KernPairs = ptr::null_mut();
-            (*font).metrics.nKP = 0;
-        }
-        font
+        // calloc-equivalent: callers fill the metric fields they care about.
+        Box::into_raw(Box::new(std::mem::zeroed::<Type1FontInfo>()))
     }
 }
 
 unsafe fn freeCIDFont(font: cidfontinfo) {
     unsafe {
-        libc::free(font as *mut c_void);
+        if !font.is_null() {
+            drop(Box::from_raw(font));
+        }
     }
 }
 
 unsafe fn freeType1Font(font: type1fontinfo) {
     unsafe {
         if !font.is_null() {
-            if !(*font).metrics.KernPairs.is_null() {
-                libc::free((*font).metrics.KernPairs as *mut c_void);
-            }
-            libc::free(font as *mut c_void);
+            // metrics.KernPairs is never allocated in this port (AFM
+            // kern-pair loading is unimplemented), so nothing to release.
+            drop(Box::from_raw(font));
         }
     }
 }
 
 unsafe fn makeEncoding() -> encodinginfo {
-    unsafe {
-        let enc = libc::malloc(std::mem::size_of::<EncodingInfo>()) as encodinginfo;
-        enc
-    }
+    unsafe { Box::into_raw(Box::new(std::mem::zeroed::<EncodingInfo>())) }
 }
 
 unsafe fn freeEncoding(enc: encodinginfo) {
     unsafe {
-        libc::free(enc as *mut c_void);
+        if !enc.is_null() {
+            drop(Box::from_raw(enc));
+        }
     }
 }
 
 unsafe fn makeCIDFontFamily() -> cidfontfamily {
-    unsafe {
-        let fam = libc::malloc(std::mem::size_of::<CIDFontFamily>()) as cidfontfamily;
-        if !fam.is_null() {
-            (*fam).fxname = [0; 50];
-            (*fam).cidfonts = [ptr::null_mut(); 4];
-            (*fam).symfont = ptr::null_mut();
-            (*fam).cmap = [0; 50];
-            (*fam).encoding = [0; 50];
-        }
-        fam
-    }
+    unsafe { Box::into_raw(Box::new(std::mem::zeroed::<CIDFontFamily>())) }
 }
 
 unsafe fn makeFontFamily() -> type1fontfamily {
-    unsafe {
-        let fam = libc::malloc(std::mem::size_of::<T1FontFamily>()) as type1fontfamily;
-        if !fam.is_null() {
-            (*fam).fxname = [0; 50];
-            (*fam).fonts = [ptr::null_mut(); 5];
-            (*fam).encoding = ptr::null_mut();
-        }
-        fam
-    }
+    unsafe { Box::into_raw(Box::new(std::mem::zeroed::<T1FontFamily>())) }
 }
 
 unsafe fn freeCIDFontFamily(family: cidfontfamily) {
@@ -1229,7 +1201,7 @@ unsafe fn freeCIDFontFamily(family: cidfontfamily) {
         if !(*family).symfont.is_null() {
             freeType1Font((*family).symfont);
         }
-        libc::free(family as *mut c_void);
+        drop(Box::from_raw(family));
     }
 }
 
@@ -1243,30 +1215,16 @@ unsafe fn freeFontFamily(family: type1fontfamily) {
                 freeType1Font((*family).fonts[i]);
             }
         }
-        libc::free(family as *mut c_void);
+        drop(Box::from_raw(family));
     }
 }
 
 unsafe fn makeCIDFontList() -> cidfontlist {
-    unsafe {
-        let fl = libc::malloc(std::mem::size_of::<CIDFontList>()) as cidfontlist;
-        if !fl.is_null() {
-            (*fl).cidfamily = ptr::null_mut();
-            (*fl).next = ptr::null_mut();
-        }
-        fl
-    }
+    unsafe { Box::into_raw(Box::new(std::mem::zeroed::<CIDFontList>())) }
 }
 
 unsafe fn makeFontList() -> type1fontlist {
-    unsafe {
-        let fl = libc::malloc(std::mem::size_of::<T1FontList>()) as type1fontlist;
-        if !fl.is_null() {
-            (*fl).family = ptr::null_mut();
-            (*fl).next = ptr::null_mut();
-        }
-        fl
-    }
+    unsafe { Box::into_raw(Box::new(std::mem::zeroed::<T1FontList>())) }
 }
 
 unsafe fn freeCIDFontList(fl: cidfontlist) {
@@ -1274,7 +1232,7 @@ unsafe fn freeCIDFontList(fl: cidfontlist) {
         if !fl.is_null() {
             (*fl).cidfamily = ptr::null_mut();
             (*fl).next = ptr::null_mut();
-            libc::free(fl as *mut c_void);
+            drop(Box::from_raw(fl));
         }
     }
 }
@@ -1284,7 +1242,7 @@ unsafe fn freeFontList(fl: type1fontlist) {
         if !fl.is_null() {
             (*fl).family = ptr::null_mut();
             (*fl).next = ptr::null_mut();
-            libc::free(fl as *mut c_void);
+            drop(Box::from_raw(fl));
         }
     }
 }
@@ -1308,14 +1266,7 @@ unsafe fn freeDeviceFontList(fl: type1fontlist) {
 }
 
 unsafe fn makeEncList() -> encodinglist {
-    unsafe {
-        let el = libc::malloc(std::mem::size_of::<EncList>()) as encodinglist;
-        if !el.is_null() {
-            (*el).encoding = ptr::null_mut();
-            (*el).next = ptr::null_mut();
-        }
-        el
-    }
+    unsafe { Box::into_raw(Box::new(std::mem::zeroed::<EncList>())) }
 }
 
 unsafe fn freeEncList(el: encodinglist) {
@@ -1323,7 +1274,7 @@ unsafe fn freeEncList(el: encodinglist) {
         if !el.is_null() {
             (*el).encoding = ptr::null_mut();
             (*el).next = ptr::null_mut();
-            libc::free(el as *mut c_void);
+            drop(Box::from_raw(el));
         }
     }
 }
