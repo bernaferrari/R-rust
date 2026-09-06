@@ -23,7 +23,7 @@ impl Default for BsplineState {
 }
 
 fn with_bspline_state<R>(f: impl FnOnce(&mut BsplineState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.bspline_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).bspline_state }))
 }
 
 // ---------------------------------------------------------------------------

@@ -136,22 +136,24 @@ impl Default for SerializeRuntimeState {
 }
 
 pub fn increment_read_item_depth() {
-    with_required_current_instance(|instance| {
-        instance.serialize_state.read_item_depth += 1;
+    with_required_current_instance(|instance| unsafe {
+        (*instance).serialize_state.read_item_depth += 1;
     });
 }
 
 pub fn decrement_read_item_depth() {
-    with_required_current_instance(|instance| {
-        if instance.serialize_state.read_item_depth > 0 {
-            instance.serialize_state.read_item_depth -= 1;
+    with_required_current_instance(|instance| unsafe {
+        if (*instance).serialize_state.read_item_depth > 0 {
+            (*instance).serialize_state.read_item_depth -= 1;
         }
     });
 }
 
 #[cfg(test)]
 pub fn read_item_depth_for_test() -> c_int {
-    with_required_current_instance(|instance| instance.serialize_state.read_item_depth)
+    with_required_current_instance(|instance| unsafe {
+        (*instance).serialize_state.read_item_depth
+    })
 }
 
 // ---------------------------------------------------------------------------

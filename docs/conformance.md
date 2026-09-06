@@ -138,7 +138,15 @@ not part of the PR bar.
 
 ### Miri subset
 
-`cargo +nightly miri test -p rmath sexp::` runs the `sexp::` safe-layer. Expansion attempt (2026-09): `r_format::` is Miri-clean; every module whose tests construct a session (`serialize::`, `tzone::`, `connections::`) hits one shared pre-existing UB in the instance-aliasing wildcard re-acquisition (sexp/instance.rs, see the note there for the exact repro) under BOTH Stacked and Tree Borrows — module-level Miri expansion is blocked on that redesign.
+`cargo +nightly miri test -p rmath sexp::` runs the `sexp::` safe-layer. Expansion (2026-09): the instance-aliasing redesign LANDED — ambient
+instance access is raw-pointer based (`*mut RInstance` place access, P1/P2
+discipline documented in `sexp/instance.rs`; Miri is the checker). Session-
+constructing tests now run Miri-clean: `serialize::` (writebc + instringvec
+round-trips), `connections::` (session-local state), `tzone::` (mktime;
+needs `-Zmiri-disable-isolation` for the /etc/localtime readlink, an
+environment limitation, not aliasing). Full-module Miri sweeps remain
+slow (minutes per session-constructing test) — run them nightly, per
+module.
 test subset under Miri with Stacked Borrows checking in the default
 permissive-provenance mode. The leak check is disabled
 (`-Zmiri-ignore-leaks`) because the runtime deliberately allocates

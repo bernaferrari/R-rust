@@ -24,7 +24,7 @@ pub(crate) struct FftState {
 }
 
 fn with_fft_state<R>(f: impl FnOnce(&mut FftState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.fft_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).fft_state }))
 }
 
 /// fft_factor - factorization check and determination of memory

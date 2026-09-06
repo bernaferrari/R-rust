@@ -58,7 +58,9 @@ fn with_print_runtime<F, R>(f: F) -> R
 where
     F: FnOnce(&mut PrintRuntimeState) -> R,
 {
-    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.eval_state.print))
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        f(&mut (*inst).eval_state.print)
+    })
 }
 
 fn with_current_print_data_mut<F, R>(f: F) -> R

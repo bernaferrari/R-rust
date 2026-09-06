@@ -60,7 +60,7 @@ pub unsafe fn R_sysframe(n: c_int, cptr: *mut RCNTXT) -> SEXP {
     with_required_current_instance(|instance| unsafe { R_sysframe_in(instance, n, cptr) })
 }
 
-pub unsafe fn R_sysframe_in(instance: &mut RInstance, n: c_int, cptr: *mut RCNTXT) -> SEXP {
+pub unsafe fn R_sysframe_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNTXT) -> SEXP {
     unsafe {
         if n == 0 {
             return R_GlobalEnv_in(instance);
@@ -163,7 +163,7 @@ pub unsafe fn R_sysparent(n: c_int, cptr: *mut RCNTXT) -> c_int {
     with_required_current_instance(|instance| unsafe { R_sysparent_in(instance, n, cptr) })
 }
 
-pub unsafe fn R_sysparent_in(instance: &mut RInstance, n: c_int, cptr: *mut RCNTXT) -> c_int {
+pub unsafe fn R_sysparent_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNTXT) -> c_int {
     unsafe {
         if n <= 0 {
             error("only positive values of 'n' are allowed");
@@ -213,7 +213,7 @@ pub unsafe fn countContexts(ctxttype: c_int, browser: c_int) -> c_int {
     })
 }
 
-pub unsafe fn countContexts_in(instance: &mut RInstance, ctxttype: c_int, browser: c_int) -> c_int {
+pub unsafe fn countContexts_in(instance: *mut RInstance, ctxttype: c_int, browser: c_int) -> c_int {
     unsafe {
         let mut n: c_int = 0;
         let mut c = R_GlobalContext_in(instance);
@@ -280,7 +280,7 @@ pub unsafe fn getLexicalContext(rho: SEXP) -> *mut RCNTXT {
     with_required_current_instance(|instance| unsafe { getLexicalContext_in(instance, rho) })
 }
 
-pub unsafe fn getLexicalContext_in(instance: &mut RInstance, rho: SEXP) -> *mut RCNTXT {
+pub unsafe fn getLexicalContext_in(instance: *mut RInstance, rho: SEXP) -> *mut RCNTXT {
     unsafe {
         let mut c = R_GlobalContext_in(instance);
         if c.is_null() {
@@ -305,7 +305,7 @@ pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 pub unsafe fn do_sys_in(
-    instance: &mut RInstance,
+    instance: *mut RInstance,
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -431,7 +431,7 @@ pub unsafe fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 }
 
 pub unsafe fn do_parentframe_in(
-    instance: &mut RInstance,
+    instance: *mut RInstance,
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -471,7 +471,7 @@ pub unsafe fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 }
 
 pub unsafe fn do_sysbrowser_in(
-    instance: &mut RInstance,
+    instance: *mut RInstance,
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -542,7 +542,7 @@ pub fn R_run_onexits() {
     with_required_current_instance(|instance| unsafe { R_run_onexits_in(instance) });
 }
 
-pub unsafe fn R_run_onexits_in(instance: &mut RInstance) {
+pub unsafe fn R_run_onexits_in(instance: *mut RInstance) {
     unsafe {
         R_run_onexits_for_context(R_GlobalContext_in(instance));
     }
@@ -590,7 +590,7 @@ pub unsafe fn R_GetCurrentEnv() -> SEXP {
     with_required_current_instance(|instance| unsafe { R_GetCurrentEnv_in(instance) })
 }
 
-pub unsafe fn R_GetCurrentEnv_in(instance: &mut RInstance) -> SEXP {
+pub unsafe fn R_GetCurrentEnv_in(instance: *mut RInstance) -> SEXP {
     unsafe {
         let mut c = R_GlobalContext_in(instance);
         while !c.is_null() {
@@ -603,7 +603,7 @@ pub unsafe fn R_GetCurrentEnv_in(instance: &mut RInstance) -> SEXP {
     }
 }
 
-unsafe fn context_or_top_in(instance: &mut RInstance, cptr: *mut RCNTXT) -> *mut RCNTXT {
+unsafe fn context_or_top_in(instance: *mut RInstance, cptr: *mut RCNTXT) -> *mut RCNTXT {
     if cptr.is_null() {
         unsafe { R_GlobalContext_in(instance) }
     } else {

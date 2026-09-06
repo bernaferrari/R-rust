@@ -366,7 +366,7 @@ impl Default for WindowsDeviceState {
 }
 
 fn with_windows_device_state<T>(f: impl FnOnce(&mut WindowsDeviceState) -> T) -> T {
-    with_required_current_instance(|instance| f(&mut instance.windows_device_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).windows_device_state }))
 }
 
 // ===========================================================================

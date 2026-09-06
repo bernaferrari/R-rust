@@ -49,10 +49,10 @@ pub(crate) const FONT_TYPE_FONT_SET: c_int = 1;
 // ── Helper functions ─────────────────────────────────────────────────
 
 fn with_rotated_style<R>(f: impl FnOnce(c_double, c_int) -> R) -> R {
-    with_required_current_instance(|instance| {
+    with_required_current_instance(|instance| unsafe {
         f(
-            instance.x11_state.rotated_magnify,
-            instance.x11_state.rotated_bbx_pad,
+            (*instance).x11_state.rotated_magnify,
+            (*instance).x11_state.rotated_bbx_pad,
         )
     })
 }
@@ -310,8 +310,8 @@ pub unsafe fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
 /// Only values > 0 are accepted.
 pub unsafe fn XRotSetMagnification(m: c_double) {
     if m > 0.0 {
-        with_required_current_instance(|instance| {
-            instance.x11_state.rotated_magnify = m;
+        with_required_current_instance(|instance| unsafe {
+            (*instance).x11_state.rotated_magnify = m;
         });
     }
 }
@@ -320,8 +320,8 @@ pub unsafe fn XRotSetMagnification(m: c_double) {
 /// Only values >= 0 are accepted.
 pub unsafe fn XRotSetBoundingBoxPad(p: c_int) {
     if p >= 0 {
-        with_required_current_instance(|instance| {
-            instance.x11_state.rotated_bbx_pad = p;
+        with_required_current_instance(|instance| unsafe {
+            (*instance).x11_state.rotated_bbx_pad = p;
         });
     }
 }

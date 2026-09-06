@@ -126,16 +126,19 @@ pub unsafe fn R_EmptyEnv() -> SEXP {
     with_required_current_instance(R_EmptyEnv_in)
 }
 
-pub(crate) fn R_GlobalEnv_in(inst: &mut RInstance) -> SEXP {
-    inst.global_env
+pub(crate) fn R_GlobalEnv_in(inst: *mut RInstance) -> SEXP {
+    // P2: single-field read; no ambient write intervenes.
+    unsafe { (*inst).global_env }
 }
 
-pub(crate) fn R_BaseEnv_in(inst: &mut RInstance) -> SEXP {
-    inst.base_env
+pub(crate) fn R_BaseEnv_in(inst: *mut RInstance) -> SEXP {
+    // P2: single-field read; no ambient write intervenes.
+    unsafe { (*inst).base_env }
 }
 
-pub(crate) fn R_EmptyEnv_in(inst: &mut RInstance) -> SEXP {
-    inst.empty_env
+pub(crate) fn R_EmptyEnv_in(inst: *mut RInstance) -> SEXP {
+    // P2: single-field read; no ambient write intervenes.
+    unsafe { (*inst).empty_env }
 }
 
 /// Set the global environment.
@@ -153,16 +156,25 @@ pub unsafe fn set_R_EmptyEnv(env: SEXP) {
     with_required_current_instance(|inst| set_R_EmptyEnv_in(inst, env));
 }
 
-pub(crate) fn set_R_GlobalEnv_in(inst: &mut RInstance, env: SEXP) {
-    inst.global_env = env;
+pub(crate) fn set_R_GlobalEnv_in(inst: *mut RInstance, env: SEXP) {
+    // P2: single-field write; no other raw path touches the instance here.
+    unsafe {
+        (*inst).global_env = env;
+    }
 }
 
-pub(crate) fn set_R_BaseEnv_in(inst: &mut RInstance, env: SEXP) {
-    inst.base_env = env;
+pub(crate) fn set_R_BaseEnv_in(inst: *mut RInstance, env: SEXP) {
+    // P2: single-field write; no other raw path touches the instance here.
+    unsafe {
+        (*inst).base_env = env;
+    }
 }
 
-pub(crate) fn set_R_EmptyEnv_in(inst: &mut RInstance, env: SEXP) {
-    inst.empty_env = env;
+pub(crate) fn set_R_EmptyEnv_in(inst: *mut RInstance, env: SEXP) {
+    // P2: single-field write; no other raw path touches the instance here.
+    unsafe {
+        (*inst).empty_env = env;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -210,24 +222,33 @@ pub fn R_EvalDepthLimit() -> i32 {
     with_required_current_instance(R_EvalDepthLimit_in)
 }
 
-pub(crate) fn R_Visible_in(inst: &mut RInstance) -> i32 {
-    inst.eval_state.visible
+pub(crate) fn R_Visible_in(inst: *mut RInstance) -> i32 {
+    // P2: single-field read; no ambient write intervenes.
+    unsafe { (*inst).eval_state.visible }
 }
 
-pub(crate) fn set_R_Visible_in(inst: &mut RInstance, v: i32) {
-    inst.eval_state.visible = v;
+pub(crate) fn set_R_Visible_in(inst: *mut RInstance, v: i32) {
+    // P2: single-field write; no other raw path touches the instance here.
+    unsafe {
+        (*inst).eval_state.visible = v;
+    }
 }
 
-pub(crate) fn R_EvalDepth_in(inst: &mut RInstance) -> i32 {
-    inst.eval_state.eval_depth
+pub(crate) fn R_EvalDepth_in(inst: *mut RInstance) -> i32 {
+    // P2: single-field read; no ambient write intervenes.
+    unsafe { (*inst).eval_state.eval_depth }
 }
 
-pub(crate) fn set_R_EvalDepth_in(inst: &mut RInstance, d: i32) {
-    inst.eval_state.eval_depth = d;
+pub(crate) fn set_R_EvalDepth_in(inst: *mut RInstance, d: i32) {
+    // P2: single-field write; no other raw path touches the instance here.
+    unsafe {
+        (*inst).eval_state.eval_depth = d;
+    }
 }
 
-pub(crate) fn R_EvalDepthLimit_in(inst: &mut RInstance) -> i32 {
-    inst.eval_state.eval_depth_limit
+pub(crate) fn R_EvalDepthLimit_in(inst: *mut RInstance) -> i32 {
+    // P2: single-field read; no ambient write intervenes.
+    unsafe { (*inst).eval_state.eval_depth_limit }
 }
 
 // ---------------------------------------------------------------------------

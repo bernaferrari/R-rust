@@ -95,10 +95,14 @@ pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
     super::instance::with_current_instance(|inst| symbol_name_from_ptr_in(inst, sym)).flatten()
 }
 
-pub(crate) fn symbol_name_from_ptr_in(inst: &mut RInstance, sym: SEXP) -> Option<String> {
-    inst.symbols
-        .iter()
-        .find_map(|(name, &ptr)| if ptr == sym { Some(name.clone()) } else { None })
+pub(crate) fn symbol_name_from_ptr_in(inst: *mut RInstance, sym: SEXP) -> Option<String> {
+    // P2: read-only scan of one field; no ambient write intervenes.
+    unsafe {
+        (*inst)
+            .symbols
+            .iter()
+            .find_map(|(name, &ptr)| if ptr == sym { Some(name.clone()) } else { None })
+    }
 }
 
 /// Compare two symbols by interned identity first, then by printed name bytes.
@@ -148,7 +152,7 @@ pub(crate) unsafe fn Rf_install(name: *const c_char) -> SEXP {
     super::instance::with_required_current_instance(|inst| unsafe { Rf_install_in(inst, name) })
 }
 
-pub(crate) unsafe fn Rf_install_in(inst: &mut RInstance, name: *const c_char) -> SEXP {
+pub(crate) unsafe fn Rf_install_in(inst: *mut RInstance, name: *const c_char) -> SEXP {
     unsafe {
         if name.is_null() {
             return ptr::null_mut();
@@ -160,9 +164,15 @@ pub(crate) unsafe fn Rf_install_in(inst: &mut RInstance, name: *const c_char) ->
             Err(_) => return ptr::null_mut(),
         };
 
-        intern_symbol_with_pname(&mut inst.symbols, &mut inst.symbol_nodes, name_str, || {
-            super::constructors::persistent_mkChar(name)
-        })
+        // P1: the `&mut` map/node lends below are held only across the
+        // strictly-local interning step (the allocator callback allocates
+        // outside the instance and does not reenter the interpreter).
+        intern_symbol_with_pname(
+            &mut (*inst).symbols,
+            &mut (*inst).symbol_nodes,
+            name_str,
+            || super::constructors::persistent_mkChar(name),
+        )
     }
 }
 
@@ -174,7 +184,7 @@ pub unsafe fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> SEXP {
 }
 
 pub(crate) unsafe fn Rf_installChar_in(
-    inst: &mut RInstance,
+    inst: *mut RInstance,
     name: *const c_char,
     len: R_xlen_t,
 ) -> SEXP {
@@ -187,9 +197,15 @@ pub(crate) unsafe fn Rf_installChar_in(
         Err(_) => return ptr::null_mut(),
     };
 
-    intern_symbol_with_pname(&mut inst.symbols, &mut inst.symbol_nodes, name_str, || {
-        persistent_charsxp_from_bytes(bytes)
-    })
+    // P1: strictly-local interning, as in `Rf_install_in`.
+    unsafe {
+        intern_symbol_with_pname(
+            &mut (*inst).symbols,
+            &mut (*inst).symbol_nodes,
+            name_str,
+            || persistent_charsxp_from_bytes(bytes),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +318,8 @@ pub unsafe fn R_AsSymbol() -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr::addr_of_mut;
+
     use super::*;
     use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
@@ -360,24 +378,26 @@ mod tests {
         let mut right = RInstance::new();
 
         unsafe {
-            let left_a = Rf_install_in(&mut left, c"runtime_bound_symbol".as_ptr());
-            let left_b = Rf_install_in(&mut left, c"runtime_bound_symbol".as_ptr());
-            let right_a = Rf_install_in(&mut right, c"runtime_bound_symbol".as_ptr());
+            let left_a = Rf_install_in(addr_of_mut!(left), c"runtime_bound_symbol".as_ptr());
+            let left_b = Rf_install_in(addr_of_mut!(left), c"runtime_bound_symbol".as_ptr());
+            let right_a = Rf_install_in(addr_of_mut!(right), c"runtime_bound_symbol".as_ptr());
 
             assert_eq!(left_a, left_b);
             assert_ne!(left_a, right_a);
             assert_eq!(
-                symbol_name_from_ptr_in(&mut left, left_a).as_deref(),
+                symbol_name_from_ptr_in(addr_of_mut!(left), left_a).as_deref(),
                 Some("runtime_bound_symbol")
             );
-            assert_eq!(symbol_name_from_ptr_in(&mut right, left_a), None);
+            assert_eq!(symbol_name_from_ptr_in(addr_of_mut!(right), left_a), None);
 
             let bytes = b"runtime_bound_char_extra";
-            let left_char = Rf_installChar_in(&mut left, bytes.as_ptr() as *const c_char, 18);
-            let right_char = Rf_installChar_in(&mut right, bytes.as_ptr() as *const c_char, 18);
+            let left_char =
+                Rf_installChar_in(addr_of_mut!(left), bytes.as_ptr() as *const c_char, 18);
+            let right_char =
+                Rf_installChar_in(addr_of_mut!(right), bytes.as_ptr() as *const c_char, 18);
             assert_ne!(left_char, right_char);
             assert_eq!(
-                symbol_name_from_ptr_in(&mut left, left_char).as_deref(),
+                symbol_name_from_ptr_in(addr_of_mut!(left), left_char).as_deref(),
                 Some("runtime_bound_char")
             );
         }

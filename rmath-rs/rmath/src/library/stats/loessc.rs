@@ -68,7 +68,7 @@ impl LoessWorkspaceState {
 }
 
 fn with_loess_workspace_state<R>(f: impl FnOnce(&mut LoessWorkspaceState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.loess_workspace_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).loess_workspace_state }))
 }
 
 fn r_min<T: Ord>(a: T, b: T) -> T {

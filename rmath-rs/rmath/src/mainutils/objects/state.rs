@@ -152,7 +152,9 @@ pub(crate) fn with_objects_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ObjectsRuntimeState) -> R,
 {
-    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.objects_state))
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        f(&mut (*inst).objects_state)
+    })
 }
 
 pub(crate) fn register_s4_class(name: String, slots: Vec<String>, virtual_class: bool) {

@@ -299,10 +299,10 @@ fn lzma2_raw_decode(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::i
 
 #[inline]
 unsafe fn clear_lazy_load_cache() {
-    with_required_current_instance(|instance| {
-        instance.serialize_state.used = 0;
-        instance.serialize_state.cache_names = [ptr::null_mut(); NC];
-        instance.serialize_state.cache_ptrs = [ptr::null_mut(); NC];
+    with_required_current_instance(|instance| unsafe {
+        (*instance).serialize_state.used = 0;
+        (*instance).serialize_state.cache_names = [ptr::null_mut(); NC];
+        (*instance).serialize_state.cache_ptrs = [ptr::null_mut(); NC];
     });
 }
 

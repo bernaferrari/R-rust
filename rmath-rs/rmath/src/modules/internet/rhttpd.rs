@@ -215,7 +215,10 @@ impl Drop for HttpdRuntimeState {
 }
 
 fn with_httpd_state<R>(f: impl FnOnce(&mut HttpdRuntimeState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.httpd_state))
+    // P1: the &mut HttpdRuntimeState lend spans only `f`; closures must not
+    // allocate or reenter the interpreter (R-reentering calls are hoisted
+    // out at the few call sites that need them).
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).httpd_state }))
 }
 
 // ============================================================
@@ -906,10 +909,8 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
             }
             if !(*c).content_type.is_null() {
                 if with_httpd_state(|state| state.content_type_name).is_null() {
-                    with_httpd_state(|state| {
-                        state.content_type_name =
-                            install(b"content-type\0".as_ptr() as *const c_char)
-                    });
+                    let content_type = install(b"content-type\0".as_ptr() as *const c_char);
+                    with_httpd_state(|state| state.content_type_name = content_type);
                 }
                 setAttrib(
                     res,
@@ -961,10 +962,9 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
                 // Cache custom_handlers_env
                 if with_httpd_state(|state| state.custom_handlers_env).is_null() {
                     if with_httpd_state(|state| state.handlers_name).is_null() {
-                        with_httpd_state(|state| {
-                            state.handlers_name =
-                                install(b".httpd.handlers.env\0".as_ptr() as *const c_char)
-                        });
+                        let handlers_name =
+                            install(b".httpd.handlers.env\0".as_ptr() as *const c_char);
+                        with_httpd_state(|state| state.handlers_name = handlers_name);
                     }
                     let tools_ns = R_FindNamespace(mkString(b"tools\0".as_ptr() as *const c_char));
                     let _tools_ns_guard = protect(tools_ns);
@@ -975,9 +975,10 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
                         tools_ns,
                     );
                     let _call_guard = protect(call);
-                    with_httpd_state(|state| {
-                        state.custom_handlers_env = Rf_eval(call, R_NilValue())
-                    });
+                    // P1: Rf_eval can allocate and reenter the interpreter,
+                    // so it must run outside the &mut HttpdRuntimeState lend.
+                    let handlers_env = Rf_eval(call, R_NilValue());
+                    with_httpd_state(|state| state.custom_handlers_env = handlers_env);
                 }
                 // Only proceed if .httpd.handlers.env really exists
                 if TYPEOF(with_httpd_state(|state| state.custom_handlers_env)) == SEXPTYPE::ENVSXP {

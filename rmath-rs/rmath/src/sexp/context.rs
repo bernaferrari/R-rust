@@ -143,12 +143,15 @@ pub unsafe fn R_GlobalContext() -> *mut RCNTXT {
 }
 
 /// Get the top context from an explicit runtime instance.
-pub unsafe fn R_GlobalContext_in(instance: &mut RInstance) -> *mut RCNTXT {
-    instance
-        .context_stack
-        .last()
-        .map(|ctx| context_ptr(ctx))
-        .unwrap_or(ptr::null_mut())
+pub unsafe fn R_GlobalContext_in(instance: *mut RInstance) -> *mut RCNTXT {
+    // P2: read-only scan of one field; no ambient write intervenes.
+    unsafe {
+        (*instance)
+            .context_stack
+            .last()
+            .map(|ctx| context_ptr(ctx))
+            .unwrap_or(ptr::null_mut())
+    }
 }
 
 /// Push a new context onto the stack and return a mutable pointer to it.
@@ -179,7 +182,7 @@ pub unsafe fn Rf_begincontext(
 
 /// Push a context onto an explicit runtime instance.
 pub unsafe fn Rf_begincontext_in(
-    instance: &mut RInstance,
+    instance: *mut RInstance,
     callflag: c_int,
     call: SEXP,
     cloenv: SEXP,
@@ -200,16 +203,23 @@ pub unsafe fn Rf_begincontext_in(
         ..RCNTXT::new()
     });
 
-    let prev = instance
-        .context_stack
-        .last()
-        .map(|prev_ctx| context_ptr(prev_ctx))
-        .unwrap_or(ptr::null_mut());
+    // P2: the short-lived reads/writes below are strictly local — pushing
+    // a Box onto the Vec allocates but never reenters the interpreter, and
+    // no ambient write occurs between them.
+    let prev = unsafe {
+        (*instance)
+            .context_stack
+            .last()
+            .map(|prev_ctx| context_ptr(prev_ctx))
+            .unwrap_or(ptr::null_mut())
+    };
     ctx.nextcontext = prev;
-    ctx.protectCount = instance.protect_stack.borrow().len();
+    ctx.protectCount = unsafe { (*instance).protect_stack.borrow().len() };
 
     let ptr: *mut RCNTXT = &mut *ctx;
-    instance.context_stack.push(ctx);
+    unsafe {
+        (*instance).context_stack.push(ctx);
+    }
     ptr
 }
 
@@ -223,11 +233,14 @@ pub unsafe fn Rf_endcontext(c: *mut RCNTXT) {
 }
 
 /// Pop the top context from an explicit runtime instance.
-pub unsafe fn Rf_endcontext_in(instance: &mut RInstance, c: *mut RCNTXT) {
-    if let Some(top) = instance.context_stack.last() {
-        let top_ptr = context_ptr(top);
-        if top_ptr == c {
-            instance.context_stack.pop();
+pub unsafe fn Rf_endcontext_in(instance: *mut RInstance, c: *mut RCNTXT) {
+    // P2: strictly-local Vec access; no ambient write intervenes.
+    unsafe {
+        if let Some(top) = (*instance).context_stack.last() {
+            let top_ptr = context_ptr(top);
+            if top_ptr == c {
+                (*instance).context_stack.pop();
+            }
         }
     }
 }
@@ -257,7 +270,7 @@ impl ContextGuard {
 impl Drop for ContextGuard {
     fn drop(&mut self) {
         unsafe {
-            Rf_endcontext_in(&mut *self.instance, self.context);
+            Rf_endcontext_in(self.instance, self.context);
         }
     }
 }
@@ -273,7 +286,7 @@ pub unsafe fn begin_context_guard(
     promiseargs: SEXP,
 ) -> ContextGuard {
     instance::with_required_current_instance(|instance| unsafe {
-        let instance_ptr = instance as *mut RInstance;
+        let instance_ptr = instance;
         let context = Rf_begincontext_in(
             instance,
             callflag,
@@ -302,13 +315,13 @@ pub unsafe fn Rf_findcontext(ctxt_type: c_int, cloenv: SEXP, call: SEXP) -> *mut
 
 /// Find a context on an explicit runtime instance.
 pub unsafe fn Rf_findcontext_in(
-    instance: &mut RInstance,
+    instance: *mut RInstance,
     ctxt_type: c_int,
     cloenv: SEXP,
     _call: SEXP,
 ) -> *mut RCNTXT {
     unsafe {
-        for ctx in instance.context_stack.iter().rev() {
+        for ctx in (*instance).context_stack.iter().rev() {
             let c = context_ptr(ctx);
             if !c.is_null() {
                 let ctx_ref = &*c;
@@ -329,14 +342,16 @@ pub unsafe fn Rf_findcontext_in(
 
 /// Set this session's in-error flag.
 pub fn R_SetInError(flag: bool) {
-    instance::with_required_current_instance(|instance| {
-        instance.in_error = flag;
+    instance::with_required_current_instance(|instance| unsafe {
+        // P2: single-field write; no other raw path touches the instance
+        // inside this closure.
+        (*instance).in_error = flag;
     });
 }
 
 /// Get this session's in-error flag.
 pub fn R_GetInError() -> bool {
-    instance::with_required_current_instance(|instance| instance.in_error)
+    instance::with_required_current_instance(|instance| unsafe { (*instance).in_error })
 }
 
 // ---------------------------------------------------------------------------
@@ -504,8 +519,9 @@ pub fn handle_closure_signal(payload: Box<dyn std::any::Any + Send>) -> SEXP {
 /// Used by ExitingHandler signal handling to determine if the current
 /// catch_unwind frame is the intended target.
 pub fn context_env_exists(target_env: SEXP) -> bool {
-    instance::with_current_instance(|instance| {
-        instance
+    instance::with_current_instance(|instance| unsafe {
+        // P2: read-only scan of one field; no ambient write intervenes.
+        (*instance)
             .context_stack
             .iter()
             .rev()

@@ -54,13 +54,14 @@ pub unsafe fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     paths.push(PathBuf::from(path));
                 }
                 crate::sexp::instance::with_required_current_instance(|inst| {
-                    inst.path_policy.set_library_paths(paths);
+                    (*inst).path_policy.set_library_paths(paths);
                 });
             }
         }
 
         let paths = crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.path_policy
+            (*inst)
+                .path_policy
                 .library_paths()
                 .iter()
                 .map(|path| path.to_string_lossy().into_owned())
@@ -254,7 +255,8 @@ pub unsafe fn do_as_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
 pub unsafe fn do_loaded_namespaces(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut names = crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.package_namespace_cache
+            (*inst)
+                .package_namespace_cache
                 .keys()
                 .cloned()
                 .collect::<Vec<_>>()

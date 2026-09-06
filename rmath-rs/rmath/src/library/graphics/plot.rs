@@ -1367,7 +1367,7 @@ impl Default for DendrogramState {
 }
 
 fn with_dendrogram_state<T>(f: impl FnOnce(&mut DendrogramState) -> T) -> T {
-    with_required_current_instance(|instance| f(&mut instance.dendrogram_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).dendrogram_state }))
 }
 
 unsafe fn drawdend(

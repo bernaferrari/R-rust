@@ -119,11 +119,14 @@ where
     with_required_current_instance(|inst| with_bc_stack_in(inst, f))
 }
 
-pub(crate) fn with_bc_stack_in<F, R>(inst: &mut RInstance, f: F) -> R
+pub(crate) fn with_bc_stack_in<F, R>(inst: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&mut R_bcstack_t) -> R,
 {
-    f(&mut inst.eval_state.bc_stack)
+    // P1: the &mut bc_stack lend is only held across `f`, whose callers
+    // perform strictly-local stack push/pop/depth operations — nothing that
+    // allocates, protects, or reenters the interpreter.
+    f(unsafe { &mut (*inst).eval_state.bc_stack })
 }
 
 // ---------------------------------------------------------------------------
@@ -222,16 +225,16 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
 
-        with_bc_stack_in(&mut left, |stack| unsafe {
+        with_bc_stack_in(&mut left as *mut RInstance, |stack| unsafe {
             stack.push(0x1 as SEXP);
             assert_eq!(stack.depth(), 1);
         });
 
-        with_bc_stack_in(&mut right, |stack| {
+        with_bc_stack_in(&mut right as *mut RInstance, |stack| {
             assert_eq!(stack.depth(), 0);
         });
 
-        with_bc_stack_in(&mut left, |stack| unsafe {
+        with_bc_stack_in(&mut left as *mut RInstance, |stack| unsafe {
             assert_eq!(stack.pop(), 0x1 as SEXP);
             assert_eq!(stack.depth(), 0);
         });

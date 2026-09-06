@@ -51,7 +51,10 @@ impl Default for SysUnixRuntimeState {
 }
 
 fn with_sys_unix_state<R>(f: impl FnOnce(&mut SysUnixRuntimeState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.sys_unix_state))
+    // P1: the &mut SysUnixRuntimeState lend spans only `f`; every caller
+    // touches plain Rust-side values (paths, times, flags) with no R
+    // allocation, protect, or eval inside.
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).sys_unix_state }))
 }
 
 unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
@@ -468,8 +471,9 @@ pub fn fpu_setup(start: c_int) {
 /// Checks R_PROFILE_USER env var, then ./.Rprofile, then ~/.Rprofile.
 pub unsafe fn R_OpenInitFile() -> *mut RFile {
     unsafe {
-        let load_init_file =
-            with_required_current_instance(|instance| instance.startup_state.load_init_file != 0);
+        let load_init_file = with_required_current_instance(|instance| unsafe {
+            (*instance).startup_state.load_init_file != 0
+        });
         if !load_init_file {
             return ptr::null_mut();
         }

@@ -297,7 +297,9 @@ impl Default for TzRuntimeState {
 }
 
 fn with_tz_globals<R>(f: impl FnOnce(&mut TzGlobals) -> R) -> R {
-    with_required_current_instance(|inst| f(inst.tzone_state.globals_mut()))
+    // P1: the &mut TzGlobals lend spans only pure C-translated timezone
+    // arithmetic; tzone code never allocates in R or reenters the evaluator.
+    with_required_current_instance(|inst| f(unsafe { (*inst).tzone_state.globals_mut() }))
 }
 
 // Wild abbreviation (three spaces).

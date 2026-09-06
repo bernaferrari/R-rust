@@ -627,7 +627,7 @@ impl PostScriptFontState {
 }
 
 fn with_postscript_font_state<T>(f: impl FnOnce(&mut PostScriptFontState) -> T) -> T {
-    with_required_current_instance(|instance| f(&mut instance.postscript_font_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).postscript_font_state }))
 }
 
 static POSTSCRIPT_FONTS: [c_char; 20] = [

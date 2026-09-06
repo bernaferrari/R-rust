@@ -814,8 +814,8 @@ unsafe fn Query(what: *const c_char, _dd: pGEDevDesc) -> SEXP {
 }
 
 fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
-    crate::sexp::instance::with_required_current_instance(|instance| {
-        f(&mut instance.graphics_par_state)
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        f(&mut (*instance).graphics_par_state)
     })
 }
 

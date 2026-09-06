@@ -558,17 +558,17 @@ pub unsafe fn EnsureString(x: SEXP) -> SEXP {
 pub unsafe fn R_BlankString() -> SEXP {
     unsafe {
         let existing =
-            instance::with_required_current_instance(|inst| inst.bind_state.blank_string);
+            instance::with_required_current_instance(|inst| (*inst).bind_state.blank_string);
         if !existing.is_null() {
             return existing;
         }
 
         let s = Rf_mkChar(b"\0".as_ptr() as *const c_char);
         instance::with_required_current_instance(|inst| {
-            if inst.bind_state.blank_string.is_null() {
-                inst.bind_state.blank_string = s;
+            if (*inst).bind_state.blank_string.is_null() {
+                (*inst).bind_state.blank_string = s;
             }
-            inst.bind_state.blank_string
+            (*inst).bind_state.blank_string
         })
     }
 }

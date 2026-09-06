@@ -52,9 +52,9 @@ unsafe fn PrintWarnings() {}
 pub unsafe fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
     unsafe {
         Rf_initialize_R(argc, argv);
-        with_required_current_instance(|instance| {
-            instance.startup_state.interactive = 1;
-            instance.eval_state.interactive = 1;
+        with_required_current_instance(|instance| unsafe {
+            (*instance).startup_state.interactive = 1;
+            (*instance).eval_state.interactive = 1;
         });
         setup_Rmainloop();
         1
@@ -96,9 +96,9 @@ mod tests {
             let argv: &mut [*mut c_char] = &mut [];
             let result = Rf_initEmbeddedR(0, argv.as_mut_ptr());
             assert_eq!(result, 1);
-            with_required_current_instance(|instance| {
-                assert_eq!(instance.startup_state.interactive, 1);
-                assert_eq!(instance.eval_state.interactive, 1);
+            with_required_current_instance(|instance| unsafe {
+                assert_eq!((*instance).startup_state.interactive, 1);
+                assert_eq!((*instance).eval_state.interactive, 1);
             });
         }
     }

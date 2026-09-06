@@ -95,8 +95,10 @@ impl Default for PrintUtilsState {
 }
 
 fn current_R_print() -> RPrint {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.printutils.print)
-        .unwrap_or_default()
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.printutils.print
+    })
+    .unwrap_or_default()
 }
 
 unsafe fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
@@ -131,8 +133,8 @@ pub unsafe fn get_R_print() -> RPrint {
 
 /// Set the R_print configuration.
 pub unsafe fn set_R_print(rp: RPrint) {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.eval_state.printutils.print = rp;
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.printutils.print = rp;
     });
 }
 
@@ -281,7 +283,7 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
         let mw = if width < NB - 1 { width } else { NB - 1 };
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut inst.eval_state.printutils.encode_logical;
+            let buf = &mut (*inst).eval_state.printutils.encode_logical;
             // Right-justify into buffer
             let val_bytes = val.as_bytes();
             let val_len = val_bytes.len().min(mw);
@@ -314,7 +316,7 @@ pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
         let mw = if width < NB - 1 { width } else { NB - 1 };
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut inst.eval_state.printutils.encode_integer;
+            let buf = &mut (*inst).eval_state.printutils.encode_integer;
             let val_len = val.len().min(mw);
             let start = mw - val_len;
             buf[..mw].fill(b' ');
@@ -446,7 +448,7 @@ pub unsafe fn EncodeReal0(
         let formatted = format_real_printf_style(x, w, d, e, false, &na);
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut inst.eval_state.printutils.encode_real0;
+            let buf = &mut (*inst).eval_state.printutils.encode_real0;
             store_real_formatted(buf, &formatted, dec_str)
         })
     }
@@ -510,7 +512,7 @@ pub unsafe fn EncodeRealDrop0(
         }
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut inst.eval_state.printutils.encode_real_drop0;
+            let buf = &mut (*inst).eval_state.printutils.encode_real_drop0;
 
             // Replace "." with dec if needed
             let out = if dec_str != "." {
@@ -561,7 +563,7 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
         let formatted = format_real_printf_style(x, w, d, e, true, &na);
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut inst.eval_state.printutils.encode_real2;
+            let buf = &mut (*inst).eval_state.printutils.encode_real2;
             let bytes = formatted.as_bytes();
             let len = bytes.len().min(NB - 1);
             buf[..len].copy_from_slice(&bytes[..len]);
@@ -626,7 +628,7 @@ pub unsafe fn EncodeComplex(
         };
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut inst.eval_state.printutils.encode_complex;
+            let buf = &mut (*inst).eval_state.printutils.encode_complex;
             let bytes = result.as_bytes();
             let len = bytes.len().min(NB + 2);
             buf[..len].copy_from_slice(&bytes[..len]);
@@ -652,7 +654,7 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
 
         let s = format!("{}{:02x}", prefix_str, x);
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buf = &mut inst.eval_state.printutils.encode_raw;
+            let buf = &mut (*inst).eval_state.printutils.encode_raw;
             let bytes = s.as_bytes();
             let len = bytes.len().min(9);
             buf[..len].copy_from_slice(&bytes[..len]);
@@ -757,8 +759,8 @@ pub unsafe fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
 
 /// Encode an environment SEXP for display.
 pub unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        let buf = &mut inst.eval_state.printutils.encode_environment;
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        let buf = &mut (*inst).eval_state.printutils.encode_environment;
         let s = "<environment: 0x0>";
         let bytes = s.as_bytes();
         buf[..bytes.len()].copy_from_slice(bytes);
@@ -769,8 +771,8 @@ pub unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
 
 /// Encode an external pointer SEXP for display.
 pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        let buf = &mut inst.eval_state.printutils.encode_extptr;
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        let buf = &mut (*inst).eval_state.printutils.encode_extptr;
         let s = "<pointer: 0x0>";
         let bytes = s.as_bytes();
         buf[..bytes.len()].copy_from_slice(bytes);
@@ -845,7 +847,7 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
         let is_na = !s.is_null() && s == crate::sexp::globals::R_NaString();
         if s.is_null() || is_na {
             return crate::sexp::instance::with_required_current_instance(|inst| {
-                let buffer = &mut inst.eval_state.printutils.encode_string;
+                let buffer = &mut (*inst).eval_state.printutils.encode_string;
                 buffer.clear();
                 let text: &[u8] = if quote != 0 { b"NA" } else { b"<NA>" };
                 let text_len = text.len() as c_int;
@@ -880,7 +882,7 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
         let p = CHAR(s);
         if p.is_null() {
             return crate::sexp::instance::with_required_current_instance(|inst| {
-                let buffer = &mut inst.eval_state.printutils.encode_string;
+                let buffer = &mut (*inst).eval_state.printutils.encode_string;
                 buffer.clear();
                 buffer.push(0);
                 buffer.as_ptr() as *const c_char
@@ -902,7 +904,7 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
         }
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let buffer = &mut inst.eval_state.printutils.encode_string;
+            let buffer = &mut (*inst).eval_state.printutils.encode_string;
             buffer.clear();
 
             // Left/centre padding

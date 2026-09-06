@@ -117,7 +117,7 @@ fn with_color_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GraphicsColorState) -> R,
 {
-    with_required_current_instance(|instance| f(&mut instance.graphics_color_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).graphics_color_state }))
 }
 
 // ---------------------------------------------------------------------------

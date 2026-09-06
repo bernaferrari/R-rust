@@ -307,7 +307,7 @@ pub(crate) fn with_grid_runtime_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GridRuntimeState) -> R,
 {
-    with_required_current_instance(|instance| f(&mut instance.grid_runtime_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).grid_runtime_state }))
 }
 
 #[inline]

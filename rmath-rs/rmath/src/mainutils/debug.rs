@@ -180,8 +180,8 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             0 => {
                 // tracingState
                 let prev = crate::sexp::instance::with_required_current_instance(|inst| {
-                    let prev = inst.eval_state.tracing_state;
-                    inst.eval_state.tracing_state = state;
+                    let prev = (*inst).eval_state.tracing_state;
+                    (*inst).eval_state.tracing_state = state;
                     prev
                 });
                 return Rf_ScalarLogical(prev);
@@ -189,8 +189,8 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             1 => {
                 // debuggingState
                 let prev = crate::sexp::instance::with_required_current_instance(|inst| {
-                    let prev = inst.eval_state.debugging_state;
-                    inst.eval_state.debugging_state = state;
+                    let prev = (*inst).eval_state.debugging_state;
+                    (*inst).eval_state.debugging_state = state;
                     prev
                 });
                 return Rf_ScalarLogical(prev);
@@ -207,8 +207,10 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_debug_state() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.debugging_state)
-        .unwrap_or(TRUE)
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.debugging_state
+    })
+    .unwrap_or(TRUE)
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +218,7 @@ pub extern "C" fn R_current_debug_state() -> c_int {
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_trace_state() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.tracing_state)
+    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).eval_state.tracing_state })
         .unwrap_or(TRUE)
 }
 
@@ -298,19 +300,19 @@ mod tests {
             assert_eq!(R_current_trace_state(), TRUE);
             assert_eq!(R_current_debug_state(), TRUE);
 
-            crate::sexp::instance::with_required_current_instance(|inst| {
-                inst.eval_state.tracing_state = FALSE;
+            crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+                (*inst).eval_state.tracing_state = FALSE;
             });
             assert_eq!(R_current_trace_state(), FALSE);
 
-            crate::sexp::instance::with_required_current_instance(|inst| {
-                inst.eval_state.debugging_state = FALSE;
+            crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+                (*inst).eval_state.debugging_state = FALSE;
             });
             assert_eq!(R_current_debug_state(), FALSE);
 
-            crate::sexp::instance::with_required_current_instance(|inst| {
-                inst.eval_state.tracing_state = TRUE;
-                inst.eval_state.debugging_state = TRUE;
+            crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+                (*inst).eval_state.tracing_state = TRUE;
+                (*inst).eval_state.debugging_state = TRUE;
             });
             assert_eq!(R_current_trace_state(), TRUE);
             assert_eq!(R_current_debug_state(), TRUE);

@@ -946,14 +946,14 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             }
         }
         let default_tmp = crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.path_policy.temp_dir().to_path_buf()
+            (*inst).path_policy.temp_dir().to_path_buf()
         });
         let tmp = tmpdir.unwrap_or(default_tmp);
         let mut path = tmp.join(format!("{}{:x}{}", pattern, std::process::id(), fileext));
         for _ in 0..1024 {
             let counter = crate::sexp::instance::with_required_current_instance(|inst| {
-                inst.tempfile_counter = inst.tempfile_counter.saturating_add(1);
-                inst.tempfile_counter
+                (*inst).tempfile_counter = (*inst).tempfile_counter.saturating_add(1);
+                (*inst).tempfile_counter
             });
             let candidate = tmp.join(format!(
                 "{}{:x}{:x}{}",
@@ -989,8 +989,8 @@ pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 }
 
 fn session_temp_dir() -> PathBuf {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.path_policy.temp_dir().to_path_buf()
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).path_policy.temp_dir().to_path_buf()
     })
 }
 

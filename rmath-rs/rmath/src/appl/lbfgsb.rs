@@ -374,7 +374,10 @@ pub unsafe fn lbfgsb(
 ) {
     unsafe {
         with_required_current_instance(|instance| {
-            let st = &mut instance.lbfgsb_state;
+            // P1: the &mut LbfgsbState lend spans only Fortran-style numeric
+            // work on user buffers (mainlb); no R allocation/protect/eval
+            // happens under it.
+            let st = unsafe { &mut (*instance).lbfgsb_state };
             let mut csave: [c_char; 60] = [0; 60];
 
             if cstrncmp(task, b"START", 5) {

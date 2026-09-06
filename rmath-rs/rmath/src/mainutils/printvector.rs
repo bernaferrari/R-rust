@@ -94,8 +94,8 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 /// Named `get_R_PrintData` to avoid collision with `get_R_print` in
 /// printutils.rs (which returns the smaller `RPrint` struct).
 pub unsafe fn get_R_PrintData() -> MutPtr<R_PrintData> {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        MutPtr(&mut inst.eval_state.printvector as *mut R_PrintData)
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        MutPtr(&mut (*inst).eval_state.printvector as *mut R_PrintData)
     })
 }
 

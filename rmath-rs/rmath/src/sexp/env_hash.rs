@@ -21,11 +21,13 @@ where
     instance::with_required_current_instance(|instance| with_env_hash_tables_in(instance, f))
 }
 
-fn with_env_hash_tables_in<F, R>(instance: &mut instance::RInstance, f: F) -> R
+fn with_env_hash_tables_in<F, R>(instance: *mut instance::RInstance, f: F) -> R
 where
     F: FnOnce(&mut HashMap<usize, HashMap<usize, SEXP>>) -> R,
 {
-    f(&mut instance.env_hash_tables)
+    // P1: the `&mut` field lend below is held only across strictly-local
+    // map operations; hashbrown calls never reenter the interpreter.
+    unsafe { f(&mut (*instance).env_hash_tables) }
 }
 
 /// Check if an environment has an associated hash table.
@@ -33,7 +35,7 @@ pub(crate) fn env_has_hash_table(env: SEXP) -> bool {
     instance::with_required_current_instance(|instance| env_has_hash_table_in(instance, env))
 }
 
-pub(crate) fn env_has_hash_table_in(instance: &mut instance::RInstance, env: SEXP) -> bool {
+pub(crate) fn env_has_hash_table_in(instance: *mut instance::RInstance, env: SEXP) -> bool {
     with_env_hash_tables_in(instance, |tables| tables.contains_key(&(env as usize)))
 }
 
@@ -45,7 +47,7 @@ pub(crate) fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
 }
 
 pub(crate) fn hash_get_in(
-    instance: &mut instance::RInstance,
+    instance: *mut instance::RInstance,
     env: SEXP,
     symbol: SEXP,
 ) -> Option<SEXP> {
@@ -65,7 +67,7 @@ pub(crate) fn hash_insert(env: SEXP, symbol: SEXP, value: SEXP) {
 }
 
 pub(crate) fn hash_insert_in(
-    instance: &mut instance::RInstance,
+    instance: *mut instance::RInstance,
     env: SEXP,
     symbol: SEXP,
     value: SEXP,
@@ -82,7 +84,7 @@ pub(crate) fn hash_remove(env: SEXP, symbol: SEXP) {
     instance::with_required_current_instance(|instance| hash_remove_in(instance, env, symbol));
 }
 
-pub(crate) fn hash_remove_in(instance: &mut instance::RInstance, env: SEXP, symbol: SEXP) {
+pub(crate) fn hash_remove_in(instance: *mut instance::RInstance, env: SEXP, symbol: SEXP) {
     with_env_hash_tables_in(instance, |tables| {
         if let Some(ht) = tables.get_mut(&(env as usize)) {
             ht.remove(&(symbol as usize));
@@ -98,7 +100,7 @@ pub(crate) fn promote_to_hash_table(env: SEXP, bindings: &[(SEXP, SEXP)]) {
 }
 
 pub(crate) fn promote_to_hash_table_in(
-    instance: &mut instance::RInstance,
+    instance: *mut instance::RInstance,
     env: SEXP,
     bindings: &[(SEXP, SEXP)],
 ) {
@@ -122,7 +124,7 @@ pub(crate) fn remove_env(env: SEXP) {
     instance::with_required_current_instance(|instance| remove_env_in(instance, env));
 }
 
-pub(crate) fn remove_env_in(instance: &mut instance::RInstance, env: SEXP) {
+pub(crate) fn remove_env_in(instance: *mut instance::RInstance, env: SEXP) {
     with_env_hash_tables_in(instance, |tables| {
         tables.remove(&(env as usize));
     });
@@ -130,6 +132,8 @@ pub(crate) fn remove_env_in(instance: &mut instance::RInstance, env: SEXP) {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr::addr_of_mut;
+
     use crate::sexp::instance::RInstance;
     use crate::sexp::session::RSession;
 
@@ -175,22 +179,25 @@ mod tests {
         let left_val = 0x3000usize as SEXP;
         let right_val = 0x4000usize as SEXP;
 
-        promote_to_hash_table_in(&mut left, env, &[(sym, left_val)]);
-        assert!(env_has_hash_table_in(&mut left, env));
-        assert!(!env_has_hash_table_in(&mut right, env));
-        assert_eq!(hash_get_in(&mut left, env, sym), Some(left_val));
-        assert_eq!(hash_get_in(&mut right, env, sym), None);
+        promote_to_hash_table_in(addr_of_mut!(left), env, &[(sym, left_val)]);
+        assert!(env_has_hash_table_in(addr_of_mut!(left), env));
+        assert!(!env_has_hash_table_in(addr_of_mut!(right), env));
+        assert_eq!(hash_get_in(addr_of_mut!(left), env, sym), Some(left_val));
+        assert_eq!(hash_get_in(addr_of_mut!(right), env, sym), None);
 
-        promote_to_hash_table_in(&mut right, env, &[(sym, right_val)]);
-        hash_insert_in(&mut left, env, sym, 0x5000usize as SEXP);
-        assert_eq!(hash_get_in(&mut left, env, sym), Some(0x5000usize as SEXP));
-        assert_eq!(hash_get_in(&mut right, env, sym), Some(right_val));
+        promote_to_hash_table_in(addr_of_mut!(right), env, &[(sym, right_val)]);
+        hash_insert_in(addr_of_mut!(left), env, sym, 0x5000usize as SEXP);
+        assert_eq!(
+            hash_get_in(addr_of_mut!(left), env, sym),
+            Some(0x5000usize as SEXP)
+        );
+        assert_eq!(hash_get_in(addr_of_mut!(right), env, sym), Some(right_val));
 
-        hash_remove_in(&mut left, env, sym);
-        assert_eq!(hash_get_in(&mut left, env, sym), None);
-        assert_eq!(hash_get_in(&mut right, env, sym), Some(right_val));
+        hash_remove_in(addr_of_mut!(left), env, sym);
+        assert_eq!(hash_get_in(addr_of_mut!(left), env, sym), None);
+        assert_eq!(hash_get_in(addr_of_mut!(right), env, sym), Some(right_val));
 
-        remove_env_in(&mut right, env);
-        assert!(!env_has_hash_table_in(&mut right, env));
+        remove_env_in(addr_of_mut!(right), env);
+        assert!(!env_has_hash_table_in(addr_of_mut!(right), env));
     }
 }

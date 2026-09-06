@@ -132,7 +132,7 @@ fn with_plot3d_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Plot3dState) -> R,
 {
-    with_required_current_instance(|instance| f(&mut instance.plot3d_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).plot3d_state }))
 }
 
 fn plot3d_error(message: impl Into<String>) -> ! {

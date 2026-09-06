@@ -60,36 +60,53 @@ fn binding_error(message: impl Into<String>) -> ! {
 }
 
 pub(crate) fn lock_environment_raw(env: SEXP) {
-    with_required_current_instance(|instance| {
-        instance.locked_environments.insert(env_key(env));
+    with_required_current_instance(|instance| unsafe {
+        // P2: single-field write; no other raw path touches the instance
+        // inside this closure.
+        (*instance).locked_environments.insert(env_key(env));
     });
 }
 
 pub(crate) fn environment_is_locked_raw(env: SEXP) -> bool {
-    with_current_instance(|instance| instance.locked_environments.contains(&env_key(env)))
-        .unwrap_or(false)
+    with_current_instance(|instance| unsafe {
+        // P2: read-only set lookup; no ambient write intervenes.
+        (*instance).locked_environments.contains(&env_key(env))
+    })
+    .unwrap_or(false)
 }
 
 pub(crate) fn lock_binding_raw(env: SEXP, symbol: SEXP) {
-    with_required_current_instance(|instance| {
-        instance.locked_bindings.insert(binding_key(env, symbol));
+    with_required_current_instance(|instance| unsafe {
+        // P2: single-field write; no other raw path touches the instance
+        // inside this closure.
+        (*instance).locked_bindings.insert(binding_key(env, symbol));
     });
 }
 
 pub(crate) fn unlock_binding_raw(env: SEXP, symbol: SEXP) {
-    with_required_current_instance(|instance| {
-        instance.locked_bindings.remove(&binding_key(env, symbol));
+    with_required_current_instance(|instance| unsafe {
+        // P2: single-field write; no other raw path touches the instance
+        // inside this closure.
+        (*instance)
+            .locked_bindings
+            .remove(&binding_key(env, symbol));
     });
 }
 
 pub(crate) fn binding_is_locked_raw(env: SEXP, symbol: SEXP) -> bool {
-    with_current_instance(|instance| instance.locked_bindings.contains(&binding_key(env, symbol)))
-        .unwrap_or(false)
+    with_current_instance(|instance| unsafe {
+        // P2: read-only set lookup; no ambient write intervenes.
+        (*instance)
+            .locked_bindings
+            .contains(&binding_key(env, symbol))
+    })
+    .unwrap_or(false)
 }
 
 pub(crate) fn binding_is_active_raw(env: SEXP, symbol: SEXP) -> bool {
-    with_current_instance(|instance| {
-        instance
+    with_current_instance(|instance| unsafe {
+        // P2: read-only map lookup; no ambient write intervenes.
+        (*instance)
             .active_bindings
             .contains_key(&binding_key(env, symbol))
     })
@@ -97,8 +114,9 @@ pub(crate) fn binding_is_active_raw(env: SEXP, symbol: SEXP) -> bool {
 }
 
 fn active_binding_fun_raw(env: SEXP, symbol: SEXP) -> Option<SEXP> {
-    with_current_instance(|instance| {
-        instance
+    with_current_instance(|instance| unsafe {
+        // P2: read-only map lookup; no ambient write intervenes.
+        (*instance)
             .active_bindings
             .get(&binding_key(env, symbol))
             .copied()
@@ -159,10 +177,12 @@ pub(crate) fn remove_binding_raw(env: SEXP, symbol: SEXP) {
                     SETCDR(previous, next);
                 }
                 super::env_hash::hash_remove(env, symbol);
-                with_required_current_instance(|instance| {
+                with_required_current_instance(|instance| unsafe {
+                    // P2: strictly-local map writes; no other raw path
+                    // touches the instance inside this closure.
                     let key = binding_key(env, symbol);
-                    instance.active_bindings.remove(&key);
-                    instance.locked_bindings.remove(&key);
+                    (*instance).active_bindings.remove(&key);
+                    (*instance).locked_bindings.remove(&key);
                 });
                 return;
             }
@@ -194,8 +214,10 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
                 if super::env_hash::env_has_hash_table(env) {
                     super::env_hash::hash_insert(env, symbol, fun);
                 }
-                with_required_current_instance(|instance| {
-                    instance
+                with_required_current_instance(|instance| unsafe {
+                    // P2: single-field write; no other raw path touches the
+                    // instance inside this closure.
+                    (*instance)
                         .active_bindings
                         .insert(binding_key(env, symbol), fun);
                 });
@@ -218,8 +240,10 @@ pub(crate) fn make_active_binding_raw(env: SEXP, symbol: SEXP, fun: SEXP) {
         if super::env_hash::env_has_hash_table(env) {
             super::env_hash::hash_insert(env, symbol, fun);
         }
-        with_required_current_instance(|instance| {
-            instance
+        with_required_current_instance(|instance| unsafe {
+            // P2: single-field write; no other raw path touches the
+            // instance inside this closure.
+            (*instance)
                 .active_bindings
                 .insert(binding_key(env, symbol), fun);
         });

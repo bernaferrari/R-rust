@@ -45,12 +45,12 @@ impl Default for InternetRuntimeState {
 }
 
 fn internet_quiet() -> c_int {
-    with_required_current_instance(|instance| instance.internet_state.quiet)
+    with_required_current_instance(|instance| unsafe { (*instance).internet_state.quiet })
 }
 
 fn set_internet_quiet(value: c_int) {
-    with_required_current_instance(|instance| {
-        instance.internet_state.quiet = value;
+    with_required_current_instance(|instance| unsafe {
+        (*instance).internet_state.quiet = value;
     });
 }
 

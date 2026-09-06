@@ -11,14 +11,16 @@ use crate::sexp::instance::with_required_current_instance;
 
 /// Set the running-as-main-program flag.
 pub unsafe fn R_SetRunningAsMainProgram(v: c_int) {
-    with_required_current_instance(|instance| {
-        instance.startup_state.running_as_main_program = v;
+    with_required_current_instance(|instance| unsafe {
+        (*instance).startup_state.running_as_main_program = v;
     });
 }
 
 /// Get the running-as-main-program flag.
 pub unsafe fn R_RunningAsMainProgram() -> c_int {
-    with_required_current_instance(|instance| instance.startup_state.running_as_main_program)
+    with_required_current_instance(|instance| unsafe {
+        (*instance).startup_state.running_as_main_program
+    })
 }
 
 /// FORTRAN compatibility stub.

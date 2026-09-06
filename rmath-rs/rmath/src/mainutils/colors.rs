@@ -50,7 +50,7 @@ pub(crate) struct ColorDispatchState {
 }
 
 fn with_color_dispatch_state<R>(f: impl FnOnce(&mut ColorDispatchState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.color_dispatch_state))
+    with_required_current_instance(|instance| unsafe { f(&mut (*instance).color_dispatch_state) })
 }
 
 fn grdevices_not_loaded() -> ! {

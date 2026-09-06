@@ -4749,7 +4749,9 @@ pub unsafe fn installDDVAL(n: c_int) -> SEXP {
         if n >= 0 {
             let n = n as usize;
             let cached = instance::with_required_current_instance(|inst| {
-                inst.names_state.ddval_symbols.get(n).copied()
+                // P2: short-lived shared borrow; strictly-local read, no ambient writes.
+                let symbols = &(*inst).names_state.ddval_symbols;
+                symbols.get(n).copied()
             });
             if let Some(sym) = cached {
                 return sym;
@@ -4765,8 +4767,8 @@ pub unsafe fn installDDVAL(n: c_int) -> SEXP {
             }
             let sym = symbols[n as usize];
             instance::with_required_current_instance(|inst| {
-                if inst.names_state.ddval_symbols.len() < N_DDVAL_SYMBOLS {
-                    inst.names_state.ddval_symbols = symbols;
+                if (*inst).names_state.ddval_symbols.len() < N_DDVAL_SYMBOLS {
+                    (*inst).names_state.ddval_symbols = symbols;
                 }
             });
             return sym;
@@ -4800,7 +4802,7 @@ unsafe fn mkSymMarker(pname: SEXP) -> SEXP {
 /// This must be called once before any symbol lookup operations.
 pub unsafe fn InitNames() {
     unsafe {
-        if instance::with_required_current_instance(|inst| inst.names_state.init_names_done) {
+        if instance::with_required_current_instance(|inst| (*inst).names_state.init_names_done) {
             return;
         }
 
@@ -4822,7 +4824,7 @@ pub unsafe fn InitNames() {
         let _ = installDDVAL(0);
 
         instance::with_required_current_instance(|inst| {
-            inst.names_state.init_names_done = true;
+            (*inst).names_state.init_names_done = true;
         });
     }
 }

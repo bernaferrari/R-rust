@@ -317,7 +317,10 @@ impl Default for LibcurlRuntimeState {
 }
 
 fn with_libcurl_state<R>(f: impl FnOnce(&mut LibcurlRuntimeState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.libcurl_state))
+    // P1: the &mut LibcurlRuntimeState lend spans only `f`, whose callers
+    // move plain config values (timeouts, flags, byte counters) without R
+    // allocation or evaluation.
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).libcurl_state }))
 }
 
 fn current_timeout() -> c_int {

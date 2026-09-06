@@ -177,7 +177,9 @@ pub fn with_deparse_runtime<F, R>(f: F) -> R
 where
     F: FnOnce(&mut DeparseRuntimeState) -> R,
 {
-    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.eval_state.deparse))
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        f(&mut (*inst).eval_state.deparse)
+    })
 }
 
 pub fn get_browse_lines() -> c_int {

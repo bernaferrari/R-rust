@@ -155,15 +155,17 @@ unsafe fn translateChar(s: SEXP) -> *const c_char {
 /// Set R_Interactive flag.
 pub fn R_SetInteractive(val: bool) {
     let flag = if val { TRUE } else { FALSE };
-    crate::sexp::instance::with_current_instance(|inst| {
-        inst.eval_state.interactive = flag;
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.interactive = flag;
     });
 }
 
 /// Get R_Interactive flag.
 pub fn R_Interactive() -> bool {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.interactive != FALSE)
-        .unwrap_or(false)
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.interactive != FALSE
+    })
+    .unwrap_or(false)
 }
 
 /// Sys.getenv() — get environment variables.

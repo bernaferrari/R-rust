@@ -244,5 +244,7 @@ impl Default for WindowState {
 }
 
 pub(crate) fn with_graphapp_runtime<R>(f: impl FnOnce(&mut GraphAppRuntimeState) -> R) -> R {
-    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.graphapp_state))
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        f(unsafe { &mut (*inst).graphapp_state })
+    })
 }

@@ -42,7 +42,7 @@ pub(crate) struct FexactState {
 }
 
 fn with_fexact_state<R>(f: impl FnOnce(&mut FexactState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.fexact_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).fexact_state }))
 }
 
 unsafe fn prterr(icode: c_int, mes: &str) {

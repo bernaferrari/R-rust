@@ -741,7 +741,7 @@ impl Default for MethodsDispatchState {
 }
 
 fn with_methods_dispatch_state<R>(f: impl FnOnce(&mut MethodsDispatchState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.methods_dispatch_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).methods_dispatch_state }))
 }
 
 pub extern "C" fn R_clear_method_selection() -> SEXP {

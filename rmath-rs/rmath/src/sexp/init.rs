@@ -40,25 +40,28 @@ pub fn is_initialized() -> bool {
     with_required_current_instance(is_initialized_in)
 }
 
-pub(crate) fn is_initialized_in(inst: &mut RInstance) -> bool {
-    inst.initialized
+pub(crate) fn is_initialized_in(inst: *mut RInstance) -> bool {
+    // P2: single-field read; no ambient write intervenes.
+    unsafe { (*inst).initialized }
 }
 
 pub unsafe fn initialize_r() {
     let instance = current_instance_ptr()
         .expect("mutable R runtime state requires an active RInstance for initialize_r");
     unsafe {
-        initialize_r_in(&mut *instance);
+        initialize_r_in(instance);
     }
 }
 
-pub(crate) unsafe fn initialize_r_in(inst: &mut RInstance) {
+pub(crate) unsafe fn initialize_r_in(inst: *mut RInstance) {
     unsafe {
         super::context::install_r_panic_hook();
-        if !inst.initialized {
-            let base_env = inst.base_env;
+        // P1: raw place accesses — initialize_base_bindings_in reenters the
+        // interpreter (symbol interning, protect pushes, builtin tables).
+        if !(*inst).initialized {
+            let base_env = (*inst).base_env;
             initialize_base_bindings_in(inst, base_env);
-            inst.initialized = true;
+            (*inst).initialized = true;
         }
     }
 }
@@ -73,13 +76,13 @@ pub unsafe fn initialize_base_bindings(base_env: SEXP) {
         "mutable R runtime state requires an active RInstance for initialize_base_bindings",
     );
     unsafe {
-        initialize_base_bindings_in(&mut *instance, base_env);
+        initialize_base_bindings_in(instance, base_env);
     }
 }
 
-pub(crate) unsafe fn initialize_base_bindings_in(inst: &mut RInstance, base_env: SEXP) {
+pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env: SEXP) {
     unsafe {
-        let _scope = ScopedCurrentInstance::install(inst as *mut RInstance);
+        let _scope = ScopedCurrentInstance::install(inst);
 
         pre_intern_symbols_in(inst);
         crate::eval::jit::R_init_jit_enabled_in(inst);
@@ -683,7 +686,7 @@ unsafe fn pre_intern_symbols() {
     with_required_current_instance(|inst| unsafe { pre_intern_symbols_in(inst) });
 }
 
-unsafe fn pre_intern_symbols_in(inst: &mut RInstance) {
+unsafe fn pre_intern_symbols_in(inst: *mut RInstance) {
     unsafe {
         let symbols = [
             "if",
@@ -811,8 +814,11 @@ pub unsafe fn shutdown_r() {
     with_required_current_instance(shutdown_r_in);
 }
 
-pub(crate) fn shutdown_r_in(inst: &mut RInstance) {
-    inst.initialized = false;
+pub(crate) fn shutdown_r_in(inst: *mut RInstance) {
+    // P2: single-field write; no other raw path touches the instance here.
+    unsafe {
+        (*inst).initialized = false;
+    }
 }
 
 #[cfg(test)]

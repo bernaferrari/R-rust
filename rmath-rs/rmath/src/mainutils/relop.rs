@@ -627,8 +627,8 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// Initialize the language comparison option from environment.
 unsafe fn init_relop_lang_option() {
     // Option 1 = EQONLY (default)
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.eval_state.relop_lang_option = 1;
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.relop_lang_option = 1;
     });
     // Note: getenv not available in no_std context, keep EQONLY default
 }
@@ -664,14 +664,14 @@ unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
 unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP {
     unsafe {
         if crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.eval_state.relop_lang_option
+            (*inst).eval_state.relop_lang_option
         }) == 0
         {
             init_relop_lang_option();
         }
 
         match crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.eval_state.relop_lang_option
+            (*inst).eval_state.relop_lang_option
         }) {
             // EQONLY
             1 => match PRIMVAL(op) {

@@ -212,12 +212,14 @@ fn try_catch_wants(classes: &[&str]) -> bool {
 }
 
 fn condition_handler_stack() -> SEXP {
-    crate::sexp::instance::with_required_current_instance(|inst| inst.error_state.handler_stack)
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.handler_stack
+    })
 }
 
 fn set_condition_handler_stack(stack: SEXP) {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.error_state.handler_stack = stack;
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.handler_stack = stack;
     });
 }
 
@@ -484,12 +486,14 @@ unsafe fn call_function_with_args(handler: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 }
 
 fn restart_stack() -> SEXP {
-    crate::sexp::instance::with_required_current_instance(|inst| inst.error_state.restart_stack)
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.restart_stack
+    })
 }
 
 fn set_restart_stack(stack: SEXP) {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.error_state.restart_stack = stack;
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.restart_stack = stack;
     });
 }
 

@@ -94,11 +94,11 @@ struct RuntimeMemorySnapshot {
 }
 
 fn runtime_memory_snapshot() -> RuntimeMemorySnapshot {
-    crate::sexp::instance::with_required_current_instance(|instance| {
-        let active_nodes = instance.arena.node_count();
-        let free_nodes = instance.arena.free_count();
-        let current_bytes = instance.arena.total_bytes_allocated();
-        let peak_bytes = instance.gc_state.stats.peak_memory.max(current_bytes);
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        let active_nodes = (*instance).arena.node_count();
+        let free_nodes = (*instance).arena.free_count();
+        let current_bytes = (*instance).arena.total_bytes_allocated();
+        let peak_bytes = (*instance).gc_state.stats.peak_memory.max(current_bytes);
 
         RuntimeMemorySnapshot {
             active_nodes,
@@ -383,7 +383,7 @@ pub unsafe fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP)
         *data = 1;
 
         crate::sexp::instance::with_required_current_instance(|instance| {
-            for node in instance.arena.active_nodes() {
+            for node in (*instance).arena.active_nodes() {
                 let ty = TYPEOF(node);
                 if let Some((idx, _)) = PROFILE_TYPES
                     .iter()

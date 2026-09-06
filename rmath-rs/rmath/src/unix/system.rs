@@ -129,7 +129,10 @@ impl Default for UnixSystemRuntimeState {
 }
 
 fn with_system_state<R>(f: impl FnOnce(&mut UnixSystemRuntimeState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.unix_system_state))
+    // P1: the &mut UnixSystemRuntimeState lend spans only `f`; callers read
+    // or write plain callback/config values without allocating or entering
+    // the interpreter.
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).unix_system_state }))
 }
 
 #[cfg(test)]

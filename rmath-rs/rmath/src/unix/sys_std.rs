@@ -235,8 +235,8 @@ pub unsafe fn Rstd_loadhistory(file: *const c_char) {
     let Ok(contents) = std::fs::read_to_string(path) else {
         return;
     };
-    with_required_current_instance(|instance| {
-        instance.sys_std_state.history = contents.lines().map(str::to_owned).collect();
+    with_required_current_instance(|instance| unsafe {
+        (*instance).sys_std_state.history = contents.lines().map(str::to_owned).collect();
     });
 }
 
@@ -245,11 +245,11 @@ pub unsafe fn Rstd_savehistory(file: *const c_char) {
     let Some(path) = cstr_to_string(file) else {
         return;
     };
-    let contents = with_required_current_instance(|instance| {
-        if instance.sys_std_state.history.is_empty() {
+    let contents = with_required_current_instance(|instance| unsafe {
+        if (*instance).sys_std_state.history.is_empty() {
             String::new()
         } else {
-            format!("{}\n", instance.sys_std_state.history.join("\n"))
+            format!("{}\n", (*instance).sys_std_state.history.join("\n"))
         }
     });
     let _ = std::fs::write(path, contents);
@@ -260,8 +260,8 @@ pub unsafe fn Rstd_addhistory(line: *const c_char) {
     let Some(line) = cstr_to_string(line) else {
         return;
     };
-    with_required_current_instance(|instance| {
-        instance.sys_std_state.history.push(line);
+    with_required_current_instance(|instance| unsafe {
+        (*instance).sys_std_state.history.push(line);
     });
 }
 
@@ -275,23 +275,23 @@ pub unsafe fn Rstd_read_history(file: *const c_char) {
 // ---------------------------------------------------------------------------
 
 pub(crate) fn set_r_polled_events(callback: Option<unsafe extern "C" fn()>) {
-    with_required_current_instance(|instance| {
-        instance.sys_std_state.r_polled_events = callback;
+    with_required_current_instance(|instance| unsafe {
+        (*instance).sys_std_state.r_polled_events = callback;
     });
 }
 
 pub(crate) fn set_rg_polled_events(callback: Option<unsafe extern "C" fn()>) {
-    with_required_current_instance(|instance| {
-        instance.sys_std_state.rg_polled_events = callback;
+    with_required_current_instance(|instance| unsafe {
+        (*instance).sys_std_state.rg_polled_events = callback;
     });
 }
 
 pub(crate) fn r_polled_events() -> Option<unsafe extern "C" fn()> {
-    with_required_current_instance(|instance| instance.sys_std_state.r_polled_events)
+    with_required_current_instance(|instance| unsafe { (*instance).sys_std_state.r_polled_events })
 }
 
 pub(crate) fn rg_polled_events() -> Option<unsafe extern "C" fn()> {
-    with_required_current_instance(|instance| instance.sys_std_state.rg_polled_events)
+    with_required_current_instance(|instance| unsafe { (*instance).sys_std_state.rg_polled_events })
 }
 
 /// Wait for the specified number of microseconds.
@@ -308,8 +308,8 @@ pub fn Rg_wait_usec(_usec: c_int) {
 /// Set readline word break characters.
 pub unsafe fn set_rl_word_breaks(value: *const c_char) {
     let word_breaks = cstr_to_string(value);
-    with_required_current_instance(|instance| {
-        instance.sys_std_state.readline_word_breaks = word_breaks;
+    with_required_current_instance(|instance| unsafe {
+        (*instance).sys_std_state.readline_word_breaks = word_breaks;
     });
 }
 
@@ -497,9 +497,9 @@ mod tests {
         unsafe {
             set_rl_word_breaks(b" \t\n\0".as_ptr() as *const c_char);
         }
-        crate::sexp::instance::with_required_current_instance(|instance| {
+        crate::sexp::instance::with_required_current_instance(|instance| unsafe {
             assert_eq!(
-                instance.sys_std_state.readline_word_breaks.as_deref(),
+                (*instance).sys_std_state.readline_word_breaks.as_deref(),
                 Some(" \t\n")
             );
         });

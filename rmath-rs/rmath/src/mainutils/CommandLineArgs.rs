@@ -39,7 +39,7 @@ fn with_startup_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StartupRuntimeState) -> R,
 {
-    with_required_current_instance(|inst| f(&mut inst.startup_state))
+    with_required_current_instance(|inst| unsafe { f(&mut (*inst).startup_state) })
 }
 
 // ---------------------------------------------------------------------------
@@ -162,11 +162,11 @@ fn command_line_args_for_test() -> Vec<String> {
 }
 
 pub(crate) fn sync_eval_control_from_command_line() {
-    with_required_current_instance(|inst| {
-        inst.eval_state.quiet = inst.startup_state.quiet;
-        inst.eval_state.no_echo = inst.startup_state.no_echo;
-        inst.eval_state.interactive = inst.startup_state.interactive;
-        inst.eval_state.verbose = inst.startup_state.verbose;
+    with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.quiet = (*inst).startup_state.quiet;
+        (*inst).eval_state.no_echo = (*inst).startup_state.no_echo;
+        (*inst).eval_state.interactive = (*inst).startup_state.interactive;
+        (*inst).eval_state.verbose = (*inst).startup_state.verbose;
     });
 }
 
@@ -175,8 +175,8 @@ fn set_interactive(value: bool) {
     with_startup_state(|state| {
         state.interactive = c_int::from(value);
     });
-    with_required_current_instance(|inst| {
-        inst.eval_state.interactive = c_int::from(value);
+    with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.interactive = c_int::from(value);
     });
 }
 
@@ -185,8 +185,8 @@ fn set_no_echo(value: bool) {
     with_startup_state(|state| {
         state.no_echo = c_int::from(value);
     });
-    with_required_current_instance(|inst| {
-        inst.eval_state.no_echo = c_int::from(value);
+    with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.no_echo = c_int::from(value);
     });
 }
 
@@ -195,8 +195,8 @@ fn set_quiet(value: bool) {
     with_startup_state(|state| {
         state.quiet = c_int::from(value);
     });
-    with_required_current_instance(|inst| {
-        inst.eval_state.quiet = c_int::from(value);
+    with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.quiet = c_int::from(value);
     });
 }
 
@@ -205,8 +205,8 @@ fn set_verbose(value: bool) {
     with_startup_state(|state| {
         state.verbose = c_int::from(value);
     });
-    with_required_current_instance(|inst| {
-        inst.eval_state.verbose = c_int::from(value);
+    with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.verbose = c_int::from(value);
     });
 }
 

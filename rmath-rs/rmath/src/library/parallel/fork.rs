@@ -159,12 +159,12 @@ impl Drop for ForkRuntimeState {
 
 #[cfg(unix)]
 fn with_fork_state<R>(f: impl FnOnce(&mut ForkRuntimeState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.parallel_fork_state))
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).parallel_fork_state }))
 }
 
 #[cfg(unix)]
 fn with_current_fork_state<R>(f: impl FnOnce(&mut ForkRuntimeState) -> R) -> Option<R> {
-    with_current_instance(|instance| f(&mut instance.parallel_fork_state))
+    with_current_instance(|instance| f(unsafe { &mut (*instance).parallel_fork_state }))
 }
 
 // ---------------------------------------------------------------------------

@@ -101,12 +101,16 @@ fn apply_jit_settings(settings: JitSettings) {
     with_required_current_instance(|inst| apply_jit_settings_in(inst, settings));
 }
 
-fn apply_jit_settings_in(inst: &mut RInstance, settings: JitSettings) {
-    inst.eval_state.jit_enabled = settings.jit_enabled;
-    inst.eval_state.compile_pkgs = settings.compile_pkgs;
-    inst.eval_state.disable_bytecode = settings.disable_bytecode;
-    inst.eval_state.min_jit_score = settings.min_jit_score;
-    inst.eval_state.loop_jit_score = settings.loop_jit_score;
+fn apply_jit_settings_in(inst: *mut RInstance, settings: JitSettings) {
+    // Raw place writes only: no &mut RInstance is formed, so reentrant
+    // ambient access during later init phases stays sound (P1).
+    unsafe {
+        (*inst).eval_state.jit_enabled = settings.jit_enabled;
+        (*inst).eval_state.compile_pkgs = settings.compile_pkgs;
+        (*inst).eval_state.disable_bytecode = settings.disable_bytecode;
+        (*inst).eval_state.min_jit_score = settings.min_jit_score;
+        (*inst).eval_state.loop_jit_score = settings.loop_jit_score;
+    }
 }
 
 pub fn bytecode_compiler_available() -> bool {
@@ -455,7 +459,7 @@ pub unsafe fn R_init_jit_enabled() {
     }
 }
 
-pub(crate) fn R_init_jit_enabled_in(inst: &mut RInstance) {
+pub(crate) fn R_init_jit_enabled_in(inst: *mut RInstance) {
     let settings = current_env_settings();
     let (min_jit_score, loop_jit_score) = jit_thresholds(settings.jit_enabled);
     set_R_min_jit_score_in(inst, min_jit_score);
@@ -495,8 +499,8 @@ pub fn get_R_jit_enabled() -> c_int {
     with_required_current_instance(get_R_jit_enabled_in)
 }
 
-pub(crate) fn get_R_jit_enabled_in(inst: &mut RInstance) -> c_int {
-    inst.eval_state.jit_enabled
+pub(crate) fn get_R_jit_enabled_in(inst: *mut RInstance) -> c_int {
+    unsafe { (*inst).eval_state.jit_enabled }
 }
 
 /// Set whether JIT is enabled.
@@ -504,8 +508,8 @@ pub fn set_R_jit_enabled(val: c_int) {
     with_required_current_instance(|inst| set_R_jit_enabled_in(inst, val));
 }
 
-pub(crate) fn set_R_jit_enabled_in(inst: &mut RInstance, val: c_int) {
-    inst.eval_state.jit_enabled = val;
+pub(crate) fn set_R_jit_enabled_in(inst: *mut RInstance, val: c_int) {
+    unsafe { (*inst).eval_state.jit_enabled = val };
 }
 
 /// Get whether to compile packages.
@@ -513,8 +517,8 @@ pub fn get_R_compile_pkgs() -> c_int {
     with_required_current_instance(get_R_compile_pkgs_in)
 }
 
-pub(crate) fn get_R_compile_pkgs_in(inst: &mut RInstance) -> c_int {
-    inst.eval_state.compile_pkgs
+pub(crate) fn get_R_compile_pkgs_in(inst: *mut RInstance) -> c_int {
+    unsafe { (*inst).eval_state.compile_pkgs }
 }
 
 /// Get whether bytecode is disabled.
@@ -522,8 +526,8 @@ pub fn get_R_disable_bytecode() -> c_int {
     with_required_current_instance(get_R_disable_bytecode_in)
 }
 
-pub(crate) fn get_R_disable_bytecode_in(inst: &mut RInstance) -> c_int {
-    inst.eval_state.disable_bytecode
+pub(crate) fn get_R_disable_bytecode_in(inst: *mut RInstance) -> c_int {
+    unsafe { (*inst).eval_state.disable_bytecode }
 }
 
 /// Get the constant checking level.
@@ -531,24 +535,24 @@ pub fn get_R_check_constants() -> c_int {
     with_required_current_instance(get_R_check_constants_in)
 }
 
-pub(crate) fn get_R_check_constants_in(inst: &mut RInstance) -> c_int {
-    inst.eval_state.check_constants
+pub(crate) fn get_R_check_constants_in(inst: *mut RInstance) -> c_int {
+    unsafe { (*inst).eval_state.check_constants }
 }
 
-pub(crate) fn get_R_min_jit_score_in(inst: &mut RInstance) -> c_int {
-    inst.eval_state.min_jit_score
+pub(crate) fn get_R_min_jit_score_in(inst: *mut RInstance) -> c_int {
+    unsafe { (*inst).eval_state.min_jit_score }
 }
 
-pub(crate) fn set_R_min_jit_score_in(inst: &mut RInstance, val: c_int) {
-    inst.eval_state.min_jit_score = val;
+pub(crate) fn set_R_min_jit_score_in(inst: *mut RInstance, val: c_int) {
+    unsafe { (*inst).eval_state.min_jit_score = val };
 }
 
-pub(crate) fn get_R_loop_jit_score_in(inst: &mut RInstance) -> c_int {
-    inst.eval_state.loop_jit_score
+pub(crate) fn get_R_loop_jit_score_in(inst: *mut RInstance) -> c_int {
+    unsafe { (*inst).eval_state.loop_jit_score }
 }
 
-pub(crate) fn set_R_loop_jit_score_in(inst: &mut RInstance, val: c_int) {
-    inst.eval_state.loop_jit_score = val;
+pub(crate) fn set_R_loop_jit_score_in(inst: *mut RInstance, val: c_int) {
+    unsafe { (*inst).eval_state.loop_jit_score = val };
 }
 
 // ---------------------------------------------------------------------------
@@ -561,7 +565,7 @@ pub unsafe fn init_exec_token() {
     // In the full implementation, R_PreserveObject would be called here
 }
 
-pub(crate) unsafe fn init_exec_token_in(inst: &mut RInstance) {
+pub(crate) unsafe fn init_exec_token_in(inst: *mut RInstance) {
     unsafe {
         let sym = Rf_install_in(inst, b".__EXEC__.\x00".as_ptr() as *const c_char);
         let token = with_arena_in(inst, |arena| {
@@ -571,12 +575,12 @@ pub(crate) unsafe fn init_exec_token_in(inst: &mut RInstance) {
     }
 }
 
-pub(crate) fn get_R_exec_token_in(inst: &mut RInstance) -> SEXP {
-    inst.eval_state.exec_token
+pub(crate) fn get_R_exec_token_in(inst: *mut RInstance) -> SEXP {
+    unsafe { (*inst).eval_state.exec_token }
 }
 
-pub(crate) fn set_R_exec_token_in(inst: &mut RInstance, token: SEXP) {
-    inst.eval_state.exec_token = token;
+pub(crate) fn set_R_exec_token_in(inst: *mut RInstance, token: SEXP) {
+    unsafe { (*inst).eval_state.exec_token = token };
 }
 
 /// Check if a value is an exec continuation (for tail call optimization).
@@ -584,7 +588,7 @@ pub unsafe fn is_exec_continuation(val: SEXP) -> c_int {
     with_required_current_instance(|inst| unsafe { is_exec_continuation_in(inst, val) })
 }
 
-pub(crate) unsafe fn is_exec_continuation_in(inst: &mut RInstance, val: SEXP) -> c_int {
+pub(crate) unsafe fn is_exec_continuation_in(inst: *mut RInstance, val: SEXP) -> c_int {
     unsafe {
         if val.is_null() || TYPEOF(val) != SEXPTYPE::VECSXP {
             return FALSE;
@@ -834,25 +838,37 @@ mod tests {
         let mut right = RInstance::new();
 
         apply_jit_settings_in(
-            &mut left,
+            &mut left as *mut RInstance,
             JitSettings::from_env_values(Some("3"), Some("1"), Some("0")),
         );
         apply_jit_settings_in(
-            &mut right,
+            &mut right as *mut RInstance,
             JitSettings::from_env_values(Some("0"), Some("0"), Some("1")),
         );
 
-        assert_eq!(get_R_jit_enabled_in(&mut left), 3);
-        assert_eq!(get_R_compile_pkgs_in(&mut left), TRUE);
-        assert_eq!(get_R_disable_bytecode_in(&mut left), FALSE);
-        assert_eq!(get_R_min_jit_score_in(&mut left), 50);
-        assert_eq!(get_R_loop_jit_score_in(&mut left), 50);
+        assert_eq!(get_R_jit_enabled_in(&mut left as *mut RInstance), 3);
+        assert_eq!(get_R_compile_pkgs_in(&mut left as *mut RInstance), TRUE);
+        assert_eq!(
+            get_R_disable_bytecode_in(&mut left as *mut RInstance),
+            FALSE
+        );
+        assert_eq!(get_R_min_jit_score_in(&mut left as *mut RInstance), 50);
+        assert_eq!(get_R_loop_jit_score_in(&mut left as *mut RInstance), 50);
 
-        assert_eq!(get_R_jit_enabled_in(&mut right), 0);
-        assert_eq!(get_R_compile_pkgs_in(&mut right), FALSE);
-        assert_eq!(get_R_disable_bytecode_in(&mut right), TRUE);
-        assert_eq!(get_R_min_jit_score_in(&mut right), c_int::MAX);
-        assert_eq!(get_R_loop_jit_score_in(&mut right), c_int::MAX);
+        assert_eq!(get_R_jit_enabled_in(&mut right as *mut RInstance), 0);
+        assert_eq!(get_R_compile_pkgs_in(&mut right as *mut RInstance), FALSE);
+        assert_eq!(
+            get_R_disable_bytecode_in(&mut right as *mut RInstance),
+            TRUE
+        );
+        assert_eq!(
+            get_R_min_jit_score_in(&mut right as *mut RInstance),
+            c_int::MAX
+        );
+        assert_eq!(
+            get_R_loop_jit_score_in(&mut right as *mut RInstance),
+            c_int::MAX
+        );
     }
 
     #[test]
@@ -929,19 +945,25 @@ mod tests {
         let mut right = RInstance::new();
 
         unsafe {
-            init_exec_token_in(&mut left);
-            let left_token = get_R_exec_token_in(&mut left);
+            init_exec_token_in(&mut left as *mut RInstance);
+            let left_token = get_R_exec_token_in(&mut left as *mut RInstance);
             assert!(!left_token.is_null());
-            assert!(get_R_exec_token_in(&mut right).is_null());
+            assert!(get_R_exec_token_in(&mut right as *mut RInstance).is_null());
 
-            let continuation = with_arena_in(&mut left, |arena| {
+            let continuation = with_arena_in(&mut left as *mut RInstance, |arena| {
                 let vec = arena.alloc_vector(SEXPTYPE::VECSXP, 4);
                 crate::sexp::accessors::SET_VECTOR_ELT(vec, 0, left_token);
                 vec
             });
 
-            assert_eq!(is_exec_continuation_in(&mut left, continuation), TRUE);
-            assert_eq!(is_exec_continuation_in(&mut right, continuation), FALSE);
+            assert_eq!(
+                is_exec_continuation_in(&mut left as *mut RInstance, continuation),
+                TRUE
+            );
+            assert_eq!(
+                is_exec_continuation_in(&mut right as *mut RInstance, continuation),
+                FALSE
+            );
         }
     }
 

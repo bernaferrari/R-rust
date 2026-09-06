@@ -202,7 +202,7 @@ struct RenderPlotBackendGuard {
 #[cfg(feature = "renderplot-device")]
 impl RenderPlotBackendGuard {
     fn install<'a>(
-        instance: &mut RInstance,
+        instance: *mut RInstance,
         backend: *mut (dyn r_graphics_engine::DrawTarget + 'a),
     ) -> Self {
         // SAFETY: lifetime-erasing the backend pointer to 'static for storage
@@ -212,11 +212,9 @@ impl RenderPlotBackendGuard {
         #[allow(clippy::transmute_ptr_to_ptr)] // fat-pointer lifetime erasure; `as` cannot do this
         let erased: *mut (dyn r_graphics_engine::DrawTarget + 'static) =
             unsafe { std::mem::transmute(backend) };
-        let previous = instance.current_renderplot_backend.replace(erased);
-        Self {
-            instance: instance as *mut RInstance,
-            previous,
-        }
+        // P2: strictly-local Cell access; no ambient write intervenes.
+        let previous = unsafe { (*instance).current_renderplot_backend.replace(erased) };
+        Self { instance, previous }
     }
 }
 
@@ -232,42 +230,46 @@ impl Drop for RenderPlotBackendGuard {
 struct ProtectScope {
     /// Address of the owning instance, stored with exposed provenance —
     /// see `protect::with_guard_owner`. Holding a Rust reference across the
-    /// scoped closure would be a protected lend that ambient `&mut RInstance`
-    /// re-acquisition under the closure invalidates (aliasing UB under
-    /// Stacked Borrows), so the scope keeps only the address and re-derives
-    /// the shared instance view per operation, exactly like
+    /// scoped closure would be a protected lend that reentrant ambient
+    /// writes under the closure must pop (aliasing UB under Stacked
+    /// Borrows), so the scope keeps only the address and re-derives a raw
+    /// instance pointer per operation, exactly like
     /// `protect::with_guard_owner`.
     instance: usize,
     depth: usize,
 }
 
 impl ProtectScope {
-    fn new(instance: &RInstance) -> Self {
-        let depth = instance.protect_stack.borrow().len();
+    fn new(instance: *mut RInstance) -> Self {
+        // P2: strictly-local RefCell read; no ambient write intervenes.
+        let depth = unsafe { (*instance).protect_stack.borrow().len() };
         Self {
-            instance: std::ptr::from_ref(instance).addr(),
+            instance: instance.addr(),
             depth,
         }
     }
 
-    /// Re-derive the owning instance through the exposed-provenance wildcard:
-    /// the shared retag re-bases on the still-live session root tag (shared
-    /// accesses push, never pop) and stays valid across ambient `&mut`
-    /// re-acquisition. The session owns the instance and outlives the scope.
-    fn with_instance<R>(&self, f: impl FnOnce(&RInstance) -> R) -> R {
+    /// Re-derive the owning instance through the exposed-provenance
+    /// wildcard as a raw pointer: raw place accesses carry no borrow tag,
+    /// so reentrant ambient writes cannot invalidate them. The session owns
+    /// the instance and outlives the scope.
+    fn with_instance<R>(&self, f: impl FnOnce(*mut RInstance) -> R) -> R {
         // SAFETY: see the struct docs; the instance outlives the scope.
-        f(unsafe { &*std::ptr::with_exposed_provenance::<RInstance>(self.instance) })
+        f(unsafe { std::ptr::with_exposed_provenance_mut::<RInstance>(self.instance) })
     }
 }
 
 impl Drop for ProtectScope {
     fn drop(&mut self) {
-        self.with_instance(|inst| {
-            inst.protect_stack.borrow_mut().truncate(self.depth);
-            inst.protect_stack_generations
+        self.with_instance(|inst| unsafe {
+            // P2: strictly-local RefCell access; no ambient write intervenes.
+            (*inst).protect_stack.borrow_mut().truncate(self.depth);
+            (*inst)
+                .protect_stack_generations
                 .borrow_mut()
                 .truncate(self.depth);
-            inst.protect_slot_free
+            (*inst)
+                .protect_slot_free
                 .borrow_mut()
                 .retain(|&index| index < self.depth);
         });
@@ -799,7 +801,7 @@ impl RSession {
 
         {
             let _guard = self.activate();
-            let _backend_guard = RenderPlotBackendGuard::install(self.inst_mut(), backend);
+            let _backend_guard = RenderPlotBackendGuard::install(self.instance_ptr(), backend);
             self.inst().output_capture.borrow_mut().start();
             // Same preservation of the remaining parsed statements as the
             // plain script loop above.
@@ -1124,7 +1126,7 @@ impl RSession {
         F: FnOnce() -> T,
     {
         self.with_active(|| {
-            let _scope = ProtectScope::new(self.inst());
+            let _scope = ProtectScope::new(self.instance_ptr());
             f()
         })
     }

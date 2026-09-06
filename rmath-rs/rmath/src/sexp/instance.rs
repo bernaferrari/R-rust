@@ -2,6 +2,24 @@
 
 //! R instance isolation — per-instance state for concurrent R sessions.
 //!
+//! # Ambient-access aliasing discipline (P1/P2)
+//!
+//! Ambient access (`with_required_current_instance` etc.) hands out the raw
+//! `*mut RInstance`; field access through it is a raw place access, which
+//! carries no Stacked-Borrows protector, so reentrant ambient writes
+//! (protect-stack pushes, GC bookkeeping during allocation) are legal.
+//! Two rules keep this sound — **Miri is their checker**:
+//!
+//! - **P1**: never hold a `&mut RInstance` or a `&mut` field borrow across
+//!   a call that may allocate, protect, GC, or eval. Form such borrows
+//!   only around strictly-local operations and drop them before reentry.
+//! - **P2**: never hold a `&RInstance` or `&` field borrow across an
+//!   ambient write (mutation through any raw instance path).
+//!
+//! Violations are UB that the borrow checker cannot see (raw pointers) but
+//! Miri reports; `cargo +nightly miri test -p rmath --lib <module>::` is the
+//! gate for modules exercising sessions.
+//!
 //! An `RInstance` owns all mutable state that was previously process-wide or
 //! thread-local, enabling multiple independent R sessions to run concurrently
 //! within the same process and on the same thread (sequentially).
@@ -655,15 +673,19 @@ impl RInstance {
 /// forward drawing to skia for real R graphics).
 #[cfg(feature = "renderplot-device")]
 pub unsafe fn set_current_renderplot_backend(backend: *mut dyn r_graphics_engine::DrawTarget) {
-    with_required_current_instance(|inst| {
-        inst.current_renderplot_backend = Some(backend);
+    with_required_current_instance(|inst| unsafe {
+        // P2: single-field write; no other raw path touches the instance
+        // inside this closure.
+        (*inst).current_renderplot_backend = Some(backend);
     });
 }
 
 #[cfg(feature = "renderplot-device")]
 pub unsafe fn clear_current_renderplot_backend() {
-    with_required_current_instance(|inst| {
-        inst.current_renderplot_backend = None;
+    with_required_current_instance(|inst| unsafe {
+        // P2: single-field write; no other raw path touches the instance
+        // inside this closure.
+        (*inst).current_renderplot_backend = None;
     });
 }
 
@@ -756,46 +778,17 @@ pub(crate) fn instance_borrow_depth() -> usize {
 /// guard keep the hazardous cases from arising.
 fn acquire_instance_mut<F, R>(ptr: *mut RInstance, f: F) -> R
 where
-    F: FnOnce(&mut RInstance) -> R,
+    F: FnOnce(*mut RInstance) -> R,
 {
     let _borrow = enter_instance_borrow();
-    // SAFETY: the address is re-derived through the exposed-provenance
-    // wildcard (same discipline as `protect::with_guard_owner`), NOT by
-    // retagging the stored root tag: a direct `&mut *ptr` from the root
-    // pops every later tag on the allocation, including strongly-protected
-    // lends such as the `&mut inst.arena` a `with_arena` closure runs
-    // under (aliasing UB under Stacked Borrows). The wildcard retag
-    // re-bases on the topmost live exposed tag instead, so ambient
-    // re-acquisition under a live lend re-bases on that lend. The instance
-    // root provenance is exposed at every `set/replace_current_instance`.
-    // KNOWN MIRI FINDING (2026-09, root-caused): this ambient re-entry is
-    // UB under BOTH Stacked and Tree Borrows, and NO scoped variant fixes
-    // it — any fn-signature `&mut RInstance` anywhere in an active call
-    // chain is a SB protector, and a reentrant ambient write (protect
-    // push, GC bookkeeping) must pop it. Verified dead ends: deriving the
-    // raw before borrows, `&raw mut`, addr_of_mut field lends. The only
-    // sound design is interior mutability: this accessor must hand out
-    // `&RInstance` and every ambiently-written field becomes UnsafeCell —
-    // an engine-wide sweep tracked as the follow-up redesign.
-    // Additional verified dead end (2026-09, design analysis): wrapping
-    // the whole RInstance in one UnsafeCell<RInstance> and deriving every
-    // ambient &mut via cell.get() does NOT fix it — two overlapping
-    // get()-derived &mut RInstance still alias (std documents get() as
-    // raw-pointer semantics; RefCell exists precisely because overlapping
-    // &mut from get() is UB), and the reentrant write still pops the
-    // first derivation's protector. Per-field cells avoid cross-field
-    // protector conflicts but require a read-path design (Deref<Target=T>
-    // through the mutable interior is itself unsound) and with_arena's
-    // &mut Arena lend must not be reentered by GC — i.e. a real RFC-level
-    // design, not a mechanical sweep.
-    // OLD NOTE (superseded): this wildcard re-acquisition is UB
-    // under both Stacked Borrows and Tree Borrows when it fires during a
-    // strongly-protected lend — e.g. register_essentials_builtins'
-    // ProtectGuard drop inside session init. Any Miri module expansion
-    // beyond instance-free tests is blocked on redesigning this to
-    // interior mutability (UnsafeCell). Repro:
-    //   MIRIFLAGS=-Zmiri-ignore-leaks cargo +nightly miri test -p rmath --lib serialize::
-    unsafe { f(&mut *std::ptr::with_exposed_provenance::<RInstance>(ptr.addr()).cast_mut()) }
+    // REDESIGNED (2026-09): the callback receives
+    // the *mut RInstance itself; every field access through it is a raw
+    // place access carrying no protector, so reentrant ambient writes
+    // (protect push, GC bookkeeping) never pop a live reference. The
+    // aliasing discipline is P1/P2 (see the module docs): no &mut/& of
+    // the instance or a field may be held across an ambient-capable call
+    // (allocation, protect, eval); Miri is the checker for that rule.
+    unsafe { f(ptr) }
 }
 
 /// Set the current thread-local R instance for translated compatibility code.
@@ -885,7 +878,7 @@ pub(crate) fn has_current_instance() -> bool {
 #[inline]
 pub fn with_current_instance<F, R>(f: F) -> Option<R>
 where
-    F: FnOnce(&mut RInstance) -> R,
+    F: FnOnce(*mut RInstance) -> R,
 {
     CURRENT_INSTANCE.with(|ci| {
         let borrow = ci.borrow();
@@ -907,7 +900,7 @@ where
 #[inline]
 pub fn with_required_current_instance<F, R>(f: F) -> R
 where
-    F: FnOnce(&mut RInstance) -> R,
+    F: FnOnce(*mut RInstance) -> R,
 {
     with_current_instance(f).expect("mutable R runtime state requires an active RInstance")
 }
@@ -916,10 +909,15 @@ where
 #[inline]
 pub fn is_cancellation_requested() -> bool {
     with_current_instance(|inst| {
-        inst.eval_state
-            .cancellation
-            .as_ref()
-            .is_some_and(|token| token.is_requested())
+        // P2: short-lived read of one field; no ambient write can occur
+        // inside `is_requested` (it only reads a shared flag).
+        unsafe {
+            (*inst)
+                .eval_state
+                .cancellation
+                .as_ref()
+                .is_some_and(|token| token.is_requested())
+        }
     })
     .unwrap_or(false)
 }

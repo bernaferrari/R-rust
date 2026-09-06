@@ -305,7 +305,9 @@ impl Default for IntlRuntimeState {
 }
 
 pub(crate) fn with_intl_runtime<R>(f: impl FnOnce(&mut IntlRuntimeState) -> R) -> R {
-    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.intl_state))
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        f(unsafe { &mut (*inst).intl_state })
+    })
 }
 
 // ---------------------------------------------------------------------------

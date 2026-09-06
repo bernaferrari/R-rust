@@ -194,7 +194,7 @@ fn with_dynload_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut DynloadState) -> R,
 {
-    with_required_current_instance(|instance| f(&mut instance.dynload_state))
+    with_required_current_instance(|instance| unsafe { f(&mut (*instance).dynload_state) })
 }
 
 pub(crate) fn set_native_extensions_enabled(enabled: bool) {

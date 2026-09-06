@@ -197,32 +197,33 @@ fn parse_failure(message: impl Into<String>) -> ! {
 }
 
 pub(crate) fn reset_parse_state() {
-    crate::sexp::instance::with_current_instance(|inst| {
-        inst.eval_state.parse_error_msg.fill(0);
-        inst.eval_state.parse_error = 0;
-        inst.eval_state.parse_error_col = 0;
-        inst.eval_state.parse_error_file = ptr::null_mut();
-        inst.eval_state.parse_context_line = 0;
-        inst.eval_state.parse_context.clear();
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_error_msg.fill(0);
+        (*inst).eval_state.parse_error = 0;
+        (*inst).eval_state.parse_error_col = 0;
+        (*inst).eval_state.parse_error_file = ptr::null_mut();
+        (*inst).eval_state.parse_context_line = 0;
+        (*inst).eval_state.parse_context.clear();
     });
 }
 
 pub(crate) fn remember_parse_context(source: &str) {
-    crate::sexp::instance::with_current_instance(|inst| {
-        inst.eval_state.parse_context.clear();
-        inst.eval_state
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_context.clear();
+        (*inst)
+            .eval_state
             .parse_context
             .extend(source.lines().map(str::to_owned));
-        if inst.eval_state.parse_context.is_empty() {
-            inst.eval_state.parse_context.push(String::new());
+        if (*inst).eval_state.parse_context.is_empty() {
+            (*inst).eval_state.parse_context.push(String::new());
         }
-        inst.eval_state.parse_context_line = inst.eval_state.parse_context.len() as c_int;
+        (*inst).eval_state.parse_context_line = (*inst).eval_state.parse_context.len() as c_int;
     });
 }
 
 pub(crate) unsafe fn store_parse_error(message: &str, status: c_int, col: c_int, file: SEXP) {
-    crate::sexp::instance::with_current_instance(|inst| {
-        let msg = &mut inst.eval_state.parse_error_msg;
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        let msg = &mut (*inst).eval_state.parse_error_msg;
         msg.fill(0);
         let bytes = message.as_bytes();
         let copy_len = bytes
@@ -231,9 +232,9 @@ pub(crate) unsafe fn store_parse_error(message: &str, status: c_int, col: c_int,
             .unwrap_or(bytes.len())
             .min(msg.len().saturating_sub(1));
         msg[..copy_len].copy_from_slice(&bytes[..copy_len]);
-        inst.eval_state.parse_error = status;
-        inst.eval_state.parse_error_col = col.max(0);
-        inst.eval_state.parse_error_file = if file.is_null() {
+        (*inst).eval_state.parse_error = status;
+        (*inst).eval_state.parse_error_col = col.max(0);
+        (*inst).eval_state.parse_error_file = if file.is_null() {
             ptr::null_mut()
         } else {
             file
@@ -242,8 +243,8 @@ pub(crate) unsafe fn store_parse_error(message: &str, status: c_int, col: c_int,
 }
 
 fn current_parse_error_message() -> String {
-    crate::sexp::instance::with_current_instance(|inst| {
-        let bytes = &inst.eval_state.parse_error_msg;
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        let bytes = &(*inst).eval_state.parse_error_msg;
         let len = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
         String::from_utf8_lossy(&bytes[..len]).into_owned()
     })
@@ -258,7 +259,7 @@ pub unsafe fn parseError(call: SEXP, linenum: c_int) {
         store_parse_error(&message, 1, R_GetParseErrorCol(), call);
         crate::sexp::instance::with_current_instance(|inst| {
             if linenum > 0 {
-                inst.eval_state.parse_context_line = linenum;
+                (*inst).eval_state.parse_context_line = linenum;
             }
         });
         std::panic::panic_any(RError {
@@ -271,7 +272,7 @@ pub unsafe fn parseError(call: SEXP, linenum: c_int) {
 pub unsafe fn getParseContext() -> SEXP {
     unsafe {
         let context = crate::sexp::instance::with_current_instance(|inst| {
-            inst.eval_state.parse_context.clone()
+            (*inst).eval_state.parse_context.clone()
         })
         .unwrap_or_default();
         let result = Rf_allocVector3(SEXPTYPE::STRSXP, context.len() as R_xlen_t);
@@ -289,11 +290,11 @@ pub unsafe fn getParseContext() -> SEXP {
 }
 
 fn format_parse_error_message(message: &str, linenum: c_int) -> String {
-    let context = crate::sexp::instance::with_current_instance(|inst| {
+    let context = crate::sexp::instance::with_current_instance(|inst| unsafe {
         (
-            inst.eval_state.parse_context.clone(),
-            inst.eval_state.parse_context_line,
-            inst.eval_state.parse_error_col,
+            (*inst).eval_state.parse_context.clone(),
+            (*inst).eval_state.parse_context_line,
+            (*inst).eval_state.parse_error_col,
         )
     })
     .unwrap_or_default();
@@ -325,28 +326,35 @@ fn format_parse_error_message(message: &str, linenum: c_int) -> String {
 pub const PARSE_CONTEXT_SIZE: c_int = 256;
 
 pub unsafe fn R_GetParseError() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_error).unwrap_or(0)
+    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).eval_state.parse_error })
+        .unwrap_or(0)
 }
 
 pub unsafe fn R_SetParseError(val: c_int) {
-    crate::sexp::instance::with_current_instance(|inst| {
-        inst.eval_state.parse_error = val;
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_error = val;
     });
 }
 
 pub unsafe fn R_GetParseErrorCol() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_error_col)
-        .unwrap_or(0)
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_error_col
+    })
+    .unwrap_or(0)
 }
 
 pub unsafe fn R_GetParseErrorFile() -> SEXP {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_error_file)
-        .unwrap_or(ptr::null_mut())
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_error_file
+    })
+    .unwrap_or(ptr::null_mut())
 }
 
 pub unsafe fn R_GetParseContextLine() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_context_line)
-        .unwrap_or(0)
+    crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_context_line
+    })
+    .unwrap_or(0)
 }
 
 #[cfg(test)]

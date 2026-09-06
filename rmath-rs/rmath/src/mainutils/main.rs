@@ -69,65 +69,65 @@ pub unsafe fn R_SetVisible(v: c_int) {
 
 /// Get R_Interactive flag.
 pub unsafe fn R_Interactive() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.interactive)
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.interactive })
 }
 
 /// Set R_Interactive flag.
 pub unsafe fn R_SetInteractive(v: c_int) {
-    with_required_current_instance(|inst| inst.eval_state.interactive = v);
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.interactive = v });
 }
 
 /// Get R_Quiet flag.
 pub unsafe fn R_Quiet() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.quiet)
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.quiet })
 }
 
 /// Set R_Quiet flag.
 pub unsafe fn R_SetQuiet(v: c_int) {
-    with_required_current_instance(|inst| inst.eval_state.quiet = v);
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.quiet = v });
 }
 
 /// Get R_NoEcho flag.
 pub unsafe fn R_NoEcho() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.no_echo)
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.no_echo })
 }
 
 /// Get R_Verbose flag.
 pub unsafe fn R_Verbose() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.verbose)
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.verbose })
 }
 
 // ---------------------------------------------------------------------------
 /// Get evaluation depth.
 pub unsafe fn R_GetEvalDepth() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.eval_depth)
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.eval_depth })
 }
 
 /// Set evaluation depth.
 pub unsafe fn R_SetEvalDepth(v: c_int) {
-    with_required_current_instance(|inst| inst.eval_state.eval_depth = v);
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.eval_depth = v });
 }
 
 // ---------------------------------------------------------------------------
 /// Get protection stack top.
 pub unsafe fn R_PPStackTop() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.pp_stack_top)
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.pp_stack_top })
 }
 
 /// Set protection stack top.
 pub unsafe fn R_SetPPStackTop(v: c_int) {
-    with_required_current_instance(|inst| inst.eval_state.pp_stack_top = v);
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.pp_stack_top = v });
 }
 
 // ---------------------------------------------------------------------------
 /// Get warnings collection flag.
 pub unsafe fn R_GetCollectWarnings() -> c_int {
-    with_required_current_instance(|inst| inst.eval_state.collect_warnings)
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.collect_warnings })
 }
 
 /// Set warnings collection flag.
 pub unsafe fn R_SetCollectWarnings(v: c_int) {
-    with_required_current_instance(|inst| inst.eval_state.collect_warnings = v);
+    with_required_current_instance(|inst| unsafe { (*inst).eval_state.collect_warnings = v });
 }
 
 // ---------------------------------------------------------------------------
@@ -165,8 +165,8 @@ pub const PARSE_EOF: c_int = 3;
 pub const PARSE_NULL: c_int = 4;
 
 pub unsafe fn R_GetParseErrorMsg() -> *const std::os::raw::c_char {
-    with_required_current_instance(|inst| {
-        inst.eval_state.parse_error_msg.as_ptr() as *const std::os::raw::c_char
+    with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.parse_error_msg.as_ptr() as *const std::os::raw::c_char
     })
 }
 
@@ -245,7 +245,7 @@ pub unsafe fn R_ReplFile(fp: *mut RFile, rho: SEXP) {
             main_error("parse error while reading R source file");
         }
         let env = if rho.is_null() || rho == R_NilValue() {
-            with_required_current_instance(|inst| inst.global_env)
+            with_required_current_instance(|inst| (*inst).global_env)
         } else {
             rho
         };
@@ -343,11 +343,11 @@ pub unsafe fn setup_Rmainloop() {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int, visible: c_int) {
-    if with_required_current_instance(|inst| {
-        if inst.main_state.running_toplevel_handlers {
+    if with_required_current_instance(|inst| unsafe {
+        if (*inst).main_state.running_toplevel_handlers {
             true
         } else {
-            inst.main_state.running_toplevel_handlers = true;
+            (*inst).main_state.running_toplevel_handlers = true;
             false
         }
     }) {
@@ -356,8 +356,11 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
 
     let mut index = 0usize;
     loop {
-        let current = with_required_current_instance(|inst| {
-            inst.main_state.task_callbacks.get(index).map(|callback| {
+        let current = with_required_current_instance(|inst| unsafe {
+            // P2: short-lived shared borrow of one field; strictly-local read (String
+            // clone uses the system allocator, no R reentry), no ambient writes.
+            let callbacks = &(*inst).main_state.task_callbacks;
+            callbacks.get(index).map(|callback| {
                 (
                     callback.id,
                     callback.fun,
@@ -377,17 +380,16 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
         }))
         .unwrap_or(false);
 
-        let position = with_required_current_instance(|inst| {
-            inst.main_state
-                .task_callbacks
-                .iter()
-                .position(|callback| callback.id == id)
+        let position = with_required_current_instance(|inst| unsafe {
+            // P2: short-lived shared borrow; purely local scan, no ambient writes.
+            let callbacks = &(*inst).main_state.task_callbacks;
+            callbacks.iter().position(|callback| callback.id == id)
         });
         match (keep, position) {
             (true, Some(pos)) => index = pos + 1,
             (false, Some(pos)) => {
-                with_required_current_instance(|inst| {
-                    inst.main_state.task_callbacks.remove(pos);
+                with_required_current_instance(|inst| unsafe {
+                    (*inst).main_state.task_callbacks.remove(pos);
                 });
                 index = pos;
             }
@@ -395,8 +397,8 @@ pub unsafe fn Rf_callToplevelHandlers(expr: SEXP, value: SEXP, succeeded: c_int,
         }
     }
 
-    with_required_current_instance(|inst| {
-        inst.main_state.running_toplevel_handlers = false;
+    with_required_current_instance(|inst| unsafe {
+        (*inst).main_state.running_toplevel_handlers = false;
     });
 }
 
@@ -414,15 +416,18 @@ pub unsafe fn Rf_addTaskCallback(fun: SEXP, data: SEXP) -> c_int {
         }
     }
 
-    with_required_current_instance(|inst| {
-        inst.main_state.next_task_callback_id += 1;
-        let id = inst.main_state.next_task_callback_id;
-        inst.main_state.task_callbacks.push(ToplevelTaskCallback {
-            id,
-            name: id.to_string(),
-            fun,
-            data,
-        });
+    with_required_current_instance(|inst| unsafe {
+        (*inst).main_state.next_task_callback_id += 1;
+        let id = (*inst).main_state.next_task_callback_id;
+        (*inst)
+            .main_state
+            .task_callbacks
+            .push(ToplevelTaskCallback {
+                id,
+                name: id.to_string(),
+                fun,
+                data,
+            });
         id
     })
 }
@@ -432,12 +437,12 @@ pub unsafe fn Rf_removeTaskCallback(which: SEXP) -> c_int {
         let target = task_callback_selector(which);
         with_required_current_instance(|inst| {
             let position = match target {
-                TaskCallbackSelector::Id(id) => inst
+                TaskCallbackSelector::Id(id) => (*inst)
                     .main_state
                     .task_callbacks
                     .iter()
                     .position(|callback| callback.id == id),
-                TaskCallbackSelector::Name(name) => inst
+                TaskCallbackSelector::Name(name) => (*inst)
                     .main_state
                     .task_callbacks
                     .iter()
@@ -445,7 +450,7 @@ pub unsafe fn Rf_removeTaskCallback(which: SEXP) -> c_int {
                 TaskCallbackSelector::Missing => None,
             };
             if let Some(position) = position {
-                inst.main_state.task_callbacks.remove(position);
+                (*inst).main_state.task_callbacks.remove(position);
                 TRUE
             } else {
                 FALSE

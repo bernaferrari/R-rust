@@ -303,7 +303,9 @@ impl Default for DeviceRegistry {
 }
 
 fn with_registry<R>(f: impl FnOnce(&mut DeviceRegistry) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.graphics_device_registry))
+    with_required_current_instance(|instance| {
+        f(unsafe { &mut (*instance).graphics_device_registry })
+    })
 }
 
 fn with_device_mut<R>(gdd: pGEDevDesc, f: impl FnOnce(&mut GEDeviceDesc) -> R) -> Option<R> {
@@ -600,7 +602,7 @@ pub(crate) fn draw_line(
     #[cfg(feature = "renderplot-device")]
     {
         with_required_current_instance(|inst| {
-            if let Some(p) = inst.current_renderplot_backend {
+            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
                 if let Some(r) = unsafe { p.as_mut() } {
                     let path = Path {
                         commands: vec![
@@ -647,7 +649,7 @@ pub(crate) fn draw_polyline(
     #[cfg(feature = "renderplot-device")]
     {
         with_required_current_instance(|inst| {
-            if let Some(p) = inst.current_renderplot_backend {
+            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
                 if let Some(r) = unsafe { p.as_mut() } {
                     if points.len() >= 2 {
                         let mut cmds =
@@ -696,7 +698,7 @@ pub(crate) fn draw_polygon(
     #[cfg(feature = "renderplot-device")]
     {
         with_required_current_instance(|inst| {
-            if let Some(p) = inst.current_renderplot_backend {
+            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
                 if let Some(r) = unsafe { p.as_mut() } {
                     if points.len() >= 2 {
                         let mut cmds =
@@ -756,7 +758,7 @@ pub(crate) fn draw_rect(
     #[cfg(feature = "renderplot-device")]
     {
         with_required_current_instance(|inst| {
-            if let Some(p) = inst.current_renderplot_backend {
+            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
                 if let Some(r) = unsafe { p.as_mut() } {
                     let path = Path::rect(x0 as f32, y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32)
                         .with_fill(render_color_from_native(style.fill_color))
@@ -804,7 +806,7 @@ pub(crate) fn draw_circle(
     #[cfg(feature = "renderplot-device")]
     {
         with_required_current_instance(|inst| {
-            if let Some(p) = inst.current_renderplot_backend {
+            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
                 if let Some(r) = unsafe { p.as_mut() } {
                     let rr = radius as f32;
                     let path = Path::circle(x as f32, y as f32, rr)
@@ -872,7 +874,7 @@ pub(crate) fn draw_text(gdd: pGEDevDesc, x: c_double, y: c_double, text: &str, c
     #[cfg(feature = "renderplot-device")]
     {
         with_required_current_instance(|inst| {
-            if let Some(p) = inst.current_renderplot_backend {
+            if let Some(p) = unsafe { (*inst).current_renderplot_backend } {
                 if let Some(r) = unsafe { p.as_mut() } {
                     // forward to the high-quality renderer (fontdue text etc.)
                     let params = PlotParameters {
@@ -1177,8 +1179,8 @@ mod tests {
 
         let mut target = RecordingTarget::default();
         let target_ptr = &mut target as *mut _ as *mut dyn r_graphics_engine::DrawTarget;
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.current_renderplot_backend = Some(target_ptr);
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).current_renderplot_backend = Some(target_ptr);
         });
 
         let style = DrawStyle {
@@ -1191,8 +1193,8 @@ mod tests {
         let points = [(1.0, 2.0), (5.0, 2.0), (3.0, 6.0)];
         assert!(draw_polygon(unsafe { GEcurrentDevice() }, &points, style));
 
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.current_renderplot_backend = None;
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).current_renderplot_backend = None;
         });
 
         assert_eq!(target.paths.len(), 1);

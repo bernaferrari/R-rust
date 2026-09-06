@@ -224,7 +224,7 @@ pub fn with_connections_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ConnectionsState) -> R,
 {
-    with_required_current_instance(|instance| f(&mut instance.connections_state))
+    with_required_current_instance(|instance| unsafe { f(&mut (*instance).connections_state) })
 }
 
 pub fn connection_table() -> ConnectionTableGuard {
@@ -244,44 +244,51 @@ pub(crate) fn output_sink_active() -> bool {
     with_current_instance(output_sink_active_in).unwrap_or(false)
 }
 
-pub(crate) fn output_sink_active_in(instance: &mut RInstance) -> bool {
-    let sink = &instance.connections_state.sink;
-    sink.sink_number > 0 && sink.output_con != 1
+// P1/P2: raw *mut — this path reenters (r_error unwinds, connection I/O); no &mut RInstance held.
+pub(crate) fn output_sink_active_in(instance: *mut RInstance) -> bool {
+    unsafe {
+        let sink = &(*instance).connections_state.sink;
+        sink.sink_number > 0 && sink.output_con != 1
+    }
 }
 
 pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
-    with_current_instance(|instance| write_output_sink_in(instance, bytes)).unwrap_or(false)
+    with_current_instance(|instance| unsafe { write_output_sink_in(instance, bytes) })
+        .unwrap_or(false)
 }
+// P1/P2: raw *mut — reenters via init_connections_table/r_error/connection I/O; field borrows stay local.
+pub(crate) fn write_output_sink_in(instance: *mut RInstance, bytes: &[u8]) -> bool {
+    unsafe {
+        let sink = &(*instance).connections_state.sink;
+        let target = (sink.sink_number > 0 && sink.output_con != 1).then_some(sink.output_con);
+        let Some(connection) = target else {
+            return false;
+        };
 
-pub(crate) fn write_output_sink_in(instance: &mut RInstance, bytes: &[u8]) -> bool {
-    let sink = &instance.connections_state.sink;
-    let target = (sink.sink_number > 0 && sink.output_con != 1).then_some(sink.output_con);
-    let Some(connection) = target else {
-        return false;
-    };
-
-    if connection < 0 {
-        r_error("invalid connection");
+        if connection < 0 {
+            r_error("invalid connection");
+        }
+        let index = connection as usize;
+        // NLL ends the `sink` borrow here; no ambient write between read and use.
+        if (*instance).connections_state.table.is_empty() {
+            init_connections_table();
+        }
+        let table = &mut (*instance).connections_state.table;
+        if index >= table.len() {
+            r_error("invalid connection");
+        }
+        let Some(conn) = table[index].as_mut() else {
+            r_error("invalid connection");
+        };
+        if !conn.isopen {
+            r_error("connection is not open");
+        }
+        if !conn.canwrite {
+            r_error("cannot write to this connection");
+        }
+        write_bytes_to_conn(conn, bytes);
+        true
     }
-    let index = connection as usize;
-    let table = &mut instance.connections_state.table;
-    if table.is_empty() {
-        init_connections_table();
-    }
-    if index >= table.len() {
-        r_error("invalid connection");
-    }
-    let Some(conn) = table[index].as_mut() else {
-        r_error("invalid connection");
-    };
-    if !conn.isopen {
-        r_error("connection is not open");
-    }
-    if !conn.canwrite {
-        r_error("cannot write to this connection");
-    }
-    write_bytes_to_conn(conn, bytes);
-    true
 }
 
 /// Initialize the connection system with stdin/stdout/stderr.

@@ -91,7 +91,7 @@ impl Default for StartupRuntimeState {
 
 // Get current workspace name (as C string pointer).
 pub unsafe fn get_workspace_name() -> *const c_char {
-    with_current_instance(|inst| inst.startup_state.workspace_name_ptr())
+    with_current_instance(|inst| unsafe { (*inst).startup_state.workspace_name_ptr() })
         .unwrap_or_else(|| c".RData".as_ptr())
 }
 
@@ -102,7 +102,8 @@ pub unsafe fn set_workspace_name(fn_ptr: *const c_char) -> bool {
             return false;
         }
         with_current_instance(|inst| {
-            inst.startup_state
+            (*inst)
+                .startup_state
                 .set_workspace_name(CStr::from_ptr(fn_ptr))
         })
         .unwrap_or(false)
@@ -244,7 +245,7 @@ pub unsafe fn R_OpenSiteFile() -> *mut RFile {
         // complex expansion/ARCH handling.
         // Check environment variable first, then fall back to R_HOME/etc.
         let load_site =
-            with_current_instance(|inst| inst.startup_state.load_site_file != 0).unwrap_or(true);
+            with_current_instance(|inst| (*inst).startup_state.load_site_file != 0).unwrap_or(true);
         if !load_site {
             return ptr::null_mut();
         }

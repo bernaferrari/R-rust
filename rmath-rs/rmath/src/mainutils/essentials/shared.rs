@@ -510,8 +510,9 @@ pub(crate) unsafe fn named_string_list(items: impl IntoIterator<Item = (String, 
 
 /// Try to find a package by name in this session's configured library paths.
 pub(crate) fn find_package_path(package: &str) -> String {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.path_policy
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst)
+            .path_policy
             .find_package_path(package)
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default()
@@ -599,8 +600,8 @@ impl InstalledPackageRow {
 }
 
 pub(crate) fn installed_package_rows() -> Vec<InstalledPackageRow> {
-    let library_paths = crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.path_policy.library_paths().to_vec()
+    let library_paths = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).path_policy.library_paths().to_vec()
     });
     let mut packages = Vec::<InstalledPackageRow>::new();
     let mut seen = Vec::<String>::new();
@@ -1046,8 +1047,9 @@ pub(crate) fn normalized_package_dir(package_dir: &Path) -> PathBuf {
 
 pub(crate) fn cached_package_namespace(package: &str, package_dir: &Path) -> Option<SEXP> {
     let package_dir = normalized_package_dir(package_dir);
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.package_namespace_cache
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst)
+            .package_namespace_cache
             .get(package)
             .and_then(|(cached_dir, env)| (*cached_dir == package_dir).then_some(*env))
     })
@@ -1055,15 +1057,16 @@ pub(crate) fn cached_package_namespace(package: &str, package_dir: &Path) -> Opt
 
 pub(crate) fn cache_package_namespace(package: &str, package_dir: &Path, package_env: SEXP) {
     let package_dir = normalized_package_dir(package_dir);
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.package_namespace_cache
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst)
+            .package_namespace_cache
             .insert(package.to_string(), (package_dir, package_env));
     });
 }
 
 pub(crate) fn uncache_package_namespace(package: &str) {
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.package_namespace_cache.remove(package);
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).package_namespace_cache.remove(package);
     });
 }
 
@@ -1103,9 +1106,9 @@ pub(crate) fn list_package_data_sets(packages: &[String]) -> Vec<String> {
 }
 
 pub(crate) fn data_package_dirs(packages: &[String]) -> Vec<PathBuf> {
-    crate::sexp::instance::with_required_current_instance(|inst| {
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
         if packages.is_empty() {
-            return inst
+            return (*inst)
                 .path_policy
                 .library_paths()
                 .iter()
@@ -1117,7 +1120,7 @@ pub(crate) fn data_package_dirs(packages: &[String]) -> Vec<PathBuf> {
 
         packages
             .iter()
-            .filter_map(|package| inst.path_policy.find_package_path(package))
+            .filter_map(|package| (*inst).path_policy.find_package_path(package))
             .collect()
     })
 }
@@ -1479,7 +1482,8 @@ pub(crate) unsafe fn source_package_r_files(
         // "tools/ansi-palettes.txt") sees the package root, not the host
         // process CWD.
         let saved_package_dir = crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.loading_package_dir
+            (*inst)
+                .loading_package_dir
                 .replace(normalized_package_dir(package_dir))
         });
         let sourced: Result<(), String> =
@@ -1491,7 +1495,7 @@ pub(crate) unsafe fn source_package_r_files(
             }))
             .unwrap_or_else(|payload| std::panic::resume_unwind(payload));
         crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.loading_package_dir = saved_package_dir;
+            (*inst).loading_package_dir = saved_package_dir;
         });
         sourced?;
 

@@ -156,12 +156,14 @@ fn notify_gc_callbacks_with_stats(state: &GcState, stats: &GcStats) {
 // GC Invariants Checking
 // ---------------------------------------------------------------------------
 
-fn verify_gc_invariants_in(instance: &mut instance::RInstance) {
-    let stack = instance.protect_stack.borrow();
-    for &obj in stack.iter() {
-        if !obj.is_null() {
-            // Debug-only: verify object is within arena bounds.
-            // Full validation would require classifying singleton roots too.
+fn verify_gc_invariants_in(instance: *mut instance::RInstance) {
+    unsafe {
+        let stack = (*instance).protect_stack.borrow();
+        for &obj in stack.iter() {
+            if !obj.is_null() {
+                // Debug-only: verify object is within arena bounds.
+                // Full validation would require classifying singleton roots too.
+            }
         }
     }
 }
@@ -282,121 +284,125 @@ fn mark_context_roots(ctxt: &super::context::RCNTXT) {
 }
 
 #[inline(always)]
-fn mark_instance_roots(instance: &mut instance::RInstance) {
-    mark_reachable(instance.empty_env);
-    mark_reachable(instance.base_env);
-    mark_reachable(instance.global_env);
+fn mark_instance_roots(instance: *mut instance::RInstance) {
+    unsafe {
+        mark_reachable((*instance).empty_env);
+        mark_reachable((*instance).base_env);
+        mark_reachable((*instance).global_env);
 
-    {
-        let stack = instance.protect_stack.borrow();
-        for &obj in stack.iter() {
-            // Released (tombstoned) slots hold null; `mark_reachable_traced`
-            // null-guards before dereferencing, so vacant entries are skipped
-            // without a separate filter here.
-            mark_reachable_traced(obj);
+        {
+            let stack = (*instance).protect_stack.borrow();
+            for &obj in stack.iter() {
+                // Released (tombstoned) slots hold null; `mark_reachable_traced`
+                // null-guards before dereferencing, so vacant entries are skipped
+                // without a separate filter here.
+                mark_reachable_traced(obj);
+            }
         }
-    }
-    {
-        let stack = instance.preserve_stack.borrow();
-        for &obj in stack.iter() {
-            mark_reachable_traced(obj);
+        {
+            let stack = (*instance).preserve_stack.borrow();
+            for &obj in stack.iter() {
+                mark_reachable_traced(obj);
+            }
         }
-    }
-    for ctxt in &instance.context_stack {
-        mark_context_roots(ctxt);
-    }
-
-    mark_reachable(instance.error_state.warnings);
-    mark_reachable(instance.error_state.handler_stack);
-    mark_reachable(instance.error_state.restart_stack);
-    mark_reachable(instance.error_state.warning_call);
-
-    mark_reachable(instance.eval_state.current_expr);
-    mark_reachable(instance.eval_state.parse_error_file);
-    mark_reachable(instance.eval_state.exec_token);
-    mark_reachable(instance.eval_state.profiling.sref);
-    mark_reachable(instance.eval_state.profiling.srcfiles_buffer);
-    mark_reachable(instance.eval_state.printvector.na_string);
-    mark_reachable(instance.eval_state.printvector.na_string_noquote);
-    mark_reachable(instance.eval_state.print.data.na_string);
-    mark_reachable(instance.eval_state.print.data.na_string_noquote);
-    mark_reachable(instance.eval_state.print.data.env);
-    mark_reachable(instance.eval_state.print.data.callArgs);
-    instance
-        .eval_state
-        .bc_stack
-        .visit_roots(|obj| mark_reachable(*obj));
-
-    for &obj in instance.symbols.values() {
-        mark_reachable(obj);
-    }
-    for &node in &instance.symbol_nodes {
-        mark_reachable(node);
-    }
-    for &node in &instance.env_nodes {
-        mark_reachable(node);
-    }
-    for &obj in &instance.names_state.ddval_symbols {
-        mark_reachable(obj);
-    }
-    mark_reachable(instance.bind_state.blank_string);
-
-    for &obj in instance.options.values() {
-        mark_reachable(obj);
-    }
-    for callback in &instance.main_state.task_callbacks {
-        mark_reachable(callback.fun);
-        mark_reachable(callback.data);
-    }
-    for &generic in &instance.objects_state.prim_generics {
-        mark_reachable(generic);
-    }
-    for &methods in &instance.objects_state.prim_mlist {
-        mark_reachable(methods);
-    }
-    mark_reachable(instance.objects_state.deferred_default_object);
-    for (&env, table) in &instance.env_hash_tables {
-        mark_reachable(env as SEXP);
-        for (&symbol, &value) in table {
-            mark_reachable(symbol as SEXP);
-            mark_reachable(value);
+        for ctxt in &(*instance).context_stack {
+            mark_context_roots(ctxt);
         }
-    }
-    // Namespace cache values may be reachable only through the cache: a
-    // pure-R package namespace has no other root once attach-time references
-    // die. Untraced, a collection swept the namespace env and left a dangling
-    // raw pointer in the cache.
-    for &(_, namespace) in instance.package_namespace_cache.values() {
-        mark_reachable(namespace);
-    }
-    // Active-binding functions must live as long as their entry. The (env,
-    // symbol) key addresses are deliberately not marked: bindings belong to
-    // their environment, so entries whose keyed node is reclaimed this cycle
-    // are swept in update_instance_roots_in instead of pinning the env.
-    for value in instance.active_bindings.values() {
-        mark_reachable(*value);
-    }
 
-    for finalizer in &instance.memory_state.pending_finalizers {
-        if finalizer.is_ready() {
-            mark_reachable(finalizer.obj());
+        mark_reachable((*instance).error_state.warnings);
+        mark_reachable((*instance).error_state.handler_stack);
+        mark_reachable((*instance).error_state.restart_stack);
+        mark_reachable((*instance).error_state.warning_call);
+
+        mark_reachable((*instance).eval_state.current_expr);
+        mark_reachable((*instance).eval_state.parse_error_file);
+        mark_reachable((*instance).eval_state.exec_token);
+        mark_reachable((*instance).eval_state.profiling.sref);
+        mark_reachable((*instance).eval_state.profiling.srcfiles_buffer);
+        mark_reachable((*instance).eval_state.printvector.na_string);
+        mark_reachable((*instance).eval_state.printvector.na_string_noquote);
+        mark_reachable((*instance).eval_state.print.data.na_string);
+        mark_reachable((*instance).eval_state.print.data.na_string_noquote);
+        mark_reachable((*instance).eval_state.print.data.env);
+        mark_reachable((*instance).eval_state.print.data.callArgs);
+        (*instance)
+            .eval_state
+            .bc_stack
+            .visit_roots(|obj| mark_reachable(*obj));
+
+        for &obj in (*instance).symbols.values() {
+            mark_reachable(obj);
         }
-        if let crate::mainutils::memory_main::PendingFinalizer::R { fun, .. } = finalizer {
-            mark_reachable(*fun);
+        for &node in &(*instance).symbol_nodes {
+            mark_reachable(node);
         }
-    }
-    mark_reachable(instance.dynload_state.dll_info_eptrs);
-    mark_reachable(instance.dynload_state.symbol_eptrs);
-    mark_reachable(instance.dynload_state.c_entry_table);
+        for &node in &(*instance).env_nodes {
+            mark_reachable(node);
+        }
+        for &obj in &(*instance).names_state.ddval_symbols {
+            mark_reachable(obj);
+        }
+        mark_reachable((*instance).bind_state.blank_string);
 
-    #[cfg(not(target_arch = "wasm32"))]
-    instance.httpd_state.visit_roots(|obj| mark_reachable(*obj));
+        for &obj in (*instance).options.values() {
+            mark_reachable(obj);
+        }
+        for callback in &(*instance).main_state.task_callbacks {
+            mark_reachable(callback.fun);
+            mark_reachable(callback.data);
+        }
+        for &generic in &(*instance).objects_state.prim_generics {
+            mark_reachable(generic);
+        }
+        for &methods in &(*instance).objects_state.prim_mlist {
+            mark_reachable(methods);
+        }
+        mark_reachable((*instance).objects_state.deferred_default_object);
+        for (&env, table) in &(*instance).env_hash_tables {
+            mark_reachable(env as SEXP);
+            for (&symbol, &value) in table {
+                mark_reachable(symbol as SEXP);
+                mark_reachable(value);
+            }
+        }
+        // Namespace cache values may be reachable only through the cache: a
+        // pure-R package namespace has no other root once attach-time references
+        // die. Untraced, a collection swept the namespace env and left a dangling
+        // raw pointer in the cache.
+        for &(_, namespace) in (*instance).package_namespace_cache.values() {
+            mark_reachable(namespace);
+        }
+        // Active-binding functions must live as long as their entry. The (env,
+        // symbol) key addresses are deliberately not marked: bindings belong to
+        // their environment, so entries whose keyed node is reclaimed this cycle
+        // are swept in update_instance_roots_in instead of pinning the env.
+        for value in (*instance).active_bindings.values() {
+            mark_reachable(*value);
+        }
 
-    mark_reachable(instance.grid_runtime_state.current_grid_state);
-    mark_reachable(instance.grid_runtime_state.eval_env);
+        for finalizer in &(*instance).memory_state.pending_finalizers {
+            if finalizer.is_ready() {
+                mark_reachable(finalizer.obj());
+            }
+            if let crate::mainutils::memory_main::PendingFinalizer::R { fun, .. } = finalizer {
+                mark_reachable(*fun);
+            }
+        }
+        mark_reachable((*instance).dynload_state.dll_info_eptrs);
+        mark_reachable((*instance).dynload_state.symbol_eptrs);
+        mark_reachable((*instance).dynload_state.c_entry_table);
 
-    for &obj in &instance.raw_cons {
-        mark_reachable(obj);
+        #[cfg(not(target_arch = "wasm32"))]
+        (*instance)
+            .httpd_state
+            .visit_roots(|obj| mark_reachable(*obj));
+
+        mark_reachable((*instance).grid_runtime_state.current_grid_state);
+        mark_reachable((*instance).grid_runtime_state.eval_env);
+
+        for &obj in &(*instance).raw_cons {
+            mark_reachable(obj);
+        }
     }
 }
 
@@ -519,11 +525,13 @@ where
     instance::with_required_current_instance(|instance| with_gc_state_in(instance, f))
 }
 
-fn with_gc_state_in<F, R>(instance: &mut instance::RInstance, f: F) -> R
+fn with_gc_state_in<F, R>(instance: *mut instance::RInstance, f: F) -> R
 where
     F: FnOnce(&mut GcState) -> R,
 {
-    f(&mut instance.gc_state)
+    // P1: the `&mut` field lend is held only across the caller's local
+    // state operations; GC callbacks are invoked outside any lend.
+    unsafe { f(&mut (*instance).gc_state) }
 }
 
 // ---------------------------------------------------------------------------
@@ -602,18 +610,22 @@ fn vector_payload_has_sexp_refs(t: SEXPTYPE) -> bool {
     matches!(t.0, 16 | 19 | 20 | 21) // STRSXP, VECSXP, EXPRSXP, BCODESXP
 }
 
-fn update_protect_stack_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
-    update_protect_stack_refs_in(instance, |ptr| {
-        let addr = ptr as usize;
-        old_to_new.get(&addr).copied().unwrap_or(ptr)
-    });
+fn update_protect_stack_in(instance: *mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    unsafe {
+        update_protect_stack_refs_in(instance, |ptr| {
+            let addr = ptr as usize;
+            old_to_new.get(&addr).copied().unwrap_or(ptr)
+        });
+    }
 }
 
-fn update_preserve_stack_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
-    update_preserve_stack_refs_in(instance, |ptr| {
-        let addr = ptr as usize;
-        old_to_new.get(&addr).copied().unwrap_or(ptr)
-    });
+fn update_preserve_stack_in(instance: *mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    unsafe {
+        update_preserve_stack_refs_in(instance, |ptr| {
+            let addr = ptr as usize;
+            old_to_new.get(&addr).copied().unwrap_or(ptr)
+        });
+    }
 }
 
 fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
@@ -622,10 +634,12 @@ fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
     });
 }
 
-fn update_remembered_set_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
-    with_gc_state_in(instance, |state| {
-        state.remembered_set.remap(old_to_new);
-    });
+fn update_remembered_set_in(instance: *mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    unsafe {
+        with_gc_state_in(instance, |state| {
+            state.remembered_set.remap(old_to_new);
+        });
+    }
 }
 
 fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
@@ -702,12 +716,14 @@ fn update_object_references(old_to_new: &HashMap<usize, SEXP>) {
 }
 
 fn update_object_references_in(
-    instance: &mut instance::RInstance,
+    instance: *mut instance::RInstance,
     old_to_new: &HashMap<usize, SEXP>,
 ) {
-    let nodes: Vec<SEXP> = instance.arena.active_nodes().collect();
-    for &obj in &nodes {
-        update_references_in_object(obj, old_to_new);
+    unsafe {
+        let nodes: Vec<SEXP> = (*instance).arena.active_nodes().collect();
+        for &obj in &nodes {
+            update_references_in_object(obj, old_to_new);
+        }
     }
 }
 
@@ -735,152 +751,159 @@ fn update_context_roots(ctxt: &mut super::context::RCNTXT, old_to_new: &HashMap<
     update_field(&mut ctxt.srcref, old_to_new);
 }
 
-fn update_instance_roots_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
-    update_field(&mut instance.empty_env, old_to_new);
-    update_field(&mut instance.base_env, old_to_new);
-    update_field(&mut instance.global_env, old_to_new);
+fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    unsafe {
+        update_field(&mut (*instance).empty_env, old_to_new);
+        update_field(&mut (*instance).base_env, old_to_new);
+        update_field(&mut (*instance).global_env, old_to_new);
 
-    update_protect_stack_in(instance, old_to_new);
-    update_preserve_stack_in(instance, old_to_new);
-    for ctxt in &mut instance.context_stack {
-        update_context_roots(ctxt, old_to_new);
-    }
-
-    update_field(&mut instance.error_state.warnings, old_to_new);
-    update_field(&mut instance.error_state.handler_stack, old_to_new);
-    update_field(&mut instance.error_state.restart_stack, old_to_new);
-    update_field(&mut instance.error_state.warning_call, old_to_new);
-
-    update_field(&mut instance.eval_state.current_expr, old_to_new);
-    update_field(&mut instance.eval_state.parse_error_file, old_to_new);
-    update_field(&mut instance.eval_state.exec_token, old_to_new);
-    update_field(&mut instance.eval_state.profiling.sref, old_to_new);
-    update_field(
-        &mut instance.eval_state.profiling.srcfiles_buffer,
-        old_to_new,
-    );
-    update_field(&mut instance.eval_state.printvector.na_string, old_to_new);
-    update_field(
-        &mut instance.eval_state.printvector.na_string_noquote,
-        old_to_new,
-    );
-    update_field(&mut instance.eval_state.print.data.na_string, old_to_new);
-    update_field(
-        &mut instance.eval_state.print.data.na_string_noquote,
-        old_to_new,
-    );
-    update_field(&mut instance.eval_state.print.data.env, old_to_new);
-    update_field(&mut instance.eval_state.print.data.callArgs, old_to_new);
-    instance
-        .eval_state
-        .bc_stack
-        .visit_roots(|obj| update_field(obj, old_to_new));
-
-    for obj in instance.symbols.values_mut() {
-        update_field(obj, old_to_new);
-    }
-    for &node in &instance.symbol_nodes {
-        update_references_in_object(node, old_to_new);
-    }
-    for &node in &instance.env_nodes {
-        update_references_in_object(node, old_to_new);
-    }
-    for obj in &mut instance.names_state.ddval_symbols {
-        update_field(obj, old_to_new);
-    }
-    update_field(&mut instance.bind_state.blank_string, old_to_new);
-
-    for obj in instance.options.values_mut() {
-        update_field(obj, old_to_new);
-    }
-    for callback in &mut instance.main_state.task_callbacks {
-        update_field(&mut callback.fun, old_to_new);
-        update_field(&mut callback.data, old_to_new);
-    }
-    for generic in &mut instance.objects_state.prim_generics {
-        update_field(generic, old_to_new);
-    }
-    for methods in &mut instance.objects_state.prim_mlist {
-        update_field(methods, old_to_new);
-    }
-    update_field(
-        &mut instance.objects_state.deferred_default_object,
-        old_to_new,
-    );
-    let old_hash_tables = std::mem::take(&mut instance.env_hash_tables);
-    instance.env_hash_tables = old_hash_tables
-        .into_iter()
-        .map(|(env, table)| {
-            let table = table
-                .into_iter()
-                .map(|(symbol, mut value)| {
-                    update_field(&mut value, old_to_new);
-                    (remap_addr(symbol, old_to_new), value)
-                })
-                .collect();
-            (remap_addr(env, old_to_new), table)
-        })
-        .collect();
-    let old_cache = std::mem::take(&mut instance.package_namespace_cache);
-    instance.package_namespace_cache = old_cache
-        .into_iter()
-        .map(|(package, (dir, mut namespace))| {
-            update_field(&mut namespace, old_to_new);
-            (package, (dir, namespace))
-        })
-        .collect();
-
-    // The binding tables are keyed by raw node addresses. Entries whose keyed
-    // node was reclaimed this cycle must be dropped before `free_node` puts
-    // the address back on the LIFO free list — a recycled address would
-    // otherwise alias the stale entry (a fresh environment reporting locks or
-    // active bindings it never had). `old_to_new` maps exactly the reclaimed
-    // addresses to R_NilValue, so key membership identifies them; live keys
-    // keep their address (the collector never moves nodes).
-    instance.active_bindings.retain(|key, value| {
-        update_field(value, old_to_new);
-        !old_to_new.contains_key(&key.0) && !old_to_new.contains_key(&key.1)
-    });
-    instance
-        .locked_environments
-        .retain(|env| !old_to_new.contains_key(env));
-    instance
-        .locked_bindings
-        .retain(|(env, symbol)| !old_to_new.contains_key(env) && !old_to_new.contains_key(symbol));
-
-    for finalizer in &mut instance.memory_state.pending_finalizers {
-        update_field(finalizer.obj_mut(), old_to_new);
-        if let Some(fun) = finalizer.fun_mut() {
-            update_field(fun, old_to_new);
+        update_protect_stack_in(instance, old_to_new);
+        update_preserve_stack_in(instance, old_to_new);
+        for ctxt in &mut (*instance).context_stack {
+            update_context_roots(ctxt, old_to_new);
         }
-    }
-    update_field(&mut instance.dynload_state.dll_info_eptrs, old_to_new);
-    update_field(&mut instance.dynload_state.symbol_eptrs, old_to_new);
-    update_field(&mut instance.dynload_state.c_entry_table, old_to_new);
 
-    #[cfg(not(target_arch = "wasm32"))]
-    instance
-        .httpd_state
-        .visit_roots(|obj| update_field(obj, old_to_new));
+        update_field(&mut (*instance).error_state.warnings, old_to_new);
+        update_field(&mut (*instance).error_state.handler_stack, old_to_new);
+        update_field(&mut (*instance).error_state.restart_stack, old_to_new);
+        update_field(&mut (*instance).error_state.warning_call, old_to_new);
 
-    update_field(
-        &mut instance.grid_runtime_state.current_grid_state,
-        old_to_new,
-    );
-    update_field(&mut instance.grid_runtime_state.eval_env, old_to_new);
+        update_field(&mut (*instance).eval_state.current_expr, old_to_new);
+        update_field(&mut (*instance).eval_state.parse_error_file, old_to_new);
+        update_field(&mut (*instance).eval_state.exec_token, old_to_new);
+        update_field(&mut (*instance).eval_state.profiling.sref, old_to_new);
+        update_field(
+            &mut (*instance).eval_state.profiling.srcfiles_buffer,
+            old_to_new,
+        );
+        update_field(
+            &mut (*instance).eval_state.printvector.na_string,
+            old_to_new,
+        );
+        update_field(
+            &mut (*instance).eval_state.printvector.na_string_noquote,
+            old_to_new,
+        );
+        update_field(&mut (*instance).eval_state.print.data.na_string, old_to_new);
+        update_field(
+            &mut (*instance).eval_state.print.data.na_string_noquote,
+            old_to_new,
+        );
+        update_field(&mut (*instance).eval_state.print.data.env, old_to_new);
+        update_field(&mut (*instance).eval_state.print.data.callArgs, old_to_new);
+        (*instance)
+            .eval_state
+            .bc_stack
+            .visit_roots(|obj| update_field(obj, old_to_new));
 
-    for obj in &mut instance.raw_cons {
-        let mut sexp = *obj as SEXP;
-        update_field(&mut sexp, old_to_new);
-        *obj = sexp;
-        update_references_in_object(*obj, old_to_new);
+        for obj in (*instance).symbols.values_mut() {
+            update_field(obj, old_to_new);
+        }
+        for &node in &(*instance).symbol_nodes {
+            update_references_in_object(node, old_to_new);
+        }
+        for &node in &(*instance).env_nodes {
+            update_references_in_object(node, old_to_new);
+        }
+        for obj in &mut (*instance).names_state.ddval_symbols {
+            update_field(obj, old_to_new);
+        }
+        update_field(&mut (*instance).bind_state.blank_string, old_to_new);
+
+        for obj in (*instance).options.values_mut() {
+            update_field(obj, old_to_new);
+        }
+        for callback in &mut (*instance).main_state.task_callbacks {
+            update_field(&mut callback.fun, old_to_new);
+            update_field(&mut callback.data, old_to_new);
+        }
+        for generic in &mut (*instance).objects_state.prim_generics {
+            update_field(generic, old_to_new);
+        }
+        for methods in &mut (*instance).objects_state.prim_mlist {
+            update_field(methods, old_to_new);
+        }
+        update_field(
+            &mut (*instance).objects_state.deferred_default_object,
+            old_to_new,
+        );
+        let old_hash_tables = std::mem::take(&mut (*instance).env_hash_tables);
+        (*instance).env_hash_tables = old_hash_tables
+            .into_iter()
+            .map(|(env, table)| {
+                let table = table
+                    .into_iter()
+                    .map(|(symbol, mut value)| {
+                        update_field(&mut value, old_to_new);
+                        (remap_addr(symbol, old_to_new), value)
+                    })
+                    .collect();
+                (remap_addr(env, old_to_new), table)
+            })
+            .collect();
+        let old_cache = std::mem::take(&mut (*instance).package_namespace_cache);
+        (*instance).package_namespace_cache = old_cache
+            .into_iter()
+            .map(|(package, (dir, mut namespace))| {
+                update_field(&mut namespace, old_to_new);
+                (package, (dir, namespace))
+            })
+            .collect();
+
+        // The binding tables are keyed by raw node addresses. Entries whose keyed
+        // node was reclaimed this cycle must be dropped before `free_node` puts
+        // the address back on the LIFO free list — a recycled address would
+        // otherwise alias the stale entry (a fresh environment reporting locks or
+        // active bindings it never had). `old_to_new` maps exactly the reclaimed
+        // addresses to R_NilValue, so key membership identifies them; live keys
+        // keep their address (the collector never moves nodes).
+        (*instance).active_bindings.retain(|key, value| {
+            update_field(value, old_to_new);
+            !old_to_new.contains_key(&key.0) && !old_to_new.contains_key(&key.1)
+        });
+        (*instance)
+            .locked_environments
+            .retain(|env| !old_to_new.contains_key(env));
+        (*instance).locked_bindings.retain(|(env, symbol)| {
+            !old_to_new.contains_key(env) && !old_to_new.contains_key(symbol)
+        });
+
+        for finalizer in &mut (*instance).memory_state.pending_finalizers {
+            update_field(finalizer.obj_mut(), old_to_new);
+            if let Some(fun) = finalizer.fun_mut() {
+                update_field(fun, old_to_new);
+            }
+        }
+        update_field(&mut (*instance).dynload_state.dll_info_eptrs, old_to_new);
+        update_field(&mut (*instance).dynload_state.symbol_eptrs, old_to_new);
+        update_field(&mut (*instance).dynload_state.c_entry_table, old_to_new);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        (*instance)
+            .httpd_state
+            .visit_roots(|obj| update_field(obj, old_to_new));
+
+        update_field(
+            &mut (*instance).grid_runtime_state.current_grid_state,
+            old_to_new,
+        );
+        update_field(&mut (*instance).grid_runtime_state.eval_env, old_to_new);
+
+        for obj in &mut (*instance).raw_cons {
+            let mut sexp = *obj as SEXP;
+            update_field(&mut sexp, old_to_new);
+            *obj = sexp;
+            update_references_in_object(*obj, old_to_new);
+        }
     }
 }
 
-fn update_all_references_in(instance: &mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
-    update_instance_roots_in(instance, old_to_new);
-    update_remembered_set_in(instance, old_to_new);
-    update_object_references_in(instance, old_to_new);
+fn update_all_references_in(instance: *mut instance::RInstance, old_to_new: &HashMap<usize, SEXP>) {
+    unsafe {
+        update_instance_roots_in(instance, old_to_new);
+        update_remembered_set_in(instance, old_to_new);
+        update_object_references_in(instance, old_to_new);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -898,40 +921,42 @@ pub fn minor_gc() -> (usize, usize) {
     instance::with_required_current_instance(minor_gc_in)
 }
 
-fn run_gc_cycle_in<F>(instance: &mut instance::RInstance, collect: F) -> (usize, usize)
+fn run_gc_cycle_in<F>(instance: *mut instance::RInstance, collect: F) -> (usize, usize)
 where
-    F: FnOnce(&mut instance::RInstance) -> (usize, usize),
+    F: FnOnce(*mut instance::RInstance) -> (usize, usize),
 {
-    if instance.gc_state.in_progress {
-        return (0, 0);
-    }
-
-    instance.gc_state.in_progress = true;
-    verify_gc_invariants_in(instance);
-    // Sweep only visits arena nodes, so persistent nodes keep whatever mark
-    // the previous cycle left on them. Clear those marks before marking so
-    // every cycle re-traces the persistent roots (environment frames,
-    // interned symbol pnames, raw cons cells); a stale mark would make
-    // `mark_reachable_traced` short-circuit and sweep bindings that are
-    // still reachable, leaving dangling frame chains behind.
-    clear_persistent_node_marks_in(instance);
-
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| collect(instance)));
-    instance.gc_state.in_progress = false;
-
-    match result {
-        Ok((promoted, freed)) => {
-            record_collection_in(&mut instance.gc_state, promoted, freed);
-            notify_gc_callbacks_in(&instance.gc_state);
-            (promoted, freed)
+    unsafe {
+        if (*instance).gc_state.in_progress {
+            return (0, 0);
         }
-        // A panic mid-collection leaves the heap in an indeterminate state.
-        // Swallowing it (the old `=> (0, 0)`) risks silent memory corruption:
-        // callers would keep using a partially-marked/swept heap. Make the
-        // panic propagate (fatal to the session/eval) instead. `in_progress`
-        // was already reset above, so a panic caught higher up does not leave
-        // GC permanently disabled.
-        Err(payload) => std::panic::resume_unwind(payload),
+
+        (*instance).gc_state.in_progress = true;
+        verify_gc_invariants_in(instance);
+        // Sweep only visits arena nodes, so persistent nodes keep whatever mark
+        // the previous cycle left on them. Clear those marks before marking so
+        // every cycle re-traces the persistent roots (environment frames,
+        // interned symbol pnames, raw cons cells); a stale mark would make
+        // `mark_reachable_traced` short-circuit and sweep bindings that are
+        // still reachable, leaving dangling frame chains behind.
+        clear_persistent_node_marks_in(instance);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| collect(instance)));
+        (*instance).gc_state.in_progress = false;
+
+        match result {
+            Ok((promoted, freed)) => {
+                record_collection_in(&mut (*instance).gc_state, promoted, freed);
+                notify_gc_callbacks_in(&(*instance).gc_state);
+                (promoted, freed)
+            }
+            // A panic mid-collection leaves the heap in an indeterminate state.
+            // Swallowing it (the old `=> (0, 0)`) risks silent memory corruption:
+            // callers would keep using a partially-marked/swept heap. Make the
+            // panic propagate (fatal to the session/eval) instead. `in_progress`
+            // was already reset above, so a panic caught higher up does not leave
+            // GC permanently disabled.
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
     }
 }
 
@@ -945,28 +970,30 @@ where
 /// skipped tracing them. The process-global sentinels (`R_NilValue`,
 /// `R_UnboundValue`, `R_MissingArg`, `R_RestartToken`) are deliberately not
 /// touched: they are pre-marked to pin, and none of them traces children.
-fn clear_persistent_node_marks_in(instance: &mut instance::RInstance) {
-    for &node in &instance.env_nodes {
-        unsafe {
-            (*node).sxpinfo.set_mark(false);
-        }
-    }
-    for &node in &instance.symbol_nodes {
-        unsafe {
-            (*node).sxpinfo.set_mark(false);
-        }
-    }
-    for &node in &instance.raw_cons {
-        unsafe {
-            if !node.is_null() {
+fn clear_persistent_node_marks_in(instance: *mut instance::RInstance) {
+    unsafe {
+        for &node in &(*instance).env_nodes {
+            unsafe {
                 (*node).sxpinfo.set_mark(false);
+            }
+        }
+        for &node in &(*instance).symbol_nodes {
+            unsafe {
+                (*node).sxpinfo.set_mark(false);
+            }
+        }
+        for &node in &(*instance).raw_cons {
+            unsafe {
+                if !node.is_null() {
+                    (*node).sxpinfo.set_mark(false);
+                }
             }
         }
     }
 }
 
-pub(crate) fn minor_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
-    run_gc_cycle_in(instance, do_minor_gc_in)
+pub(crate) fn minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
+    unsafe { run_gc_cycle_in(instance, do_minor_gc_in) }
 }
 
 const GC_TRIGGER_THRESHOLD: usize = 10_000;
@@ -983,15 +1010,17 @@ const GC_BYTE_THRESHOLD: usize = 64 * 1024 * 1024;
 /// `with_arena_in` feeds the recorded state through its own live instance
 /// borrow into this function once the allocating closure has returned.
 pub(crate) fn process_deferred_alloc_gc_in(
-    instance: &mut instance::RInstance,
+    instance: *mut instance::RInstance,
     torture_ticks: u32,
     collect_requested: bool,
 ) {
-    if collect_requested {
-        instance.gc_state.gc_pending = true;
-    }
-    if torture_ticks > 0 {
-        maybe_torture_gc_in(instance, torture_ticks);
+    unsafe {
+        if collect_requested {
+            (*instance).gc_state.gc_pending = true;
+        }
+        if torture_ticks > 0 {
+            maybe_torture_gc_in(instance, torture_ticks);
+        }
     }
 }
 
@@ -1007,99 +1036,113 @@ pub(crate) fn process_deferred_alloc_gc_in(
 /// `R_in_gc` path) instead of recursing. `ticks` is the number of deferred
 /// allocation entries consumed since the last processing point; at most one
 /// collection runs per call.
-fn maybe_torture_gc_in(instance: &mut instance::RInstance, ticks: u32) {
-    if instance.memory_state.gc_force_gap <= 0 {
-        // Not armed: default behavior is identical (single branch).
-        return;
-    }
-    if instance.gc_state.in_progress || instance.memory_state.in_gc != 0 {
-        // Mirrors upstream's R_in_gc deferral: don't recurse into a
-        // collection from inside one; run it at the next safe point.
-        instance.gc_state.gc_pending = true;
-        return;
-    }
-    // FORCE_GC countdown: `--gc_force_wait` fires when it reaches zero,
-    // then re-arms to `gc_force_gap`. Deferred ticks are consumed in one
-    // step, firing at most one collection per processing point.
-    let ticks: std::os::raw::c_int = ticks.try_into().unwrap_or(std::os::raw::c_int::MAX);
-    if instance.memory_state.gc_force_wait > ticks {
-        instance.memory_state.gc_force_wait -= ticks;
-        return;
-    }
-    instance.memory_state.gc_force_wait = instance.memory_state.gc_force_gap;
-    let start = instance.protect_stack.borrow().len();
-    push_environment_binding_protects(instance);
-    let added = instance.protect_stack.borrow().len().saturating_sub(start);
-    instance.gc_state.gc_pending = false;
-    instance.memory_state.in_gc = 1;
-    instance.memory_state.gc_count = instance.memory_state.gc_count.wrapping_add(1);
-    run_gc_cycle_in(instance, do_torture_mark_sweep_in);
-    instance.memory_state.in_gc = 0;
-    super::protect::unprotect_count_in(instance, added);
-}
-
-fn eval_safe_point_gc_due_in(instance: &instance::RInstance) -> bool {
-    instance.gc_state.gc_pending
-        || instance.arena.node_count() > GC_TRIGGER_THRESHOLD
-        || instance.arena.total_bytes_allocated() > GC_BYTE_THRESHOLD
-}
-
-fn sync_env_hash_tables_from_frames(instance: &mut instance::RInstance) {
-    let envs: Vec<usize> = instance.env_hash_tables.keys().copied().collect();
-    for env_addr in envs {
-        let env = env_addr as SEXP;
-        unsafe {
-            if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
-                continue;
-            }
-            let mut frame = (*env).data.envsxp.frame;
-            while !frame.is_null() {
-                let tag = (*frame).data.listsxp.tagval;
-                let val = (*frame).data.listsxp.carval;
-                if !tag.is_null() {
-                    super::env_hash::hash_insert_in(instance, env, tag, val);
-                }
-                frame = (*frame).data.listsxp.cdrval;
-            }
-        }
-    }
-}
-
-fn collect_environment_binding_values(instance: &instance::RInstance) -> Vec<SEXP> {
-    let mut values = Vec::new();
-    let mut seen_envs = std::collections::HashSet::new();
+fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
     unsafe {
-        let mut walk_env = |mut env: SEXP| {
-            while !env.is_null() && seen_envs.insert(env as usize) {
+        if (*instance).memory_state.gc_force_gap <= 0 {
+            // Not armed: default behavior is identical (single branch).
+            return;
+        }
+        if (*instance).gc_state.in_progress || (*instance).memory_state.in_gc != 0 {
+            // Mirrors upstream's R_in_gc deferral: don't recurse into a
+            // collection from inside one; run it at the next safe point.
+            (*instance).gc_state.gc_pending = true;
+            return;
+        }
+        // FORCE_GC countdown: `--gc_force_wait` fires when it reaches zero,
+        // then re-arms to `gc_force_gap`. Deferred ticks are consumed in one
+        // step, firing at most one collection per processing point.
+        let ticks: std::os::raw::c_int = ticks.try_into().unwrap_or(std::os::raw::c_int::MAX);
+        if (*instance).memory_state.gc_force_wait > ticks {
+            (*instance).memory_state.gc_force_wait -= ticks;
+            return;
+        }
+        (*instance).memory_state.gc_force_wait = (*instance).memory_state.gc_force_gap;
+        let start = (*instance).protect_stack.borrow().len();
+        push_environment_binding_protects(instance);
+        let added = (*instance)
+            .protect_stack
+            .borrow()
+            .len()
+            .saturating_sub(start);
+        (*instance).gc_state.gc_pending = false;
+        (*instance).memory_state.in_gc = 1;
+        (*instance).memory_state.gc_count = (*instance).memory_state.gc_count.wrapping_add(1);
+        run_gc_cycle_in(instance, do_torture_mark_sweep_in);
+        (*instance).memory_state.in_gc = 0;
+        super::protect::unprotect_count_in(instance, added);
+    }
+}
+
+fn eval_safe_point_gc_due_in(instance: *mut instance::RInstance) -> bool {
+    unsafe {
+        (*instance).gc_state.gc_pending
+            || (*instance).arena.node_count() > GC_TRIGGER_THRESHOLD
+            || (*instance).arena.total_bytes_allocated() > GC_BYTE_THRESHOLD
+    }
+}
+
+fn sync_env_hash_tables_from_frames(instance: *mut instance::RInstance) {
+    unsafe {
+        let envs: Vec<usize> = (*instance).env_hash_tables.keys().copied().collect();
+        for env_addr in envs {
+            let env = env_addr as SEXP;
+            unsafe {
                 if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
-                    break;
+                    continue;
                 }
                 let mut frame = (*env).data.envsxp.frame;
                 while !frame.is_null() {
-                    values.push(frame);
+                    let tag = (*frame).data.listsxp.tagval;
                     let val = (*frame).data.listsxp.carval;
-                    if !val.is_null() {
-                        values.push(val);
+                    if !tag.is_null() {
+                        super::env_hash::hash_insert_in(instance, env, tag, val);
                     }
                     frame = (*frame).data.listsxp.cdrval;
                 }
-                env = (*env).data.envsxp.enclos;
             }
-        };
-        for ctxt in &instance.context_stack {
-            walk_env(ctxt.cloenv);
         }
-        walk_env(instance.global_env);
-        walk_env(instance.base_env);
     }
-    values
 }
 
-fn push_environment_binding_protects(instance: &mut instance::RInstance) {
-    sync_env_hash_tables_from_frames(instance);
-    let values = collect_environment_binding_values(instance);
-    for value in values {
-        push_protect_in(instance, value);
+fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec<SEXP> {
+    unsafe {
+        let mut values = Vec::new();
+        let mut seen_envs = std::collections::HashSet::new();
+        unsafe {
+            let mut walk_env = |mut env: SEXP| {
+                while !env.is_null() && seen_envs.insert(env as usize) {
+                    if (*env).sxpinfo.type_of() != SEXPTYPE::ENVSXP {
+                        break;
+                    }
+                    let mut frame = (*env).data.envsxp.frame;
+                    while !frame.is_null() {
+                        values.push(frame);
+                        let val = (*frame).data.listsxp.carval;
+                        if !val.is_null() {
+                            values.push(val);
+                        }
+                        frame = (*frame).data.listsxp.cdrval;
+                    }
+                    env = (*env).data.envsxp.enclos;
+                }
+            };
+            for ctxt in &(*instance).context_stack {
+                walk_env(ctxt.cloenv);
+            }
+            walk_env((*instance).global_env);
+            walk_env((*instance).base_env);
+        }
+        values
+    }
+}
+
+fn push_environment_binding_protects(instance: *mut instance::RInstance) {
+    unsafe {
+        sync_env_hash_tables_from_frames(instance);
+        let values = collect_environment_binding_values(instance);
+        for value in values {
+            push_protect_in(instance, value);
+        }
     }
 }
 
@@ -1113,11 +1156,18 @@ fn push_environment_binding_protects(instance: &mut instance::RInstance) {
 /// variables, closure-call environments), surfacing later as
 /// `object 'i' not found`.
 pub fn collect_with_environment_protects(full: bool) -> (usize, usize) {
-    instance::with_required_current_instance(|instance| {
-        let start = instance.protect_stack.borrow().len();
+    instance::with_required_current_instance(|instance| unsafe {
+        // Raw place accesses throughout: the collection below reenters the
+        // protect stack and instance bookkeeping, so no borrow may be held
+        // across it.
+        let start = (*instance).protect_stack.borrow().len();
         push_environment_binding_protects(instance);
-        let added = instance.protect_stack.borrow().len().saturating_sub(start);
-        instance.gc_state.gc_pending = false;
+        let added = (*instance)
+            .protect_stack
+            .borrow()
+            .len()
+            .saturating_sub(start);
+        (*instance).gc_state.gc_pending = false;
         let result = if full {
             full_gc_in(instance)
         } else {
@@ -1138,20 +1188,27 @@ const SAFE_POINT_FULL_COLLECTION_INTERVAL: u64 = 64;
 /// Call this after loop iterations and brace-block statements complete, when
 /// no SEXP values from the just-finished evaluation remain only on Rust stack.
 pub fn maybe_collect_at_eval_safe_point() {
-    let collected = instance::with_required_current_instance(|instance| {
+    let collected = instance::with_required_current_instance(|instance| unsafe {
+        // Raw place accesses throughout: the collection below reenters the
+        // protect stack and instance bookkeeping, so no borrow may be held
+        // across it.
         if !eval_safe_point_gc_due_in(instance) {
             return false;
         }
-        let start = instance.protect_stack.borrow().len();
+        let start = (*instance).protect_stack.borrow().len();
         push_environment_binding_protects(instance);
-        let added = instance.protect_stack.borrow().len().saturating_sub(start);
-        instance.gc_state.gc_pending = false;
+        let added = (*instance)
+            .protect_stack
+            .borrow()
+            .len()
+            .saturating_sub(start);
+        (*instance).gc_state.gc_pending = false;
         // Safe points normally collect the young generation only; without a
         // periodic full pass, old-generation garbage from promoted-then-dead
         // objects would accumulate unbounded between explicit gc() calls.
-        instance.gc_state.safe_point_collections =
-            instance.gc_state.safe_point_collections.wrapping_add(1);
-        if instance.gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL == 0 {
+        (*instance).gc_state.safe_point_collections =
+            (*instance).gc_state.safe_point_collections.wrapping_add(1);
+        if (*instance).gc_state.safe_point_collections % SAFE_POINT_FULL_COLLECTION_INTERVAL == 0 {
             full_gc_in(instance);
         } else {
             minor_gc_in(instance);
@@ -1186,9 +1243,10 @@ fn run_pending_finalizers_after_collection() {
 /// run any finalizers the collection made ready (upstream runs finalizers
 /// at these same between-expression quiescent points).
 pub fn run_pending_gc_if_quiescent() {
-    let collected = instance::with_current_instance(|inst| {
-        if inst.eval_state.eval_depth == 0 && inst.gc_state.gc_pending {
-            inst.gc_state.gc_pending = false;
+    let collected = instance::with_current_instance(|inst| unsafe {
+        // Raw place accesses: minor_gc_in reenters instance bookkeeping.
+        if (*inst).eval_state.eval_depth == 0 && (*inst).gc_state.gc_pending {
+            (*inst).gc_state.gc_pending = false;
             minor_gc_in(inst);
             true
         } else {
@@ -1200,73 +1258,76 @@ pub fn run_pending_gc_if_quiescent() {
     }
 }
 
-fn do_minor_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
-    // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
-    // about allocating HashSets and hashing every edge.)
-    mark_instance_roots(instance);
-    for &obj in &instance.gc_state.remembered_set.entries {
-        mark_reachable(obj);
-    }
+fn do_minor_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
+    unsafe {
+        // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
+        // about allocating HashSets and hashing every edge.)
+        mark_instance_roots(instance);
+        for &obj in &(*instance).gc_state.remembered_set.entries {
+            mark_reachable(obj);
+        }
 
-    let mut freed_count = 0;
-    let mut promoted_count = 0;
-    let mut to_free = Vec::new();
+        let mut freed_count = 0;
+        let mut promoted_count = 0;
+        let mut to_free = Vec::new();
 
-    {
-        let arena = &mut instance.arena;
-        // Iterate directly; only allocate to_free vec (not full snapshot of actives).
-        // Reduces temp memory/alloc pressure during GC (perf + memory win, especially on constrained Android/WASM).
-        for obj in arena.active_nodes() {
-            if obj.is_null() {
-                continue;
-            }
-            unsafe {
-                let obj_gen = (*obj).sxpinfo.gcgen();
-                let marked = (*obj).sxpinfo.mark();
+        {
+            let arena = &mut (*instance).arena;
+            // Iterate directly; only allocate to_free vec (not full snapshot of actives).
+            // Reduces temp memory/alloc pressure during GC (perf + memory win, especially on constrained Android/WASM).
+            for obj in arena.active_nodes() {
+                if obj.is_null() {
+                    continue;
+                }
+                unsafe {
+                    let obj_gen = (*obj).sxpinfo.gcgen();
+                    let marked = (*obj).sxpinfo.mark();
 
-                if obj_gen == Generation::Young as u8 {
-                    if marked {
-                        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
-                        (*obj).sxpinfo.set_mark(false);
-                        promoted_count += 1;
+                    if obj_gen == Generation::Young as u8 {
+                        if marked {
+                            (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                            (*obj).sxpinfo.set_mark(false);
+                            promoted_count += 1;
+                        } else {
+                            to_free.push(obj);
+                        }
                     } else {
-                        to_free.push(obj);
-                    }
-                } else {
-                    if marked {
-                        (*obj).sxpinfo.set_mark(false);
+                        if marked {
+                            (*obj).sxpinfo.set_mark(false);
+                        }
                     }
                 }
             }
         }
-    }
 
-    if !to_free.is_empty() {
-        let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-        let keep_alive = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
-            &mut instance.memory_state,
-            &unreachable,
-        );
-        if !keep_alive.is_empty() {
-            to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+        if !to_free.is_empty() {
+            let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
+            let keep_alive =
+                crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
+                    &mut (*instance).memory_state,
+                    &unreachable,
+                );
+            if !keep_alive.is_empty() {
+                to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+            }
         }
-    }
 
-    if !to_free.is_empty() {
-        let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let old_to_nil: HashMap<usize, SEXP> =
-            to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-        update_all_references_in(instance, &old_to_nil);
+        if !to_free.is_empty() {
+            let nil = unsafe { crate::sexp::globals::R_NilValue() };
+            let old_to_nil: HashMap<usize, SEXP> =
+                to_free.iter().map(|&obj| (obj as usize, nil)).collect();
+            update_all_references_in(instance, &old_to_nil);
 
-        for obj in to_free {
-            instance.arena.free_node(obj);
-            freed_count += 1;
+            for obj in to_free {
+                (*instance).arena.free_node(obj);
+                freed_count += 1;
+            }
         }
+
+        (*instance).gc_state.remembered_set.clear();
+
+        (promoted_count, freed_count)
     }
-
-    instance.gc_state.remembered_set.clear();
-
-    (promoted_count, freed_count)
 }
 
 // ---------------------------------------------------------------------------
@@ -1284,8 +1345,8 @@ pub fn full_gc() -> (usize, usize) {
     instance::with_required_current_instance(full_gc_in)
 }
 
-pub(crate) fn full_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
-    run_gc_cycle_in(instance, do_full_mark_sweep_in)
+pub(crate) fn full_gc_in(instance: *mut instance::RInstance) -> (usize, usize) {
+    unsafe { run_gc_cycle_in(instance, do_full_mark_sweep_in) }
 }
 
 /// gctorture collection: full mark from all roots, but only OLD-generation
@@ -1301,138 +1362,146 @@ pub(crate) fn full_gc_in(instance: &mut instance::RInstance) -> (usize, usize) {
 /// reclaimed, as usual, by the safe-point/quiescent collections that never
 /// run mid-construction. Old-generation garbage — the accumulation gctorture
 /// exists to exercise — is still reclaimed on every forced cycle.
-fn do_torture_mark_sweep_in(instance: &mut instance::RInstance) -> (usize, usize) {
-    mark_from_all_roots_in(instance);
+fn do_torture_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
+    unsafe {
+        mark_from_all_roots_in(instance);
 
-    let mut freed_count = 0;
-    let mut to_free = Vec::new();
+        let mut freed_count = 0;
+        let mut to_free = Vec::new();
 
-    {
-        let arena = &mut instance.arena;
-        for obj in arena.active_nodes() {
-            if obj.is_null() {
-                continue;
-            }
-            unsafe {
-                if (*obj).sxpinfo.mark() {
-                    // Marked nodes stay in their generation: promotion to
-                    // the old generation here would let the very next forced
-                    // collection (only `gc_force_gap` allocations later)
-                    // sweep an in-flight value that is momentarily
-                    // reachable only from a Rust local. Promotion stays
-                    // the safe-point collectors' job.
-                    (*obj).sxpinfo.set_mark(false);
-                } else if (*obj).sxpinfo.gcgen() != Generation::Young as u8 {
-                    // Old-generation garbage: reclaim now.
-                    to_free.push(obj);
+        {
+            let arena = &mut (*instance).arena;
+            for obj in arena.active_nodes() {
+                if obj.is_null() {
+                    continue;
                 }
-                // Unmarked young nodes survive alloc-time collections; the
-                // next safe-point collection sweeps whichever stay dead.
-            }
-        }
-    }
-
-    let mut freed_set: HashSet<usize> = HashSet::new();
-    if !to_free.is_empty() {
-        let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-        let keep_alive = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
-            &mut instance.memory_state,
-            &unreachable,
-        );
-        if !keep_alive.is_empty() {
-            to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
-        }
-    }
-
-    if !to_free.is_empty() {
-        freed_set = to_free.iter().map(|&obj| obj as usize).collect();
-        let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let old_to_nil: HashMap<usize, SEXP> =
-            to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-        update_all_references_in(instance, &old_to_nil);
-
-        for obj in to_free {
-            instance.arena.free_node(obj);
-            freed_count += 1;
-        }
-    }
-
-    // The remembered set cannot be cleared wholesale (unlike a true full
-    // collection, reachable young nodes were not promoted, so live
-    // old-to-young edges still exist). Drop only entries whose old parent
-    // was reclaimed this cycle.
-    instance
-        .gc_state
-        .remembered_set
-        .entries
-        .retain(|parent| !parent.is_null() && !freed_set.contains(&(*parent as usize)));
-
-    (0, freed_count)
-}
-
-fn mark_from_all_roots_in(instance: &mut instance::RInstance) {
-    // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
-    // about allocating HashSets and hashing every edge.)
-    mark_instance_roots(instance);
-    for &obj in &instance.gc_state.remembered_set.entries {
-        mark_reachable(obj);
-    }
-}
-
-fn do_full_mark_sweep_in(instance: &mut instance::RInstance) -> (usize, usize) {
-    mark_from_all_roots_in(instance);
-
-    let mut freed_count = 0;
-    let mut promoted_count = 0;
-    let mut to_free = Vec::new();
-
-    {
-        let arena = &mut instance.arena;
-        // Direct iter, only to_free alloc (less GC-time memory pressure).
-        for obj in arena.active_nodes() {
-            if obj.is_null() {
-                continue;
-            }
-            unsafe {
-                if (*obj).sxpinfo.mark() {
-                    if (*obj).sxpinfo.gcgen() == Generation::Young as u8 {
-                        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
-                        promoted_count += 1;
+                unsafe {
+                    if (*obj).sxpinfo.mark() {
+                        // Marked nodes stay in their generation: promotion to
+                        // the old generation here would let the very next forced
+                        // collection (only `gc_force_gap` allocations later)
+                        // sweep an in-flight value that is momentarily
+                        // reachable only from a Rust local. Promotion stays
+                        // the safe-point collectors' job.
+                        (*obj).sxpinfo.set_mark(false);
+                    } else if (*obj).sxpinfo.gcgen() != Generation::Young as u8 {
+                        // Old-generation garbage: reclaim now.
+                        to_free.push(obj);
                     }
-                    (*obj).sxpinfo.set_mark(false);
-                } else {
-                    to_free.push(obj);
+                    // Unmarked young nodes survive alloc-time collections; the
+                    // next safe-point collection sweeps whichever stay dead.
                 }
             }
         }
-    }
 
-    if !to_free.is_empty() {
-        let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
-        let keep_alive = crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
-            &mut instance.memory_state,
-            &unreachable,
-        );
-        if !keep_alive.is_empty() {
-            to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+        let mut freed_set: HashSet<usize> = HashSet::new();
+        if !to_free.is_empty() {
+            let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
+            let keep_alive =
+                crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
+                    &mut (*instance).memory_state,
+                    &unreachable,
+                );
+            if !keep_alive.is_empty() {
+                to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+            }
+        }
+
+        if !to_free.is_empty() {
+            freed_set = to_free.iter().map(|&obj| obj as usize).collect();
+            let nil = unsafe { crate::sexp::globals::R_NilValue() };
+            let old_to_nil: HashMap<usize, SEXP> =
+                to_free.iter().map(|&obj| (obj as usize, nil)).collect();
+            update_all_references_in(instance, &old_to_nil);
+
+            for obj in to_free {
+                (*instance).arena.free_node(obj);
+                freed_count += 1;
+            }
+        }
+
+        // The remembered set cannot be cleared wholesale (unlike a true full
+        // collection, reachable young nodes were not promoted, so live
+        // old-to-young edges still exist). Drop only entries whose old parent
+        // was reclaimed this cycle.
+        (*instance)
+            .gc_state
+            .remembered_set
+            .entries
+            .retain(|parent| !parent.is_null() && !freed_set.contains(&(*parent as usize)));
+
+        (0, freed_count)
+    }
+}
+
+fn mark_from_all_roots_in(instance: *mut instance::RInstance) {
+    unsafe {
+        // No traceable HashSet: use mark bit visited. (Perf + addresses review complaint
+        // about allocating HashSets and hashing every edge.)
+        mark_instance_roots(instance);
+        for &obj in &(*instance).gc_state.remembered_set.entries {
+            mark_reachable(obj);
         }
     }
+}
 
-    if !to_free.is_empty() {
-        let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let old_to_nil: HashMap<usize, SEXP> =
-            to_free.iter().map(|&obj| (obj as usize, nil)).collect();
-        update_all_references_in(instance, &old_to_nil);
+fn do_full_mark_sweep_in(instance: *mut instance::RInstance) -> (usize, usize) {
+    unsafe {
+        mark_from_all_roots_in(instance);
 
-        for obj in to_free {
-            instance.arena.free_node(obj);
-            freed_count += 1;
+        let mut freed_count = 0;
+        let mut promoted_count = 0;
+        let mut to_free = Vec::new();
+
+        {
+            let arena = &mut (*instance).arena;
+            // Direct iter, only to_free alloc (less GC-time memory pressure).
+            for obj in arena.active_nodes() {
+                if obj.is_null() {
+                    continue;
+                }
+                unsafe {
+                    if (*obj).sxpinfo.mark() {
+                        if (*obj).sxpinfo.gcgen() == Generation::Young as u8 {
+                            (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                            promoted_count += 1;
+                        }
+                        (*obj).sxpinfo.set_mark(false);
+                    } else {
+                        to_free.push(obj);
+                    }
+                }
+            }
         }
+
+        if !to_free.is_empty() {
+            let unreachable: HashSet<usize> = to_free.iter().map(|&obj| obj as usize).collect();
+            let keep_alive =
+                crate::mainutils::memory_main::mark_finalizers_ready_for_unreachable_in(
+                    &mut (*instance).memory_state,
+                    &unreachable,
+                );
+            if !keep_alive.is_empty() {
+                to_free.retain(|obj| !keep_alive.contains(&(*obj as usize)));
+            }
+        }
+
+        if !to_free.is_empty() {
+            let nil = unsafe { crate::sexp::globals::R_NilValue() };
+            let old_to_nil: HashMap<usize, SEXP> =
+                to_free.iter().map(|&obj| (obj as usize, nil)).collect();
+            update_all_references_in(instance, &old_to_nil);
+
+            for obj in to_free {
+                (*instance).arena.free_node(obj);
+                freed_count += 1;
+            }
+        }
+
+        (*instance).gc_state.remembered_set.clear();
+
+        (promoted_count, freed_count)
     }
-
-    instance.gc_state.remembered_set.clear();
-
-    (promoted_count, freed_count)
 }
 
 // ---------------------------------------------------------------------------
@@ -1578,46 +1647,47 @@ mod tests {
     fn reset_gc_test_arena(arena: &mut RArena) {
         *arena = RArena::new();
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        instance::with_required_current_instance(|instance| {
-            instance.protect_stack.borrow_mut().clear();
-            instance.protect_stack_generations.borrow_mut().clear();
-            instance.protect_slot_free.borrow_mut().clear();
-            instance.context_stack.clear();
-            instance.gc_state.remembered_set.clear();
-            instance.error_state.warnings = nil;
-            instance.error_state.handler_stack = nil;
-            instance.error_state.restart_stack = nil;
-            instance.eval_state.current_expr = nil;
-            instance.eval_state.parse_error_file = nil;
-            instance.eval_state.exec_token = nil;
-            instance.eval_state.profiling.sref = nil;
-            instance.eval_state.profiling.srcfiles_buffer = nil;
-            instance.eval_state.printvector.na_string = nil;
-            instance.eval_state.printvector.na_string_noquote = nil;
-            instance.eval_state.print.data.na_string = nil;
-            instance.eval_state.print.data.na_string_noquote = nil;
-            instance.eval_state.print.data.env = nil;
-            instance.eval_state.print.data.callArgs = nil;
-            instance.symbols.clear();
-            for node in instance.symbol_nodes.drain(..) {
+        instance::with_required_current_instance(|instance| unsafe {
+            // Test-harness bulk reset via raw place accesses.
+            (*instance).protect_stack.borrow_mut().clear();
+            (*instance).protect_stack_generations.borrow_mut().clear();
+            (*instance).protect_slot_free.borrow_mut().clear();
+            (*instance).context_stack.clear();
+            (*instance).gc_state.remembered_set.clear();
+            (*instance).error_state.warnings = nil;
+            (*instance).error_state.handler_stack = nil;
+            (*instance).error_state.restart_stack = nil;
+            (*instance).eval_state.current_expr = nil;
+            (*instance).eval_state.parse_error_file = nil;
+            (*instance).eval_state.exec_token = nil;
+            (*instance).eval_state.profiling.sref = nil;
+            (*instance).eval_state.profiling.srcfiles_buffer = nil;
+            (*instance).eval_state.printvector.na_string = nil;
+            (*instance).eval_state.printvector.na_string_noquote = nil;
+            (*instance).eval_state.print.data.na_string = nil;
+            (*instance).eval_state.print.data.na_string_noquote = nil;
+            (*instance).eval_state.print.data.env = nil;
+            (*instance).eval_state.print.data.callArgs = nil;
+            (*instance).symbols.clear();
+            for node in (*instance).symbol_nodes.drain(..) {
                 if !node.is_null() {
                     drop(unsafe { Box::from_raw(node) });
                 }
             }
-            instance.names_state.ddval_symbols.clear();
-            instance.bind_state.blank_string = nil;
-            instance.options.clear();
-            instance.main_state.task_callbacks.clear();
-            instance.objects_state.prim_generics.clear();
-            instance.objects_state.prim_mlist.clear();
-            instance.env_hash_tables.clear();
-            instance.memory_state.pending_finalizers.clear();
-            instance.dynload_state.dll_info_eptrs = nil;
-            instance.dynload_state.symbol_eptrs = nil;
-            instance.dynload_state.c_entry_table = nil;
-            instance.grid_runtime_state.current_grid_state = nil;
-            instance.grid_runtime_state.eval_env = nil;
-            instance.raw_cons.clear();
+            (*instance).names_state.ddval_symbols.clear();
+            (*instance).bind_state.blank_string = nil;
+            (*instance).options.clear();
+            (*instance).main_state.task_callbacks.clear();
+            (*instance).objects_state.prim_generics.clear();
+            (*instance).objects_state.prim_mlist.clear();
+            (*instance).env_hash_tables.clear();
+            (*instance).memory_state.pending_finalizers.clear();
+            (*instance).dynload_state.dll_info_eptrs = nil;
+            (*instance).dynload_state.symbol_eptrs = nil;
+            (*instance).dynload_state.c_entry_table = nil;
+            (*instance).grid_runtime_state.current_grid_state = nil;
+            (*instance).grid_runtime_state.eval_env = nil;
+            (*instance).raw_cons.clear();
         });
         for env in [
             unsafe { crate::sexp::globals::R_EmptyEnv() },
@@ -1795,11 +1865,11 @@ mod tests {
     fn test_gc_reentrancy_guard() {
         let _session = RSession::new();
 
-        instance::with_required_current_instance(|instance| {
-            instance.gc_state.in_progress = true;
+        instance::with_required_current_instance(|instance| unsafe {
+            (*instance).gc_state.in_progress = true;
             assert_eq!(minor_gc_in(instance), (0, 0));
-            assert!(instance.gc_state.in_progress);
-            instance.gc_state.in_progress = false;
+            assert!((*instance).gc_state.in_progress);
+            (*instance).gc_state.in_progress = false;
         });
     }
 
@@ -2594,8 +2664,8 @@ mod tests {
         unsafe {
             (*namespace).data.envsxp.frame = payload;
         }
-        instance::with_required_current_instance(|inst| {
-            inst.package_namespace_cache.insert(
+        instance::with_required_current_instance(|inst| unsafe {
+            (*inst).package_namespace_cache.insert(
                 "gcProbePkg".to_string(),
                 (std::path::PathBuf::from("/gc-probe"), namespace),
             );
@@ -2657,8 +2727,9 @@ mod tests {
             );
         }
 
-        let cached_namespace = instance::with_required_current_instance(|inst| {
-            inst.package_namespace_cache
+        let cached_namespace = instance::with_required_current_instance(|inst| unsafe {
+            (*inst)
+                .package_namespace_cache
                 .get("gcProbePkg")
                 .expect("namespace cached")
                 .1
@@ -2692,14 +2763,15 @@ mod tests {
                 .collect::<Vec<_>>()
         });
 
-        instance::with_required_current_instance(|inst| {
-            inst.error_state.warning_call = roots[0];
-            inst.objects_state.deferred_default_object = roots[1];
-            unsafe { inst.eval_state.bc_stack.push(roots[2]) };
+        instance::with_required_current_instance(|inst| unsafe {
+            (*inst).error_state.warning_call = roots[0];
+            (*inst).objects_state.deferred_default_object = roots[1];
+            unsafe { (*inst).eval_state.bc_stack.push(roots[2]) };
             let mut http_roots = roots[3..6].iter().copied();
-            inst.httpd_state
+            (*inst)
+                .httpd_state
                 .visit_roots(|slot| *slot = http_roots.next().expect("HTTP root slot"));
-            inst.package_namespace_cache.insert(
+            (*inst).package_namespace_cache.insert(
                 "rootProbePkg".to_string(),
                 (std::path::PathBuf::from("/root-probe"), roots[6]),
             );
@@ -2726,21 +2798,28 @@ mod tests {
             .collect::<HashMap<_, _>>();
         instance::with_required_current_instance(|inst| update_instance_roots_in(inst, &remap));
 
-        instance::with_required_current_instance(|inst| {
-            assert_eq!(inst.error_state.warning_call, replacements[0]);
-            assert_eq!(inst.objects_state.deferred_default_object, replacements[1]);
+        instance::with_required_current_instance(|inst| unsafe {
+            assert_eq!((*inst).error_state.warning_call, replacements[0]);
+            assert_eq!(
+                (*inst).objects_state.deferred_default_object,
+                replacements[1]
+            );
             let mut bytecode_root = None;
-            inst.eval_state
+            (*inst)
+                .eval_state
                 .bc_stack
                 .visit_roots(|root| bytecode_root = Some(*root));
             assert_eq!(bytecode_root, Some(replacements[2]));
             let mut http_roots = Vec::new();
-            inst.httpd_state.visit_roots(|root| http_roots.push(*root));
+            (*inst)
+                .httpd_state
+                .visit_roots(|root| http_roots.push(*root));
             assert_eq!(http_roots, replacements[3..6]);
-            assert_eq!(
-                inst.package_namespace_cache["rootProbePkg"].1,
-                replacements[6]
-            );
+            let cached_root = {
+                let cache = unsafe { &(*inst).package_namespace_cache };
+                cache["rootProbePkg"].1
+            };
+            assert_eq!(cached_root, replacements[6]);
         });
     }
 
@@ -2759,8 +2838,9 @@ mod tests {
         unsafe {
             *crate::sexp::accessors::INTEGER(fun) = 7;
         }
-        instance::with_required_current_instance(|inst| {
-            inst.active_bindings
+        instance::with_required_current_instance(|inst| unsafe {
+            (*inst)
+                .active_bindings
                 .insert((env as usize, sym as usize), fun);
         });
 
@@ -2776,9 +2856,11 @@ mod tests {
         let env_addr = env as usize;
         full_gc();
         assert!(!with_arena(|arena| arena.contains(env)));
-        instance::with_required_current_instance(|inst| {
+        instance::with_required_current_instance(|inst| unsafe {
             assert!(
-                !inst.active_bindings.contains_key(&(env_addr, sym as usize)),
+                !(*inst)
+                    .active_bindings
+                    .contains_key(&(env_addr, sym as usize)),
                 "stale active binding entry survived the keyed env sweep"
             );
         });
@@ -2819,18 +2901,19 @@ mod tests {
         assert!(!with_arena(|arena| arena.contains(dead_env)));
         assert!(crate::sexp::envir::environment_is_locked_raw(live_env));
         assert!(crate::sexp::envir::binding_is_locked_raw(live_env, sym));
-        instance::with_required_current_instance(|inst| {
-            assert!(inst.locked_environments.contains(&(live_env as usize)));
+        instance::with_required_current_instance(|inst| unsafe {
+            assert!((*inst).locked_environments.contains(&(live_env as usize)));
             assert!(
-                !inst.locked_environments.contains(&(dead_env as usize)),
+                !(*inst).locked_environments.contains(&(dead_env as usize)),
                 "locked-environment entry survived the keyed env sweep"
             );
             assert!(
-                inst.locked_bindings
+                (*inst)
+                    .locked_bindings
                     .contains(&(live_env as usize, sym as usize))
             );
             assert!(
-                !inst
+                !(*inst)
                     .locked_bindings
                     .contains(&(dead_env as usize, sym as usize)),
                 "locked-binding entry survived the keyed env sweep"
@@ -2909,18 +2992,18 @@ mod tests {
         // recycled address could alias.
         for &env in &transient {
             assert!(!with_arena(|arena| arena.contains(env)));
-            instance::with_required_current_instance(|inst| {
+            instance::with_required_current_instance(|inst| unsafe {
                 assert!(
-                    !inst
+                    !(*inst)
                         .active_bindings
                         .contains_key(&(env as usize, sym_active as usize))
                 );
                 assert!(
-                    !inst
+                    !(*inst)
                         .locked_bindings
                         .contains(&(env as usize, sym_locked as usize))
                 );
-                assert!(!inst.locked_environments.contains(&(env as usize)));
+                assert!(!(*inst).locked_environments.contains(&(env as usize)));
             });
         }
     }
@@ -2943,9 +3026,9 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| unsafe {
             instance::with_required_current_instance(|inst| {
-                inst.memory_state.pending_finalizers.clear();
-                inst.gc_state.gc_pending = false;
-                inst.eval_state.eval_depth = 0;
+                (*inst).memory_state.pending_finalizers.clear();
+                (*inst).gc_state.gc_pending = false;
+                (*inst).eval_state.eval_depth = 0;
             });
             RUNS.store(0, Ordering::SeqCst);
 
@@ -2959,7 +3042,7 @@ mod tests {
             assert_eq!(RUNS.load(Ordering::SeqCst), 0);
 
             instance::with_required_current_instance(|inst| {
-                inst.gc_state.gc_pending = true;
+                (*inst).gc_state.gc_pending = true;
             });
             run_pending_gc_if_quiescent();
             assert_eq!(RUNS.load(Ordering::SeqCst), 1);
@@ -2984,9 +3067,9 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| unsafe {
             instance::with_required_current_instance(|inst| {
-                inst.memory_state.pending_finalizers.clear();
-                inst.gc_state.gc_pending = false;
-                inst.eval_state.eval_depth = 0;
+                (*inst).memory_state.pending_finalizers.clear();
+                (*inst).gc_state.gc_pending = false;
+                (*inst).eval_state.eval_depth = 0;
             });
             RUNS.store(0, Ordering::SeqCst);
 
@@ -2998,7 +3081,7 @@ mod tests {
             assert_eq!(RUNS.load(Ordering::SeqCst), 0);
 
             instance::with_required_current_instance(|inst| {
-                inst.gc_state.gc_pending = true;
+                (*inst).gc_state.gc_pending = true;
             });
             maybe_collect_at_eval_safe_point();
             assert_eq!(RUNS.load(Ordering::SeqCst), 1);

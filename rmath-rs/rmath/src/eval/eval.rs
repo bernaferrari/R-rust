@@ -828,8 +828,8 @@ mod tests {
             .expect("bytecode belongs to session");
         let env = session.global_env().expect("global env should exist");
 
-        crate::sexp::instance::with_required_current_instance(|inst| {
-            inst.eval_state.disable_bytecode = TRUE;
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).eval_state.disable_bytecode = TRUE;
         });
 
         let err = EvalContext::new(env)

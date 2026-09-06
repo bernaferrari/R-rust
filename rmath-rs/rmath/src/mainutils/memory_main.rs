@@ -158,14 +158,17 @@ fn with_memory_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut MemoryRuntimeState) -> R,
 {
-    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.memory_state))
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        f(&mut (*inst).memory_state)
+    })
 }
 
 /// Returns whether a GC is currently running.
 ///
 /// This is the equivalent of R's `R_gc_running()`.
 pub unsafe fn R_gc_running() -> c_int {
-    crate::sexp::instance::with_current_instance(|inst| inst.memory_state.in_gc).unwrap_or(0)
+    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).memory_state.in_gc })
+        .unwrap_or(0)
 }
 
 /// Trigger a full garbage collection.
@@ -923,14 +926,14 @@ pub unsafe fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
 /// Get the maximum vector heap size.
 /// Duplicate — no #[unsafe(no_mangle)] (already in mainutils/main.rs).
 pub(crate) unsafe fn R_GetMaxVSize_memory() -> u64 {
-    crate::sexp::instance::with_current_instance(|inst| inst.memory_state.max_v_size)
+    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).memory_state.max_v_size })
         .unwrap_or(u64::MAX)
 }
 
 /// Get the maximum node heap size.
 /// Duplicate — no #[unsafe(no_mangle)] (already in mainutils/main.rs).
 pub(crate) unsafe fn R_GetMaxNSize_memory() -> u64 {
-    crate::sexp::instance::with_current_instance(|inst| inst.memory_state.max_n_size)
+    crate::sexp::instance::with_current_instance(|inst| unsafe { (*inst).memory_state.max_n_size })
         .unwrap_or(u64::MAX)
 }
 
@@ -1386,14 +1389,14 @@ pub unsafe fn do_memoryprofile(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) 
         }
         let data = REAL(result);
         crate::sexp::instance::with_required_current_instance(|instance| {
-            *data.add(0) = instance.arena.node_count() as f64;
-            *data.add(1) = instance.arena.free_count() as f64;
-            *data.add(2) = instance.arena.total_bytes_allocated() as f64;
-            *data.add(3) = instance
+            *data.add(0) = (*instance).arena.node_count() as f64;
+            *data.add(1) = (*instance).arena.free_count() as f64;
+            *data.add(2) = (*instance).arena.total_bytes_allocated() as f64;
+            *data.add(3) = (*instance)
                 .gc_state
                 .stats
                 .peak_memory
-                .max(instance.arena.total_bytes_allocated()) as f64;
+                .max((*instance).arena.total_bytes_allocated()) as f64;
         });
         result
     }

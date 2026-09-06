@@ -92,12 +92,13 @@ pub struct ProtectGuard {
 /// therefore stored as an address with exposed provenance and reconstituted
 /// through `ptr::with_exposed_provenance` — the sanctioned wildcard-
 /// provenance escape hatch for ambient instance back-references (permissive
-/// provenance, the mode CI's Miri job runs in). The cleanup helpers take
-/// `&RInstance` — they only touch `RefCell` fields — so the shared wildcard
-/// retag validates against the still-live session root tag.
-fn with_guard_owner<R>(owner: usize, f: impl FnOnce(&RInstance) -> R) -> R {
+/// provenance, the mode CI's Miri job runs in). The cleanup helpers take a
+/// raw `*mut RInstance` and only touch `RefCell` fields through raw place
+/// accesses, so no borrow tag is created and nothing can be popped by
+/// reentrant ambient writes.
+fn with_guard_owner<R>(owner: usize, f: impl FnOnce(*mut RInstance) -> R) -> R {
     // SAFETY: see the function docs; the owner outlives the guard.
-    unsafe { f(&*std::ptr::with_exposed_provenance::<RInstance>(owner)) }
+    unsafe { f(std::ptr::with_exposed_provenance_mut::<RInstance>(owner)) }
 }
 
 impl Drop for ProtectGuard {
@@ -108,9 +109,7 @@ impl Drop for ProtectGuard {
             // SAFETY: The guard is created only while its owning RInstance is
             // active and the session APIs keep that instance alive across the
             // scoped interpreter call that owns the guard.
-            with_guard_owner(owner, |inst| unsafe {
-                unprotect_count_in(inst, count);
-            });
+            with_guard_owner(owner, |inst| unprotect_count_in(inst, count));
         }
     }
 }
@@ -147,7 +146,7 @@ fn protect_raw(s: SEXP) -> ProtectGuard {
 
     let owner = with_required_current_instance(|inst| {
         push_protect_in(inst, s);
-        inst as *mut RInstance as usize
+        inst as usize
     });
 
     ProtectGuard {
@@ -165,9 +164,7 @@ pub(crate) fn protect_n(n: usize) -> ProtectGuard {
         owner: if n == 0 {
             None
         } else {
-            Some(with_required_current_instance(|inst| {
-                inst as *mut RInstance as usize
-            }))
+            Some(with_required_current_instance(|inst| inst as usize))
         },
         count: n,
     }
@@ -184,11 +181,15 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
 /// The counter is monotonic per instance, so every push — including a push
 /// that reuses the index of a released entry — is distinguishable from
 /// every slot handle captured earlier.
-fn next_slot_generation(inst: &RInstance) -> u64 {
-    let generation = inst.protect_slot_next_generation.get();
-    inst.protect_slot_next_generation
-        .set(generation.wrapping_add(1));
-    generation
+fn next_slot_generation(inst: *mut RInstance) -> u64 {
+    // P2: strictly-local Cell access; no ambient write intervenes.
+    unsafe {
+        let generation = (*inst).protect_slot_next_generation.get();
+        (*inst)
+            .protect_slot_next_generation
+            .set(generation.wrapping_add(1));
+        generation
+    }
 }
 
 /// Record `generation` for the entry just pushed at `index`, keeping the
@@ -197,8 +198,9 @@ fn next_slot_generation(inst: &RInstance) -> u64 {
 /// `ProtectScope`, instance teardown, GC test harnesses): surplus entries
 /// are dropped and gaps are back-filled, so the log stays aligned with the
 /// entries this module pushed.
-fn record_slot_generation(inst: &RInstance, index: usize, generation: u64) {
-    let mut generations = inst.protect_stack_generations.borrow_mut();
+fn record_slot_generation(inst: *mut RInstance, index: usize, generation: u64) {
+    // P2: strictly-local RefCell access; no ambient write intervenes.
+    let mut generations = unsafe { (*inst).protect_stack_generations.borrow_mut() };
     if generations.len() > index {
         generations.truncate(index);
     }
@@ -214,29 +216,34 @@ fn record_slot_generation(inst: &RInstance, index: usize, generation: u64) {
 /// and overwrites it in place, so surviving slots keep their indices across
 /// arbitrary drop orders. Returns the index now holding `s` and the fresh
 /// generation recorded for it.
-fn claim_protect_slot_in(inst: &RInstance, s: SEXP, api: &str) -> (usize, u64) {
-    if let Some(index) = inst.protect_slot_free.borrow_mut().pop() {
-        let mut stack = inst.protect_stack.borrow_mut();
-        let mut generations = inst.protect_stack_generations.borrow_mut();
-        if index < stack.len() && index < generations.len() {
-            stack[index] = s;
-            let generation = next_slot_generation(inst);
-            generations[index] = generation;
-            return (index, generation);
+fn claim_protect_slot_in(inst: *mut RInstance, s: SEXP, api: &str) -> (usize, u64) {
+    // P2: strictly-local RefCell access. `reserve_slot_or_fail` may allocate
+    // (stack.try_reserve) and panic, but neither reenters the interpreter
+    // nor touches the instance through another raw path.
+    unsafe {
+        if let Some(index) = (*inst).protect_slot_free.borrow_mut().pop() {
+            let mut stack = (*inst).protect_stack.borrow_mut();
+            let mut generations = (*inst).protect_stack_generations.borrow_mut();
+            if index < stack.len() && index < generations.len() {
+                stack[index] = s;
+                let generation = next_slot_generation(inst);
+                generations[index] = generation;
+                return (index, generation);
+            }
+            // Stale free-list entry (truncated away without pruning): discard it
+            // and fall through to a fresh push.
         }
-        // Stale free-list entry (truncated away without pruning): discard it
-        // and fall through to a fresh push.
+        let mut stack = (*inst).protect_stack.borrow_mut();
+        reserve_slot_or_fail(&mut stack, api);
+        stack.push(s);
+        let index = stack.len() - 1;
+        let generation = next_slot_generation(inst);
+        record_slot_generation(inst, index, generation);
+        (index, generation)
     }
-    let mut stack = inst.protect_stack.borrow_mut();
-    reserve_slot_or_fail(&mut stack, api);
-    stack.push(s);
-    let index = stack.len() - 1;
-    let generation = next_slot_generation(inst);
-    record_slot_generation(inst, index, generation);
-    (index, generation)
 }
 
-pub(crate) fn push_protect_in(inst: &mut RInstance, s: SEXP) {
+pub(crate) fn push_protect_in(inst: *mut RInstance, s: SEXP) {
     if !s.is_null() {
         claim_protect_slot_in(inst, s, "protect");
     }
@@ -246,9 +253,11 @@ fn push_protect(s: SEXP) {
     with_required_current_instance(|inst| push_protect_in(inst, s));
 }
 
-fn push_preserve_in(inst: &mut RInstance, s: SEXP) {
+fn push_preserve_in(inst: *mut RInstance, s: SEXP) {
     if !s.is_null() {
-        let mut stack = inst.preserve_stack.borrow_mut();
+        // P2: strictly-local RefCell access; see claim_protect_slot_in on
+        // try_reserve.
+        let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
         reserve_slot_or_fail(&mut stack, "preserve");
         stack.push(s);
     }
@@ -258,11 +267,12 @@ fn push_preserve(s: SEXP) {
     with_required_current_instance(|inst| push_preserve_in(inst, s));
 }
 
-pub(crate) fn release_preserved_in(inst: &RInstance, s: SEXP) {
+pub(crate) fn release_preserved_in(inst: *mut RInstance, s: SEXP) {
     if s.is_null() {
         return;
     }
-    let mut stack = inst.preserve_stack.borrow_mut();
+    // P2: strictly-local RefCell access; no ambient write intervenes.
+    let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
     if let Some(pos) = stack.iter().position(|&x| x == s) {
         stack.remove(pos);
     }
@@ -285,9 +295,7 @@ impl Drop for PreserveGuard {
         if let Some(owner) = self.owner {
             // SAFETY: See ProtectGuard::drop; preserve guards are scoped to the
             // owning session entrypoint that created them.
-            with_guard_owner(owner, |inst| unsafe {
-                release_preserved_in(inst, self.value);
-            });
+            with_guard_owner(owner, |inst| release_preserved_in(inst, self.value));
         }
     }
 }
@@ -310,7 +318,7 @@ pub fn try_preserve_sexp(value: Sexp<'_>) -> Result<PreserveGuard, ProtectError>
 
     let owner = with_required_current_instance(|inst| {
         push_preserve_in(inst, raw);
-        inst as *mut RInstance as usize
+        inst as usize
     });
     Ok(PreserveGuard {
         owner: Some(owner),
@@ -330,41 +338,50 @@ pub(crate) fn protect_raw_pointer(s: SEXP) -> SEXP {
 
 /// Pop the top `n` entries from the protection stack.
 /// Run `f` while temporarily protecting extra roots on the protect stack.
-pub(crate) fn with_temporary_extra_protects<F, R>(extra: impl FnOnce(&mut RInstance), f: F) -> R
+pub(crate) fn with_temporary_extra_protects<F, R>(extra: impl FnOnce(*mut RInstance), f: F) -> R
 where
     F: FnOnce() -> R,
 {
     with_required_current_instance(|inst| {
-        let start = inst.protect_stack.borrow().len();
+        // P2: strictly-local RefCell reads around the caller's extra-root
+        // push; f() runs with no instance borrow held.
+        let start = unsafe { (*inst).protect_stack.borrow().len() };
         extra(inst);
-        let added = inst.protect_stack.borrow().len().saturating_sub(start);
+        let added = unsafe { (*inst).protect_stack.borrow().len().saturating_sub(start) };
         let result = f();
         unprotect_count_in(inst, added);
         result
     })
 }
 
-pub(crate) fn unprotect_count_in(inst: &RInstance, n: usize) {
+pub(crate) fn unprotect_count_in(inst: *mut RInstance, n: usize) {
     if n == 0 {
         return;
     }
-    let mut stack = inst.protect_stack.borrow_mut();
-    let len = stack.len();
-    if n >= len {
-        stack.clear();
-        inst.protect_stack_generations.borrow_mut().clear();
-        inst.protect_slot_free.borrow_mut().clear();
-    } else {
-        let keep = len - n;
-        stack.truncate(keep);
-        inst.protect_stack_generations.borrow_mut().truncate(keep);
-        // Free-list indices at/above the new length no longer name live
-        // slots: drop them, and release protection for any live-rooted
-        // object whose slot was cut away is reported stale via the
-        // truncated generation.
-        inst.protect_slot_free
-            .borrow_mut()
-            .retain(|&index| index < keep);
+    // P2: strictly-local RefCell access; no ambient write intervenes.
+    unsafe {
+        let mut stack = (*inst).protect_stack.borrow_mut();
+        let len = stack.len();
+        if n >= len {
+            stack.clear();
+            (*inst).protect_stack_generations.borrow_mut().clear();
+            (*inst).protect_slot_free.borrow_mut().clear();
+        } else {
+            let keep = len - n;
+            stack.truncate(keep);
+            (*inst)
+                .protect_stack_generations
+                .borrow_mut()
+                .truncate(keep);
+            // Free-list indices at/above the new length no longer name live
+            // slots: drop them, and release protection for any live-rooted
+            // object whose slot was cut away is reported stale via the
+            // truncated generation.
+            (*inst)
+                .protect_slot_free
+                .borrow_mut()
+                .retain(|&index| index < keep);
+        }
     }
 }
 
@@ -380,16 +397,19 @@ pub(crate) fn unprotect_ptr(s: SEXP) {
     with_required_current_instance(|inst| unprotect_ptr_in(inst, s));
 }
 
-pub(crate) fn unprotect_ptr_in(inst: &mut RInstance, s: SEXP) {
+pub(crate) fn unprotect_ptr_in(inst: *mut RInstance, s: SEXP) {
     if s.is_null() {
         return;
     }
-    let mut stack = inst.protect_stack.borrow_mut();
-    if let Some(pos) = stack.iter().rposition(|&x| x == s) {
-        stack.remove(pos);
-        let mut generations = inst.protect_stack_generations.borrow_mut();
-        if pos < generations.len() {
-            generations.remove(pos);
+    // P2: strictly-local RefCell access; no ambient write intervenes.
+    unsafe {
+        let mut stack = (*inst).protect_stack.borrow_mut();
+        if let Some(pos) = stack.iter().rposition(|&x| x == s) {
+            stack.remove(pos);
+            let mut generations = (*inst).protect_stack_generations.borrow_mut();
+            if pos < generations.len() {
+                generations.remove(pos);
+            }
         }
     }
 }
@@ -401,11 +421,13 @@ pub(crate) fn R_ProtectCount() -> usize {
     with_required_current_instance(R_ProtectCount_in)
 }
 
-pub(crate) fn R_ProtectCount_in(inst: &mut RInstance) -> usize {
+pub(crate) fn R_ProtectCount_in(inst: *mut RInstance) -> usize {
     // Freed tail slots collapse off the stack on release, so the physical
     // length is the live-entry tail depth; interior tombstones below live
     // entries are impossible by construction.
-    inst.protect_stack.borrow().len()
+    //
+    // P2: strictly-local RefCell read; no ambient write intervenes.
+    unsafe { (*inst).protect_stack.borrow().len() }
 }
 
 /// Iterate over all protected SEXP values on the stack.
@@ -417,11 +439,14 @@ where
     with_required_current_instance(|inst| with_protected_objects_in(inst, f))
 }
 
-pub(crate) fn with_protected_objects_in<F, R>(inst: &mut RInstance, f: F) -> R
+pub(crate) fn with_protected_objects_in<F, R>(inst: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    let stack = inst.protect_stack.borrow();
+    // P2: the RefCell read borrow (and the &[SEXP] handed to f) covers the
+    // protect-stack buffer only; GC marking writes SEXP headers elsewhere,
+    // never this Vec's allocation.
+    let stack = unsafe { (*inst).protect_stack.borrow() };
     f(&stack)
 }
 
@@ -434,11 +459,13 @@ where
     with_required_current_instance(|inst| update_protect_stack_refs_in(inst, update_fn));
 }
 
-pub(crate) fn update_protect_stack_refs_in<F>(inst: &mut RInstance, mut update_fn: F)
+pub(crate) fn update_protect_stack_refs_in<F>(inst: *mut RInstance, mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    let mut stack = inst.protect_stack.borrow_mut();
+    // P2: the RefCell write borrow covers the protect-stack buffer only;
+    // the sweep's update_fn writes SEXP objects elsewhere.
+    let mut stack = unsafe { (*inst).protect_stack.borrow_mut() };
     for slot in stack.iter_mut() {
         *slot = update_fn(*slot);
     }
@@ -453,11 +480,12 @@ where
     with_required_current_instance(|inst| update_preserve_stack_refs_in(inst, update_fn));
 }
 
-pub(crate) fn update_preserve_stack_refs_in<F>(inst: &mut RInstance, mut update_fn: F)
+pub(crate) fn update_preserve_stack_refs_in<F>(inst: *mut RInstance, mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    let mut stack = inst.preserve_stack.borrow_mut();
+    // P2: as update_protect_stack_refs_in.
+    let mut stack = unsafe { (*inst).preserve_stack.borrow_mut() };
     for slot in stack.iter_mut() {
         *slot = update_fn(*slot);
     }
@@ -472,11 +500,12 @@ where
     with_required_current_instance(|inst| with_preserved_objects_in(inst, f))
 }
 
-pub(crate) fn with_preserved_objects_in<F, R>(inst: &mut RInstance, f: F) -> R
+pub(crate) fn with_preserved_objects_in<F, R>(inst: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    let stack = inst.preserve_stack.borrow();
+    // P2: as with_protected_objects_in.
+    let stack = unsafe { (*inst).preserve_stack.borrow() };
     f(&stack)
 }
 
@@ -559,7 +588,7 @@ fn protect_raw_with_slot(s: SEXP, api: &str) -> ProtectionSlot {
     with_required_current_instance(|inst| protect_raw_with_slot_in(inst, s, api))
 }
 
-fn protect_raw_with_slot_in(inst: &mut RInstance, s: SEXP, api: &str) -> ProtectionSlot {
+fn protect_raw_with_slot_in(inst: *mut RInstance, s: SEXP, api: &str) -> ProtectionSlot {
     if s.is_null() {
         return ProtectionSlot::inactive();
     }
@@ -571,11 +600,12 @@ fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
     with_required_current_instance(|inst| reprotect_slot_in(inst, slot, s));
 }
 
-fn reprotect_slot_in(inst: &RInstance, slot: ProtectionSlot, s: SEXP) {
+fn reprotect_slot_in(inst: *mut RInstance, slot: ProtectionSlot, s: SEXP) {
     let Some(index) = slot.index else {
         return;
     };
-    let mut stack = inst.protect_stack.borrow_mut();
+    // P2: strictly-local RefCell write; no ambient write intervenes.
+    let mut stack = unsafe { (*inst).protect_stack.borrow_mut() };
     if index < stack.len() {
         stack[index] = s;
     }
@@ -585,7 +615,7 @@ fn release_protect_slot(slot: ProtectionSlot) {
     with_required_current_instance(|inst| release_protect_slot_in(inst, slot));
 }
 
-fn release_protect_slot_in(inst: &RInstance, slot: ProtectionSlot) {
+fn release_protect_slot_in(inst: *mut RInstance, slot: ProtectionSlot) {
     let Some(index) = slot.index else {
         return;
     };
@@ -599,42 +629,47 @@ fn release_protect_slot_in(inst: &RInstance, slot: ProtectionSlot) {
     // `with_protected_objects` tail snapshots, and the GC root scan never
     // observe holes below live entries; interior frees stay tombstoned until
     // every slot above them has also been released.
-    let mut stack = inst.protect_stack.borrow_mut();
-    if index >= stack.len() {
-        return;
-    }
-    let mut generations = inst.protect_stack_generations.borrow_mut();
-    if index >= generations.len() || generations[index] != slot.generation {
-        return;
-    }
-    stack[index] = std::ptr::null_mut();
-    generations[index] = next_slot_generation(inst);
-    let mut free = inst.protect_slot_free.borrow_mut();
-    if !free.contains(&index) {
-        free.push(index);
-    }
-    while stack.len() > 0 && stack[stack.len() - 1].is_null() {
-        let tail = stack.len() - 1;
-        if let Some(pos) = free.iter().position(|&i| i == tail) {
-            free.swap_remove(pos);
-            stack.pop();
-            generations.pop();
-        } else {
-            break;
+    //
+    // P2: strictly-local RefCell access; no ambient write intervenes.
+    unsafe {
+        let mut stack = (*inst).protect_stack.borrow_mut();
+        if index >= stack.len() {
+            return;
+        }
+        let mut generations = (*inst).protect_stack_generations.borrow_mut();
+        if index >= generations.len() || generations[index] != slot.generation {
+            return;
+        }
+        stack[index] = std::ptr::null_mut();
+        generations[index] = next_slot_generation(inst);
+        let mut free = (*inst).protect_slot_free.borrow_mut();
+        if !free.contains(&index) {
+            free.push(index);
+        }
+        while stack.len() > 0 && stack[stack.len() - 1].is_null() {
+            let tail = stack.len() - 1;
+            if let Some(pos) = free.iter().position(|&i| i == tail) {
+                free.swap_remove(pos);
+                stack.pop();
+                generations.pop();
+            } else {
+                break;
+            }
         }
     }
 }
 /// The generation currently recorded for `slot`'s stack index, or `None`
 /// when the entry is gone (released, or the generation log was desynced by
 /// a foreign direct push onto the stack).
-fn protect_slot_generation_in(inst: &RInstance, slot: ProtectionSlot) -> Option<u64> {
+fn protect_slot_generation_in(inst: *mut RInstance, slot: ProtectionSlot) -> Option<u64> {
     let index = slot.index?;
-    let generations = inst.protect_stack_generations.borrow();
+    // P2: strictly-local RefCell read; no ambient write intervenes.
+    let generations = unsafe { (*inst).protect_stack_generations.borrow() };
     generations.get(index).copied()
 }
 
 /// Whether `slot` no longer refers to the stack entry it was created for.
-fn protect_slot_is_stale_in(inst: &RInstance, slot: ProtectionSlot) -> bool {
+fn protect_slot_is_stale_in(inst: *mut RInstance, slot: ProtectionSlot) -> bool {
     if !slot.is_active() {
         return false;
     }
@@ -668,9 +703,7 @@ impl IndexedProtectGuard {
     pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
         if let Some(owner) = self.owner {
             // SAFETY: See ProtectGuard::drop.
-            with_guard_owner(owner, |inst| unsafe {
-                reprotect_slot_in(inst, self.slot, value);
-            });
+            with_guard_owner(owner, |inst| reprotect_slot_in(inst, self.slot, value));
         }
     }
 
@@ -690,9 +723,7 @@ impl Drop for IndexedProtectGuard {
     fn drop(&mut self) {
         if let Some(owner) = self.owner {
             // SAFETY: See ProtectGuard::drop.
-            with_guard_owner(owner, |inst| unsafe {
-                release_protect_slot_in(inst, self.slot);
-            });
+            with_guard_owner(owner, |inst| release_protect_slot_in(inst, self.slot));
         }
     }
 }
@@ -847,7 +878,7 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard 
     }
 
     with_required_current_instance(|inst| IndexedProtectGuard {
-        owner: Some(inst as *mut RInstance as usize),
+        owner: Some(inst as usize),
         slot: protect_raw_with_slot_in(inst, s, api),
     })
 }
@@ -908,6 +939,7 @@ fn ensure_owner_scoped(value: Sexp<'_>, api: &'static str) -> Result<(), Protect
 #[cfg(test)]
 mod tests {
     use std::ptr;
+    use std::ptr::addr_of_mut;
 
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::instance::{RInstance, current_instance_ptr, replace_current_instance};
@@ -1208,16 +1240,16 @@ mod tests {
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
 
         let guard = protect(0x1 as SEXP);
-        assert_eq!(R_ProtectCount_in(&mut left), 1);
-        assert_eq!(R_ProtectCount_in(&mut right), 0);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 1);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(right)), 0);
 
         unsafe {
             replace_current_instance(Some(&mut right));
         }
         drop(guard);
 
-        assert_eq!(R_ProtectCount_in(&mut left), 0);
-        assert_eq!(R_ProtectCount_in(&mut right), 0);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 0);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(right)), 0);
         unsafe {
             replace_current_instance(previous);
         }
@@ -1232,15 +1264,15 @@ mod tests {
         protect_raw_pointer(0x1 as SEXP);
         protect_raw_pointer(0x2 as SEXP);
         let guard = protect_n(2);
-        assert_eq!(R_ProtectCount_in(&mut left), 2);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 2);
 
         unsafe {
             replace_current_instance(Some(&mut right));
         }
         drop(guard);
 
-        assert_eq!(R_ProtectCount_in(&mut left), 0);
-        assert_eq!(R_ProtectCount_in(&mut right), 0);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 0);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(right)), 0);
         unsafe {
             replace_current_instance(previous);
         }
@@ -1263,7 +1295,7 @@ mod tests {
         with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
             assert_eq!(objects, &[raw])
         });
-        with_preserved_objects_in(&mut right, |objects| assert!(objects.is_empty()));
+        with_preserved_objects_in(addr_of_mut!(right), |objects| assert!(objects.is_empty()));
 
         unsafe {
             replace_current_instance(Some(&mut right));
@@ -1273,7 +1305,7 @@ mod tests {
         with_preserved_objects_in(unsafe { &mut *left_ptr }, |objects| {
             assert!(objects.is_empty())
         });
-        with_preserved_objects_in(&mut right, |objects| assert!(objects.is_empty()));
+        with_preserved_objects_in(addr_of_mut!(right), |objects| assert!(objects.is_empty()));
         unsafe {
             replace_current_instance(previous);
         }
@@ -1286,18 +1318,20 @@ mod tests {
         let previous = unsafe { replace_current_instance(Some(&mut left)) };
 
         let mut guard = protect_with_index_raw(0x1 as SEXP, "test");
-        assert_eq!(R_ProtectCount_in(&mut left), 1);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 1);
 
         unsafe {
             replace_current_instance(Some(&mut right));
         }
         guard.reprotect_raw(0x2 as SEXP);
-        with_protected_objects_in(&mut left, |objects| assert_eq!(objects, &[0x2 as SEXP]));
-        with_protected_objects_in(&mut right, |objects| assert!(objects.is_empty()));
+        with_protected_objects_in(addr_of_mut!(left), |objects| {
+            assert_eq!(objects, &[0x2 as SEXP])
+        });
+        with_protected_objects_in(addr_of_mut!(right), |objects| assert!(objects.is_empty()));
         drop(guard);
 
-        assert_eq!(R_ProtectCount_in(&mut left), 0);
-        assert_eq!(R_ProtectCount_in(&mut right), 0);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(left)), 0);
+        assert_eq!(R_ProtectCount_in(addr_of_mut!(right)), 0);
         unsafe {
             replace_current_instance(previous);
         }
@@ -1501,9 +1535,9 @@ mod tests {
             let sexp = root.unroot();
             assert_eq!(sexp.as_raw(), value.clone().as_raw());
             assert_eq!(R_ProtectCount(), depth_before);
-            crate::sexp::instance::with_required_current_instance(|inst| {
+            crate::sexp::instance::with_required_current_instance(|inst| unsafe {
                 for _ in 0..1000 {
-                    inst.arena.alloc_node(SEXPTYPE::INTSXP);
+                    (*inst).arena.alloc_node(SEXPTYPE::INTSXP);
                 }
             });
 

@@ -429,7 +429,9 @@ impl Default for X11RuntimeState {
 }
 
 fn with_x11_state<R>(f: impl FnOnce(&mut X11RuntimeState) -> R) -> R {
-    with_required_current_instance(|instance| f(&mut instance.x11_state))
+    // P1: the &mut X11RuntimeState lend spans only `f`; callers adjust
+    // display/gamma/geometry config values without entering the interpreter.
+    with_required_current_instance(|instance| f(unsafe { &mut (*instance).x11_state }))
 }
 
 // ── Exported symbols (no_mangle) ──────────────────────────────────────

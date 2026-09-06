@@ -120,7 +120,9 @@ fn with_radix_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut RadixSortState) -> R,
 {
-    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.eval_state.radixsort))
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        f(&mut (*inst).eval_state.radixsort)
+    })
 }
 
 // ---------------------------------------------------------------------------

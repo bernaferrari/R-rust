@@ -30,7 +30,7 @@ use crate::sexp::protect::protect;
 pub unsafe fn R_Date() -> *mut c_char {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    with_required_current_instance(|instance| {
+    with_required_current_instance(|instance| unsafe {
         let epoch_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
@@ -64,7 +64,7 @@ pub unsafe fn R_Date() -> *mut c_char {
             1900 + tm.tm_year,
         );
 
-        let b = &mut instance.startup_state.date_buf;
+        let b = &mut (*instance).startup_state.date_buf;
         b.fill(0);
         let bytes = s.as_bytes();
         let copy_len = bytes.len().min(25);
@@ -208,8 +208,9 @@ const R_CODESET_MAX: usize = 64;
 /// This is a port of `R_nativeEncoding()` from platform.c.
 /// The encoding is initialized by `R_check_locale()`.
 pub unsafe fn R_nativeEncoding() -> *const c_char {
-    with_required_current_instance(|instance| instance.startup_state.native_encoding.as_ptr())
-        as *const c_char
+    with_required_current_instance(|instance| unsafe {
+        (*instance).startup_state.native_encoding.as_ptr()
+    }) as *const c_char
 }
 
 /// Detect and record locale/encoding information.
@@ -218,15 +219,15 @@ pub unsafe fn R_nativeEncoding() -> *const c_char {
 /// On Unix-like systems it uses `nl_langinfo(CODESET)` to detect the encoding.
 /// Since we cannot call libc, this provides a reasonable default.
 pub unsafe fn R_check_locale() {
-    with_required_current_instance(|instance| {
-        let enc = &mut instance.startup_state.native_encoding;
+    with_required_current_instance(|instance| unsafe {
+        let enc = &mut (*instance).startup_state.native_encoding;
         enc.fill(0);
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
         enc[..len].copy_from_slice(&bytes[..len]);
         enc[len] = 0;
 
-        let cs = &mut instance.startup_state.codeset_buf;
+        let cs = &mut (*instance).startup_state.codeset_buf;
         cs.fill(0);
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
@@ -434,7 +435,7 @@ fn parse_octal_mode_text(text: &str) -> Option<u32> {
 }
 
 pub(crate) fn current_file_creation_umask() -> u32 {
-    with_required_current_instance(|instance| instance.file_creation_umask & 0o777)
+    with_required_current_instance(|instance| unsafe { (*instance).file_creation_umask & 0o777 })
 }
 
 #[cfg(unix)]
@@ -2149,9 +2150,9 @@ pub unsafe fn do_sysumask(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         }
 
         let old = with_required_current_instance(|instance| {
-            let old = instance.file_creation_umask & 0o777;
+            let old = (*instance).file_creation_umask & 0o777;
             if let Some(new_mode) = parse_octal_mode_arg(mode) {
-                instance.file_creation_umask = new_mode & 0o777;
+                (*instance).file_creation_umask = new_mode & 0o777;
             }
             old
         });

@@ -66,7 +66,8 @@ where
     F: FnOnce(&mut MainRngState) -> R,
 {
     crate::sexp::instance::with_required_current_instance(
-        |instance| f(&mut instance.main_rng_state),
+        // P1: short-lived &mut of a field, formed and dropped inside this strictly-local call.
+        |instance| unsafe { f(&mut (*instance).main_rng_state) },
     )
 }
 

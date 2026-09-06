@@ -811,29 +811,23 @@ where
     super::instance::with_required_current_instance(|inst| with_arena_in(inst, f))
 }
 
-pub(crate) fn with_arena_in<F, R>(inst: &mut super::instance::RInstance, f: F) -> R
+pub(crate) fn with_arena_in<F, R>(inst: *mut super::instance::RInstance, f: F) -> R
 where
     F: FnOnce(&mut RArena) -> R,
 {
-    let arena = &mut inst.arena;
-    // Expose the lend: closures under this borrow legitimately re-enter the
-    // ambient instance APIs, whose wildcard re-acquisition (see
-    // `instance::acquire_instance_mut`) needs this tag as its re-base point.
-    // Without it the re-acquisition could only re-base on the root tag,
-    // which would pop this (protected) lend — aliasing UB under Stacked
-    // Borrows. Exposing a lend enables no access beyond what the live
-    // borrow already grants: the tag dies with the lend.
-    (arena as *mut RArena).expose_provenance();
-    let result = f(arena);
-    // Deferred alloc-time GC hooks: the arena methods above run under the
-    // live `&mut RArena` borrow and cannot touch instance state without
-    // re-acquiring `&mut RInstance` while this borrow is still live and
-    // protected (aliasing UB under Stacked Borrows), so they only record
-    // their firings. Process them here through this live instance borrow.
-    let torture_ticks = std::mem::take(&mut inst.arena.alloc_gc_torture_ticks);
-    let collect_requested = std::mem::take(&mut inst.arena.alloc_gc_collect_requested);
-    crate::sexp::gengc::process_deferred_alloc_gc_in(inst, torture_ticks, collect_requested);
-    result
+    // P1: the `&mut RArena` lend below is arena-local by construction —
+    // arena methods defer their GC firings (alloc_gc_torture_ticks /
+    // alloc_gc_collect_requested) instead of touching instance state, so
+    // nothing reenters the interpreter while the lend is live. The
+    // deferred firings are processed only after it is released.
+    unsafe {
+        let arena = &mut (*inst).arena;
+        let result = f(arena);
+        let torture_ticks = std::mem::take(&mut (*inst).arena.alloc_gc_torture_ticks);
+        let collect_requested = std::mem::take(&mut (*inst).arena.alloc_gc_collect_requested);
+        crate::sexp::gengc::process_deferred_alloc_gc_in(inst, torture_ticks, collect_requested);
+        result
+    }
 }
 
 /// Reset the active instance evaluation arena, freeing all allocations.
@@ -841,11 +835,12 @@ pub fn reset_arena() {
     super::instance::with_required_current_instance(reset_arena_in);
 }
 
-pub(crate) fn reset_arena_in(inst: &mut super::instance::RInstance) {
-    inst.arena = RArena::new();
+pub(crate) fn reset_arena_in(inst: *mut super::instance::RInstance) {
+    unsafe {
+        (*inst).arena = RArena::new();
+    }
 }
 
-/// Access the active instance arena for GC operations.
 /// This is identical to with_arena but named for clarity in GC context.
 pub fn with_arena_for_gc<F, R>(f: F) -> R
 where

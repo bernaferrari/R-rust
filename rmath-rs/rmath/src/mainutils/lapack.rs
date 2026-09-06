@@ -43,8 +43,8 @@ pub unsafe fn R_setLapackRoutines(routines: *const c_void) -> *const c_void {
             None
         };
         let old = with_required_current_instance(|instance| {
-            let old = instance.lapack_state.dispatch;
-            instance.lapack_state.dispatch = new_dispatch;
+            let old = (*instance).lapack_state.dispatch;
+            (*instance).lapack_state.dispatch = new_dispatch;
             old
         });
         match old {
@@ -61,7 +61,7 @@ pub unsafe fn R_setLapackRoutines(routines: *const c_void) -> *const c_void {
 /// .Internal(lapack(...)) -- dispatch to the LAPACK module.
 pub fn do_lapack(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        match with_required_current_instance(|instance| instance.lapack_state.dispatch) {
+        match with_required_current_instance(|instance| (*instance).lapack_state.dispatch) {
             Some(f) => f(call, op, args, rho),
             None => R_NilValue(),
         }

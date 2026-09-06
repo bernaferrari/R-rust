@@ -539,7 +539,7 @@ fn with_graphics_engine_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GraphicsEngineState) -> R,
 {
-    with_required_current_instance(|instance| f(&mut instance.graphics_engine_state))
+    with_required_current_instance(|instance| unsafe { f(&mut (*instance).graphics_engine_state) })
 }
 
 #[inline]

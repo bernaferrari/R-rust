@@ -221,8 +221,8 @@ where
     }
 
     crate::mainutils::source::remember_parse_context(&combined);
-    let mut exprs = with_required_current_instance(|instance| {
-        crate::eval::parser::parse_expressions(&combined, &mut instance.arena)
+    let mut exprs = with_required_current_instance(|instance| unsafe {
+        crate::eval::parser::parse_expressions(&combined, &mut (*instance).arena)
             .map_err(|err| err.to_string())
     })?;
     if let Some(limit) = limit {
@@ -233,8 +233,8 @@ where
 
 fn parse_one_source(source: &str) -> Result<SEXP, String> {
     crate::mainutils::source::remember_parse_context(source);
-    with_required_current_instance(|instance| {
-        crate::eval::parser::parse(source, &mut instance.arena).map_err(|err| err.to_string())
+    with_required_current_instance(|instance| unsafe {
+        crate::eval::parser::parse(source, &mut (*instance).arena).map_err(|err| err.to_string())
     })
 }
 
@@ -253,7 +253,7 @@ unsafe fn parse_eval_source(source: &str, envir: SEXP) -> SEXP {
     unsafe {
         let expr = parse_one_source(source).unwrap_or_else(|message| parse_failure(message));
         let rho = if envir.is_null() || envir == R_NilValue() {
-            with_required_current_instance(|instance| instance.global_env)
+            with_required_current_instance(|instance| (*instance).global_env)
         } else {
             envir
         };

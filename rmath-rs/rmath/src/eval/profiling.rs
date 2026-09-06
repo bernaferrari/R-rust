@@ -118,11 +118,14 @@ where
     with_required_current_instance(|instance| with_profiling_state_in(instance, f))
 }
 
-pub(crate) fn with_profiling_state_in<F, R>(instance: &mut RInstance, f: F) -> R
+pub(crate) fn with_profiling_state_in<F, R>(instance: *mut RInstance, f: F) -> R
 where
     F: FnOnce(&mut ProfilingState) -> R,
 {
-    f(&mut instance.eval_state.profiling)
+    // P1: the &mut ProfilingState lend lives only across `f`, and every
+    // caller's closure is strictly local state arithmetic (counters, flags,
+    // file descriptors) — no allocation, protect, or eval can reenter here.
+    f(unsafe { &mut (*instance).eval_state.profiling })
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -137,21 +140,25 @@ fn memory_profile_snapshot() -> MemoryProfileSnapshot {
     with_required_current_instance(memory_profile_snapshot_in)
 }
 
-fn memory_profile_snapshot_in(instance: &mut RInstance) -> MemoryProfileSnapshot {
-    let current_bytes = instance.arena.total_bytes_allocated();
-    let peak_bytes = instance
-        .eval_state
-        .profiling
-        .memory_peak_bytes
-        .max(current_bytes)
-        .max(instance.gc_state.stats.peak_memory);
-    instance.eval_state.profiling.memory_peak_bytes = peak_bytes;
+fn memory_profile_snapshot_in(instance: *mut RInstance) -> MemoryProfileSnapshot {
+    // P1/P2: all borrows are statement-local reads/writes of plain counters;
+    // nothing here allocates or reenters the interpreter.
+    unsafe {
+        let current_bytes = (*instance).arena.total_bytes_allocated();
+        let peak_bytes = (*instance)
+            .eval_state
+            .profiling
+            .memory_peak_bytes
+            .max(current_bytes)
+            .max((*instance).gc_state.stats.peak_memory);
+        (*instance).eval_state.profiling.memory_peak_bytes = peak_bytes;
 
-    MemoryProfileSnapshot {
-        current_bytes: current_bytes as u64,
-        peak_bytes: peak_bytes as u64,
-        active_nodes: instance.arena.node_count() as u64,
-        gc_freed_nodes: instance.gc_state.stats.freed as u64,
+        MemoryProfileSnapshot {
+            current_bytes: current_bytes as u64,
+            peak_bytes: peak_bytes as u64,
+            active_nodes: (*instance).arena.node_count() as u64,
+            gc_freed_nodes: (*instance).gc_state.stats.freed as u64,
+        }
     }
 }
 
@@ -178,8 +185,8 @@ pub fn R_Profiling_active() -> c_int {
     with_required_current_instance(R_Profiling_active_in)
 }
 
-pub(crate) fn R_Profiling_active_in(instance: &mut RInstance) -> c_int {
-    instance.eval_state.profiling.profiling
+pub(crate) fn R_Profiling_active_in(instance: *mut RInstance) -> c_int {
+    unsafe { (*instance).eval_state.profiling.profiling }
 }
 
 // ---------------------------------------------------------------------------
@@ -191,8 +198,8 @@ pub fn R_isRprofiling() -> c_int {
     with_required_current_instance(R_isRprofiling_in)
 }
 
-pub(crate) fn R_isRprofiling_in(instance: &mut RInstance) -> c_int {
-    instance.eval_state.profiling.profiling
+pub(crate) fn R_isRprofiling_in(instance: *mut RInstance) -> c_int {
+    unsafe { (*instance).eval_state.profiling.profiling }
 }
 
 // ---------------------------------------------------------------------------
@@ -1597,18 +1604,18 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
 
-        with_profiling_state_in(&mut left, |state| {
+        with_profiling_state_in(&mut left as *mut RInstance, |state| {
             state.profiling = 1;
             state.bc_profiling = 1;
             state.current_opcode = 9;
             state.opcode_counts[9] = 17;
         });
 
-        assert_eq!(R_Profiling_active_in(&mut left), 1);
-        assert_eq!(R_isRprofiling_in(&mut left), 1);
-        assert_eq!(R_Profiling_active_in(&mut right), 0);
-        assert_eq!(R_isRprofiling_in(&mut right), 0);
-        with_profiling_state_in(&mut right, |state| {
+        assert_eq!(R_Profiling_active_in(&mut left as *mut RInstance), 1);
+        assert_eq!(R_isRprofiling_in(&mut left as *mut RInstance), 1);
+        assert_eq!(R_Profiling_active_in(&mut right as *mut RInstance), 0);
+        assert_eq!(R_isRprofiling_in(&mut right as *mut RInstance), 0);
+        with_profiling_state_in(&mut right as *mut RInstance, |state| {
             assert_eq!(state.bc_profiling, 0);
             assert_eq!(state.current_opcode, NO_CURRENT_OPCODE);
             assert_eq!(state.opcode_counts[9], 0);
@@ -1677,11 +1684,11 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
 
-        let before = memory_profile_snapshot_in(&mut left);
+        let before = memory_profile_snapshot_in(&mut left as *mut RInstance);
         left.arena.alloc_vector(SEXPTYPE::REALSXP, 64);
         left.arena.alloc_charsxp(b"profile-explicit-left");
-        let after = memory_profile_snapshot_in(&mut left);
-        let right_snapshot = memory_profile_snapshot_in(&mut right);
+        let after = memory_profile_snapshot_in(&mut left as *mut RInstance);
+        let right_snapshot = memory_profile_snapshot_in(&mut right as *mut RInstance);
 
         assert!(after.current_bytes > before.current_bytes);
         assert!(after.active_nodes > before.active_nodes);

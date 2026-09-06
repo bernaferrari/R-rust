@@ -31,7 +31,7 @@ pub(super) fn with_error_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ErrorState) -> R,
 {
-    instance::with_required_current_instance(|instance| f(&mut instance.error_state))
+    instance::with_required_current_instance(|instance| unsafe { f(&mut (*instance).error_state) })
 }
 
 pub(super) fn r_warn_length() -> c_int {
@@ -61,11 +61,12 @@ pub(super) fn set_r_show_error_calls(val: bool) {
 /// 1-based index of the top-level expression a session script loop is
 /// currently evaluating (0 = no script position is active).
 pub fn toplevel_expr_no() -> usize {
-    instance::with_current_instance(|inst| inst.error_state.toplevel_expr_no).unwrap_or(0)
+    instance::with_current_instance(|inst| unsafe { (*inst).error_state.toplevel_expr_no })
+        .unwrap_or(0)
 }
 
 pub fn set_toplevel_expr_no(no: usize) {
-    instance::with_current_instance(|inst| inst.error_state.toplevel_expr_no = no);
+    instance::with_current_instance(|inst| unsafe { (*inst).error_state.toplevel_expr_no = no });
 }
 
 /// Call attributed to warnings raised while it is set (null = no
@@ -74,7 +75,7 @@ pub fn set_toplevel_expr_no(no: usize) {
 /// raised inside attribute to the wrapper's call (errors.c renders them
 /// through the closure's context).
 pub fn warning_call_override() -> SEXP {
-    instance::with_current_instance(|inst| inst.error_state.warning_call)
+    instance::with_current_instance(|inst| unsafe { (*inst).error_state.warning_call })
         .unwrap_or(std::ptr::null_mut())
 }
 
@@ -82,9 +83,9 @@ pub fn warning_call_override() -> SEXP {
 /// value so the caller can restore it (guard style).
 pub fn set_warning_call_override(call: SEXP) -> SEXP {
     let mut previous = std::ptr::null_mut();
-    instance::with_required_current_instance(|inst| {
-        previous = inst.error_state.warning_call;
-        inst.error_state.warning_call = call;
+    instance::with_required_current_instance(|inst| unsafe {
+        previous = (*inst).error_state.warning_call;
+        (*inst).error_state.warning_call = call;
     });
     previous
 }
@@ -274,8 +275,8 @@ pub unsafe fn R_curErrorBuf() -> *const c_char {
 /// failure for a closed session) or when the buffer holds something else;
 /// callers then fall back to the bare-message rendering.
 pub fn try_last_rendered_message(message: &str) -> Option<String> {
-    instance::with_current_instance(|instance| {
-        let state = &instance.error_state;
+    instance::with_current_instance(|instance| unsafe {
+        let state = &(*instance).error_state;
         if state.last_rendered_message.as_deref() != Some(message) {
             return None;
         }

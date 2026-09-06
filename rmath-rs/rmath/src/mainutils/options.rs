@@ -447,9 +447,13 @@ unsafe fn GetOptionByName(name: &str) -> SEXP {
         InitOptions();
         let nil = R_NilValue();
 
-        crate::sexp::instance::with_required_current_instance(|inst| match inst.options.get(name) {
-            Some(&val) if (val as usize) > 0x1000 && (val as usize).trailing_zeros() >= 3 => val,
-            _ => nil,
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            match (*inst).options.get(name) {
+                Some(&val) if (val as usize) > 0x1000 && (val as usize).trailing_zeros() >= 3 => {
+                    val
+                }
+                _ => nil,
+            }
         })
     }
 }
@@ -522,18 +526,18 @@ pub unsafe fn R_Options() -> SEXP {
         let nil = R_NilValue();
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            let n = inst.options.len();
+            let n = (*inst).options.len();
             if n == 0 {
                 return nil;
             }
-            let mut keys: Vec<String> = inst.options.keys().cloned().collect();
+            let mut keys: Vec<String> = (*inst).options.keys().cloned().collect();
             keys.sort();
 
             let mut result: SEXP = nil;
             let mut result_guard: Option<crate::sexp::protect::IndexedProtectGuard> = None;
             for key in keys.iter().rev() {
                 let tag = Rf_install(CString::new(key.as_str()).unwrap_or_default().as_ptr());
-                let val = *inst.options.get(key.as_str()).unwrap_or(&nil);
+                let val = *(*inst).options.get(key.as_str()).unwrap_or(&nil);
                 let cell = Rf_cons(val, result);
                 SETTAG(cell, tag);
                 result = cell;
@@ -575,7 +579,7 @@ pub unsafe fn FindTaggedItem(_lst: SEXP, tag: SEXP) -> SEXP {
         };
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-            match inst.options.get(name_str.as_str()) {
+            match (*inst).options.get(name_str.as_str()) {
                 Some(&val) => {
                     let cell = Rf_cons(val, nil);
                     if !cell.is_null() {
@@ -608,10 +612,13 @@ unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
 
         let old = crate::sexp::instance::with_required_current_instance(|inst| {
             if value == nil {
-                inst.options.remove(name).unwrap_or(nil)
+                (*inst).options.remove(name).unwrap_or(nil)
             } else {
                 R_PreserveObject(value);
-                inst.options.insert(name.to_string(), value).unwrap_or(nil)
+                (*inst)
+                    .options
+                    .insert(name.to_string(), value)
+                    .unwrap_or(nil)
             }
         });
         refresh_options_binding();
@@ -821,11 +828,11 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
 pub unsafe fn InitOptions() {
     unsafe {
         let initialized_now = crate::sexp::instance::with_required_current_instance(|inst| {
-            if inst.options_initialized {
+            if (*inst).options_initialized {
                 return false;
             }
-            populate_options(&mut inst.options);
-            inst.options_initialized = true;
+            populate_options(&mut (*inst).options);
+            (*inst).options_initialized = true;
             true
         });
         if initialized_now {
@@ -961,21 +968,21 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let nil = R_NilValue();
 
             return crate::sexp::instance::with_required_current_instance(|inst| {
-                let n = inst.options.len() as c_int;
+                let n = (*inst).options.len() as c_int;
 
                 let value = Rf_allocVector(SEXPTYPE::VECSXP, n);
                 let _value_guard = protect(value);
                 let names = Rf_allocVector(SEXPTYPE::STRSXP, n);
                 let _names_guard = protect(names);
 
-                let mut keys: Vec<String> = inst.options.keys().cloned().collect();
+                let mut keys: Vec<String> = (*inst).options.keys().cloned().collect();
                 keys.sort();
 
                 for (i, key) in keys.iter().enumerate() {
                     let name_charsxp =
                         Rf_mkChar(CString::new(key.as_str()).unwrap_or_default().as_ptr());
                     SET_STRING_ELT(names, i as R_xlen_t, name_charsxp);
-                    if let Some(&val) = inst.options.get(key) {
+                    if let Some(&val) = (*inst).options.get(key) {
                         SET_VECTOR_ELT(value, i as R_xlen_t, duplicate_sexp(val));
                     }
                 }

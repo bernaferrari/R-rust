@@ -612,10 +612,12 @@ unsafe fn resolveNativeRoutine(
 unsafe fn check_retval(call: SEXP, val: SEXP) -> SEXP {
     unsafe {
         let do_check = instance::with_required_current_instance(|inst| {
-            *inst
+            // P1: short-lived raw place access, no &mut held across calls.
+            let slot = (*inst)
                 .dotcode_state
                 .retval_check
-                .get_or_insert_with(dotcode_retval_check_enabled)
+                .get_or_insert_with(dotcode_retval_check_enabled);
+            *slot
         });
 
         if do_check {

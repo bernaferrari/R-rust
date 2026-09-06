@@ -77,8 +77,11 @@ pub fn start_capture() {
     super::instance::with_required_current_instance(start_capture_in);
 }
 
-pub(crate) fn start_capture_in(inst: &mut RInstance) {
-    inst.output_capture.borrow_mut().start();
+pub(crate) fn start_capture_in(inst: *mut RInstance) {
+    // P2: strictly-local RefCell write; no ambient write intervenes.
+    unsafe {
+        (*inst).output_capture.borrow_mut().start();
+    }
 }
 
 /// Stop capturing and return the captured output.
@@ -86,8 +89,9 @@ pub fn stop_capture() -> RCapturedOutput {
     super::instance::with_required_current_instance(stop_capture_in)
 }
 
-pub(crate) fn stop_capture_in(inst: &mut RInstance) -> RCapturedOutput {
-    inst.output_capture.borrow_mut().stop()
+pub(crate) fn stop_capture_in(inst: *mut RInstance) -> RCapturedOutput {
+    // P2: strictly-local RefCell read/write; no ambient write intervenes.
+    unsafe { (*inst).output_capture.borrow_mut().stop() }
 }
 
 /// Check if output capture is active.
@@ -95,9 +99,10 @@ pub fn is_capturing() -> bool {
     super::instance::with_current_instance(is_capturing_in).unwrap_or(false)
 }
 
-pub(crate) fn is_capturing_in(inst: &mut RInstance) -> bool {
-    inst.output_capture.borrow().is_capturing()
-        || crate::mainutils::connections::output_sink_active_in(inst)
+pub(crate) fn is_capturing_in(inst: *mut RInstance) -> bool {
+    // P2: strictly-local RefCell read; no ambient write intervenes.
+    let capture_active = unsafe { (*inst).output_capture.borrow().is_capturing() };
+    capture_active || crate::mainutils::connections::output_sink_active_in(inst)
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
@@ -105,11 +110,13 @@ pub fn capture_stdout(msg: &str) {
     super::instance::with_current_instance(|inst| capture_stdout_in(inst, msg));
 }
 
-pub(crate) fn capture_stdout_in(inst: &mut RInstance, msg: &str) {
+pub(crate) fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
     if crate::mainutils::connections::write_output_sink_in(inst, msg.as_bytes()) {
         return;
     }
-    let mut capture = inst.output_capture.borrow_mut();
+    // P2: the RefCell borrow below is dropped before the print!, and no
+    // ambient write occurs while it is held.
+    let mut capture = unsafe { (*inst).output_capture.borrow_mut() };
     if capture.stdout.is_some() {
         capture.capture_stdout(msg);
         return;
@@ -126,9 +133,11 @@ pub(crate) fn capture_stdout_in(inst: &mut RInstance, msg: &str) {
 /// so the text lands in statement order between print() side effects,
 /// deferred warnings, and auto-printed values.
 pub(crate) fn capture_interleaved(msg: &str) {
-    super::instance::with_current_instance(|inst| {
-        if inst.output_capture.borrow().stdout.is_some() {
-            inst.output_capture
+    super::instance::with_current_instance(|inst| unsafe {
+        // P2: strictly-local RefCell access; no ambient write intervenes.
+        if (*inst).output_capture.borrow().stdout.is_some() {
+            (*inst)
+                .output_capture
                 .borrow_mut()
                 .capture_stdout_bypassing_sink(msg);
         } else {
@@ -141,8 +150,11 @@ pub fn capture_stderr(msg: &str) {
     super::instance::with_current_instance(|inst| capture_stderr_in(inst, msg));
 }
 
-pub(crate) fn capture_stderr_in(inst: &mut RInstance, msg: &str) {
-    inst.output_capture.borrow_mut().capture_stderr(msg);
+pub(crate) fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
+    // P2: strictly-local RefCell write; no ambient write intervenes.
+    unsafe {
+        (*inst).output_capture.borrow_mut().capture_stderr(msg);
+    }
 }
 
 pub(crate) fn format_sexp(x: SEXP) -> String {

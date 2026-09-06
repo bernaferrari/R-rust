@@ -40,8 +40,11 @@ fn resolve_package_relative_path(file_path: String) -> String {
     if given.is_absolute() {
         return file_path;
     }
-    crate::sexp::instance::with_required_current_instance(|inst| {
-        inst.loading_package_dir.as_ref().map(|dir| dir.join(given))
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst)
+            .loading_package_dir
+            .as_ref()
+            .map(|dir| dir.join(given))
     })
     .map(|joined| joined.to_string_lossy().into_owned())
     .unwrap_or(file_path)
@@ -323,15 +326,15 @@ pub unsafe fn do_system2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 }
 
 pub(crate) fn system_commands_disabled_by_runtime_policy() -> bool {
-    !crate::sexp::instance::with_current_instance(|inst| {
-        inst.eval_state.capabilities.allow_system_commands
+    !crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.capabilities.allow_system_commands
     })
     .unwrap_or(false)
 }
 
 pub(crate) fn pipe_commands_disabled_by_runtime_policy() -> bool {
-    !crate::sexp::instance::with_current_instance(|inst| {
-        inst.eval_state.capabilities.allow_pipe_commands
+    !crate::sexp::instance::with_current_instance(|inst| unsafe {
+        (*inst).eval_state.capabilities.allow_pipe_commands
     })
     .unwrap_or(false)
 }

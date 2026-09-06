@@ -1116,8 +1116,8 @@ pub fn get_R_BCIntActive() -> c_int {
     with_required_current_instance(get_R_BCIntActive_in)
 }
 
-pub(crate) fn get_R_BCIntActive_in(inst: &mut RInstance) -> c_int {
-    inst.eval_state.bc_int_active
+pub(crate) fn get_R_BCIntActive_in(inst: *mut RInstance) -> c_int {
+    unsafe { (*inst).eval_state.bc_int_active }
 }
 
 /// Set whether the bytecode interpreter is active.
@@ -1126,8 +1126,8 @@ pub fn set_R_BCIntActive(val: c_int) {
     with_required_current_instance(|inst| set_R_BCIntActive_in(inst, val));
 }
 
-pub(crate) fn set_R_BCIntActive_in(inst: &mut RInstance, val: c_int) {
-    inst.eval_state.bc_int_active = val;
+pub(crate) fn set_R_BCIntActive_in(inst: *mut RInstance, val: c_int) {
+    unsafe { (*inst).eval_state.bc_int_active = val };
 }
 
 // ---------------------------------------------------------------------------
@@ -1342,10 +1342,10 @@ mod tests {
         let mut left = RInstance::new();
         let mut right = RInstance::new();
 
-        set_R_BCIntActive_in(&mut left, 1);
-        set_R_BCIntActive_in(&mut right, 2);
+        set_R_BCIntActive_in(&mut left as *mut RInstance, 1);
+        set_R_BCIntActive_in(&mut right as *mut RInstance, 2);
 
-        assert_eq!(get_R_BCIntActive_in(&mut left), 1);
-        assert_eq!(get_R_BCIntActive_in(&mut right), 2);
+        assert_eq!(get_R_BCIntActive_in(&mut left as *mut RInstance), 1);
+        assert_eq!(get_R_BCIntActive_in(&mut right as *mut RInstance), 2);
     }
 }

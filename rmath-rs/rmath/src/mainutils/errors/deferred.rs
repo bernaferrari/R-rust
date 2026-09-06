@@ -185,7 +185,7 @@ pub unsafe fn print_warnings_at_statement_boundary() {
             return;
         };
         let routed = instance::with_current_instance(|inst| {
-            let mut capture = inst.output_capture.borrow_mut();
+            let mut capture = (*inst).output_capture.borrow_mut();
             if capture.is_capturing() {
                 capture.capture_stdout_bypassing_sink(&block);
                 true

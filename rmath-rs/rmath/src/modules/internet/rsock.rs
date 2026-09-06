@@ -88,12 +88,10 @@ unsafe fn close_sock(fd: c_int) -> c_int {
 
 /// check_init - ensure socket subsystem is initialized (once)
 fn check_init() {
-    with_required_current_instance(|instance| {
-        if instance.internet_state.sock_inited == 0 {
-            unsafe {
-                Sock_init();
-            }
-            instance.internet_state.sock_inited = 1;
+    with_required_current_instance(|instance| unsafe {
+        if (*instance).internet_state.sock_inited == 0 {
+            Sock_init();
+            (*instance).internet_state.sock_inited = 1;
         }
     });
 }
@@ -103,8 +101,9 @@ fn check_init() {
 /// the full timeout is used.
 unsafe fn set_timeval(tv: *mut timeval, timeout: c_int) {
     unsafe {
-        let wait_usec =
-            with_required_current_instance(|instance| instance.internet_state.wait_usec);
+        let wait_usec = with_required_current_instance(|instance| unsafe {
+            (*instance).internet_state.wait_usec
+        });
         if wait_usec > 0 {
             (*tv).tv_sec = (wait_usec / 1_000_000) as libc::time_t;
             (*tv).tv_usec = (wait_usec - (wait_usec / 1_000_000) * 1_000_000) as libc::suseconds_t;
@@ -367,8 +366,9 @@ pub(crate) unsafe fn R_SocketWaitMultiple(
             let mut maxfd: c_int = 0;
 
             // Compute timeout for this iteration
-            let wait_usec =
-                with_required_current_instance(|instance| instance.internet_state.wait_usec);
+            let wait_usec = with_required_current_instance(|instance| unsafe {
+                (*instance).internet_state.wait_usec
+            });
             tv = core::mem::zeroed();
             if wait_usec > 0 {
                 let delta = if mytimeout < 0.0 || (wait_usec as c_double) / 1e6 < mytimeout - used {
@@ -807,13 +807,13 @@ mod tests {
     use super::*;
 
     fn set_wait_usec(value: c_int) {
-        with_required_current_instance(|instance| {
-            instance.internet_state.wait_usec = value;
+        with_required_current_instance(|instance| unsafe {
+            (*instance).internet_state.wait_usec = value;
         });
     }
 
     fn wait_usec() -> c_int {
-        with_required_current_instance(|instance| instance.internet_state.wait_usec)
+        with_required_current_instance(|instance| unsafe { (*instance).internet_state.wait_usec })
     }
 
     #[test]

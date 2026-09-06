@@ -138,7 +138,7 @@ pub unsafe fn locale2charset(locale: *const std::os::raw::c_char) -> *const std:
             let cp_num = &enc[3..];
             let result = format!("CP{}", cp_num);
             return with_required_current_instance(|instance| {
-                let buf = &mut instance.startup_state.locale_charset_buf;
+                let buf = &mut (*instance).startup_state.locale_charset_buf;
                 buf.fill(0);
                 let bytes = result.as_bytes();
                 let len = bytes.len().min(buf.len() - 1);

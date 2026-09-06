@@ -222,7 +222,9 @@ fn with_rng_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut RNGState) -> R,
 {
-    crate::sexp::instance::with_required_current_instance(|instance| f(&mut instance.random_state))
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        f(&mut (*instance).random_state)
+    })
 }
 
 // ---------------------------------------------------------------------------
