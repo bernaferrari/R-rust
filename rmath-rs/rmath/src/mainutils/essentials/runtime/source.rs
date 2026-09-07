@@ -52,7 +52,7 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let file_path = elt_to_string(file_arg, 0);
 
         match std::fs::read_to_string(&file_path) {
-            Ok(content) => eval_source_text(&content, rho),
+            Ok(content) => eval_source_text_with_name(&content, rho, &file_path),
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
@@ -82,7 +82,7 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
         };
 
         match std::fs::read_to_string(&file_path) {
-            Ok(content) => eval_source_text(&content, target_env),
+            Ok(content) => eval_source_text_with_name(&content, target_env, &file_path),
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
             }
@@ -90,8 +90,57 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     }
 }
 
-unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
+unsafe fn eval_source_text_with_name(content: &str, env: SEXP, filename: &str) -> SEXP {
     unsafe {
+        // keep.source = TRUE: parse with byte spans and attach srcrefs
+        // (upstream source() keeps source refs when the option is on, so
+        // show.error.locations renders `(from <file>#<line>)`).
+        let keep_source = {
+            let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
+                c"keep.source".as_ptr(),
+            ));
+            !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
+        };
+        if keep_source {
+            let spans = crate::sexp::memory::with_arena(|arena| {
+                let mut parser = crate::eval::parser::Parser::new(content, arena);
+                parser
+                    .parse_top_level_with_spans()
+                    .map_err(|e| e.to_string())
+            });
+            let mut result = R_NilValue();
+            if let Ok(spans) = spans {
+                let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
+                let vec_sexp = crate::sexp::constructors::Rf_allocVector3(
+                    crate::sexp::ffi::SEXPTYPE::EXPRSXP,
+                    exprs.len() as i64,
+                );
+                let _vg = crate::sexp::protect::protect(vec_sexp);
+                for (i, &e) in exprs.iter().enumerate() {
+                    crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
+                }
+                crate::mainutils::srcref::attach_srcrefs_with_spans(
+                    &spans, content, filename, vec_sexp,
+                );
+                for (i, &(expr, _, _)) in spans.iter().enumerate() {
+                    let _ = i;
+                    if expr.is_null() || expr == R_NilValue() {
+                        continue;
+                    }
+                    crate::mainutils::srcref::set_current_srcref_location(
+                        expr, vec_sexp, i as usize,
+                    );
+                    result = crate::eval::eval::Rf_eval(expr, env);
+                }
+                crate::mainutils::srcref::set_current_srcref_location(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    0,
+                );
+            }
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return result;
+        }
         let parsed = parse_source_expression_vector(content);
         // do_eval()-style element-wise evaluation: Rf_eval returns an
         // expression vector unchanged, so source() walks the statements
@@ -113,6 +162,10 @@ unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         result
     }
+}
+
+unsafe fn eval_source_text(content: &str, env: SEXP) -> SEXP {
+    unsafe { eval_source_text_with_name(content, env, "") }
 }
 
 /// R's `demo(topic, ...)` — run a demo (simplified).

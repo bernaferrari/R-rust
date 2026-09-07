@@ -925,43 +925,62 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let mut pattern = "file".to_string();
         let mut tmpdir: Option<PathBuf> = None;
         let mut fileext = String::new();
-        if !args.is_null() && args != R_NilValue() {
-            let first = CAR(args);
-            if !first.is_null() && first != R_NilValue() && XLENGTH(first) > 0 {
-                pattern = elt_to_string(first, 0);
+        // Upstream tempfile(pattern, tmpdir, fileext): arguments match by
+        // TAG first (tempfile(fileext = ".R") leaves pattern at its
+        // "file" default), then by position.
+        let mut positional: Vec<SEXP> = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            let tag = TAG(cell);
+            let value = CAR(cell);
+            let tagged = !tag.is_null() && tag != R_NilValue();
+            if tagged {
+                let name = std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::PRINTNAME(tag),
+                ))
+                .to_string_lossy()
+                .into_owned();
+                let nonempty = !value.is_null() && value != R_NilValue() && XLENGTH(value) > 0;
+                match name.as_str() {
+                    "pattern" if nonempty => pattern = elt_to_string(value, 0),
+                    "tmpdir" if nonempty => tmpdir = Some(PathBuf::from(elt_to_string(value, 0))),
+                    "fileext" if nonempty => fileext = elt_to_string(value, 0),
+                    _ => {}
+                }
+            } else {
+                positional.push(value);
             }
-            let rest = CDR(args);
-            if !rest.is_null() && rest != R_NilValue() {
-                let second = CAR(rest);
-                if !second.is_null() && second != R_NilValue() && XLENGTH(second) > 0 {
-                    tmpdir = Some(PathBuf::from(elt_to_string(second, 0)));
-                }
-                let third_cell = CDR(rest);
-                if !third_cell.is_null() && third_cell != R_NilValue() {
-                    let third = CAR(third_cell);
-                    if !third.is_null() && third != R_NilValue() && XLENGTH(third) > 0 {
-                        fileext = elt_to_string(third, 0);
-                    }
-                }
+            cell = CDR(cell);
+        }
+        for (i, value) in positional.iter().enumerate() {
+            if value.is_null() || *value == R_NilValue() || XLENGTH(*value) == 0 {
+                continue;
+            }
+            match i {
+                0 => pattern = elt_to_string(*value, 0),
+                1 => tmpdir = Some(PathBuf::from(elt_to_string(*value, 0))),
+                2 => fileext = elt_to_string(*value, 0),
+                _ => {}
             }
         }
         let default_tmp = crate::sexp::instance::with_required_current_instance(|inst| {
             (*inst).path_policy.temp_dir().to_path_buf()
         });
         let tmp = tmpdir.unwrap_or(default_tmp);
+        // Upstream tempfile(): pattern + random hex + ext appended
+        // AFTER the random part ("file1a2b3c.R"), never a leading dot
+        // from the extension. 15 hex chars of entropy like glibc temp
+        // naming; existence-checked like R_tmpnam2.
         let mut path = tmp.join(format!("{}{:x}{}", pattern, std::process::id(), fileext));
         for _ in 0..1024 {
             let counter = crate::sexp::instance::with_required_current_instance(|inst| {
                 (*inst).tempfile_counter = (*inst).tempfile_counter.saturating_add(1);
                 (*inst).tempfile_counter
             });
-            let candidate = tmp.join(format!(
-                "{}{:x}{:x}{}",
-                pattern,
-                std::process::id(),
-                counter,
-                fileext
-            ));
+            let entropy = (std::process::id() as u64)
+                .wrapping_mul(0x9E3779B97F4A7C15)
+                .wrapping_add((counter as u64).wrapping_mul(0xBF58476D1CE4E5B9));
+            let candidate = tmp.join(format!("{}{:015x}{}", pattern, entropy, fileext));
             if !candidate.exists() {
                 path = candidate;
                 break;

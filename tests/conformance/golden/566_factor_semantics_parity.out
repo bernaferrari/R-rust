@@ -1,7 +1,10 @@
 factor|a|b|b|2|
 factor|2|
 factor|b|b|2|2|
-a|NA|TRUE|
+invalid factor level, NA generated|a|NA|TRUE|
+w-one|w-two
+caught tc
+sw-ok
 TRUE|TRUE|FALSE|
 TRUE
 2

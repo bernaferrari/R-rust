@@ -1,0 +1,7 @@
+TRUE|2|TRUE|
+srcref|1|1|
+srcref|2|2|
+TRUE|<text>|srcfilecopy|
+2|2|TRUE|
+TRUE
+1,2,3

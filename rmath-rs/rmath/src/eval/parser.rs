@@ -1252,6 +1252,51 @@ impl<'arena> Parser<'arena> {
         Ok(exprs)
     }
 
+    /// Parse top-level expressions together with their (start, end) BYTE
+    /// spans in the source, for srcref attribution (keep.source=TRUE).
+    /// `pos` is the lexer's byte cursor: snapshot it before/after each
+    /// top-level expression, skipping leading terminators so the span
+    /// starts at the expression's first token.
+    fn input_len(&self) -> usize {
+        self.spans.last().map(|&(_, b)| b).unwrap_or(0)
+    }
+
+    pub fn parse_top_level_with_spans(&mut self) -> Result<Vec<(SEXP, usize, usize)>, ParseError> {
+        let mut spans = Vec::new();
+        loop {
+            self.skip_terminators();
+            if self.peek() == &Token::Eof {
+                break;
+            }
+            // Byte span from the per-token lexer spans (self.pos is a
+            // TOKEN index): start byte = next token's start; end byte =
+            // last consumed token's end.
+            let tok_start = self
+                .spans
+                .get(self.pos)
+                .map(|&(a, _)| a)
+                .unwrap_or(self.input_len());
+            let expr = self.parse_expr()?;
+            if self.expr_contains_placeholder(expr) {
+                return Err(ParseError("invalid use of pipe placeholder".to_string()));
+            }
+            if self.have_pipebind && expr_contains_pipebind(expr) {
+                return Err(self.pipebind_position_error("invalid use of pipe bind symbol"));
+            }
+            let tok_end = if self.pos > 0 {
+                self.spans
+                    .get(self.pos - 1)
+                    .map(|&(_, b)| b)
+                    .unwrap_or(tok_start)
+            } else {
+                tok_start
+            };
+            spans.push((expr, tok_start, tok_end));
+            self.skip_terminators();
+        }
+        Ok(spans)
+    }
+
     pub fn parse_program(&mut self) -> Result<SEXP, ParseError> {
         let mut exprs = self.parse_top_level_expressions()?;
         if exprs.is_empty() {

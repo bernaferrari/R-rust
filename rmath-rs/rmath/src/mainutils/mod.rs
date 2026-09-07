@@ -91,6 +91,7 @@ pub mod sort;
 pub mod source;
 pub mod split;
 pub mod sprintf_main;
+pub mod srcref;
 pub mod startup;
 pub mod strdup;
 pub mod strncasecmp;

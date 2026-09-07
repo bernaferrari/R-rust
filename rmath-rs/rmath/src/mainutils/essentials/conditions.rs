@@ -176,7 +176,13 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
         set_condition_handler_stack(old_stack);
 
         match result {
-            Ok(value) => value,
+            Ok(value) => {
+                // Upstream withCallingHandlers/tryCatch return invisibly
+                // (the handler machinery owns visibility, not the body's
+                // last value).
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                value
+            }
             Err(payload) => std::panic::resume_unwind(payload),
         }
     }
@@ -670,9 +676,17 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         let warning_text =
             condition_message_text(args, &["call.", "immediate.", "noBreaks.", "domain"]);
         let condition = simple_condition(&warning_text, &["simpleWarning", "warning", "condition"]);
-        {
+        // Muffle-aware calling-handler signal: a handler invoking the
+        // dynamically scoped muffleWarning restart (upstream
+        // invokeRestart inside withCallingHandlers(..., warning =))
+        // suppresses BOTH the default print/collection and the exiting-
+        // handler unwind below.
+        let muffled = {
             let _cond_guard = protect(condition);
-            signal_calling_handlers(condition, rho);
+            signal_calling_warning_condition(condition, rho)
+        };
+        if muffled {
+            return Rf_mkString(CString::new(warning_text).unwrap_or_default().as_ptr());
         }
 
         // Exiting handlers: when an enclosing tryCatch(...) registered a
@@ -698,6 +712,7 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         // while message() output stays in signal order with it (case 372).
         let wcall = crate::mainutils::errors::R_getCurrentCall();
         let c_msg = CString::new(warning_text.as_str()).unwrap_or_default();
+        crate::mainutils::errors::mark_calling_handlers_signaled();
         crate::mainutils::errors::warningcall(wcall, c_msg.as_ptr());
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         // Stock returns the message string (the R closure wraps it in
@@ -777,7 +792,7 @@ unsafe fn simple_error_condition(message: &str) -> SEXP {
     }
 }
 
-unsafe fn simple_warning_condition(message: &str) -> SEXP {
+pub(crate) unsafe fn simple_warning_condition(message: &str) -> SEXP {
     unsafe {
         // stock: warnings caught by tryCatch's warning handler carry the
         // internal doTryCatch(return(expr), name, parentenv, handler) frame

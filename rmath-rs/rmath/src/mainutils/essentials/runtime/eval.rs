@@ -95,8 +95,17 @@ pub unsafe fn do_eval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if element.is_null() || element == R_NilValue() {
                     continue;
                 }
+                // eval.c's expression loop updates R_Srcref per element
+                // (srcref-level show.error.locations: `eval(parse(...))`
+                // errors carry `(from <file>#<line>)`).
+                crate::mainutils::srcref::set_current_srcref_location(element, expr, i as usize);
                 result = crate::eval::eval::Rf_eval(element, envir);
             }
+            crate::mainutils::srcref::set_current_srcref_location(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+            );
             return result;
         }
         expr
@@ -161,6 +170,12 @@ pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// R's `parse(text)` — parse R code strings into an expression vector.
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let keep_source = {
+            let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
+                c"keep.source".as_ptr(),
+            ));
+            !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
+        };
         let text_arg = arg_by_name_or_position(args, &["text"], 0);
         let file_arg = arg_by_name_or_position(args, &["file"], 0);
         if text_arg.is_null() || text_arg == R_NilValue() {
@@ -169,6 +184,9 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let content = std::fs::read_to_string(&file_path).unwrap_or_else(|err| {
                     base_error(format!("cannot open file '{}': {}", file_path, err))
                 });
+                if keep_source {
+                    return parse_with_srcrefs(&content, &file_path);
+                }
                 return parse_source_expression_vector(&content);
             }
             return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
@@ -189,7 +207,45 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let text = elt_to_string(text_arg, i);
             source.push(text);
         }
+        let combined = source.join("\n");
+        if keep_source {
+            // Upstream parse(text=) attributes an unnamed srcfile (the
+            // renderer falls back to `(from #n)` for it).
+            return parse_with_srcrefs(&combined, "<text>");
+        }
         parse_source_strings(&source)
+    }
+}
+
+/// Parse with byte spans and attach srcrefs + srcfile (keep.source).
+pub(crate) unsafe fn parse_with_srcrefs(content: &str, filename: &str) -> SEXP {
+    unsafe {
+        let spans = crate::sexp::memory::with_arena(|arena| {
+            let mut parser = crate::eval::parser::Parser::new(content, arena);
+            parser
+                .parse_top_level_with_spans()
+                .map_err(|e| e.to_string())
+        });
+        match spans {
+            Ok(spans) => {
+                let exprs: Vec<SEXP> = spans.iter().map(|&(e, _, _)| e).collect();
+                let vec_sexp = crate::sexp::constructors::Rf_allocVector3(
+                    SEXPTYPE::EXPRSXP,
+                    exprs.len() as i64,
+                );
+                let _vg = crate::sexp::protect::protect(vec_sexp);
+                for (i, &e) in exprs.iter().enumerate() {
+                    crate::sexp::accessors::SET_VECTOR_ELT(vec_sexp, i as i64, e);
+                }
+                crate::mainutils::srcref::attach_srcrefs_with_spans(
+                    &spans, content, filename, vec_sexp,
+                );
+                vec_sexp
+            }
+            Err(msg) => {
+                std::panic::panic_any(RError { message: msg });
+            }
+        }
     }
 }
 

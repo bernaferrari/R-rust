@@ -22,6 +22,15 @@ use crate::sexp::protect::protect;
 /// This is the equivalent of R's `do_parse()` from source.c.
 ///
 /// .Internal( parse(file, n, text, prompt, srcfile, encoding) )
+unsafe fn keep_source_enabled() -> bool {
+    unsafe {
+        let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
+            c"keep.source".as_ptr(),
+        ));
+        !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
+    }
+}
+
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         reset_parse_state();
@@ -34,6 +43,11 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 match std::fs::read_to_string(&path) {
                     Ok(content) => {
                         remember_parse_context(&content);
+                        if keep_source_enabled() {
+                            return crate::mainutils::essentials::parse_with_srcrefs(
+                                &content, &path,
+                            );
+                        }
                         return parse_content_to_exprs(&content);
                     }
                     Err(err) => {
@@ -70,7 +84,11 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::EXPRSXP, 0);
         }
         remember_parse_context(&combined);
-        return parse_content_to_exprs(&combined);
+        return if keep_source_enabled() {
+            crate::mainutils::essentials::parse_with_srcrefs(&combined, "<text>")
+        } else {
+            parse_content_to_exprs(&combined)
+        };
     }
 }
 

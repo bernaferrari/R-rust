@@ -222,18 +222,25 @@ pub(super) unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut
         truncate_bytes(&mut tmp_str, tmp_cap);
 
         // errors.c:804-819 — resolve the `(from <loc>)` marker before
-        // rendering: gated by show.error.locations, pointing at the 1-based
-        // index of the top-level expression being evaluated. The port parses
-        // scripts without srcrefs, so the script-loop position stands in for
-        // upstream's srcref-derived `#line` (GetSrcLoc with an unnamed
-        // srcfile renders exactly this `(from #n)` shape); 0 = no location.
-        let location_no = if show_error_locations_enabled() {
-            toplevel_expr_no()
-        } else {
-            0
-        };
-        let location_mark = if location_no > 0 {
-            format!(" (from #{location_no})")
+        // rendering: gated by show.error.locations. A top-level
+        // expression parsed with keep.source=TRUE carries an srcref:
+        // GetSrcLoc then renders `(from <file>#<line>)`. Expressions
+        // without srcrefs fall back to the script-loop position
+        // (`(from #n)` — upstream's unnamed-srcfile shape); 0 = none.
+        let location_mark = if show_error_locations_enabled() {
+            match crate::mainutils::srcref::current_srcref_location() {
+                Some((file, line)) if !file.is_empty() && line > 0 => {
+                    format!(" (from {file}#{line})")
+                }
+                _ => {
+                    let n = toplevel_expr_no();
+                    if n > 0 {
+                        format!(" (from #{n})")
+                    } else {
+                        String::new()
+                    }
+                }
+            }
         } else {
             String::new()
         };
@@ -836,8 +843,58 @@ pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
     }
 }
 
+thread_local! {
+    /// Set by do_warning after it signals calling handlers itself: the
+    /// follow-up warningcall() collection pass must not re-signal them.
+    static CALLING_HANDLERS_SIGNALED: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+pub(crate) unsafe fn mark_calling_handlers_signaled() {
+    CALLING_HANDLERS_SIGNALED.with(|f| f.set(true));
+}
+
+unsafe fn calling_handlers_already_signaled() -> bool {
+    CALLING_HANDLERS_SIGNALED.with(|f| f.get())
+}
+
+fn clear_calling_handlers_signaled() {
+    CALLING_HANDLERS_SIGNALED.with(|f| f.set(false));
+}
+
 pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
     unsafe {
+        // Calling handlers first (upstream signals the simpleWarning
+        // through R_HandlerStack before any default emission): a handler
+        // that invokes the dynamically scoped muffleWarning restart
+        // suppresses print/collection entirely (e.g. muffling the
+        // invalid-factor-level warning from `[<-.factor`).
+        // `do_warning` (the R-level builtin) already signaled its calling
+        // handlers with the full muffle contract BEFORE routing here for
+        // collection — skip the re-signal so handlers fire exactly once.
+        if calling_handlers_already_signaled() {
+            clear_calling_handlers_signaled();
+            vwarningcall_dflt(call, format, ptr::null_mut());
+            return;
+        }
+        {
+            let msg = if format.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(format)
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let cond = crate::mainutils::essentials::simple_warning_condition(&msg);
+            let _cond_guard = protect(cond);
+            let muffled = crate::mainutils::essentials::signal_calling_warning_condition(
+                cond,
+                crate::sexp::globals::R_BaseEnv(),
+            );
+            if muffled {
+                return;
+            }
+        }
         let hooksym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
         // A freshly interned port symbol carries a NULL value slot (C uses
         // R_UnboundValue), so treat NULL as unbound too: otherwise every
