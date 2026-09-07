@@ -216,11 +216,21 @@ pub unsafe fn Rf_begincontext_in(
     ctx.nextcontext = prev;
     ctx.protectCount = unsafe { (*instance).protect_stack.borrow().len() };
 
-    let ptr: *mut RCNTXT = &mut *ctx;
+    // Ownership note (Miri, 2026-09): moving the Box into the stack
+    // retags the RCNTXT pointee Unique, invalidating any raw pointer
+    // derived before the push — callers write through the returned
+    // pointer for the context's whole lifetime (e.g. parking
+    // returnValue before endcontext), so it MUST be derived from the
+    // Box the stack owns, after the move.
     unsafe {
         (*instance).context_stack.push(ctx);
+        // Derive the returned pointer from a &mut of the stack-owned Box:
+        // raw-from-&mut carries SharedReadWrite (writable) permissions,
+        // raw-from-& is read-only under Stacked Borrows.
+        let top = (*instance).context_stack.last_mut().expect("just pushed");
+        let ptr: *mut RCNTXT = &mut **top;
+        ptr
     }
-    ptr
 }
 
 /// Pop the top context from the stack.

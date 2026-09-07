@@ -80,3 +80,15 @@ Android release artifact size:
 | Target | Artifact | Size bytes | Threshold bytes |
 | --- | --- | ---: | ---: |
 | `aarch64-linux-android` | `libr_uniffi.so` | 4279840 | 52428800 |
+
+
+## Raw-pointer ambient-access redesign: no measurable cost (2026-09)
+
+`bench_eval` comparison, idle M2 Max, pre-redesign (`68b57445`) vs
+post (`38c8ba0a`+): allocation, eval, cons, output-capture and RNG
+benches all within ±2% (post uniformly slightly faster, inside noise);
+the ~2.8s/1000-iteration flatline across allocating benches is GC-cadence
+dominated and unchanged. The math micro-benches are warmup-noisy at the
+µs scale (34–51µs dnorm/pnorm post vs 29–44µs pre in clean runs) — same
+magnitude, no sustained regression. Numbers recorded in the commit that
+landed the nightly Miri gates.
