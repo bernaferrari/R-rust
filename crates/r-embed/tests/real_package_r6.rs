@@ -124,20 +124,15 @@ c1 <- Counter$new()$inc()$inc()
         .eval(r#"q <- Q2$new(); inherits(q, "Q2") && identical(class(q), c("Q2", "R6"))"#)
         .expect("R9 eval");
     assert_eq!(r9.trim_end(), "[1] TRUE");
-    // R10 (deep clone of nested R6 objects) documents a KNOWN GAP, kept
-    // out of the gate: `o$clone` resolves to NULL ("cannot call type
-    // SEXPTYPE(0)"). Root cause under investigation: the generator env's
-    // `public_methods` binding resolves wrongly through nested env-`$`
-    // (`ge$public_methods` yields the caller env, so the injected
-    // clone/initialize/print methods never land in object envs).
-    // User-defined methods (o$getx) and active bindings work.
-    let r10 = session.eval(
-        r#"Inner <- R6Class("Inner", public=list(x=1)); Outer <- R6Class("Outer", public=list(inner=NULL)); o <- Outer$new(); o$inner <- Inner$new(); d <- o$clone(deep=TRUE); d$inner$x == 5"#,
-    );
-    assert!(
-        r10.is_err(),
-        "R10 now passes — remove the KNOWN GAP note and re-enable the assertion"
-    );
+    // R10 — deep clone of nested R6 objects. Previously a KNOWN GAP:
+    // `o$clone` resolved to NULL because Filter(is.function, <no user
+    // methods>) returned NULL instead of an empty list, so the generator's
+    // public_methods binding never received the injected clone method
+    // (fixed by the type/names-preserving Filter port).
+    let r10 = session
+        .eval(r#"Inner <- R6Class("Inner", public=list(x=1)); Outer <- R6Class("Outer", public=list(inner=NULL)); o <- Outer$new(); o$inner <- Inner$new(); d <- o$clone(deep=TRUE); d$inner$x <- 5; o$inner$x == 1 && d$inner$x == 5 && !identical(o$inner, d$inner)"#)
+        .expect("R10 eval");
+    assert_eq!(r10.trim_end(), "[1] TRUE");
     let r11 = session
         .eval(r#"grepl("Q2", capture.output(print(Q2))[1])"#)
         .expect("R11 eval");

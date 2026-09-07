@@ -425,32 +425,90 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let fun = callable_arg_by_name_or_position(args, &["f", "FUN"], 0);
         let x = eval_arg_by_name_or_position(args, &["x"], 1, rho);
-        if fun.is_null() || x.is_null() || x == R_NilValue() {
+        if fun.is_null() || x == R_NilValue() {
             return R_NilValue();
         }
         // Protect across the eval-per-element loop (see do_lapply).
         let _x_guard = protect(x);
         let _fun_guard = protect(fun);
         let n = XLENGTH(x);
+        // Upstream Filter is `x[vapply(x, f, logical(1))]`: a logical
+        // subset that preserves element types AND names. (The previous
+        // port copied only numeric payloads and dropped names, and an
+        // empty match set still has to come back as an empty list —
+        // returning NULL here broke R6's
+        // `generator$public_methods <- get_functions(public)` for classes
+        // without user methods, losing the injected clone/initialize.)
         let mut kept: Vec<R_xlen_t> = Vec::new();
         for i in 0..n {
             let elem = extract_element(x, i);
             let val = apply_unary_value(fun, elem, rho);
-            if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP && *LOGICAL(val) != 0 {
+            if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP && *LOGICAL(val) == 1 {
                 kept.push(i);
             }
         }
-        let result = Rf_allocVector3(TYPEOF(x), kept.len() as R_xlen_t);
+        let m = kept.len() as R_xlen_t;
+        let result = Rf_allocVector3(TYPEOF(x), m);
         if result.is_null() {
             return R_NilValue();
         }
         let _result_guard = protect(result);
         for (new_i, &old_i) in kept.iter().enumerate() {
-            if TYPEOF(x) == SEXPTYPE::REALSXP {
-                *REAL(result).add(new_i) = *REAL(x).add(old_i as usize);
-            } else if TYPEOF(x) == SEXPTYPE::INTSXP {
-                *INTEGER(result).add(new_i) = *INTEGER(x).add(old_i as usize);
+            let new_i = new_i as R_xlen_t;
+            let old_i = old_i as R_xlen_t;
+            match TYPEOF(x) {
+                t if t == SEXPTYPE::REALSXP => {
+                    *REAL(result).add(new_i as usize) = *REAL(x).add(old_i as usize);
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    *INTEGER(result).add(new_i as usize) = *INTEGER(x).add(old_i as usize);
+                }
+                t if t == SEXPTYPE::LGLSXP => {
+                    *LOGICAL(result).add(new_i as usize) = *LOGICAL(x).add(old_i as usize);
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        result,
+                        new_i,
+                        crate::sexp::accessors::STRING_ELT(x, old_i),
+                    );
+                }
+                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
+                    crate::sexp::accessors::SET_VECTOR_ELT(
+                        result,
+                        new_i,
+                        crate::sexp::accessors::VECTOR_ELT(x, old_i),
+                    );
+                }
+                t if t == SEXPTYPE::RAWSXP => {
+                    *crate::sexp::accessors::RAW(result).add(new_i as usize) =
+                        *crate::sexp::accessors::RAW(x).add(old_i as usize);
+                }
+                t if t == SEXPTYPE::CPLXSXP => {
+                    *crate::sexp::accessors::COMPLEX(result).add(new_i as usize) =
+                        *crate::sexp::accessors::COMPLEX(x).add(old_i as usize);
+                }
+                _ => {}
             }
+        }
+        // Names travel with the kept elements.
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+            let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, m);
+            let _ng = protect(out_names);
+            for (new_i, &old_i) in kept.iter().enumerate() {
+                crate::sexp::accessors::SET_STRING_ELT(
+                    out_names,
+                    new_i as R_xlen_t,
+                    crate::sexp::accessors::STRING_ELT(names, old_i),
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                out_names,
+            );
         }
         result
     }

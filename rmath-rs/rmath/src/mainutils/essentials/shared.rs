@@ -317,6 +317,23 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let object = CAR(args);
         let field = replacement_name(CAR(CDR(args)));
         let value = CAR(CDR(CDR(args)));
+        // Upstream `$<-` promotes a NULL target to a list: `NULL$a <- 1`
+        // yields `list(a=1)`. R6 relies on this —
+        // `generator$public_methods$clone <- f` where public_methods was
+        // assigned NULL (get_functions returns NULL when a class has no
+        // user methods) must produce list(clone=f), not NULL. The
+        // promotion must happen BEFORE the NULL early-return.
+        let object = if !object.is_null()
+            && object == R_NilValue()
+            && !field.is_empty()
+            && !value.is_null()
+            && value != R_NilValue()
+        {
+            Rf_allocVector3(SEXPTYPE::VECSXP, 0)
+        } else {
+            object
+        };
+        let _object_guard = protect(object);
         if object.is_null() || object == R_NilValue() || field.is_empty() {
             return object;
         }

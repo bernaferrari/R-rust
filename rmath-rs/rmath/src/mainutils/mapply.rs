@@ -229,6 +229,57 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let ans = Rf_allocVector3(SEXPTYPE::VECSXP, longest);
         let _ans_guard = protect(ans);
 
+        // Upstream names the results from the FIRST varying argument's
+        // names, recycled to the longest length (mapply's
+        // `names(dots[[1]])[answer.index]` behavior). R6's clone relies
+        // on this: mapply(deep_clone, names(copies), copies, ...) must
+        // give a NAMED list or the following list2env errors.
+        {
+            let mut name_src: Option<(SEXP, R_xlen_t)> = None;
+            for &(v, _) in varyings.iter() {
+                let nm = crate::sexp::attrib_core::getAttrib(
+                    v,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                );
+                if !nm.is_null()
+                    && nm != R_NilValue()
+                    && TYPEOF(nm) == SEXPTYPE::STRSXP
+                    && XLENGTH(nm) > 0
+                {
+                    name_src = Some((nm, XLENGTH(nm)));
+                    break;
+                }
+            }
+            // USE.NAMES (default TRUE): besides an explicit names
+            // attribute, a CHARACTER first argument's VALUES become the
+            // result names (upstream mapply docs; R6's clone passes
+            // names(binding_copies) as that first argument).
+            if name_src.is_none() {
+                if let Some(&(v, _)) = varyings.first() {
+                    if TYPEOF(v) == SEXPTYPE::STRSXP && XLENGTH(v) > 0 {
+                        name_src = Some((v, XLENGTH(v)));
+                    }
+                }
+            }
+            if let Some((nm, nlen)) = name_src {
+                let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, longest);
+                let _on_guard = protect(out_names);
+                for i in 0..longest {
+                    // Recycle the source names over the answer length.
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        out_names,
+                        i,
+                        crate::sexp::accessors::STRING_ELT(nm, i % nlen),
+                    );
+                }
+                crate::sexp::attrib_core::setAttrib(
+                    ans,
+                    crate::sexp::attrib_core::R_NamesSymbol(),
+                    out_names,
+                );
+            }
+        }
+
         for i in 0..longest {
             // Build the call FUN(v1[i], v2[i], ..., MoreArgs...) fresh, like
             // upstream rebuilds its dots[[j]][[counter]] call per iteration.
