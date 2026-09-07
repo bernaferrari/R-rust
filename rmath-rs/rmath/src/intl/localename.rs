@@ -85,7 +85,7 @@ unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
 
 #[cfg(not(target_os = "macos"))]
 unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
-    get_locale_from_env(category)
+    unsafe { get_locale_from_env(category) }
 }
 
 // ---------------------------------------------------------------------------

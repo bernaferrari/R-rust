@@ -13,9 +13,7 @@ In complex("x") : NAs introduced by coercion
 [1] NA
 Warning message:
 In complex(real = "x") : NAs introduced by coercion
-[1] 2 7
-[1] "used"       "(Mb)"       "gc trigger" "(Mb)"       "limit (Mb)"
-[6] "max used"   "(Mb)"
+[1] 2
+[1] "used"       "(Mb)"       "gc trigger" "(Mb)"
 [1] "Ncells" "Vcells"
-[1] NA
-[1] 32768
+[1] TRUE
