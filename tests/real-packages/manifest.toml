@@ -94,3 +94,39 @@ probes = [
   "is.R6(q)",
   "grepl(\"Queue\", capture.output(print(Q))[1])",
 ]
+
+[[package]]
+name = "rematch"
+version = "2.0.0"
+tarball = "vendor/rematch_2.0.0.tar.gz"
+sha256 = "15daf7bf2907aef8503635bc8631fce9fd75248a1fc2496825588c4bdf785c26"
+cran_md5 = "64ad138fd1cec37d50683cbf2958e47b"
+license = "MIT + file LICENSE"
+needs_compilation = false
+axis = "regex capture extraction: regexpr/gregexpr with perl=TRUE named capture groups (capture.start/capture.length matrices with dimnames list(NULL, capture.names), capture.names vector, PCRE2_UNSET 0/0 vs no-match -1 arithmetic), global multi-match iteration through gregexpr list elements, vapply matrix simplification folding per-group substring columns, character-matrix result shaping via cbind/rbind/colnames, identical() on attribute-stripped vectors via as.vector"
+status = "pass"
+probes = [
+  "identical(colnames(m), c(\".match\",\"word\",\"num\")) && m[1,\"word\"]==\"abc\" && m[1,\"num\"]==\"123\"",
+  "is.na(m2[1,\"num\"]) && is.na(m2[1,\".match\"])",
+  "is.list(ma) && length(ma)==2 && nrow(ma[[1]])==2 && ma[[1]][1,\"w\"]==\"a\" && nrow(ma[[2]])==0",
+  "is.matrix(m) && is.character(m)",
+]
+
+[[package]]
+name = "zeallot"
+version = "0.2.0"
+tarball = "vendor/zeallot_0.2.0.tar.gz"
+sha256 = "7f6b97dbb7cd762f76f7319b3e2b38f3d4206fe625d363da1b5f96c928da92bb"
+cran_md5 = "e2a5bab2b554fe439c7d3194e43aacde"
+license = "MIT + file LICENSE"
+needs_compilation = false
+axis = "destructuring assignment: custom infix %<-%/%->% operators, destructure() S3 dispatch, nested LHS patterns, named-element matching, assignment-callback env semantics"
+status = "pass"
+probes = [
+  "c(x, y) %<-% c(1, 2); x + y == 3",
+  "c(a, c(b, d)) %<-% list(1, list(2, 3)); a + b + d == 6",
+  "c(n1, n2) %<-% c(a=1, b=2); n1 == 1 && n2 == 2",
+  "tryCatch({ c(x, y) %<-% c(1) }, error = function(e) conditionMessage(e))",
+  "c(1, 2) %->% c(p, q); q == 2",
+  "c(da, db) %<-% data.frame(a=11, b=22); da == 11 && db == 22",
+]

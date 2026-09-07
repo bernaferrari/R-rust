@@ -135,10 +135,39 @@ pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             base_error("invalid 'n' value");
         }
 
+        // Upstream pushes a bare CTXT_RETURN context (null call, null
+        // sysparent, cloenv = the promise's PRENV) while evaluating a
+        // promise. When sys.* queries run during that evaluation they see
+        // through the frame of the function doing the forcing: closure
+        // contexts whose frame is NOT on the promise environment's chain
+        // are skipped. Without this, `parent.frame()` inside a forced
+        // argument promise resolved against the forcing closure's caller
+        // instead of the promise creator's caller (zeallot's
+        // `list_assign(pairs, parent.frame())` saw list_assign's own frame).
+        let mut promise_env: SEXP = std::ptr::null_mut();
+        {
+            let mut probe = crate::sexp::context::R_GlobalContext();
+            while !probe.is_null() {
+                let ctx = &*probe;
+                if ctx.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
+                    break;
+                }
+                if ctx.callflag == crate::sexp::context::ctxt_flags::CTXT_RETURN
+                    && ctx.sysparent.is_null()
+                {
+                    promise_env = ctx.cloenv;
+                    break;
+                }
+                probe = ctx.nextcontext;
+            }
+        }
+
         let mut remaining = n;
         let mut context = crate::sexp::context::R_GlobalContext();
         while !context.is_null() {
-            if (*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0 {
+            if (*context).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0
+                && (promise_env.is_null() || frame_is_on_env_chain((*context).cloenv, promise_env))
+            {
                 remaining -= 1;
                 if remaining == 0 {
                     return (*context).sysparent;
@@ -150,6 +179,25 @@ pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     }
 }
 
+/// Is `frame` equal to `env` or one of `env`'s enclosing environments?
+unsafe fn frame_is_on_env_chain(frame: SEXP, env: SEXP) -> bool {
+    unsafe {
+        if frame.is_null() || env.is_null() {
+            return false;
+        }
+        let mut current = env;
+        loop {
+            if current == frame {
+                return true;
+            }
+            let next = crate::sexp::accessors::ENCLOS(current);
+            if next.is_null() || next == current {
+                return false;
+            }
+            current = next;
+        }
+    }
+}
 /// R's `sys.call(which)` — get the call that's currently being evaluated.
 pub unsafe fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -160,6 +208,43 @@ pub unsafe fn do_sys_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         } else {
             crate::eval::context::R_syscall(which, top)
         }
+    }
+}
+
+/// R's `sys.calls()` — the calls for each frame on the context stack,
+/// innermost first.
+///
+/// Upstream collects the call of every CTXT_FUNCTION context (shallow
+/// duplicated so later mutation cannot rewrite the stack). zeallot's error
+/// paths deparse these to attribute assignment-operator calls.
+pub unsafe fn do_sys_calls(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut calls: Vec<SEXP> = Vec::new();
+        let mut guards: Vec<crate::sexp::protect::ProtectGuard> = Vec::new();
+        let mut c = crate::sexp::context::R_GlobalContext();
+        while !c.is_null() {
+            let ctx = &*c;
+            if ctx.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION != 0
+                && !ctx.call.is_null()
+                && ctx.call != R_NilValue()
+            {
+                let dup = crate::mainutils::duplicate::shallow_duplicate(ctx.call);
+                guards.push(crate::sexp::protect::protect(dup));
+                calls.push(dup);
+            }
+            c = ctx.nextcontext;
+        }
+
+        let result =
+            crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::VECSXP, calls.len() as i64);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = crate::sexp::protect::protect(result);
+        for (i, call) in calls.iter().enumerate() {
+            crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, *call);
+        }
+        result
     }
 }
 

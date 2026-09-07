@@ -19,6 +19,7 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE};
 use crate::sexp::object::{PairlistBuilder, PairlistIter, Sexp, SexpError};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::eval::Rf_eval;
@@ -170,6 +171,20 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             return R_NilValue();
         }
 
+        // Upstream applyClosure_core passes the *promised* arguments
+        // (`actuals = promiseArgs(arglist, rho)`) to begincontext as the
+        // context's promargs. UseMethod, Recall, and NextMethod later
+        // re-apply `cptr->promargs` when redispatching, so they must find
+        // promises carrying the original caller's environment. Storing the
+        // raw unevaluated expressions instead made those re-applications
+        // rebuild the promises in the redispatch frame, losing caller-local
+        // variables (e.g. the dispatched method's forced argument looked up
+        // `v` in the generic's frame instead of the caller's).
+        // Double-wrapping is transparent: forcing the outer promise
+        // evaluates the inner one in its own recorded environment.
+        let promised_args = super::dispatch::promiseArgs(arglist, rho);
+        let _promised_args_guard = protect(promised_args);
+
         let newrho = make_applyClosure_env(op, arglist, rho);
         if newrho.is_null() || newrho == R_NilValue() {
             return R_NilValue();
@@ -194,7 +209,7 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
             sysparent,
             None,
             op,
-            arglist,
+            promised_args,
         );
         let ctx = ctx_guard.context();
 

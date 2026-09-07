@@ -958,6 +958,30 @@ pub(crate) fn perl_captures(
         .and_then(|regex| regex.captures(text))
 }
 
+/// All non-overlapping perl matches with their capture spans, in order —
+/// the iteration do_gregexpr's perl branch needs (grep.c re-runs pcre2_exec
+/// per global match). Unset groups are `None`, like `perl_captures`.
+pub(crate) fn perl_captures_all(
+    pattern: &str,
+    text: &str,
+    ignore_case: bool,
+) -> Option<Vec<Vec<Option<RegexMatch>>>> {
+    let re = PerlRegex::compile(pattern, ignore_case).ok()?;
+    let mut all = Vec::new();
+    for caps in re.regex.captures_iter(text) {
+        let caps = caps.ok()?;
+        let mut matches = Vec::with_capacity(caps.len());
+        for idx in 0..caps.len() {
+            matches.push(caps.get(idx).map(|m| RegexMatch {
+                start: m.start(),
+                end: m.end(),
+            }));
+        }
+        all.push(matches);
+    }
+    Some(all)
+}
+
 /// Capture-group metadata for a perl pattern: `(group count excluding the
 /// implicit whole-match group 0, group names)` where unnamed groups map to
 /// "". Port of grep.c's pcre2_pattern_info(PCRE2_INFO_CAPTURECOUNT /

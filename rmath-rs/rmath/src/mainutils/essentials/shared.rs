@@ -231,6 +231,83 @@ pub(crate) unsafe fn replacement_name(arg: SEXP) -> String {
     }
 }
 
+fn is_data_frame_object(x: SEXP) -> bool {
+    unsafe {
+        let cls = crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if cls.is_null() || cls == R_NilValue() || TYPEOF(cls) != crate::sexp::ffi::SEXPTYPE::STRSXP
+        {
+            return false;
+        }
+        (0..XLENGTH(cls)).any(|i| {
+            let s = STRING_ELT(cls, i as i64);
+            !s.is_null() && std::ffi::CStr::from_ptr(CHAR(s)).to_bytes() == b"data.frame"
+        })
+    }
+}
+
+fn frame_row_count(df: SEXP) -> i64 {
+    unsafe {
+        let rn = crate::sexp::attrib_core::getAttrib(
+            df,
+            crate::mainutils::subset::installTrChar(STRING_ELT(
+                crate::sexp::constructors::Rf_mkString(c"row.names".as_ptr()),
+                0,
+            )),
+        );
+        // compact row.names: c(NA_integer_, -n)
+        if !rn.is_null()
+            && rn != R_NilValue()
+            && TYPEOF(rn) == crate::sexp::ffi::SEXPTYPE::INTSXP
+            && XLENGTH(rn) == 2
+            && crate::sexp::accessors::INTEGER_ELT(rn, 1) < 0
+        {
+            -(crate::sexp::accessors::INTEGER_ELT(rn, 1) as i64)
+        } else if !rn.is_null() && rn != R_NilValue() && XLENGTH(rn) > 0 {
+            XLENGTH(rn)
+        } else if XLENGTH(df) > 0 {
+            // fall back to the first column's length
+            XLENGTH(crate::sexp::accessors::VECTOR_ELT(df, 0))
+        } else {
+            0
+        }
+    }
+}
+
+/// Copy element `from` of `src` to element `to` of `dst` for any vector type.
+unsafe fn copy_vector_element(src: SEXP, from: i64, dst: SEXP, to: i64) {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == crate::sexp::ffi::SEXPTYPE::INTSXP => {
+                *crate::sexp::accessors::INTEGER(dst).add(to as usize) =
+                    crate::sexp::accessors::INTEGER_ELT(src, from as i32);
+            }
+            t if t == crate::sexp::ffi::SEXPTYPE::REALSXP => {
+                *crate::sexp::accessors::REAL(dst).add(to as usize) =
+                    crate::sexp::accessors::REAL_ELT(src, from as i32);
+            }
+            t if t == crate::sexp::ffi::SEXPTYPE::LGLSXP => {
+                *crate::sexp::accessors::LOGICAL(dst).add(to as usize) =
+                    crate::sexp::accessors::LOGICAL_ELT(src, from as i32);
+            }
+            t if t == crate::sexp::ffi::SEXPTYPE::STRSXP => {
+                crate::sexp::accessors::SET_STRING_ELT(
+                    dst,
+                    to,
+                    crate::sexp::accessors::STRING_ELT(src, from),
+                );
+            }
+            t if t == crate::sexp::ffi::SEXPTYPE::VECSXP => {
+                crate::sexp::accessors::SET_VECTOR_ELT(
+                    dst,
+                    to,
+                    crate::sexp::accessors::VECTOR_ELT(src, from),
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
 pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || CDR(args) == R_NilValue() {
@@ -246,6 +323,27 @@ pub unsafe fn do_dollar_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if TYPEOF(object) != SEXPTYPE::VECSXP {
             return object;
         }
+
+        // `$<-.data.frame` recycles a length-1 atomic value to the
+        // frame's row count (`df$f <- factor("", levels=lv)` gives an
+        // n-row column). Plain lists keep the value as-is.
+        let value = if is_data_frame_object(object) && XLENGTH(value) == 1 && value != R_NilValue()
+        {
+            let nrow = frame_row_count(object);
+            if nrow > 1 {
+                let rep = Rf_allocVector3(TYPEOF(value), nrow);
+                let _rep_guard = protect(rep);
+                for i in 0..nrow {
+                    copy_vector_element(value, 0, rep, i);
+                }
+                crate::mainutils::array::copyMostAttrib(value, rep);
+                rep
+            } else {
+                value
+            }
+        } else {
+            value
+        };
 
         let names_sym = crate::sexp::attrib_core::R_NamesSymbol();
         let names = crate::sexp::attrib_core::getAttrib(object, names_sym);

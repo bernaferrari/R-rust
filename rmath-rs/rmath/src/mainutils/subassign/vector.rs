@@ -476,13 +476,30 @@ pub(crate) unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SE
             return x;
         }
 
+        // Upstream vectorSubassign: assigning NULL to a LIST/EXPRESSION
+        // element deletes the selected elements (`l["b"] <- NULL` removes
+        // the named slot; a name that does not exist yet is a no-op,
+        // resolved by makeSubscript to indices beyond the stretch only in
+        // the non-NULL case, so existing selections delete here).
+        let is_list_target_raw = TYPEOF(x) == VECSXP || TYPEOF(x) == EXPRSXP;
+        if is_list_target_raw && isNull(y) {
+            // DeleteListElements takes 1-based INDICES of the elements to
+            // remove — exactly what makeSubscript produced in `indx`
+            // (post-stretch indices beyond the current length are ignored
+            // by its bounds check, making new-name NULL assignment a
+            // no-op, matching `l["new"] <- NULL` on stock R).
+            return DeleteListElements(x, indx);
+        }
+
         let ny = XLENGTH(y);
         let nx = XLENGTH(x);
         let _x_guard = protect(x);
 
         let is_list_target = TYPEOF(x) == VECSXP || TYPEOF(x) == EXPRSXP;
-        if !is_list_target || isNull(y) {
-            // Check length compatibility
+        if !is_list_target {
+            // Check length compatibility (the list+NULL delete case was
+            // handled above; non-list targets with a zero-length
+            // replacement are an error).
             if n > 0 && ny == 0 {
                 crate::mainutils::errors::Rf_error(
                     b"replacement has length zero\0".as_ptr() as *const core::ffi::c_char

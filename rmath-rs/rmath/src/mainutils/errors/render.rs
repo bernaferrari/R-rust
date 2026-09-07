@@ -34,13 +34,17 @@ pub(super) unsafe fn getCurrentCall() -> SEXP {
         if ctx.is_null() {
             return globals::R_NilValue();
         }
-        let c = &*ctx;
-        // Skip CTXT_BUILTIN contexts
-        if (c.callflag & crate::sexp::context::ctxt_flags::CTXT_BUILTIN) != 0
+        let mut c = &*ctx;
+        // Skip CTXT_BUILTIN contexts and promise-evaluation contexts
+        // (bare CTXT_RETURN, null call — pushed while forcing a promise)
+        // so errors raised during a forced argument keep the attribution
+        // of the enclosing R call, like upstream getCurrentCall's
+        // CTXT_FUNCTION requirement.
+        while (c.callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) == 0
             && !c.nextcontext.is_null()
+            && usable_call(c.call) == globals::R_NilValue()
         {
-            let next = &*c.nextcontext;
-            return usable_call(next.call);
+            c = &*c.nextcontext;
         }
         usable_call(c.call)
     }

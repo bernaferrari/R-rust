@@ -19,7 +19,7 @@ use crate::sexp::accessors::{
     RAW, REAL, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NaString;
+use crate::sexp::globals::{R_NaString, R_NilValue};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -240,6 +240,13 @@ fn compute_strictness(flags: c_int) -> c_int {
 /// Returns 1 if identical, 0 if not.
 pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
     unsafe {
+        // This engine spells "no attributes" both as a null ATTRIB pointer
+        // (fresh vectors) and as R_NilValue (e.g. as.vector's stripped
+        // copies); upstream R only uses R_NilValue. Normalize so the two
+        // empty spellings compare equal, in value position and inside the
+        // attribute checks below.
+        let x = if x.is_null() { R_NilValue() } else { x };
+        let y = if y.is_null() { R_NilValue() } else { y };
         // Quick pointer equality check
         if x == y {
             return 1;
@@ -280,8 +287,10 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 return 0;
             }
         } else {
-            // Compare as set: both null or both non-null (simplified)
-            if ax.is_null() != ay.is_null() {
+            // Compare as set: both empty or both present (simplified)
+            let ax_empty = ax.is_null() || ax == R_NilValue();
+            let ay_empty = ay.is_null() || ay == R_NilValue();
+            if ax_empty != ay_empty {
                 return 0;
             }
         }

@@ -1283,7 +1283,11 @@ unsafe fn fill_capture_no_match(
     }
 }
 
-/// R gregexpr(pattern, text) for repeated non-overlapping fixed matches.
+/// R gregexpr(pattern, text) for repeated non-overlapping matches. With
+/// perl = TRUE and capture groups, each element carries the
+/// capture.start / capture.length matrices (one row per match, one column
+/// per group) and capture.names, mirroring grep.c's perl branch of
+/// do_gregexpr; non-matching elements get one row of -1s.
 pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let pat = elt_to_string(CAR(args), 0);
@@ -1291,6 +1295,14 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
         let perl = named_logical_arg(args, "perl").unwrap_or(false);
         let fixed = named_logical_arg(args, "fixed").unwrap_or(false);
+        // grep.c drops perl when fixed = TRUE, so only a genuine perl run
+        // gets capture attribution (same guard as do_regexpr).
+        let (capture_count, capture_names) = if perl && !fixed {
+            crate::mainutils::grep::perl_group_info(&pat, ignore_case)
+                .unwrap_or_else(|| (0, Vec::new()))
+        } else {
+            (0, Vec::new())
+        };
         let n = XLENGTH(text);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);
         if result.is_null() {
@@ -1302,29 +1314,57 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             let txt = elt_to_string(text, i);
             let mut starts = Vec::new();
             let mut lengths = Vec::new();
+            // Per-match group spans (0-based start, length); None mirrors
+            // PCRE2_UNSET groups (0/0 arithmetic below).
+            let mut group_spans: Vec<Vec<Option<(usize, usize)>>> = Vec::new();
             if !pat.is_empty() {
-                let mut offset = 0usize;
-                while offset <= txt.len() {
-                    let hay = &txt[offset..];
-                    let found = if fixed {
-                        fixed_find(hay, &pat, ignore_case)
-                    } else if perl {
-                        crate::mainutils::grep::perl_find(&pat, hay, ignore_case)
-                    } else {
-                        crate::mainutils::grep::ere_find(&pat, hay, ignore_case)
-                    };
-                    let Some(m) = found else {
-                        break;
-                    };
-                    let start = offset + m.start;
-                    starts.push(start + 1);
-                    lengths.push(m.end - m.start);
-                    let next_offset = offset + m.end;
-                    offset = if m.start == m.end {
-                        next_offset + txt[next_offset..].chars().next().map_or(1, char::len_utf8)
-                    } else {
-                        next_offset
-                    };
+                if capture_count > 0 {
+                    // Perl run with capture groups: every global match
+                    // contributes its whole-match span and its groups.
+                    if let Some(all) =
+                        crate::mainutils::grep::perl_captures_all(&pat, &txt, ignore_case)
+                    {
+                        for caps in all {
+                            if let Some(whole) = caps.first().and_then(|c| c.as_ref()) {
+                                starts.push(whole.start + 1);
+                                lengths.push(whole.end - whole.start);
+                                group_spans.push(
+                                    (1..=capture_count)
+                                        .map(|g| {
+                                            caps.get(g)
+                                                .and_then(|c| c.as_ref())
+                                                .map(|m| (m.start, m.end - m.start))
+                                        })
+                                        .collect(),
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    let mut offset = 0usize;
+                    while offset <= txt.len() {
+                        let hay = &txt[offset..];
+                        let found = if fixed {
+                            fixed_find(hay, &pat, ignore_case)
+                        } else if perl {
+                            crate::mainutils::grep::perl_find(&pat, hay, ignore_case)
+                        } else {
+                            crate::mainutils::grep::ere_find(&pat, hay, ignore_case)
+                        };
+                        let Some(m) = found else {
+                            break;
+                        };
+                        let start = offset + m.start;
+                        starts.push(start + 1);
+                        lengths.push(m.end - m.start);
+                        let next_offset = offset + m.end;
+                        offset = if m.start == m.end {
+                            next_offset
+                                + txt[next_offset..].chars().next().map_or(1, char::len_utf8)
+                        } else {
+                            next_offset
+                        };
+                    }
                 }
             }
 
@@ -1355,10 +1395,97 @@ pub unsafe fn do_gregexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             };
 
             set_regexpr_attrs(elt, match_lengths);
+            if capture_count > 0 {
+                if starts.is_empty() {
+                    // grep.c's no-match branch: one row of -1s per group.
+                    set_gregexpr_capture_attrs(elt, 1, capture_count, &capture_names, |_, _| {
+                        (-1, -1)
+                    });
+                } else {
+                    let spans = &group_spans;
+                    set_gregexpr_capture_attrs(
+                        elt,
+                        starts.len(),
+                        capture_count,
+                        &capture_names,
+                        |k, g| spans[k][g].map_or((0, 0), |(s, l)| (s as c_int + 1, l as c_int)),
+                    );
+                }
+            }
             SET_VECTOR_ELT(result, i, elt);
         }
 
         result
+    }
+}
+
+/// Attach capture.start / capture.length / capture.names attrs to one
+/// gregexpr element: n_match x capture_count column-major matrices with
+/// dimnames list(NULL, names) — the shape grep.c's do_gregexpr builds per
+/// element. `span` maps (match_idx, group_idx) to (start, length).
+unsafe fn set_gregexpr_capture_attrs(
+    elt: SEXP,
+    n_match: usize,
+    capture_count: usize,
+    capture_names: &[String],
+    span: impl Fn(usize, usize) -> (c_int, c_int),
+) {
+    unsafe {
+        let names_sexp = Rf_allocVector3(SEXPTYPE::STRSXP, capture_count as R_xlen_t);
+        if names_sexp.is_null() {
+            return;
+        }
+        let _nsg = protect(names_sexp);
+        for (g, name) in capture_names.iter().enumerate() {
+            let cstr = CString::new(name.as_str()).unwrap_or_default();
+            SET_STRING_ELT(names_sexp, g as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+
+        let capture_start = alloc_int_matrix(n_match as R_xlen_t, capture_count);
+        let capture_len = alloc_int_matrix(n_match as R_xlen_t, capture_count);
+        if capture_start.is_null() || capture_len.is_null() {
+            return;
+        }
+        let _csp = protect(capture_start);
+        let _clp = protect(capture_len);
+        for k in 0..n_match {
+            for g in 0..capture_count {
+                let (start, len) = span(k, g);
+                let ind = k + g * n_match;
+                *INTEGER(capture_start).add(ind) = start;
+                *INTEGER(capture_len).add(ind) = len;
+            }
+        }
+
+        let dmn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if dmn.is_null() {
+            return;
+        }
+        let _dmp = protect(dmn);
+        SET_VECTOR_ELT(dmn, 0, R_NilValue());
+        SET_VECTOR_ELT(dmn, 1, names_sexp);
+        crate::sexp::attrib_core::setAttrib(
+            capture_start,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dmn,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            capture_len,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dmn,
+        );
+
+        crate::sexp::attrib_core::setAttrib(
+            elt,
+            Rf_install(c"capture.start".as_ptr()),
+            capture_start,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            elt,
+            Rf_install(c"capture.length".as_ptr()),
+            capture_len,
+        );
+        crate::sexp::attrib_core::setAttrib(elt, Rf_install(c"capture.names".as_ptr()), names_sexp);
     }
 }
 
@@ -2208,6 +2335,46 @@ pub unsafe fn do_as_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
                 elt_to_string(x, 0)
             };
             return search_env_from_name(&name);
+        }
+        if TYPEOF(x) == SEXPTYPE::VECSXP || TYPEOF(x) == SEXPTYPE::LISTSXP {
+            // Upstream as.environment on a named list/pairlist: bindings
+            // from the elements, parent = emptyenv() (whisker's partials
+            // path relies on this).
+            let n = XLENGTH(x);
+            let names =
+                crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+            let names_ok = !names.is_null()
+                && names != R_NilValue()
+                && TYPEOF(names) == SEXPTYPE::STRSXP
+                && XLENGTH(names) == n
+                && (0..n).all(|i| {
+                    let si = crate::sexp::accessors::STRING_ELT(names, i as i64);
+                    !si.is_null() && si != crate::sexp::globals::R_NaString()
+                });
+            if !names_ok {
+                std::panic::panic_any(RError {
+                    message: "names(x) must be a character vector of the same length as x"
+                        .to_string(),
+                });
+            }
+            let env = crate::sexp::envir::R_NewHashedEnv(crate::sexp::globals::R_EmptyEnv(), 0);
+            let _env_guard = protect(env);
+            for i in 0..n {
+                let value = if TYPEOF(x) == SEXPTYPE::VECSXP {
+                    crate::sexp::accessors::VECTOR_ELT(x, i as i64)
+                } else {
+                    // pairlist walk: CAR of the i-th cons cell
+                    let mut cell = x;
+                    for _ in 0..i {
+                        cell = CDR(cell);
+                    }
+                    CAR(cell)
+                };
+                let name = elt_to_string(names, i);
+                let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+                crate::sexp::envir::defineVar(sym, value, env);
+            }
+            return env;
         }
         std::panic::panic_any(RError {
             message: "invalid object for as.environment".to_string(),

@@ -57,4 +57,10 @@ fn real_package_corpus_fortunes() {
             .expect("fortune quote probe"),
         "[1] TRUE"
     );
+
+    // F6: fortune(N) is consistent with read.fortunes() row N (author).
+    let f6 = session
+        .eval("identical(fortune(10)$author, read.fortunes()$author[10])")
+        .expect("F6 eval");
+    assert_eq!(f6.trim_end(), "[1] TRUE");
 }

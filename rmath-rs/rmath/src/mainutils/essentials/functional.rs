@@ -149,7 +149,11 @@ pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `vapply(X, FUN, FUN.VALUE)` — apply and simplify using FUN.VALUE's scalar type.
+/// R's `vapply(X, FUN, FUN.VALUE)` — apply and simplify using FUN.VALUE's
+/// type and shape. FUN.VALUE of length 1 simplifies to an atomic vector;
+/// longer FUN.VALUE folds each FUN result into one column of the
+/// commonLen x n matrix apply.c's do_vapply builds, erroring when a
+/// result's length or type cannot match FUN.VALUE.
 pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let template_expr = arg_by_name_or_position(args, &["FUN.VALUE"], 2);
@@ -190,7 +194,203 @@ pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let _filtered_guard = protect(filtered);
         let list = do_lapply(_call, _op, filtered, rho);
-        simplify_scalar_list_as(list, template_type)
+        let use_names = named_logical_arg(args, "USE.NAMES").unwrap_or(true);
+        simplify_vapply_list_as(list, template_expr, template_type, use_names, rho)
+    }
+}
+
+/// vapply's simplification step: scalar FUN.VALUE keeps the flat vector
+/// path; FUN.VALUE of length > 1 fills ans[i*commonLen + j] per element
+/// (one column per X element, apply.c's layout) and dims it to
+/// c(commonLen, n). USE.NAMES carries FUN.VALUE's (or the first result's)
+/// names as rownames and X's names as colnames.
+fn simplify_vapply_list_as(
+    list: SEXP,
+    template_expr: SEXP,
+    template_type: SEXPTYPE,
+    use_names: bool,
+    rho: SEXP,
+) -> SEXP {
+    unsafe {
+        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
+            return list;
+        }
+        let n = XLENGTH(list);
+        if n == 0 {
+            return list;
+        }
+        let is_vector_type = matches!(
+            template_type,
+            SEXPTYPE::CPLXSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::LGLSXP
+                | SEXPTYPE::RAWSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::VECSXP
+        );
+        if !is_vector_type {
+            base_error("'FUN.VALUE' must be a vector");
+        }
+        let template = if template_expr.is_null() || template_expr == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::eval::eval::Rf_eval(template_expr, rho)
+        };
+        let _template_guard = protect(template);
+        let common_len = if template == R_NilValue() {
+            1
+        } else {
+            XLENGTH(template)
+        };
+        if common_len <= 1 {
+            return simplify_scalar_list_as(list, template_type);
+        }
+
+        let result = Rf_allocVector3(template_type, n * common_len);
+        if result.is_null() {
+            return list;
+        }
+        let _result_guard = protect(result);
+        for i in 0..n {
+            let mut val = VECTOR_ELT(list, i as i64);
+            let val_len = if val.is_null() || val == R_NilValue() {
+                0
+            } else {
+                XLENGTH(val)
+            };
+            if val_len != common_len {
+                base_error(format!(
+                    "values must be length {common_len}, but FUN(X[[{}]]) result is length {val_len}",
+                    i + 1
+                ));
+            }
+            let val_type = TYPEOF(val);
+            if val_type != template_type {
+                let okay = match template_type {
+                    t if t == SEXPTYPE::CPLXSXP => {
+                        val_type == SEXPTYPE::REALSXP
+                            || val_type == SEXPTYPE::INTSXP
+                            || val_type == SEXPTYPE::LGLSXP
+                    }
+                    t if t == SEXPTYPE::REALSXP => {
+                        val_type == SEXPTYPE::INTSXP || val_type == SEXPTYPE::LGLSXP
+                    }
+                    t if t == SEXPTYPE::INTSXP => val_type == SEXPTYPE::LGLSXP,
+                    _ => false,
+                };
+                if !okay {
+                    base_error(format!(
+                        "values must be type '{}', but FUN(X[[{}]]) result is type '{}'",
+                        sexp_type_name(template_type),
+                        i + 1,
+                        sexp_type_name(SEXPTYPE(val_type))
+                    ));
+                }
+                val = crate::mainutils::coerce::coerceVector(val, template_type.0);
+            }
+            let _val_guard = protect(val);
+            let base = i * common_len;
+            match template_type {
+                t if t == SEXPTYPE::CPLXSXP => {
+                    for j in 0..common_len {
+                        *COMPLEX(result).add((base + j) as usize) = *COMPLEX(val).add(j as usize);
+                    }
+                }
+                t if t == SEXPTYPE::REALSXP => {
+                    for j in 0..common_len {
+                        *REAL(result).add((base + j) as usize) = *REAL(val).add(j as usize);
+                    }
+                }
+                t if t == SEXPTYPE::INTSXP => {
+                    for j in 0..common_len {
+                        *INTEGER(result).add((base + j) as usize) = *INTEGER(val).add(j as usize);
+                    }
+                }
+                t if t == SEXPTYPE::LGLSXP => {
+                    for j in 0..common_len {
+                        *LOGICAL(result).add((base + j) as usize) = *LOGICAL(val).add(j as usize);
+                    }
+                }
+                t if t == SEXPTYPE::RAWSXP => {
+                    for j in 0..common_len {
+                        *RAW(result).add((base + j) as usize) = *RAW(val).add(j as usize);
+                    }
+                }
+                t if t == SEXPTYPE::STRSXP => {
+                    for j in 0..common_len {
+                        SET_STRING_ELT(result, base + j, STRING_ELT(val, j));
+                    }
+                }
+                t if t == SEXPTYPE::VECSXP => {
+                    for j in 0..common_len {
+                        SET_VECTOR_ELT(result, (base + j) as i64, VECTOR_ELT(val, j));
+                    }
+                }
+                _ => return list,
+            }
+        }
+
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if dim.is_null() {
+            return result;
+        }
+        let _dim_guard = protect(dim);
+        *INTEGER(dim) = common_len as c_int;
+        *INTEGER(dim).add(1) = n as c_int;
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+
+        if use_names {
+            let mut row_names = crate::sexp::attrib_core::getAttrib(
+                template,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            // apply.c falls back to the first result's names when
+            // FUN.VALUE itself is unnamed.
+            if (row_names.is_null() || row_names == R_NilValue()) && n > 0 {
+                let first = VECTOR_ELT(list, 0);
+                if !first.is_null() && first != R_NilValue() {
+                    row_names = crate::sexp::attrib_core::getAttrib(
+                        first,
+                        crate::sexp::attrib_core::R_NamesSymbol(),
+                    );
+                }
+            }
+            let col_names = crate::sexp::attrib_core::getAttrib(
+                list,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+            );
+            let have_rows = !row_names.is_null() && row_names != R_NilValue();
+            let have_cols = !col_names.is_null() && col_names != R_NilValue();
+            if have_rows || have_cols {
+                let dmn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                if !dmn.is_null() {
+                    let _dmn_guard = protect(dmn);
+                    SET_VECTOR_ELT(dmn, 0, if have_rows { row_names } else { R_NilValue() });
+                    SET_VECTOR_ELT(dmn, 1, if have_cols { col_names } else { R_NilValue() });
+                    crate::sexp::attrib_core::setAttrib(
+                        result,
+                        crate::sexp::attrib_core::R_DimNamesSymbol(),
+                        dmn,
+                    );
+                }
+            }
+        }
+        result
+    }
+}
+
+/// Upstream type names as they appear in vapply's error messages.
+fn sexp_type_name(t: SEXPTYPE) -> &'static str {
+    match t {
+        t if t == SEXPTYPE::CPLXSXP => "complex",
+        t if t == SEXPTYPE::REALSXP => "double",
+        t if t == SEXPTYPE::INTSXP => "integer",
+        t if t == SEXPTYPE::LGLSXP => "logical",
+        t if t == SEXPTYPE::RAWSXP => "raw",
+        t if t == SEXPTYPE::STRSXP => "character",
+        t if t == SEXPTYPE::VECSXP => "list",
+        _ => "unknown",
     }
 }
 

@@ -637,6 +637,23 @@ unsafe fn is_restart_object(value: SEXP) -> bool {
 /// R's `stop(...)` — raise error.
 pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        // stop(<condition>): signal the condition's own message. Upstream
+        // stop() detects condition objects (class contains "condition") and
+        // signals them as-is; packages like zeallot build classed error
+        // conditions with errorCondition() and pass them here.
+        let first = CAR(args);
+        if crate::mainutils::essentials::sexp_has_class(first, "condition") {
+            if let Some(msg) =
+                crate::mainutils::essentials::tables::list_element_by_name(first, "message")
+            {
+                let text = elt_to_string(msg, 0);
+                crate::mainutils::errors::errorcall_str(
+                    crate::mainutils::errors::R_getCurrentCall(),
+                    &text,
+                );
+            }
+        }
+
         let s = elt_to_string(CAR(args), 0);
         // Upstream `stop()` signals with the call of the frame that invoked
         // stop (findCall skips stop's own closure frame). stop is a builtin
@@ -1490,6 +1507,111 @@ pub unsafe fn do_simpleError(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 if !charsxp.is_null() {
                     let data = (*class).gengc_next_node as *mut SEXP;
                     *data.add(i) = charsxp;
+                }
+            }
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
+        }
+        result
+    }
+}
+
+/// R's `errorCondition(message, ..., class = NULL, call = NULL)`.
+///
+/// Upstream base defines this as an R-level closure:
+/// `structure(list(message = as.character(message), call = call, ...),
+/// class = c(class, "error", "condition"))`. The port implements it as a
+/// builtin; arguments arrive already evaluated with their tags, so the
+/// message/class/call formals are picked out by tag (the first untagged
+/// value is the message). zeallot's error paths build their conditions
+/// through this.
+pub unsafe fn do_errorCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { error_or_warning_condition(args, "error") }
+}
+
+/// R's `warningCondition(message, ..., class = NULL, call = NULL)` —
+/// see [`do_errorCondition`].
+pub unsafe fn do_warningCondition(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { error_or_warning_condition(args, "warning") }
+}
+
+unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
+    unsafe {
+        let mut message: SEXP = R_NilValue();
+        let mut class_arg: SEXP = R_NilValue();
+        let mut call_arg: SEXP = R_NilValue();
+        let mut cur = args;
+        while !cur.is_null() && cur != R_NilValue() {
+            let tag = crate::sexp::accessors::TAG(cur);
+            let value = crate::sexp::accessors::CAR(cur);
+            let name = if tag.is_null() || tag == R_NilValue() {
+                String::new()
+            } else {
+                symbol_name(tag).unwrap_or_default()
+            };
+            if name == "class" {
+                class_arg = value;
+            } else if name == "call" {
+                call_arg = value;
+            } else if (name == "message" || name.is_empty()) && message == R_NilValue() {
+                message = value;
+            }
+            cur = crate::sexp::accessors::CDR(cur);
+        }
+
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = protect(result);
+
+        let message_str = if message.is_null() || message == R_NilValue() {
+            crate::mainutils::coerce::coerceVector(R_NilValue(), SEXPTYPE::STRSXP.as_c_int())
+        } else {
+            crate::mainutils::coerce::coerceVector(message, SEXPTYPE::STRSXP.as_c_int())
+        };
+        let _message_guard = protect(message_str);
+        SET_VECTOR_ELT(result, 0, message_str);
+        SET_VECTOR_ELT(result, 1, call_arg);
+
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        if !names.is_null() {
+            for (i, n) in ["message", "call"].iter().enumerate() {
+                let cstr = CString::new(*n).unwrap_or_default();
+                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                if !charsxp.is_null() {
+                    let data = (*names).gengc_next_node as *mut SEXP;
+                    *data.add(i) = charsxp;
+                }
+            }
+            crate::sexp::attrib_core::setAttrib(result, Rf_install(c"names".as_ptr()), names);
+        }
+
+        let extra_classes = if class_arg.is_null()
+            || class_arg == R_NilValue()
+            || crate::sexp::accessors::TYPEOF(class_arg) != SEXPTYPE::STRSXP
+        {
+            0
+        } else {
+            crate::sexp::accessors::LENGTH(class_arg)
+        };
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, extra_classes as i64 + 2);
+        if !class.is_null() {
+            let mut slot = 0usize;
+            for i in 0..extra_classes as isize {
+                let src = crate::sexp::accessors::STRING_ELT(class_arg, i as i64);
+                if !src.is_null() {
+                    let data = (*class).gengc_next_node as *mut SEXP;
+                    *data.add(slot) = src;
+                    slot += 1;
+                }
+            }
+            for name in [kind, "condition"] {
+                let cstr = CString::new(name).unwrap_or_default();
+                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                if !charsxp.is_null() {
+                    let data = (*class).gengc_next_node as *mut SEXP;
+                    *data.add(slot) = charsxp;
+                    slot += 1;
                 }
             }
             crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);

@@ -830,6 +830,14 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_as_vector,
     },
     EvaluatedBuiltin {
+        name: "as.symbol",
+        handler: crate::mainutils::essentials::do_as_symbol,
+    },
+    EvaluatedBuiltin {
+        name: "as.name",
+        handler: crate::mainutils::essentials::do_as_symbol,
+    },
+    EvaluatedBuiltin {
         name: "as.call",
         handler: crate::mainutils::coerce::do_ascall,
     },
@@ -1708,6 +1716,18 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "simpleError",
         handler: crate::mainutils::essentials::do_simpleError,
+    },
+    EvaluatedBuiltin {
+        name: "errorCondition",
+        handler: crate::mainutils::essentials::do_errorCondition,
+    },
+    EvaluatedBuiltin {
+        name: "warningCondition",
+        handler: crate::mainutils::essentials::do_warningCondition,
+    },
+    EvaluatedBuiltin {
+        name: "sys.calls",
+        handler: crate::mainutils::essentials::do_sys_calls,
     },
     EvaluatedBuiltin {
         name: "simpleWarning",

@@ -1971,6 +1971,26 @@ fn real_package_corpus() {
         "[1] \"vis\""
     );
 
+    // Deeper whisker axes: partials, HTML escaping, dot-iteration.
+    assert_eq!(
+        session
+            .eval("whisker.render(\"{{>p}}\", partials=list(p=\"PP\"))")
+            .expect("whisker partials"),
+        "[1] \"PP\""
+    );
+    assert_eq!(
+        session
+            .eval("whisker.render(\"{{x}}\", list(x=\"<b>\"))")
+            .expect("whisker escaping"),
+        "[1] \"&lt;b&gt;\""
+    );
+    assert_eq!(
+        session
+            .eval("whisker.render(\"{{#items}}{{.}};{{/items}}\", list(items=c(1,2,3)))")
+            .expect("whisker iteration"),
+        "[1] \"1;2;3;\""
+    );
+
     // praise 1.0.0 — pass: word interpolates via regexpr(perl=TRUE)
     // capture attribution (see conformance case 561).
     session.load_package("praise").expect("praise must load");
@@ -1986,10 +2006,40 @@ fn real_package_corpus() {
         "praise word must be non-empty: {praise_out}"
     );
 
+    // Deeper praise axes: exclamations and upper-case folding.
+    let p2 = session
+        .eval("praise(\"${Exclamation}!\")")
+        .expect("praise exclamation");
+    assert!(p2.contains('!'), "praise exclamation must contain !: {p2}");
+    let p3 = session
+        .eval("praise(\"${EXCLAMATION}\")")
+        .expect("praise upper");
+    assert_ne!(p3, p2, "upper-case template must render differently");
+
     // crayon 1.5.3 — pass: loads and red() renders (oracle: [1] "hi").
     session.load_package("crayon").expect("crayon must load");
     assert_eq!(
         session.eval("crayon::red(\"hi\")").expect("crayon red"),
         "[1] \"hi\""
+    );
+
+    // Deeper crayon axes: styles registry, headless detection answers.
+    assert_eq!(
+        session
+            .eval("\"bold\" %in% names(crayon:::styles()) && length(crayon:::styles()) > 20")
+            .expect("crayon styles"),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session
+            .eval("crayon:::num_ansi_colors()")
+            .expect("crayon num colors"),
+        "[1] 1"
+    );
+    assert_eq!(
+        session
+            .eval("crayon::has_color()")
+            .expect("crayon has_color"),
+        "[1] FALSE"
     );
 }

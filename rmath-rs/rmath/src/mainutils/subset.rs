@@ -1494,7 +1494,47 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         /* Method dispatch has failed, we now run the generic internal code. */
-        do_subset_dflt(call, op, ans, env)
+        let result = do_subset_dflt(call, op, ans, env);
+        // Base R ships an S3 `[.factor` (NextMethod("[") + copy
+        // contrasts/levels/class). The engine's default `[` strips
+        // attributes like stock's NextMethod target, so apply the same
+        // fixup here: subsetting a factor yields a factor with the
+        // original levels.
+        let orig = CAR(ans);
+        if has_class_factor(orig) {
+            let _r_guard = protect(result);
+            let _o_guard = protect(orig);
+            let levels = getAttrib(orig, crate::eval::attrib_core::R_LevelsSymbol());
+            if !isNull(levels) {
+                setAttrib(result, crate::eval::attrib_core::R_LevelsSymbol(), levels);
+            }
+            let class_attr = getAttrib(orig, sym_Class());
+            if !isNull(class_attr) {
+                setAttrib(result, sym_Class(), class_attr);
+            }
+            return result;
+        }
+        result
+    }
+}
+
+unsafe fn has_class_factor(x: SEXP) -> bool {
+    unsafe {
+        if x.is_null() {
+            return false;
+        }
+        let class_attr = getAttrib(x, sym_Class());
+        if isNull(class_attr) || TYPEOF(class_attr) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        (0..length_int(class_attr)).any(|i| {
+            let si = crate::sexp::accessors::STRING_ELT(class_attr, i as i64);
+            if si.is_null() || si == crate::sexp::globals::R_NaString() {
+                return false;
+            }
+            let c = crate::sexp::accessors::CHAR(si);
+            !c.is_null() && std::ffi::CStr::from_ptr(c).to_bytes() == b"factor"
+        })
     }
 }
 
@@ -2383,6 +2423,54 @@ pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         /* Fall through to default -- delegated to subassign module */
+        // Base R ships `[<-.factor`: character values assigned into a
+        // factor are matched against its LEVELS (new levels become NA
+        // with a warning upstream); the factor stays integer-coded. The
+        // engine default would widen the vector to character, losing the
+        // factor. Translate character values to level codes first.
+        let target = CAR(ans);
+        if has_class_factor(target)
+            && TYPEOF(target) == SEXPTYPE::INTSXP
+            && TYPEOF(CADDR(ans)) == SEXPTYPE::STRSXP
+        {
+            let levels = getAttrib(target, crate::eval::attrib_core::R_LevelsSymbol());
+            if !isNull(levels) && TYPEOF(levels) == SEXPTYPE::STRSXP {
+                let value = CADDR(ans);
+                let nv = XLENGTH(value);
+                let codes = Rf_allocVector3(SEXPTYPE::INTSXP, nv);
+                let _cg = protect(codes);
+                let mut warned = false;
+                for i in 0..nv {
+                    let vs = crate::sexp::accessors::STRING_ELT(value, i);
+                    let mut code: c_int = NA_INTEGER;
+                    if !vs.is_null() && vs != crate::sexp::globals::R_NaString() {
+                        let vb = crate::sexp::accessors::CHAR(vs);
+                        for (j, lev) in (0..XLENGTH(levels)).enumerate() {
+                            let ls = crate::sexp::accessors::STRING_ELT(levels, lev);
+                            if !ls.is_null()
+                                && ls != crate::sexp::globals::R_NaString()
+                                && std::ffi::CStr::from_ptr(crate::sexp::accessors::CHAR(ls))
+                                    .to_bytes()
+                                    == std::ffi::CStr::from_ptr(vb).to_bytes()
+                            {
+                                code = (j + 1) as c_int;
+                                break;
+                            }
+                        }
+                    }
+                    if code == NA_INTEGER && !warned {
+                        warned = true;
+                        crate::mainutils::errors::warningcall(
+                            call,
+                            b"invalid factor level, NA generated\0".as_ptr()
+                                as *const core::ffi::c_char,
+                        );
+                    }
+                    *crate::sexp::accessors::INTEGER(codes).add(i as usize) = code;
+                }
+                SETCAR(CDDR(ans), codes);
+            }
+        }
         crate::mainutils::subassign::do_subassign_dflt(call, op, ans, env)
     }
 }

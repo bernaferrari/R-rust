@@ -487,15 +487,30 @@ pub fn force_promise_result(prom: Sexp<'_>) -> EnvResult<LookupResult<'_>> {
     let env = prom
         .clone()
         .try_prenv()
-        .map_err(|err| sexp_err("promise environment lookup", err))?;
+        .map_err(|err| sexp_err("promise environment lookup", err))?
+        .clone();
 
-    unsafe {
-        let raw = prom.clone().as_raw();
-        SET_PRVALUE(raw, R_UnboundValue());
-        (*raw).sxpinfo.set_gp((*raw).sxpinfo.gp() | 0x02);
-    }
-
-    let value = unsafe { crate::eval::eval::Rf_eval(expr.as_raw(), env.as_raw()) };
+    // Upstream Rf_eval's PROMSXP case pushes a bare CTXT_RETURN context
+    // (null call, cloenv = PRENV) while evaluating the promise's code.
+    // sys.* walkers use it to see through the frame of the function doing
+    // the forcing: `parent.frame()` inside a forced argument promise must
+    // resolve against the promise's creation environment chain, not the
+    // forcing closure's caller (e.g. zeallot's `%<-%` passes
+    // `list_assign(pairs, parent.frame())`; the promise is forced inside
+    // list_assign, yet must name `%<-%`'s caller).
+    let value = unsafe {
+        let env_raw = env.as_raw();
+        let _promise_ctx_guard = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_RETURN,
+            crate::sexp::globals::R_NilValue(),
+            env_raw,
+            std::ptr::null_mut(),
+            None,
+            crate::sexp::globals::R_NilValue(),
+            crate::sexp::globals::R_NilValue(),
+        );
+        crate::eval::eval::Rf_eval(expr.as_raw(), env_raw)
+    };
     let value = unsafe { Sexp::from_raw_unchecked(value) };
 
     unsafe {
@@ -761,9 +776,16 @@ pub fn match_args_result<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> EnvResult<Loo
 /// Check if a symbol has a missing argument in the given environment.
 #[must_use]
 pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
+    // Upstream R_isMissing (envir.c): a symbol NOT bound in this frame is
+    // simply not missing — the missing check exists for the current
+    // call's formals (bound as promises or R_MissingArg in the closure
+    // frame). Free variables from ENCLOSING frames (e.g. whisker's
+    // renderPartial closing over partial()'s `key`) must fall through to
+    // normal evaluation. Returning true here made evalListKeepMissing
+    // substitute R_MissingArg for live free variables.
     let val = match find_var_in_frame_safe(rho, symbol) {
         Some(v) => v,
-        None => return true,
+        None => return false,
     };
 
     let missing_arg = unsafe { Sexp::from_raw_unchecked(R_MissingArg()) };
@@ -1273,7 +1295,9 @@ mod tests {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"z\0".as_ptr() as *const _);
 
-            assert_eq!(R_isMissing(sym, env), 1);
+            // Upstream R_isMissing: unbound-in-frame is NOT missing (the
+            // check exists for the current call's formals only).
+            assert_eq!(R_isMissing(sym, env), 0);
         }
     }
 
@@ -1453,7 +1477,8 @@ mod tests {
                 return;
             };
 
-            assert!(is_missing_safe(sexp_sym, sexp_env));
+            // Upstream semantics: unbound-in-frame is not missing.
+            assert!(!is_missing_safe(sexp_sym, sexp_env));
         }
     }
 

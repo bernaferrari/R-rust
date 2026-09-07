@@ -39,6 +39,7 @@ use crate::sexp::constructors::{
 };
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -910,6 +911,16 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
 
             if let Some(result) = ordered_factor_relop(PRIMVAL(op), x, y) {
                 x = result;
+            } else if is_unordered_factor_eq_ne(PRIMVAL(op), x, y) {
+                // Upstream comparison.c: unordered factor ==/!= compares
+                // the LEVEL STRINGS of the elements (factor vs character
+                // matches the character against the levels); relational
+                // operators on unordered factors are "not meaningful".
+                let xf = factor_operand_as_levels(x);
+                let _xg = protect(xf);
+                let yf = factor_operand_as_levels(y);
+                let _yg = protect(yf);
+                x = string_relop(PRIMVAL(op), xf, yf);
             } else if isString(x) != 0 || isString(y) != 0 {
                 x = string_relop(PRIMVAL(op), x, y);
             } else if isComplex(x) != 0 || isComplex(y) != 0 {
@@ -928,6 +939,50 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
         }
 
         x
+    }
+}
+
+/// Whether this is an unordered-factor (either side) equality/inequality
+/// comparison — the case that compares level strings.
+unsafe fn is_unordered_factor_eq_ne(code: c_int, x: SEXP, y: SEXP) -> bool {
+    unsafe {
+        (code == EQOP || code == NEOP)
+            && (has_class(x, "factor") || has_class(y, "factor"))
+            && !has_class(x, "ordered")
+            && !has_class(y, "ordered")
+    }
+}
+
+/// Convert a factor operand to its level strings (`as.character(f)`); any
+/// non-factor operand maps to itself (a character RHS compares directly
+/// against the levels, matching upstream match()-against-levels).
+unsafe fn factor_operand_as_levels(v: SEXP) -> SEXP {
+    unsafe {
+        if has_class(v, "factor") {
+            let levels = match factor_levels(v) {
+                Some(levels) => levels,
+                None => return v,
+            };
+            let n = XLENGTH(v);
+            let out = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _g = protect(out);
+            for i in 0..n {
+                let code = INTEGER_ELT(v, i as c_int);
+                let s = if code == NA_INTEGER as i32 || code < 1 || code as usize > levels.len() {
+                    crate::sexp::globals::R_NaString()
+                } else {
+                    crate::sexp::constructors::Rf_mkChar(
+                        std::ffi::CString::new(levels[(code - 1) as usize].as_str())
+                            .unwrap_or_default()
+                            .as_ptr(),
+                    )
+                };
+                crate::sexp::accessors::SET_STRING_ELT(out, i, s);
+            }
+            out
+        } else {
+            v
+        }
     }
 }
 

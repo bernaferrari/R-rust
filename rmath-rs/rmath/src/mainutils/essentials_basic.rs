@@ -1202,6 +1202,61 @@ pub unsafe fn do_as_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
+/// R's `as.symbol(x)` / `as.name(x)` — coerce to SYMSXP.
+///
+/// Upstream base defines these as R-level closures over
+/// `.Internal(as.vector(x, "symbol"))`, whose coerceVector path:
+/// - returns a symbol unchanged,
+/// - installs the first element of character input (a length-0 character
+///   vector errors "invalid data of mode 'character' (too short)"),
+/// - coerces other atomic vectors to character first (`as.symbol(1)` is
+///   the symbol `1`; `as.symbol(1:3)` takes the first element),
+/// - errors with the allocVector message for anything else
+///   (`as.symbol(NULL)`, `as.symbol(list("x"))`).
+pub unsafe fn do_as_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let t = TYPEOF(x);
+
+        if t == SEXPTYPE::SYMSXP {
+            return x;
+        }
+
+        let chars = match t {
+            t if t == SEXPTYPE::CHARSXP => {
+                return crate::mainutils::subset::installTrChar(x);
+            }
+            t if t == SEXPTYPE::STRSXP => x,
+            t if t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::RAWSXP =>
+            {
+                crate::mainutils::coerce::coerceVector(x, SEXPTYPE::STRSXP.as_c_int())
+            }
+            _ => {
+                let message = format!(
+                    "invalid type/length (symbol/{}) in vector allocation",
+                    LENGTH(x)
+                );
+                crate::mainutils::errors::Rf_error(
+                    CString::new(message).unwrap_or_default().as_ptr(),
+                );
+                unreachable!()
+            }
+        };
+        let _chars_guard = protect(chars);
+
+        if chars.is_null() || chars == R_NilValue() || XLENGTH(chars) == 0 {
+            crate::mainutils::errors::Rf_error(
+                c"invalid data of mode 'character' (too short)".as_ptr(),
+            );
+        }
+        crate::mainutils::subset::installTrChar(STRING_ELT(chars, 0))
+    }
+}
+
 unsafe fn duplicate_without_attributes(x: SEXP) -> SEXP {
     unsafe {
         let result = crate::mainutils::duplicate::duplicate(x);

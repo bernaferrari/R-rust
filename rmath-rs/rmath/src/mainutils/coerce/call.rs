@@ -10,9 +10,10 @@ use super::*;
 pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::eval::Rf_eval;
     use crate::mainutils::errors::Rf_error;
-    use crate::sexp::accessors::{CAR, CDR, CHAR, SETCAR, STRING_ELT};
+    use crate::sexp::accessors::{CAR, CDR, CHAR, STRING_ELT};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::symbol::Rf_install;
+    use std::ptr;
 
     unsafe {
         if crate::sexp::constructors::Rf_length(args) < 1 {
@@ -37,15 +38,37 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let sym = Rf_install(str);
         let _sym_guard = protect(sym);
 
-        // Evaluate remaining arguments
-        let evargs = CDR(args);
-        // Walk args and evaluate each
-        let mut rest = evargs;
+        // Evaluate remaining arguments into FRESH cells.
+        //
+        // `call` dispatches unevaluated here (upstream it is a PP_FUNCALL
+        // builtin whose argument cells are freshly built by the promise
+        // machinery before do_call ever sees them). The incoming cells are
+        // the call expression's own nodes — shared across evaluations when
+        // the expression sits in a closure body — so SETCAR-ing them in
+        // place would persistently rewrite the AST: after one evaluation of
+        // zeallot's `call("<-", name, ...)` the body would read
+        // `call("<-", x, ...)` forever, evaluating the previous iteration's
+        // symbol as a variable.
+        let mut guards: Vec<crate::sexp::protect::ProtectGuard> = Vec::new();
+        let mut evargs = R_NilValue();
+        let mut tail: SEXP = ptr::null_mut();
+        let mut rest = CDR(args);
         while !rest.is_null() && rest != R_NilValue() {
             let tmp = Rf_eval(CAR(rest), rho);
-            SETCAR(rest, tmp);
+            let _tmp_guard = protect(tmp);
+            guards.push(_tmp_guard);
+            let cell = Rf_cons(tmp, R_NilValue());
+            guards.push(protect(cell));
+            crate::sexp::accessors::SETTAG(cell, TAG(rest));
+            if evargs == R_NilValue() {
+                evargs = cell;
+            } else {
+                crate::sexp::accessors::SETCDR(tail, cell);
+            }
+            tail = cell;
             rest = CDR(rest);
         }
+        let _evargs_guard = protect(evargs);
 
         // Build LANGSXP: (sym arg1 arg2 ...)
         let result = Rf_cons(sym, evargs);
