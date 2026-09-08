@@ -1,3 +1,5 @@
+// The translated runtime is crate-private; embedding uses owned values.
+//~ ERROR: module `sexp` is private
 //! ALLOWED: cloning a `Sexp` handle is explicit, cheap, and yields an
 //! independent handle over the SAME R object.
 //!

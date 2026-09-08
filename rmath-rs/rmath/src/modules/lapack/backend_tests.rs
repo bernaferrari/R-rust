@@ -1552,3 +1552,106 @@ fn test_backend_identity() {
         assert_eq!(env_name, expected, "RUST_LAPACK_BACKEND vs backend_name()");
     }
 }
+
+#[test]
+fn pivoted_cholesky_selected_triangle_and_rank() {
+    // The first pivot is not the first row; the unused triangle is poison.
+    let original = [1.0, 0.5, 0.25, 0.5, 9.0, 1.0, 0.25, 1.0, 4.0];
+    for upper in [true, false] {
+        let mut a = original;
+        for j in 0..3 {
+            for i in 0..3 {
+                if (upper && i > j) || (!upper && i < j) {
+                    a[i + j * 3] = f64::NAN;
+                }
+            }
+        }
+        let (mut piv, mut rank, mut info, mut work) = ([0; 3], 0, 0, [0.0; 6]);
+        unsafe {
+            backend::dpstrf_(
+                &(if upper { b'U' } else { b'L' }),
+                &3,
+                a.as_mut_ptr(),
+                &3,
+                piv.as_mut_ptr(),
+                &mut rank,
+                &-1.0,
+                work.as_mut_ptr(),
+                &mut info,
+            );
+        }
+        assert_eq!((info, rank, piv[0]), (0, 3, 2));
+        for i in 0..3 {
+            for j in 0..3 {
+                let reconstructed: f64 = (0..=i.min(j))
+                    .map(|k| {
+                        if upper {
+                            a[k + i * 3] * a[k + j * 3]
+                        } else {
+                            a[i + k * 3] * a[j + k * 3]
+                        }
+                    })
+                    .sum();
+                assert_close(
+                    reconstructed,
+                    original[(piv[i] - 1) as usize + (piv[j] - 1) as usize * 3],
+                    "pivoted Cholesky residual",
+                );
+            }
+        }
+    }
+    let mut a = [1.0, 0.0, 0.0, 1e-20];
+    let (mut piv, mut rank, mut info, mut work) = ([0; 2], 0, 0, [0.0; 4]);
+    unsafe {
+        backend::dpstrf_(
+            &b'U',
+            &2,
+            a.as_mut_ptr(),
+            &2,
+            piv.as_mut_ptr(),
+            &mut rank,
+            &-1.0,
+            work.as_mut_ptr(),
+            &mut info,
+        );
+    }
+    assert_eq!((rank, info), (1, 1));
+}
+
+#[test]
+fn condition_number_uses_packed_lu_and_original_norm() {
+    let mut a = [1.0, 2.0, 3.0, 4.0];
+    let mut inverse = [1.0, 0.0, 0.0, 1.0];
+    let (mut piv, mut info) = ([0; 2], 0);
+    unsafe {
+        backend::dgesv_(
+            &2,
+            &2,
+            a.as_mut_ptr(),
+            &2,
+            piv.as_mut_ptr(),
+            inverse.as_mut_ptr(),
+            &2,
+            &mut info,
+        );
+    }
+    assert_eq!(info, 0);
+    for (norm, anorm) in [(b'1', 7.0), (b'I', 6.0)] {
+        let (mut rcond, mut work, mut iwork) = (0.0, [0.0; 8], [0; 2]);
+        unsafe {
+            backend::dgecon_(
+                &norm,
+                &2,
+                a.as_ptr(),
+                &2,
+                &anorm,
+                &mut rcond,
+                work.as_mut_ptr(),
+                iwork.as_mut_ptr(),
+                &mut info,
+            );
+        }
+        assert_eq!(info, 0);
+        assert_close(rcond, 1.0 / 21.0, "LU reciprocal condition");
+    }
+}

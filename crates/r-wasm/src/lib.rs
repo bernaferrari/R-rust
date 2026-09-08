@@ -76,6 +76,35 @@ impl WasmRSession {
         }
     }
 
+    /// Evaluate, rejecting the JavaScript promise when R reports an error.
+    pub fn eval_checked(&mut self, code: &str) -> Result<String, JsError> {
+        self.inner
+            .eval(code)
+            .map_err(|e| JsError::new(&render_error(e)))
+    }
+
+    /// Return an owned scalar character value without parsing console output.
+    pub fn eval_string(&mut self, code: &str) -> Result<String, JsError> {
+        let result = self
+            .inner
+            .eval_result(code)
+            .map_err(|e| JsError::new(&render_error(e)))?;
+        match result.value {
+            r_embed::RValue::StringVector(mut values) if values.len() == 1 => values
+                .pop()
+                .flatten()
+                .ok_or_else(|| JsError::new("Expected a non-NA character scalar")),
+            _ => Err(JsError::new("Expected a character scalar")),
+        }
+    }
+
+    /// Render ordinary R evaluation into an owned PNG.
+    pub fn render_png(&mut self, code: &str, width: u32, height: u32) -> Result<Vec<u8>, JsError> {
+        self.inner
+            .render_with_dimensions(code, width, height)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// Report whether `code` is syntactically complete R input.
     ///
     /// Incomplete input (`f <- function(x) {`) reports `false` so hosts show

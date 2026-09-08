@@ -100,150 +100,127 @@ pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `solve(a, b)` — solve the linear system a %*% x = b.
-/// If b is omitted, computes the inverse of a (simplified).
-/// Uses Gaussian elimination with partial pivoting.
+/// Solve through the selected LAPACK adapter using R's column-major layout.
 pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let a = CAR(args);
-        let b_cdr = CDR(args);
-        let b = if b_cdr.is_null() || b_cdr == R_NilValue() {
+        let a = arg_by_name_or_position(args, &["a"], 0);
+        let b = arg_by_name_or_position(args, &["b"], 1);
+        let tol_arg = arg_by_name_or_position(args, &["tol"], 2);
+        let dim_sym = crate::sexp::attrib_core::R_DimSymbol();
+        let dims = crate::sexp::attrib_core::getAttrib(a, dim_sym);
+        if dims == R_NilValue() || XLENGTH(dims) != 2 {
+            base_error("'a' must be a numeric matrix".to_owned());
+        }
+        let n = INTEGER_ELT(dims, 0);
+        if n == 0 {
+            base_error("'a' is 0-diml".to_owned());
+        }
+        if n != INTEGER_ELT(dims, 1) {
+            base_error("'a' must be a square matrix".to_owned());
+        }
+        if !matches!(
+            SEXPTYPE(TYPEOF(a)),
+            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
+        ) {
+            base_error("'a' must be a numeric matrix".to_owned());
+        }
+        let inverse = b == R_NilValue();
+        let bdims = crate::sexp::attrib_core::getAttrib(b, dim_sym);
+        let matrix_result = inverse || bdims != R_NilValue();
+        let nrhs = if inverse {
+            n
+        } else if bdims != R_NilValue() {
+            if XLENGTH(bdims) != 2 || INTEGER_ELT(bdims, 0) != n {
+                base_error("'b' must have same row dimension as 'a'".to_owned());
+            }
+            INTEGER_ELT(bdims, 1)
+        } else {
+            if XLENGTH(b) != n as i64 {
+                base_error("'b' must be compatible with 'a'".to_owned());
+            }
+            1
+        };
+        let complex = TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP;
+        let ty = if complex {
+            SEXPTYPE::CPLXSXP
+        } else {
+            SEXPTYPE::REALSXP
+        };
+        let aa = crate::mainutils::coerce::coerceVector(a, ty.as_c_int());
+        let _aa = protect(aa);
+        crate::sexp::attrib_core::setAttrib(aa, dim_sym, dims);
+        let bb = if inverse {
+            let v = Rf_allocVector3(ty, n as i64 * n as i64);
+            for i in 0..n as usize {
+                if complex {
+                    (*COMPLEX(v).add(i + i * n as usize)).r = 1.0;
+                } else {
+                    *REAL(v).add(i + i * n as usize) = 1.0;
+                }
+            }
+            v
+        } else {
+            if !matches!(
+                SEXPTYPE(TYPEOF(b)),
+                SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
+            ) {
+                base_error("'b' must be numeric".to_owned());
+            }
+            crate::mainutils::duplicate::duplicate(crate::mainutils::coerce::coerceVector(
+                b,
+                ty.as_c_int(),
+            ))
+        };
+        let _bb = protect(bb);
+        let out_dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        let _dims = protect(out_dims);
+        *INTEGER(out_dims) = n;
+        *INTEGER(out_dims).add(1) = nrhs;
+        crate::sexp::attrib_core::setAttrib(bb, dim_sym, out_dims);
+        let tol = if tol_arg == R_NilValue() {
+            Rf_ScalarReal(f64::EPSILON)
+        } else {
+            tol_arg
+        };
+        let _tol = protect(tol);
+        let result = if complex {
+            crate::modules::lapack::lapack_impl::La_solve_cmplx(aa, bb, tol)
+        } else {
+            crate::modules::lapack::lapack_impl::La_solve(aa, bb, tol)
+        };
+        let _result = protect(result);
+        if matrix_result {
+            crate::sexp::attrib_core::setAttrib(result, dim_sym, out_dims);
+        }
+        // Row labels of the solution correspond to columns of A.
+        let dn = crate::sexp::attrib_core::R_DimNamesSymbol();
+        let adn = crate::sexp::attrib_core::getAttrib(a, dn);
+        let bdn = crate::sexp::attrib_core::getAttrib(b, dn);
+        let rows = if adn != R_NilValue() {
+            VECTOR_ELT(adn, 1)
+        } else {
             R_NilValue()
-        } else {
-            CAR(b_cdr)
         };
-
-        if a.is_null() || a == R_NilValue() {
-            return R_NilValue();
-        }
-
-        let dim_attr = crate::sexp::attrib_core::getAttrib(a, Rf_install(c"dim".as_ptr()));
-        if dim_attr.is_null() || TYPEOF(dim_attr) != SEXPTYPE::INTSXP || LENGTH(dim_attr) != 2 {
-            return R_NilValue();
-        }
-        let n = *INTEGER(dim_attr) as usize;
-        let m = *INTEGER(dim_attr).add(1) as usize;
-        if n != m || n == 0 {
-            return R_NilValue();
-        }
-        if TYPEOF(a) != SEXPTYPE::REALSXP {
-            return R_NilValue();
-        }
-
-        let src = REAL(a);
-        // Build augmented matrix [A | I] or [A | b]
-        let nrhs = if b == R_NilValue() {
-            n // inverse
+        let cols = if inverse && adn != R_NilValue() {
+            VECTOR_ELT(adn, 0)
+        } else if bdn != R_NilValue() {
+            VECTOR_ELT(bdn, 1)
         } else {
-            let b_dim = crate::sexp::attrib_core::getAttrib(b, Rf_install(c"dim".as_ptr()));
-            if !b_dim.is_null() && TYPEOF(b_dim) == SEXPTYPE::INTSXP && LENGTH(b_dim) == 2 {
-                *INTEGER(b_dim).add(1) as usize
-            } else {
-                1
-            }
+            R_NilValue()
         };
-
-        let aug_cols = n + nrhs;
-        let mut aug: Vec<f64> = vec![0.0; n * aug_cols];
-
-        // Fill A
-        for i in 0..n {
-            for j in 0..n {
-                aug[i * aug_cols + j] = *src.add(i * n + j);
-            }
+        if matrix_result && (rows != R_NilValue() || cols != R_NilValue()) {
+            let names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _names = protect(names);
+            SET_VECTOR_ELT(names, 0, rows);
+            SET_VECTOR_ELT(names, 1, cols);
+            crate::sexp::attrib_core::setAttrib(result, dn, names);
+        } else if !matrix_result && rows != R_NilValue() {
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                crate::sexp::attrib_core::R_NamesSymbol(),
+                rows,
+            );
         }
-
-        // Fill right-hand side
-        if b == R_NilValue() {
-            // Identity matrix for inverse
-            for i in 0..n {
-                aug[i * aug_cols + n + i] = 1.0;
-            }
-        } else {
-            let b_src = REAL(b);
-            for i in 0..n {
-                for j in 0..nrhs {
-                    aug[i * aug_cols + n + j] = *b_src.add(i * nrhs + j);
-                }
-            }
-        }
-
-        // Gaussian elimination with partial pivoting
-        for i in 0..n {
-            // Find pivot
-            let mut max_val = aug[i * aug_cols + i].abs();
-            let mut max_row = i;
-            for k in (i + 1)..n {
-                let v = aug[k * aug_cols + i].abs();
-                if v > max_val {
-                    max_val = v;
-                    max_row = k;
-                }
-            }
-            if max_val == 0.0 {
-                return R_NilValue(); // singular
-            }
-            // Swap rows
-            if max_row != i {
-                for j in 0..aug_cols {
-                    let tmp = aug[i * aug_cols + j];
-                    aug[i * aug_cols + j] = aug[max_row * aug_cols + j];
-                    aug[max_row * aug_cols + j] = tmp;
-                }
-            }
-            // Eliminate below
-            let pivot = aug[i * aug_cols + i];
-            for k in (i + 1)..n {
-                let factor = aug[k * aug_cols + i] / pivot;
-                aug[k * aug_cols + i] = 0.0;
-                for j in (i + 1)..aug_cols {
-                    aug[k * aug_cols + j] -= factor * aug[i * aug_cols + j];
-                }
-            }
-        }
-
-        // Back substitution
-        for i in (0..n).rev() {
-            let diag = aug[i * aug_cols + i];
-            for j in (n)..aug_cols {
-                aug[i * aug_cols + j] /= diag;
-            }
-            aug[i * aug_cols + i] = 1.0;
-            for k in 0..i {
-                let factor = aug[k * aug_cols + i];
-                for j in n..aug_cols {
-                    aug[k * aug_cols + j] -= factor * aug[i * aug_cols + j];
-                }
-                aug[k * aug_cols + i] = 0.0;
-            }
-        }
-
-        // Extract result
-        let result_len = (n * nrhs) as R_xlen_t;
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        let dst = REAL(result);
-
-        for i in 0..n {
-            for j in 0..nrhs {
-                *dst.add(i * nrhs + j) = aug[i * aug_cols + n + j];
-            }
-        }
-
-        // Set dim if multi-column
-        if nrhs > 1 {
-            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-            if !dim.is_null() {
-                let _dim_guard = protect(dim);
-                *INTEGER(dim) = n as i32;
-                *INTEGER(dim).add(1) = nrhs as i32;
-                crate::sexp::attrib_core::setAttrib(result, Rf_install(c"dim".as_ptr()), dim);
-            }
-        }
-
         result
     }
 }

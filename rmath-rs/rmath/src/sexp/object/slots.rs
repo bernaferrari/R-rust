@@ -302,7 +302,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
+    pub(crate) fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
         self.try_set_complex_elt(i, v).is_ok()
     }
 
@@ -311,7 +311,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
+    pub(crate) fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")

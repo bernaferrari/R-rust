@@ -160,7 +160,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
+    pub(crate) fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
         self.try_set_logical_elt(i, v).is_ok()
     }
 
@@ -169,7 +169,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+    pub(crate) fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
@@ -188,7 +188,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
+    pub(crate) fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
         self.try_set_integer_elt(i, v).is_ok()
     }
 
@@ -197,7 +197,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+    pub(crate) fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<c_int>(SEXPTYPE::INTSXP, "integer vector")
@@ -216,7 +216,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
+    pub(crate) fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
         self.try_set_real_elt(i, v).is_ok()
     }
 
@@ -225,7 +225,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
+    pub(crate) fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<c_double>(SEXPTYPE::REALSXP, "real vector")
@@ -244,7 +244,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
+    pub(crate) fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
         self.try_set_raw_elt(i, v).is_ok()
     }
 
@@ -253,7 +253,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
+    pub(crate) fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
         let data = self
             .clone()
             .try_typed_data_mut::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
@@ -273,7 +273,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+    pub(crate) fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
         self.try_set_string_elt(i, v).is_ok()
     }
 
@@ -282,7 +282,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+    pub(crate) fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         v.clone()
             .expect_type(SEXPTYPE::CHARSXP, "character scalar")
             .clone()?;
@@ -305,7 +305,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+    pub(crate) fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
         self.try_set_vector_elt(i, v).is_ok()
     }
 
@@ -314,7 +314,7 @@ impl<'a> Sexp<'a> {
     #[deprecated(
         note = "translation-compat shim: mutate through SexpMut::from_owned(..), then freeze()"
     )]
-    pub fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+    pub(crate) fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
         let data = self.clone().try_vector_sexp_data_mut().clone()?;
         let i = self.try_index(i)?;
         unsafe {

@@ -37,6 +37,7 @@ pub(crate) mod runtime;
 pub(crate) mod special;
 pub(crate) mod symbols;
 
+#[allow(unused_imports)]
 pub use eval::{
     EvalContext, EvalError, EvalLimits, PrimitiveDescriptor, eval as eval_sexp, eval_expr,
     eval_safe, find_var_safe, get_eval_limits, reset_eval_limits, set_eval_limits,

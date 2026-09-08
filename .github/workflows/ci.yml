@@ -116,7 +116,7 @@ jobs:
           path: target/upstream-r
 
   wasm:
-    name: WASM32 toolchain
+    name: Rust WASM execution
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -126,8 +126,15 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
       - name: WASM toolchain check
         run: bash scripts/wasm_toolchain_check.sh
+      - name: Execute Rust interpreter in Node
+        run: bash scripts/wasm_m3_smoke.sh
 
   web-release:
     name: Kotlin/Wasm release bundle
@@ -143,6 +150,13 @@ jobs:
         with:
           node-version: "22"
       - uses: gradle/actions/setup-gradle@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install pinned wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Install pinned Yarn classic
         run: npm install --global yarn@1.22.22

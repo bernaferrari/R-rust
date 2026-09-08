@@ -502,6 +502,20 @@ pub fn errorcall_str(call: SEXP, message: &str) -> ! {
     unreachable!("errorcall never returns: verrorcall_dflt panics with RError");
 }
 
+/// Report an error like upstream `.Internal(.dfltStop(message, call))`:
+/// render "Error in <call> : <message>" (or "Error: <message>" for a
+/// null call) and panic with the bare-message `RError` payload WITHOUT
+/// walking the handler stack. Upstream `stop(<condition>)` signals the
+/// condition first (`.signalCondition`); the handler search already
+/// happened at signal time, so the default error must not repeat it.
+pub fn dflt_stop_str(call: SEXP, message: &str) -> ! {
+    unsafe {
+        let c_msg = std::ffi::CString::new(message).unwrap_or_default();
+        verrorcall_dflt(call, c_msg.as_ptr(), ptr::null_mut());
+        unreachable!("verrorcall_dflt panics with RError");
+    }
+}
+
 /// Run a builtin/special handler call, attributing unattributed errors to
 /// the R call being applied.
 ///

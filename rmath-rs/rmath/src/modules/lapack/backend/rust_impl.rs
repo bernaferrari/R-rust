@@ -512,186 +512,87 @@ pub unsafe fn dpstrf_(
     info: *mut core::ffi::c_int,
 ) {
     unsafe {
-        let n = *n as usize;
-        let lda = *lda as usize;
-        let uplo_byte = *uplo;
-        let tol_val = *tol;
-
-        if n == 0 {
-            *rank = 0;
-            *info = 0;
+        *info = 0;
+        let upper = matches!(*uplo, b'U' | b'u');
+        if !upper && !matches!(*uplo, b'L' | b'l') {
+            *info = -1;
             return;
         }
-
-        // Initialize pivots (1-based)
-        for i in 0..n {
-            *piv.add(i) = (i + 1) as core::ffi::c_int;
+        if *n < 0 {
+            *info = -2;
+            return;
         }
-
-        // Read the matrix
-        let mut mat = read_mat_f64(a, n, n, lda);
-
-        // Compute diagonal values for pivot selection
-        let mut diag = vec![0.0f64; n];
-        for i in 0..n {
-            diag[i] = mat[(i, i)];
+        if *lda < (*n).max(1) {
+            *info = -4;
+            return;
         }
-
-        let mut r = 0usize;
-
-        if uplo_byte == b'U' || uplo_byte == b'u' {
-            // Upper triangular Cholesky: A[p,p] = U^T U
-            for k in 0..n {
-                // Find pivot (largest remaining diagonal)
-                let mut max_val = 0.0f64;
-                let mut max_idx = k;
-                for j in k..n {
-                    let p = (*piv.add(j) - 1) as usize;
-                    if diag[p] > max_val {
-                        max_val = diag[p];
-                        max_idx = j;
-                    }
-                }
-
-                if max_val <= tol_val.max(0.0) {
-                    break;
-                }
-
-                // Swap pivots k and max_idx
-                let pk = (*piv.add(k) - 1) as usize;
-                let pm = (*piv.add(max_idx) - 1) as usize;
-                {
-                    let tmp = *piv.add(k);
-                    *piv.add(k) = *piv.add(max_idx);
-                    *piv.add(max_idx) = tmp;
-                }
-
-                // Swap rows and columns in mat
-                if pk != pm {
-                    for j in 0..n {
-                        let tmp = mat[(pk, j)];
-                        mat[(pk, j)] = mat[(pm, j)];
-                        mat[(pm, j)] = tmp;
-                    }
-                    for i in 0..n {
-                        let tmp = mat[(i, pk)];
-                        mat[(i, pk)] = mat[(i, pm)];
-                        mat[(i, pm)] = tmp;
-                    }
-                }
-
-                let p = (*piv.add(k) - 1) as usize;
-                let sqrt_diag = diag[p].sqrt();
-                mat[(p, p)] = sqrt_diag;
-
-                // Update remaining columns
-                for j in (k + 1)..n {
-                    let pj = (*piv.add(j) - 1) as usize;
-                    let mut sum = mat[(p, pj)];
-                    for i in 0..k {
-                        let pi = (*piv.add(i) - 1) as usize;
-                        sum -= mat[(pi, p)] * mat[(pi, pj)];
-                    }
-                    mat[(p, pj)] = sum / sqrt_diag;
-
-                    // Update diagonal
-                    let val = mat[(p, pj)];
-                    diag[pj] -= val * val;
-                    if diag[pj] < 0.0 {
-                        diag[pj] = 0.0;
-                    }
-                }
-                r += 1;
-            }
-
-            // Write upper triangle back
-            for j in 0..n {
-                for i in 0..n {
-                    let p = (*piv.add(j) - 1) as usize;
-                    let q = (*piv.add(i) - 1) as usize;
-                    if i <= j {
-                        *a.add(i + j * lda) = mat[(q, p)];
-                    } else {
-                        *a.add(i + j * lda) = 0.0;
-                    }
-                }
-            }
+        let n = *n as usize;
+        let lda = *lda as usize;
+        *rank = 0;
+        if n == 0 {
+            return;
+        }
+        // Read only the selected triangle. The other triangle may be poison.
+        let original = Mat::<f64>::from_fn(n, n, |i, j| {
+            let (row, col) = if upper {
+                (i.min(j), i.max(j))
+            } else {
+                (i.max(j), i.min(j))
+            };
+            *a.add(row + col * lda)
+        });
+        let mut order: Vec<usize> = (0..n).collect();
+        let mut factor = Mat::<f64>::zeros(n, n);
+        let max_diagonal = (0..n).map(|i| original[(i, i)]).fold(0.0, f64::max);
+        let threshold = if *tol < 0.0 {
+            n as f64 * f64::EPSILON * max_diagonal
         } else {
-            // Lower triangular Cholesky: A[p,p] = L L^T
-            for k in 0..n {
-                let mut max_val = 0.0f64;
-                let mut max_idx = k;
-                for j in k..n {
-                    let p = (*piv.add(j) - 1) as usize;
-                    if diag[p] > max_val {
-                        max_val = diag[p];
-                        max_idx = j;
-                    }
+            *tol
+        };
+        for k in 0..n {
+            let residual = |i: usize| {
+                original[(order[i], order[i])]
+                    - (0..k).map(|j| factor[(i, j)] * factor[(i, j)]).sum::<f64>()
+            };
+            let mut pivot = k;
+            let mut diagonal = residual(k);
+            for i in k + 1..n {
+                let candidate = residual(i);
+                if candidate > diagonal {
+                    diagonal = candidate;
+                    pivot = i;
                 }
-
-                if max_val <= tol_val.max(0.0) {
-                    break;
-                }
-
-                let pk = (*piv.add(k) - 1) as usize;
-                let pm = (*piv.add(max_idx) - 1) as usize;
-                {
-                    let tmp = *piv.add(k);
-                    *piv.add(k) = *piv.add(max_idx);
-                    *piv.add(max_idx) = tmp;
-                }
-
-                if pk != pm {
-                    for j in 0..n {
-                        let tmp = mat[(pk, j)];
-                        mat[(pk, j)] = mat[(pm, j)];
-                        mat[(pm, j)] = tmp;
-                    }
-                    for i in 0..n {
-                        let tmp = mat[(i, pk)];
-                        mat[(i, pk)] = mat[(i, pm)];
-                        mat[(i, pm)] = tmp;
-                    }
-                }
-
-                let p = (*piv.add(k) - 1) as usize;
-                let sqrt_diag = diag[p].sqrt();
-                mat[(p, p)] = sqrt_diag;
-
-                for j in (k + 1)..n {
-                    let pj = (*piv.add(j) - 1) as usize;
-                    let mut sum = mat[(pj, p)];
-                    for i in 0..k {
-                        let pi = (*piv.add(i) - 1) as usize;
-                        sum -= mat[(pj, pi)] * mat[(p, pi)];
-                    }
-                    mat[(pj, p)] = sum / sqrt_diag;
-
-                    let val = mat[(pj, p)];
-                    diag[pj] -= val * val;
-                    if diag[pj] < 0.0 {
-                        diag[pj] = 0.0;
-                    }
-                }
-                r += 1;
             }
-
-            // Write lower triangle back
-            for j in 0..n {
-                for i in 0..n {
-                    let p = (*piv.add(j) - 1) as usize;
-                    let q = (*piv.add(i) - 1) as usize;
-                    if i >= j {
-                        *a.add(i + j * lda) = mat[(q, p)];
-                    } else {
-                        *a.add(i + j * lda) = 0.0;
-                    }
+            order.swap(k, pivot);
+            for j in 0..k {
+                let saved = factor[(k, j)];
+                factor[(k, j)] = factor[(pivot, j)];
+                factor[(pivot, j)] = saved;
+            }
+            if diagonal <= threshold || !diagonal.is_finite() {
+                factor[(k, k)] = diagonal;
+                *info = 1;
+                break;
+            }
+            factor[(k, k)] = diagonal.sqrt();
+            for i in k + 1..n {
+                let dot = (0..k).map(|j| factor[(i, j)] * factor[(k, j)]).sum::<f64>();
+                factor[(i, k)] = (original[(order[i], order[k])] - dot) / factor[(k, k)];
+            }
+            *rank += 1;
+        }
+        for i in 0..n {
+            *piv.add(i) = (order[i] + 1) as core::ffi::c_int;
+        }
+        for j in 0..n {
+            for i in j..n {
+                if upper {
+                    *a.add(j + i * lda) = factor[(i, j)];
+                } else {
+                    *a.add(i + j * lda) = factor[(i, j)];
                 }
             }
         }
-
-        *rank = r as core::ffi::c_int;
-        *info = if r < n { 1 } else { 0 };
     }
 }
 
@@ -1366,13 +1267,31 @@ pub unsafe fn dgecon_(
     info: *mut core::ffi::c_int,
 ) {
     unsafe {
+        *info = 0;
+        *rcond = 0.0;
+        if !matches!(*norm, b'1' | b'O' | b'o' | b'I' | b'i') {
+            *info = -1;
+            return;
+        }
+        if *n < 0 {
+            *info = -2;
+            return;
+        }
+        if *lda < (*n).max(1) {
+            *info = -4;
+            return;
+        }
+        if *anorm < 0.0 {
+            *info = -5;
+            return;
+        }
         let n_val = *n as usize;
         let lda_val = *lda as usize;
         let anorm_val = *anorm;
         let _norm_byte = *norm;
 
         if n_val == 0 {
-            *rcond = 0.0;
+            *rcond = 1.0;
             *info = 0;
             return;
         }
@@ -1383,35 +1302,38 @@ pub unsafe fn dgecon_(
             return;
         }
 
-        // Use SVD to estimate condition number
-        let mat = read_mat_f64(a, n_val, n_val, lda_val);
-        let svals = match mat.singular_values() {
-            Ok(v) => v,
-            Err(_) => {
-                *rcond = 0.0;
-                *info = 1;
-                return;
+        // A contains packed LU, not the original matrix. Solve L U X = I.
+        // The omitted pivot only permutes inverse columns, leaving both
+        // the one-norm and infinity-norm unchanged.
+        let mut inverse = Mat::<f64>::from_fn(n_val, n_val, |i, j| if i == j { 1.0 } else { 0.0 });
+        for j in 0..n_val {
+            for i in 0..n_val {
+                for k in 0..i {
+                    inverse[(i, j)] -= *a.add(i + k * lda_val) * inverse[(k, j)];
+                }
             }
-        };
-
-        let s_max = svals.first().copied().unwrap_or(0.0);
-        let s_min = svals.last().copied().unwrap_or(0.0);
-
-        if s_max == 0.0 {
-            *rcond = 0.0;
-        } else {
-            *rcond = s_min / s_max;
-            // Normalize by the provided anorm to get 1-norm or inf-norm condition number
-            // rcond = s_min / (s_max * anorm / s_max) = s_min / anorm (approximate)
-            // Actually: rcond = 1 / (anorm * ||A^{-1}||) ≈ s_min / (s_max * anorm / s_max)
-            // Simplification: use ratio directly
-            let ratio = s_min / s_max;
-            // Adjust: LAPACK's rcond = 1 / (||A|| * ||A^-1||)
-            // ||A||_2 = s_max, ||A^-1||_2 = 1/s_min
-            // rcond_2 = s_min / s_max
-            // For 1-norm/inf-norm: approximate with 2-norm ratio
-            *rcond = ratio;
+            for i in (0..n_val).rev() {
+                for k in i + 1..n_val {
+                    inverse[(i, j)] -= *a.add(i + k * lda_val) * inverse[(k, j)];
+                }
+                inverse[(i, j)] /= *a.add(i + i * lda_val);
+            }
         }
+        let inf = matches!(*norm, b'I' | b'i');
+        let inv_norm = (0..n_val)
+            .map(|j| {
+                (0..n_val)
+                    .map(|i| {
+                        if inf {
+                            inverse[(j, i)].abs()
+                        } else {
+                            inverse[(i, j)].abs()
+                        }
+                    })
+                    .sum::<f64>()
+            })
+            .fold(0.0, f64::max);
+        *rcond = (1.0 / inv_norm) / anorm_val;
         *info = 0;
     }
 }
@@ -2345,7 +2267,7 @@ pub unsafe fn zunmqr_(
 
 /// ZGECON — complex condition number estimate.
 pub unsafe fn zgecon_(
-    _norm: *const u8,
+    norm: *const u8,
     n: *const core::ffi::c_int,
     a: *const Rcomplex,
     lda: *const core::ffi::c_int,
@@ -2356,34 +2278,75 @@ pub unsafe fn zgecon_(
     info: *mut core::ffi::c_int,
 ) {
     unsafe {
+        *info = 0;
+        *rcond = 0.0;
+        if !matches!(*norm, b'1' | b'O' | b'o' | b'I' | b'i') {
+            *info = -1;
+            return;
+        }
+        if *n < 0 {
+            *info = -2;
+            return;
+        }
+        if *lda < (*n).max(1) {
+            *info = -4;
+            return;
+        }
+        if *anorm < 0.0 {
+            *info = -5;
+            return;
+        }
         let n_val = *n as usize;
         let lda_val = *lda as usize;
         let anorm_val = *anorm;
 
-        if n_val == 0 || anorm_val == 0.0 {
+        if n_val == 0 {
+            *rcond = 1.0;
+            return;
+        }
+        if anorm_val == 0.0 {
             *rcond = 0.0;
             *info = 0;
             return;
         }
 
-        let mat = read_mat_c64(a, n_val, n_val, lda_val);
-        let svals = match mat.singular_values() {
-            Ok(v) => v,
-            Err(_) => {
-                *rcond = 0.0;
-                *info = 1;
-                return;
+        let mut inverse = Mat::<c64>::from_fn(n_val, n_val, |i, j| {
+            c64::new(if i == j { 1.0 } else { 0.0 }, 0.0)
+        });
+        for j in 0..n_val {
+            for i in 0..n_val {
+                for k in 0..i {
+                    let v = *a.add(i + k * lda_val);
+                    let term = c64::new(v.r, v.i) * inverse[(k, j)];
+                    inverse[(i, j)] -= term;
+                }
             }
-        };
-
-        let s_max = svals.first().copied().unwrap_or(0.0);
-        let s_min = svals.last().copied().unwrap_or(0.0);
-
-        if s_max == 0.0 {
-            *rcond = 0.0;
-        } else {
-            *rcond = s_min / s_max;
+            for i in (0..n_val).rev() {
+                for k in i + 1..n_val {
+                    let v = *a.add(i + k * lda_val);
+                    let term = c64::new(v.r, v.i) * inverse[(k, j)];
+                    inverse[(i, j)] -= term;
+                }
+                let v = *a.add(i + i * lda_val);
+                inverse[(i, j)] /= c64::new(v.r, v.i);
+            }
         }
+        let inf = matches!(*norm, b'I' | b'i');
+        let invnorm = (0..n_val)
+            .map(|j| {
+                (0..n_val)
+                    .map(|i| {
+                        let z = if inf {
+                            inverse[(j, i)]
+                        } else {
+                            inverse[(i, j)]
+                        };
+                        z.re.hypot(z.im)
+                    })
+                    .sum::<f64>()
+            })
+            .fold(0.0, f64::max);
+        *rcond = (1.0 / invnorm) / anorm_val;
         *info = 0;
     }
 }

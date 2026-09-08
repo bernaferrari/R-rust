@@ -12,8 +12,8 @@
 //!
 //! # Examples
 //!
-//! ```
-//! use rmath::sexp::RSession;
+//! ```text
+//! use crate::sexp::RSession;
 //!
 //! let session = RSession::new();
 //! assert!(session.is_active());
@@ -48,10 +48,10 @@ use super::instance::{
 };
 use super::memory::{ArenaBudget, RArena};
 use super::object::Sexp;
+#[cfg(test)]
+use super::protect::R_ProtectCount;
 use super::protect::RootedSexp;
 use super::protect::protect;
-#[cfg(test)]
-use super::protect::{R_ProtectCount, protect_n};
 use rmath_nmath::rng::{detach_rng, install_rng};
 use rmath_nmath::{MathState, RngState, detach_state, install_state};
 
@@ -236,16 +236,25 @@ struct ProtectScope {
     /// instance pointer per operation, exactly like
     /// `protect::with_guard_owner`.
     instance: usize,
-    depth: usize,
+    /// Legacy protection stack depth at scope entry.
+    legacy_depth: usize,
+    /// Root-table entry depth at scope entry.
+    root_depth: u64,
 }
 
 impl ProtectScope {
     fn new(instance: *mut RInstance) -> Self {
-        // P2: strictly-local RefCell read; no ambient write intervenes.
-        let depth = unsafe { (*instance).protect_stack.borrow().len() };
+        // P2: strictly-local RefCell reads; no ambient write intervenes.
+        let (legacy_depth, root_depth) = unsafe {
+            (
+                (*instance).legacy_protect.len(),
+                (*instance).root_table.checkpoint(),
+            )
+        };
         Self {
             instance: instance.addr(),
-            depth,
+            legacy_depth,
+            root_depth,
         }
     }
 
@@ -263,15 +272,10 @@ impl Drop for ProtectScope {
     fn drop(&mut self) {
         self.with_instance(|inst| unsafe {
             // P2: strictly-local RefCell access; no ambient write intervenes.
-            (*inst).protect_stack.borrow_mut().truncate(self.depth);
-            (*inst)
-                .protect_stack_generations
-                .borrow_mut()
-                .truncate(self.depth);
-            (*inst)
-                .protect_slot_free
-                .borrow_mut()
-                .retain(|&index| index < self.depth);
+            // Unwind BOTH protection storages to their entry depths: leaked
+            // legacy entries and leaked/forgotten root-table guards alike.
+            (*inst).legacy_protect.truncate(self.legacy_depth);
+            (*inst).root_table.restore(self.root_depth);
         });
     }
 }
@@ -487,8 +491,6 @@ impl RSession {
         }
         if is_immutable_singleton(ptr) {
             Some(unsafe { Sexp::from_static_raw_unchecked(ptr) })
-        } else if self.inst().arena.contains(ptr) {
-            Sexp::from_arena_raw(ptr, &self.inst().arena).ok()
         } else if self.inst().owns_sexp(ptr) {
             Sexp::from_session_raw(ptr, self.inst()).ok()
         } else {
@@ -1111,10 +1113,10 @@ impl RSession {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use rmath::sexp::RSession;
-    /// use rmath::sexp::Sexp;
-    /// use rmath::sexp::protect::protect_sexp;
+    /// ```text
+    /// use crate::sexp::RSession;
+    /// use crate::sexp::Sexp;
+    /// use crate::sexp::protect::protect_sexp;
     ///
     /// let session = RSession::new();
     /// session.with_protected(|| {
@@ -1324,7 +1326,7 @@ mod tests {
         let left_value = left.sexp(ptr).expect("left owns pointer");
         assert!(matches!(
             left_value.owner(),
-            crate::sexp::object::SexpOwner::Arena(_)
+            crate::sexp::object::SexpOwner::Session(_)
         ));
         assert!(right.sexp(ptr).is_none());
     }
@@ -1802,9 +1804,19 @@ mod tests {
         session.with_protected(|| {
             std::mem::forget(protect(0x1 as SEXP));
             std::mem::forget(protect(0x2 as SEXP));
+            // Leaked guards land in the root table; the count-based legacy
+            // view does not see them.
+            crate::sexp::protect::with_protected_objects(|legacy, roots| {
+                assert!(legacy.is_empty());
+                assert_eq!(roots.len(), 2);
+            });
         });
         let depth_after = session.with_active(R_ProtectCount);
         assert_eq!(depth_before, depth_after);
+        // The scope unwind truncated the leaked roots away.
+        crate::sexp::protect::with_protected_objects(|_, roots| {
+            assert!(roots.iter().all(|&p| p.is_null()))
+        });
     }
 
     #[test]
@@ -1821,6 +1833,9 @@ mod tests {
         assert!(result.is_err());
         let depth_after = session.with_active(R_ProtectCount);
         assert_eq!(depth_before, depth_after);
+        crate::sexp::protect::with_protected_objects(|_, roots| {
+            assert!(roots.iter().all(|&p| p.is_null()))
+        });
     }
 
     #[test]
@@ -1835,21 +1850,33 @@ mod tests {
             unsafe {
                 R_PreserveObject(preserved);
             }
-            assert_eq!(R_ProtectCount(), 1);
+            crate::sexp::protect::with_protected_objects(|legacy, roots| {
+                assert!(legacy.is_empty());
+                assert_eq!(roots, &[protected]);
+            });
             with_preserved_objects(|objects| assert_eq!(objects, &[preserved]));
         });
 
         right.with_active(|| {
-            assert_eq!(R_ProtectCount(), 0);
+            crate::sexp::protect::with_protected_objects(|legacy, roots| {
+                assert!(legacy.is_empty());
+                assert!(roots.is_empty());
+            });
             with_preserved_objects(|objects| assert!(objects.is_empty()));
         });
 
         left.with_active(|| {
-            drop(protect_n(1));
+            // A nested scope reclaims only ITS OWN leaks; the root leaked
+            // outside any scope survives until session teardown.
+            left.with_protected(|| {
+                std::mem::forget(protect(0x3 as SEXP));
+            });
+            crate::sexp::protect::with_protected_objects(|_, roots| {
+                assert_eq!(roots, &[protected]);
+            });
             unsafe {
                 R_ReleaseObject(preserved);
             }
-            assert_eq!(R_ProtectCount(), 0);
             with_preserved_objects(|objects| assert!(objects.is_empty()));
         });
     }

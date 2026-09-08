@@ -12,6 +12,7 @@
 //! the encoding constants for backward compatibility.
 
 // Re-export encoding constants and standalone utilities from paste_impl.
+#[allow(unused_imports)]
 pub use super::paste_impl::{
     CE_BYTES, CE_LATIN1, CE_NATIVE, CE_UTF8, MAXELTSIZE, R_stpcpy, do_filepath, do_format,
     do_formatinfo, do_paste,

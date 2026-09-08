@@ -50,7 +50,7 @@ unsafe fn dispatchMethod(
         // Create the new call
         let mut newcall = R_NilValue();
         if !cptr.is_null() {
-            newcall = (*cptr).call;
+            newcall = crate::mainutils::duplicate::shallow_duplicate((*cptr).call);
             if !newcall.is_null() && newcall != R_NilValue() {
                 SETCAR(newcall, method);
             }

@@ -120,6 +120,9 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut fun: SEXP = ptr::null_mut();
         let mut fun_named = false;
         let mut moreargs = R_NilValue();
+        let mut simplify = true;
+        let mut higher = false;
+        let mut use_names = true;
         let mut ap = args;
         while !ap.is_null() && ap != R_NilValue() {
             if let Some(tag) = crate::mainutils::essentials::tag_name(ap) {
@@ -131,7 +134,13 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     "MoreArgs" => moreargs = CAR(ap),
                     // Consumed by the R-level closure upstream; nothing to do
                     // for the unsimplified engine result.
-                    "SIMPLIFY" | "USE.NAMES" => {}
+                    "SIMPLIFY" => {
+                        let value = CAR(ap);
+                        higher = TYPEOF(value) == SEXPTYPE::STRSXP
+                            && crate::mainutils::essentials::elt_to_string(value, 0) == "array";
+                        simplify = higher || crate::mainutils::coerce::asLogical(value) != 0;
+                    }
+                    "USE.NAMES" => use_names = crate::mainutils::coerce::asLogical(CAR(ap)) == 1,
                     _ => {}
                 }
             }
@@ -236,7 +245,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // give a NAMED list or the following list2env errors.
         {
             let mut name_src: Option<(SEXP, R_xlen_t)> = None;
-            for &(v, _) in varyings.iter() {
+            for &(v, _) in varyings.iter().take(1) {
                 let nm = crate::sexp::attrib_core::getAttrib(
                     v,
                     crate::sexp::attrib_core::R_NamesSymbol(),
@@ -261,7 +270,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
                 }
             }
-            if let Some((nm, nlen)) = name_src {
+            if let Some((nm, nlen)) = name_src.filter(|_| use_names) {
                 let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, longest);
                 let _on_guard = protect(out_names);
                 for i in 0..longest {
@@ -326,6 +335,16 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             SET_VECTOR_ELT(ans, i, val);
         }
 
+        if simplify {
+            let higher = crate::sexp::constructors::Rf_ScalarLogical(higher as i32);
+            let _higher = protect(higher);
+            let tail = Rf_cons(higher, R_NilValue());
+            let _tail = protect(tail);
+            let args = Rf_cons(ans, tail);
+            let _args = protect(args);
+            return crate::mainutils::essentials::do_simplify2array(_call, _op, args, rho);
+        }
+
         ans
     }
 }
@@ -362,7 +381,7 @@ mod tests {
     unsafe fn real_elements(x: SEXP) -> Vec<f64> {
         unsafe {
             let n = XLENGTH(x);
-            (0..n).map(|i| *REAL(VECTOR_ELT(x, i)) as f64).collect()
+            (0..n).map(|i| *REAL(x).add(i as usize)).collect()
         }
     }
 
@@ -383,7 +402,7 @@ mod tests {
 
     #[test]
     fn test_named_fun_one_varying_recycles() {
-        // mapply(c(1,2), FUN=function(a) a+10) -> list(11, 12)
+        // mapply(c(1,2), FUN=function(a) a+10) -> c(11, 12)
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let fun = eval_r("function(a) a + 10");
@@ -402,7 +421,7 @@ mod tests {
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             let _result_guard = protect(result);
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(real_elements(result), vec![11.0, 12.0]);
         }
     }
@@ -433,12 +452,9 @@ mod tests {
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             let _result_guard = protect(result);
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             let s = |i: i64| {
-                crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(
-                    VECTOR_ELT(result, i),
-                    0,
-                ))
+                crate::sexp::accessors::CHAR(crate::sexp::accessors::STRING_ELT(result, i))
             };
             assert_eq!(std::ffi::CStr::from_ptr(s(0)).to_bytes(), b"World?");
             assert_eq!(std::ffi::CStr::from_ptr(s(1)).to_bytes(), b"!!");
@@ -447,7 +463,7 @@ mod tests {
 
     #[test]
     fn test_positional_fun_two_varyings() {
-        // mapply(function(a,b) a+b, c(1,2), c(3,4)) -> list(4, 6)
+        // mapply(function(a,b) a+b, c(1,2), c(3,4)) -> c(4, 6)
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let fun = eval_r("function(a, b) a + b");
@@ -467,14 +483,14 @@ mod tests {
 
             let result = do_mapply(ptr::null_mut(), ptr::null_mut(), args, R_GlobalEnv());
             let _result_guard = protect(result);
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(real_elements(result), vec![4.0, 6.0]);
         }
     }
 
     #[test]
     fn test_named_fun_with_moreargs() {
-        // mapply(c(1,2), FUN=function(a, b) a+b, MoreArgs=list(100)) -> list(101, 102)
+        // mapply(c(1,2), FUN=function(a, b) a+b, MoreArgs=list(100)) -> c(101, 102)
         let _session = crate::sexp::session::RSession::new();
         unsafe {
             let fun = eval_r("function(a, b) a + b");

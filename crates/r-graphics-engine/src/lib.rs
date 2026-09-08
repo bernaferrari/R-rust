@@ -183,6 +183,10 @@ pub struct PlotParameters {
 pub trait RenderPlot: Sized {
     type Output;
 
+    fn dimensions(&self) -> (u32, u32) {
+        (640, 480)
+    }
+
     /// Create new renderer with given dimensions
     fn new(width: u32, height: u32) -> Self;
 
@@ -207,12 +211,18 @@ pub trait RenderPlot: Sized {
 ///
 /// `RenderPlot` types automatically implement `DrawTarget` via a blanket impl.
 pub trait DrawTarget {
+    fn dimensions(&self) -> (u32, u32) {
+        (640, 480)
+    }
     fn clear(&mut self, background: Color);
     fn draw_path(&mut self, path: &Path);
     fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters);
 }
 
 impl<T: RenderPlot> DrawTarget for T {
+    fn dimensions(&self) -> (u32, u32) {
+        <Self as RenderPlot>::dimensions(self)
+    }
     fn clear(&mut self, background: Color) {
         <Self as RenderPlot>::clear(self, background);
     }

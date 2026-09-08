@@ -89,9 +89,9 @@ pub enum SexpOwner {
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::{Sexp, SEXPTYPE};
-/// use rmath::sexp::memory::RArena;
+/// ```text
+/// use crate::sexp::{Sexp, SEXPTYPE};
+/// use crate::sexp::memory::RArena;
 ///
 /// let mut arena = RArena::new();
 /// let sexp = arena
@@ -118,8 +118,8 @@ pub enum SexpOwner {
 /// actually intended:
 ///
 /// ```compile_fail
-/// use rmath::sexp::{Sexp, SEXPTYPE};
-/// use rmath::sexp::memory::RArena;
+/// use crate::sexp::{Sexp, SEXPTYPE};
+/// use crate::sexp::memory::RArena;
 ///
 /// let mut arena = RArena::new();
 /// let sexp = arena

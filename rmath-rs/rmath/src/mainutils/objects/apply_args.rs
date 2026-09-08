@@ -144,17 +144,23 @@ pub(crate) unsafe fn applyMethod(
         }
 
         let t = TYPEOF(op);
-        if t == SEXPTYPE::SPECIALSXP {
-            let primfun = crate::eval::builtin::PRIMFUN(op);
-            if let Some(fn_ptr) = primfun {
-                return fn_ptr(call, op, args, rho);
-            }
-        } else if t == SEXPTYPE::BUILTINSXP {
-            let evald_args = crate::eval::dispatch::evalList(args, rho, call, 0);
-            let primfun = crate::eval::builtin::PRIMFUN(op);
-            if let Some(fn_ptr) = primfun {
-                return fn_ptr(call, op, evald_args, rho);
-            }
+        if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
+            // Use the same descriptor/name dispatch as ordinary evaluation.
+            // Rust-backed base methods have no R_FunTab C function pointer.
+            use crate::sexp::Sexp;
+            let apply = if t == SEXPTYPE::SPECIALSXP {
+                crate::eval::apply::apply_special_safe
+            } else {
+                crate::eval::apply::apply_builtin_safe
+            };
+            return apply(
+                Sexp::from_raw_unchecked(op),
+                Sexp::from_raw_unchecked(call),
+                Sexp::from_raw_unchecked(args),
+                Sexp::from_raw_unchecked(rho),
+            )
+            .unwrap_or_else(|message| crate::sexp::context::r_error(&message))
+            .as_raw();
         } else if t == SEXPTYPE::CLOSXP {
             return crate::eval::closure::applyClosureWithFrameVars(
                 call, op, args, rho, rho, newvars, 0,

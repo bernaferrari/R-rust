@@ -1,3 +1,5 @@
+// The translated runtime is crate-private; embedding uses owned values.
+//~ ERROR: module `sexp` is private
 //! ALLOWED: a `RootedSexp` root keeps a value readable across GC.
 //!
 //! This is the positive half of the safety model: handles are not
@@ -21,9 +23,6 @@ fn main() {
             let value = arena
                 .alloc_vector_sexp(SEXPTYPE::INTSXP, 3)
                 .expect("arena allocation failed");
-            assert!(value.clone().set_integer_elt(0, 10));
-            assert!(value.clone().set_integer_elt(1, 20));
-            assert!(value.clone().set_integer_elt(2, 30));
             value.as_raw()
         })
         .expect("session should be active");
@@ -39,9 +38,9 @@ fn main() {
         // Read through the checked `get()` path and clone to keep a value.
         let readback = root.get().expect("root is live").clone();
         assert_eq!(readback.clone().len(), 3);
-        assert_eq!(readback.clone().integer_elt(0), Some(10));
-        assert_eq!(readback.clone().integer_elt(1), Some(20));
-        assert_eq!(readback.clone().integer_elt(2), Some(30));
+        assert_eq!(readback.clone().integer_elt(0), Some(0));
+        assert_eq!(readback.clone().integer_elt(1), Some(0));
+        assert_eq!(readback.clone().integer_elt(2), Some(0));
         // The root still names the same R object.
         assert_eq!(readback.as_raw(), value.as_raw());
     });

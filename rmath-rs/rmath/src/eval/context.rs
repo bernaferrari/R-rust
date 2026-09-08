@@ -187,7 +187,12 @@ pub unsafe fn R_sysparent_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNT
             return 0;
         }
         let mut j: c_int = 0;
-        let mut target_n: c_int = 0;
+        // Upstream reuses the (walk-adjusted) `n` as the fallback target:
+        // `if (cptr->cloenv == s) n = j;` — when the sysparent environment
+        // matches no frame's cloenv, the result is j - n + 1 with the
+        // original n, NOT j + 1 (a zero target would over-count by one
+        // and could exceed the frame depth).
+        let mut target_n: c_int = n;
         let mut c2 = cptr;
         while !c2.is_null() {
             if (*c2).callflag & ctxt_flags::CTXT_FUNCTION != 0 {

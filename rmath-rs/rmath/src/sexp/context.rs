@@ -132,8 +132,17 @@ impl Default for RCNTXT {
     }
 }
 
-fn context_ptr(ctx: &RCNTXT) -> *mut RCNTXT {
-    ctx as *const RCNTXT as *mut RCNTXT
+/// Context-pointer derivation policy (the single rule for `*mut RCNTXT`).
+///
+/// Contexts live in instance-owned `Box<UnsafeCell<RCNTXT>>` allocations.
+/// All pointers come from `UnsafeCell::get`, including the nextcontext chain.
+/// Re-entering the evaluator never derives a new unique reference to a live
+/// context. Popping its owning box invalidates its pointers.
+fn stack_top_mut(instance: *mut RInstance) -> Option<*mut RCNTXT> {
+    // SAFETY: `instance` is a live instance pointer from the caller; the
+    // Vec access is strictly local and the derived pointer is handed to the
+    // caller per the module policy.
+    unsafe { (*instance).context_stack.last_mut().map(|ctx| ctx.get()) }
 }
 
 /// Get a reference to the current (top) context, if any.
@@ -142,16 +151,12 @@ pub unsafe fn R_GlobalContext() -> *mut RCNTXT {
         .unwrap_or(ptr::null_mut())
 }
 
-/// Get the top context from an explicit runtime instance.
 pub unsafe fn R_GlobalContext_in(instance: *mut RInstance) -> *mut RCNTXT {
-    // P2: read-only scan of one field; no ambient write intervenes.
-    unsafe {
-        (*instance)
-            .context_stack
-            .last()
-            .map(|ctx| context_ptr(ctx))
-            .unwrap_or(ptr::null_mut())
-    }
+    // Writable by policy: callers write through this pointer (sysparent
+    // fixups in nextmethod.rs, conexit updates in R_run_onexits_*), so it
+    // must be derived from the owning stack, never cast from `&RCNTXT`.
+    // P2: read-only derivation from the Vec; no ambient write intervenes.
+    stack_top_mut(instance).unwrap_or(ptr::null_mut())
 }
 
 /// Push a new context onto the stack and return a mutable pointer to it.
@@ -191,7 +196,7 @@ pub unsafe fn Rf_begincontext_in(
     closure: SEXP,
     promiseargs: SEXP,
 ) -> *mut RCNTXT {
-    let mut ctx = Box::new(RCNTXT {
+    let ctx = Box::new(std::cell::UnsafeCell::new(RCNTXT {
         callflag,
         call,
         cloenv,
@@ -201,7 +206,7 @@ pub unsafe fn Rf_begincontext_in(
         closure,
         promiseargs,
         ..RCNTXT::new()
-    });
+    }));
 
     // P2: the short-lived reads/writes below are strictly local — pushing
     // a Box onto the Vec allocates but never reenters the interpreter, and
@@ -209,26 +214,26 @@ pub unsafe fn Rf_begincontext_in(
     let prev = unsafe {
         (*instance)
             .context_stack
-            .last()
-            .map(|prev_ctx| context_ptr(prev_ctx))
+            .last_mut()
+            .map(|prev_ctx| prev_ctx.get())
             .unwrap_or(ptr::null_mut())
     };
-    ctx.nextcontext = prev;
-    ctx.protectCount = unsafe { (*instance).protect_stack.borrow().len() };
+    unsafe {
+        (*ctx.get()).nextcontext = prev;
+    }
+    // `protectCount` snapshots the LEGACY protection stack depth at context
+    // entry (the count-based discipline the translated endcontext/unwind
+    // code pairs with); root-table slots are invisible to it by design.
+    unsafe {
+        (*ctx.get()).protectCount = (*instance).legacy_protect.len();
+    }
 
-    // Ownership note (Miri, 2026-09): moving the Box into the stack
-    // retags the RCNTXT pointee Unique, invalidating any raw pointer
-    // derived before the push — callers write through the returned
-    // pointer for the context's whole lifetime (e.g. parking
-    // returnValue before endcontext), so it MUST be derived from the
-    // Box the stack owns, after the move.
+    // Publish ownership before deriving the pointer. UnsafeCell permits
+    // subsequent shared stack access without revoking interior mutation.
     unsafe {
         (*instance).context_stack.push(ctx);
-        // Derive the returned pointer from a &mut of the stack-owned Box:
-        // raw-from-&mut carries SharedReadWrite (writable) permissions,
-        // raw-from-& is read-only under Stacked Borrows.
         let top = (*instance).context_stack.last_mut().expect("just pushed");
-        let ptr: *mut RCNTXT = &mut **top;
+        let ptr: *mut RCNTXT = top.get();
         ptr
     }
 }
@@ -247,8 +252,9 @@ pub unsafe fn Rf_endcontext_in(instance: *mut RInstance, c: *mut RCNTXT) {
     // P2: strictly-local Vec access; no ambient write intervenes.
     unsafe {
         if let Some(top) = (*instance).context_stack.last() {
-            let top_ptr = context_ptr(top);
-            if top_ptr == c {
+            // Address-only comparison: the pop below tears the Box down, so
+            // no writable derivation is needed (or allowed) here.
+            if top.get() == c {
                 (*instance).context_stack.pop();
             }
         }
@@ -331,14 +337,15 @@ pub unsafe fn Rf_findcontext_in(
     _call: SEXP,
 ) -> *mut RCNTXT {
     unsafe {
-        for ctx in (*instance).context_stack.iter().rev() {
-            let c = context_ptr(ctx);
-            if !c.is_null() {
-                let ctx_ref = &*c;
-                if ctxt_type == 0 || (ctx_ref.callflag & ctxt_type) != 0 {
-                    if cloenv.is_null() || ctx_ref.cloenv == cloenv {
-                        return c;
-                    }
+        // Writable by policy: the returned context is a mutation target for
+        // callers (jumped flags, returnValue), so derive from the owning
+        // stack via &mut — never cast from the shared iteration view.
+        for ctx in (*instance).context_stack.iter_mut().rev() {
+            let c: *mut RCNTXT = ctx.get();
+            let ctx_ref = &*c;
+            if ctxt_type == 0 || (ctx_ref.callflag & ctxt_type) != 0 {
+                if cloenv.is_null() || ctx_ref.cloenv == cloenv {
+                    return c;
                 }
             }
         }
@@ -535,7 +542,7 @@ pub fn context_env_exists(target_env: SEXP) -> bool {
             .context_stack
             .iter()
             .rev()
-            .any(|ctx| ctx.cloenv == target_env)
+            .any(|ctx| (*ctx.get()).cloenv == target_env)
     })
     .unwrap_or(false)
 }
@@ -740,6 +747,80 @@ mod tests {
             assert!(right.context_stack.is_empty());
             replace_current_instance(previous);
         }
+    }
+
+    #[test]
+    fn test_context_mutation_goes_through_stack_derived_pointers() {
+        // The mutation policy in action: a caller writes a context field
+        // (sysparent, as nextmethod.rs does) through the pointer handed out
+        // by R_GlobalContext_in — which the module derives from the owning
+        // Vec<Box<UnsafeCell<RCNTXT>>>, through UnsafeCell::get. The write must be
+        // observable through the stack and survive later derivations.
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            let c = Rf_begincontext(
+                ctxt_flags::CTXT_FUNCTION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            let global = R_GlobalContext();
+            assert_eq!(global, c);
+            // Audited write site pattern: (*ctx).sysparent = value.
+            (*global).sysparent = 0x42 as SEXP;
+            assert_eq!((*global).sysparent, 0x42 as SEXP);
+            // A re-derived pointer observes the same mutation (single
+            // storage; no `&`-cast copy).
+            assert_eq!((*R_GlobalContext()).sysparent, 0x42 as SEXP);
+            let found = Rf_findcontext(ctxt_flags::CTXT_FUNCTION, ptr::null_mut(), ptr::null_mut());
+            assert_eq!((*found).sysparent, 0x42 as SEXP);
+
+            Rf_endcontext(c);
+        });
+    }
+
+    #[test]
+    fn test_context_teardown_invalidates_derived_pointers() {
+        // Policy: Rf_endcontext pops the owning Box, so every pointer
+        // derived from it is dead. The module never hands that context out
+        // again: the next R_GlobalContext/findcontext derivation returns a
+        // different (or null) pointer, and endcontext of a stale pointer is
+        // a no-op (top-of-stack comparison fails).
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
+            let c1 = Rf_begincontext(
+                ctxt_flags::CTXT_TOPLEVEL,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            let c2 = Rf_begincontext(
+                ctxt_flags::CTXT_LOOP,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            Rf_endcontext(c2);
+            // The popped context is gone from every derivation path.
+            assert_eq!(R_GlobalContext(), c1);
+            let found = Rf_findcontext(ctxt_flags::CTXT_LOOP, ptr::null_mut(), ptr::null_mut());
+            assert!(found.is_null());
+            // Ending a stale (already-popped) pointer must not pop c1: the
+            // top-of-stack comparison is address-only and fails.
+            Rf_endcontext(c2);
+            assert_eq!(R_GlobalContext(), c1);
+            Rf_endcontext(c1);
+            assert!(R_GlobalContext().is_null());
+        });
     }
 
     #[test]

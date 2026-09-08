@@ -21,7 +21,7 @@ can be diffed, ported, and verified hunk-by-hunk.
 - Embedding surfaces: `r-embed` (owned-value facade), `r-uniffi`
   (Kotlin/Swift bindings), an Android headless PNG device, and a desktop
   CLI/REPL host (`r-host-cli`).
-- A verification rig: a 615-case curated behavioral fixture corpus run
+- A verification rig: a 632-case curated behavioral fixture corpus run
   three-way (stock C output vs checked-in golden vs Rust output),
   a script-level differential harness, and stream-parity RNG goldens.
 
@@ -67,7 +67,7 @@ crates/
   r-uniffi/         Kotlin/Swift bindings surface
   r-graphics-engine/  portable plotting primitives
   r-device-android-headless/  PNG device backend
-tests/conformance/  615 curated fixtures + three-way differential runner
+tests/conformance/  632 curated fixtures + three-way differential runner
 tests/script-diff/  script-level differential vs stock R
 tests/differential/ standalone numeric d/p/q harness vs fixed R 4.x
                     reference values (own crate, excluded from the
@@ -106,9 +106,9 @@ module map with per-file sync mode lives in
 All parity claims are **against the exact oracle described below**, on a
 **curated subset** of R behavior — not against R's own test suites:
 
-- **615/615 curated behavioral fixtures pass, three-way** (stock C
+- **632/632 curated behavioral fixtures pass, three-way** (stock C
   output vs checked-in golden vs Rust output). The corpus is a curated
-  subset selected to pin ported upstream hunks; it is *not* "615 of R's
+  subset selected to pin ported upstream hunks; it is *not* "632 of R's
   tests", and passing it does not imply general conformance.
 - Script-level differential vs stock R: 10/10 curated scripts.
 - Workspace tests: 2357+ green. Clippy (`--workspace --all-targets`,
@@ -216,16 +216,16 @@ Honest ledger, each scoped with a reproduction:
 - **ALTREP disabled pending external-pointer redesign (unsound
   representation)**; remaining wrapper-class work is tracked in
   `docs/upstream-port-map.tsv`.
-- The protect stack keeps upstream R's LIFO drop-order semantics until
-  the **generation-based handle table** lands (roadmap): protect slots
-  shift on release, so guards — including `RootedSexp`, the shipped
-  RAII rooting alternative — must drop in reverse creation order.
-- The **full `SexpRef`/`SexpMut` borrow split** is roadmap. The shipped
-  interim is the non-`Copy` `Sexp` handle: moves instead of implicit
-  aliasing, by-value accessors, explicit `clone()` for a second handle.
-- **Miri coverage is a bounded subset**: ~167 `sexp::` tests are not
-  yet Miri-run (216 are proven clean and re-run by nightly CI);
-  evaluator and library layers have no Miri coverage.
+- Rust roots use stable generational slots and can drop in any order. The
+  translated `PROTECT`/`UNPROTECT` stack is separate and retains R's LIFO
+  semantics. Scope restoration uses generation checkpoints, including slot
+  reuse; managed guards remain rooted until release.
+- Raw interpreter modules are crate-private. Host applications use owned
+  `r-embed` values and session-scoped handles. This is an intentional breaking
+  change from the experimental public `rmath::sexp` API.
+- **Miri coverage is bounded**, including serialization under GC torture and
+  context/root regressions. Passing these checks does not prove all translated
+  unsafe code sound; ambient instance access still needs a wider audit.
 - Mersenne-Twister is the only *stream-parity* engine; the alternative
   kinds run but their streams are not bit-verified against stock.
 - A few samplers (`rbeta`, `rnorm` under some shapes) differ from stock
@@ -234,8 +234,8 @@ Honest ledger, each scoped with a reproduction:
 - Trunk's own decimal parser (`R_strtod5`) is inexact; this port parses
   decimals correctly-rounded instead (documented choice; identical for
   ≤ 16 significant digits).
-- `srcref`-level error locations are not implemented;
-  `show.error.locations` works at the expression level.
+- Source retention and error locations are implemented for the covered parse/eval
+  paths, including explicit `keep.source=TRUE`; broader tooling fidelity needs tests.
 - `serialize` format versions beyond the implemented surface and
   `memory.profile` column fidelity are known-gap rows in
   `docs/upstream-port-map.tsv`.
@@ -253,7 +253,7 @@ Direction, not promises — ordered by current work:
 1. **Object model rework**: Sexp copy/move semantics and the
    external-pointer redesign; re-enable ALTREP on the new
    representation.
-2. **Broaden the corpus** beyond the curated 615 fixtures toward
+2. **Broaden the corpus** beyond the curated 632 fixtures toward
    sampled real-world R scripts, keeping the three-way methodology.
 3. **Stream-parity for alternative RNG kinds** (Marsaglia-MultiCarry,
    Wichmann-Hill) or explicit stream-difference documentation per kind.
@@ -261,8 +261,9 @@ Direction, not promises — ordered by current work:
    package semantics).
 5. **Audited safe embedding API v1** (`r-embed`), with fuzzing at the
    boundary and a stated security policy for untrusted code.
-6. **WASM evaluator scope decision**: either grow beyond the math +
-   graphics core or document the core-only boundary permanently.
+6. **Browser runtime refinement**: the Kotlin workbench now runs the Rust
+   interpreter in a worker by default. Expand filesystem, package and graphics
+   contracts; retain WebR as an explicitly labeled alternative.
 
 The session-scoped `ValueHandle`/`ReadGuard`/`WriteGuard` boundary in
 `r-embed` (host-facing layer of the roadmap item above) has shipped: see

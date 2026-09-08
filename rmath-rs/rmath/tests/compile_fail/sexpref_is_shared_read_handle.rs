@@ -1,3 +1,5 @@
+// The translated runtime is crate-private; embedding uses owned values.
+//~ ERROR: module `sexp` is private
 //! ALLOWED: `SexpRef` is the shared-borrow read handle.
 //!
 //! `SexpRef` is an alias for `Sexp`: a freely reborrowable shared handle

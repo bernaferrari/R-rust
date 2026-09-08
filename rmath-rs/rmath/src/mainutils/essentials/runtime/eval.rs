@@ -171,9 +171,14 @@ pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let keep_source = {
-            let opt = crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
-                c"keep.source".as_ptr(),
-            ));
+            let explicit = arg_by_name_or_position(args, &["keep.source"], usize::MAX);
+            let opt = if explicit != R_NilValue() {
+                explicit
+            } else {
+                crate::mainutils::options::GetOption1(crate::sexp::symbol::Rf_install(
+                    c"keep.source".as_ptr(),
+                ))
+            };
             !opt.is_null() && crate::mainutils::coerce::asLogical(opt) == 1
         };
         let text_arg = arg_by_name_or_position(args, &["text"], 0);

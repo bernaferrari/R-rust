@@ -20,18 +20,25 @@ import org.w3c.dom.HTMLTextAreaElement
 
 private fun postMessageWebROptions(): JsAny = js("({ channelType: 3 })")
 
+private fun rustRequest(operation: String, code: String): Promise<JsString> = js("globalThis.rportRust.request(operation, code)")
+private fun rustCancel() { js("globalThis.rportRust.cancel()") }
+
 private class BrowserSessionBackend : RSessionBackend {
+    private val useRust = window.location.search != "?runtime=webr"
     private val webR = WebR(postMessageWebROptions())
     private var initialized = false
 
     override val capabilities = WorkbenchCapabilities(
         canExecuteR = true,
         canPersistFiles = true,
-        canInstallPackages = true,
-        runtimeLabel = "WebR WASM R runtime",
+        canInstallPackages = !useRust,
+        runtimeLabel = if (useRust) "Rport Rust runtime · experimental" else "WebR WASM R runtime",
     )
 
-    override suspend fun evaluate(code: String): EvaluationResult = runR(
+    override suspend fun evaluate(code: String): EvaluationResult = if (useRust) {
+        try { EvaluationResult(output = rustRequest("eval", code).await<JsString>().toString()) }
+        catch (error: Throwable) { EvaluationResult(error = error.toString()) }
+    } else runR(
         "paste(capture.output(eval(parse(text = ${quoteR(code)}))), collapse = \"\\n\")"
     )
 
@@ -65,7 +72,9 @@ private class BrowserSessionBackend : RSessionBackend {
         emptyList()
     }
 
-    override suspend fun installPackages(names: List<String>): EvaluationResult = try {
+    override suspend fun installPackages(names: List<String>): EvaluationResult = if (useRust) {
+        EvaluationResult(error = "Package installation is not available in the Rust browser runtime. Open ?runtime=webr for WebR packages.")
+    } else try {
         ensureInitialized()
         webR.installPackages(names.joinToString(",")).await<JsAny>()
         EvaluationResult(output = "Installed: ${names.joinToString(", ")}")
@@ -97,13 +106,16 @@ private class BrowserSessionBackend : RSessionBackend {
         }
     }
 
-    override suspend fun renderPlot(code: String): EvaluationResult = runR(
+    override suspend fun renderPlot(code: String): EvaluationResult = if (useRust) {
+        try { EvaluationResult(plotSvg = rustRequest("plot", code).await<JsString>().toString()) }
+        catch (error: Throwable) { EvaluationResult(error = error.toString()) }
+    } else runR(
         "svg(filename = \"/tmp/rport-plot.svg\", width = 8, height = 6); ${code}; dev.off(); paste(readLines(\"/tmp/rport-plot.svg\"), collapse = \"\\n\")",
         asPlot = true,
     )
 
     override fun cancel() {
-        if (initialized) webR.interrupt()
+        if (useRust) rustCancel() else if (initialized) webR.interrupt()
     }
 
     private suspend fun runR(expression: String, asPlot: Boolean = false): EvaluationResult = try {
@@ -114,6 +126,7 @@ private class BrowserSessionBackend : RSessionBackend {
     }
 
     private suspend fun evalString(expression: String): String {
+        if (useRust) return rustRequest("string", expression).await<JsString>().toString()
         ensureInitialized()
         return webR.evalRString(expression).await<JsString>().toString()
     }
@@ -193,7 +206,7 @@ fun main() {
             <div class="brand"><strong>R Workbench</strong><span class="runtime">${backend.capabilities.runtimeLabel}</span></div>
             <div class="toolbar"><button id="new-document">New</button><button id="open-document">Open</button><button id="open-project">Open folder</button><button id="save-document">Save</button><button id="run" class="primary">Run</button><button id="stop" disabled>Stop</button></div>
           </header>
-          <section class="notice"><strong>Browser R runtime connected.</strong> WebR runs R in a dedicated WebAssembly worker. Scripts, history, and project metadata persist in this browser.</section>
+          <section class="notice"><strong>${backend.capabilities.runtimeLabel}.</strong> Evaluation runs in a dedicated worker. <a href="?runtime=webr">Use WebR for broader package compatibility</a> · <a href="?">Use Rust</a>. Stopping Rust resets its in-memory session. Scripts, history, and project metadata persist in this browser.</section>
           <input id="file-input" type="file" accept=".R,.r,.Rmd,.txt,.csv,.tsv,.json" hidden>
           <input id="project-input" type="file" multiple hidden>
           <section class="workspace-grid">
@@ -467,6 +480,7 @@ fun main() {
         val html = "<html><body><h1>${escapeHtml(current.name)}</h1><pre>${escapeHtml(current.code)}</pre><h2>Console</h2><pre>${escapeHtml(console.textContent.orEmpty())}</pre></body></html>"
         downloadText("${current.name.substringBeforeLast('.')}.html", html, "text/html")
     })
+    (document.getElementById("install") as? HTMLButtonElement)?.disabled = !backend.capabilities.canInstallPackages
     document.getElementById("install")?.addEventListener("click", {
         val input = document.getElementById("install-name") as HTMLInputElement
         val name = input.value.trim()

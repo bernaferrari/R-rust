@@ -2170,41 +2170,15 @@ pub unsafe fn do_besselY(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// R's `simplify2array(x)` — simplify list to array.
-pub unsafe fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let x = CAR(args);
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::VECSXP {
-            return x;
-        }
-        let n = XLENGTH(x);
-        // Check if all elements are scalar and same type
-        let first = crate::sexp::accessors::VECTOR_ELT(x, 0);
-        if first.is_null() {
-            return x;
-        }
-        let elem_type = TYPEOF(first);
-        if XLENGTH(first) != 1 {
-            return x;
-        }
-        // Simplify to atomic vector
-        let result = Rf_allocVector3(elem_type, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = protect(result);
-        for i in 0..n {
-            let elem = crate::sexp::accessors::VECTOR_ELT(x, i as i64);
-            if !elem.is_null() && TYPEOF(elem) == elem_type {
-                if elem_type == SEXPTYPE::REALSXP.as_c_int() {
-                    *REAL(result).add(i as usize) = *REAL(elem);
-                } else if elem_type == SEXPTYPE::INTSXP.as_c_int() {
-                    *INTEGER(result).add(i as usize) = *INTEGER(elem);
-                } else if elem_type == SEXPTYPE::LGLSXP.as_c_int() {
-                    *LOGICAL(result).add(i as usize) = *LOGICAL(elem);
-                }
-            }
-        }
-        result
+        crate::mainutils::base_wrappers::apply(
+            "simplify2array",
+            include_str!("../base_wrappers/simplify2array.R"),
+            args,
+            rho,
+            true,
+        )
     }
 }
 

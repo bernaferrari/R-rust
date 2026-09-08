@@ -13,10 +13,10 @@ use std::ptr;
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::{Sexp, PairlistIter};
-/// use rmath::sexp::builder::PairlistBuilder;
-/// use rmath::sexp::memory::RArena;
+/// ```text
+/// use crate::sexp::{Sexp, PairlistIter};
+/// use crate::sexp::builder::PairlistBuilder;
+/// use crate::sexp::memory::RArena;
 ///
 /// let mut arena = RArena::new();
 /// let first = Sexp::nil();

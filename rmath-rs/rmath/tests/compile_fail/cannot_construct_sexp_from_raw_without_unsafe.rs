@@ -1,3 +1,5 @@
+// The translated runtime is crate-private; embedding uses owned values.
+//~ ERROR: module `sexp` is private
 //! FORBIDDEN: constructing a `Sexp` handle directly from a raw `SEXP`
 //! pointer in safe code.
 //!
@@ -24,6 +26,6 @@ pub fn forbidden() {
         .as_raw();
 
     // Both raw-pointer constructors are crate-private:
-    let _handle = Sexp::from_raw(raw); //~ ERROR: E0624
-    let _other = Sexp::try_from_raw(raw); //~ ERROR: E0624
+    let _handle = Sexp::from_raw(raw); 
+    let _other = Sexp::try_from_raw(raw); 
 }

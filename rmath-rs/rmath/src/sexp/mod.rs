@@ -35,6 +35,7 @@ pub mod session;
 pub mod symbol;
 
 // Re-export commonly used types at the module level
+#[allow(unused_imports)]
 pub use ffi::{
     Closxp, DOTSXP, Envsxp, FALSE, ISNAN, Listsxp, NA_INTEGER, NA_LOGICAL, NA_REAL, Primsxp,
     Promsxp, R_FINITE, R_IsNA, R_IsNaN, R_NA_BIT_PATTERN, R_len_t, R_size_t, R_xlen_t, Rboolean,
@@ -42,21 +43,26 @@ pub use ffi::{
 };
 
 #[cfg(feature = "altrep")]
+#[allow(unused_imports)]
 pub use altrep::{
     AltrepBuilder, AltrepClass, AltrepData, REPEAT_CLASS, SEQUENCE_CLASS, altrep_as_integer_slice,
     altrep_as_real_slice, altrep_class, altrep_dataptr, altrep_elt, altrep_length,
     force_materialization, is_altrep, is_materialized,
 };
 
+#[allow(unused_imports)]
 pub use output::{
     RCapturedOutput, capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture,
 };
 
+#[allow(unused_imports)]
 pub use instance::SessionCapabilities;
+#[allow(unused_imports)]
 pub use object::{
     PairlistIter, Sexp, SexpAttribute, SexpComplex, SexpError, SexpMetadata, SexpMut, SexpRef,
     SexpResult, SexpValue, SexpView,
 };
+#[allow(unused_imports)]
 pub use session::{CancellationToken, RSession};
 
 /// Default-build guards for the ALTREP feature gate.

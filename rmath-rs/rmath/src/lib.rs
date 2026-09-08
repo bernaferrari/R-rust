@@ -186,25 +186,26 @@ pub mod xdr;
 
 pub mod android;
 #[allow(dead_code, non_camel_case_types)]
-pub mod eval;
+pub(crate) mod eval;
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 #[allow(dead_code, non_camel_case_types)]
-pub mod graphapp;
+pub(crate) mod graphapp;
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
-pub mod intl;
+pub(crate) mod intl;
 #[allow(dead_code, non_camel_case_types)]
-pub mod library;
+pub(crate) mod library;
 #[allow(dead_code, non_camel_case_types)]
-pub mod mainutils;
+pub(crate) mod mainutils;
 #[allow(dead_code, non_camel_case_types)]
-pub mod modules;
-pub use mainutils as main;
+pub(crate) mod modules;
+pub(crate) use mainutils as main;
 pub use rmath_nmath as nmath;
 #[allow(dead_code, non_camel_case_types)]
-pub mod sexp;
-pub use sexp::attrib_core;
+pub(crate) mod sexp;
+pub use sexp::CancellationToken;
+pub(crate) use sexp::attrib_core;
 
 #[allow(dead_code, non_camel_case_types)]
 pub mod tre;
 pub mod trio;
-pub mod unix;
+pub(crate) mod unix;

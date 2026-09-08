@@ -77,7 +77,8 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let is_fun = named.as_deref() == Some("FUN")
                 || (named.is_none() && !fun_named && positional == 1);
             if !is_x && !is_fun {
-                let val = crate::eval::eval::Rf_eval(CAR(current), rho);
+                let val = crate::sexp::memory_ext::mkPROMSXP(CAR(current), rho);
+                let _val = protect(val);
                 let cell = Rf_cons(val, R_NilValue());
                 extra_guards.push(protect(cell));
                 let tg = TAG(current);
@@ -105,28 +106,7 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _result_guard = protect(result);
         for i in 0..n {
             let elem = extract_element(x, i);
-            let val = if extra_args == R_NilValue() {
-                apply_unary_value(fun, elem, rho)
-            } else {
-                // The extracted element is a VALUE, not an expression:
-                // splicing a language object (`1 + 2` from a saved
-                // expression vector) straight into the call makes evalList
-                // EVALUATE it. Upstream lapply.c passes each element as a
-                // pre-forced promise; mirror that.
-                let elem_promise = crate::sexp::memory_ext::mkPROMSXP(elem, rho);
-                if !elem_promise.is_null() {
-                    crate::sexp::accessors::SET_PRVALUE(elem_promise, elem);
-                }
-                let _promise_guard = protect(elem_promise);
-                let call_args = Rf_cons(elem_promise, extra_args);
-                let _call_args_guard = protect(call_args);
-                let call = Rf_cons(fun, call_args);
-                if !call.is_null() {
-                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                }
-                let _call_guard = protect(call);
-                crate::eval::eval::Rf_eval(call, rho)
-            };
+            let val = apply_fun_to_element(fun, elem, extra_args, rho);
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
         let names = list_apply_names(x, n);
@@ -149,125 +129,155 @@ pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-/// R's `vapply(X, FUN, FUN.VALUE)` — apply and simplify using FUN.VALUE's
-/// type and shape. FUN.VALUE of length 1 simplifies to an atomic vector;
-/// longer FUN.VALUE folds each FUN result into one column of the
-/// commonLen x n matrix apply.c's do_vapply builds, erroring when a
-/// result's length or type cannot match FUN.VALUE.
+/// R's `vapply(X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE)` — apply.c's
+/// do_vapply as a dedicated checked loop (the R-level wrapper only adds
+/// match.fun and an as.list conversion for non-vector/object X).
+///
+/// The template (FUN.VALUE) is rooted before anything else and fixes the
+/// answer's type, length and shape. Each FUN result is validated as it
+/// arrives — length first, then type, permitting only the widening ladder
+/// logical -> integer -> double -> complex — with upstream's exact error
+/// wording; there is no "return the unsimplified list" fallback. A
+/// template of length 1 flattens to a vector; any other length (including
+/// 0, and templates carrying dims, whose dim is preserved) produces an
+/// array of dim c(dim(template), length(X)). USE.NAMES carries X's names
+/// (or X itself when X is character) onto the result; the template's (or
+/// first result's) names/dimnames become the row names.
 pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let template_expr = arg_by_name_or_position(args, &["FUN.VALUE"], 2);
-        let template_type = fun_value_type(template_expr, rho);
-        // FUN.VALUE and USE.NAMES are vapply's own formals (upstream
-        // signature: vapply(X, FUN, FUN.VALUE, ..., USE.NAMES = TRUE));
-        // only the remaining `...` forwards to FUN. Strip them before
-        // delegating to the shared lapply loop, which forwards every
-        // non-X/FUN argument.
-        let mut filtered = R_NilValue();
-        let mut tail: SEXP = std::ptr::null_mut();
-        let mut guards: Vec<_> = Vec::new();
+        let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
+        let _x_guard = protect(x);
+        let fun = callable_arg_by_name_or_position(args, &["FUN"], 1);
+        let _fun_guard = protect(fun);
+        // Root the template FIRST: the output type, dimensions and
+        // row-name policy all read it, and it must survive every FUN
+        // evaluation below.
+        let value = eval_arg_by_name_or_position(args, &["FUN.VALUE"], 2, rho);
+        let _value_guard = protect(value);
+
+        if !is_vapply_vector(value) {
+            base_error("'FUN.VALUE' must be a vector");
+        }
+        let use_names = vapply_use_names(args, rho);
+
+        // R-level wrapper: if (!is.vector(X) || is.object(X)) X <- as.list(X)
+        let xx = normalize_vapply_x(x);
+        let _xx_guard = protect(xx);
+
+        let n: R_xlen_t = XLENGTH(xx);
+        let common_type = TYPEOF(value);
+        let supported = common_type == SEXPTYPE::CPLXSXP
+            || common_type == SEXPTYPE::REALSXP
+            || common_type == SEXPTYPE::INTSXP
+            || common_type == SEXPTYPE::LGLSXP
+            || common_type == SEXPTYPE::RAWSXP
+            || common_type == SEXPTYPE::STRSXP
+            || common_type == SEXPTYPE::VECSXP;
+        if !supported {
+            base_error(format!(
+                "type '{}' is not supported",
+                sexp_type_name(SEXPTYPE(common_type))
+            ));
+        }
+        let common_len = vapply_length(value);
+
+        let dim_v =
+            crate::sexp::attrib_core::getAttrib(value, crate::sexp::attrib_core::R_DimSymbol());
+        let _dim_v_guard = protect(dim_v);
+        let array_value = TYPEOF(dim_v) == SEXPTYPE::INTSXP && XLENGTH(dim_v) >= 1;
+
+        // Allocate and protect the answer before any FUN call.
+        let ans = Rf_allocVector3(SEXPTYPE(common_type), n * common_len);
+        let _ans_guard = protect(ans);
+
+        // Result names: X's names attribute, or X itself when X is
+        // character (upstream: names <- names(XX); if (is.null(names)
+        // && is.character(XX)) names <- XX). Row names: the template's
+        // names — dimnames when the template is an array — with a
+        // fallback to the FIRST result's, taken inside the loop.
+        let mut names = R_NilValue();
+        let mut names_guard =
+            crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply names");
+        let mut row_names = R_NilValue();
+        let mut row_names_guard =
+            crate::sexp::protect::protect_with_index_raw(R_NilValue(), "vapply row names");
+        if use_names {
+            names =
+                crate::sexp::attrib_core::getAttrib(xx, crate::sexp::attrib_core::R_NamesSymbol());
+            if vapply_is_nil(names) && TYPEOF(xx) == SEXPTYPE::STRSXP {
+                names = xx;
+            }
+            names_guard.reprotect_raw(names);
+            row_names = crate::sexp::attrib_core::getAttrib(
+                value,
+                if array_value {
+                    crate::sexp::attrib_core::R_DimNamesSymbol()
+                } else {
+                    crate::sexp::attrib_core::R_NamesSymbol()
+                },
+            );
+            row_names_guard.reprotect_raw(row_names);
+        }
+
+        // Collect vapply's `...`: every cell that is not X, FUN, FUN.VALUE
+        // or USE.NAMES (by name, or the first three unnamed positionals).
+        // Evaluated once, forwarded to every FUN call (tags preserved).
+        let mut extra_args = R_NilValue();
+        let mut extra_tail: SEXP = std::ptr::null_mut();
+        let mut extra_guards: Vec<_> = Vec::new();
         let mut positional = 0usize;
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             let named = tag_name(current);
-            let is_vapply_formal =
-                matches!(named.as_deref(), Some("FUN.VALUE") | Some("USE.NAMES"))
-                    || (named.is_none() && positional == 2);
+            let is_vapply_formal = match named.as_deref() {
+                Some("X") | Some("FUN") | Some("FUN.VALUE") | Some("USE.NAMES") => true,
+                None if positional <= 2 => true,
+                _ => false,
+            };
             if !is_vapply_formal {
-                let cell = Rf_cons(CAR(current), R_NilValue());
-                guards.push(protect(cell));
+                let val = crate::sexp::memory_ext::mkPROMSXP(CAR(current), rho);
+                let _val = protect(val);
+                let cell = Rf_cons(val, R_NilValue());
+                extra_guards.push(protect(cell));
                 let tg = TAG(current);
                 if !tg.is_null() && tg != R_NilValue() {
                     SETTAG(cell, tg);
                 }
-                if filtered == R_NilValue() {
-                    filtered = cell;
+                if extra_args == R_NilValue() {
+                    extra_args = cell;
                 } else {
-                    SETCDR(tail, cell);
+                    SETCDR(extra_tail, cell);
                 }
-                tail = cell;
+                extra_tail = cell;
             }
             if named.is_none() {
                 positional += 1;
             }
             current = CDR(current);
         }
-        let _filtered_guard = protect(filtered);
-        let list = do_lapply(_call, _op, filtered, rho);
-        let use_names = named_logical_arg(args, "USE.NAMES").unwrap_or(true);
-        simplify_vapply_list_as(list, template_expr, template_type, use_names, rho)
-    }
-}
 
-/// vapply's simplification step: scalar FUN.VALUE keeps the flat vector
-/// path; FUN.VALUE of length > 1 fills ans[i*commonLen + j] per element
-/// (one column per X element, apply.c's layout) and dims it to
-/// c(commonLen, n). USE.NAMES carries FUN.VALUE's (or the first result's)
-/// names as rownames and X's names as colnames.
-fn simplify_vapply_list_as(
-    list: SEXP,
-    template_expr: SEXP,
-    template_type: SEXPTYPE,
-    use_names: bool,
-    rho: SEXP,
-) -> SEXP {
-    unsafe {
-        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
-            return list;
-        }
-        let n = XLENGTH(list);
-        if n == 0 {
-            return list;
-        }
-        let is_vector_type = matches!(
-            template_type,
-            SEXPTYPE::CPLXSXP
-                | SEXPTYPE::REALSXP
-                | SEXPTYPE::INTSXP
-                | SEXPTYPE::LGLSXP
-                | SEXPTYPE::RAWSXP
-                | SEXPTYPE::STRSXP
-                | SEXPTYPE::VECSXP
-        );
-        if !is_vector_type {
-            base_error("'FUN.VALUE' must be a vector");
-        }
-        let template = if template_expr.is_null() || template_expr == R_NilValue() {
-            R_NilValue()
-        } else {
-            crate::eval::eval::Rf_eval(template_expr, rho)
-        };
-        let _template_guard = protect(template);
-        let common_len = if template == R_NilValue() {
-            1
-        } else {
-            XLENGTH(template)
-        };
-        if common_len <= 1 {
-            return simplify_scalar_list_as(list, template_type);
-        }
-
-        let result = Rf_allocVector3(template_type, n * common_len);
-        if result.is_null() {
-            return list;
-        }
-        let _result_guard = protect(result);
+        let mut offset: R_xlen_t = 0;
         for i in 0..n {
-            let mut val = VECTOR_ELT(list, i as i64);
-            let val_len = if val.is_null() || val == R_NilValue() {
-                0
-            } else {
-                XLENGTH(val)
-            };
+            let elem = extract_element(xx, i);
+            let mut elem_guard =
+                crate::sexp::protect::protect_with_index_raw(elem, "vapply element");
+            let mut val = apply_fun_to_element(fun, elem, extra_args, rho);
+            elem_guard.reprotect_raw(val);
+
+            // Immediate validation, before the next FUN call: length
+            // first, then type — apply.c's order and wording.
+            let val_len = vapply_length(val);
             if val_len != common_len {
                 base_error(format!(
-                    "values must be length {common_len}, but FUN(X[[{}]]) result is length {val_len}",
-                    i + 1
+                    "values must be length {},\n but FUN(X[[{}]]) result is length {}",
+                    common_len,
+                    i + 1,
+                    val_len
                 ));
             }
             let val_type = TYPEOF(val);
-            if val_type != template_type {
-                let okay = match template_type {
+            if val_type != common_type {
+                let okay = match common_type {
                     t if t == SEXPTYPE::CPLXSXP => {
                         val_type == SEXPTYPE::REALSXP
                             || val_type == SEXPTYPE::INTSXP
@@ -281,106 +291,250 @@ fn simplify_vapply_list_as(
                 };
                 if !okay {
                     base_error(format!(
-                        "values must be type '{}', but FUN(X[[{}]]) result is type '{}'",
-                        sexp_type_name(template_type),
+                        "values must be type '{}',\n but FUN(X[[{}]]) result is type '{}'",
+                        sexp_type_name(SEXPTYPE(common_type)),
                         i + 1,
                         sexp_type_name(SEXPTYPE(val_type))
                     ));
                 }
-                val = crate::mainutils::coerce::coerceVector(val, template_type.0);
+                val = crate::mainutils::coerce::coerceVector(val, common_type);
+                elem_guard.reprotect_raw(val);
             }
-            let _val_guard = protect(val);
-            let base = i * common_len;
-            match template_type {
+
+            // Row names come from the first result only.
+            if i == 0 && use_names && vapply_is_nil(row_names) {
+                row_names = crate::sexp::attrib_core::getAttrib(
+                    val,
+                    if array_value {
+                        crate::sexp::attrib_core::R_DimNamesSymbol()
+                    } else {
+                        crate::sexp::attrib_core::R_NamesSymbol()
+                    },
+                );
+                row_names_guard.reprotect_raw(row_names);
+            }
+
+            // commonLen == 1 is the flat case: element i. Any other
+            // length fills one column per result (column-major, apply.c).
+            let dst = if common_len <= 1 { i } else { offset };
+            match common_type {
                 t if t == SEXPTYPE::CPLXSXP => {
                     for j in 0..common_len {
-                        *COMPLEX(result).add((base + j) as usize) = *COMPLEX(val).add(j as usize);
+                        *COMPLEX(ans).add((dst + j) as usize) = *COMPLEX(val).add(j as usize);
                     }
                 }
                 t if t == SEXPTYPE::REALSXP => {
                     for j in 0..common_len {
-                        *REAL(result).add((base + j) as usize) = *REAL(val).add(j as usize);
+                        *REAL(ans).add((dst + j) as usize) = *REAL(val).add(j as usize);
                     }
                 }
                 t if t == SEXPTYPE::INTSXP => {
                     for j in 0..common_len {
-                        *INTEGER(result).add((base + j) as usize) = *INTEGER(val).add(j as usize);
+                        *INTEGER(ans).add((dst + j) as usize) = *INTEGER(val).add(j as usize);
                     }
                 }
                 t if t == SEXPTYPE::LGLSXP => {
                     for j in 0..common_len {
-                        *LOGICAL(result).add((base + j) as usize) = *LOGICAL(val).add(j as usize);
+                        *LOGICAL(ans).add((dst + j) as usize) = *LOGICAL(val).add(j as usize);
                     }
                 }
                 t if t == SEXPTYPE::RAWSXP => {
                     for j in 0..common_len {
-                        *RAW(result).add((base + j) as usize) = *RAW(val).add(j as usize);
+                        *RAW(ans).add((dst + j) as usize) = *RAW(val).add(j as usize);
                     }
                 }
                 t if t == SEXPTYPE::STRSXP => {
                     for j in 0..common_len {
-                        SET_STRING_ELT(result, base + j, STRING_ELT(val, j));
+                        SET_STRING_ELT(ans, dst + j, STRING_ELT(val, j));
                     }
                 }
                 t if t == SEXPTYPE::VECSXP => {
                     for j in 0..common_len {
-                        SET_VECTOR_ELT(result, (base + j) as i64, VECTOR_ELT(val, j));
+                        SET_VECTOR_ELT(ans, (dst + j) as i64, VECTOR_ELT(val, j as i64));
                     }
                 }
-                _ => return list,
+                _ => {}
+            }
+            if common_len > 1 {
+                offset += common_len;
             }
         }
 
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        if dim.is_null() {
-            return result;
-        }
-        let _dim_guard = protect(dim);
-        *INTEGER(dim) = common_len as c_int;
-        *INTEGER(dim).add(1) = n as c_int;
-        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+        if common_len != 1 {
+            let rnk_v: R_xlen_t = if array_value { XLENGTH(dim_v) } else { 1 };
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, rnk_v + 1);
+            let _dim_guard = protect(dim);
+            if array_value {
+                for j in 0..rnk_v {
+                    *INTEGER(dim).add(j as usize) = *INTEGER(dim_v).add(j as usize);
+                }
+            } else {
+                *INTEGER(dim) = common_len as c_int;
+            }
+            *INTEGER(dim).add(rnk_v as usize) = n as c_int;
+            crate::sexp::attrib_core::setAttrib(ans, crate::sexp::attrib_core::R_DimSymbol(), dim);
 
-        if use_names {
-            let mut row_names = crate::sexp::attrib_core::getAttrib(
-                template,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-            );
-            // apply.c falls back to the first result's names when
-            // FUN.VALUE itself is unnamed.
-            if (row_names.is_null() || row_names == R_NilValue()) && n > 0 {
-                let first = VECTOR_ELT(list, 0);
-                if !first.is_null() && first != R_NilValue() {
-                    row_names = crate::sexp::attrib_core::getAttrib(
-                        first,
-                        crate::sexp::attrib_core::R_NamesSymbol(),
-                    );
+            if use_names && (!vapply_is_nil(names) || !vapply_is_nil(row_names)) {
+                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, rnk_v + 1);
+                let _dimnames_guard = protect(dimnames);
+                if array_value && !vapply_is_nil(row_names) {
+                    if TYPEOF(row_names) != SEXPTYPE::VECSXP || XLENGTH(row_names) != rnk_v {
+                        base_error(format!(
+                            "dimnames(<value>) is neither NULL nor list of length {}",
+                            rnk_v
+                        ));
+                    }
+                    for j in 0..rnk_v {
+                        SET_VECTOR_ELT(dimnames, j as i64, VECTOR_ELT(row_names, j as i64));
+                    }
+                } else {
+                    // The engine zero-initializes fresh VECSXP payloads;
+                    // unset dimnames slots must read as NULL like
+                    // upstream's R_NilValue-filled allocation.
+                    SET_VECTOR_ELT(dimnames, 0, row_names);
+                    for j in 1..rnk_v {
+                        SET_VECTOR_ELT(dimnames, j as i64, R_NilValue());
+                    }
                 }
+                SET_VECTOR_ELT(dimnames, rnk_v as i64, names);
+                crate::sexp::attrib_core::setAttrib(
+                    ans,
+                    crate::sexp::attrib_core::R_DimNamesSymbol(),
+                    dimnames,
+                );
             }
-            let col_names = crate::sexp::attrib_core::getAttrib(
-                list,
+        } else if use_names && !vapply_is_nil(names) {
+            crate::sexp::attrib_core::setAttrib(
+                ans,
                 crate::sexp::attrib_core::R_NamesSymbol(),
+                names,
             );
-            let have_rows = !row_names.is_null() && row_names != R_NilValue();
-            let have_cols = !col_names.is_null() && col_names != R_NilValue();
-            if have_rows || have_cols {
-                let dmn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-                if !dmn.is_null() {
-                    let _dmn_guard = protect(dmn);
-                    SET_VECTOR_ELT(dmn, 0, if have_rows { row_names } else { R_NilValue() });
-                    SET_VECTOR_ELT(dmn, 1, if have_cols { col_names } else { R_NilValue() });
-                    crate::sexp::attrib_core::setAttrib(
-                        result,
-                        crate::sexp::attrib_core::R_DimNamesSymbol(),
-                        dmn,
-                    );
-                }
-            }
         }
-        result
+        ans
     }
 }
 
-/// Upstream type names as they appear in vapply's error messages.
+/// vapply's predicate for FUN.VALUE: C-level isVector (one of R's vector
+/// types), NOT the stricter R-level is.vector. Lists and expressions are
+/// vectors here; NULL, symbols and calls are not.
+fn is_vapply_vector(x: SEXP) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return false;
+        }
+        let t = TYPEOF(x);
+        t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+            || t == SEXPTYPE::VECSXP
+            || t == SEXPTYPE::EXPRSXP
+    }
+}
+
+/// USE.NAMES: named actual only (positional matching stops at vapply's
+/// `...`); evaluated, then read as a logical scalar. NA errors, like
+/// upstream; absent or non-logical defaults to TRUE.
+fn vapply_use_names(args: SEXP, rho: SEXP) -> bool {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some("USE.NAMES") {
+                let raw = CAR(current);
+                if raw.is_null() || raw == R_NilValue() {
+                    return true;
+                }
+                let raw = if is_already_a_value(raw) {
+                    raw
+                } else {
+                    crate::eval::eval::Rf_eval(raw, rho)
+                };
+                let _raw_guard = protect(raw);
+                if XLENGTH(raw) == 0 {
+                    return true;
+                }
+                let t = TYPEOF(raw);
+                let logical: c_int = if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
+                    *INTEGER(raw)
+                } else if t == SEXPTYPE::REALSXP {
+                    let d = *REAL(raw);
+                    if ISNAN(d) { NA_LOGICAL } else { d as c_int }
+                } else {
+                    return true;
+                };
+                if logical == NA_LOGICAL {
+                    base_error("invalid 'USE.NAMES' value");
+                }
+                return logical != 0;
+            }
+            current = CDR(current);
+        }
+        true
+    }
+}
+
+/// The R-level wrapper's X normalization: plain (non-object) atomic
+/// vectors and lists pass through; everything else — objects, factors,
+/// pairlists, calls, expressions, environments — goes through as.list
+/// (which flattens atomic input, matching as.list.default).
+fn normalize_vapply_x(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
+        }
+        let t = TYPEOF(x);
+        let passes_through = (t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+            || t == SEXPTYPE::VECSXP)
+            && crate::sexp::attrib_core::isObject(x) == 0;
+        if passes_through {
+            return x;
+        }
+        let cell = Rf_cons(x, R_NilValue());
+        let _cell_guard = protect(cell);
+        crate::mainutils::essentials_basic::do_as_list(
+            R_NilValue(),
+            R_NilValue(),
+            cell,
+            R_NilValue(),
+        )
+    }
+}
+
+/// length() as vapply uses it: XLENGTH for vectors, a walk for pairlist
+/// results, 0 for NULL.
+fn vapply_length(x: SEXP) -> R_xlen_t {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return 0;
+        }
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+            let mut len: R_xlen_t = 0;
+            let mut current = x;
+            while !current.is_null() && current != R_NilValue() {
+                len += 1;
+                current = CDR(current);
+            }
+            len
+        } else {
+            XLENGTH(x)
+        }
+    }
+}
+
+fn vapply_is_nil(x: SEXP) -> bool {
+    unsafe { x.is_null() || x == R_NilValue() }
+}
+
+/// Upstream type names as they appear in vapply's error messages
+/// (R_typeToChar).
 fn sexp_type_name(t: SEXPTYPE) -> &'static str {
     match t {
         t if t == SEXPTYPE::CPLXSXP => "complex",
@@ -390,6 +544,7 @@ fn sexp_type_name(t: SEXPTYPE) -> &'static str {
         t if t == SEXPTYPE::RAWSXP => "raw",
         t if t == SEXPTYPE::STRSXP => "character",
         t if t == SEXPTYPE::VECSXP => "list",
+        t if t == SEXPTYPE::EXPRSXP => "expression",
         _ => "unknown",
     }
 }
@@ -423,94 +578,13 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `Filter(f, x)` — keep elements where f returns TRUE.
 pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = callable_arg_by_name_or_position(args, &["f", "FUN"], 0);
-        let x = eval_arg_by_name_or_position(args, &["x"], 1, rho);
-        if fun.is_null() || x == R_NilValue() {
-            return R_NilValue();
-        }
-        // Protect across the eval-per-element loop (see do_lapply).
-        let _x_guard = protect(x);
-        let _fun_guard = protect(fun);
-        let n = XLENGTH(x);
-        // Upstream Filter is `x[vapply(x, f, logical(1))]`: a logical
-        // subset that preserves element types AND names. (The previous
-        // port copied only numeric payloads and dropped names, and an
-        // empty match set still has to come back as an empty list —
-        // returning NULL here broke R6's
-        // `generator$public_methods <- get_functions(public)` for classes
-        // without user methods, losing the injected clone/initialize.)
-        let mut kept: Vec<R_xlen_t> = Vec::new();
-        for i in 0..n {
-            let elem = extract_element(x, i);
-            let val = apply_unary_value(fun, elem, rho);
-            if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP && *LOGICAL(val) == 1 {
-                kept.push(i);
-            }
-        }
-        let m = kept.len() as R_xlen_t;
-        let result = Rf_allocVector3(TYPEOF(x), m);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _result_guard = protect(result);
-        for (new_i, &old_i) in kept.iter().enumerate() {
-            let new_i = new_i as R_xlen_t;
-            let old_i = old_i as R_xlen_t;
-            match TYPEOF(x) {
-                t if t == SEXPTYPE::REALSXP => {
-                    *REAL(result).add(new_i as usize) = *REAL(x).add(old_i as usize);
-                }
-                t if t == SEXPTYPE::INTSXP => {
-                    *INTEGER(result).add(new_i as usize) = *INTEGER(x).add(old_i as usize);
-                }
-                t if t == SEXPTYPE::LGLSXP => {
-                    *LOGICAL(result).add(new_i as usize) = *LOGICAL(x).add(old_i as usize);
-                }
-                t if t == SEXPTYPE::STRSXP => {
-                    crate::sexp::accessors::SET_STRING_ELT(
-                        result,
-                        new_i,
-                        crate::sexp::accessors::STRING_ELT(x, old_i),
-                    );
-                }
-                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
-                    crate::sexp::accessors::SET_VECTOR_ELT(
-                        result,
-                        new_i,
-                        crate::sexp::accessors::VECTOR_ELT(x, old_i),
-                    );
-                }
-                t if t == SEXPTYPE::RAWSXP => {
-                    *crate::sexp::accessors::RAW(result).add(new_i as usize) =
-                        *crate::sexp::accessors::RAW(x).add(old_i as usize);
-                }
-                t if t == SEXPTYPE::CPLXSXP => {
-                    *crate::sexp::accessors::COMPLEX(result).add(new_i as usize) =
-                        *crate::sexp::accessors::COMPLEX(x).add(old_i as usize);
-                }
-                _ => {}
-            }
-        }
-        // Names travel with the kept elements.
-        let names =
-            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
-        if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
-            let out_names = Rf_allocVector3(SEXPTYPE::STRSXP, m);
-            let _ng = protect(out_names);
-            for (new_i, &old_i) in kept.iter().enumerate() {
-                crate::sexp::accessors::SET_STRING_ELT(
-                    out_names,
-                    new_i as R_xlen_t,
-                    crate::sexp::accessors::STRING_ELT(names, old_i),
-                );
-            }
-            crate::sexp::attrib_core::setAttrib(
-                result,
-                crate::sexp::attrib_core::R_NamesSymbol(),
-                out_names,
-            );
-        }
-        result
+        crate::mainutils::base_wrappers::apply(
+            "Filter",
+            include_str!("../base_wrappers/filter.R"),
+            args,
+            rho,
+            false,
+        )
     }
 }
 
@@ -618,36 +692,6 @@ fn callable_expr(fun: SEXP) -> SEXP {
     }
 }
 
-fn fun_value_type(template_expr: SEXP, rho: SEXP) -> SEXPTYPE {
-    unsafe {
-        if !template_expr.is_null()
-            && template_expr != R_NilValue()
-            && TYPEOF(template_expr) == SEXPTYPE::LANGSXP
-        {
-            let head = CAR(template_expr);
-            if TYPEOF(head) == SEXPTYPE::SYMSXP {
-                if let Some(name) = symbol_name(head) {
-                    if let Some(template_type) = match name.as_str() {
-                        "integer" => Some(SEXPTYPE::INTSXP),
-                        "numeric" | "double" => Some(SEXPTYPE::REALSXP),
-                        "logical" => Some(SEXPTYPE::LGLSXP),
-                        "character" => Some(SEXPTYPE::STRSXP),
-                        _ => None,
-                    } {
-                        return template_type;
-                    }
-                }
-            }
-        }
-        let template = if template_expr.is_null() || template_expr == R_NilValue() {
-            R_NilValue()
-        } else {
-            crate::eval::eval::Rf_eval(template_expr, rho)
-        };
-        SEXPTYPE(TYPEOF(template))
-    }
-}
-
 fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if value == R_MissingArg()
@@ -673,6 +717,32 @@ fn apply_unary_value(fun: SEXP, value: SEXP, rho: SEXP) -> SEXP {
             (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
         }
         crate::eval::eval::Rf_eval(call_sexp, call_env)
+    }
+}
+
+/// Call FUN on one extracted element, forwarding the caller's collected
+/// `...` (evaluated once, tags preserved). The element goes in as a
+/// pre-forced promise: splicing a language object (`1 + 2` from a saved
+/// expression vector) straight into the call makes evalList EVALUATE it;
+/// upstream lapply.c passes each element as a forced promise too.
+fn apply_fun_to_element(fun: SEXP, elem: SEXP, extra_args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if extra_args == R_NilValue() {
+            return apply_unary_value(fun, elem, rho);
+        }
+        let elem_promise = crate::sexp::memory_ext::mkPROMSXP(elem, rho);
+        if !elem_promise.is_null() {
+            crate::sexp::accessors::SET_PRVALUE(elem_promise, elem);
+        }
+        let _promise_guard = protect(elem_promise);
+        let call_args = Rf_cons(elem_promise, extra_args);
+        let _call_args_guard = protect(call_args);
+        let call = Rf_cons(fun, call_args);
+        if !call.is_null() {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        let _call_guard = protect(call);
+        crate::eval::eval::Rf_eval(call, rho)
     }
 }
 
@@ -2965,5 +3035,29 @@ pub unsafe fn do_cast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         x
+    }
+}
+
+/// R's plot generic delegates through the ordinary S3 machinery.
+pub unsafe fn do_plot(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "plot",
+            "function(x, y, ...) UseMethod('plot')",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    #[cfg(feature = "renderplot-device")]
+    unsafe {
+        crate::mainutils::portable_plot::plot_default(call, op, args, rho)
+    }
+    #[cfg(not(feature = "renderplot-device"))]
+    {
+        let _ = (call, op, args, rho);
+        base_error("plot requires the renderplot-device feature".to_owned())
     }
 }

@@ -39,13 +39,13 @@ extensions.configure<NodeJsEnvSpec>("kotlinNodeJsSpec") {
 }
 
 val productionBundleDirectory = layout.buildDirectory.dir(
-    "kotlin-webpack/wasmJs/productionExecutable",
+    "dist/wasmJs/productionExecutable",
 )
 
 tasks.register("checkWasmProductionBundleSize") {
     group = "verification"
     description = "Builds the production web app and enforces release asset budgets."
-    dependsOn("wasmJsBrowserProductionWebpack")
+    dependsOn("wasmJsBrowserDistribution")
 
     val bundleDirectory = productionBundleDirectory
     inputs.dir(bundleDirectory)
@@ -87,5 +87,32 @@ tasks.register("checkWasmProductionBundleSize") {
             wasm.length(),
             totalSize,
         )
+    }
+}
+
+// Ship the Rust interpreter beside the Kotlin UI, with its own asset budget.
+val rustRuntimeResources = layout.buildDirectory.dir("generated/rustRuntimeResources")
+val buildRustRuntime by tasks.registering(Exec::class) {
+    val repository = rootProject.projectDir.parentFile
+    workingDir(repository)
+    inputs.files(fileTree(repository.resolve("crates")) { include("**/*.rs", "**/Cargo.toml") })
+    inputs.files(fileTree(repository.resolve("rmath-rs")) { include("**/*.rs", "**/*.R", "**/Cargo.toml"); exclude("**/target/**") })
+    inputs.files(repository.resolve("Cargo.lock"), repository.resolve("Cargo.toml"))
+    outputs.dir(rustRuntimeResources)
+    commandLine("wasm-pack", "build", "crates/r-wasm", "--target", "web", "--release",
+        "--out-dir", rustRuntimeResources.get().dir("rust-runtime").asFile.absolutePath)
+}
+kotlin.sourceSets.named("wasmJsMain") {
+    resources.srcDir(rustRuntimeResources)
+}
+tasks.named("wasmJsProcessResources") { dependsOn(buildRustRuntime) }
+tasks.named("checkWasmProductionBundleSize") {
+    doLast {
+        val runtime = productionBundleDirectory.get().dir("rust-runtime").asFile
+        val wasm = runtime.resolve("r_wasm_bg.wasm")
+        check(wasm.isFile) { "Rust interpreter WASM is missing from the release bundle" }
+        val total = runtime.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        check(total <= 25L * 1024 * 1024) { "Rust runtime assets exceed the 25 MiB budget: $total bytes" }
+        logger.lifecycle("Rust interpreter assets: {} bytes (separate from Kotlin UI budget)", total)
     }
 }

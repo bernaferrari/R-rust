@@ -59,6 +59,10 @@ pub unsafe fn do_try(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     std::panic::resume_unwind(payload)
                 };
 
+                // try() swallows the error here; any condition recorded by
+                // a stop(<condition>) inside the expression is consumed
+                // with it (a later unrelated error must not inherit it).
+                set_signalled_condition(std::ptr::null_mut());
                 let silent = as_bool_arg(silent_arg, rho);
 
                 // Stock try() composes "Error in <deparsed call>: msg\n" from
@@ -176,13 +180,7 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
         set_condition_handler_stack(old_stack);
 
         match result {
-            Ok(value) => {
-                // Upstream withCallingHandlers/tryCatch return invisibly
-                // (the handler machinery owns visibility, not the body's
-                // last value).
-                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-                value
-            }
+            Ok(value) => value,
             Err(payload) => std::panic::resume_unwind(payload),
         }
     }
@@ -201,6 +199,68 @@ thread_local! {
     /// matching class.
     static TRY_CATCH_HANDLER_CLASSES: std::cell::RefCell<Vec<Vec<String>>> =
         std::cell::RefCell::new(Vec::new());
+}
+
+thread_local! {
+    /// The condition object passed to the `stop(<condition>)` currently
+    /// being signaled (`R_PreserveObject`-protected), or null. `stop()`
+    /// records it before raising the string error; the `tryCatch` catch
+    /// site hands this ORIGINAL object to a matching handler instead of
+    /// rebuilding a simpleError, so class-selecting handlers,
+    /// `identical(c, e)`, and extra fields survive the unwind. The slot
+    /// is thread-confined raw state like the rest of the engine's
+    /// instance data and is cleared at each signaling start (nested or
+    /// foreign errors reset it).
+    static SIGNALLED_CONDITION: std::cell::Cell<SEXP> =
+        const { std::cell::Cell::new(std::ptr::null_mut()) };
+}
+
+/// Record the condition being signaled by `stop(<condition>)` (null
+/// clears the slot). The previous occupant is released; the new one is
+/// permanently protected until a catch site claims or replaces it.
+pub(crate) fn set_signalled_condition(cond: SEXP) {
+    SIGNALLED_CONDITION.with(|slot| unsafe {
+        let old = slot.get();
+        if !old.is_null() {
+            crate::sexp::protect::R_ReleaseObject(old);
+        }
+        if !cond.is_null() {
+            crate::sexp::protect::R_PreserveObject(cond);
+        }
+        slot.set(cond);
+    });
+}
+
+fn signalled_condition() -> SEXP {
+    SIGNALLED_CONDITION.with(|slot| slot.get())
+}
+
+/// Message text of a condition object (its `message` field), mirroring
+/// `conditionMessage()`.
+unsafe fn condition_message_of(cond: SEXP) -> Option<String> {
+    unsafe {
+        let msg = crate::mainutils::essentials::tables::list_element_by_name(cond, "message")?;
+        Some(elt_to_string(msg, 0))
+    }
+}
+
+/// Class vector of a condition object. Handler selection matches the
+/// `tryCatch` tag against these classes (upstream searches the exiting
+/// handler entries in registration order and takes the first whose
+/// class the condition inherits from).
+unsafe fn condition_classes(cond: SEXP) -> Vec<String> {
+    unsafe {
+        let class_attr = crate::sexp::attrib_core::getAttrib(cond, Rf_install(c"class".as_ptr()));
+        if class_attr.is_null()
+            || class_attr == R_NilValue()
+            || TYPEOF(class_attr) != SEXPTYPE::STRSXP
+        {
+            return vec!["error".to_string()];
+        }
+        (0..XLENGTH(class_attr))
+            .map(|i| elt_to_string(class_attr, i))
+            .collect()
+    }
 }
 /// Panic payload for warning unwinds: `RSignal::Warning { message }`
 /// (sexp::context) carries the warning out of `warning()` into an
@@ -643,20 +703,36 @@ unsafe fn is_restart_object(value: SEXP) -> bool {
 /// R's `stop(...)` — raise error.
 pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        // stop(<condition>): signal the condition's own message. Upstream
-        // stop() detects condition objects (class contains "condition") and
-        // signals them as-is; packages like zeallot build classed error
-        // conditions with errorCondition() and pass them here.
+        // stop(<condition>): upstream signals the condition's own object
+        // (class c(class, "error", "condition") from errorCondition()) and
+        // packages like zeallot build classed conditions and pass them
+        // here. Record the object in the signalled-condition slot so the
+        // tryCatch catch site can hand the ORIGINAL to a class-matching
+        // handler, signal calling handlers with it (.signalCondition),
+        // then default to an error carrying its message/call
+        // (.dfltStop). Every signaling start clears the slot first: a
+        // fresh stop() (condition or not) supersedes any earlier one.
+        set_signalled_condition(std::ptr::null_mut());
         let first = CAR(args);
         if crate::mainutils::essentials::sexp_has_class(first, "condition") {
             if let Some(msg) =
                 crate::mainutils::essentials::tables::list_element_by_name(first, "message")
             {
                 let text = elt_to_string(msg, 0);
-                crate::mainutils::errors::errorcall_str(
-                    crate::mainutils::errors::R_getCurrentCall(),
-                    &text,
-                );
+                set_signalled_condition(first);
+                signal_calling_handlers(first, _rho);
+                // `.dfltStop(message, call)` uses conditionCall semantics:
+                // the call field kept only when it is a language object.
+                let cond_call =
+                    crate::mainutils::essentials::tables::list_element_by_name(first, "call")
+                        .filter(|c| {
+                            let t = TYPEOF(*c);
+                            t == SEXPTYPE::LANGSXP.as_c_int()
+                                || t == SEXPTYPE::SYMSXP.as_c_int()
+                                || t == SEXPTYPE::EXPRSXP.as_c_int()
+                        })
+                        .unwrap_or(std::ptr::null_mut());
+                crate::mainutils::errors::dflt_stop_str(cond_call, &text);
             }
         }
 
@@ -686,6 +762,7 @@ pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
             signal_calling_warning_condition(condition, rho)
         };
         if muffled {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return Rf_mkString(CString::new(warning_text).unwrap_or_default().as_ptr());
         }
 
@@ -941,14 +1018,46 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                     },
                 };
 
+                // stop(<condition>): when the signalled-condition slot
+                // holds a condition whose message matches this unwind,
+                // deliver the ORIGINAL object — class-selecting handlers,
+                // `identical(c, e)`, and extra fields survive. A slot
+                // whose message does not match is stale (an unrelated
+                // internal error); clear it and rebuild a simpleError.
+                let slot_cond = signalled_condition();
+                let mut original: SEXP = std::ptr::null_mut();
+                if !slot_cond.is_null() {
+                    if condition_message_of(slot_cond).as_deref() == Some(message.as_str()) {
+                        original = slot_cond;
+                    } else {
+                        set_signalled_condition(std::ptr::null_mut());
+                    }
+                }
+
+                // Handler selection matches the tag against the
+                // condition's class vector in registration order (first
+                // match wins): tryCatch(stop(e), error=..., port_error=...)
+                // takes `error=`, and the rebuilt simpleError also answers
+                // to `simpleError=`/`condition=` handlers like upstream.
+                let condition = if !original.is_null() {
+                    original
+                } else {
+                    simple_error_condition(&message)
+                };
+                let classes = condition_classes(condition);
                 let Some(handler) = handlers
                     .iter()
-                    .find(|(tag, _)| tag == "error")
+                    .find(|(tag, _)| classes.iter().any(|class| class == tag))
                     .map(|(_, handler)| *handler)
                 else {
+                    // No handler here claims the error: unwind onward.
+                    // The slot stays live so an enclosing tryCatch can
+                    // still claim the original condition.
                     std::panic::panic_any(crate::sexp::context::RError { message });
                 };
-                let condition = simple_error_condition(&message);
+                if !original.is_null() {
+                    set_signalled_condition(std::ptr::null_mut());
+                }
                 let _cond_guard = protect(condition);
                 let call = crate::sexp::constructors::Rf_lang2(handler, condition);
                 crate::eval::eval::Rf_eval(call, rho)
@@ -1466,10 +1575,17 @@ pub unsafe fn do_conditionCall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
         if cond.is_null() || cond == R_NilValue() {
             return R_NilValue();
         }
-        let call_sym = Rf_install(c"call".as_ptr());
-        let call_val = crate::sexp::attrib_core::getAttrib(cond, call_sym);
-        if !call_val.is_null() && call_val != R_NilValue() {
-            return call_val;
+        // Upstream conditionCall.default reads the `call` field and keeps
+        // it only when it is a language object:
+        // `if (is.null(c <- cond$call) || !is.language(c)) NULL else c`.
+        let call = crate::mainutils::essentials::tables::list_element_by_name(cond, "call")
+            .unwrap_or(R_NilValue());
+        let t = TYPEOF(call);
+        let is_language = t == SEXPTYPE::LANGSXP.as_c_int()
+            || t == SEXPTYPE::SYMSXP.as_c_int()
+            || t == SEXPTYPE::EXPRSXP.as_c_int();
+        if !call.is_null() && call != R_NilValue() && is_language {
+            return call;
         }
         R_NilValue()
     }
@@ -1554,6 +1670,10 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
         let mut message: SEXP = R_NilValue();
         let mut class_arg: SEXP = R_NilValue();
         let mut call_arg: SEXP = R_NilValue();
+        // Upstream keeps the `...` fields after message/call:
+        // `structure(list(message = ..., call = call, ...), class = ...)`
+        // — errorCondition("m", code = 42L) exposes `condition$code`.
+        let mut extras: Vec<(String, SEXP)> = Vec::new();
         let mut cur = args;
         while !cur.is_null() && cur != R_NilValue() {
             let tag = crate::sexp::accessors::TAG(cur);
@@ -1569,11 +1689,14 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
                 call_arg = value;
             } else if (name == "message" || name.is_empty()) && message == R_NilValue() {
                 message = value;
+            } else {
+                extras.push((name, value));
             }
             cur = crate::sexp::accessors::CDR(cur);
         }
+        let _extras_guards: Vec<_> = extras.iter().map(|(_, v)| protect(*v)).collect();
 
-        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, (2 + extras.len()) as i64);
         if result.is_null() {
             return R_NilValue();
         }
@@ -1587,10 +1710,15 @@ unsafe fn error_or_warning_condition(args: SEXP, kind: &str) -> SEXP {
         let _message_guard = protect(message_str);
         SET_VECTOR_ELT(result, 0, message_str);
         SET_VECTOR_ELT(result, 1, call_arg);
+        for (i, (_, value)) in extras.iter().enumerate() {
+            SET_VECTOR_ELT(result, (2 + i) as i64, *value);
+        }
 
-        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, (2 + extras.len()) as i64);
         if !names.is_null() {
-            for (i, n) in ["message", "call"].iter().enumerate() {
+            let mut fields: Vec<&str> = vec!["message", "call"];
+            fields.extend(extras.iter().map(|(name, _)| name.as_str()));
+            for (i, n) in fields.iter().enumerate() {
                 let cstr = CString::new(*n).unwrap_or_default();
                 let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
                 if !charsxp.is_null() {

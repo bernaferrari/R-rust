@@ -1,3 +1,5 @@
+// The translated runtime is crate-private; embedding uses owned values.
+//~ ERROR: module `sexp` is private
 //! FORBIDDEN: constructing a `SexpMut` outside the crate.
 //!
 //! `SexpMut` is a crate-internal mutation guard, not a uniqueness proof:
@@ -18,5 +20,5 @@ pub fn forbidden() {
         .expect("arena allocation failed");
 
     // External construction rejected: no guard, no mutation surface.
-    let _guard = SexpMut::from_owned(sexp); //~ ERROR: E0624
+    let _guard = SexpMut::from_owned(sexp); 
 }

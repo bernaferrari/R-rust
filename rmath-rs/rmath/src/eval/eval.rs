@@ -29,11 +29,14 @@ use crate::sexp::object::{PairlistIter, Sexp, SexpError};
 use crate::sexp::symbol::{R_DotsSymbol, symbol_name_bytes_equal, symbol_name_from_ptr};
 
 use super::apply::{apply_builtin_safe, apply_closure_safe, apply_special_safe};
+#[allow(unused_imports)]
 pub use super::error::EvalError;
+#[allow(unused_imports)]
 pub use super::limits::{
     EvalLimits, EvalTimerGuard, check_eval_depth, eval_with_limits, get_eval_limits,
     reset_eval_limits, set_eval_limits,
 };
+#[allow(unused_imports)]
 pub use super::primitive::{
     PRIMNAME, PRIMPRINT, PrimFun as PRIMFUN, PrimitiveDescriptor, get_fun_tab_entry, get_primfun,
 };

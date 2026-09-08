@@ -25,7 +25,7 @@ The release gate runs this script by default.
 | `r-uniffi` | UniFFI records, enums, and `RSession` object | No `unsafe`; no raw `SEXP`; owned values only |
 | `r-embed` | Safe Rust `RSession`, `RValue`, package and plot APIs | No `unsafe`; no raw `SEXP`; owned values only |
 | `rmath::android` | Rust session facade over the interpreter core | Owned `RValue` surface; internal raw access stays below this layer |
-| `rmath::sexp` | Core runtime and compatibility API | Raw `SEXP` exists here by design; owner-checked wrappers such as `Sexp<'a>` are the Rust-shaped path |
+| `rmath::sexp` | Crate-private runtime implementation | Raw `SEXP` and lifetime-bound internal wrappers are inaccessible to downstream crates |
 
 ## Remaining Unsafe Work
 
@@ -40,3 +40,22 @@ and unsafe internals while the C port is being sessionized. Track those through:
 The standard for future app-facing additions is simple: return owned values or
 lifetime-bound wrappers, and do not expose raw pointers through `r-embed` or
 `r-uniffi`.
+
+## Runtime containment and rooting
+
+The translated `sexp`, `eval`, `mainutils`, `library`, `modules`, and platform
+runtime modules are crate-private. This intentionally removes the experimental
+raw public API: shared SEXP access must not permit ambient evaluation, mutation,
+or GC to invalidate an outstanding borrow. External hosts use owned results
+and the `r-embed` handle API. Compile-fail fixtures reject raw module access;
+these privacy tests are not a separate proof of every internal lifetime rule.
+
+Rust roots use stable `(slot, generation)` identities, owner-aware replacement,
+and lifetime-bound, thread-confined guards. Legacy UNPROTECT operates only on
+the legacy stack. Contexts live in `Box<UnsafeCell<RCNTXT>>`; pointer derivation
+uses `UnsafeCell::get` after ownership is stored. Scope checkpoints release
+internal transient roots by generation without revoking managed guards.
+
+Internal unsafe routines still require root and aliasing discipline. Miri's
+current runs permit exposed provenance; they are useful counterexample checks,
+not a formal proof of safety or a security boundary for hostile R programs.

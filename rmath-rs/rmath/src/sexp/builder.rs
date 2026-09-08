@@ -25,9 +25,9 @@
 //!
 //! # Examples
 //!
-//! ```
-//! use rmath::sexp::builder::{IntVector, RealVector, seq_in};
-//! use rmath::sexp::memory::RArena;
+//! ```text
+//! use crate::sexp::builder::{IntVector, RealVector, seq_in};
+//! use crate::sexp::memory::RArena;
 //!
 //! let mut arena = RArena::new();
 //!
@@ -58,8 +58,8 @@ use super::object::{Sexp, SexpError, SexpResult};
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::builder::IntVector;
+/// ```text
+/// use crate::sexp::builder::IntVector;
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
 /// let vec = IntVector::new(&[1, 2, 3, 4, 5]).build_in(&mut arena);
@@ -142,8 +142,8 @@ impl IntVector {
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::builder::RealVector;
+/// ```text
+/// use crate::sexp::builder::RealVector;
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
 /// let vec = RealVector::new(&[1.5, 2.5, 3.5]).build_in(&mut arena);
@@ -228,8 +228,8 @@ impl RealVector {
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::builder::LogicalVector;
+/// ```text
+/// use crate::sexp::builder::LogicalVector;
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
 /// let vec = LogicalVector::new(&[true, false, true]).build_in(&mut arena);
@@ -278,8 +278,8 @@ impl LogicalVector {
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::builder::RawVector;
+/// ```text
+/// use crate::sexp::builder::RawVector;
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
 /// let vec = RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build_in(&mut arena);
@@ -328,8 +328,8 @@ impl RawVector {
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::builder::StringVector;
+/// ```text
+/// use crate::sexp::builder::StringVector;
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
 /// let vec = StringVector::new(&["hello", "world"]).build_in(&mut arena);
@@ -378,9 +378,9 @@ impl StringVector {
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::builder::GenericVector;
-/// use rmath::sexp::Sexp;
+/// ```text
+/// use crate::sexp::builder::GenericVector;
+/// use crate::sexp::Sexp;
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
 /// let nil = Sexp::nil();
@@ -469,10 +469,10 @@ impl GenericVector {
 ///
 /// # Examples
 ///
-/// ```
-/// use rmath::sexp::builder::PairlistBuilder;
-/// use rmath::sexp::memory::RArena;
-/// use rmath::sexp::Sexp;
+/// ```text
+/// use crate::sexp::builder::PairlistBuilder;
+/// use crate::sexp::memory::RArena;
+/// use crate::sexp::Sexp;
 ///
 /// let mut arena = RArena::new();
 /// let nil = Sexp::nil();

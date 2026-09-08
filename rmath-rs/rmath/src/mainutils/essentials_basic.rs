@@ -1337,6 +1337,18 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                     *REAL(elem) = *REAL(x).add(i as usize);
                 } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                     *INTEGER(elem) = *INTEGER(x).add(i as usize);
+                } else if t == SEXPTYPE::STRSXP {
+                    crate::sexp::accessors::SET_STRING_ELT(
+                        elem,
+                        0,
+                        crate::sexp::accessors::STRING_ELT(x, i),
+                    );
+                } else if t == SEXPTYPE::RAWSXP {
+                    *crate::sexp::accessors::RAW(elem) =
+                        *crate::sexp::accessors::RAW(x).add(i as usize);
+                } else if t == SEXPTYPE::CPLXSXP {
+                    *crate::sexp::accessors::COMPLEX(elem) =
+                        *crate::sexp::accessors::COMPLEX(x).add(i as usize);
                 }
             }
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, elem);

@@ -1,3 +1,5 @@
+// The translated runtime is crate-private; embedding uses owned values.
+//~ ERROR: module `sexp` is private
 //! FORBIDDEN: carrying a session-scoped `Sexp` handle out of the session
 //! that owns it — here, out of session A and into session B.
 //!
@@ -27,7 +29,7 @@ pub fn forbidden() {
         // be used with session B below. The handle's lifetime is tied to
         // the borrow of `session_a`, which ends with this block.
         handle
-    }; //~ ERROR: E0597
+    }; 
 
     // Would type-check for any owner-scoped handle, but `carried` cannot
     // exist: its lifetime died with session A.

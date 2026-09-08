@@ -54,7 +54,7 @@ fn current_profile_dir() -> Option<PathBuf> {
 /// picking the most recently built rlib.
 fn locate_rmath() -> (PathBuf, PathBuf) {
     if let Some(profile_dir) = current_profile_dir() {
-        let rlib = profile_dir.join("librmath.rlib");
+        let rlib = profile_dir.join("deps/librmath.rlib");
         if rlib.exists() {
             return (rlib, profile_dir.join("deps"));
         }
@@ -77,7 +77,7 @@ fn locate_rmath() -> (PathBuf, PathBuf) {
     for base in &candidates {
         for profile in ["debug", "release"] {
             let profile_dir = base.join(profile);
-            let rlib = profile_dir.join("librmath.rlib");
+            let rlib = profile_dir.join("deps/librmath.rlib");
             let Ok(metadata) = fs::metadata(&rlib) else {
                 continue;
             };

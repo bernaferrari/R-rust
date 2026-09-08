@@ -5,8 +5,17 @@
 //! UniFFI bindings: it exposes owned Rust values and delegates runtime work to
 //! rmath's per-session interpreter, never to process-global `SEXP` state.
 
+//!
+//! ```
+//! use r_embed::{RSession, RValue};
+//! let mut session = RSession::new()?;
+//! let snapshot = session.eval_result("c('a', 'b')")?;
+//! session.eval("gc(); x <- 42")?;
+//! assert_eq!(snapshot.value, RValue::StringVector(vec![Some("a".into()), Some("b".into())]));
+//! # Ok::<(), r_embed::RSessionError>(())
+//! ```
+
 mod packages;
-mod plot;
 mod session;
 
 pub use rmath::android::{

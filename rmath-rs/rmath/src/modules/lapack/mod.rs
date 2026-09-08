@@ -52,7 +52,7 @@ mod lapack;
     unused_assignments,
     non_camel_case_types
 )]
-mod lapack_impl;
+pub(crate) mod lapack_impl;
 #[allow(
     dead_code,
     unused_imports,

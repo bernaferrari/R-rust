@@ -10,12 +10,16 @@
 //! job's budget. The full-corpus torture differential (native, fast)
 //! lives in scripts/gc_torture_stress.sh.
 
-use rmath::sexp::session::RSession;
+use rmath::android::{RSession, RValue};
 
 fn eval_script(session: &mut RSession, code: &str) -> String {
-    let (result, output, _visible) = session.eval_script_with_output_capture(code);
-    result.expect("script must eval");
-    output.stdout
+    let result = session.eval(code);
+    assert!(
+        !matches!(result.typed, RValue::Error(_)),
+        "{}",
+        result.output
+    );
+    result.output
 }
 
 #[test]
@@ -40,4 +44,14 @@ cat(loaded, "|", length(e), "|", typeof(e[[3]]), "\n")
         out.contains("e | 3 | language"),
         "tortured round-trip output wrong: {out}"
     );
+}
+
+#[test]
+fn nested_closures_on_exit_survive_collection() {
+    let mut session = RSession::new();
+    let out = eval_script(
+        &mut session,
+        "f <- function() { on.exit(cat('outer')); g <- function() { on.exit(cat('inner')); gc(); 7L }; g() }; cat(f())",
+    );
+    assert!(out.contains("innerouter7"), "{out}");
 }

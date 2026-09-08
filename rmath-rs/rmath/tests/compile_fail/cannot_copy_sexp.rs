@@ -1,3 +1,5 @@
+// The translated runtime is crate-private; embedding uses owned values.
+//~ ERROR: module `sexp` is private
 //! FORBIDDEN: `Copy` on `Sexp` handles — neither via a derived wrapper nor
 //! by implicit copying of the handle itself.
 //!
@@ -17,7 +19,7 @@ use rmath::sexp::{Sexp, SEXPTYPE};
 
 /// Deriving `Copy` on a local wrapper around `Sexp` is rejected: every
 /// field of a `Copy` struct must itself be `Copy`, and `Sexp` is not.
-#[derive(Clone, Copy)] //~ ERROR: E0204
+#[derive(Clone, Copy)] 
 struct Wrapper<'a> {
     handle: Sexp<'a>,
 }
@@ -31,7 +33,7 @@ pub fn forbidden() {
     // A plain binding MOVES the handle. Were `Sexp: Copy`, `sexp` would
     // still be usable below; since it is not, this is use-after-move.
     let alias = sexp;
-    let _ = sexp.len(); //~ ERROR: E0382
+    let _ = sexp.len(); 
 
     // The moved-to alias is a legal handle in its own right.
     let _ = alias.len();

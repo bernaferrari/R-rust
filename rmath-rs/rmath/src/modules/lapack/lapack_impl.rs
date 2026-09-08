@@ -1046,7 +1046,7 @@ pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
 /// Port of: static SEXP La_solve(SEXP a, SEXP bin, SEXP tolin)
 pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     unsafe {
-        let _tol = asReal(tolin);
+        let tol = asReal(tolin);
 
         let a_dim = getAttrib(a, R_DimSymbol());
         if a_dim.is_null() || a_dim == R_NilValue() {
@@ -1079,6 +1079,10 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
         let mut b_copy = vec![0.0f64; len_b];
         ptr::copy_nonoverlapping(REAL(bin), b_copy.as_mut_ptr(), len_b);
 
+        let anorm = a_copy
+            .chunks(n as usize)
+            .map(|col| col.iter().map(|v| v.abs()).sum::<f64>())
+            .fold(0.0, f64::max);
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;
 
@@ -1100,6 +1104,25 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'dgesv'\0".as_ptr() as *const c_char);
         }
 
+        if tol > 0.0 {
+            let mut rcond = 0.0;
+            let mut work = vec![0.0; 4 * n as usize];
+            let mut iwork = vec![0; n as usize];
+            super::backend::dgecon_(
+                b"1".as_ptr(),
+                &n,
+                a_copy.as_ptr(),
+                &n,
+                &anorm,
+                &mut rcond,
+                work.as_mut_ptr(),
+                iwork.as_mut_ptr(),
+                &mut info,
+            );
+            if rcond < tol {
+                crate::sexp::context::r_error("system is computationally singular");
+            }
+        }
         let ans = Rf_allocVector(REALSXP_C, len_b as c_int);
         let _ans_guard = protect(ans);
         ptr::copy_nonoverlapping(b_copy.as_ptr(), REAL(ans), len_b);
@@ -1112,7 +1135,7 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
 /// Port of: static SEXP La_solve_cmplx(SEXP a, SEXP bin, SEXP tolin)
 pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     unsafe {
-        let _tol = asReal(tolin);
+        let tol = asReal(tolin);
 
         let a_dim = getAttrib(a, R_DimSymbol());
         if a_dim.is_null() || a_dim == R_NilValue() {
@@ -1148,6 +1171,10 @@ pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             len_b,
         );
 
+        let anorm = a_copy
+            .chunks(n as usize)
+            .map(|col| col.iter().map(|v| v.r.hypot(v.i)).sum::<f64>())
+            .fold(0.0, f64::max);
         let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
         let mut info: c_int = 0;
 
@@ -1169,6 +1196,25 @@ pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
             Rf_error(b"error code from Lapack routine 'zgesv'\0".as_ptr() as *const c_char);
         }
 
+        if tol > 0.0 {
+            let mut rcond = 0.0;
+            let mut work = vec![LapRcomplex::default(); 2 * n as usize];
+            let mut rwork = vec![0.0; 2 * n as usize];
+            super::backend::zgecon_(
+                b"1".as_ptr(),
+                &n,
+                a_copy.as_ptr(),
+                &n,
+                &anorm,
+                &mut rcond,
+                work.as_mut_ptr(),
+                rwork.as_mut_ptr(),
+                &mut info,
+            );
+            if rcond < tol {
+                crate::sexp::context::r_error("system is computationally singular");
+            }
+        }
         let ans = Rf_allocVector(CPLXSXP_C, len_b as c_int);
         let _ans_guard = protect(ans);
         ptr::copy_nonoverlapping(b_copy.as_ptr(), COMPLEX(ans) as *mut LapRcomplex, len_b);

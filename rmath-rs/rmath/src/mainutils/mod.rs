@@ -104,3 +104,11 @@ pub mod times;
 pub mod unique;
 pub mod util_main;
 pub mod version;
+
+pub(crate) mod base_wrappers;
+
+#[cfg(test)]
+mod sample_contract_test;
+
+#[cfg(feature = "renderplot-device")]
+pub(crate) mod portable_plot;

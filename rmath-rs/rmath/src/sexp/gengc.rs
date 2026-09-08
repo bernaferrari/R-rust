@@ -158,13 +158,21 @@ fn notify_gc_callbacks_with_stats(state: &GcState, stats: &GcStats) {
 
 fn verify_gc_invariants_in(instance: *mut instance::RInstance) {
     unsafe {
-        let stack = (*instance).protect_stack.borrow();
-        for &obj in stack.iter() {
-            if !obj.is_null() {
-                // Debug-only: verify object is within arena bounds.
-                // Full validation would require classifying singleton roots too.
+        (*instance).legacy_protect.with_entries(|entries| {
+            for &obj in entries.iter() {
+                if !obj.is_null() {
+                    // Debug-only: verify object is within arena bounds.
+                    // Full validation would require classifying singleton roots too.
+                }
             }
-        }
+        });
+        (*instance).root_table.with_entries(|entries| {
+            for &obj in entries.iter() {
+                if !obj.is_null() {
+                    // As above: tombstoned slots hold null and are skipped.
+                }
+            }
+        });
     }
 }
 
@@ -282,7 +290,6 @@ fn mark_context_roots(ctxt: &super::context::RCNTXT) {
     mark_reachable(ctxt.conexit);
     mark_reachable(ctxt.srcref);
 }
-
 #[inline(always)]
 fn mark_instance_roots(instance: *mut instance::RInstance) {
     unsafe {
@@ -290,14 +297,23 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_reachable((*instance).base_env);
         mark_reachable((*instance).global_env);
 
+        // The collector explicitly scans BOTH protection storages: the
+        // legacy C-port stack and the generational root table. Tombstoned
+        // root slots hold null; `mark_reachable_traced` null-guards before
+        // dereferencing, so vacant entries are skipped without a filter.
         {
-            let stack = (*instance).protect_stack.borrow();
-            for &obj in stack.iter() {
-                // Released (tombstoned) slots hold null; `mark_reachable_traced`
-                // null-guards before dereferencing, so vacant entries are skipped
-                // without a separate filter here.
-                mark_reachable_traced(obj);
-            }
+            (*instance).legacy_protect.with_entries(|entries| {
+                for &obj in entries.iter() {
+                    mark_reachable_traced(obj);
+                }
+            });
+        }
+        {
+            (*instance).root_table.with_entries(|entries| {
+                for &obj in entries.iter() {
+                    mark_reachable_traced(obj);
+                }
+            });
         }
         {
             let stack = (*instance).preserve_stack.borrow();
@@ -306,7 +322,7 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
             }
         }
         for ctxt in &(*instance).context_stack {
-            mark_context_roots(ctxt);
+            mark_context_roots(&*ctxt.get());
         }
 
         mark_reachable((*instance).error_state.warnings);
@@ -760,7 +776,7 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         update_protect_stack_in(instance, old_to_new);
         update_preserve_stack_in(instance, old_to_new);
         for ctxt in &mut (*instance).context_stack {
-            update_context_roots(ctxt, old_to_new);
+            update_context_roots(&mut *ctxt.get(), old_to_new);
         }
 
         update_field(&mut (*instance).error_state.warnings, old_to_new);
@@ -1057,13 +1073,11 @@ fn maybe_torture_gc_in(instance: *mut instance::RInstance, ticks: u32) {
             return;
         }
         (*instance).memory_state.gc_force_wait = (*instance).memory_state.gc_force_gap;
-        let start = (*instance).protect_stack.borrow().len();
+        // Environment force-protects ride the LEGACY stack (push N / pop N
+        // around the cycle); the root table is untouched here.
+        let start = (*instance).legacy_protect.len();
         push_environment_binding_protects(instance);
-        let added = (*instance)
-            .protect_stack
-            .borrow()
-            .len()
-            .saturating_sub(start);
+        let added = (*instance).legacy_protect.len().saturating_sub(start);
         (*instance).gc_state.gc_pending = false;
         (*instance).memory_state.in_gc = 1;
         (*instance).memory_state.gc_count = (*instance).memory_state.gc_count.wrapping_add(1);
@@ -1127,7 +1141,7 @@ fn collect_environment_binding_values(instance: *mut instance::RInstance) -> Vec
                 }
             };
             for ctxt in &(*instance).context_stack {
-                walk_env(ctxt.cloenv);
+                walk_env((*ctxt.get()).cloenv);
             }
             walk_env((*instance).global_env);
             walk_env((*instance).base_env);
@@ -1160,13 +1174,11 @@ pub fn collect_with_environment_protects(full: bool) -> (usize, usize) {
         // Raw place accesses throughout: the collection below reenters the
         // protect stack and instance bookkeeping, so no borrow may be held
         // across it.
-        let start = (*instance).protect_stack.borrow().len();
+        // Environment force-protects ride the LEGACY stack (push N / pop N
+        // around the cycle); the root table is untouched here.
+        let start = (*instance).legacy_protect.len();
         push_environment_binding_protects(instance);
-        let added = (*instance)
-            .protect_stack
-            .borrow()
-            .len()
-            .saturating_sub(start);
+        let added = (*instance).legacy_protect.len().saturating_sub(start);
         (*instance).gc_state.gc_pending = false;
         let result = if full {
             full_gc_in(instance)
@@ -1195,13 +1207,11 @@ pub fn maybe_collect_at_eval_safe_point() {
         if !eval_safe_point_gc_due_in(instance) {
             return false;
         }
-        let start = (*instance).protect_stack.borrow().len();
+        // Environment force-protects ride the LEGACY stack (push N / pop N
+        // around the cycle); the root table is untouched here.
+        let start = (*instance).legacy_protect.len();
         push_environment_binding_protects(instance);
-        let added = (*instance)
-            .protect_stack
-            .borrow()
-            .len()
-            .saturating_sub(start);
+        let added = (*instance).legacy_protect.len().saturating_sub(start);
         (*instance).gc_state.gc_pending = false;
         // Safe points normally collect the young generation only; without a
         // periodic full pass, old-generation garbage from promoted-then-dead
@@ -1648,10 +1658,10 @@ mod tests {
         *arena = RArena::new();
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
         instance::with_required_current_instance(|instance| unsafe {
-            // Test-harness bulk reset via raw place accesses.
-            (*instance).protect_stack.borrow_mut().clear();
-            (*instance).protect_stack_generations.borrow_mut().clear();
-            (*instance).protect_slot_free.borrow_mut().clear();
+            // Test-harness bulk reset via raw place accesses: BOTH
+            // protection storages go back to empty.
+            (*instance).legacy_protect.clear();
+            (*instance).root_table.clear();
             (*instance).context_stack.clear();
             (*instance).gc_state.remembered_set.clear();
             (*instance).error_state.warnings = nil;
@@ -1737,10 +1747,11 @@ mod tests {
             (*right_obj).sxpinfo.set_gcgen(Generation::Old as u8);
         }
 
-        left.protect_stack.borrow_mut().push(old);
+        left.legacy_protect.push(old, "test");
+        left.root_table.claim(old, "test");
         left.preserve_stack.borrow_mut().push(old);
         left.gc_state.remembered_set.add(old);
-        right.protect_stack.borrow_mut().push(right_obj);
+        right.legacy_protect.push(right_obj, "test");
         right.preserve_stack.borrow_mut().push(right_obj);
         right.gc_state.remembered_set.add(right_obj);
 
@@ -1748,12 +1759,17 @@ mod tests {
         update_preserve_stack_in(&mut left, &old_to_new);
         update_remembered_set_in(&mut left, &old_to_new);
 
-        assert_eq!(left.protect_stack.borrow()[0], new);
+        left.legacy_protect
+            .with_entries(|entries| assert_eq!(entries[0], new));
+        left.root_table
+            .with_entries(|entries| assert_eq!(entries[0], new));
         assert_eq!(left.preserve_stack.borrow()[0], new);
         assert!(left.gc_state.remembered_set.iter().any(|obj| obj == new));
         assert!(!left.gc_state.remembered_set.iter().any(|obj| obj == old));
 
-        assert_eq!(right.protect_stack.borrow()[0], right_obj);
+        right
+            .legacy_protect
+            .with_entries(|entries| assert_eq!(entries[0], right_obj));
         assert_eq!(right.preserve_stack.borrow()[0], right_obj);
         assert!(
             right
@@ -1976,15 +1992,13 @@ mod tests {
         assert_eq!(promoted, 0);
         assert_eq!(freed, 0);
 
-        let protected_obj = with_protected_objects(|objects| objects[0]);
+        let protected_obj = with_protected_objects(|_legacy, roots| roots[0]);
         assert_eq!(protected_obj, obj);
         unsafe {
             assert_eq!((*protected_obj).sxpinfo.type_of(), SEXPTYPE::INTSXP);
             assert_eq!((*protected_obj).vecsxp_length(), 1);
             assert_eq!(*(crate::sexp::accessors::INTEGER(protected_obj)), 42);
         }
-
-        drop(super::super::protect::protect_n(1));
     }
 
     #[test]
@@ -2008,7 +2022,7 @@ mod tests {
         let (promoted, freed) = full_gc();
         assert_eq!((promoted, freed), (0, 0));
 
-        let protected_obj = with_protected_objects(|objects| objects[0]);
+        let protected_obj = with_protected_objects(|_legacy, roots| roots[0]);
         assert_eq!(protected_obj, obj);
         unsafe {
             assert_eq!((*protected_obj).sxpinfo.type_of(), SEXPTYPE::INTSXP);
@@ -2017,8 +2031,6 @@ mod tests {
         with_arena(|arena| {
             assert!(arena.contains(obj));
         });
-
-        drop(super::super::protect::protect_n(1));
     }
 
     /// GC soundness stress: many protected real vectors must retain their
@@ -2073,8 +2085,6 @@ mod tests {
             }
         }
         assert!(any_freed > 0, "stress did not actually free any garbage");
-
-        drop(super::super::protect::protect_n(N));
     }
 
     #[test]
@@ -2103,7 +2113,7 @@ mod tests {
         let (_, freed) = full_gc();
         assert_eq!(freed, 0);
 
-        let protected_ext = with_protected_objects(|objects| objects[0]);
+        let protected_ext = with_protected_objects(|_legacy, roots| roots[0]);
         assert_eq!(protected_ext, ext);
         unsafe {
             assert_eq!((*protected_ext).sxpinfo.type_of(), SEXPTYPE::EXTPTRSXP);
@@ -2120,8 +2130,6 @@ mod tests {
                 assert!(arena.contains(linked_tag));
             });
         }
-
-        drop(super::super::protect::protect_n(1));
     }
 
     #[test]
@@ -2155,7 +2163,7 @@ mod tests {
         let (_, freed) = full_gc();
         assert_eq!(freed, 1);
 
-        let protected_weak = with_protected_objects(|objects| objects[0]);
+        let protected_weak = with_protected_objects(|_legacy, roots| roots[0]);
         assert_eq!(protected_weak, weak);
         unsafe {
             assert_eq!((*protected_weak).sxpinfo.type_of(), SEXPTYPE::WEAKREFSXP);
@@ -2176,8 +2184,6 @@ mod tests {
                 assert!(!arena.contains(key));
             });
         }
-
-        drop(super::super::protect::protect_n(1));
     }
 
     #[test]
@@ -2211,7 +2217,7 @@ mod tests {
         assert_eq!(freed, 0);
 
         let (protected_weak, protected_key) =
-            with_protected_objects(|objects| (objects[0], objects[1]));
+            with_protected_objects(|_legacy, roots| (roots[0], roots[1]));
         assert_eq!(protected_weak, weak);
         assert_eq!(protected_key, key);
         unsafe {
@@ -2229,8 +2235,6 @@ mod tests {
                 assert!(arena.contains(linked_value));
             });
         }
-
-        drop(super::super::protect::protect_n(2));
     }
 
     #[test]
@@ -2381,8 +2385,6 @@ mod tests {
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 1);
         assert_eq!(freed, 0);
-
-        drop(super::super::protect::protect_n(1));
     }
 
     #[test]

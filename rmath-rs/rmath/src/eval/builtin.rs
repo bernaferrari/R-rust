@@ -230,6 +230,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "plot",
+        handler: crate::mainutils::essentials::do_plot,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "Filter",
         handler: crate::mainutils::essentials::do_filter,
         restore_visibility_always: false,
@@ -1045,6 +1050,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::essentials::do_tapply,
     },
     EvaluatedBuiltin {
+        name: "plot.default",
+        handler: crate::mainutils::essentials::do_plot_default,
+    },
+    EvaluatedBuiltin {
         name: "mapply",
         handler: crate::mainutils::mapply::do_mapply,
     },
@@ -1326,6 +1335,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "sys.frame",
         handler: crate::mainutils::essentials::do_sys_frame,
+    },
+    EvaluatedBuiltin {
+        name: "sys.parent",
+        handler: crate::mainutils::essentials::do_sys_parent,
     },
     EvaluatedBuiltin {
         name: "getwd",

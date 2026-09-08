@@ -109,6 +109,12 @@ unsafe fn sym_Exact() -> SEXP {
     unsafe { Rf_install(c"exact".as_ptr()) }
 }
 
+/// Get the "contrasts" symbol.
+#[inline]
+unsafe fn sym_Contrasts() -> SEXP {
+    unsafe { Rf_install(c"contrasts".as_ptr()) }
+}
+
 /// Get the "row.names" symbol.
 #[inline]
 unsafe fn sym_RowNames() -> SEXP {
@@ -1494,12 +1500,38 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         /* Method dispatch has failed, we now run the generic internal code. */
+        // Peek `drop` first: do_subset_dflt's ExtractDropArg REMOVES it
+        // from the evaluated argument list. The internal `[` default is
+        // drop = TRUE, but the fixup below emulates the S3 `[.factor`
+        // whose formal default is drop = FALSE.
+        let mut drop: c_int = 0;
+        {
+            let mut cell = ans;
+            while !isNull(cell) {
+                if TAG(cell) == sym_Drop() {
+                    drop = asLogical(CAR(cell));
+                    if drop == NA_LOGICAL && has_class_factor(CAR(ans)) {
+                        // `if (drop)` with NA in upstream [.factor.
+                        errorcall(call, "missing value where TRUE/FALSE needed");
+                    }
+                    break;
+                }
+                cell = CDR(cell);
+            }
+        }
         let result = do_subset_dflt(call, op, ans, env);
-        // Base R ships an S3 `[.factor` (NextMethod("[") + copy
-        // contrasts/levels/class). The engine's default `[` strips
-        // attributes like stock's NextMethod target, so apply the same
-        // fixup here: subsetting a factor yields a factor with the
-        // original levels.
+        // Base R ships an S3 `[.factor`:
+        //   y <- NextMethod("[")
+        //   attr(y, "contrasts") <- attr(x, "contrasts")
+        //   attr(y, "levels") <- attr(x, "levels")
+        //   class(y) <- oldClass(x)
+        //   if (drop) factor(y, exclude = if (anyNA(levels(x))) NULL else NA) else y
+        // The engine's default `[` strips attributes like stock's
+        // NextMethod target, so apply the same fixup here: subsetting a
+        // factor yields a factor with the original levels, contrasts, and
+        // class; with drop = TRUE unused levels are dropped (the factor()
+        // rebuild keeps used levels in code order, remaps the codes, and
+        // drops the contrasts attribute).
         let orig = CAR(ans);
         if has_class_factor(orig) {
             let _r_guard = protect(result);
@@ -1512,9 +1544,86 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if !isNull(class_attr) {
                 setAttrib(result, sym_Class(), class_attr);
             }
+            if drop == 0 {
+                // drop = FALSE: contrasts travel with the levels like
+                // every other kept attribute.
+                let contrasts = getAttrib(orig, sym_Contrasts());
+                if !isNull(contrasts) {
+                    setAttrib(result, sym_Contrasts(), contrasts);
+                }
+            } else if TYPEOF(result) == SEXPTYPE::INTSXP && !isNull(levels) {
+                drop_unused_factor_levels(result, levels);
+            }
             return result;
         }
         result
+    }
+}
+
+/// The `drop = TRUE` tail of upstream `[.factor`:
+/// `factor(y, exclude = if (anyNA(levels(x))) NULL else NA)`.
+///
+/// Keeps the levels present in the (already levels/class-attributed) code
+/// vector `result`, in original level order, remapping the integer codes
+/// to the shrunken level set; NA codes stay NA. Other attributes set by
+/// the fixup survive except contrasts, which the upstream factor()
+/// rebuild drops.
+unsafe fn drop_unused_factor_levels(result: SEXP, levels: SEXP) {
+    unsafe {
+        let n_levels = XLENGTH(levels);
+        // Which level codes appear in the subset (1-based)?
+        let mut used = vec![false; n_levels as usize];
+        let n = XLENGTH(result);
+        let codes = INTEGER(result);
+        for i in 0..n as usize {
+            let code = *codes.add(i);
+            if code != NA_INTEGER && code >= 1 && (code as usize) <= n_levels as usize {
+                used[(code - 1) as usize] = true;
+            }
+        }
+        let new_index_of: Vec<i32> = std::iter::once(0)
+            .chain(used.iter().scan(0i32, |acc, &u| {
+                if u {
+                    *acc += 1;
+                }
+                Some(*acc)
+            }))
+            .collect();
+        let kept: usize = used.iter().filter(|&&u| u).count();
+        if kept == n_levels as usize {
+            // Every level is still used: factor() is a no-op beyond
+            // dropping the contrasts attribute.
+            setAttrib(result, sym_Contrasts(), R_NilValue());
+            return;
+        }
+        let new_levels = Rf_allocVector(SEXPTYPE::STRSXP, kept as c_int);
+        let _nl_guard = protect(new_levels);
+        let mut slot = 0usize;
+        for (i, &u) in used.iter().enumerate() {
+            if u {
+                SET_STRING_ELT(
+                    new_levels,
+                    slot as i64,
+                    crate::sexp::accessors::STRING_ELT(levels, i as i64),
+                );
+                slot += 1;
+            }
+        }
+        for i in 0..n as usize {
+            let code = *codes.add(i);
+            *codes.add(i) = if code == NA_INTEGER || code < 1 || (code as usize) > n_levels as usize
+            {
+                NA_INTEGER
+            } else {
+                new_index_of[code as usize]
+            };
+        }
+        setAttrib(
+            result,
+            crate::eval::attrib_core::R_LevelsSymbol(),
+            new_levels,
+        );
+        setAttrib(result, sym_Contrasts(), R_NilValue());
     }
 }
 

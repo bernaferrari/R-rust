@@ -292,23 +292,20 @@ pub struct RInstance {
     pub(crate) env_nodes: Vec<*mut SexprecCore>,
     /// Whether this instance has completed R-level initialization.
     pub(crate) initialized: bool,
-    /// The protection stack for this instance.
-    pub(crate) protect_stack: RefCell<Vec<SEXP>>,
-    /// Generation tag for each `protect_stack` entry, kept parallel to the
-    /// stack by the protect module; a released-then-reused slot always
-    /// reports a different generation (stale-handle detection).
-    pub(crate) protect_stack_generations: RefCell<Vec<u64>>,
-    /// Monotonic source of protection-slot generations.
-    pub(crate) protect_slot_next_generation: Cell<u64>,
-    /// Vacant `protect_stack` indices available for reuse. Released slots are
-    /// tombstoned (null ptr + bumped generation) and pushed here instead of
-    /// shifting the stack, so live slot indices stay stable across drops.
-    pub(crate) protect_slot_free: RefCell<Vec<usize>>,
+    /// Legacy C-port protection stack (strict LIFO, count-based release).
+    /// See `protect::LegacyProtectionStack` for the discipline.
+    pub(crate) legacy_protect: super::protect::LegacyProtectionStack,
+    /// Stable, generational root table for Rust-side handle guards
+    /// (`RootedSexp` / `ProtectGuard` / `IndexedProtectGuard`): tombstone +
+    /// free-list slots released in any order; never truncated by count-based
+    /// legacy ops. See `protect::RootTable`.
+    pub(crate) root_table: super::protect::RootTable,
     /// The permanent preserve stack for this instance.
     pub(crate) preserve_stack: RefCell<Vec<SEXP>>,
     /// Per-instance execution context stack.
     #[allow(clippy::vec_box)]
-    pub(crate) context_stack: Vec<Box<super::context::RCNTXT>>,
+    pub(crate) base_wrappers: std::cell::RefCell<std::collections::HashMap<&'static str, SEXP>>,
+    pub(crate) context_stack: Vec<Box<std::cell::UnsafeCell<super::context::RCNTXT>>>,
     /// Per-instance in-error flag.
     pub(crate) in_error: bool,
     /// Per-instance generational GC state.
@@ -497,11 +494,10 @@ impl RInstance {
             empty_env,
             env_nodes,
             initialized: false,
-            protect_stack: RefCell::new(Vec::new()),
-            protect_stack_generations: RefCell::new(Vec::new()),
-            protect_slot_free: RefCell::new(Vec::new()),
-            protect_slot_next_generation: Cell::new(0),
+            legacy_protect: super::protect::LegacyProtectionStack::new(),
+            root_table: super::protect::RootTable::new(),
             preserve_stack: RefCell::new(Vec::new()),
+            base_wrappers: Default::default(),
             context_stack: Vec::new(),
             in_error: false,
             gc_state: super::gengc::GcState::default(),

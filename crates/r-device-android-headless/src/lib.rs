@@ -157,6 +157,9 @@ fn stroke_to_skia(stroke: &Stroke) -> tiny_skia::Stroke {
 }
 
 impl RenderPlot for AndroidHeadlessRenderer {
+    fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
     type Output = Vec<u8>;
 
     fn new(width: u32, height: u32) -> Self {

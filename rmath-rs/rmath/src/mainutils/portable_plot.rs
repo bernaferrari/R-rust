@@ -1,19 +1,14 @@
-//! Parsing and drawing of simple `plot()` calls on the headless renderer.
-
-use r_device_android_headless::AndroidHeadlessRenderer;
-use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
-
-use rmath::android::RValue;
-
-use crate::RSessionError;
+//! Portable numeric plot.default implementation, below R evaluation and S3 dispatch.
+use crate::mainutils::essentials::{arg_by_name_or_position, base_error, elt_to_string};
+use crate::sexp::{
+    accessors::*,
+    ffi::{SEXP, SEXPTYPE},
+    globals::R_NilValue,
+};
+use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, Stroke};
 pub(crate) struct PlotSeries {
     pub(crate) x: Vec<f64>,
     pub(crate) y: Vec<f64>,
-    pub(crate) options: PlotOptions,
-}
-
-pub(crate) struct PlotCall<'a> {
-    pub(crate) positional: Vec<&'a str>,
     pub(crate) options: PlotOptions,
 }
 
@@ -42,151 +37,11 @@ impl Default for PlotOptions {
     }
 }
 
-impl PlotOptions {
-    pub(crate) fn with_default_labels(mut self, xlab: &str, ylab: &str) -> Self {
-        if self.xlab.is_none() {
-            self.xlab = Some(short_label(xlab));
-        }
-        if self.ylab.is_none() {
-            self.ylab = Some(short_label(ylab));
-        }
-        self
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PlotType {
     Points,
     Lines,
     Both,
-}
-
-pub(crate) fn parse_plot_call(code: &str) -> PlotCall<'_> {
-    let trimmed = code.trim();
-    let Some(inner) = trimmed
-        .strip_prefix("plot(")
-        .and_then(|value| value.strip_suffix(')'))
-    else {
-        return PlotCall {
-            positional: vec![trimmed],
-            options: PlotOptions::default(),
-        };
-    };
-
-    let mut positional = Vec::new();
-    let mut options = PlotOptions::default();
-    for arg in split_top_level_args(inner) {
-        let arg = arg.trim();
-        if arg.is_empty() {
-            continue;
-        }
-        if let Some((name, value)) = split_top_level_equals(arg) {
-            apply_plot_option(&mut options, name.trim(), value.trim());
-        } else {
-            positional.push(arg);
-        }
-    }
-    PlotCall {
-        positional,
-        options,
-    }
-}
-
-fn split_top_level_comma(input: &str) -> Option<(&str, &str)> {
-    split_top_level_at(input, ',')
-}
-
-fn split_top_level_args(input: &str) -> Vec<&str> {
-    let mut args = Vec::new();
-    let mut rest = input;
-    while let Some((head, tail)) = split_top_level_comma(rest) {
-        args.push(head);
-        rest = tail;
-    }
-    args.push(rest);
-    args
-}
-
-fn split_top_level_equals(input: &str) -> Option<(&str, &str)> {
-    split_top_level_at(input, '=')
-}
-
-fn split_top_level_at(input: &str, needle: char) -> Option<(&str, &str)> {
-    let mut depth = 0usize;
-    let mut in_string = None;
-    let mut escaped = false;
-    for (idx, ch) in input.char_indices() {
-        if let Some(quote) = in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == quote {
-                in_string = None;
-            }
-            continue;
-        }
-
-        match ch {
-            '"' | '\'' => in_string = Some(ch),
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            ch if ch == needle && depth == 0 => {
-                return Some((&input[..idx], &input[idx + ch.len_utf8()..]));
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn apply_plot_option(options: &mut PlotOptions, name: &str, value: &str) {
-    match name {
-        "main" => options.main = string_literal(value),
-        "xlab" => options.xlab = string_literal(value),
-        "ylab" => options.ylab = string_literal(value),
-        "col" => {
-            if let Some(color) = string_literal(value).as_deref().and_then(parse_color) {
-                options.color = color;
-            }
-        }
-        "type" => {
-            if let Some(plot_type) = string_literal(value).as_deref().and_then(parse_plot_type) {
-                options.plot_type = plot_type;
-            }
-        }
-        "lwd" => {
-            if let Some(width) = numeric_literal(value).filter(|width| *width > 0.0) {
-                options.line_width = width;
-            }
-        }
-        "cex" => {
-            if let Some(scale) = numeric_literal(value).filter(|scale| *scale > 0.0) {
-                options.point_radius = 2.5 * scale;
-            }
-        }
-        _ => {}
-    }
-}
-
-fn numeric_literal(value: &str) -> Option<f32> {
-    value.trim().parse::<f32>().ok()
-}
-
-fn string_literal(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.len() >= 2
-        && ((value.starts_with('"') && value.ends_with('"'))
-            || (value.starts_with('\'') && value.ends_with('\'')))
-    {
-        Some(
-            value[1..value.len() - 1]
-                .replace("\\\"", "\"")
-                .replace("\\'", "'"),
-        )
-    } else {
-        None
-    }
 }
 
 fn parse_color(value: &str) -> Option<Color> {
@@ -338,48 +193,8 @@ fn parse_plot_type(value: &str) -> Option<PlotType> {
     }
 }
 
-fn short_label(expr: &str) -> String {
-    let label = expr.trim();
-    let char_count = label.chars().count();
-    if char_count > 28 {
-        let mut shortened = label.chars().take(25).collect::<String>();
-        shortened.push_str("...");
-        shortened
-    } else {
-        label.to_string()
-    }
-}
-
-pub(crate) fn numeric_series(value: RValue) -> Result<Vec<f64>, RSessionError> {
-    let values = match value {
-        RValue::Integer(Some(value)) => vec![value as f64],
-        RValue::Integer(None) => Vec::new(),
-        RValue::Real(Some(value)) => vec![value],
-        RValue::Real(None) => Vec::new(),
-        RValue::IntegerVector(values) => values
-            .into_iter()
-            .filter_map(|value| value.map(|value| value as f64))
-            .collect(),
-        RValue::RealVector(values) => values.into_iter().flatten().collect(),
-        RValue::Attributed { value, .. } => return numeric_series(*value),
-        other => {
-            return Err(RSessionError::RenderError(format!(
-                "plot data must be numeric, got {other:?}"
-            )));
-        }
-    };
-
-    if values.iter().all(|value| value.is_finite()) {
-        Ok(values)
-    } else {
-        Err(RSessionError::RenderError(
-            "plot data must contain only finite values".to_string(),
-        ))
-    }
-}
-
 pub(crate) fn draw_series(
-    renderer: &mut AndroidHeadlessRenderer,
+    renderer: &mut dyn r_graphics_engine::DrawTarget,
     width: u32,
     height: u32,
     series: &PlotSeries,
@@ -609,7 +424,7 @@ fn map_value(value: f64, min: f64, max: f64, out_min: f32, out_max: f32) -> f32 
 }
 
 fn draw_line(
-    renderer: &mut AndroidHeadlessRenderer,
+    renderer: &mut dyn r_graphics_engine::DrawTarget,
     x0: f32,
     y0: f32,
     x1: f32,
@@ -630,42 +445,105 @@ fn draw_line(
     });
 }
 
-fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32, color: Color, radius: f32) {
+fn draw_point(
+    renderer: &mut dyn r_graphics_engine::DrawTarget,
+    x: f32,
+    y: f32,
+    color: Color,
+    radius: f32,
+) {
     renderer.draw_path(&Path::circle(x, y, radius).with_fill(color));
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn plot_call_parser_handles_common_named_options() {
-        let call = parse_plot_call(
-            "plot(c(1, 2, 3), c(4, 5, 6), main = \"Revenue μ\", xlab = 'day', ylab = \"value\", col = \"red\", type = \"l\")",
-        );
-
-        assert_eq!(call.positional, vec!["c(1, 2, 3)", "c(4, 5, 6)"]);
-        assert_eq!(call.options.main.as_deref(), Some("Revenue μ"));
-        assert_eq!(call.options.xlab.as_deref(), Some("day"));
-        assert_eq!(call.options.ylab.as_deref(), Some("value"));
-        assert_eq!(call.options.color, Color::RED);
-        assert_eq!(call.options.plot_type, PlotType::Lines);
-        assert_eq!(call.options.line_width, 1.5);
-
-        let styled = parse_plot_call(
-            "plot(c(1, 2, 3), c(4, 5, 6), type = \"p\", col = \"green\", lwd = 3, cex = 1.5)",
-        );
-        assert_eq!(styled.options.plot_type, PlotType::Points);
-        assert_eq!(
-            styled.options.color,
-            Color {
-                r: 0,
-                g: 205,
-                b: 0,
-                a: 255,
+pub(crate) unsafe fn plot_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x_arg = arg_by_name_or_position(args, &["x"], 0);
+        let y_arg = arg_by_name_or_position(args, &["y"], 1);
+        let values = |x: SEXP| -> Vec<f64> {
+            if !matches!(
+                SEXPTYPE(TYPEOF(x)),
+                SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::REALSXP
+            ) {
+                base_error("plot data must be numeric".to_owned());
             }
-        );
-        assert_eq!(styled.options.line_width, 3.0);
-        assert_eq!(styled.options.point_radius, 3.75);
+            let values: Vec<_> = (0..XLENGTH(x)).map(|i| elt_to_real(x, i)).collect();
+            if values.iter().any(|x| !x.is_finite()) {
+                base_error("plot data must contain only finite values".to_owned());
+            }
+            values
+        };
+        let (x, y) = if y_arg == R_NilValue() {
+            let y = values(x_arg);
+            ((1..=y.len()).map(|i| i as f64).collect(), y)
+        } else {
+            (values(x_arg), values(y_arg))
+        };
+        if x.len() != y.len() {
+            base_error("'x' and 'y' lengths differ".to_owned());
+        }
+        let mut options = PlotOptions {
+            color: Color::BLACK,
+            plot_type: PlotType::Points,
+            ..Default::default()
+        };
+        for (name, field) in [
+            ("main", &mut options.main),
+            ("xlab", &mut options.xlab),
+            ("ylab", &mut options.ylab),
+        ] {
+            let v = arg_by_name_or_position(args, &[name], usize::MAX);
+            if v != R_NilValue() {
+                *field = Some(elt_to_string(v, 0));
+            }
+        }
+        if options.xlab.is_none() {
+            options.xlab = Some("x".to_owned());
+        }
+        if options.ylab.is_none() {
+            options.ylab = Some("y".to_owned());
+        }
+        let col = arg_by_name_or_position(args, &["col"], usize::MAX);
+        if col != R_NilValue() {
+            options.color = parse_color(&elt_to_string(col, 0))
+                .unwrap_or_else(|| base_error("invalid color specification".to_owned()));
+        }
+        let ty = arg_by_name_or_position(args, &["type"], usize::MAX);
+        if ty != R_NilValue() {
+            options.plot_type = parse_plot_type(&elt_to_string(ty, 0))
+                .unwrap_or_else(|| base_error("unsupported plot type".to_owned()));
+        }
+        for (name, field, scale) in [
+            ("lwd", &mut options.line_width, 1.0),
+            ("cex", &mut options.point_radius, 2.5),
+        ] {
+            let v = arg_by_name_or_position(args, &[name], usize::MAX);
+            if v != R_NilValue() {
+                *field = elt_to_real(v, 0) as f32 * scale;
+            }
+        }
+        let backend = crate::sexp::instance::with_required_current_instance(|inst| {
+            (*inst).current_renderplot_backend
+        })
+        .unwrap_or_else(|| base_error("plot requires an active graphics device".to_owned()));
+        let renderer = &mut *backend;
+        let (width, height) = renderer.dimensions();
+        draw_series(renderer, width, height, &PlotSeries { x, y, options });
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        R_NilValue()
     }
+}
+
+unsafe fn elt_to_real(value: SEXP, i: i64) -> f64 {
+    unsafe {
+        match SEXPTYPE(TYPEOF(value)) {
+            SEXPTYPE::REALSXP => *REAL(value).add(i as usize),
+            SEXPTYPE::INTSXP => integer_as_real(*INTEGER(value).add(i as usize)),
+            SEXPTYPE::LGLSXP => integer_as_real(*LOGICAL(value).add(i as usize)),
+            _ => f64::NAN,
+        }
+    }
+}
+
+fn integer_as_real(v: i32) -> f64 {
+    if v == i32::MIN { f64::NAN } else { v as f64 }
 }

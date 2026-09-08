@@ -1365,7 +1365,7 @@ unsafe fn data_frame_column_operand(
     is_frame: bool,
     column: R_xlen_t,
     nrow: R_xlen_t,
-) -> (SEXP, Option<crate::sexp::protect::ProtectGuard>) {
+) -> (SEXP, Option<crate::sexp::protect::ProtectGuard<'static>>) {
     unsafe {
         if is_frame {
             return (VECTOR_ELT(value, column), None);

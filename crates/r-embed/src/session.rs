@@ -10,7 +10,6 @@ use crate::RSessionError;
 use crate::packages::{
     RPackageInfo, installed_packages_from_library_paths, package_info_from_path,
 };
-use crate::plot::{PlotSeries, draw_series, numeric_series, parse_plot_call};
 
 /// An embedded R session.
 ///
@@ -86,13 +85,13 @@ impl AndroidRuntimePaths {
 /// not affect other sessions.
 #[derive(Debug, Clone)]
 pub struct CancellationToken {
-    inner: rmath::sexp::CancellationToken,
+    inner: rmath::CancellationToken,
 }
 
 impl CancellationToken {
     pub fn new() -> Self {
         Self {
-            inner: rmath::sexp::CancellationToken::new(),
+            inner: rmath::CancellationToken::new(),
         }
     }
 
@@ -108,7 +107,7 @@ impl CancellationToken {
         self.inner.is_requested()
     }
 
-    fn token(&self) -> rmath::sexp::CancellationToken {
+    fn token(&self) -> rmath::CancellationToken {
         self.inner.clone()
     }
 }
@@ -158,7 +157,7 @@ impl RSession {
     fn eval_script_with_cancel(
         &mut self,
         code: &str,
-        cancellation: Option<rmath::sexp::CancellationToken>,
+        cancellation: Option<rmath::CancellationToken>,
     ) -> Result<EvalOutput, RSessionError> {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
@@ -324,7 +323,7 @@ impl RSession {
     fn eval_result_with_cancel(
         &mut self,
         code: &str,
-        cancellation: Option<rmath::sexp::CancellationToken>,
+        cancellation: Option<rmath::CancellationToken>,
     ) -> Result<EvalOutput, RSessionError> {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
@@ -347,18 +346,10 @@ impl RSession {
         }
     }
 
-    /// Render an R expression (or full graphics-producing code) as a plot, returning pixel data.
-    ///
-    /// This now drives *real* R graphics for perfect fidelity: the provided code is evaluated
-    /// (e.g. "plot(1:10, main='hi')", "grid::grid.text(...)", ggplot2/lattice if loaded, etc.).
-    /// A fresh device is ensured, the graphics are drawn through the portable headless
-    /// DeviceRegistry (with text/labels support), the result is captured via dev.capture/GECap,
-    /// and encoded to PNG at the requested dimensions (nearest-neighbor scale from the
-    /// device's native raster).
-    ///
-    /// For the highest-quality simple numeric plots you can still rely on direct skia in
-    /// some paths, but this unified path gives full R semantics, all high-level graphics/grid,
-    /// and works for arbitrary code on Android (and the internal device on other hosts).
+    /// Evaluate R graphics code in the session's global environment and
+    /// capture device drawing into a PNG of the requested dimensions.
+    /// Function lookup, method dispatch, promises and side effects use the
+    /// ordinary evaluator. Device bookkeeping runs in a private local frame.
     pub fn render_with_dimensions(
         &mut self,
         code: &str,
@@ -381,19 +372,14 @@ impl RSession {
             return Ok(renderer.finish());
         }
 
-        if let Some(series) = self.simple_plot_series(code)? {
-            draw_series(&mut renderer, width, height, &series);
-            return Ok(renderer.finish());
-        }
-
         // Run the graphics-producing code through real R for full fidelity.
         let wrapped = format!(
             r#"
-{{
+local({{
   old <- tryCatch(grDevices::dev.cur(), error = function(e) 1L)
   result <- tryCatch({{
     newd <- tryCatch(grDevices::dev.new(noRStudioGD = TRUE), error = function(e) old)
-    {}
+    eval(quote({{ {} }}), envir = globalenv())
     NULL
   }}, error = function(e) {{
     e
@@ -403,7 +389,7 @@ impl RSession {
   }})
   if (inherits(result, "error")) stop(conditionMessage(result))
   NULL
-}}
+}})
 "#,
             code
         );
@@ -417,34 +403,6 @@ impl RSession {
         Ok(renderer.finish())
     }
 
-    fn simple_plot_series(&mut self, code: &str) -> Result<Option<PlotSeries>, RSessionError> {
-        let trimmed = code.trim();
-        if !trimmed.starts_with("plot(") || !trimmed.ends_with(')') {
-            return Ok(None);
-        }
-
-        let call = parse_plot_call(trimmed);
-        if call.positional.is_empty() {
-            return Err(RSessionError::RenderError(
-                "plot requires numeric data".to_string(),
-            ));
-        }
-
-        let y_expr = if call.positional.len() >= 2 {
-            call.positional[1]
-        } else {
-            call.positional[0]
-        };
-        let y = numeric_series(self.eval_result(y_expr)?.value)?;
-        let x = if call.positional.len() >= 2 {
-            numeric_series(self.eval_result(call.positional[0])?.value)?
-        } else {
-            (1..=y.len()).map(|value| value as f64).collect()
-        };
-        let options = call.options.with_default_labels(call.positional[0], y_expr);
-
-        Ok(Some(PlotSeries { x, y, options }))
-    }
     /// Evaluate `expr` and keep the resulting value rooted in the session's
     /// reserved handle environment, returning an opaque [`ValueHandle`].
     ///
