@@ -89,6 +89,28 @@ const WASM_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl WasmRSession {
+    pub fn import_file(&mut self, path: String, bytes: Vec<u8>) -> Result<(), JsError> {
+        self.with_session(|s| {
+            s.import_file(&path, &bytes)
+                .map_err(|e| JsError::new(&e.to_string()))
+        })
+    }
+    pub fn export_file(&mut self, path: String) -> Result<Vec<u8>, JsError> {
+        self.with_session(|s| {
+            s.export_file(&path)
+                .map_err(|e| JsError::new(&e.to_string()))
+        })
+    }
+    pub fn list_files(&mut self) -> Result<Vec<String>, JsError> {
+        self.with_session(|s| s.list_files().map_err(|e| JsError::new(&e.to_string())))
+    }
+    pub fn remove_file(&mut self, path: String) -> Result<(), JsError> {
+        self.with_session(|s| {
+            s.remove_file(&path)
+                .map(|_| ())
+                .map_err(|e| JsError::new(&e.to_string()))
+        })
+    }
     /// Create a session.
     ///
     /// Throws a `JsError` when interpreter initialization fails.
@@ -100,6 +122,7 @@ impl WasmRSession {
             ));
         }
         let mut inner = r_embed::RSession::new().map_err(|e| JsError::new(&e.to_string()))?;
+        inner.enable_browser_files();
         inner.set_output_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
         inner.set_result_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
         inner

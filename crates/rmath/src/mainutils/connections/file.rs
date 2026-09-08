@@ -46,6 +46,7 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         let description = check_string_arg(scmd, "description");
         let open = check_string_arg(sopen, "open");
+        let deferred = open.is_empty();
         let open_mode = if open.is_empty() {
             "r".to_string()
         } else {
@@ -53,15 +54,31 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         };
 
         let ncon = next_connection();
-        let mut conn = RConn::new("file", &description, &open_mode, ConnKind::File);
+        let browser_bytes = crate::mainutils::browser_files::read_current(&description);
+        let browser_mode = crate::sexp::instance::with_current_instance(|instance| unsafe {
+            (*instance).browser_files_enabled
+        })
+        .unwrap_or(false);
+        let kind = if browser_bytes.is_some() || browser_mode {
+            ConnKind::BrowserFile
+        } else {
+            ConnKind::File
+        };
+        let mut conn = RConn::new("file", &description, &open_mode, kind);
         conn.canseek = raw == 0;
         conn.text = !open_mode.contains('b');
 
         // Open immediately if open mode is non-empty
-        if !open_mode.is_empty() {
-            let file_result = open_file_conn(&description, &open_mode);
+        if !deferred || !matches!(conn.kind, ConnKind::BrowserFile) {
+            let file_result = if matches!(&conn.kind, ConnKind::BrowserFile) {
+                open_browser_file(&mut conn, &open_mode);
+                Ok(None)
+            } else {
+                open_file_conn(&description, &open_mode).map(Some)
+            };
             match file_result {
-                Ok((file, reader, writer)) => {
+                Ok(None) => {}
+                Ok(Some((file, reader, writer))) => {
                     conn.file = Some(file);
                     conn.reader = reader;
                     conn.writer = writer;
@@ -92,6 +109,41 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 /// Open a file and return (file, optional reader, optional writer).
 #[allow(clippy::type_complexity)]
+fn open_browser_file(conn: &mut RConn, mode: &str) {
+    use crate::mainutils::browser_files;
+    if !matches!(
+        mode,
+        "r" | "rt" | "rb" | "w" | "wt" | "wb" | "a" | "at" | "ab"
+    ) {
+        r_error(
+            "browser files support read, write and append modes; update modes are not implemented",
+        );
+    }
+    if let Err(message) = browser_files::BrowserFileStore::validate_path(&conn.description) {
+        r_error(&message);
+    }
+    let data = if mode.starts_with('w') {
+        Vec::new()
+    } else {
+        match browser_files::read_current(&conn.description) {
+            Some(bytes) => bytes,
+            None if mode.starts_with('a') => Vec::new(),
+            None => r_error("browser file not found"),
+        }
+    };
+    if !mode.starts_with('r') {
+        if let Err(message) = browser_files::write_current(&conn.description, &data) {
+            r_error(&message);
+        }
+    }
+    conn.raw_pos = if mode.starts_with('a') { data.len() } else { 0 };
+    conn.raw_data = data;
+    conn.canseek = false;
+    conn.isopen = true;
+    conn.canread = mode.starts_with('r');
+    conn.canwrite = !conn.canread;
+}
+
 pub fn open_file_conn(
     path: &str,
     mode: &str,
@@ -516,12 +568,12 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         args = CDR(args);
         let sopen = CAR(args);
         args = CDR(args);
-        let _block = check_logical_arg(CAR(args), "blocking");
+        let _block = if args.is_null() || args == R_NilValue() { 1 } else { check_logical_arg(CAR(args), "blocking") };
 
         if !inherits_class(scon, "connection") {
             r_error("'con' is not a connection");
         }
-        let i = as_integer(scon) as usize;
+        let i = checked_connection_index(as_integer(scon));
         if i < 3 {
             r_error("cannot open standard connections");
         }
@@ -545,6 +597,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         conn.text = !open_mode.contains('b');
 
         match &conn.kind {
+            ConnKind::BrowserFile => open_browser_file(conn, &open_mode),
             ConnKind::File => {
                 let file_result = open_file_conn(&conn.description, &open_mode);
                 match file_result {

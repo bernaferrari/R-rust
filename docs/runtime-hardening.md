@@ -275,3 +275,22 @@ Matrix Pearson correlation now preserves dimensions and column names, validates
 shape and result allocation sizes, and matches a pinned GNU matrix fixture.
 Unsupported matrix missing-value policies and correlation methods fail
 explicitly. Full correlation semantics remain broader than these cases.
+
+
+## Browser session files
+
+The console can import and download explicitly selected files. Imports do not
+execute R code: `source("script.R")` is a separate command. Each Wasm session
+starts in virtual-file mode, including before its first import. CSV/table reads,
+`scan`, `readLines`, `readChar`, `source`, `parse(file=)`, and text/CSV writes use
+session files. File connections support read, overwrite and append; update modes
+such as `r+` and seeking are not implemented. This is a bounded file store, not
+full desktop filesystem compatibility.
+
+The store permits 128 files, 1 MiB per file and 8 MiB of file contents per session.
+Paths are relative and reject traversal components. Capacity failures preserve
+the existing stored contents. These limits cover stored file bytes only: they do
+not include connection buffers, temporary copies, interpreter allocations or all
+host allocations, and therefore do not establish a total-memory guarantee.
+A fresh session has no imported files. Native embedding keeps its existing host
+file behavior unless the embedder enables virtual files or imports a file.

@@ -71,7 +71,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
         if TYPEOF(scon) == SEXPTYPE::STRSXP {
             let path = check_string_arg(scon, "con");
-            let contents = std::fs::read(&path)
+            let contents = crate::mainutils::browser_files::read_bytes_or_host(&path)
                 .unwrap_or_else(|e| r_error(&format!("cannot open file '{}': {}", path, e)));
             let lines = nul_normalized_lines(&contents, n, skip_nul);
             let ans = Rf_allocVector(SEXPTYPE::STRSXP, lines.len() as c_int);
@@ -88,7 +88,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         if !inherits_class(scon, "connection") {
             r_error("'con' is not a connection");
         }
-        let i = as_integer(scon) as usize;
+        let i = checked_connection_index(as_integer(scon));
 
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
@@ -132,7 +132,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                     }
                 }
             }
-            ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+            ConnKind::BrowserFile | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
                 for _ in 0..backend_limit {
                     let Some(line) = read_raw_line(conn, skip_nul) else {
                         break;
@@ -262,7 +262,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         let sep_str = check_string_arg(sep, "sep");
         let text_len = LENGTH(text) as R_xlen_t;
 
-        let i = as_integer(scon) as usize;
+        let i = checked_connection_index(as_integer(scon));
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
@@ -276,6 +276,14 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         }
 
         match &conn.kind {
+            ConnKind::BrowserFile => {
+                for j in 0..text_len {
+                    let line = string_elt(text, j);
+                    let mut bytes = line.into_bytes();
+                    bytes.extend_from_slice(sep_str.as_bytes());
+                    write_bytes_to_conn(conn, &bytes);
+                }
+            }
             ConnKind::File => {
                 if let Some(ref mut writer) = conn.writer {
                     for j in 0..text_len {

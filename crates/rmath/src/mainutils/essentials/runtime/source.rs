@@ -51,7 +51,7 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let file_path = elt_to_string(file_arg, 0);
 
-        match std::fs::read_to_string(&file_path) {
+        match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => eval_source_text_with_name(&content, rho, &file_path),
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));
@@ -81,7 +81,7 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             rho
         };
 
-        match std::fs::read_to_string(&file_path) {
+        match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(content) => eval_source_text_with_name(&content, target_env, &file_path),
             Err(e) => {
                 base_error(format!("cannot open file '{}': {}", file_path, e));

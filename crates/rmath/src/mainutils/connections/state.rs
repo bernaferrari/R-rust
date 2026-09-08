@@ -43,6 +43,7 @@ pub const R_EOF: c_int = -1;
 #[derive(Debug)]
 pub enum ConnKind {
     File,
+    BrowserFile,
     Pipe,
     Url,
     Fifo,
@@ -409,6 +410,15 @@ pub(crate) fn connection_fgetc(n: c_int) -> c_int {
             .as_mut()
             .map(|reader| reader.read(&mut byte))
             .unwrap_or(Ok(0)),
+        ConnKind::BrowserFile => {
+            if conn.raw_pos >= conn.raw_data.len() {
+                Ok(0)
+            } else {
+                byte[0] = conn.raw_data[conn.raw_pos];
+                conn.raw_pos += 1;
+                Ok(1)
+            }
+        }
         ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
             if conn.raw_pos >= conn.raw_data.len() {
                 Ok(0)
@@ -566,6 +576,23 @@ pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
             {
                 r_error(&format!("error writing to connection: {}", e));
             }
+        }
+        ConnKind::BrowserFile => {
+            if bytes.len() > crate::mainutils::browser_files::MAX_FILE_BYTES.saturating_sub(conn.raw_data.len()) {
+                r_error("browser file exceeds 1048576 byte limit");
+            }
+            let mut candidate = conn.raw_data.clone();
+            candidate.extend_from_slice(bytes);
+            if candidate.len() > crate::mainutils::browser_files::MAX_FILE_BYTES {
+                r_error("browser file exceeds 1048576 byte limit");
+            }
+            if let Err(message) =
+                crate::mainutils::browser_files::write_current(&conn.description, &candidate)
+            {
+                r_error(&message);
+            }
+            conn.raw_data = candidate;
+            conn.raw_pos = conn.raw_data.len();
         }
         ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
             conn.raw_data.extend_from_slice(bytes);

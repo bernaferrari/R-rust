@@ -112,12 +112,13 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             } else {
                 print!("{}", output);
             }
-        } else if let Ok(mut file) = std::fs::File::create(&path) {
-            use std::io::Write;
+        } else {
+            let mut bytes = Vec::new();
             for i in 0..n {
-                let _ = file.write_all(elt_to_string(text, i).as_bytes());
-                let _ = file.write_all(sep.as_bytes());
+                bytes.extend_from_slice(elt_to_string(text, i).as_bytes());
+                bytes.extend_from_slice(sep.as_bytes());
             }
+            if let Err(error) = crate::mainutils::browser_files::write_text_or_host(&path, &bytes) { base_error(error.to_string()); }
         }
         crate::sexp::globals::set_R_Visible(FALSE);
         R_NilValue()
@@ -133,7 +134,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
         let path = elt_to_string(con, 0);
 
-        let lines = std::fs::read_to_string(&path).unwrap_or_default();
+        let lines = crate::mainutils::browser_files::read_text_or_host(&path).unwrap_or_else(|error| base_error(error.to_string()));
         let line_vec: Vec<&str> = lines.lines().collect();
         let n = line_vec.len();
 
@@ -616,7 +617,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if filename.is_empty() {
                 scan_error("scan() cannot read from an interactive console in this runtime");
             }
-            match std::fs::read_to_string(&filename) {
+            match crate::mainutils::browser_files::read_text_or_host(&filename) {
                 Ok(s) => s,
                 Err(err) => scan_error(format!("cannot open file '{filename}': {err}")),
             }
@@ -820,7 +821,7 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
         }
 
-        let _ = std::fs::write(&filename, output);
+        if let Err(error) = crate::mainutils::browser_files::write_text_or_host(&filename, output.as_bytes()) { base_error(error.to_string()); }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()
     }
@@ -1193,11 +1194,10 @@ pub unsafe fn do_read_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         };
 
         // Read file
-        let content = match std::fs::read_to_string(&file_path) {
+        let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Error reading '{}': {}", file_path, e);
-                return R_NilValue();
+                base_error(format!("cannot read file '{}': {}", file_path, e));
             }
         };
 
@@ -1369,8 +1369,8 @@ pub unsafe fn do_write_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
 
         let content = lines.join("\n") + "\n";
-        if let Err(e) = std::fs::write(&file_path, content) {
-            eprintln!("Error writing '{}': {}", file_path, e);
+        if let Err(e) = crate::mainutils::browser_files::write_text_or_host(&file_path, content.as_bytes()) {
+            base_error(format!("cannot write file '{}': {}", file_path, e));
         }
 
         crate::sexp::globals::set_R_Visible(FALSE);
@@ -1726,7 +1726,7 @@ pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 scan_error("invalid 'file' argument");
             }
             let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
-            match std::fs::read_to_string(&file_path) {
+            match crate::mainutils::browser_files::read_text_or_host(&file_path) {
                 Ok(s) => s,
                 Err(e) => {
                     scan_error(format!("cannot open file '{file_path}': {e}"));
@@ -1967,11 +1967,10 @@ pub unsafe fn do_read_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         let file_path = resolve_package_relative_path(elt_to_string(file_arg, 0));
 
         // Read file
-        let content = match std::fs::read_to_string(&file_path) {
+        let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Error reading '{}': {}", file_path, e);
-                return R_NilValue();
+                base_error(format!("cannot read file '{}': {}", file_path, e));
             }
         };
 
@@ -2137,8 +2136,10 @@ pub unsafe fn do_write_csv2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
 
         // Write to file
-        if let Err(e) = std::fs::write(&file_path, &out) {
-            eprintln!("Error writing '{}': {}", file_path, e);
+        if let Err(e) =
+            crate::mainutils::browser_files::write_text_or_host(&file_path, out.as_bytes())
+        {
+            base_error(format!("cannot write file '{}': {}", file_path, e));
         }
 
         R_NilValue()
@@ -2163,11 +2164,10 @@ pub unsafe fn do_read_delim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         };
 
         // Read file
-        let content = match std::fs::read_to_string(&file_path) {
+        let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Error reading '{}': {}", file_path, e);
-                return R_NilValue();
+                base_error(format!("cannot read file '{}': {}", file_path, e));
             }
         };
 
@@ -2298,11 +2298,10 @@ pub unsafe fn do_read_fwf(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         // Read file
-        let content = match std::fs::read_to_string(&file_path) {
+        let content = match crate::mainutils::browser_files::read_text_or_host(&file_path) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Error reading '{}': {}", file_path, e);
-                return R_NilValue();
+                base_error(format!("cannot read file '{}': {}", file_path, e));
             }
         };
 
@@ -2391,7 +2390,7 @@ pub unsafe fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         let path = elt_to_string(con_arg, 0);
-        let bytes = std::fs::read(&path).unwrap_or_else(|e| {
+        let bytes = crate::mainutils::browser_files::read_bytes_or_host(&path).unwrap_or_else(|e| {
             base_error(format!("cannot read file '{}': {}", path, e));
         });
         let take = if nchars >= 0 {
@@ -2448,7 +2447,9 @@ pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             crate::mainutils::connections::connection_write_bytes(connection, text.as_bytes());
         } else {
             let path = elt_to_string(con_arg, 0);
-            if let Err(e) = std::fs::write(&path, text.as_bytes()) {
+            if let Err(e) =
+                crate::mainutils::browser_files::write_text_or_host(&path, text.as_bytes())
+            {
                 base_error(format!("cannot write file '{}': {}", path, e));
             }
         }

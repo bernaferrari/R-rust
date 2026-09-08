@@ -438,6 +438,8 @@ pub struct RInstance {
     pub(crate) dynload_state: crate::mainutils::rdynload::DynloadState,
     /// Per-instance connection table and sink state.
     pub(crate) connections_state: crate::mainutils::connections::ConnectionsState,
+    pub(crate) browser_files: crate::mainutils::browser_files::BrowserFileStore,
+    pub(crate) browser_files_enabled: bool,
     /// Per-instance library, cache, and temporary-directory policy.
     pub(crate) path_policy: crate::mainutils::paths::RuntimePathPolicy,
     /// Per-instance counter for unique `tempfile()` names.
@@ -583,6 +585,8 @@ impl RInstance {
             fft_state: crate::library::stats::fft::FftState::default(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
+            browser_files: crate::mainutils::browser_files::BrowserFileStore::default(),
+            browser_files_enabled: false,
             path_policy: crate::mainutils::paths::RuntimePathPolicy::default(),
             tempfile_counter: 0,
             file_creation_umask: 0o022,

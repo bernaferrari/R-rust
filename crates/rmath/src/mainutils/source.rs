@@ -47,7 +47,7 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         if !file.is_null() && file != R_NilValue() {
             let path = local_elt_to_string(file, 0);
             if !path.is_empty() {
-                match std::fs::read_to_string(&path) {
+                match crate::mainutils::browser_files::read_text_or_host(&path) {
                     Ok(content) => {
                         remember_parse_context(&content);
                         if keep_source_enabled(args) {

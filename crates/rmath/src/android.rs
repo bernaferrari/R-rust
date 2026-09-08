@@ -190,6 +190,21 @@ impl RSession {
     pub fn close(&mut self) {
         self.core.close();
     }
+    pub fn enable_browser_files(&mut self) {
+        self.core.enable_browser_files();
+    }
+    pub fn import_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        self.core.put_browser_file(path, bytes)
+    }
+    pub fn export_file(&mut self, path: &str) -> Option<Vec<u8>> {
+        self.core.get_browser_file(path)
+    }
+    pub fn list_files(&mut self) -> Vec<String> {
+        self.core.list_browser_files()
+    }
+    pub fn remove_file(&mut self, path: &str) -> bool {
+        self.core.remove_browser_file(path)
+    }
 
     pub fn is_active(&self) -> bool {
         self.core.is_active()

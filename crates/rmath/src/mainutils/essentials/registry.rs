@@ -366,6 +366,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "textConnection",
     "textConnectionValue",
     "rawConnection",
+    "open",
     "close",
     "flush",
     "summary",

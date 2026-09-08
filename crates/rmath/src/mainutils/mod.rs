@@ -14,6 +14,7 @@ pub mod arithmetic;
 pub mod array;
 pub mod attrib;
 pub mod bind;
+pub mod browser_files;
 pub mod builtin;
 pub mod character;
 pub mod clippath;

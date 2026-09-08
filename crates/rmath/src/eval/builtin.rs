@@ -1811,6 +1811,10 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
         handler: crate::mainutils::connections::do_rawConnection,
     },
     EvaluatedBuiltin {
+        name: "open",
+        handler: crate::mainutils::connections::do_open,
+    },
+    EvaluatedBuiltin {
         name: "close",
         handler: crate::mainutils::essentials::do_close,
     },

@@ -475,6 +475,41 @@ impl RSession {
         }
     }
 
+    pub fn enable_browser_files(&mut self) {
+        let _guard = self.activate();
+        unsafe {
+            (*self.instance).browser_files_enabled = true;
+        }
+    }
+
+    pub fn put_browser_file(&mut self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        let _guard = self.activate();
+        unsafe {
+            let result = (*self.instance).browser_files.put(path, bytes);
+            if result.is_ok() {
+                (*self.instance).browser_files_enabled = true;
+            }
+            result
+        }
+    }
+    pub fn get_browser_file(&mut self, path: &str) -> Option<Vec<u8>> {
+        let _guard = self.activate();
+        unsafe {
+            (*self.instance)
+                .browser_files
+                .read(path)
+                .map(<[u8]>::to_vec)
+        }
+    }
+    pub fn list_browser_files(&mut self) -> Vec<String> {
+        let _guard = self.activate();
+        unsafe { (*self.instance).browser_files.names() }
+    }
+    pub fn remove_browser_file(&mut self, path: &str) -> bool {
+        let _guard = self.activate();
+        unsafe { (*self.instance).browser_files.remove(path) }
+    }
+
     pub(crate) fn with_active<F, T>(&self, f: F) -> T
     where
         F: FnOnce() -> T,

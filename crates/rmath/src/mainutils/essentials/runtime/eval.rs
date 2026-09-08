@@ -186,9 +186,10 @@ pub unsafe fn do_parse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if text_arg.is_null() || text_arg == R_NilValue() {
             if !file_arg.is_null() && file_arg != R_NilValue() {
                 let file_path = elt_to_string(file_arg, 0);
-                let content = std::fs::read_to_string(&file_path).unwrap_or_else(|err| {
-                    base_error(format!("cannot open file '{}': {}", file_path, err))
-                });
+                let content = crate::mainutils::browser_files::read_text_or_host(&file_path)
+                    .unwrap_or_else(|err| {
+                        base_error(format!("cannot open file '{}': {}", file_path, err))
+                    });
                 if keep_source {
                     return parse_with_srcrefs(&content, &file_path);
                 }
