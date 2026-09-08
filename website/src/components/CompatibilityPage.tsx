@@ -13,7 +13,7 @@ const contracts = [
   ],
   [
     "Graphics",
-    "Base plots, grid viewports and grobs, mathematical labels, and portable PNG output with Vello.",
+    "Base plots, grid viewports and grobs, mathematical labels, portable PNG output with Vello, and plot layers retained between console commands.",
     "Advanced grid editing and units, device lifecycle, logarithmic axes, patterns/masks, and exact GNU R font typography remain incomplete. The website uses the CPU renderer; GPU integration is a separate API.",
   ],
   [
@@ -69,7 +69,8 @@ export function CompatibilityPage() {
           The browser runs R in a worker with a 15-second console timeout (20
           seconds in the playground), a 64 MiB object arena budget, bounded
           result export, and a 256 MiB ceiling on Wasm linear memory. Console
-          capture is limited to 1 MiB. Browser rendering and local AI models use
+          capture is limited to 1 MiB, and retained interactive graphics use a
+          16 MiB accounting budget. Browser rendering and local AI models use
           separate memory; native applications must configure their own resource
           limits.
         </p>

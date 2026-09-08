@@ -6,6 +6,10 @@ use rmath::android::{RArenaStats, RResourceLimits, RRuntimeInfo, RValue};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+// Accounting allows for geometric growth of the operation vector. Renderer
+// scratch buffers and allocator overhead are outside this retained-data budget.
+const INTERACTIVE_SCENE_BUDGET: usize = 16 * 1024 * 1024;
+
 use crate::RSessionError;
 use crate::packages::{
     RPackageInfo, installed_packages_from_library_paths, package_info_from_path,
@@ -20,6 +24,9 @@ pub struct RSession {
     session_id: u64,
     active: bool,
     inner: rmath::android::RSession,
+    /// Interactive graphics are recorded into a session-owned scene so a
+    /// later command (for example `lines()`) can draw on the prior plot.
+    interactive_scene: Option<r_graphics_engine::Scene>,
     /// Live handle slots: index = slot id, value = current generation.
     /// Removed slots keep their entry with a bumped generation so stale
     /// handles are rejected; ids are never reused.
@@ -44,15 +51,66 @@ pub struct InteractiveOutput {
 struct TrackingDrawTarget<'a> {
     target: &'a mut dyn r_graphics_engine::DrawTarget,
     drew: bool,
+    retained_bytes: usize,
+    budget_exceeded: bool,
 }
 
 impl TrackingDrawTarget<'_> {
-    fn new(target: &mut dyn r_graphics_engine::DrawTarget) -> TrackingDrawTarget<'_> {
+    fn new(target: &mut r_graphics_engine::Scene) -> TrackingDrawTarget<'_> {
         TrackingDrawTarget {
+            retained_bytes: scene_retained_bytes(target),
             target,
             drew: false,
+            budget_exceeded: false,
         }
     }
+
+    fn reserve(&mut self, bytes: usize) -> bool {
+        let Some(total) = self.retained_bytes.checked_add(bytes) else {
+            self.budget_exceeded = true;
+            return false;
+        };
+        if total > INTERACTIVE_SCENE_BUDGET {
+            self.budget_exceeded = true;
+            false
+        } else {
+            self.retained_bytes = total;
+            true
+        }
+    }
+}
+
+fn scene_retained_bytes(scene: &r_graphics_engine::Scene) -> usize {
+    scene
+        .operations()
+        .iter()
+        .map(operation_retained_bytes)
+        .fold(0usize, |total, bytes| total.saturating_add(bytes))
+}
+
+fn operation_retained_bytes(operation: &r_graphics_engine::DrawOperation) -> usize {
+    use r_graphics_engine::DrawOperation;
+    let base = 2 * std::mem::size_of::<DrawOperation>();
+    match operation {
+        DrawOperation::Clear(_) => base,
+        DrawOperation::Clip(_) => base,
+        DrawOperation::Path(path) => path_operation_retained_bytes(path, path.commands.capacity()),
+        DrawOperation::Text { text, .. } => base.saturating_add(text.len()),
+        DrawOperation::DrawImage { image, .. } => base.saturating_add(image.pixels().len()),
+    }
+}
+
+fn path_operation_retained_bytes(path: &r_graphics_engine::Path, command_count: usize) -> usize {
+    (2 * std::mem::size_of::<r_graphics_engine::DrawOperation>())
+        .saturating_add(std::mem::size_of::<r_graphics_engine::Path>())
+        .saturating_add(
+            command_count.saturating_mul(std::mem::size_of::<r_graphics_engine::PathCommand>()),
+        )
+        .saturating_add(path.stroke.dash_pattern.as_ref().map_or(0, |dash| {
+            dash.intervals
+                .capacity()
+                .saturating_mul(std::mem::size_of::<f32>())
+        }))
 }
 
 impl r_graphics_engine::DrawTarget for TrackingDrawTarget<'_> {
@@ -61,11 +119,18 @@ impl r_graphics_engine::DrawTarget for TrackingDrawTarget<'_> {
     }
     fn clear(&mut self, background: Color) {
         self.target.clear(background);
+        self.retained_bytes = 2 * std::mem::size_of::<r_graphics_engine::DrawOperation>();
     }
     fn set_clip(&mut self, rect: Option<[f32; 4]>) {
-        self.target.set_clip(rect);
+        if self.reserve(2 * std::mem::size_of::<r_graphics_engine::DrawOperation>()) {
+            self.target.set_clip(rect);
+        }
     }
     fn draw_path(&mut self, path: &r_graphics_engine::Path) {
+        let operation_bytes = path_operation_retained_bytes(path, path.commands.len());
+        if !self.reserve(operation_bytes) {
+            return;
+        }
         self.drew = true;
         self.target.draw_path(path);
     }
@@ -75,6 +140,12 @@ impl r_graphics_engine::DrawTarget for TrackingDrawTarget<'_> {
         position: r_graphics_engine::Point,
         params: &r_graphics_engine::PlotParameters,
     ) {
+        if !self.reserve(
+            (2 * std::mem::size_of::<r_graphics_engine::DrawOperation>())
+                .saturating_add(text.len()),
+        ) {
+            return;
+        }
         self.drew = true;
         self.target.draw_text(text, position, params);
     }
@@ -98,6 +169,12 @@ impl r_graphics_engine::DrawTarget for TrackingDrawTarget<'_> {
         transform: [f64; 6],
         interpolate: bool,
     ) {
+        if !self.reserve(
+            (2 * std::mem::size_of::<r_graphics_engine::DrawOperation>())
+                .saturating_add(image.pixels().len()),
+        ) {
+            return;
+        }
         self.drew = true;
         self.target.draw_image(image, transform, interpolate);
     }
@@ -214,6 +291,7 @@ impl RSession {
             session_id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             active: true,
             inner: rmath::android::RSession::new(),
+            interactive_scene: None,
             handle_slot_states: Vec::new(),
         })
     }
@@ -475,17 +553,29 @@ impl RSession {
                 "plot width and height must be at least 32 pixels".into(),
             ));
         }
+        // Validate canvas limits before evaluating user code or retaining a scene.
         let mut renderer =
             AndroidHeadlessRenderer::try_new(width, height).map_err(RSessionError::RenderError)?;
-        let mut target = TrackingDrawTarget::new(&mut renderer);
+        let scene = self
+            .interactive_scene
+            .get_or_insert_with(|| r_graphics_engine::Scene::new(width, height));
+        let mut target = TrackingDrawTarget::new(scene);
         let result = self
             .inner
             .eval_script_with_renderplot_backend(code, &mut target);
+        let budget_exceeded = target.budget_exceeded;
         if let RValue::Error(message) = &result.typed {
             return Err(RSessionError::EvalError(message.clone()));
         }
+        if budget_exceeded {
+            return Err(RSessionError::RenderError(
+                "interactive graphics scene exceeds the 16 MiB memory budget".into(),
+            ));
+        }
         let drew = target.drew;
+        drop(target);
         let png = if drew {
+            scene.replay_scaled(&mut renderer);
             Some(
                 renderer
                     .try_finish()
@@ -706,6 +796,7 @@ local({{
     pub fn close(&mut self) {
         if self.active {
             self.inner.close();
+            self.interactive_scene = None;
             self.active = false;
         }
     }

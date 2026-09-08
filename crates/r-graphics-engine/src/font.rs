@@ -86,6 +86,7 @@ impl FontBook {
     pub fn measure_math_text(&self, text: &str, size: f32, face: FontFace) -> TextMetrics {
         let size = normalized_size(size);
         let mut out = TextMetrics::default();
+        let mut has_ink = false;
         let font = &self.face_metrics[Self::face_index(face)];
         for ch in text.chars().filter(|c| !c.is_control()) {
             let m = font.metrics(ch, size);
@@ -98,8 +99,17 @@ impl FontBook {
             };
             out.width += ink.advance_width;
             if ink.height > 0. {
-                out.ascent = out.ascent.max(ink.y_min + ink.height);
-                out.descent = out.descent.max(-ink.y_min);
+                if has_ink {
+                    out.ascent = out.ascent.max(ink.y_min + ink.height);
+                    out.descent = out.descent.max(-ink.y_min);
+                } else {
+                    // Glyph metrics may have negative descent (e.g. an accent
+                    // entirely above the baseline). GNU R uses that signed
+                    // depth to position accents without adding an extra gap.
+                    out.ascent = ink.y_min + ink.height;
+                    out.descent = -ink.y_min;
+                    has_ink = true;
+                }
             }
         }
         out

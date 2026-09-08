@@ -1652,6 +1652,57 @@ mod tests {
     }
 
     #[test]
+    fn test_session_isolates_srcref_and_handler_bookkeeping_on_one_thread() {
+        let outer = RSession::new();
+        let inner = RSession::new();
+        outer.with_active(|| unsafe {
+            (*outer.instance_ptr()).error_state.current_srcref_location =
+                Some(("outer.R".into(), 7));
+            (*outer.instance_ptr())
+                .error_state
+                .try_catch_handler_classes
+                .push(vec!["warning".into()]);
+            (*outer.instance_ptr())
+                .error_state
+                .calling_handlers_signaled = true;
+        });
+        inner.with_active(|| unsafe {
+            assert_eq!(
+                (*inner.instance_ptr()).error_state.current_srcref_location,
+                None
+            );
+            assert!(
+                (*inner.instance_ptr())
+                    .error_state
+                    .try_catch_handler_classes
+                    .is_empty()
+            );
+            assert!(
+                !(*inner.instance_ptr())
+                    .error_state
+                    .calling_handlers_signaled
+            );
+        });
+        outer.with_active(|| unsafe {
+            assert_eq!(
+                (*outer.instance_ptr()).error_state.current_srcref_location,
+                Some(("outer.R".into(), 7))
+            );
+            assert_eq!(
+                (*outer.instance_ptr())
+                    .error_state
+                    .try_catch_handler_classes,
+                vec![vec![String::from("warning")]]
+            );
+            assert!(
+                (*outer.instance_ptr())
+                    .error_state
+                    .calling_handlers_signaled
+            );
+        });
+    }
+
+    #[test]
     fn test_session_output_capture_is_local_on_same_thread() {
         let left = RSession::new();
         let right = RSession::new();

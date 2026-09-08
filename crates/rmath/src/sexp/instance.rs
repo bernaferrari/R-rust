@@ -100,6 +100,11 @@ pub(crate) struct ErrorState {
     pub mathlib_warning_call: SEXP,
     /// Previous mathlib warning calls held by nested attribution guards.
     pub mathlib_warning_call_stack: Vec<SEXP>,
+    /// Non-SEXP handler bookkeeping must follow the active session when
+    /// sessions are nested on one host thread.
+    pub calling_handlers_signaled: bool,
+    pub try_catch_handler_classes: Vec<Vec<String>>,
+    pub current_srcref_location: Option<(String, i32)>,
 }
 
 impl Default for ErrorState {
@@ -126,6 +131,9 @@ impl Default for ErrorState {
             signalled_condition: std::ptr::null_mut(),
             mathlib_warning_call: std::ptr::null_mut(),
             mathlib_warning_call_stack: Vec::new(),
+            calling_handlers_signaled: false,
+            try_catch_handler_classes: Vec::new(),
+            current_srcref_location: None,
             warnings: std::ptr::null_mut(),
             handler_stack: std::ptr::null_mut(),
             restart_stack: std::ptr::null_mut(),
@@ -185,6 +193,9 @@ impl Default for ProfilingState {
 pub struct SessionCapabilities {
     pub allow_system_commands: bool,
     pub allow_pipe_commands: bool,
+    /// Permit Sys.setenv/Sys.unsetenv to mutate the host process environment.
+    /// This is opt-in because the environment is process-global, not session-local.
+    pub allow_environment_mutation: bool,
 }
 
 pub(crate) struct EvalControlState {

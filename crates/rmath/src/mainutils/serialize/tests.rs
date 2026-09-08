@@ -1369,3 +1369,51 @@ fn test_binary_reader_remaining() {
     let _ = reader.read_byte();
     assert_eq!(reader.remaining(), 4);
 }
+
+#[test]
+fn ascii_string_rejects_declared_size_larger_than_input() {
+    let mut reader = BinaryReader::new(b"x\n");
+    reader.set_ascii_body(true);
+    assert!(
+        reader
+            .read_string_bytes(usize::MAX)
+            .unwrap_err()
+            .contains("truncated")
+    );
+    let mut reader = BinaryReader::new(b"a\\nb\n");
+    reader.set_ascii_body(true);
+    assert_eq!(reader.read_string_bytes(3).unwrap(), b"a\nb");
+}
+
+#[test]
+fn nested_serialized_lists_fail_without_exhausting_stack() {
+    let _session = crate::sexp::session::RSession::new();
+    let mut data = Vec::new();
+    for _ in 0..140 {
+        data.extend_from_slice(&19_i32.to_ne_bytes()); // VECSXP
+        data.extend_from_slice(&1_i32.to_ne_bytes());
+    }
+    data.extend_from_slice(&254_i32.to_ne_bytes()); // NILVALUE_SXP
+    let mut reader = BinaryReader::new(&data);
+    let mut refs = ReadRefTable::new();
+    let result = unsafe { ReadItemInternal(&mut reader, &mut refs) };
+    assert!(result.unwrap_err().contains("nesting"));
+    // A failed decode releases its scoped roots; subsequent input still works.
+    let nil = 254_i32.to_ne_bytes();
+    let mut reader = BinaryReader::new(&nil);
+    assert!(unsafe { ReadItemInternal(&mut reader, &mut refs) }.is_ok());
+}
+
+#[test]
+fn truncated_vector_lengths_fail_before_payload_allocation() {
+    let _session = crate::sexp::session::RSession::new();
+    for tag in [10_i32, 13, 14, 15, 16, 19, 20, 24] {
+        for len in [-1_i32, i32::MAX] {
+            let mut data = tag.to_ne_bytes().to_vec();
+            data.extend_from_slice(&len.to_ne_bytes());
+            let mut reader = BinaryReader::new(&data);
+            let mut refs = ReadRefTable::new();
+            assert!(unsafe { ReadItemInternal(&mut reader, &mut refs) }.is_err());
+        }
+    }
+}

@@ -240,6 +240,7 @@ impl RSession {
         self.set_capabilities(crate::sexp::instance::SessionCapabilities {
             allow_system_commands: true,
             allow_pipe_commands: true,
+            allow_environment_mutation: true,
         });
         self.core.with_active(|| {
             crate::mainutils::rdynload::set_native_extensions_enabled(true);

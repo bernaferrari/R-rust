@@ -173,6 +173,28 @@ fn libc_setenv(name: &str, value: &str) -> bool {
     true
 }
 
+fn environment_mutation_allowed() -> bool {
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.capabilities.allow_environment_mutation
+    })
+}
+
+unsafe fn denied_setenv_result(args: SEXP) -> SEXP {
+    unsafe {
+        let mut n = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            n += 1;
+            current = CDR(current);
+        }
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        for i in 0..n {
+            *LOGICAL(result).add(i as usize) = FALSE;
+        }
+        result
+    }
+}
+
 /// Unset a variable live via std::env::remove_var; false on invalid input.
 fn libc_unsetenv(name: &str) -> bool {
     if name.is_empty() || name.contains('=') || name.contains('\0') {
@@ -196,6 +218,9 @@ static mut environ: *mut *mut c_char = std::ptr::null_mut();
 /// R's `Sys.setenv(...)` — set environment variables.
 pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        if !environment_mutation_allowed() {
+            return denied_setenv_result(args);
+        }
         let mut results: Vec<c_int> = Vec::new();
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -232,6 +257,17 @@ pub unsafe fn do_Sys_setenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `Sys.unsetenv(x)` — unset environment variables.
 pub unsafe fn do_Sys_unsetenv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        if !environment_mutation_allowed() {
+            let x = arg_by_name_or_position(args, &["x"], 0);
+            if x.is_null() || x == R_NilValue() {
+                return Rf_ScalarLogical(FALSE);
+            }
+            let result = Rf_allocVector3(SEXPTYPE::LGLSXP, XLENGTH(x));
+            for i in 0..XLENGTH(x) {
+                *LOGICAL(result).add(i as usize) = FALSE;
+            }
+            return result;
+        }
         let x = arg_by_name_or_position(args, &["x"], 0);
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarLogical(FALSE);

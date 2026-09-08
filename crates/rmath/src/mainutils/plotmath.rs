@@ -320,10 +320,10 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
             "hat" | "tilde" | "dot" | "ring" | "bar" => {
                 need(1);
                 let accent = match name.as_str() {
-                    "hat" => "ˆ",
-                    "tilde" => "˜",
-                    "dot" => "˙",
-                    "ring" => "˚",
+                    "hat" => "^",
+                    "tilde" => "~",
+                    "dot" => "⋅",
+                    "ring" => "°",
                     _ => "¯",
                 };
                 MathExpr::Accent(Box::new(args.pop().unwrap()), accent.into())
@@ -503,6 +503,14 @@ mod oracle_tests {
         let mut session = crate::sexp::session::RSession::new();
         let corpus = [
             ("alpha", "alpha"),
+            ("bold", "bold(x)"),
+            ("italic", "italic(x)"),
+            ("phantom", "phantom(x)"),
+            ("hat", "hat(x)"),
+            ("tilde", "tilde(x)"),
+            ("dot", "dot(x)"),
+            ("ring", "ring(x)"),
+            ("nested", "frac(1, frac(x, y))"),
             ("fraction", "frac(alpha[1]^2, sqrt(beta))"),
             ("radical", "sqrt(x)"),
             ("delimiters", "bgroup(\"(\", alpha[1]^2, \")\")"),

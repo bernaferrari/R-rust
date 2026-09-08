@@ -1869,8 +1869,9 @@ unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
         let all_mtable_sym = Rf_install(c".AllMTable".as_ptr());
         let existing_mtable = crate::sexp::envir::R_findVarInFrame(f_env, all_mtable_sym);
         if existing_mtable == R_UnboundValue() || TYPEOF(existing_mtable) != SEXPTYPE::ENVSXP {
-            let mtable = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_NilValue(), f_env);
+            let mtable = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), f_env, R_NilValue());
             if !mtable.is_null() {
+                let _table_guard = protect(mtable);
                 crate::sexp::envir::defineVar(all_mtable_sym, mtable, f_env);
             }
         }
@@ -1896,6 +1897,7 @@ unsafe fn initialize_generic_dispatch_tables(generic: SEXP) {
         if sigargs.is_null() {
             return;
         }
+        let _sigargs_guard = protect(sigargs);
         for (index, sym) in arg_syms.iter().enumerate() {
             SET_VECTOR_ELT(sigargs, index as R_xlen_t, *sym);
         }
@@ -1918,19 +1920,29 @@ pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
             CAR(CDR(args))
         };
 
-        let generic = if !fdef_arg.is_null() && fdef_arg != R_NilValue() {
+        let mut generic = if !fdef_arg.is_null() && fdef_arg != R_NilValue() {
             fdef_arg
         } else {
             f_arg
         };
 
-        initialize_generic_dispatch_tables(generic);
-
         // Upstream setGeneric rebinds the name in the defining environment to
         // the generic closure and marks it as an object carrying the "generic"
         // attribute, so standardGeneric can find it via get_this_generic.
         if !generic.is_null() && generic != R_NilValue() && TYPEOF(generic) == SEXPTYPE::CLOSXP {
+            let source_generic = generic;
+            generic = crate::mainutils::duplicate::Rf_duplicate(generic);
             let _generic_guard = protect(generic);
+            // Each generic owns its dispatch metadata. Its lexical environment
+            // remains the parent, so captured bindings keep their usual meaning.
+            let dispatch_env = crate::sexp::memory_ext::NewEnvironment(
+                R_NilValue(),
+                crate::sexp::accessors::CLOENV(generic),
+                R_NilValue(),
+            );
+            let _dispatch_guard = protect(dispatch_env);
+            crate::sexp::accessors::SET_CLOENV(generic, dispatch_env);
+            initialize_generic_dispatch_tables(generic);
 
             // Resolve the generic's name: explicit first argument, else the
             // symbol this closure is bound to in the defining environment.
@@ -1947,7 +1959,7 @@ pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                     } else {
                         crate::sexp::globals::R_GlobalEnv()
                     };
-                let name_sym = find_binding_name_for_value(target_env, generic);
+                let name_sym = find_binding_name_for_value(target_env, source_generic);
                 if let Some(nm) = name_sym {
                     let pname = PRINTNAME(nm);
                     if !pname.is_null() && pname != R_NilValue() {
@@ -1960,6 +1972,7 @@ pub unsafe fn do_setGeneric(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
                 let cname = CString::new(name.clone()).unwrap_or_default();
                 let name_sym = Rf_install(cname.as_ptr());
                 let name_str = Rf_mkString(cname.as_ptr());
+                let _name_guard = protect(name_str);
 
                 // Mark the closure as a generic function object: attribute
                 // "generic" = the generic's name, plus the OBJECT bit.
@@ -2077,7 +2090,7 @@ pub unsafe fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         {
             existing
         } else {
-            let table = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_NilValue(), f_env);
+            let table = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), f_env, R_NilValue());
             if table.is_null() {
                 return definition;
             }
@@ -2090,10 +2103,44 @@ pub unsafe fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             String::new()
         } else if TYPEOF(signature_arg) == SEXPTYPE::STRSXP {
             let n = XLENGTH(signature_arg);
-            (0..n)
-                .map(|i| elt_to_string(signature_arg, i))
-                .collect::<Vec<_>>()
-                .join("#")
+            let names =
+                crate::eval::attrib_core::getAttrib(signature_arg, Rf_install(c"names".as_ptr()));
+            if !names.is_null() && names != R_NilValue() && TYPEOF(names) == SEXPTYPE::STRSXP {
+                let sigargs =
+                    crate::sexp::envir::R_findVarInFrame(f_env, Rf_install(c".SigArgs".as_ptr()));
+                if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+                    base_error("generic has no valid signature arguments");
+                }
+                let formals: Vec<String> = (0..XLENGTH(sigargs))
+                    .map(|i| elt_to_string(VECTOR_ELT(sigargs, i), 0))
+                    .collect();
+                let mut ordered = vec!["ANY".to_string(); formals.len()];
+                let mut assigned = vec![false; formals.len()];
+                for i in 0..n {
+                    let name = elt_to_string(names, i);
+                    let index = if name.is_empty() {
+                        i as usize
+                    } else {
+                        formals
+                            .iter()
+                            .position(|formal| formal == &name)
+                            .unwrap_or_else(|| {
+                                base_error("named signature argument is not in the generic")
+                            })
+                    };
+                    if index >= ordered.len() || assigned[index] {
+                        base_error("invalid or duplicated method signature argument");
+                    }
+                    ordered[index] = elt_to_string(signature_arg, i);
+                    assigned[index] = true;
+                }
+                ordered.join("#")
+            } else {
+                (0..n)
+                    .map(|i| elt_to_string(signature_arg, i))
+                    .collect::<Vec<_>>()
+                    .join("#")
+            }
         } else {
             elt_to_string(signature_arg, 0)
         };

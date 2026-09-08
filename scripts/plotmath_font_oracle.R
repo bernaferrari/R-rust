@@ -6,6 +6,14 @@ if (length(args) != 1) stop("usage: Rscript plotmath_font_oracle.R oracle.so")
 dyn.load(args[[1]])
 corpus <- list(
   alpha = expression(alpha),
+  bold = expression(bold(x)),
+  italic = expression(italic(x)),
+  phantom = expression(phantom(x)),
+  hat = expression(hat(x)),
+  tilde = expression(tilde(x)),
+  dot = expression(dot(x)),
+  ring = expression(ring(x)),
+  nested = expression(frac(1, frac(x, y))),
   fraction = expression(frac(alpha[1]^2, sqrt(beta))),
   radical = expression(sqrt(x)),
   delimiters = expression(bgroup("(", alpha[1]^2, ")")),

@@ -314,6 +314,24 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     },
     #[cfg(feature = "renderplot-device")]
     UnevaluatedBuiltin {
+        name: "gPath",
+        handler: crate::mainutils::portable_grid::do_gpath,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "getGrob",
+        handler: crate::mainutils::portable_grid::do_get_grob,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "editGrob",
+        handler: crate::mainutils::portable_grid::do_edit_grob,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
         name: "is.grob",
         handler: crate::mainutils::portable_grid::do_is_grob,
         restore_visibility_always: false,

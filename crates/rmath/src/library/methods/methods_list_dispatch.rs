@@ -1197,17 +1197,15 @@ mod tests {
         unsafe {
             let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
             let generic =
-                crate::mainutils::dstruct::mkCLOSXP(missing_formals(&["x"]), x_sym, R_NilValue());
-            let generic_env =
-                crate::mainutils::dstruct::mkCLOSXP(R_NilValue(), R_NilValue(), CLOENV(generic));
-            SET_ENCLOS(generic, CLOENV(generic_env));
-
-            crate::mainutils::essentials::do_setGeneric(
+                crate::mainutils::dstruct::mkCLOSXP(missing_formals(&["x"]), x_sym, env_with(&[]));
+            let _source_guard = protect(generic);
+            let generic = crate::mainutils::essentials::do_setGeneric(
                 R_NilValue(),
                 R_NilValue(),
                 Rf_cons(generic, R_NilValue()),
                 R_NilValue(),
             );
+            let _generic_guard = protect(generic);
 
             let method = crate::mainutils::dstruct::mkCLOSXP(
                 R_NilValue(),
@@ -1267,7 +1265,7 @@ mod tests {
         let tables = session.eval(
             "generic <- setGeneric(\"show\", function(object) standardGeneric(\"show\"))\n\
              setMethod(\"show\", \"numeric\", function(object) 42)\n\
-             length(ls(environment(generic))) > 0",
+             identical(show(1.5), 42)",
         );
         assert_eq!(tables.output, "[1] TRUE");
     }

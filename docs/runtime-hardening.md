@@ -125,3 +125,44 @@ package execution, an audit of remaining raw union access and ambient session
 aliasing, complete graphics contracts, larger statistical workloads, and
 measured device/performance evidence. The issue tracker retains these follow-ups. Additional translated code or a higher subjective score would
 not substitute for those checks.
+
+## September 8 follow-up contracts
+
+Interactive embedding now retains an owned scene between commands: a `plot()`
+followed by `lines()` produces the same image as one combined evaluation. A
+resize scales the retained scene, and closing the session releases it. Retained
+operation accounting has a 16 MiB budget, checked before cloning paths, text or
+rasters; exceeding it returns a recoverable error. This budget does not include
+all renderer/transient allocations. Partial console/plot output on errors and
+complete device lifecycle semantics remain unfinished.
+
+Source-reference locations and warning/tryCatch bookkeeping now belong to the
+session. Handler cleanup restores its creating session. Embedded sessions deny
+process environment mutation by default; trusted desktop hosts can opt in.
+Process-global reads and timezone handling are still separate isolation concerns.
+
+The memory deserializer rejects vector lengths whose minimum encoded payload
+cannot fit in the input before allocating R vectors. ASCII string decoding
+checks the available bytes before reserving its buffer. Recursive object decoding
+is bounded to 128 levels to protect the native stack; legitimate deeper input is
+also rejected by this reader. These checks do not establish full serialization
+or bytecode wire compatibility.
+
+Named S4 method signatures are reordered to match generic arguments, with invalid
+and duplicate names rejected. Generic method tables now have separate environments that preserve lexical
+captures; registering one generic cannot overwrite another generic’s methods.
+Broader method inheritance and whole upstream methods-suite compatibility remain
+unproven.
+
+The same-font GNU R typography corpus now covers 14 expressions at 6, 12 and 24
+points. It caught incorrect accent glyphs, spacing and loss of signed glyph depth;
+those discrepancies are corrected. These 42 metric comparisons do not establish
+pixel parity across arbitrary fonts and devices.
+
+Validation for this follow-up: 2,803 workspace tests passed (five ignored),
+followed by all 25 portable-grid tests after the final graphical-parameter merge
+fix. Six real-Wasm browser tests passed, including the existing 29 FFT/RNG oracle
+cases, persistent layers, S4 signature ordering, independent generic tables and
+nonmutating nested grob edits. The safe API audit, formatting, website lint and
+production build also passed. These results do not change the whole-upstream
+coverage ledger into a full compatibility claim.

@@ -38,3 +38,66 @@ fn interactive_evaluation_omits_png_without_drawing_and_recovers_after_error() {
     assert!(recovered.output.contains("[1] 4"), "{}", recovered.output);
     assert!(recovered.png.is_none());
 }
+
+#[test]
+fn interactive_graphics_scene_persists_across_calls() {
+    let mut session = RSession::new().unwrap();
+    let first = session
+        .eval_interactive("plot(1:2, 1:2)", 320, 240)
+        .unwrap();
+    let first_png = first.png.expect("plot should produce an image");
+
+    let second = session
+        .eval_interactive("lines(1:2, 2:1, col = 'red')", 320, 240)
+        .unwrap();
+    let second_png = second.png.expect("lines should produce an image");
+    assert_ne!(first_png, second_png, "later drawing must update the scene");
+    let mut reference = RSession::new().unwrap();
+    let combined = reference
+        .eval_interactive("plot(1:2, 1:2); lines(1:2, 2:1, col = 'red')", 320, 240)
+        .unwrap()
+        .png
+        .unwrap();
+    assert_eq!(
+        second_png, combined,
+        "split commands must retain every prior layer"
+    );
+}
+
+#[test]
+fn invalid_interactive_canvas_does_not_execute_code() {
+    let mut session = RSession::new().unwrap();
+    assert!(session.eval_interactive("x <- 9", u32::MAX, 240).is_err());
+    let output = session.eval_interactive("exists('x')", 320, 240).unwrap();
+    assert!(output.output.contains("FALSE"));
+}
+
+#[test]
+fn embedded_session_cannot_mutate_process_environment_by_default() {
+    let key = "RPORT_EMBED_ISOLATION_REGRESSION";
+    let before = std::env::var_os(key);
+    let mut session = RSession::new().unwrap();
+    let result = session.eval_interactive(
+        "cat(Sys.setenv(RPORT_EMBED_ISOLATION_REGRESSION = 'changed')); cat(Sys.unsetenv('RPORT_EMBED_ISOLATION_REGRESSION'))",
+        320, 240,
+    ).unwrap();
+    assert!(result.output.contains("FALSEFALSE"), "{}", result.output);
+    assert_eq!(std::env::var_os(key), before);
+}
+
+#[test]
+fn interactive_scene_budget_overflow_is_recoverable() {
+    let mut session = RSession::new().unwrap();
+    let text = "x".repeat(4096);
+    let code = format!("plot(1:2, 1:2); for (i in 1:5000) text(1, 1, '{text}')");
+    let overflow = session.eval_interactive(&code, 320, 240);
+    assert!(
+        matches!(overflow, Err(r_embed::RSessionError::RenderError(ref message)) if message.contains("16 MiB")),
+        "expected retained scene budget error, got {overflow:?}"
+    );
+
+    let recovered = session
+        .eval_interactive("plot(1:2, 2:1)", 320, 240)
+        .unwrap();
+    assert!(recovered.png.is_some());
+}

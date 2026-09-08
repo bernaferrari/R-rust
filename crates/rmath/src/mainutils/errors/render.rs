@@ -857,23 +857,22 @@ pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
     }
 }
 
-thread_local! {
-    /// Set by do_warning after it signals calling handlers itself: the
-    /// follow-up warningcall() collection pass must not re-signal them.
-    static CALLING_HANDLERS_SIGNALED: std::cell::Cell<bool> =
-        const { std::cell::Cell::new(false) };
-}
-
 pub(crate) unsafe fn mark_calling_handlers_signaled() {
-    CALLING_HANDLERS_SIGNALED.with(|f| f.set(true));
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.calling_handlers_signaled = true;
+    });
 }
 
 unsafe fn calling_handlers_already_signaled() -> bool {
-    CALLING_HANDLERS_SIGNALED.with(|f| f.get())
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.calling_handlers_signaled
+    })
 }
 
 fn clear_calling_handlers_signaled() {
-    CALLING_HANDLERS_SIGNALED.with(|f| f.set(false));
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.calling_handlers_signaled = false;
+    });
 }
 
 pub(super) unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {

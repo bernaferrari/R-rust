@@ -13,13 +13,6 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 
-thread_local! {
-    /// (filename, first-line) of the top-level expression currently being
-    /// evaluated, when parsed with srcrefs. Cleared per statement.
-    static CURRENT_SRCREF_LOCATION: std::cell::RefCell<Option<(String, i32)>> =
-        const { std::cell::RefCell::new(None) };
-}
-
 /// Byte offset -> (1-based line, 1-based column) in `src`.
 fn line_col(src: &str, byte: usize) -> (i32, i32) {
     let bytes = src.as_bytes();
@@ -232,12 +225,16 @@ pub(crate) fn set_current_srcref_location(expr: SEXP, vector: SEXP, index: usize
                 }
             }
         };
-        CURRENT_SRCREF_LOCATION.with(|c| *c.borrow_mut() = loc);
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).error_state.current_srcref_location = loc;
+        });
     }
 }
 
 /// The `(from ...)` location for the error renderer: `(file, line)` of
 /// the current top-level expression when parsed with srcrefs.
 pub fn current_srcref_location() -> Option<(String, i32)> {
-    CURRENT_SRCREF_LOCATION.with(|c| c.borrow().clone())
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.current_srcref_location.clone()
+    })
 }

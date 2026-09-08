@@ -293,9 +293,27 @@ impl MathExpr {
                 context,
             ),
             Self::Accent(value, accent) => {
-                let mut out = value.layout_inner(target, params, context);
-                let mut mark = MathExpr::Text(accent.clone()).layout_inner(target, params, context);
-                if accent == "¯" {
+                let body = value.layout_inner(target, params, context);
+                let mark = MathExpr::Text(accent.clone()).layout_inner(target, params, context);
+                if accent != "¯" {
+                    // GNU R RenderAccent centers the body in the wider box,
+                    // then shifts the accent by the body's italic correction.
+                    let width = (body.width + body.italic).max(mark.width);
+                    let body_x = (width - body.width) / 2.;
+                    let accent_x = (width - mark.width) / 2. + 0.9 * body.italic;
+                    let accent_y = -body.ascent
+                        - mark.descent
+                        - 0.1 * target.measure_math_text("X", params).ascent;
+                    let mut out = MathLayout {
+                        width: width.max(accent_x + mark.width),
+                        ..Default::default()
+                    };
+                    out.append(body, body_x, 0.);
+                    out.append(mark, accent_x, accent_y);
+                    out
+                } else {
+                    let mut out = body;
+                    let mut mark = mark;
                     mark.width = out.width;
                     mark.marks = vec![Mark::Line(
                         Point { x: 0., y: 0. },
@@ -307,11 +325,10 @@ impl MathExpr {
                     )];
                     mark.ascent = size * 0.05;
                     mark.descent = 0.;
+                    let y = -out.ascent - size * 0.1;
+                    out.append(mark, 0., y);
+                    out
                 }
-                let x = (out.width - mark.width) / 2.;
-                let y = -out.ascent - size * 0.1 - mark.descent;
-                out.append(mark, x, y);
-                out
             }
             Self::Underline(value) => {
                 let mut out = value.layout_inner(target, params, context);

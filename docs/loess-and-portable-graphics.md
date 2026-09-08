@@ -87,7 +87,7 @@ space after absolute dimensions. Numeric regression values for physical/native
 units and weighted layouts were checked against the pinned GNU R oracle at a
 known device size; PNG tests check actual viewport placement and clipping.
 
-This is a bounded grid frontend, not the complete GNU R grid package. Arbitrary grob measurement and gPath editing remain gaps. Rotated viewport clipping follows GNU R by warning and retaining the parent clip. Text overlap checking uses rotated text bounds and the shared font metrics.
+This is a bounded grid frontend, not the complete GNU R grid package. `gPath`, `getGrob` and `editGrob` support named nested child paths, descendant search and independent edits to gp/name/vp. Regex/global matching, geometry edits, custom editDetails methods, display-list grid.edit, and arbitrary grob measurement remain gaps. Rotated viewport clipping follows GNU R by warning and retaining the parent clip. Text overlap checking uses rotated text bounds and the shared font metrics.
 Unsupported drawing parameters fail explicitly. Text-dependent char/line units
 currently use device font-size conventions, not GNU R font metric parity.
 Recordings preserve drawing commands and a validated, renderer-specific snapshot

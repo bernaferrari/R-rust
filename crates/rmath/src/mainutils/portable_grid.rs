@@ -1938,6 +1938,9 @@ wrapper!(do_grid_draw, "grid.draw", "portable_grid/grid_draw.R");
 wrapper!(do_glist, "gList", "portable_grid/glist.R");
 wrapper!(do_gtree, "gTree", "portable_grid/gtree.R");
 wrapper!(do_grobtree, "grobTree", "portable_grid/grobtree.R");
+wrapper!(do_gpath, "gPath", "portable_grid/gpath.R");
+wrapper!(do_get_grob, "getGrob", "portable_grid/get_grob.R");
+wrapper!(do_edit_grob, "editGrob", "portable_grid/edit_grob.R");
 wrapper!(do_is_grob, "is.grob", "portable_grid/is_grob.R");
 wrapper!(do_grob_width, "grobWidth", "portable_grid/grob_width.R");
 wrapper!(do_grob_height, "grobHeight", "portable_grid/grob_height.R");
@@ -1997,6 +2000,9 @@ pub(crate) const EXPORTS: &[&str] = &[
     "gList",
     "gTree",
     "grobTree",
+    "gPath",
+    "getGrob",
+    "editGrob",
     "is.grob",
     "grobWidth",
     "grobHeight",

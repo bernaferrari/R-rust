@@ -123,6 +123,31 @@ fn grob_trees_replay_with_inherited_styles_and_plotmath() {
         "[1] TRUE"
     );
 }
+
+#[test]
+fn named_gpath_get_and_edit_copy_nested_gtrees() {
+    let mut session = RSession::new().unwrap();
+    let result = session
+        .eval("library(grid); g <- gTree(children=gList(gTree(children=gList(rectGrob(name='leaf')), name='inner')), name='root'); before <- serialize(g, NULL); h <- editGrob(g, gPath('inner','leaf'), gp=gpar(col='blue')); identical(serialize(g, NULL), before) && identical(getGrob(h, gPath('inner','leaf'))$gp$col, 'blue')")
+        .unwrap();
+    assert_eq!(result, "[1] TRUE");
+}
+
+#[test]
+fn named_gpath_rejects_unsupported_matching_modes() {
+    let mut session = RSession::new().unwrap();
+    assert!(
+        session
+            .eval("library(grid); g <- gTree(); getGrob(g, 'x', grep=TRUE)")
+            .is_err()
+    );
+    assert!(
+        session
+            .eval("library(grid); g <- gTree(); editGrob(g, 'x', global=TRUE)")
+            .is_err()
+    );
+}
+
 #[test]
 fn failed_grob_restores_viewport_and_session_remains_usable() {
     let mut session = RSession::new().unwrap();
@@ -458,4 +483,18 @@ fn zero_and_negative_null_units_match_gnu_r_geometry() {
         session.render_with_dimensions(&format!("library(grid); grid.newpage(); pushViewport(viewport(layout=grid.layout(1,2,widths=unit({weights},'null')))); pushViewport(viewport(layout.pos.col=1)); measured<-convertWidth(unit(1,'npc'),'inches',valueOnly=TRUE); grid.rect(); popViewport(2)"),576,384).unwrap();
         assert_eq!(session.eval("measured").unwrap(), expected);
     }
+}
+
+#[test]
+fn named_gpath_searches_descendants_unless_strict() {
+    let mut session = RSession::new().unwrap();
+    let result = session.eval("library(grid); g <- grobTree(grobTree(rectGrob(name='leaf'),name='inner'),name='root'); h <- editGrob(g,'leaf',gp=gpar(col='blue')); is.null(getGrob(g,'leaf',strict=TRUE)) && identical(getGrob(h,'leaf')$gp$col,'blue') && is.null(getGrob(g,'leaf')$gp$col)").unwrap();
+    assert_eq!(result, "[1] TRUE");
+}
+
+#[test]
+fn edit_grob_merges_graphical_parameters_without_mutating_original() {
+    let mut session = RSession::new().unwrap();
+    let value = session.eval("library(grid); g <- rectGrob(gp=gpar(fill='red',col='black')); h <- editGrob(g,gp=gpar(col='blue')); identical(g$gp$col,'black') && identical(h$gp$col,'blue') && identical(h$gp$fill,'red')").unwrap();
+    assert_eq!(value, "[1] TRUE");
 }

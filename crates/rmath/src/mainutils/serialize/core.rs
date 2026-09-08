@@ -165,6 +165,7 @@ pub struct BinaryWriter {
     pub buf: Vec<u8>,
     pub ascii_body: bool,
     pub xdr_body: bool,
+    item_depth: usize,
 }
 
 impl BinaryWriter {
@@ -173,6 +174,7 @@ impl BinaryWriter {
             buf: Vec::new(),
             ascii_body: false,
             xdr_body: false,
+            item_depth: 0,
         }
     }
 
@@ -262,6 +264,7 @@ pub struct BinaryReader<'a> {
     pub pos: usize,
     pub ascii_body: bool,
     pub xdr_body: bool,
+    item_depth: usize,
 }
 
 impl<'a> BinaryReader<'a> {
@@ -271,6 +274,7 @@ impl<'a> BinaryReader<'a> {
             pos: 0,
             ascii_body: false,
             xdr_body: false,
+            item_depth: 0,
         }
     }
 
@@ -357,13 +361,37 @@ impl<'a> BinaryReader<'a> {
         Ok(slice)
     }
 
+    /// A vector cannot contain more elements than the remaining stream can
+    /// encode. Check this before allocating its R payload, even without a budget.
+    fn read_vector_length(&mut self, binary_element_bytes: usize) -> Result<i32, String> {
+        let len = self.read_i32()?;
+        let count =
+            usize::try_from(len).map_err(|_| "read error: negative vector length".to_string())?;
+        let minimum = if self.ascii_body {
+            1
+        } else {
+            binary_element_bytes
+        };
+        if count > self.remaining() / minimum {
+            return Err("read error: truncated vector payload".into());
+        }
+        Ok(len)
+    }
+
     pub fn read_string_bytes(&mut self, len: usize) -> Result<Vec<u8>, String> {
         if !self.ascii_body {
             return self.read_bytes(len).map(|bytes| bytes.to_vec());
         }
 
         self.skip_ascii_whitespace();
-        let mut out = Vec::with_capacity(len);
+        // Escapes consume at least one input byte per decoded byte. Never
+        // reserve a stream-declared allocation before checking that lower bound.
+        if len > self.remaining() {
+            return Err("read error: truncated ASCII string".into());
+        }
+        let mut out = Vec::new();
+        out.try_reserve_exact(len)
+            .map_err(|_| "read error: ASCII string allocation failed".to_string())?;
         while out.len() < len {
             if self.pos >= self.data.len() {
                 return Err("read error: unexpected end of ASCII string".to_string());
@@ -814,6 +842,21 @@ pub unsafe fn ReadItemInternal(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
 ) -> Result<SEXP, String> {
+    // Bound native stack usage independently of the R evaluation stack.
+    // This reader is private; a panic discards it at the session boundary.
+    if reader.item_depth >= 128 {
+        return Err("read error: serialized object nesting exceeds 128 levels".into());
+    }
+    reader.item_depth += 1;
+    let result = unsafe { read_item_body(reader, ref_table) };
+    reader.item_depth -= 1;
+    result
+}
+
+unsafe fn read_item_body(
+    reader: &mut BinaryReader,
+    ref_table: &mut ReadRefTable,
+) -> Result<SEXP, String> {
     unsafe {
         let flags = reader.read_i32()?;
         let mut stype: c_int = 0;
@@ -901,7 +944,7 @@ pub unsafe fn ReadItemInternal(
                 Ok(s)
             }
         } else if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
-            let len = reader.read_i32()?;
+            let len = reader.read_vector_length(4)?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             let _s_guard = protect(s);
             let int_data = INTEGER(s);
@@ -918,7 +961,7 @@ pub unsafe fn ReadItemInternal(
             }
             Ok(s)
         } else if stype == SEXPTYPE::REALSXP {
-            let len = reader.read_i32()?;
+            let len = reader.read_vector_length(8)?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             let _s_guard = protect(s);
             let real_data = REAL(s);
@@ -935,7 +978,7 @@ pub unsafe fn ReadItemInternal(
             }
             Ok(s)
         } else if stype == SEXPTYPE::CPLXSXP {
-            let len = reader.read_i32()?;
+            let len = reader.read_vector_length(16)?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             let _s_guard = protect(s);
             let cpx_data = COMPLEX(s);
@@ -954,7 +997,7 @@ pub unsafe fn ReadItemInternal(
             }
             Ok(s)
         } else if stype == SEXPTYPE::STRSXP {
-            let len = reader.read_i32()?;
+            let len = reader.read_vector_length(4)?;
             let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
             let _s_guard = protect(s);
             for i in 0..len {
@@ -971,7 +1014,7 @@ pub unsafe fn ReadItemInternal(
             }
             Ok(s)
         } else if stype == SEXPTYPE::RAWSXP {
-            let len = reader.read_i32()?;
+            let len = reader.read_vector_length(1)?;
             let s = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
             let _s_guard = protect(s);
             let raw_data = RAW(s);
@@ -988,7 +1031,7 @@ pub unsafe fn ReadItemInternal(
             }
             Ok(s)
         } else if stype == SEXPTYPE::VECSXP || stype == SEXPTYPE::EXPRSXP {
-            let len = reader.read_i32()?;
+            let len = reader.read_vector_length(4)?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             let _s_guard = protect(s);
             for i in 0..len {

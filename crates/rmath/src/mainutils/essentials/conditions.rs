@@ -190,17 +190,6 @@ pub unsafe fn do_withCallingHandlers(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
 // Exiting handlers (tryCatch) for warning conditions
 // ---------------------------------------------------------------------------
 
-thread_local! {
-    /// Classes of the exiting handlers established by enclosing
-    /// `tryCatch(...)` frames, innermost last.  Upstream vwarningcall()
-    /// signals the simpleWarning through R_HandlerStack and an exiting
-    /// handler takes over; the port's equivalent is to unwind (panic)
-    /// out of `warning()` only when a frame actually registered a
-    /// matching class.
-    static TRY_CATCH_HANDLER_CLASSES: std::cell::RefCell<Vec<Vec<String>>> =
-        std::cell::RefCell::new(Vec::new());
-}
-
 /// Record the condition being signaled by `stop(<condition>)` (null clears
 /// the slot). The object is a field of the active `RInstance`, so the normal
 /// session GC marks and rewrites it while an unwind is in flight.
@@ -250,9 +239,10 @@ unsafe fn condition_classes(cond: SEXP) -> Vec<String> {
 /// unknown variants through.
 /// Does any enclosing tryCatch frame register one of `classes`?
 fn try_catch_wants(classes: &[&str]) -> bool {
-    TRY_CATCH_HANDLER_CLASSES.with(|stack| {
-        stack
-            .borrow()
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst)
+            .error_state
+            .try_catch_handler_classes
             .iter()
             .any(|frame| frame.iter().any(|c| classes.contains(&c.as_str())))
     })
@@ -938,20 +928,25 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             current = CDR(current);
         }
         let _handler_guards: Vec<_> = handlers.iter().map(|(_, h)| protect(*h)).collect();
-        TRY_CATCH_HANDLER_CLASSES.with(|stack| {
-            stack
-                .borrow_mut()
+        crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst)
+                .error_state
+                .try_catch_handler_classes
                 .push(handlers.iter().map(|(tag, _)| tag.clone()).collect());
         });
-        struct PopHandlers;
+        struct PopHandlers(*mut crate::sexp::instance::RInstance);
         impl Drop for PopHandlers {
             fn drop(&mut self) {
-                TRY_CATCH_HANDLER_CLASSES.with(|stack| {
-                    stack.borrow_mut().pop();
-                });
+                // Scoped within evaluation: the creating session outlives this
+                // guard, even when another session becomes ambient temporarily.
+                unsafe {
+                    (*self.0).error_state.try_catch_handler_classes.pop();
+                }
             }
         }
-        let _pop_guard = PopHandlers;
+        let _pop_guard = PopHandlers(crate::sexp::instance::with_required_current_instance(
+            |inst| inst,
+        ));
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
