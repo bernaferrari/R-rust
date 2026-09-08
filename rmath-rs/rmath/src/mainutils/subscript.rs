@@ -1232,7 +1232,11 @@ unsafe fn stringSubscript(
 pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let mut stretch: R_xlen_t = 0;
-        let ns = LENGTH(s);
+        let ns = if TYPEOF(s) == SEXPTYPE::SYMSXP {
+            0
+        } else {
+            LENGTH(s)
+        };
         let nd = INTEGER_ELT(dims, dim);
         let stype = TYPEOF(s);
         if stype == SEXPTYPE::NILSXP {

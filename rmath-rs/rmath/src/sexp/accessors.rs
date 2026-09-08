@@ -70,7 +70,12 @@ pub unsafe fn LENGTH(x: SEXP) -> c_int {
         if !is_valid_sexp_ptr(x) {
             return 0;
         }
-        (*x).vecsxp_length() as c_int
+        let length = XLENGTH(x);
+        c_int::try_from(length).unwrap_or_else(|_| {
+            std::panic::panic_any(super::context::RError {
+                message: "long vectors not supported by LENGTH".into(),
+            })
+        })
     }
 }
 
@@ -80,7 +85,24 @@ pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
         if !is_valid_sexp_ptr(x) {
             return 0;
         }
-        (*x).vecsxp_length()
+        match (*x).sxpinfo.type_of() {
+            SEXPTYPE::NILSXP => 0,
+            SEXPTYPE::CHARSXP
+            | SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::VECSXP
+            | SEXPTYPE::EXPRSXP
+            | SEXPTYPE::RAWSXP => (*x).vecsxp_length(),
+            kind => std::panic::panic_any(super::context::RError {
+                message: format!(
+                    "internal vector length requested for non-vector type {}",
+                    kind.0
+                ),
+            }),
+        }
     }
 }
 

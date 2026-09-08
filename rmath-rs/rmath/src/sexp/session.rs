@@ -384,17 +384,6 @@ impl RSession {
         unsafe { &*self.instance }
     }
 
-    /// Mutable view of the owned instance.
-    #[inline]
-    // Deliberate: the session owns the `Box::into_raw` instance and mutable
-    // views are gated by the runtime's borrow-depth discipline, not by `&self`.
-    #[allow(clippy::mut_from_ref)]
-    fn inst_mut(&self) -> &mut RInstance {
-        // SAFETY: see `inst`; mutable views are created only where the
-        // runtime's borrow-depth discipline permits.
-        unsafe { &mut *self.instance }
-    }
-
     fn instance_ptr(&self) -> *mut RInstance {
         self.instance
     }
@@ -652,7 +641,9 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
-            crate::eval::parser::parse_expressions(code, &mut self.inst_mut().arena)
+            super::memory::with_arena_in(self.instance, |arena| {
+                crate::eval::parser::parse_expressions(code, arena)
+            })
         };
         let expressions = match expressions {
             Ok(exprs) => exprs,
@@ -784,7 +775,9 @@ impl RSession {
 
         let expressions = {
             let _guard = self.activate();
-            crate::eval::parser::parse_expressions(code, &mut self.inst_mut().arena)
+            super::memory::with_arena_in(self.instance, |arena| {
+                crate::eval::parser::parse_expressions(code, arena)
+            })
         };
         let expressions = match expressions {
             Ok(exprs) => exprs,
@@ -891,7 +884,9 @@ impl RSession {
 
         let raw_expr = {
             let _guard = self.activate();
-            crate::eval::parser::parse(code, &mut self.inst_mut().arena)
+            super::memory::with_arena_in(self.instance, |arena| {
+                crate::eval::parser::parse(code, arena)
+            })
         };
         let raw_expr = match raw_expr {
             Ok(expr) => expr_or_nil(expr),
@@ -1040,12 +1035,8 @@ impl RSession {
             return None;
         }
         let _guard = self.activate();
-        // Route through `with_arena_in` (not a direct `inst_mut().arena`
-        // lend): it exposes the arena lend for wildcard re-acquisition by
-        // ambient APIs under the closure (Stacked-Borrows discipline, see
-        // `instance::acquire_instance_mut`) and processes deferred
-        // alloc-time GC hooks exactly like every other arena entry point.
-        Some(super::memory::with_arena_in(self.inst_mut(), f))
+        // Borrow only the arena, then process deferred GC after that lend ends.
+        Some(super::memory::with_arena_in(self.instance, f))
     }
 
     /// Return the current arena budget for this session.
@@ -1058,7 +1049,9 @@ impl RSession {
     /// Existing allocations are kept; future allocations fail if retained arena
     /// memory or active node count would exceed the configured limit.
     pub fn set_arena_budget(&mut self, budget: ArenaBudget) {
-        self.inst_mut().arena.set_budget(budget);
+        unsafe {
+            (*self.instance).arena.set_budget(budget);
+        }
     }
 
     /// Return this session's configured R library search paths.
@@ -1077,7 +1070,9 @@ impl RSession {
         I: IntoIterator<Item = P>,
         P: Into<std::path::PathBuf>,
     {
-        self.inst_mut().path_policy.set_library_paths(paths);
+        unsafe {
+            (*self.instance).path_policy.set_library_paths(paths);
+        }
     }
 
     /// Configure Android app-private runtime paths for this session.
@@ -1091,11 +1086,14 @@ impl RSession {
         cache_dir: impl Into<std::path::PathBuf>,
         bundled_library_dir: Option<impl Into<std::path::PathBuf>>,
     ) -> std::io::Result<()> {
-        self.inst_mut().path_policy = crate::mainutils::paths::RuntimePathPolicy::for_android_app(
+        let policy = crate::mainutils::paths::RuntimePathPolicy::for_android_app(
             app_files_dir,
             cache_dir,
             bundled_library_dir,
         )?;
+        unsafe {
+            (*self.instance).path_policy = policy;
+        }
         Ok(())
     }
 
@@ -1161,7 +1159,9 @@ impl RSession {
     /// remains session-scoped while the synchronization detail stays private.
     pub fn set_cancellation_token(&mut self, token: Option<CancellationToken>) {
         if self.active {
-            self.inst_mut().eval_state.cancellation = token;
+            unsafe {
+                (*self.instance).eval_state.cancellation = token;
+            }
         }
     }
 
@@ -1175,7 +1175,7 @@ impl RSession {
         token: Option<CancellationToken>,
     ) -> Option<CancellationToken> {
         if self.active {
-            std::mem::replace(&mut self.inst_mut().eval_state.cancellation, token)
+            unsafe { std::mem::replace(&mut (*self.instance).eval_state.cancellation, token) }
         } else {
             None
         }
@@ -1192,7 +1192,9 @@ impl RSession {
     /// current-instance limit accessors.
     pub fn set_eval_limits(&mut self, limits: crate::eval::eval::EvalLimits) {
         if self.active {
-            self.inst_mut().eval_state.limits = limits;
+            unsafe {
+                (*self.instance).eval_state.limits = limits;
+            }
         }
     }
 
@@ -1209,7 +1211,9 @@ impl RSession {
     /// Configure which host-process operations this session may invoke.
     pub fn set_capabilities(&mut self, capabilities: super::instance::SessionCapabilities) {
         if self.active {
-            self.inst_mut().eval_state.capabilities = capabilities;
+            unsafe {
+                (*self.instance).eval_state.capabilities = capabilities;
+            }
         }
     }
 

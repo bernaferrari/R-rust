@@ -27,6 +27,7 @@ mod kmeans;
 mod ksmooth;
 mod line;
 mod lm;
+pub(crate) mod loess;
 pub(crate) mod loessc;
 mod loglin;
 mod lowess;

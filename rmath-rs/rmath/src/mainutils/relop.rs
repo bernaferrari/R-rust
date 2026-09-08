@@ -817,8 +817,8 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             }
         }
 
-        let mut nx = XLENGTH(x);
-        let mut ny = XLENGTH(y);
+        let mut nx = if isVector(x) != 0 { XLENGTH(x) } else { 0 };
+        let mut ny = if isVector(y) != 0 { XLENGTH(y) } else { 0 };
         let typex = TYPEOF(x);
         let typey = TYPEOF(y);
 
