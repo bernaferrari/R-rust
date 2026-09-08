@@ -1,3 +1,4 @@
+import { RConsole } from "@/components/RConsole"
 import { useState, useSyncExternalStore } from "react"
 import {
   ArrowDown,
@@ -352,7 +353,7 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
         id="main-content"
         className={home ? undefined : `focused-page page-${page}`}
       >
-        {!home && page !== "editor" && (
+        {!home && page !== "editor" && page !== "console" && (
           <div className="page-intro">
             <a href={pageHref("home")}>Rove /</a>
             <h1>
@@ -373,6 +374,7 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
           </a>
         )}
         {page === "compatibility" && <CompatibilityPage />}
+        {page === "console" && <RConsole />}
         {page === "editor" && (
           <h1 className="editor-page-heading">Your space for a little R.</h1>
         )}

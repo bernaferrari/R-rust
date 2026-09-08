@@ -28,7 +28,7 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-`pnpm build` prepares the runtime, builds the client, creates an SSR bundle, and prerenders all six pages so the same `App` markup is available before hydration. The code editor uses a stable server fallback before loading its interactive client bundle.
+`pnpm build` prepares the runtime, builds the client, creates an SSR bundle, and prerenders all seven pages so the same `App` markup is available before hydration. The code editor uses a stable server fallback before loading its interactive client bundle.
 
 The gallery preview generator needs a running Vite server and Playwright:
 
@@ -59,7 +59,7 @@ CI tests mock Ollama's HTTP response to keep that contract deterministic.
 
 ## Focused pages and search metadata
 
-The footer links to `/editor/`, `/examples/`, `/local-ai/`, `/embedding/`, and
+The footer links to `/console/`, `/editor/`, `/examples/`, `/local-ai/`, `/embedding/`, and
 `/compatibility/`. Each is rendered to its own HTML file with a unique title,
 description, heading and Open Graph metadata. The editor is the same worker-backed
 playground without the marketing sections. Gallery cards open the selected recipe
@@ -102,3 +102,7 @@ a process-wide memory boundary.
 `prepare-runtime.mjs` validates the memory declaration in both newly supplied and
 already prepared Wasm artifacts, so an older unlimited package cannot silently
 replace the bounded runtime. Rebuild old packages with `pnpm build:runtime`.
+
+### Interactive R console
+
+`/console/` is a chat-style REPL using Shadcn Message, Bubble, and Message Scroller. One isolated Wasm worker keeps variables between commands until navigation, reset, or a fatal runtime error. Enter runs; Shift+Enter inserts a line. Choose text or plot output, reuse a command, or download its plot. Each plot command opens a fresh device; put plot overlays in the same command. Stop resets the worker and its variables. The latest 50 commands are retained in browser memory, with plot URLs released when discarded.

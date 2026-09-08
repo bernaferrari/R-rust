@@ -24,6 +24,7 @@
     "@fontsource/instrument-serif": "^5.3.0",
     "@lezer/highlight": "^1.2.3",
     "@mlc-ai/web-llm": "^0.2.84",
+    "@shadcn/react": "^0.3.1",
     "@tailwindcss/vite": "^4",
     "@uiw/react-codemirror": "^4.25.11",
     "class-variance-authority": "^0.7.1",

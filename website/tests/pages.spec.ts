@@ -27,6 +27,7 @@ test("focused pages have footer navigation and accessible mobile layouts", async
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   for (const path of [
+    "console",
     "editor",
     "examples",
     "local-ai",
@@ -37,7 +38,7 @@ test("focused pages have footer navigation and accessible mobile layouts", async
     await expect(page.locator("h1")).toHaveCount(1)
     await expect(
       page.getByRole("navigation", { name: "Site map" }).getByRole("link")
-    ).toHaveCount(6)
+    ).toHaveCount(7)
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth)
     ).toBeLessThanOrEqual(390)
@@ -49,6 +50,7 @@ test("production pages contain unique metadata and content before JavaScript", a
   const titles = new Set<string>()
   for (const path of [
     "",
+    "console/",
     "editor/",
     "examples/",
     "local-ai/",
@@ -61,7 +63,7 @@ test("production pages contain unique metadata and content before JavaScript", a
     expect(html).toContain('aria-label="Site map"')
     expect(html).toMatch(/name="description" content="[^"]+"/)
   }
-  expect(titles.size).toBe(6)
+  expect(titles.size).toBe(7)
   expect(await readFile("dist/404.html", "utf8")).toContain(
     'name="robots" content="noindex"'
   )

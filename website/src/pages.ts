@@ -6,6 +6,13 @@ export const pages = {
     description:
       "Explore R in your browser: runnable examples, Vello graphics and local AI, powered by a Rust and WebAssembly runtime.",
   },
+  console: {
+    path: "console/",
+    label: "R console",
+    title: "Interactive R console in your browser | Rove",
+    description:
+      "Explore R in a chat-style browser console. Keep variables between commands, view results and plots, and experiment with WebAssembly.",
+  },
   editor: {
     path: "editor/",
     label: "R editor",
