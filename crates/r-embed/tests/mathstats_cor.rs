@@ -59,3 +59,49 @@ fn cor_does_not_silently_ignore_requested_method() {
         .eval("cor(x, x, method='pearson')")
         .expect("recovery");
 }
+
+#[test]
+fn cor_vector_rejects_recycling_and_propagates_missing_by_default() {
+    let mut session = RSession::new().unwrap();
+    let unequal = session.eval("cor(c(1,2,3), c(1,2))");
+    assert!(unequal.is_err(), "unequal cor result: {unequal:?}");
+    assert_eq!(
+        session.eval("is.na(cor(c(1,NA,3), c(1,2,3)))").unwrap(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session
+            .eval("cor(c(1,NA,3), c(1,2,3), use='complete.obs')")
+            .unwrap(),
+        "[1] 1"
+    );
+    assert_eq!(
+        session
+            .eval("is.na(cor(c(NA,NA), c(1,2), use='na.or.complete'))")
+            .unwrap(),
+        "[1] TRUE"
+    );
+    assert!(
+        session
+            .eval("cor(c(NA,NA), c(1,2), use='complete.obs')")
+            .is_err()
+    );
+    assert!(session.eval("cor(c(NA,2), c(1,2), use='all.obs')").is_err());
+    assert_eq!(
+        session.eval("is.na(cor(c(1,NaN,3), c(1,2,3)))").unwrap(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session.eval("is.nan(cor(c(1,Inf,3), c(1,2,3)))").unwrap(),
+        "[1] TRUE"
+    );
+}
+
+#[test]
+fn cor_complete_pairs_distinguish_zero_one_and_empty() {
+    let mut s = RSession::new().unwrap();
+    assert_eq!(s.eval("is.na(cor(c(1,NA), c(1,NA), use='complete.obs'))").unwrap(), "[1] TRUE");
+    assert!(s.eval("cor(numeric(), numeric(), use='complete.obs')").is_err());
+    assert!(s.eval("cor(numeric(), numeric(), use='pairwise.complete.obs')").is_err());
+    assert_eq!(s.eval("is.na(cor(numeric(), numeric(), use='na.or.complete'))").unwrap(), "[1] TRUE");
+}

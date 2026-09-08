@@ -530,6 +530,7 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             CDR(y_cdr)
         };
         let mut position = 2;
+        let mut use_mode = "everything".to_string();
         while !extra.is_null() && extra != R_NilValue() {
             let name = tag_name(extra).unwrap_or_else(|| {
                 if position == 2 {
@@ -540,20 +541,37 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     "unknown".into()
                 }
             });
-            let expected = match name.as_str() {
-                "use" => "everything",
-                "method" => "pearson",
-                _ => base_error("unsupported cor argument"),
-            };
             let value = CAR(extra);
-            if value != R_MissingArg() {
-                if TYPEOF(value) != SEXPTYPE::STRSXP
-                    || XLENGTH(value) != 1
-                    || std::ffi::CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_bytes()
-                        != expected.as_bytes()
+            if name == "method" {
+                if value != R_MissingArg()
+                    && (TYPEOF(value) != SEXPTYPE::STRSXP
+                        || XLENGTH(value) != 1
+                        || std::ffi::CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_bytes()
+                            != b"pearson")
                 {
-                    base_error("cor currently supports only use='everything', method='pearson'");
+                    base_error("cor currently supports only method='pearson'");
                 }
+            } else if name == "use" {
+                if value != R_MissingArg() {
+                    if TYPEOF(value) != SEXPTYPE::STRSXP || XLENGTH(value) != 1 {
+                        base_error("invalid 'use' argument");
+                    }
+                    use_mode = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(value, 0)))
+                        .to_string_lossy()
+                        .into_owned();
+                    if !matches!(
+                        use_mode.as_str(),
+                        "everything"
+                            | "all.obs"
+                            | "complete.obs"
+                            | "na.or.complete"
+                            | "pairwise.complete.obs"
+                    ) {
+                        base_error("invalid 'use' argument");
+                    }
+                }
+            } else {
+                base_error("unsupported cor argument");
             }
             position += 1;
             extra = CDR(extra);
@@ -579,6 +597,9 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             dims(y)
         };
         if x_dims.is_some() || y_dims.is_some() {
+            if use_mode != "everything" {
+                base_error("matrix cor currently supports only use='everything'");
+            }
             let (x_rows, nx) = x_dims.unwrap_or((XLENGTH(x) as usize, 1));
             let (y_rows, ny) = match y_dims {
                 Some((rows, cols)) => (rows, cols),
@@ -717,22 +738,42 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             get_numeric_data(y)
         };
 
-        let n = x_data.len().min(y_data.len());
+        if x_data.len() != y_data.len() {
+            base_error("incompatible lengths");
+        }
+        let n = x_data.len();
         if n == 0 {
-            return Rf_ScalarReal(NA_REAL);
+            match use_mode.as_str() {
+                "complete.obs" => base_error("no complete element pairs"),
+                "pairwise.complete.obs" => base_error("'x' is empty"),
+                _ => return Rf_ScalarReal(NA_REAL),
+            }
+        }
+
+        let missing = |value: f64| value.is_nan();
+        let missing_count = (0..n)
+            .filter(|&i| missing(x_data[i]) || missing(y_data[i]))
+            .count();
+        match use_mode.as_str() {
+            "everything" if missing_count > 0 => return Rf_ScalarReal(NA_REAL),
+            "all.obs" if missing_count > 0 => base_error("missing observations in cov/cor"),
+            _ => {}
         }
 
         let mut sum_x = 0.0_f64;
         let mut sum_y = 0.0_f64;
         let mut count = 0_i64;
         for i in 0..n {
-            if !x_data[i].is_nan() && !y_data[i].is_nan() {
+            if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
                 sum_x += x_data[i];
                 sum_y += y_data[i];
                 count += 1;
             }
         }
         if count < 2 {
+            if count == 0 && use_mode == "complete.obs" {
+                base_error("no complete element pairs");
+            }
             return Rf_ScalarReal(NA_REAL);
         }
         let mean_x = sum_x / count as f64;
@@ -742,7 +783,7 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut var_x = 0.0_f64;
         let mut var_y = 0.0_f64;
         for i in 0..n {
-            if !x_data[i].is_nan() && !y_data[i].is_nan() {
+            if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
                 let dx = x_data[i] - mean_x;
                 let dy = y_data[i] - mean_y;
                 cov += dx * dy;
