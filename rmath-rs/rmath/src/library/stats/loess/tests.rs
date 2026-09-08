@@ -2521,3 +2521,115 @@ fn weighted_parametric_degree_2_interpolate() {
         close(*a, b);
     }
 }
+
+#[test]
+fn execution_rejects_workspace_before_fitting() {
+    let x = (0..20).map(|i| vec![i as f64]).collect();
+    let execution = Execution {
+        workspace_limit: 1,
+        check: &|| Ok(()),
+    };
+    let error = Model::fit_with_execution(
+        x,
+        vec![1.; 20],
+        vec![1.; 20],
+        config(true, true),
+        &execution,
+    )
+    .unwrap_err();
+    assert!(error.contains("workspace limit"), "{error}");
+    assert!(
+        execution
+            .workspace(usize::MAX, 4, usize::MAX, true)
+            .is_err()
+    );
+}
+
+#[test]
+fn execution_cancels_inside_fit_and_prediction() {
+    use std::cell::Cell;
+    let x: Vec<_> = (0..20).map(|i| vec![i as f64]).collect();
+    for interpolate in [false, true] {
+        let polls = Cell::new(0);
+        let cancel = || {
+            polls.set(polls.get() + 1);
+            if polls.get() >= 4 {
+                Err("cancelled inside numerical work".into())
+            } else {
+                Ok(())
+            }
+        };
+        let execution = Execution::new(&cancel);
+        let error = Model::fit_with_execution(
+            x.clone(),
+            vec![1.; 20],
+            vec![1.; 20],
+            config(interpolate, true),
+            &execution,
+        )
+        .unwrap_err();
+        assert_eq!(error, "cancelled inside numerical work");
+        let model = Model::fit(
+            x.clone(),
+            vec![1.; 20],
+            vec![1.; 20],
+            config(interpolate, true),
+        )
+        .unwrap();
+        polls.set(0);
+        let error = model
+            .predict_with_execution(&x, true, &execution)
+            .unwrap_err();
+        assert_eq!(error, "cancelled inside numerical work");
+    }
+}
+
+#[test]
+fn execution_cancels_inside_exact_diagnostics() {
+    let polls = std::cell::Cell::new(0);
+    let cancel = || {
+        polls.set(polls.get() + 1);
+        if polls.get() == 3 {
+            Err("cancelled diagnostics".into())
+        } else {
+            Ok(())
+        }
+    };
+    let matrix = vec![vec![0.; 10]; 10];
+    assert_eq!(
+        diagnostics::exact(&matrix, &Execution::new(&cancel)).unwrap_err(),
+        "cancelled diagnostics"
+    );
+}
+
+#[test]
+fn prediction_checks_workspace_including_query_rows() {
+    let x: Vec<_> = (0..20).map(|i| vec![i as f64]).collect();
+    let model = Model::fit(x, vec![1.; 20], vec![1.; 20], config(false, true)).unwrap();
+    let execution = Execution {
+        workspace_limit: 100_000,
+        check: &|| Ok(()),
+    };
+    // Training fits this budget; a much larger prediction batch does not.
+    execution.workspace(20, 1, 20, false).unwrap();
+    let error = model
+        .predict_with_execution(&vec![vec![1.]; 1000], true, &execution)
+        .unwrap_err();
+    assert!(error.contains("workspace limit"), "{error}");
+}
+
+#[test]
+fn unavailable_predictions_preserve_r_na_instead_of_nan() {
+    let x: Vec<_> = (0..20).map(|i| vec![i as f64]).collect();
+    let model = Model::fit(x, vec![1.; 20], vec![1.; 20], config(true, false)).unwrap();
+    let queries = [
+        vec![crate::sexp::ffi::NA_REAL],
+        vec![f64::NAN],
+        vec![f64::INFINITY],
+        vec![-1.],
+    ];
+    let (fit, error) = model.predict(&queries, true).unwrap();
+    for value in fit.into_iter().chain(error) {
+        assert_eq!(value.to_bits(), crate::sexp::ffi::NA_REAL.to_bits());
+    }
+}

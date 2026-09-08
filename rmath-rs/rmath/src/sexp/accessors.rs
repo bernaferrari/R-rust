@@ -782,65 +782,83 @@ pub unsafe fn CHAR_RW(x: SEXP) -> *mut c_char {
 // String/list element accessors
 // ---------------------------------------------------------------------------
 
+/// Validate the tag and index before forming a pointer into a SEXP array.
+/// The caller must supply a live, initialized object (as for every raw accessor).
+#[inline]
+unsafe fn checked_element_slot(x: SEXP, i: R_xlen_t, string_only: bool) -> *mut SEXP {
+    unsafe {
+        let tag = (*x).sxpinfo.type_of();
+        let valid_tag = if string_only {
+            tag == SEXPTYPE::STRSXP
+        } else {
+            matches!(
+                tag,
+                SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP | SEXPTYPE::STRSXP | SEXPTYPE::BCODESXP
+            )
+        };
+        if !valid_tag {
+            std::panic::panic_any(super::context::RError {
+                message: format!(
+                    "invalid {} element access for type {}",
+                    if string_only { "string" } else { "vector" },
+                    TYPEOF(x)
+                ),
+            });
+        }
+        let length = (*x).vecsxp_length();
+        let data = DATAPTR(x).cast::<SEXP>();
+        if i < 0 || i >= length || data.is_null() {
+            std::panic::panic_any(super::context::RError {
+                message: format!(
+                    "invalid vector buffer/index: type {} length {} index {}",
+                    TYPEOF(x),
+                    length,
+                    i
+                ),
+            });
+        }
+        data.add(i as usize)
+    }
+}
+
 /// Get the i-th element of a STRSXP (a CHARSXP).
 pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
-        debug_assert_sexptype(x, &[SEXPTYPE::STRSXP]);
-        let ptrs = DATAPTR(x) as *mut SEXP;
-        *ptrs.add(i as usize)
+        *checked_element_slot(x, i, true)
     }
 }
 
-/// Set the i-th element of a STRSXP.
+/// Set the i-th element of a STRSXP, recording old-to-young references.
 pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
-            let ptrs = DATAPTR(x) as *mut SEXP;
-            *ptrs.add(i as usize) = val;
+            let slot = checked_element_slot(x, i, true);
+            super::gengc::vector_write_barrier(x, i as usize, val);
+            *slot = val;
         }
     }
 }
 
-/// Get the i-th element of a VECSXP/EXPRSXP.
+/// Get the i-th element of a SEXP array, including internal bytecode payloads.
 pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
-        debug_assert_sexptype(
-            x,
-            &[
-                SEXPTYPE::VECSXP,
-                SEXPTYPE::EXPRSXP,
-                SEXPTYPE::STRSXP,
-                SEXPTYPE::BCODESXP,
-            ],
-        );
-        let ptrs = DATAPTR(x) as *mut SEXP;
-        if ptrs.is_null() || i < 0 || i >= (*x).vecsxp_length() {
-            std::panic::panic_any(super::context::RError {
-                message: format!(
-                    "invalid vector buffer/index: type {} length {} index {}",
-                    TYPEOF(x),
-                    (*x).vecsxp_length(),
-                    i
-                ),
-            });
-        }
-        *ptrs.add(i as usize)
+        *checked_element_slot(x, i, false)
     }
 }
 
-/// Set the i-th element of a VECSXP/EXPRSXP.
+/// Set the i-th element of a SEXP array, recording old-to-young references.
 pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     unsafe {
         if is_valid_sexp_ptr(x) {
+            let slot = checked_element_slot(x, i, false);
             super::gengc::vector_write_barrier(x, i as usize, val);
-            let ptrs = DATAPTR(x) as *mut SEXP;
-            *ptrs.add(i as usize) = val;
+            *slot = val;
         }
     }
 }
@@ -1031,6 +1049,91 @@ impl SexprecCore {
 mod tests {
     use super::super::ffi::*;
     use super::*;
+
+    #[test]
+    fn string_setter_rejects_out_of_bounds_before_writing() {
+        let mut slots: [SEXP; 1] = [ptr::null_mut(); 1];
+        let mut node = SexprecCore::new_vector(SEXPTYPE::STRSXP, 1);
+        node.gengc_next_node = slots.as_mut_ptr().cast();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            SET_STRING_ELT(&mut node, 1, ptr::null_mut());
+        }));
+        assert!(
+            result.is_err(),
+            "out-of-range string write must be rejected"
+        );
+        assert!(slots[0].is_null());
+    }
+
+    #[test]
+    fn string_setter_remembers_old_to_young_edges() {
+        let mut session = super::super::session::RSession::new();
+        let (parent, child) = session
+            .with_arena(|arena| {
+                (
+                    arena.alloc_vector(SEXPTYPE::STRSXP, 1),
+                    arena.alloc_charsxp(b"young"),
+                )
+            })
+            .unwrap();
+        session.with_active(|| unsafe {
+            super::super::gengc::promote_to_old(parent);
+            SET_STRING_ELT(parent, 0, child);
+            super::super::instance::with_required_current_instance(|instance| {
+                assert!(
+                    (*instance)
+                        .gc_state
+                        .remembered_set
+                        .iter()
+                        .any(|p| p == parent)
+                );
+            });
+            assert_eq!(STRING_ELT(parent, 0), child);
+        });
+    }
+
+    #[test]
+    fn element_access_checks_indices_and_tags_before_reading_or_writing() {
+        let mut slots: [SEXP; 1] = [ptr::null_mut(); 1];
+        let mut node = SexprecCore::new_vector(SEXPTYPE::STRSXP, 1);
+        node.gengc_next_node = slots.as_mut_ptr().cast();
+        for index in [-1, 1, i64::MAX] {
+            for operation in 0..4 {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    match operation {
+                        0 => {
+                            STRING_ELT(&mut node, index);
+                        }
+                        1 => {
+                            VECTOR_ELT(&mut node, index);
+                        }
+                        2 => SET_STRING_ELT(&mut node, index, ptr::null_mut()),
+                        _ => SET_VECTOR_ELT(&mut node, index, ptr::null_mut()),
+                    }
+                }));
+                assert!(result.is_err());
+            }
+        }
+        for tag in [SEXPTYPE::REALSXP, SEXPTYPE::LISTSXP] {
+            node.sxpinfo.set_type(tag);
+            for operation in 0..4 {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    match operation {
+                        0 => {
+                            STRING_ELT(&mut node, 0);
+                        }
+                        1 => {
+                            VECTOR_ELT(&mut node, 0);
+                        }
+                        2 => SET_STRING_ELT(&mut node, 0, ptr::null_mut()),
+                        _ => SET_VECTOR_ELT(&mut node, 0, ptr::null_mut()),
+                    }
+                }));
+                assert!(result.is_err());
+            }
+        }
+        assert!(slots[0].is_null());
+    }
 
     fn make_test_vector() -> SexprecCore {
         let mut node = SexprecCore::new_vector(SEXPTYPE::REALSXP, 3);

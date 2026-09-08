@@ -9,22 +9,18 @@
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::main::errors::Rf_error_unimplemented;
 use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::SEXP;
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // Stub functions
 // ---------------------------------------------------------------------------
 
 const STRSXP_VAL: c_int = 16;
-const VECSXP_VAL: c_int = 19;
-
-unsafe fn setAttrib(_x: SEXP, _what: SEXP, _val: SEXP) {}
-unsafe fn R_NamesSymbol() -> SEXP {
-    ptr::null_mut()
-}
 
 fn unsupported(name: &str) -> ! {
     Rf_error_unimplemented(name);
@@ -68,8 +64,10 @@ pub unsafe fn R_ReadClipboard(_clpcon: *mut c_void, _type: *mut c_char) -> c_int
 /// Get bitmap library version information.
 pub unsafe fn do_bmVersion() -> SEXP {
     unsafe {
-        let ans = Rf_allocVector(VECSXP_VAL, 3);
+        let ans = Rf_allocVector(STRSXP_VAL, 3);
+        let _ans = protect(ans);
         let nms = Rf_allocVector(STRSXP_VAL, 3);
+        let _nms = protect(nms);
 
         SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const _));
         SET_STRING_ELT(nms, 1, Rf_mkChar(b"jpeg\0".as_ptr() as *const _));
@@ -169,8 +167,24 @@ mod tests {
         unsafe {
             let result = do_bmVersion();
             if !result.is_null() {
-                assert_eq!(TYPEOF(result), VECSXP_VAL);
+                assert_eq!(TYPEOF(result), STRSXP_VAL);
                 assert_eq!(LENGTH(result), 3);
+                let _result = protect(result);
+                _session.gc();
+                let names = crate::eval::attrib_core::getAttrib(result, R_NamesSymbol());
+                assert_eq!(LENGTH(names), 3);
+                for (i, expected) in ["libpng", "jpeg", "libtiff"].iter().enumerate() {
+                    assert_eq!(
+                        std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, i as i64)))
+                            .to_str()
+                            .unwrap(),
+                        *expected
+                    );
+                    assert_eq!(
+                        std::ffi::CStr::from_ptr(CHAR(STRING_ELT(result, i as i64))).to_bytes(),
+                        b""
+                    );
+                }
             }
         }
     }

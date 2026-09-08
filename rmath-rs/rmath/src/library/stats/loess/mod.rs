@@ -19,6 +19,58 @@
 mod diagnostics;
 mod surface;
 
+/// Per-operation limits and cancellation; never retained in serialized models.
+pub(crate) struct Execution<'a> {
+    workspace_limit: usize,
+    check: &'a dyn Fn() -> Result<(), String>,
+}
+impl<'a> Execution<'a> {
+    pub fn new(check: &'a dyn Fn() -> Result<(), String>) -> Self {
+        Self {
+            workspace_limit: 256 * 1024 * 1024,
+            check,
+        }
+    }
+    fn checkpoint(&self) -> Result<(), String> {
+        (self.check)()
+    }
+
+    fn workspace(
+        &self,
+        n: usize,
+        d: usize,
+        queries: usize,
+        interpolate: bool,
+    ) -> Result<(), String> {
+        // Conservative admission estimate for simultaneous influence matrices,
+        // interpolation coefficients, local SVD scratch and KD-cell storage.
+        // A split can add up to 2^(d+1) vertices beyond the tree's stopping bound.
+        // This bounds numerical workspaces, not the host's total process memory.
+        let bytes = (|| {
+            let vertices = if interpolate {
+                n.max(200).checked_add(32)?
+            } else {
+                0
+            };
+            let rows = n
+                .checked_mul(4)?
+                .checked_add(queries.checked_mul(2)?)?
+                .checked_add(vertices.checked_mul(d.checked_add(1)?)?)?
+                .checked_add(256)?;
+            n.checked_mul(rows)?
+                .checked_add(queries.checked_mul(16)?)?
+                .checked_mul(8)
+        })();
+        if bytes.is_none_or(|bytes| bytes > self.workspace_limit) {
+            return Err(format!(
+                "LOESS workspace limit exceeded ({} MiB); reduce observations or prediction rows",
+                self.workspace_limit / (1024 * 1024)
+            ));
+        }
+        self.checkpoint()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Config {
     pub span: f64,
@@ -49,12 +101,24 @@ pub(crate) struct Model {
 }
 
 impl Model {
+    #[cfg(test)]
     pub fn fit(
-        mut x: Vec<Vec<f64>>,
+        x: Vec<Vec<f64>>,
         y: Vec<f64>,
         weights: Vec<f64>,
         config: Config,
     ) -> Result<Self, String> {
+        Self::fit_with_execution(x, y, weights, config, &Execution::new(&|| Ok(())))
+    }
+
+    pub fn fit_with_execution(
+        mut x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        weights: Vec<f64>,
+        config: Config,
+        execution: &Execution<'_>,
+    ) -> Result<Self, String> {
+        execution.checkpoint()?;
         let n = y.len();
         let d = x.first().map_or(0, Vec::len);
         if n == 0
@@ -83,6 +147,7 @@ impl Model {
         if config.drop_square.iter().any(|v| *v) && (d == 1 || config.degree != 2) {
             return Err("invalid dropped square for LOESS degree or predictor count".into());
         }
+        execution.workspace(n, d, n, config.interpolate)?;
         let mut divisor = vec![1.; d];
         if config.normalize && d > 1 {
             let trim = (0.1 * n as f64).ceil() as usize;
@@ -118,7 +183,7 @@ impl Model {
             delta2: 0.,
             s: 0.,
         };
-        let base = model.influence(&model.x, &model.weights)?;
+        let base = model.influence(&model.x, &model.weights, execution)?;
         model.trace = (0..n).map(|i| base[i][i]).sum();
         if model.config.approximate_trace && model.config.interpolate && !model.config.exact {
             let tau = if model.config.degree == 0 {
@@ -130,7 +195,7 @@ impl Model {
             model.trace = tau * (1. + ((g1 - model.config.span) / model.config.span).max(0.));
         }
         (model.delta1, model.delta2) = if model.config.exact {
-            diagnostics::exact(&base)
+            diagnostics::exact(&base, execution)?
         } else {
             diagnostics::approximate(
                 n,
@@ -145,6 +210,7 @@ impl Model {
         };
         model.fitted = multiply(&base, &model.y);
         for _ in 1..model.config.iterations {
+            execution.checkpoint()?;
             let residuals: Vec<_> = model
                 .y
                 .iter()
@@ -170,7 +236,7 @@ impl Model {
                 .zip(&model.robust)
                 .map(|(w, r)| w * r)
                 .collect();
-            model.fitted = multiply(&model.influence(&model.x, &w)?, &model.y);
+            model.fitted = multiply(&model.influence(&model.x, &w, execution)?, &model.y);
         }
         let residuals = if model.config.iterations > 1 {
             let residuals: Vec<_> = model
@@ -222,10 +288,22 @@ impl Model {
             .sum::<f64>()
             / model.delta1)
             .sqrt();
+        execution.checkpoint()?;
         Ok(model)
     }
 
+    #[cfg(test)]
     pub fn predict(&self, queries: &[Vec<f64>], se: bool) -> Result<(Vec<f64>, Vec<f64>), String> {
+        self.predict_with_execution(queries, se, &Execution::new(&|| Ok(())))
+    }
+
+    pub fn predict_with_execution(
+        &self,
+        queries: &[Vec<f64>],
+        se: bool,
+        execution: &Execution<'_>,
+    ) -> Result<(Vec<f64>, Vec<f64>), String> {
+        execution.checkpoint()?;
         let d = self.divisor.len();
         let n = self.y.len();
         if n == 0
@@ -257,6 +335,7 @@ impl Model {
         if queries.iter().any(|q| q.len() != d) {
             return Err("wrong number of LOESS predictors".into());
         }
+        execution.workspace(n, d, queries.len(), self.config.interpolate)?;
         let q: Vec<Vec<_>> = queries
             .iter()
             .map(|q| q.iter().zip(&self.divisor).map(|(v, s)| v / s).collect())
@@ -267,7 +346,9 @@ impl Model {
             .zip(&self.robust)
             .map(|(w, r)| w * r)
             .collect();
-        let mut fitted = vec![f64::NAN; q.len()];
+        // Unavailable predictions are R NA, distinguishable from computational
+        // NaN by is.nan(). This is only a numeric sentinel, not runtime state.
+        let mut fitted = vec![crate::sexp::ffi::NA_REAL; q.len()];
         let mut errors = fitted.clone();
         let valid: Vec<_> = q
             .iter()
@@ -294,7 +375,7 @@ impl Model {
         } else {
             &weights
         };
-        let l = self.influence(&q, fit_weights)?;
+        let l = self.influence(&q, fit_weights, execution)?;
         let values = multiply(&l, &self.y);
         let uncertainty = if se {
             self.influence(
@@ -304,6 +385,7 @@ impl Model {
                 } else {
                     &weights
                 },
+                execution,
             )?
         } else {
             vec![]
@@ -320,15 +402,24 @@ impl Model {
                         .sqrt();
             }
         }
+        execution.checkpoint()?;
         Ok((fitted, errors))
     }
 
-    fn influence(&self, q: &[Vec<f64>], weights: &[f64]) -> Result<Vec<Vec<f64>>, String> {
+    fn influence(
+        &self,
+        q: &[Vec<f64>],
+        weights: &[f64],
+        execution: &Execution<'_>,
+    ) -> Result<Vec<Vec<f64>>, String> {
         if self.config.interpolate {
-            surface::interpolate(self, q, weights)
+            surface::interpolate(self, q, weights, execution)
         } else {
             q.iter()
-                .map(|q| self.local(q, weights).map(|coeff| coeff[0].clone()))
+                .map(|q| {
+                    self.local(q, weights, execution)
+                        .map(|coeff| coeff[0].clone())
+                })
                 .collect()
         }
     }
@@ -352,7 +443,13 @@ impl Model {
     }
 
     // Coefficient influence rows: intercept, followed by first derivatives.
-    fn local(&self, q: &[f64], weights: &[f64]) -> Result<Vec<Vec<f64>>, String> {
+    fn local(
+        &self,
+        q: &[f64],
+        weights: &[f64],
+        execution: &Execution<'_>,
+    ) -> Result<Vec<Vec<f64>>, String> {
+        execution.checkpoint()?;
         let n = self.x.len();
         let d = q.len();
         let nf = ((n as f64 * self.config.span + 1e-5).floor() as usize).min(n);
@@ -408,7 +505,9 @@ impl Model {
                 row[j] /= scale[j];
             }
         }
+        execution.checkpoint()?;
         let pinv = pseudoinverse(&a)?;
+        execution.checkpoint()?;
         let mut output = vec![vec![0.; n]; d + 1];
         for j in 0..(d + 1).min(k) {
             for i in 0..nf {

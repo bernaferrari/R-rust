@@ -15,12 +15,16 @@
 
 //! Hat-matrix diagnostics and upstream empirical trace corrections.
 use super::surface::hermite;
-pub(super) fn exact(l: &[Vec<f64>]) -> (f64, f64) {
+pub(super) fn exact(
+    l: &[Vec<f64>],
+    execution: &super::Execution<'_>,
+) -> Result<(f64, f64), String> {
     let n = l.len();
     let mut delta1 = 0.;
     let mut delta2 = 0.;
     for i in 0..n {
         for j in 0..=i {
+            execution.checkpoint()?;
             let ll = (0..n)
                 .map(|k| (l[i][k] - f64::from(i == k)) * (l[j][k] - f64::from(j == k)))
                 .sum::<f64>();
@@ -30,7 +34,7 @@ pub(super) fn exact(l: &[Vec<f64>]) -> (f64, f64) {
             delta2 += ll * ll * (if i == j { 1. } else { 2. });
         }
     }
-    (delta1, delta2)
+    Ok((delta1, delta2))
 }
 const COEFFICIENTS: [f64; 48] = [
     0.2971620, 0.3802660, 0.5886043, 0.4263766, 0.3346498, 0.6271053, 0.5241198, 0.3484836,

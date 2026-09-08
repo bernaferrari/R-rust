@@ -1,15 +1,24 @@
 //! R-facing adapters for the owned, pointer-free LOESS numerical engine.
 use crate::eval::attrib_core::{R_ClassSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
-use crate::library::stats::loess::{Config, Model};
+use crate::library::stats::loess::{Config, Execution, Model};
 use crate::mainutils::essentials::{base_error, elt_to_string};
 use crate::sexp::{
     accessors::*,
     constructors::*,
-    ffi::{SEXP, SEXPTYPE},
+    ffi::{NA_INTEGER, NA_REAL, SEXP, SEXPTYPE},
     globals::R_NilValue,
     protect::{ProtectGuard, protect},
     symbol::Rf_install,
 };
+use std::collections::HashSet;
+
+fn check_execution() -> Result<(), String> {
+    if crate::sexp::instance::is_cancellation_requested() {
+        Err("operation cancelled".into())
+    } else {
+        Ok(())
+    }
+}
 
 pub(crate) unsafe fn do_loess(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -268,7 +277,9 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut expressions = vec![];
         predictors(CAR(CDR(CDR(formula))), &mut expressions);
         let eval = |expr| crate::eval::eval::Rf_eval(expr, env);
-        let y = numeric(eval(CADR(formula)));
+        let y_value = eval(CADR(formula));
+        let _y_value = protect(y_value);
+        let y = numeric(y_value);
         let n = y.len();
         let cols = predictor_columns(&expressions, env);
         let d = cols.len();
@@ -395,17 +406,25 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if na_name == "na.fail" && complete.len() != selected.len() {
             base_error("missing values in object");
         }
-        if !matches!(na_name.as_str(), "na.omit" | "na.fail") {
-            base_error("LOESS currently supports na.omit and na.fail");
+        if !matches!(na_name.as_str(), "na.omit" | "na.exclude" | "na.fail") {
+            base_error("LOESS currently supports na.omit, na.exclude and na.fail");
         }
+        let na_action = omission_action(a[1], y_value, &selected, &complete, &na_name);
+        let _na_action = protect(na_action);
         let x: Vec<Vec<_>> = complete
             .iter()
             .map(|i| cols.iter().map(|c| c[*i]).collect())
             .collect();
         let y: Vec<_> = complete.iter().map(|i| y[*i]).collect();
         let weights: Vec<_> = complete.iter().map(|i| weights[*i]).collect();
-        let mut model = Model::fit(x.clone(), y.clone(), weights.clone(), config)
-            .unwrap_or_else(|e| base_error(e));
+        let mut model = Model::fit_with_execution(
+            x.clone(),
+            y.clone(),
+            weights.clone(),
+            config,
+            &Execution::new(&check_execution),
+        )
+        .unwrap_or_else(|e| base_error(e));
         if statistics == "none" {
             model.trace = 0.;
             model.delta1 = 0.;
@@ -467,7 +486,7 @@ pub(crate) unsafe fn do_fit(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             R_NilValue()
         };
         let _frame = protect(frame);
-        let result = model_to_r(&model, &x, formula, control, a[13], frame);
+        let result = model_to_r(&model, &x, formula, control, a[13], frame, na_action);
 
         result
     }
@@ -480,6 +499,7 @@ unsafe fn model_to_r(
     control: SEXP,
     call: SEXP,
     frame: SEXP,
+    na_action: SEXP,
 ) -> SEXP {
     unsafe {
         let n = m.y.len();
@@ -496,7 +516,36 @@ unsafe fn model_to_r(
         setAttrib(matrix, R_DimSymbol(), dim);
         let pars = rlist!("span"=>Rf_ScalarReal(m.config.span),"degree"=>Rf_ScalarInteger(m.config.degree as i32),"normalize"=>Rf_ScalarLogical(i32::from(m.config.normalize)),"parametric"=>numbers(&m.config.parametric.iter().map(|x|f64::from(*x)).collect::<Vec<_>>()),"drop.square"=>numbers(&m.config.drop_square.iter().map(|x|f64::from(*x)).collect::<Vec<_>>()),"surface"=>Rf_mkString(if m.config.interpolate{c"interpolate"}else{c"direct"}.as_ptr()),"cell"=>Rf_ScalarReal(m.config.cell),"family"=>Rf_mkString(if m.config.iterations>1{c"symmetric"}else{c"gaussian"}.as_ptr()),"iterations"=>Rf_ScalarInteger(m.config.iterations as i32));
         let _pars = protect(pars);
-        let result = rlist!("n"=>Rf_ScalarInteger(n as i32),"fitted"=>numbers(&m.fitted),"residuals"=>numbers(&m.y.iter().zip(&m.fitted).map(|(y,f)|y-f).collect::<Vec<_>>()),"enp"=>Rf_ScalarReal(m.delta1+2.*m.trace-n as f64),"s"=>Rf_ScalarReal(m.s),"one.delta"=>Rf_ScalarReal(m.delta1),"two.delta"=>Rf_ScalarReal(m.delta2),"trace.hat"=>Rf_ScalarReal(m.trace),"divisor"=>numbers(&m.divisor),"robust"=>numbers(&m.robust),"pars"=>pars,"x"=>matrix,"y"=>numbers(&m.y),"weights"=>numbers(&m.weights),"formula"=>formula,"control"=>control,"call"=>call);
+        let mut result_builder = ListBuilder::new();
+        result_builder.push("n", Rf_ScalarInteger(n as i32));
+        result_builder.push("fitted", numbers(&m.fitted));
+        result_builder.push(
+            "residuals",
+            numbers(
+                &m.y.iter()
+                    .zip(&m.fitted)
+                    .map(|(y, f)| y - f)
+                    .collect::<Vec<_>>(),
+            ),
+        );
+        result_builder.push("enp", Rf_ScalarReal(m.delta1 + 2. * m.trace - n as f64));
+        result_builder.push("s", Rf_ScalarReal(m.s));
+        result_builder.push("one.delta", Rf_ScalarReal(m.delta1));
+        result_builder.push("two.delta", Rf_ScalarReal(m.delta2));
+        result_builder.push("trace.hat", Rf_ScalarReal(m.trace));
+        result_builder.push("divisor", numbers(&m.divisor));
+        result_builder.push("robust", numbers(&m.robust));
+        result_builder.push("pars", pars);
+        result_builder.push("x", matrix);
+        result_builder.push("y", numbers(&m.y));
+        result_builder.push("weights", numbers(&m.weights));
+        result_builder.push("formula", formula);
+        result_builder.push("control", control);
+        result_builder.push("call", call);
+        if na_action != R_NilValue() {
+            result_builder.push("na.action", na_action);
+        }
+        let result = result_builder.finish();
         let _result = protect(result);
         let result = if frame != R_NilValue() {
             let mut list = ListBuilder::new();
@@ -523,6 +572,9 @@ unsafe fn model_to_r(
                 list.push(key, field(result, key));
             }
             list.push("model", frame);
+            if na_action != R_NilValue() {
+                list.push("na.action", na_action);
+            }
             list.finish()
         } else {
             result
@@ -649,12 +701,139 @@ pub(crate) unsafe fn do_predict_core(_: SEXP, _: SEXP, args: SEXP, rho: SEXP) ->
         };
         let se = scalar(a[2]) != 0.;
         let (fit, error) = model
-            .predict(&queries, se)
+            .predict_with_execution(&queries, se, &Execution::new(&check_execution))
             .unwrap_or_else(|e| base_error(e));
         if se {
             rlist!("fit"=>numbers(&fit),"se.fit"=>numbers(&error),"residual.scale"=>Rf_ScalarReal(model.s),"df"=>Rf_ScalarReal(model.delta1*model.delta1/model.delta2))
         } else {
-            numbers(&fit)
+            let action = field(obj, "na.action");
+            if a[1] == R_NilValue() && is_exclude_action(action) {
+                restore_excluded_fit(&fit, action)
+            } else {
+                numbers(&fit)
+            }
         }
+    }
+}
+
+unsafe fn omission_action(
+    data: SEXP,
+    response: SEXP,
+    selected: &[usize],
+    complete: &[usize],
+    action_name: &str,
+) -> SEXP {
+    unsafe {
+        if complete.len() == selected.len() || action_name == "na.fail" {
+            return R_NilValue();
+        }
+        let complete_set: HashSet<usize> = complete.iter().copied().collect();
+        let dropped: Vec<(usize, usize)> = selected
+            .iter()
+            .enumerate()
+            .filter(|(_, index)| !complete_set.contains(index))
+            .map(|(position, index)| (position, *index))
+            .collect();
+        if dropped.is_empty() {
+            return R_NilValue();
+        }
+        let action = Rf_allocVector3(SEXPTYPE::INTSXP, dropped.len() as i64);
+        let _action = protect(action);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, dropped.len() as i64);
+        let _names = protect(names);
+        for (out, (position, original)) in dropped.iter().enumerate() {
+            *INTEGER(action).add(out) = (*position + 1) as i32;
+            let label = row_label(data, response, *original);
+            let label = std::ffi::CString::new(label).unwrap_or_default();
+            SET_STRING_ELT(names, out as i64, Rf_mkChar(label.as_ptr()));
+        }
+        setAttrib(action, R_NamesSymbol(), names);
+        let class_name = if action_name == "na.exclude" {
+            "exclude"
+        } else {
+            "omit"
+        };
+        let class = Rf_mkString(
+            std::ffi::CString::new(class_name)
+                .unwrap_or_default()
+                .as_ptr(),
+        );
+        setAttrib(action, R_ClassSymbol(), class);
+        action
+    }
+}
+
+unsafe fn row_label(data: SEXP, response: SEXP, index: usize) -> String {
+    unsafe {
+        let row_names = getAttrib(data, crate::eval::attrib_core::R_RowNamesSymbol());
+        if TYPEOF(row_names) == SEXPTYPE::STRSXP && index < XLENGTH(row_names) as usize {
+            return elt_to_string(row_names, index as i64);
+        }
+        let names = getAttrib(response, R_NamesSymbol());
+        if TYPEOF(names) == SEXPTYPE::STRSXP && index < XLENGTH(names) as usize {
+            return elt_to_string(names, index as i64);
+        }
+        if TYPEOF(row_names) == SEXPTYPE::INTSXP && XLENGTH(row_names) == 2 {
+            let first = *INTEGER(row_names);
+            let second = *INTEGER(row_names).add(1);
+            if first == i32::MIN && second < 0 {
+                return (index + 1).to_string();
+            }
+        }
+        if TYPEOF(row_names) == SEXPTYPE::INTSXP && index < XLENGTH(row_names) as usize {
+            let value = *INTEGER(row_names).add(index);
+            if value != NA_INTEGER {
+                return value.to_string();
+            }
+        }
+        (index + 1).to_string()
+    }
+}
+
+unsafe fn is_exclude_action(action: SEXP) -> bool {
+    unsafe {
+        let class = getAttrib(action, R_ClassSymbol());
+        TYPEOF(class) == SEXPTYPE::STRSXP
+            && XLENGTH(class) > 0
+            && elt_to_string(class, 0) == "exclude"
+    }
+}
+
+unsafe fn restore_excluded_fit(fit: &[f64], action: SEXP) -> SEXP {
+    unsafe {
+        if TYPEOF(action) != SEXPTYPE::INTSXP {
+            base_error("invalid LOESS omission metadata");
+        }
+        let omitted_i64 = XLENGTH(action);
+        let omitted = usize::try_from(omitted_i64)
+            .ok()
+            .filter(|_| omitted_i64 >= 0)
+            .unwrap_or_else(|| base_error("invalid LOESS omission metadata"));
+        let total = fit
+            .len()
+            .checked_add(omitted)
+            .filter(|length| i64::try_from(*length).is_ok())
+            .unwrap_or_else(|| base_error("invalid LOESS omission metadata"));
+        let mut seen = HashSet::with_capacity(omitted);
+        for i in 0..omitted_i64 {
+            let position = *INTEGER(action).add(i as usize);
+            if position <= 0 || position as usize > total || !seen.insert(position as usize) {
+                base_error("invalid LOESS omission metadata");
+            }
+        }
+        let restored = Rf_allocVector3(SEXPTYPE::REALSXP, total as i64);
+        let _restored = protect(restored);
+        for i in 0..total {
+            *REAL(restored).add(i) = NA_REAL;
+        }
+        let mut source = 0usize;
+        for position in 1..=total {
+            let excluded = seen.contains(&position);
+            if !excluded {
+                *REAL(restored).add(position - 1) = fit[source];
+                source += 1;
+            }
+        }
+        restored
     }
 }

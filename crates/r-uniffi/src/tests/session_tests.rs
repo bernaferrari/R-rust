@@ -1,17 +1,51 @@
 //! Behavior tests for the exported session surface (ported from the original
 //! single-file test suite).
 
-use std::sync::Arc;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Weak, mpsc::Sender};
 use std::time::Duration;
 
 use super::support::{CallbackEvent, RecordingCallback, make_test_package, wait_for_callback};
 use crate::uniffi::conversion::{
-    PackageInfo, RComplexValue, RValue, RValueKind, ResourceLimits, RuntimeInfo,
-    android_runtime_paths,
+    EvalResult, PackageInfo, ProgressUpdate, RComplexValue, RValue, RValueKind, ResourceLimits,
+    RuntimeInfo, android_runtime_paths,
 };
 use crate::uniffi::error::RError;
 use crate::uniffi::operation::{OperationResult, OperationStatus};
+use crate::uniffi::plot::PlotResult;
 use crate::uniffi::session::RSession;
+use crate::uniffi::worker::SessionCallback;
+
+struct TakeResultOnTerminalCallback {
+    session: Weak<RSession>,
+    statuses: Sender<OperationStatus>,
+}
+
+impl TakeResultOnTerminalCallback {
+    fn take(&self, operation_id: u64) {
+        if let Some(session) = self.session.upgrade() {
+            let _ = self.statuses.send(session.take_result(operation_id));
+        }
+    }
+}
+
+impl SessionCallback for TakeResultOnTerminalCallback {
+    fn on_progress(&self, _operation_id: u64, _update: ProgressUpdate) {}
+
+    fn on_output(&self, _operation_id: u64, _line: String) {}
+
+    fn on_plot_ready(&self, operation_id: u64, _plot: PlotResult) {
+        self.take(operation_id);
+    }
+
+    fn on_eval_complete(&self, operation_id: u64, _result: EvalResult) {
+        self.take(operation_id);
+    }
+
+    fn on_error(&self, operation_id: u64, _error: String) {
+        self.take(operation_id);
+    }
+}
 
 #[test]
 fn cancel_without_active_eval_does_not_poison_next_eval() {
@@ -438,6 +472,48 @@ fn cancel_stops_running_eval() {
         .expect("worker should not panic")
         .expect_err("eval should be cancelled");
     assert!(matches!(err, RError::Cancelled));
+}
+
+#[test]
+fn terminal_callback_can_take_published_eval_and_render_results() {
+    let session = Arc::new(RSession::new().expect("session"));
+    let (statuses_tx, statuses_rx) = channel();
+    session.set_callback(Box::new(TakeResultOnTerminalCallback {
+        session: Arc::downgrade(&session),
+        statuses: statuses_tx,
+    }));
+
+    let eval_id = session.eval_async("1 + 1".to_string()).expect("eval id");
+    let eval_status = statuses_rx
+        .recv_timeout(Duration::from_secs(3))
+        .expect("eval terminal callback");
+    assert!(matches!(
+        eval_status,
+        OperationStatus::Succeeded {
+            result: OperationResult::Eval { .. }
+        }
+    ));
+    assert!(matches!(
+        session.operation_status(eval_id),
+        OperationStatus::Expired
+    ));
+
+    let render_id = session
+        .render_async("plot(1, 1)".to_string(), 120, 100)
+        .expect("render id");
+    let render_status = statuses_rx
+        .recv_timeout(Duration::from_secs(3))
+        .expect("render terminal callback");
+    assert!(matches!(
+        render_status,
+        OperationStatus::Succeeded {
+            result: OperationResult::Render { .. }
+        }
+    ));
+    assert!(matches!(
+        session.operation_status(render_id),
+        OperationStatus::Expired
+    ));
 }
 
 #[test]

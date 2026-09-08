@@ -10,7 +10,10 @@ predictors, tricube neighborhoods, normalization, observation weights,
 parametric predictors, dropped squares, robust iterations, direct prediction,
 KD-cell Hermite interpolation, exact/approximate diagnostics and prediction
 standard errors. The R adapter supports additive formulas, list/data-frame data,
-matrix predictors, subsets and optional model frames. Fitted objects contain
+matrix predictors, subsets and optional model frames. Classed `na.omit` and
+`na.exclude` metadata survives serialization; `predict(fit)` restores excluded
+rows, while explicit `newdata` and `se=TRUE` retain GNU R's distinct behavior.
+Unavailable predictions preserve R's NA sentinel rather than computational NaN. Fitted objects contain
 ordinary R values and can cross serialization boundaries without Rust pointers.
 
 ```r
@@ -34,22 +37,30 @@ access. Host fonts and explicitly supplied fonts can still override it.
 The numerical regression module compares fits, residual diagnostics, robust
 weights and standard errors against the pinned GNU R oracle. The generator
 scripts in `tests/loess` reproduce the multivariate and weighted reference
-values. Conformance case 570 exercises the public R interface. Public rendering
-tests inspect PNG colors and labels, layer a fitted LOESS curve, exercise custom
+values. Conformance cases 570 and 571 exercise the public R interface and
+omission/NA behavior. Public rendering tests inspect PNG colors and labels, layer a fitted LOESS curve, exercise custom
 S3 methods and verify clipping and bundled-font glyphs.
 
 This is not complete GNU R graphics compatibility. Portable primitives do not
 establish complete base/grid/ggplot rendering, device/display-list replay,
-plotmath, patterns/masks/groups, or every graphical parameter. Axis tick
-selection, margins, some point symbols and logarithmic ablines still differ
-from GNU R. High-level plotting functions require separate contract coverage.
+plotmath, patterns/masks/groups, or every graphical parameter. Automatic linear
+ticks follow GNU R's GEPretty spacing and `par("lab")`,
+including reversed axes; automatic axes reject requests above 10,000 intervals.
+Logarithmic tick selection, margins, some point symbols and logarithmic ablines
+still differ from GNU R. High-level plotting functions require separate
+contract coverage.
 
 LOESS does not yet provide the legacy native `lowes*`/`ehg*` ABI, complete
-model-frame/terms metadata, custom NA actions, `na.exclude` reconstruction,
+model-frame/terms metadata, custom NA actions,
 `method="model.frame"`, or iteration tracing. Unsupported method/NA/trace
-requests report errors. Exact diagnostics construct dense influence matrices
-and have cubic work; large-data performance and cancellation within numerical
-loops need further engineering. The fixtures are evidence for covered cases,
+requests report errors. Exact diagnostics still construct dense influence
+matrices and have cubic work.
+An overflow-checked, conservative workspace estimate rejects operations above
+256 MiB before numerical allocation; this is an admission limit for the kernel,
+not a limit on total process memory. Fitting, interpolation, prediction and
+exact diagnostics poll the host cancellation token. A local SVD finishes before
+the next cancellation checkpoint. Large-data performance still needs further
+engineering. The fixtures are evidence for covered cases,
 not a claim that every singular or degenerate dataset matches R.
 
 ## Upstream LOESS notice

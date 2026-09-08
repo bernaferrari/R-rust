@@ -1,5 +1,6 @@
 //! Portable base plotting: owned coordinate/style state, ordinary R dispatch,
 //! and device drawing. R values are decoded before a renderer is borrowed.
+use crate::appl::pretty::R_pretty;
 use crate::library::graphics::par::{ParValue, parameter, set_plot_parameter};
 use crate::mainutils::essentials::{arg_by_name_or_position, base_error, elt_to_string};
 use crate::sexp::{
@@ -11,6 +12,7 @@ use crate::sexp::{
 use r_graphics_engine::{
     Color, DashPattern, DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke, TextAnchor,
 };
+use std::os::raw::c_int;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Coordinates {
@@ -644,6 +646,85 @@ fn draw_xy(
     }
     target.set_clip(None);
 }
+
+/// Return the linear tick locations selected by R's `GEPretty` algorithm.
+///
+/// `GEPretty` asks `R_pretty` for the integer tick indices, then trims an
+/// endpoint when pretty spacing would extend past the requested range. Keep
+/// that small adjustment here so automatic ticks match the upstream
+/// `axisTicks`/`axTicks` path rather than merely matching `pretty()`.
+fn pretty_linear_ticks(mut lo: f64, mut hi: f64, requested: f64) -> Vec<f64> {
+    const MAX_AUTOMATIC_AXIS_TICKS: usize = 10_000;
+    let reversed = lo > hi;
+    if reversed {
+        std::mem::swap(&mut lo, &mut hi);
+    }
+
+    let original_lo = lo;
+    let original_hi = hi;
+    let requested = requested.round();
+    if !requested.is_finite() || requested < 1. || requested > MAX_AUTOMATIC_AXIS_TICKS as f64 {
+        base_error(format!(
+            "automatic axis tick count must be between 1 and {MAX_AUTOMATIC_AXIS_TICKS}"
+        ));
+    }
+    let mut intervals = requested as c_int;
+    let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
+    // SAFETY: all three pointers refer to live local values, and R_pretty only
+    // writes those values according to the documented GEPretty contract.
+    let unit = unsafe {
+        R_pretty(
+            &mut lo,
+            &mut hi,
+            &mut intervals,
+            1,
+            0.25,
+            high_u_fact.as_ptr(),
+            2,
+            0,
+        )
+    };
+    if !unit.is_finite() || unit <= 0. || !lo.is_finite() || !hi.is_finite() {
+        base_error("automatic axis tick spacing is not finite");
+    }
+    if hi >= lo + 1. {
+        let rounding_eps = 1e-10;
+        let mut modified = false;
+        if lo * unit < original_lo - rounding_eps * unit {
+            lo += 1.;
+            modified = true;
+        }
+        if hi > lo + 1. && hi * unit > original_hi + rounding_eps * unit {
+            hi -= 1.;
+            modified = true;
+        }
+        if modified {
+            intervals = (hi - lo) as c_int;
+        }
+    }
+    if intervals <= 0 || intervals as usize > MAX_AUTOMATIC_AXIS_TICKS {
+        base_error(format!(
+            "automatic axis tick count must be between 1 and {MAX_AUTOMATIC_AXIS_TICKS}"
+        ));
+    }
+    let lower = lo * unit;
+    let upper = hi * unit;
+    if !lower.is_finite() || !upper.is_finite() {
+        base_error("automatic axis tick bounds are not finite");
+    }
+    // Interpolate tick indices, then scale: subtracting opposite extreme
+    // finite bounds can overflow even when every tick is representable.
+    let intervals = intervals.max(1) as usize;
+    let ticks: Vec<_> = (0..=intervals)
+        .map(|i| (lo + (i as f64 / intervals as f64) * (hi - lo)) * unit)
+        .collect();
+    if reversed {
+        ticks.into_iter().rev().collect()
+    } else {
+        ticks
+    }
+}
+
 fn axis(
     target: &mut dyn DrawTarget,
     c: Coordinates,
@@ -655,15 +736,21 @@ fn axis(
     let horizontal = side == 1 || side == 3;
     let coord = if horizontal { 0 } else { 1 };
     let positions: Vec<_> = if at.is_empty() {
-        (0..5)
-            .map(|i| {
-                c.raw(
-                    coord,
-                    c.limits[coord * 2]
-                        + (c.limits[coord * 2 + 1] - c.limits[coord * 2]) * i as f64 / 4.,
-                )
-            })
-            .collect()
+        if c.log[coord] {
+            (0..5)
+                .map(|i| {
+                    c.raw(
+                        coord,
+                        c.limits[coord * 2]
+                            + (c.limits[coord * 2 + 1] - c.limits[coord * 2]) * i as f64 / 4.,
+                    )
+                })
+                .collect()
+        } else {
+            let lab = par_numbers("lab");
+            let requested = lab.get(coord).copied().unwrap_or(5.);
+            pretty_linear_ticks(c.limits[coord * 2], c.limits[coord * 2 + 1], requested)
+        }
     } else {
         at.to_vec()
     };
@@ -751,6 +838,54 @@ fn axis(
                 ..Default::default()
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pretty_linear_ticks;
+
+    #[test]
+    fn automatic_linear_ticks_match_r_axis_ticks_oracle() {
+        assert_eq!(
+            pretty_linear_ticks(1.2, 4.8, 5.),
+            vec![1.5, 2., 2.5, 3., 3.5, 4., 4.5]
+        );
+        assert_eq!(
+            pretty_linear_ticks(1., 15., 5.),
+            vec![2., 4., 6., 8., 10., 12., 14.]
+        );
+    }
+
+    #[test]
+    fn automatic_linear_ticks_preserve_reversed_limits() {
+        assert_eq!(
+            pretty_linear_ticks(4.8, 1.2, 5.),
+            vec![4.5, 4., 3.5, 3., 2.5, 2., 1.5]
+        );
+    }
+
+    #[test]
+    fn automatic_linear_ticks_reject_unbounded_requests() {
+        let payload = std::panic::catch_unwind(|| pretty_linear_ticks(0., 1., 10_001.))
+            .expect_err("oversized automatic tick request should raise an R error");
+        let error = payload
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("oversized tick request should use the R error path");
+        assert!(error.message.contains("between 1 and 10000"));
+    }
+
+    #[test]
+    fn automatic_linear_ticks_span_opposite_extreme_limits() {
+        let ticks = pretty_linear_ticks(-1e308, 1e308, 5.);
+        assert_eq!(ticks, vec![-1e308, -5e307, 0., 5e307, 1e308]);
+    }
+
+    #[test]
+    fn automatic_linear_ticks_keep_extreme_reversed_ranges_finite() {
+        let ticks = pretty_linear_ticks(f64::MAX, f64::MAX * 0.99, 5.);
+        assert!(!ticks.is_empty());
+        assert!(ticks.iter().all(|tick| tick.is_finite()));
     }
 }
 fn box_path(target: &mut dyn DrawTarget, c: Coordinates, color: Color) {

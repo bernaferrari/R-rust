@@ -67,3 +67,14 @@ including the runtime's vector-backed BCODESXP representation. Evaluator inputs,
 builtin argument lists and temporary internal primitives stay rooted during
 nested evaluation. Bytecode variable lookup and writes root their live operand
 stack before promise or active-binding evaluation can trigger collection.
+
+String/list element access now validates target tags, buffer presence and signed
+indices before pointer arithmetic in both debug and release builds. String
+setters share the generational write barrier used by list setters. Targeted
+Miri reproduced an out-of-range string write before the fix, then passed the
+same regression and invalid-tag/index tests afterward. These checks still
+require a live initialized SEXP; they cannot make arbitrary raw pointers safe.
+
+The owned LOESS kernel receives a per-operation execution policy, checks a
+conservative workspace estimate and polls cancellation within numerical loops.
+It returns errors to the adapter and never stores the callback in R models.

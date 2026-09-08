@@ -46,6 +46,8 @@ const server = http.createServer(async (req, res) => {
       return n;
     },smooth);
     assert.ok(ink>30,'bundled font renders a title in Wasm');
+    assert.equal(await request('eval', "nx<-seq(0,1,length.out=30); ny<-sin(nx); ny[c(4,17)]<-NA; nf<-loess(ny~nx,na.action=na.exclude); np<-predict(nf); paste(length(np),paste(which(is.na(np)),collapse=','),any(is.nan(np)),sep='|')"), '[1] "30|4,17|FALSE"');
+    await assert.rejects(request('eval', "lx<-seq(0,1,length.out=5000); ly<-sin(lx); loess(ly~lx)"), /LOESS workspace limit exceeded/);
     await page.locator('#console-command').fill('x + 2');
     await page.locator('#console-run').click();
     await page.waitForFunction(() => document.querySelector('#console').textContent.includes('[1] 43'));

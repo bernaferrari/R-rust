@@ -33,6 +33,7 @@ pub(super) fn interpolate(
     model: &Model,
     queries: &[Vec<f64>],
     weights: &[f64],
+    execution: &super::Execution<'_>,
 ) -> Result<Vec<Vec<f64>>, String> {
     let n = model.x.len();
     let d = model.divisor.len();
@@ -77,6 +78,7 @@ pub(super) fn interpolate(
     let mut next = 0;
     let threshold = (n as f64 * model.config.span * model.config.cell).floor() as usize;
     while next < cells.len() {
+        execution.checkpoint()?;
         let cell = &cells[next];
         if cell.observations.len() <= threshold.max(1)
             || vertices.len() + vc / 2 > n.max(200)
@@ -138,7 +140,7 @@ pub(super) fn interpolate(
     }
     let coefficients: Vec<_> = vertices
         .iter()
-        .map(|q| model.local(q, weights))
+        .map(|q| model.local(q, weights, execution))
         .collect::<Result<_, _>>()?;
     let mut output = Vec::with_capacity(queries.len());
     for q in queries {
@@ -149,6 +151,9 @@ pub(super) fn interpolate(
             .ok_or("extrapolation is not allowed with interpolated LOESS")?;
         let mut row = vec![0.; n];
         for obs in 0..n {
+            if obs % 64 == 0 {
+                execution.checkpoint()?;
+            }
             let mut g: Vec<Vec<_>> = cell
                 .corners
                 .iter()

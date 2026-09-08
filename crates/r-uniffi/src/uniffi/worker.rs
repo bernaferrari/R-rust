@@ -325,8 +325,8 @@ pub(crate) fn spawn_worker(
                     // execute_operation is panic-free by construction; this is
                     // the belt-and-braces record if that ever changes.
                     if let Err(err) = executed {
-                        dispatcher.dispatch(SessionEvent::Error(op_id, err.to_string()));
                         lock(&table).complete(op_id, OpOutcome::Failed(err.to_string()));
+                        dispatcher.dispatch(SessionEvent::Error(op_id, err.to_string()));
                     }
                 }
                 SessionCommand::Shutdown => {
@@ -449,13 +449,15 @@ fn execute_operation(
                     for line in eval_result.output.lines() {
                         dispatcher.dispatch(SessionEvent::Output(op.id, line.to_string()));
                     }
-                    dispatcher.dispatch(SessionEvent::EvalComplete(op.id, eval_result.clone()));
                     lock(table).complete(
                         op.id,
                         OpOutcome::Succeeded(OperationResult::Eval {
                             result: eval_result.clone(),
                         }),
                     );
+                    // Publish the retained result before the terminal callback
+                    // so a re-entrant callback can take it immediately.
+                    dispatcher.dispatch(SessionEvent::EvalComplete(op.id, eval_result.clone()));
                     fire_reply(reply, Ok(eval_result));
                 }
                 Err(err) => settle_error(op, err, table, dispatcher, reply),
@@ -557,13 +559,15 @@ fn execute_operation(
                             message: "Complete".to_string(),
                         },
                     ));
-                    dispatcher.dispatch(SessionEvent::PlotReady(op.id, plot.clone()));
                     lock(table).complete(
                         op.id,
                         OpOutcome::Succeeded(OperationResult::Render {
                             result: plot.clone(),
                         }),
                     );
+                    // Publish the retained result before the terminal callback
+                    // so a re-entrant callback can take it immediately.
+                    dispatcher.dispatch(SessionEvent::PlotReady(op.id, plot.clone()));
                     fire_reply(reply, Ok(plot));
                 }
                 Err(err) => settle_error(op, err, table, dispatcher, reply),
