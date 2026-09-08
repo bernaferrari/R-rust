@@ -443,6 +443,9 @@ pub struct RInstance {
     pub(crate) current_renderplot_backend: Option<*mut dyn r_graphics_engine::DrawTarget>,
     #[cfg(feature = "renderplot-device")]
     pub(crate) portable_graphics: crate::mainutils::portable_plot::GraphicsState,
+    #[cfg(feature = "renderplot-device")]
+    pub(crate) graphics_recording:
+        Option<std::rc::Rc<std::cell::RefCell<r_graphics_engine::Scene>>>,
     /// Per-instance base graphics `par()` overrides.
     pub(crate) graphics_par_state: crate::library::graphics::par::GraphicsParState,
     /// Per-instance grDevices color palette and scratch buffer state.
@@ -566,6 +569,8 @@ impl RInstance {
             current_renderplot_backend: None,
             #[cfg(feature = "renderplot-device")]
             portable_graphics: crate::mainutils::portable_plot::GraphicsState::default(),
+            #[cfg(feature = "renderplot-device")]
+            graphics_recording: None,
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),

@@ -331,20 +331,40 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
 
         let data_len = XLENGTH(data);
-        let nrow = if nrow_arg.is_null() || nrow_arg == R_NilValue() {
-            data_len
-        } else {
-            real_or_default(nrow_arg, data_len as f64) as R_xlen_t
+        let dimension = |value: SEXP, name: &str| -> Option<R_xlen_t> {
+            if value.is_null() || value == R_NilValue() {
+                return None;
+            }
+            let number = real_or_default(value, f64::NAN).trunc();
+            if !number.is_finite() || number < 0. || number > i32::MAX as f64 {
+                base_error(format!("invalid '{name}' value (too large or NA)"));
+            }
+            Some(number as R_xlen_t)
         };
-        let ncol = if ncol_arg.is_null() || ncol_arg == R_NilValue() {
-            if nrow == 0 {
+        let rows = dimension(nrow_arg, "nrow");
+        let cols = dimension(ncol_arg, "ncol");
+        let infer = |known: R_xlen_t| {
+            if known == 0 {
+                if data_len > 0 {
+                    base_error("non-empty data for zero-extent matrix");
+                }
                 0
             } else {
-                (data_len + nrow - 1) / nrow
+                data_len / known + R_xlen_t::from(data_len % known != 0)
             }
-        } else {
-            real_or_default(ncol_arg, 1.0) as R_xlen_t
         };
+        let (nrow, ncol) = match (rows, cols) {
+            (None, None) => (data_len, 1),
+            (Some(rows), None) => (rows, infer(rows)),
+            (None, Some(cols)) => (infer(cols), cols),
+            (Some(rows), Some(cols)) => (rows, cols),
+        };
+        if nrow > i32::MAX as i64 || ncol > i32::MAX as i64 {
+            base_error("matrix dimensions exceed integer limits");
+        }
+        let length = nrow
+            .checked_mul(ncol)
+            .unwrap_or_else(|| base_error("matrix dimensions overflow"));
         let byrow = if byrow_arg.is_null() || byrow_arg == R_NilValue() {
             false
         } else {
@@ -355,7 +375,7 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if !supported_matrix_type(t) || nrow < 0 || ncol < 0 {
             return R_NilValue();
         }
-        let result = Rf_allocVector3(t, nrow * ncol);
+        let result = Rf_allocVector3(t, length);
         if result.is_null() {
             return R_NilValue();
         }
@@ -363,7 +383,7 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
         // R stores matrices in column-major order. If data has length zero, keep
         // the requested shape and fill with the type-appropriate missing value.
-        for i in 0..(nrow * ncol) {
+        for i in 0..length {
             if data_len == 0 {
                 set_matrix_na_or_zero(result, i);
             } else {

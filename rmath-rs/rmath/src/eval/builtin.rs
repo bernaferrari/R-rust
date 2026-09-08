@@ -125,6 +125,64 @@ pub(crate) fn is_hidden_builtin_name(name: &str) -> bool {
 
 pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
+        name: "pretty.default",
+        handler: crate::mainutils::pretty::do_pretty_default,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "pretty",
+        handler: crate::mainutils::pretty::do_pretty,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "hist",
+        handler: crate::mainutils::graphics_highlevel::do_hist,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "hist.default",
+        handler: crate::mainutils::graphics_highlevel::do_hist_default,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "barplot",
+        handler: crate::mainutils::graphics_highlevel::do_barplot,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "barplot.default",
+        handler: crate::mainutils::graphics_highlevel::do_barplot_default,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "boxplot",
+        handler: crate::mainutils::graphics_highlevel::do_boxplot,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "boxplot.default",
+        handler: crate::mainutils::graphics_highlevel::do_boxplot_default,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "rasterImage",
+        handler: crate::mainutils::graphics_raster::do_raster_image,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "recordPlot",
+        handler: crate::mainutils::graphics_recording::do_record,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "replayPlot",
+        handler: crate::mainutils::graphics_recording::do_replay,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "missing",
         handler: crate::eval::missing::do_missing,
         restore_visibility_always: true,
@@ -421,6 +479,25 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 }
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
+    EvaluatedBuiltin {
+        name: ".rport_pretty",
+        handler: crate::mainutils::pretty::pretty_values,
+    },
+    #[cfg(feature = "renderplot-device")]
+    EvaluatedBuiltin {
+        name: ".rport_rasterImage",
+        handler: crate::mainutils::portable_plot::raster_image,
+    },
+    #[cfg(feature = "renderplot-device")]
+    EvaluatedBuiltin {
+        name: ".rport_recordPlot",
+        handler: crate::mainutils::graphics_recording::record,
+    },
+    #[cfg(feature = "renderplot-device")]
+    EvaluatedBuiltin {
+        name: ".rport_replayPlot",
+        handler: crate::mainutils::graphics_recording::replay,
+    },
     EvaluatedBuiltin {
         name: "...elt",
         handler: crate::eval::missing::do_dots_elt,

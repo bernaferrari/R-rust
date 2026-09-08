@@ -80,6 +80,21 @@ jobs:
           MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-disable-isolation
         run: "cargo +nightly miri test -p rmath --test serialize_torture"
 
+  miri-graphics-recording:
+    name: Miri (graphics recording and backend lifetimes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - name: Check owned recording, GC and device restoration
+        env:
+          MIRIFLAGS: -Zmiri-ignore-leaks -Zmiri-disable-isolation
+        run: cargo +nightly miri test -p rmath --features renderplot-device --test graphics_recording_torture
+
   gc-torture:
     name: GC torture stress (exact R oracle)
     runs-on: ubuntu-24.04

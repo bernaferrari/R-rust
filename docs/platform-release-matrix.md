@@ -49,7 +49,7 @@ The Android app now has a checked-in Gradle wrapper, a real `:app:assembleDebug`
 ### Graphics (Android + WASM)
 - Legacy non-portable devices (X11, Quartz, Windows, Cairo, related quartz/win bitmaps) are cfg-gated out on `target_os="android"` (and x11 module). See rport-56d6, rport-tc2t, rport-mfj9.
 - Internal R graphics (grDevices::plot etc) on Android uses pure-Rust `DeviceRegistry` + pixel canvas in `rmath library/grdevices/device_registry.rs` (headless, no native).
-- Embed `RSession::render(code, w, h)` (and UniFFI) uses portable `r-device-android-headless` (tiny-skia + fontdue -> PNG bytes); works for simple plots, labels, colors, lwd/cex. Font load degrades gracefully (no text) on WASM/no-FS.
+- Embed `RSession::render(code, w, h)` (and UniFFI) uses portable `r-device-android-headless` (Vello CPU vector paths/glyphs -> PNG bytes). Bundled Noto Sans supplies text on Wasm and hosts without filesystem fonts. Fontdue supplies metrics; Vello paints glyph outlines. No GPU initialization is required.
 - `scripts/wasm_toolchain_check.sh` checks the supported pure Rust WASM surface: `rmath`, `r-graphics-engine`, and `r-device-android-headless` on `wasm32-unknown-unknown` with warnings denied.
 - WASM includes the interpreter and `r-embed` through the `r-wasm` binding. CI executes the Node smoke; the Kotlin browser workbench uses a Rust worker by default, with an explicit WebR alternative. See `docs/web-architecture.md`.
 - devpictex already gated; devps (PDF/PS) kept as portable. Stubs error cleanly for unsupported snapshot/events etc.

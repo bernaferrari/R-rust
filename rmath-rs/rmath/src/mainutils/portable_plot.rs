@@ -18,6 +18,9 @@ use std::os::raw::c_int;
 pub(crate) struct Coordinates {
     pub limits: [f64; 4],
     pub rect: [f32; 4],
+    /// The enclosing figure and complete device rectangles, used by xpd.
+    pub figure: [f32; 4],
+    pub device: [f32; 4],
     pub log: [bool; 2],
 }
 #[derive(Default)]
@@ -202,17 +205,31 @@ unsafe fn style(args: SEXP) -> Style {
         } else if TYPEOF(pch) == SEXPTYPE::STRSXP {
             (0..XLENGTH(pch))
                 .map(|i| {
-                    elt_to_string(pch, i)
-                        .chars()
-                        .next()
-                        .map_or(i32::MIN, |c| -(c as i32))
+                    elt_to_string(pch, i).chars().next().map_or(i32::MIN, |c| {
+                        let code = c as u32;
+                        if code <= 127 {
+                            code as i32
+                        } else if i32::try_from(code).is_ok() {
+                            -(code as i32)
+                        } else {
+                            i32::MIN
+                        }
+                    })
                 })
                 .collect()
         } else {
-            values(pch)
-                .into_iter()
-                .map(|v| if v.is_nan() { i32::MIN } else { v as i32 })
-                .collect()
+            if TYPEOF(pch) == SEXPTYPE::LGLSXP {
+                let logical = values(pch);
+                if logical.iter().any(|v| !v.is_nan()) {
+                    base_error("only NA allowed in logical plotting symbol");
+                }
+                logical.into_iter().map(|_| i32::MIN).collect()
+            } else {
+                values(pch)
+                    .into_iter()
+                    .map(|v| if v.is_nan() { i32::MIN } else { v as i32 })
+                    .collect()
+            }
         };
         let width = scalar(
             args,
@@ -345,14 +362,31 @@ fn install(coords: Coordinates) {
 }
 unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinates, bool) {
     unsafe {
-        let log = label(args, "log").unwrap_or_default();
+        let window_args = if new {
+            None
+        } else {
+            Some(bindings(args, &["xlim", "ylim", "log", "asp"]))
+        };
+        let log = if let Some(window) = &window_args {
+            if window[2] == R_NilValue() {
+                String::new()
+            } else {
+                elt_to_string(window[2], 0)
+            }
+        } else {
+            label(args, "log").unwrap_or_default()
+        };
         if !log.chars().all(|c| c == 'x' || c == 'y') {
             base_error("invalid 'log' specification");
         }
         let logs = [log.contains('x'), log.contains('y')];
         let mut limits = [0.; 4];
         for (axis, (name, v)) in [("xlim", x), ("ylim", y)].into_iter().enumerate() {
-            let explicit = values(arg(args, name));
+            let explicit = values(
+                window_args
+                    .as_ref()
+                    .map_or_else(|| arg(args, name), |window| window[axis]),
+            );
             let (mut lo, mut hi) = if explicit.is_empty() {
                 let finite: Vec<_> = v
                     .iter()
@@ -403,6 +437,8 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
                 Coordinates {
                     limits,
                     rect: existing.rect,
+                    figure: existing.figure,
+                    device: existing.device,
                     log: logs,
                 },
                 false,
@@ -449,11 +485,36 @@ unsafe fn coordinates(args: SEXP, x: &[f64], y: &[f64], new: bool) -> (Coordinat
             Coordinates {
                 limits,
                 rect: [left, top, right, bottom],
+                figure: [ox, oy, ox + pw, oy + ph],
+                device: [0., 0., w as f32, h as f32],
                 log: logs,
             },
             new && index == 0,
         )
     }
+}
+
+/// Select the clipping region for a primitive according to R's xpd contract:
+/// FALSE clips to the plot region, TRUE to the figure, and NA to the device.
+/// An inline xpd argument takes precedence over par("xpd").
+fn clip_for_xpd(c: Coordinates, value: f64) -> [f32; 4] {
+    if value.is_nan() || value < -1.0e9 {
+        c.device
+    } else if value != 0. {
+        c.figure
+    } else {
+        c.rect
+    }
+}
+
+unsafe fn clip_rect(c: Coordinates, args: SEXP) -> [f32; 4] {
+    let value = arg(args, "xpd");
+    let value = if value == unsafe { R_NilValue() } {
+        par_numbers("xpd").first().copied().unwrap_or(0.)
+    } else {
+        unsafe { values(value).first().copied().unwrap_or(0.) }
+    };
+    clip_for_xpd(c, value)
 }
 fn line(target: &mut dyn DrawTarget, a: Point, b: Point, stroke: Stroke) {
     if [a.x, a.y, b.x, b.y].iter().any(|v| !v.is_finite()) {
@@ -466,6 +527,83 @@ fn line(target: &mut dyn DrawTarget, a: Point, b: Point, stroke: Stroke) {
         anti_alias: true,
     });
 }
+
+fn symbol_path(
+    target: &mut dyn DrawTarget,
+    commands: Vec<PathCommand>,
+    fill: Color,
+    stroke: &Stroke,
+) {
+    target.draw_path(&Path {
+        commands,
+        fill,
+        stroke: stroke.clone(),
+        anti_alias: true,
+    });
+}
+
+fn symbol_polygon(
+    target: &mut dyn DrawTarget,
+    vertices: &[(f32, f32)],
+    fill: Color,
+    stroke: &Stroke,
+) {
+    let mut commands = vertices
+        .iter()
+        .enumerate()
+        .map(|(n, (x, y))| {
+            if n == 0 {
+                PathCommand::MoveTo(*x, *y)
+            } else {
+                PathCommand::LineTo(*x, *y)
+            }
+        })
+        .collect::<Vec<_>>();
+    commands.push(PathCommand::Close);
+    symbol_path(target, commands, fill, stroke);
+}
+
+fn symbol_rectangle(
+    target: &mut dyn DrawTarget,
+    p: Point,
+    rx: f32,
+    ry: f32,
+    fill: Color,
+    stroke: &Stroke,
+) {
+    symbol_path(
+        target,
+        Path::rect(p.x - rx, p.y - ry, 2. * rx, 2. * ry).commands,
+        fill,
+        stroke,
+    );
+}
+
+fn symbol_circle(target: &mut dyn DrawTarget, p: Point, radius: f32, fill: Color, stroke: &Stroke) {
+    symbol_path(
+        target,
+        Path::circle(p.x, p.y, radius).commands,
+        fill,
+        stroke,
+    );
+}
+
+fn symbol_triangle(p: Point, up: bool, x: f32, top: f32, base: f32) -> [(f32, f32); 3] {
+    if up {
+        [
+            (p.x, p.y + top),
+            (p.x + x, p.y - base),
+            (p.x - x, p.y - base),
+        ]
+    } else {
+        [
+            (p.x, p.y - top),
+            (p.x + x, p.y + base),
+            (p.x - x, p.y + base),
+        ]
+    }
+}
+
 fn point(target: &mut dyn DrawTarget, p: Point, style: &Style, i: usize) {
     if !p.x.is_finite() || !p.y.is_finite() {
         return;
@@ -474,8 +612,22 @@ fn point(target: &mut dyn DrawTarget, p: Point, style: &Style, i: usize) {
     let r = style.size;
     let color = style.color(i);
     let bg = style.background[i % style.background.len()];
-    let stroke = Stroke::new(style.width, color);
-    if symbol < 0 || symbol >= 32 {
+    if symbol == i32::MIN {
+        return;
+    }
+    // R records native characters as positive pch values and Unicode code
+    // points as negative values. Empty strings become the NA sentinel.
+    if symbol < 0 || (32..=127).contains(&symbol) {
+        if symbol == '.' as i32 {
+            // GESymbol's `.` is a cex-scaled 0.01-inch square, with a
+            // half-device-unit minimum at ordinary (72 dpi) device scale.
+            let half = (style.size * 0.005 * 72.0 / 0.375).max(0.5);
+            let mut path = Path::rect(p.x - half, p.y - half, half * 2., half * 2.);
+            path.fill = color;
+            path.stroke = Stroke::new(0., transparent());
+            target.draw_path(&path);
+            return;
+        }
         let ch = if symbol < 0 {
             symbol.checked_neg().and_then(|c| char::from_u32(c as u32))
         } else {
@@ -495,94 +647,275 @@ fn point(target: &mut dyn DrawTarget, p: Point, style: &Style, i: usize) {
         }
         return;
     }
-    let fill = if (15..=20).contains(&symbol) {
-        color
+    if !(0..=25).contains(&symbol) {
+        return;
+    }
+
+    const SQRT2: f32 = std::f32::consts::SQRT_2;
+    const TRC0: f32 = 1.5551203015562142;
+    const TRC1: f32 = 1.3467736870885984;
+    const TRC2: f32 = 0.7775601507781071;
+    const SQRC: f32 = 0.886226925452758;
+    const DMDC: f32 = 1.2533141373155003;
+    const SMALL: f32 = 0.25;
+    let open = transparent();
+    // 15..20 are filled with col and have no visible border. 21..25 use bg
+    // as their interior and col as their border, exactly as GESymbol does.
+    let (fill, stroke) = if (15..=20).contains(&symbol) {
+        (color, Stroke::new(0., open))
     } else if symbol >= 21 {
-        bg
+        (bg, Stroke::new(style.width, color))
     } else {
-        transparent()
+        (open, Stroke::new(style.width, color))
     };
-    let shape = match symbol {
-        0 | 7 | 12 | 14 | 15 | 22 => 0,
-        2 | 11 | 17 | 24 => 2,
-        5 | 9 | 18 | 23 => 5,
-        6 | 25 => 6,
-        3 | 4 | 8 => -1,
-        _ => 1,
+    let draw_line = |target: &mut dyn DrawTarget, a: Point, b: Point| {
+        line(target, a, b, stroke.clone());
     };
-    if shape >= 0 {
-        let mut path = match shape {
-            0 => Path::rect(p.x - r, p.y - r, r * 2., r * 2.),
-            2 | 6 => {
-                let sign = if shape == 6 { -1. } else { 1. };
-                Path {
-                    commands: vec![
-                        PathCommand::MoveTo(p.x, p.y - sign * r),
-                        PathCommand::LineTo(p.x + r, p.y + sign * r),
-                        PathCommand::LineTo(p.x - r, p.y + sign * r),
-                        PathCommand::Close,
-                    ],
-                    ..Default::default()
-                }
-            }
-            5 => Path {
-                commands: vec![
-                    PathCommand::MoveTo(p.x, p.y - r),
-                    PathCommand::LineTo(p.x + r, p.y),
-                    PathCommand::LineTo(p.x, p.y + r),
-                    PathCommand::LineTo(p.x - r, p.y),
-                    PathCommand::Close,
+
+    match symbol {
+        0 => symbol_rectangle(target, p, r, r, fill, &stroke),
+        1 => symbol_circle(target, p, r, fill, &stroke),
+        2 | 17 | 24 => symbol_polygon(
+            target,
+            &symbol_triangle(p, true, TRC1 * r, TRC0 * r, TRC2 * r),
+            fill,
+            &stroke,
+        ),
+        3 => {
+            let x = SQRT2 * r;
+            draw_line(
+                target,
+                Point { x: p.x - x, y: p.y },
+                Point { x: p.x + x, y: p.y },
+            );
+            draw_line(
+                target,
+                Point { x: p.x, y: p.y - x },
+                Point { x: p.x, y: p.y + x },
+            );
+        }
+        4 => {
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y - r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y + r,
+                },
+            );
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y + r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y - r,
+                },
+            );
+        }
+        5 | 18 => {
+            let x = SQRT2 * r;
+            symbol_polygon(
+                target,
+                &[
+                    (p.x - x, p.y),
+                    (p.x, p.y + x),
+                    (p.x + x, p.y),
+                    (p.x, p.y - x),
                 ],
-                ..Default::default()
-            },
-            _ => Path::circle(p.x, p.y, if symbol == 20 { r * 0.6 } else { r }),
-        };
-        path.fill = fill;
-        path.stroke = stroke.clone();
-        path.anti_alias = true;
-        target.draw_path(&path);
-    }
-    if matches!(symbol, 3 | 7 | 8 | 9 | 10 | 12) {
-        line(
+                fill,
+                &stroke,
+            );
+        }
+        6 | 25 => symbol_polygon(
             target,
-            Point { x: p.x - r, y: p.y },
-            Point { x: p.x + r, y: p.y },
-            stroke.clone(),
-        );
-        line(
-            target,
-            Point { x: p.x, y: p.y - r },
-            Point { x: p.x, y: p.y + r },
-            stroke.clone(),
-        );
-    }
-    if matches!(symbol, 4 | 8 | 13) {
-        line(
-            target,
-            Point {
-                x: p.x - r,
-                y: p.y - r,
-            },
-            Point {
-                x: p.x + r,
-                y: p.y + r,
-            },
-            stroke.clone(),
-        );
-        line(
-            target,
-            Point {
-                x: p.x - r,
-                y: p.y + r,
-            },
-            Point {
-                x: p.x + r,
-                y: p.y - r,
-            },
-            stroke,
-        );
+            &symbol_triangle(p, false, TRC1 * r, TRC0 * r, TRC2 * r),
+            fill,
+            &stroke,
+        ),
+        7 => {
+            symbol_rectangle(target, p, r, r, fill, &stroke);
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y - r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y + r,
+                },
+            );
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y + r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y - r,
+                },
+            );
+        }
+        8 => {
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y - r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y + r,
+                },
+            );
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y + r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y - r,
+                },
+            );
+            let x = SQRT2 * r;
+            draw_line(
+                target,
+                Point { x: p.x - x, y: p.y },
+                Point { x: p.x + x, y: p.y },
+            );
+            draw_line(
+                target,
+                Point { x: p.x, y: p.y - x },
+                Point { x: p.x, y: p.y + x },
+            );
+        }
+        9 => {
+            let x = SQRT2 * r;
+            draw_line(
+                target,
+                Point { x: p.x - x, y: p.y },
+                Point { x: p.x + x, y: p.y },
+            );
+            draw_line(
+                target,
+                Point { x: p.x, y: p.y - x },
+                Point { x: p.x, y: p.y + x },
+            );
+            symbol_polygon(
+                target,
+                &[
+                    (p.x - x, p.y),
+                    (p.x, p.y + x),
+                    (p.x + x, p.y),
+                    (p.x, p.y - x),
+                ],
+                fill,
+                &stroke,
+            );
+        }
+        10 => {
+            symbol_circle(target, p, r, fill, &stroke);
+            draw_line(
+                target,
+                Point { x: p.x - r, y: p.y },
+                Point { x: p.x + r, y: p.y },
+            );
+            draw_line(
+                target,
+                Point { x: p.x, y: p.y - r },
+                Point { x: p.x, y: p.y + r },
+            );
+        }
+        11 => {
+            let x = TRC1 * r;
+            let top = TRC0 * r;
+            let base = 0.5 * (TRC2 * r + top);
+            symbol_polygon(
+                target,
+                &symbol_triangle(p, false, x, top, base),
+                fill,
+                &stroke,
+            );
+            symbol_polygon(
+                target,
+                &symbol_triangle(p, true, x, top, base),
+                fill,
+                &stroke,
+            );
+        }
+        12 => {
+            symbol_rectangle(target, p, r, r, fill, &stroke);
+            draw_line(
+                target,
+                Point { x: p.x - r, y: p.y },
+                Point { x: p.x + r, y: p.y },
+            );
+            draw_line(
+                target,
+                Point { x: p.x, y: p.y - r },
+                Point { x: p.x, y: p.y + r },
+            );
+        }
+        13 => {
+            symbol_circle(target, p, r, fill, &stroke);
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y - r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y + r,
+                },
+            );
+            draw_line(
+                target,
+                Point {
+                    x: p.x - r,
+                    y: p.y + r,
+                },
+                Point {
+                    x: p.x + r,
+                    y: p.y - r,
+                },
+            );
+        }
+        14 => {
+            symbol_polygon(target, &symbol_triangle(p, true, r, r, r), fill, &stroke);
+            symbol_rectangle(target, p, r, r, fill, &stroke);
+        }
+        15 => symbol_rectangle(target, p, r, r, fill, &stroke),
+        16 | 19 | 21 => symbol_circle(target, p, r, fill, &stroke),
+        20 => symbol_circle(target, p, SMALL * r, fill, &stroke),
+        22 => symbol_rectangle(target, p, SQRC * r, SQRC * r, fill, &stroke),
+        23 => {
+            let x = DMDC * r;
+            symbol_polygon(
+                target,
+                &[
+                    (p.x, p.y - x),
+                    (p.x + x, p.y),
+                    (p.x, p.y + x),
+                    (p.x - x, p.y),
+                ],
+                fill,
+                &stroke,
+            );
+        }
+        _ => {}
     }
 }
+
 fn draw_xy(
     target: &mut dyn DrawTarget,
     coords: Coordinates,
@@ -590,8 +923,9 @@ fn draw_xy(
     y: &[f64],
     kind: &str,
     style: &Style,
+    clip: [f32; 4],
 ) {
-    target.set_clip(Some(coords.rect));
+    target.set_clip(Some(clip));
     let mut previous: Option<Point> = None;
     for (i, (x, y)) in x.iter().zip(y).enumerate() {
         let p = coords.map(*x, *y);
@@ -843,7 +1177,116 @@ fn axis(
 
 #[cfg(test)]
 mod tests {
-    use super::pretty_linear_ticks;
+    use super::{Coordinates, Style, clip_for_xpd, point, pretty_linear_ticks};
+    use r_graphics_engine::{Color, DrawTarget, Path, PlotParameters, Point};
+
+    #[derive(Default)]
+    struct RecordingTarget {
+        paths: Vec<Path>,
+        texts: Vec<String>,
+        clips: Vec<Option<[f32; 4]>>,
+    }
+
+    impl DrawTarget for RecordingTarget {
+        fn clear(&mut self, _: Color) {}
+
+        fn set_clip(&mut self, rect: Option<[f32; 4]>) {
+            self.clips.push(rect);
+        }
+
+        fn draw_path(&mut self, path: &Path) {
+            self.paths.push(path.clone());
+        }
+
+        fn draw_text(&mut self, text: &str, _: Point, _: &PlotParameters) {
+            self.texts.push(text.to_owned());
+        }
+    }
+
+    fn style(symbol: i32) -> Style {
+        Style {
+            colors: vec![Color::RED],
+            background: vec![Color::BLUE],
+            symbols: vec![symbol],
+            width: 2.,
+            size: 3.,
+            dash: None,
+            blank: false,
+        }
+    }
+
+    #[test]
+    fn every_numeric_pch_0_through_25_emits_geometry() {
+        for symbol in 0..=25 {
+            let mut target = RecordingTarget::default();
+            point(&mut target, Point { x: 10., y: 10. }, &style(symbol), 0);
+            assert!(
+                !target.paths.is_empty(),
+                "pch {symbol} should emit at least one path"
+            );
+        }
+    }
+
+    #[test]
+    fn filled_and_background_symbols_match_r_color_roles() {
+        let mut target = RecordingTarget::default();
+        point(&mut target, Point { x: 10., y: 10. }, &style(19), 0);
+        assert_eq!(target.paths[0].fill, Color::RED);
+        assert_eq!(target.paths[0].stroke.width, 0.);
+
+        let mut target = RecordingTarget::default();
+        point(&mut target, Point { x: 10., y: 10. }, &style(21), 0);
+        assert_eq!(target.paths[0].fill, Color::BLUE);
+        assert_eq!(target.paths[0].stroke.width, 2.);
+        assert_eq!(target.paths[0].stroke.color, Color::RED);
+    }
+
+    #[test]
+    fn triangle_geometry_uses_upstream_r_constants() {
+        let mut target = RecordingTarget::default();
+        point(&mut target, Point { x: 10., y: 10. }, &style(2), 0);
+        let commands = &target.paths[0].commands;
+        let r = 3.0_f32;
+        assert_eq!(commands.len(), 4);
+        assert_eq!(
+            commands[0],
+            r_graphics_engine::PathCommand::MoveTo(10., 10. + 1.5551203 * r)
+        );
+        assert_eq!(
+            commands[1],
+            r_graphics_engine::PathCommand::LineTo(10. + 1.3467737 * r, 10. - 0.77756015 * r)
+        );
+    }
+
+    #[test]
+    fn character_and_unicode_pch_follow_r_encoding() {
+        let mut target = RecordingTarget::default();
+        point(&mut target, Point { x: 10., y: 10. }, &style('A' as i32), 0);
+        assert_eq!(target.texts, vec!["A"]);
+
+        let mut target = RecordingTarget::default();
+        point(&mut target, Point { x: 10., y: 10. }, &style(-0x1f600), 0);
+        assert_eq!(target.texts, vec!["😀"]);
+
+        let mut target = RecordingTarget::default();
+        point(&mut target, Point { x: 10., y: 10. }, &style('.' as i32), 0);
+        assert!(target.texts.is_empty());
+        assert_eq!(target.paths[0].fill, Color::RED);
+    }
+
+    #[test]
+    fn xpd_selects_plot_figure_or_device_clip() {
+        let c = Coordinates {
+            limits: [0.; 4],
+            rect: [10., 20., 100., 200.],
+            figure: [1., 2., 300., 400.],
+            device: [0., 0., 640., 480.],
+            log: [false; 2],
+        };
+        assert_eq!(clip_for_xpd(c, 0.), c.rect);
+        assert_eq!(clip_for_xpd(c, 1.), c.figure);
+        assert_eq!(clip_for_xpd(c, f64::NAN), c.device);
+    }
 
     #[test]
     fn automatic_linear_ticks_match_r_axis_ticks_oracle() {
@@ -983,7 +1426,7 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
         if frame {
             box_path(target, c, Color::BLACK);
         }
-        draw_xy(target, c, &x, &y, &kind, &style);
+        draw_xy(target, c, &x, &y, &kind, &style, clip_rect(c, args));
         titles(target, c, args);
         invisible()
     }
@@ -1021,7 +1464,15 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 if !["p", "l", "b", "c", "o", "h", "s", "S", "n"].contains(&kind.as_str()) {
                     base_error("invalid plot type");
                 }
-                draw_xy(&mut *renderer(), c, &x, &y, &kind, &style);
+                draw_xy(
+                    &mut *renderer(),
+                    c,
+                    &x,
+                    &y,
+                    &kind,
+                    &style,
+                    clip_rect(c, args),
+                );
             }
             "segments" | "arrows" => {
                 let a = bindings(args, &["x0", "y0", "x1", "y1"]);
@@ -1034,7 +1485,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let angle = scalar(args, "angle", 30.).to_radians() as f32;
                 let code = scalar(args, "code", 2.) as i32;
                 let target = &mut *renderer();
-                target.set_clip(Some(c.rect));
+                target.set_clip(Some(clip_rect(c, args)));
                 for i in 0..n {
                     let p = c.map(cols[0][i % cols[0].len()], cols[1][i % cols[1].len()]);
                     let q = c.map(cols[2][i % cols[2].len()], cols[3][i % cols[3].len()]);
@@ -1068,7 +1519,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let h = values(arg(args, "h"));
                 let v = values(arg(args, "v"));
                 let target = &mut *renderer();
-                target.set_clip(Some(c.rect));
+                target.set_clip(Some(clip_rect(c, args)));
                 if !av.is_empty() {
                     let b = if !bv.is_empty() {
                         bv[0]
@@ -1114,7 +1565,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let border = colors(arg(args, "border"), Color::BLACK);
                 let n = cols.iter().map(Vec::len).max().unwrap();
                 let target = &mut *renderer();
-                target.set_clip(Some(c.rect));
+                target.set_clip(Some(clip_rect(c, args)));
                 for i in 0..n {
                     let a = c.map(cols[0][i % cols[0].len()], cols[1][i % cols[1].len()]);
                     let b = c.map(cols[2][i % cols[2].len()], cols[3][i % cols[3].len()]);
@@ -1135,7 +1586,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let fill = colors(arg(args, "col"), transparent());
                 let border = colors(arg(args, "border"), Color::BLACK);
                 let target = &mut *renderer();
-                target.set_clip(Some(c.rect));
+                target.set_clip(Some(clip_rect(c, args)));
                 let mut commands = vec![];
                 let mut polygon = 0;
                 for (i, (x, y)) in x
@@ -1181,7 +1632,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 }
                 let angle = scalar(args, "srt", 0.) as f32;
                 let target = &mut *renderer();
-                target.set_clip(Some(c.rect));
+                target.set_clip(Some(clip_rect(c, args)));
                 for i in 0..x.len().max(y.len()) {
                     target.draw_text(
                         &text[i % text.len()],
@@ -1222,6 +1673,25 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             }
             _ => base_error(format!("graphics primitive '{name}' is not implemented")),
         }
+        invisible()
+    }
+}
+
+/// Decode all R arguments before borrowing the live renderer.
+pub(crate) unsafe fn raster_image(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP {
+    unsafe {
+        let request = crate::mainutils::graphics_raster::parse_raster_image(args);
+        let coords = current();
+        if coords.log.iter().any(|log| *log) {
+            base_error("rasterImage on logarithmic axes is not supported");
+        }
+        let clip = clip_rect(coords, args);
+        let target = &mut *renderer();
+        target.set_clip(Some(clip));
+        crate::mainutils::graphics_raster::draw_raster_image(&request, target, |x, y| {
+            let point = coords.map(x, y);
+            (f64::from(point.x), f64::from(point.y))
+        });
         invisible()
     }
 }

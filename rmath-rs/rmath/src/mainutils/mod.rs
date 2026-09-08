@@ -114,3 +114,13 @@ mod sample_contract_test;
 pub(crate) mod portable_plot;
 
 pub(crate) mod loess;
+
+#[cfg(feature = "renderplot-device")]
+pub(crate) mod graphics_recording;
+
+#[cfg(feature = "renderplot-device")]
+pub(crate) mod graphics_raster;
+
+pub(crate) mod graphics_highlevel;
+
+pub(crate) mod pretty;

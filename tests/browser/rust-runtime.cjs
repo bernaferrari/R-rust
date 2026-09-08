@@ -46,6 +46,14 @@ const server = http.createServer(async (req, res) => {
       return n;
     },smooth);
     assert.ok(ink>30,'bundled font renders a title in Wasm');
+    for (const code of [
+      "hist(c(0.1,0.2,0.8,1.2,1.9),col='skyblue')",
+      "hist(c(0.1,0.2,0.8,1.2,1.9),breaks=c(0,1,2),col='skyblue')",
+      "barplot(c(2,4,3),col='gold')",
+      "boxplot(c(1,2,3,4,100),col='skyblue')",
+      "plot(0:1,0:1,type='n'); rasterImage(matrix(c('red','blue','green','white'),2),0,0,1,1,interpolate=FALSE)",
+      "plot(1:3,3:1,pch=21,bg='gold'); savedPlot<-serialize(recordPlot(),NULL); replayPlot(unserialize(savedPlot))",
+    ]) assert.match(await request('plot',code), /data:image\/png;base64,/);
     assert.equal(await request('eval', "nx<-seq(0,1,length.out=30); ny<-sin(nx); ny[c(4,17)]<-NA; nf<-loess(ny~nx,na.action=na.exclude); np<-predict(nf); paste(length(np),paste(which(is.na(np)),collapse=','),any(is.nan(np)),sep='|')"), '[1] "30|4,17|FALSE"');
     await assert.rejects(request('eval', "lx<-seq(0,1,length.out=5000); ly<-sin(lx); loess(ly~lx)"), /LOESS workspace limit exceeded/);
     await page.locator('#console-command').fill('x + 2');
@@ -60,6 +68,6 @@ const server = http.createServer(async (req, res) => {
     assert.match(stopped, /session reset/i);
     assert.equal(await request('eval',"exists('x')"), '[1] FALSE');
     assert.deepEqual(errors, []);
-    console.log('Browser Rust worker: UI evaluation, typed strings, recoverable errors, nonlocal control flow, PNG plotting, cancellation and reset passed');
+    console.log('Browser Rust worker: UI evaluation, typed strings, recoverable errors, nonlocal control flow, Vello PNG plotting, hist/bar/box/raster, serialized replay, cancellation and reset passed');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; }).finally(() => server.close());

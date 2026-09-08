@@ -478,15 +478,8 @@ unsafe fn hcl2rgb(
 // String matching
 // ---------------------------------------------------------------------------
 
-/// C-locale tolower(3) for the ASCII palette-name comparison: libc on
-/// native targets, the portable ASCII table on wasm32.
-#[cfg(not(target_arch = "wasm32"))]
-#[inline]
-fn c_tolower(c: c_int) -> c_int {
-    unsafe { libc::tolower(c) }
-}
-
-#[cfg(target_arch = "wasm32")]
+/// Palette names are ASCII on every platform. Avoid locale-dependent libc
+/// calls (and its undefined behavior for negative signed character bytes).
 #[inline]
 fn c_tolower(c: c_int) -> c_int {
     if (0..128).contains(&c) {

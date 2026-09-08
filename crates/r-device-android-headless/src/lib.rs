@@ -1,23 +1,15 @@
-//! Headless pure Rust graphics backend (tiny-skia + fontdue PNG).
-//!
-//! Suitable for Android (via r-embed), WASM (wasm32-unknown-unknown), servers,
-//! and other targets without a display. A bundled Noto Sans font supplies text
-//! when system fonts are unavailable, including WASM. Use set_font() to override it.
-//!
-//! The r-embed crate's render_* API uses this for simple plot PNG output.
-//! Internal R grDevices on Android uses a separate pure pixel DeviceRegistry.
-
+//! Portable PNG rendering through Vello CPU, with vector glyphs and clipping.
+//! No GPU initialization is required on native, mobile or Wasm targets.
 #![forbid(unsafe_code)]
-
-use std::sync::OnceLock;
-use std::vec::Vec;
-
 use r_graphics_engine::{
-    Color, LineCap, LineJoin, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke,
-    TextAnchor,
+    Color, LineCap, LineJoin, Path, PathCommand, PlotParameters, Point, RasterImage, RenderPlot,
+    Stroke, TextAnchor,
 };
+use std::sync::{Arc, OnceLock};
+use vello_cpu::kurbo::{self, Affine, BezPath, Rect, Shape};
+use vello_cpu::peniko::{Blob, FontData};
+use vello_cpu::{Glyph, Pixmap, RenderContext, Resources};
 
-/// System font paths to try when loading a default font.
 const SYSTEM_FONT_PATHS: &[&str] = &[
     // Linux
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -34,342 +26,342 @@ const SYSTEM_FONT_PATHS: &[&str] = &[
     "C:\\Windows\\Fonts\\arial.ttf",
 ];
 
-/// Wrapper around fontdue::Font to allow Debug derivation.
-struct TextFont(fontdue::Font);
-
+#[derive(Clone)]
+struct TextFont {
+    metrics: fontdue::Font,
+    data: FontData,
+}
 impl std::fmt::Debug for TextFont {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TextFont").finish_non_exhaustive()
     }
 }
-
-/// Globally cached system font so we only hit the filesystem once.
-static CACHED_FONT: OnceLock<Option<fontdue::Font>> = OnceLock::new();
-
+fn parse_font(bytes: Vec<u8>) -> Result<TextFont, String> {
+    let metrics = fontdue::Font::from_bytes(bytes.clone(), fontdue::FontSettings::default())
+        .map_err(|e| e.to_string())?;
+    Ok(TextFont {
+        metrics,
+        data: FontData::new(Blob::new(Arc::new(bytes)), 0),
+    })
+}
+static CACHED_FONT: OnceLock<Option<TextFont>> = OnceLock::new();
 fn load_system_font() -> Option<TextFont> {
-    let cached = CACHED_FONT.get_or_init(|| {
-        for path in SYSTEM_FONT_PATHS {
-            if let Ok(data) = std::fs::read(path)
-                && let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default())
-            {
-                return Some(font);
+    CACHED_FONT
+        .get_or_init(|| {
+            for path in SYSTEM_FONT_PATHS {
+                if let Ok(bytes) = std::fs::read(path)
+                    && let Ok(font) = parse_font(bytes)
+                {
+                    return Some(font);
+                }
             }
-        }
-        fontdue::Font::from_bytes(
-            include_bytes!("../assets/NotoSans.ttf") as &[u8],
-            fontdue::FontSettings::default(),
-        )
-        .ok()
-    });
-    cached.clone().map(TextFont)
+            parse_font(include_bytes!("../assets/NotoSans.ttf").to_vec()).ok()
+        })
+        .clone()
 }
 
-/// Android headless plot renderer.
-pub struct AndroidHeadlessRenderer {
-    width: u32,
-    height: u32,
-    pixmap: Option<tiny_skia::Pixmap>,
+/// Vello's CPU rasterizer behind the shared graphics device interface.
+/// Canvas sizes are limited to 16 million pixels and u16 dimensions.
+pub struct VelloRenderer {
+    width: u16,
+    height: u16,
+    context: RenderContext,
+    resources: Resources,
     font: Option<TextFont>,
-    clip_mask: Option<tiny_skia::Mask>,
+    clipped: bool,
 }
-
-impl std::fmt::Debug for AndroidHeadlessRenderer {
+/// Compatibility name for existing embedding and mobile callers.
+pub type AndroidHeadlessRenderer = VelloRenderer;
+impl std::fmt::Debug for VelloRenderer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AndroidHeadlessRenderer")
+        f.debug_struct("VelloRenderer")
             .field("width", &self.width)
             .field("height", &self.height)
-            .field("pixmap", &self.pixmap)
-            .field("font", &self.font)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
-
-impl Default for AndroidHeadlessRenderer {
+impl Default for VelloRenderer {
     fn default() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            pixmap: None,
-            font: load_system_font(),
-            clip_mask: None,
-        }
+        Self::new(1, 1)
     }
 }
-
-impl AndroidHeadlessRenderer {
-    /// Create a new renderer with the given dimensions.
+impl VelloRenderer {
     pub fn new(width: u32, height: u32) -> Self {
-        let width = width.max(1);
-        let height = height.max(1);
-        Self {
+        Self::try_new(width.max(1), height.max(1)).expect("invalid Vello canvas dimensions")
+    }
+    pub fn try_new(width: u32, height: u32) -> Result<Self, String> {
+        if width == 0
+            || height == 0
+            || width > u16::MAX as u32
+            || height > u16::MAX as u32
+            || u64::from(width) * u64::from(height) > 16_777_216
+        {
+            return Err(
+                "plot canvas exceeds Vello limits (65535 per dimension, 16777216 pixels)".into(),
+            );
+        }
+        let (width, height) = (width as u16, height as u16);
+        Ok(Self {
             width,
             height,
-            pixmap: tiny_skia::Pixmap::new(width, height),
+            context: RenderContext::new(width, height),
+            resources: Resources::new(),
             font: load_system_font(),
-            clip_mask: None,
-        }
+            clipped: false,
+        })
     }
-
-    /// Set a custom font for text rendering.
-    pub fn set_font(&mut self, font_data: Vec<u8>) -> Result<(), String> {
-        let font = fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default())
-            .map_err(|e| format!("Failed to parse font: {:?}", e))?;
-        self.font = Some(TextFont(font));
+    /// Encode the rendered image, reporting any PNG encoding failure.
+    pub fn try_finish(mut self) -> Result<Vec<u8>, png::EncodingError> {
+        let rgba = self.pixels();
+        let mut output = Vec::new();
+        {
+            let mut encoder =
+                png::Encoder::new(&mut output, u32::from(self.width), u32::from(self.height));
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header()?;
+            writer.write_image_data(&rgba)?;
+            writer.finish()?;
+        }
+        Ok(output)
+    }
+    pub fn set_font(&mut self, bytes: Vec<u8>) -> Result<(), String> {
+        self.font = Some(parse_font(bytes)?);
         Ok(())
     }
-}
-
-/// Convert an r_graphics_engine::Path to a tiny_skia::Path.
-/// Returns `None` when the path has no commands or is degenerate.
-fn path_to_skia(path: &Path) -> Option<tiny_skia::Path> {
-    if path.commands.is_empty() {
-        return None;
-    }
-    let mut pb = tiny_skia::PathBuilder::new();
-    for cmd in &path.commands {
-        match cmd {
-            PathCommand::MoveTo(x, y) => pb.move_to(*x, *y),
-            PathCommand::LineTo(x, y) => pb.line_to(*x, *y),
-            PathCommand::QuadTo(x1, y1, x2, y2) => pb.quad_to(*x1, *y1, *x2, *y2),
-            PathCommand::CubicTo(x1, y1, x2, y2, x3, y3) => {
-                pb.cubic_to(*x1, *y1, *x2, *y2, *x3, *y3);
+    fn pixels(&mut self) -> Vec<u8> {
+        let mut image = Pixmap::new(self.width, self.height);
+        self.context.flush();
+        self.context.render(&mut image, &mut self.resources);
+        let mut data = image.data_as_u8_slice().to_vec();
+        for p in data.chunks_exact_mut(4) {
+            if p[3] > 0 && p[3] < 255 {
+                for j in 0..3 {
+                    p[j] = ((u32::from(p[j]) * 255 + u32::from(p[3]) / 2) / u32::from(p[3]))
+                        .min(255) as u8;
+                }
             }
-            PathCommand::ArcTo { x, y, .. } => pb.line_to(*x, *y),
-            PathCommand::Close => pb.close(),
+        }
+        data
+    }
+}
+fn color(c: Color) -> vello_cpu::color::AlphaColor<vello_cpu::color::Srgb> {
+    vello_cpu::color::AlphaColor::from_rgba8(c.r, c.g, c.b, c.a)
+}
+fn geometry(path: &Path) -> BezPath {
+    let mut p = BezPath::new();
+    for command in &path.commands {
+        match *command {
+            PathCommand::MoveTo(x, y) => p.move_to((f64::from(x), f64::from(y))),
+            PathCommand::LineTo(x, y) => p.line_to((f64::from(x), f64::from(y))),
+            PathCommand::QuadTo(a, b, x, y) => {
+                p.quad_to((f64::from(a), f64::from(b)), (f64::from(x), f64::from(y)))
+            }
+            PathCommand::CubicTo(a, b, c, d, x, y) => p.curve_to(
+                (f64::from(a), f64::from(b)),
+                (f64::from(c), f64::from(d)),
+                (f64::from(x), f64::from(y)),
+            ),
+            // This legacy command has no arc flags/rotation; retain its documented endpoint fallback.
+            PathCommand::ArcTo { x, y, .. } => p.line_to((f64::from(x), f64::from(y))),
+            PathCommand::Close => p.close_path(),
         }
     }
-    pb.finish()
+    p
 }
-
-/// Convert an r_graphics_engine::Stroke to a tiny_skia::Stroke.
-fn stroke_to_skia(stroke: &Stroke) -> tiny_skia::Stroke {
-    tiny_skia::Stroke {
-        width: stroke.width,
-        miter_limit: stroke.miter_limit,
-        line_cap: match stroke.cap {
-            LineCap::Butt => tiny_skia::LineCap::Butt,
-            LineCap::Round => tiny_skia::LineCap::Round,
-            LineCap::Square => tiny_skia::LineCap::Square,
-        },
-        line_join: match stroke.join {
-            LineJoin::Miter => tiny_skia::LineJoin::Miter,
-            LineJoin::Round => tiny_skia::LineJoin::Round,
-            LineJoin::Bevel => tiny_skia::LineJoin::Bevel,
-        },
-        dash: stroke
-            .dash_pattern
-            .as_ref()
-            .and_then(|dp| tiny_skia::StrokeDash::new(dp.intervals.clone(), dp.offset)),
+fn stroke(s: &Stroke) -> kurbo::Stroke {
+    let mut result = kurbo::Stroke::new(f64::from(s.width));
+    result.start_cap = match s.cap {
+        LineCap::Butt => kurbo::Cap::Butt,
+        LineCap::Round => kurbo::Cap::Round,
+        LineCap::Square => kurbo::Cap::Square,
+    };
+    result.end_cap = result.start_cap;
+    result.join = match s.join {
+        LineJoin::Miter => kurbo::Join::Miter,
+        LineJoin::Round => kurbo::Join::Round,
+        LineJoin::Bevel => kurbo::Join::Bevel,
+    };
+    result.miter_limit = f64::from(s.miter_limit);
+    if let Some(dash) = &s.dash_pattern {
+        result.dash_pattern = dash.intervals.iter().map(|v| f64::from(*v)).collect();
+        result.dash_offset = f64::from(dash.offset);
     }
+    result
 }
-
-impl RenderPlot for AndroidHeadlessRenderer {
-    fn dimensions(&self) -> (u32, u32) {
-        (self.width, self.height)
-    }
+impl RenderPlot for VelloRenderer {
     type Output = Vec<u8>;
-
-    fn new(width: u32, height: u32) -> Self {
-        Self::new(width, height)
+    fn new(w: u32, h: u32) -> Self {
+        Self::new(w, h)
     }
-
-    fn clear(&mut self, color: Color) {
-        if let Some(pixmap) = &mut self.pixmap {
-            let skia_color = tiny_skia::Color::from_rgba8(color.r, color.g, color.b, color.a);
-            pixmap.fill(skia_color);
-        }
+    fn dimensions(&self) -> (u32, u32) {
+        (u32::from(self.width), u32::from(self.height))
     }
-
+    fn clear(&mut self, c: Color) {
+        self.context.reset();
+        self.clipped = false;
+        self.context.set_paint(color(c));
+        self.context.fill_rect(&Rect::new(
+            0.,
+            0.,
+            f64::from(self.width),
+            f64::from(self.height),
+        ));
+    }
     fn set_clip(&mut self, rect: Option<[f32; 4]>) {
-        self.clip_mask = rect.and_then(|[left, top, right, bottom]| {
-            let mut mask = tiny_skia::Mask::new(self.width, self.height)?;
-            if let Some(rect) = tiny_skia::Rect::from_ltrb(left, top, right, bottom) {
-                let path = tiny_skia::PathBuilder::from_rect(rect);
-                mask.fill_path(
-                    &path,
-                    tiny_skia::FillRule::Winding,
-                    false,
-                    tiny_skia::Transform::identity(),
-                );
-            }
-            Some(mask)
-        });
-    }
-
-    fn draw_path(&mut self, path: &Path) {
-        if let Some(pixmap) = &mut self.pixmap {
-            let Some(skia_path) = path_to_skia(path) else {
-                return;
-            };
-
-            let mut paint = tiny_skia::Paint::default();
-            paint.set_color_rgba8(path.fill.r, path.fill.g, path.fill.b, path.fill.a);
-            paint.anti_alias = path.anti_alias;
-            pixmap.fill_path(
-                &skia_path,
-                &paint,
-                tiny_skia::FillRule::Winding,
-                tiny_skia::Transform::identity(),
-                self.clip_mask.as_ref(),
-            );
-
-            if path.stroke.width > 0.0 {
-                let mut stroke_paint = tiny_skia::Paint::default();
-                stroke_paint.set_color_rgba8(
-                    path.stroke.color.r,
-                    path.stroke.color.g,
-                    path.stroke.color.b,
-                    path.stroke.color.a,
-                );
-                stroke_paint.anti_alias = path.anti_alias;
-
-                let skia_stroke = stroke_to_skia(&path.stroke);
-                pixmap.stroke_path(
-                    &skia_path,
-                    &stroke_paint,
-                    &skia_stroke,
-                    tiny_skia::Transform::identity(),
-                    self.clip_mask.as_ref(),
-                );
-            }
+        if self.clipped {
+            self.context.pop_clip_path();
+            self.clipped = false;
+        }
+        if let Some([x0, y0, x1, y1]) = rect {
+            let path =
+                Rect::new(f64::from(x0), f64::from(y0), f64::from(x1), f64::from(y1)).to_path(0.1);
+            self.context.push_clip_path(&path);
+            self.clipped = true;
         }
     }
-
+    fn draw_path(&mut self, p: &Path) {
+        self.context
+            .set_aliasing_threshold(if p.anti_alias { None } else { Some(127) });
+        let path = geometry(p);
+        if p.fill.a > 0 {
+            self.context.set_paint(color(p.fill));
+            self.context.fill_path(&path);
+        }
+        if p.stroke.width > 0. && p.stroke.color.a > 0 {
+            self.context.set_paint(color(p.stroke.color));
+            self.context.set_stroke(stroke(&p.stroke));
+            self.context.stroke_path(&path);
+        }
+    }
+    fn draw_image(&mut self, image: &RasterImage, transform: [f64; 6], interpolate: bool) {
+        use vello_cpu::color::PremulRgba8;
+        use vello_cpu::peniko::{ImageQuality, ImageSampler};
+        let pixels = image
+            .pixels()
+            .chunks_exact(4)
+            .map(|p| {
+                let premultiply = |v: u8| ((u16::from(v) * u16::from(p[3]) + 127) / 255) as u8;
+                PremulRgba8 {
+                    r: premultiply(p[0]),
+                    g: premultiply(p[1]),
+                    b: premultiply(p[2]),
+                    a: p[3],
+                }
+            })
+            .collect();
+        let pixmap = Pixmap::from_parts(pixels, image.width() as u16, image.height() as u16);
+        self.context.set_aliasing_threshold(None);
+        self.context.set_transform(Affine::new(transform));
+        self.context.set_paint(vello_cpu::Image {
+            image: vello_cpu::ImageSource::Pixmap(Arc::new(pixmap)),
+            sampler: ImageSampler {
+                quality: if interpolate {
+                    ImageQuality::Medium
+                } else {
+                    ImageQuality::Low
+                },
+                ..Default::default()
+            },
+        });
+        self.context.fill_rect(&Rect::new(
+            0.,
+            0.,
+            f64::from(image.width()),
+            f64::from(image.height()),
+        ));
+        self.context.reset_transform();
+    }
     fn draw_text(&mut self, text: &str, pos: Point, params: &PlotParameters) {
-        let Some(pixmap) = &mut self.pixmap else {
+        self.context.set_aliasing_threshold(None);
+        let Some(font) = &self.font else {
             return;
         };
-        let Some(TextFont(font)) = &self.font else {
-            return;
-        };
-
-        let font_size = if params.font_size > 0.0 {
+        let size = if params.font_size > 0. {
             params.font_size
         } else {
-            12.0
+            12.
         };
         if !pos.x.is_finite()
             || !pos.y.is_finite()
-            || !font_size.is_finite()
+            || !size.is_finite()
+            || !params.text_angle.is_finite()
             || params.text_color.a == 0
         {
             return;
         }
-        let text_color = params.text_color;
-        let (sin, cos) = (-params.text_angle.to_radians()).sin_cos();
-
-        let text_width: f32 = text
-            .chars()
-            .filter(|ch| !ch.is_control())
-            .map(|ch| {
-                let (metrics, _) = font.rasterize(ch, font_size);
-                metrics.advance_width
-            })
+        let chars: Vec<_> = text.chars().filter(|c| !c.is_control()).collect();
+        let width: f32 = chars
+            .iter()
+            .map(|c| font.metrics.metrics(*c, size).advance_width)
             .sum();
-
-        let start_x = match params.text_anchor {
-            TextAnchor::Start => pos.x,
-            TextAnchor::Middle => pos.x - text_width / 2.0,
-            TextAnchor::End => pos.x - text_width,
+        let mut x = match params.text_anchor {
+            TextAnchor::Start => 0.,
+            TextAnchor::Middle => -width / 2.,
+            TextAnchor::End => -width,
         };
-
-        let pw = pixmap.width() as usize;
-        let ph = pixmap.height() as usize;
-        let data = pixmap.data_mut();
-        let mut x_cursor = start_x;
-
-        for ch in text.chars() {
-            if ch == ' ' {
-                let (space_metrics, _) = font.rasterize(' ', font_size);
-                x_cursor += space_metrics.advance_width;
-                continue;
-            }
-            if ch.is_control() {
-                continue;
-            }
-
-            let (metrics, bitmap) = font.rasterize(ch, font_size);
-            let gw = metrics.width;
-            let gh = metrics.height;
-
-            let glyph_base_x = x_cursor + metrics.xmin as f32;
-            let glyph_base_y = pos.y - metrics.ymin as f32 - gh as f32;
-
-            for row in 0..gh {
-                for col in 0..gw {
-                    let coverage = bitmap[row * gw + col];
-                    if coverage == 0 {
-                        continue;
-                    }
-
-                    let dx = glyph_base_x + col as f32 - pos.x;
-                    let dy = glyph_base_y + row as f32 - pos.y;
-                    let px = (pos.x + cos * dx - sin * dy).round() as i64;
-                    let py = (pos.y + sin * dx + cos * dy).round() as i64;
-                    if px < 0 || py < 0 || px >= pw as i64 || py >= ph as i64 {
-                        continue;
-                    }
-                    let pixel = py as usize * pw + px as usize;
-                    let clip = self
-                        .clip_mask
-                        .as_ref()
-                        .map_or(1., |m| m.data()[pixel] as f32 / 255.);
-                    let idx = pixel * 4;
-                    let a = coverage as f32 / 255. * text_color.a as f32 / 255. * clip;
-                    let inv_a = 1. - a;
-
-                    let sr = text_color.r as f32 * a;
-                    let sg = text_color.g as f32 * a;
-                    let sb = text_color.b as f32 * a;
-                    let sa = 255. * a;
-
-                    data[idx] = (sr + data[idx] as f32 * inv_a).min(255.0) as u8;
-                    data[idx + 1] = (sg + data[idx + 1] as f32 * inv_a).min(255.0) as u8;
-                    data[idx + 2] = (sb + data[idx + 2] as f32 * inv_a).min(255.0) as u8;
-                    data[idx + 3] = (sa + data[idx + 3] as f32 * inv_a).min(255.0) as u8;
-                }
-            }
-
-            x_cursor += metrics.advance_width;
-        }
+        let glyphs: Vec<_> = chars
+            .into_iter()
+            .map(|c| {
+                let g = Glyph {
+                    id: u32::from(font.metrics.lookup_glyph_index(c)),
+                    x,
+                    y: 0.,
+                };
+                x += font.metrics.metrics(c, size).advance_width;
+                g
+            })
+            .collect();
+        self.context.set_paint(color(params.text_color));
+        self.context.set_transform(
+            Affine::translate((f64::from(pos.x), f64::from(pos.y)))
+                * Affine::rotate(-f64::from(params.text_angle).to_radians()),
+        );
+        self.context
+            .glyph_run(&mut self.resources, &font.data)
+            .font_size(size)
+            .fill_glyphs(glyphs.into_iter());
+        self.context.reset_transform();
     }
-
-    fn finish(self) -> Self::Output {
-        if let Some(pixmap) = self.pixmap {
-            let mut buf = Vec::new();
-            let mut encoder = png::Encoder::new(&mut buf, self.width, self.height);
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            if let Ok(mut writer) = encoder.write_header() {
-                let mut rgba = pixmap.data().to_vec();
-                for p in rgba.chunks_exact_mut(4) {
-                    if p[3] > 0 && p[3] < 255 {
-                        for j in 0..3 {
-                            p[j] = ((p[j] as u32 * 255 + p[3] as u32 / 2) / p[3] as u32).min(255)
-                                as u8;
-                        }
-                    }
-                }
-                let _ = writer.write_image_data(&rgba);
-            }
-            buf
-        } else {
-            Vec::new()
-        }
+    fn finish(self) -> Vec<u8> {
+        self.try_finish()
+            .expect("validated in-memory RGBA PNG encoding")
     }
 }
-
-/// Portable alias for the headless renderer.
-///
-/// Use this (or a re-export) in cross-platform code targeting WASM, servers,
-/// or other no-display environments in addition to Android. The concrete name
-/// `AndroidHeadlessRenderer` is kept for backward compatibility with the
-/// Android embedding surface (`r_embed::RSession::render*` and UniFFI).
-pub type HeadlessRenderer = AndroidHeadlessRenderer;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_invalid_or_excessive_canvas_sizes() {
+        for (w, h) in [(0, 10), (10, 0), (65536, 1), (1, 65536), (8192, 8192)] {
+            assert!(VelloRenderer::try_new(w, h).is_err());
+        }
+    }
+
+    #[test]
+    fn transformed_raster_preserves_orientation_alpha_and_clip() {
+        let image = RasterImage::from_rgba8(
+            2,
+            2,
+            vec![
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 0, 0, 128,
+            ],
+        )
+        .unwrap();
+        let mut r = VelloRenderer::new(40, 40);
+        r.clear(Color::WHITE);
+        r.set_clip(Some([10., 10., 30., 30.]));
+        r.draw_image(&image, [10., 0., 0., 10., 10., 10.], false);
+        let pixels = r.pixels();
+        let pixel = |x: usize, y: usize| &pixels[(y * 40 + x) * 4..(y * 40 + x) * 4 + 4];
+        assert_eq!(pixel(15, 15), [255, 0, 0, 255]);
+        assert_eq!(pixel(25, 15), [0, 255, 0, 255]);
+        assert_eq!(pixel(15, 25), [0, 0, 255, 255]);
+        assert_eq!(pixel(25, 25), [255, 127, 127, 255]);
+        assert_eq!(pixel(5, 5), [255, 255, 255, 255]);
+    }
 
     #[test]
     fn test_render_basic_plot() {
@@ -389,13 +381,8 @@ mod tests {
 
     #[test]
     fn test_draw_text_no_panic_without_font() {
-        let mut renderer = AndroidHeadlessRenderer {
-            width: 200,
-            height: 100,
-            pixmap: tiny_skia::Pixmap::new(200, 100),
-            font: None,
-            clip_mask: None,
-        };
+        let mut renderer = AndroidHeadlessRenderer::new(200, 100);
+        renderer.font = None;
         renderer.draw_text(
             "Hello",
             Point { x: 10.0, y: 50.0 },
@@ -422,10 +409,9 @@ mod tests {
             },
         );
 
-        let pixmap = renderer.pixmap.as_ref().expect("pixmap");
         assert!(
-            pixmap
-                .data()
+            renderer
+                .pixels()
                 .chunks_exact(4)
                 .any(|rgba| rgba != [255, 255, 255, 255])
         );
@@ -436,13 +422,15 @@ mod tests {
         r.clear(Color::WHITE);
         r.set_clip(Some([10., 10., 30., 30.]));
         r.draw_path(&Path::rect(0., 0., 40., 40.).with_fill(Color::RED));
-        let p = r.pixmap.as_ref().unwrap();
-        assert_eq!(p.pixel(5, 5).unwrap().red(), 255);
-        assert_eq!(p.pixel(5, 5).unwrap().green(), 255);
-        assert_eq!(p.pixel(20, 20).unwrap().green(), 0);
+        let pixels = r.pixels();
+        assert_eq!(
+            &pixels[(5 * 40 + 5) * 4..(5 * 40 + 5) * 4 + 4],
+            &[255, 255, 255, 255]
+        );
+        assert_eq!(pixels[(20 * 40 + 20) * 4 + 1], 0);
         r.set_clip(None);
         r.draw_path(&Path::rect(0., 0., 8., 8.).with_fill(Color::BLUE));
-        assert_eq!(r.pixmap.as_ref().unwrap().pixel(5, 5).unwrap().red(), 0);
+        assert_eq!(r.pixels()[(5 * 40 + 5) * 4], 0);
     }
 
     #[test]
@@ -462,12 +450,12 @@ mod tests {
                 ..Default::default()
             },
         );
-        let p = r.pixmap.as_ref().unwrap();
+        let p = r.pixels();
         let mut ink = 0;
         for y in 0..100 {
             for x in 0..100 {
-                let c = p.pixel(x, y).unwrap();
-                if c.red() != 255 {
+                let red = p[(y * 100 + x) * 4];
+                if red != 255 {
                     ink += 1;
                     assert!((20..80).contains(&x) && (20..80).contains(&y));
                 }

@@ -2,10 +2,112 @@
 
 #![forbid(unsafe_code)]
 
+use serde::{Deserialize, Serialize};
 use std::vec::Vec;
 
+/// An owned straight-alpha RGBA8 image.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "RasterImageWire")]
+pub struct RasterImage {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+/// Errors returned when raster image storage does not match its dimensions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RasterImageError {
+    EmptyDimensions,
+    DimensionsTooLarge,
+    DimensionOverflow,
+    PixelDataLength { expected: usize, actual: usize },
+}
+
+impl std::fmt::Display for RasterImageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyDimensions => f.write_str("raster image dimensions must be nonzero"),
+            Self::DimensionsTooLarge => f.write_str("raster image dimensions exceed 65535"),
+            Self::DimensionOverflow => f.write_str("raster image dimensions overflow"),
+            Self::PixelDataLength { expected, actual } => write!(
+                f,
+                "raster image requires {expected} RGBA bytes, got {actual}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RasterImageError {}
+
+#[derive(Deserialize)]
+struct RasterImageWire {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+impl TryFrom<RasterImageWire> for RasterImage {
+    type Error = RasterImageError;
+
+    fn try_from(value: RasterImageWire) -> Result<Self, Self::Error> {
+        Self::new(value.width, value.height, value.pixels)
+    }
+}
+
+impl RasterImage {
+    /// Create an owned straight-alpha RGBA8 image.
+    pub fn new(width: u32, height: u32, pixels: Vec<u8>) -> Result<Self, RasterImageError> {
+        let image = Self {
+            width,
+            height,
+            pixels,
+        };
+        image.validate()?;
+        Ok(image)
+    }
+
+    /// Alias documenting the pixel format at call sites.
+    pub fn from_rgba8(width: u32, height: u32, pixels: Vec<u8>) -> Result<Self, RasterImageError> {
+        Self::new(width, height, pixels)
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn pixels(&self) -> &[u8] {
+        &self.pixels
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), RasterImageError> {
+        if self.width == 0 || self.height == 0 {
+            return Err(RasterImageError::EmptyDimensions);
+        }
+        if self.width > u16::MAX as u32 || self.height > u16::MAX as u32 {
+            return Err(RasterImageError::DimensionsTooLarge);
+        }
+        let expected = self
+            .width
+            .checked_mul(self.height)
+            .and_then(|pixels| pixels.checked_mul(4))
+            .ok_or(RasterImageError::DimensionOverflow)? as usize;
+        if self.pixels.len() == expected {
+            Ok(())
+        } else {
+            Err(RasterImageError::PixelDataLength {
+                expected,
+                actual: self.pixels.len(),
+            })
+        }
+    }
+}
+
 /// RGBA Color
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Color {
     pub r: u8,
@@ -42,14 +144,14 @@ impl Color {
 }
 
 /// 2D Point
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
 }
 
 /// Line cap style
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum LineCap {
     #[default]
     Butt,
@@ -58,7 +160,7 @@ pub enum LineCap {
 }
 
 /// Line join style
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum LineJoin {
     #[default]
     Miter,
@@ -67,7 +169,7 @@ pub enum LineJoin {
 }
 
 /// Dash pattern for stroked lines
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct DashPattern {
     pub intervals: Vec<f32>,
@@ -75,7 +177,7 @@ pub struct DashPattern {
 }
 
 /// Stroke parameters
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Stroke {
     pub width: f32,
     pub color: Color,
@@ -97,7 +199,7 @@ impl Stroke {
 }
 
 /// Path drawing command
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PathCommand {
     MoveTo(f32, f32),
     LineTo(f32, f32),
@@ -108,7 +210,7 @@ pub enum PathCommand {
 }
 
 /// Drawable path
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Path {
     pub commands: Vec<PathCommand>,
     pub fill: Color,
@@ -161,7 +263,7 @@ impl Path {
 }
 
 /// Text anchor/alignment
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum TextAnchor {
     #[default]
     Start,
@@ -170,7 +272,7 @@ pub enum TextAnchor {
 }
 
 /// Plot rendering parameters
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PlotParameters {
     pub font_size: f32,
     pub text_color: Color,
@@ -202,6 +304,14 @@ pub trait RenderPlot: Sized {
     /// Draw text at position
     fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters);
 
+    /// Draw an owned RGBA8 image through an affine device-space transform.
+    ///
+    /// Backends with native image support can override this. The default
+    /// implementation emits one transformed filled quad per pixel.
+    fn draw_image(&mut self, image: &RasterImage, transform: [f64; 6], interpolate: bool) {
+        draw_raster_image_as_quads(image, transform, interpolate, |path| self.draw_path(path));
+    }
+
     /// Finalize render and return output bytes
     fn finish(self) -> Self::Output;
 }
@@ -221,6 +331,9 @@ pub trait DrawTarget {
     fn set_clip(&mut self, _rect: Option<[f32; 4]>) {}
     fn draw_path(&mut self, path: &Path);
     fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters);
+    fn draw_image(&mut self, image: &RasterImage, transform: [f64; 6], interpolate: bool) {
+        draw_raster_image_as_quads(image, transform, interpolate, |path| self.draw_path(path));
+    }
 }
 
 impl<T: RenderPlot> DrawTarget for T {
@@ -239,4 +352,45 @@ impl<T: RenderPlot> DrawTarget for T {
     fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters) {
         <Self as RenderPlot>::draw_text(self, text, position, params);
     }
+    fn draw_image(&mut self, image: &RasterImage, transform: [f64; 6], interpolate: bool) {
+        <Self as RenderPlot>::draw_image(self, image, transform, interpolate);
+    }
 }
+
+fn draw_raster_image_as_quads(
+    image: &RasterImage,
+    transform: [f64; 6],
+    interpolate: bool,
+    mut draw_path: impl FnMut(&Path),
+) {
+    for y in 0..image.height {
+        for x in 0..image.width {
+            let offset = ((y as usize * image.width as usize) + x as usize) * 4;
+            let [r, g, b, a] = image.pixels[offset..offset + 4] else {
+                return;
+            };
+            let pixel = |x: f64, y: f64| Point {
+                x: (transform[0] * x + transform[2] * y + transform[4]) as f32,
+                y: (transform[1] * x + transform[3] * y + transform[5]) as f32,
+            };
+            let x = x as f64;
+            let y = y as f64;
+            draw_path(&Path {
+                commands: vec![
+                    PathCommand::MoveTo(pixel(x, y).x, pixel(x, y).y),
+                    PathCommand::LineTo(pixel(x + 1.0, y).x, pixel(x + 1.0, y).y),
+                    PathCommand::LineTo(pixel(x + 1.0, y + 1.0).x, pixel(x + 1.0, y + 1.0).y),
+                    PathCommand::LineTo(pixel(x, y + 1.0).x, pixel(x, y + 1.0).y),
+                    PathCommand::Close,
+                ],
+                fill: Color { r, g, b, a },
+                anti_alias: interpolate,
+                ..Default::default()
+            });
+        }
+    }
+}
+
+mod scene;
+
+pub use scene::{DisplayList, DrawOperation, Scene};

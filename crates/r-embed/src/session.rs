@@ -365,14 +365,17 @@ impl RSession {
             ));
         }
 
-        let mut renderer = AndroidHeadlessRenderer::new(width, height);
+        let mut renderer =
+            AndroidHeadlessRenderer::try_new(width, height).map_err(RSessionError::RenderError)?;
         renderer.clear(Color::WHITE);
 
         if code.trim().is_empty() {
-            return Ok(renderer.finish());
+            return renderer
+                .try_finish()
+                .map_err(|e| RSessionError::RenderError(e.to_string()));
         }
 
-        // Run the graphics-producing code through real R for full fidelity.
+        // Evaluate R code through the interpreter while the portable device is installed.
         let wrapped = format!(
             r#"
 local({{
@@ -400,7 +403,9 @@ local({{
             return Err(RSessionError::RenderError(message));
         }
 
-        Ok(renderer.finish())
+        renderer
+            .try_finish()
+            .map_err(|e| RSessionError::RenderError(e.to_string()))
     }
 
     /// Evaluate `expr` and keep the resulting value rooted in the session's

@@ -193,6 +193,52 @@ impl Drop for CurrentInstanceGuard {
     }
 }
 
+/// Records owned commands while forwarding to the live device. No borrow of
+/// the recording survives a draw call, so recordPlot can snapshot it reentrantly.
+#[cfg(feature = "renderplot-device")]
+struct RecordingTarget<'a> {
+    target: &'a mut dyn r_graphics_engine::DrawTarget,
+    recording: std::rc::Rc<std::cell::RefCell<r_graphics_engine::Scene>>,
+}
+#[cfg(feature = "renderplot-device")]
+impl r_graphics_engine::DrawTarget for RecordingTarget<'_> {
+    fn dimensions(&self) -> (u32, u32) {
+        self.target.dimensions()
+    }
+    fn clear(&mut self, color: r_graphics_engine::Color) {
+        self.recording.borrow_mut().clear(color);
+        self.target.clear(color);
+    }
+    fn set_clip(&mut self, clip: Option<[f32; 4]>) {
+        self.recording.borrow_mut().set_clip(clip);
+        self.target.set_clip(clip);
+    }
+    fn draw_path(&mut self, path: &r_graphics_engine::Path) {
+        self.recording.borrow_mut().draw_path(path);
+        self.target.draw_path(path);
+    }
+    fn draw_image(
+        &mut self,
+        image: &r_graphics_engine::RasterImage,
+        transform: [f64; 6],
+        interpolate: bool,
+    ) {
+        self.recording
+            .borrow_mut()
+            .draw_image(image, transform, interpolate);
+        self.target.draw_image(image, transform, interpolate);
+    }
+    fn draw_text(
+        &mut self,
+        text: &str,
+        point: r_graphics_engine::Point,
+        params: &r_graphics_engine::PlotParameters,
+    ) {
+        self.recording.borrow_mut().draw_text(text, point, params);
+        self.target.draw_text(text, point, params);
+    }
+}
+
 #[cfg(feature = "renderplot-device")]
 struct RenderPlotBackendGuard {
     instance: *mut RInstance,
@@ -796,7 +842,19 @@ impl RSession {
 
         {
             let _guard = self.activate();
-            let _backend_guard = RenderPlotBackendGuard::install(self.instance_ptr(), backend);
+            // SAFETY: the caller lends the backend for this synchronous evaluation;
+            // the installed forwarding pointer is removed before its local owner drops.
+            let target = unsafe { &mut *backend };
+            let (width, height) = target.dimensions();
+            let recording = std::rc::Rc::new(std::cell::RefCell::new(
+                r_graphics_engine::Scene::new(width, height),
+            ));
+            unsafe {
+                (*self.instance).graphics_recording = Some(recording.clone());
+            }
+            let mut forwarding = RecordingTarget { target, recording };
+            let _backend_guard =
+                RenderPlotBackendGuard::install(self.instance_ptr(), &mut forwarding);
             self.inst().output_capture.borrow_mut().start();
             // Same preservation of the remaining parsed statements as the
             // plain script loop above.
