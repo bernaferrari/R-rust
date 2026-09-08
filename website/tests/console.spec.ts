@@ -31,9 +31,6 @@ test("console mobile layout and multiline input", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/console/")
   await page.getByRole("button", { name: /A week in numbers/ }).click()
-  await expect(page.getByRole("status").last()).toContainText("Your turn", {
-    timeout: 30000,
-  })
   const command = page.getByRole("textbox", { name: "R command", exact: true })
   await expect(command).toHaveValue(/temperatures/)
   await command.press("ControlOrMeta+End")
@@ -55,7 +52,9 @@ test("interactive errors keep partial console output and plots", async ({
   await page.getByRole("button", { name: "Run command", exact: true }).click()
   await expect(page.getByRole("log")).toContainText("partial")
   await expect(page.getByRole("log")).toContainText("boom")
-  await expect(page.getByRole("img", { name: "Plot from command 1" })).toBeVisible()
+  await expect(
+    page.getByRole("img", { name: "Plot from command 1" })
+  ).toBeVisible()
 })
 
 test("stop resets a busy session and remains usable", async ({ page }) => {
@@ -77,9 +76,9 @@ for (const title of [
   test(`example conversation can continue: ${title}`, async ({ page }) => {
     await page.goto("/console/")
     await page.getByRole("button", { name: new RegExp(title) }).click()
-    await expect(page.getByRole("status").last()).toContainText("Your turn", {
-      timeout: 30000,
-    })
+    await expect(
+      page.getByRole("textbox", { name: "R command", exact: true })
+    ).not.toHaveValue("")
     await expect(page.getByRole("log").getByRole("img")).toHaveCount(1)
     const count = await page.locator(".r-chat-turn").count()
     await page.getByRole("button", { name: "Run command", exact: true }).click()
@@ -149,4 +148,30 @@ test("virtual history caps at 500 and submitting returns to the bottom", async (
       )
     )
     .toBeLessThan(100)
+})
+
+test("arrow keys recall commands and restore the unfinished draft", async ({
+  page,
+}) => {
+  await page.goto("/console/")
+  const input = page.getByRole("textbox", { name: "R command", exact: true })
+  for (const code of ["1 + 1", "2 + 2"]) {
+    await input.fill(code)
+    await input.press("Enter")
+    await expect(
+      page.getByRole("button", { name: "Run command", exact: true })
+    ).toBeVisible()
+  }
+  await input.fill("unfinished")
+  await input.press("ArrowUp")
+  await expect(input).toHaveValue("2 + 2")
+  await input.press("ArrowUp")
+  await expect(input).toHaveValue("1 + 1")
+  await input.press("ArrowDown")
+  await expect(input).toHaveValue("2 + 2")
+  await input.press("ArrowDown")
+  await expect(input).toHaveValue("unfinished")
+  await input.fill("first line\nsecond line")
+  await input.press("ArrowUp")
+  await expect(input).toHaveValue("first line\nsecond line")
 })

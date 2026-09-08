@@ -2,7 +2,7 @@
 // Usage: NODE_PATH=... SERVER_URL=http://127.0.0.1:5173 node scripts/generate-previews.cjs
 const fs = require("node:fs/promises")
 const path = require("node:path")
-const { chromium } = require("playwright")
+const { chromium } = require("@playwright/test")
 
 const serverUrl = process.env.SERVER_URL || "http://127.0.0.1:5173"
 const outputDir = path.resolve(__dirname, "../public/examples")

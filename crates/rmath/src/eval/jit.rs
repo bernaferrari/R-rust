@@ -340,22 +340,68 @@ fn count_loops(e: SEXP, depth: c_int) -> c_int {
 ///
 /// Ported from R's `R_cmpfun()` in eval.c. Compiles the body of a
 /// closure to bytecode if it isn't already compiled.
-pub unsafe fn R_cmpfun(fun: SEXP) {
+pub unsafe fn R_cmpfun(fun: SEXP) -> bool {
     unsafe {
         if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            return;
+            return false;
         }
 
         let body = BODY(fun);
-        if body.is_null() || TYPEOF(body) == SEXPTYPE::BCODESXP {
-            return; // Already compiled or no body
+        if body.is_null() {
+            return false;
+        }
+        if TYPEOF(body) == SEXPTYPE::BCODESXP {
+            return true;
         }
 
         if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
-            return;
+            return false;
         }
 
-        let _ = super::bc_compile::compile_closure(fun);
+        super::bc_compile::compile_closure(fun)
+    }
+}
+
+/// The supported part of `compiler::cmpfun`.
+///
+/// GNU R returns a byte-compiled closure for a closure body that the compiler
+/// accepts, and reports an error for non-functions. The portable compiler is
+/// intentionally smaller than GNU R's compiler: it must never claim success
+/// while leaving an unsupported body interpreted. Callers that expose the
+/// `compiler` package boundary can therefore use this result directly and
+/// turn `Err` into the package's normal compilation error/fallback policy.
+/// Primitive functions are already executable and follow GNU R's identity
+/// behavior. A successful closure compilation returns a duplicate closure,
+/// preserving formals, environment, and attributes while replacing its body
+/// with bytecode. The internal `R_cmpfun` entry point remains the in-place JIT
+/// operation used by the evaluator.
+pub unsafe fn compiler_cmpfun(fun: SEXP) -> Result<SEXP, &'static str> {
+    unsafe {
+        if fun.is_null() {
+            return Err("cannot compile a non-function");
+        }
+        match TYPEOF(fun) {
+            t if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP => Ok(fun),
+            t if t == SEXPTYPE::CLOSXP => {
+                if TYPEOF(BODY(fun)) == SEXPTYPE::BCODESXP {
+                    return Ok(fun);
+                }
+                if !BYTECODE_COMPILER_AVAILABLE || get_R_disable_bytecode() != FALSE {
+                    return Err("bytecode compiler is disabled");
+                }
+                let compiled = crate::mainutils::duplicate::duplicate(fun);
+                if compiled.is_null() {
+                    return Err("could not allocate compiled closure");
+                }
+                let _compiled_guard = crate::sexp::protect::protect(compiled);
+                if super::bc_compile::compile_closure(compiled) {
+                    Ok(compiled)
+                } else {
+                    Err("function body uses unsupported compiler syntax")
+                }
+            }
+            _ => Err("cannot compile a non-function"),
+        }
     }
 }
 
@@ -486,8 +532,15 @@ pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
         }
         let score = JIT_score(op);
         if score >= with_required_current_instance(get_R_min_jit_score_in) {
-            R_cmpfun(op);
-            TRUE
+            if R_cmpfun(op) {
+                TRUE
+            } else {
+                // A score only measures complexity.  The compiler can still
+                // decline unsupported syntax; report that truthfully instead
+                // of claiming JIT compilation succeeded while leaving the
+                // closure interpreted.
+                FALSE
+            }
         } else {
             FALSE
         }
@@ -907,6 +960,76 @@ mod tests {
 
             assert_eq!(R_CheckJIT(fun), TRUE);
             assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::BCODESXP);
+        });
+    }
+
+    #[test]
+    fn test_check_jit_reports_unsupported_compiler_body() {
+        let session = RSession::new();
+
+        session.with_active(|| unsafe {
+            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let formals = crate::sexp::constructors::Rf_allocList(1);
+            crate::sexp::accessors::SETTAG(formals, x_sym);
+            crate::sexp::accessors::SETCAR(formals, R_MissingArg());
+            // The minimal compiler intentionally declines arbitrary user
+            // calls; JIT must report that decline instead of returning TRUE
+            // while leaving the body interpreted.
+            let body = crate::sexp::constructors::Rf_lang2(
+                crate::sexp::symbol::Rf_install(c"user_fun".as_ptr()),
+                x_sym,
+            );
+            let fun = crate::mainutils::dstruct::mkCLOSXP(
+                formals,
+                body,
+                crate::sexp::globals::R_GlobalEnv(),
+            );
+            set_R_jit_enabled(3);
+            with_required_current_instance(|inst| set_R_min_jit_score_in(inst, 0));
+
+            assert_eq!(R_CheckJIT(fun), FALSE);
+            assert_eq!(TYPEOF(BODY(fun)), SEXPTYPE::LANGSXP);
+        });
+    }
+
+    #[test]
+    fn test_compiler_cmpfun_is_strict_about_lowering() {
+        let session = RSession::new();
+
+        session.with_active(|| unsafe {
+            let x_sym = crate::sexp::symbol::Rf_install(c"x".as_ptr());
+            let formals = crate::sexp::constructors::Rf_allocList(1);
+            crate::sexp::accessors::SETTAG(formals, x_sym);
+            crate::sexp::accessors::SETCAR(formals, R_MissingArg());
+
+            let supported_body = crate::sexp::constructors::Rf_lang2(
+                crate::sexp::symbol::Rf_install(c"+".as_ptr()),
+                x_sym,
+            );
+            let supported = crate::mainutils::dstruct::mkCLOSXP(
+                formals,
+                supported_body,
+                crate::sexp::globals::R_GlobalEnv(),
+            );
+            let compiled = compiler_cmpfun(supported).expect("supported body should compile");
+            assert_ne!(compiled, supported);
+            assert_eq!(TYPEOF(BODY(supported)), SEXPTYPE::LANGSXP);
+            assert_eq!(TYPEOF(BODY(compiled)), SEXPTYPE::BCODESXP);
+
+            let unsupported_body = crate::sexp::constructors::Rf_lang2(
+                crate::sexp::symbol::Rf_install(c"user_fun".as_ptr()),
+                x_sym,
+            );
+            let unsupported = crate::mainutils::dstruct::mkCLOSXP(
+                formals,
+                unsupported_body,
+                crate::sexp::globals::R_GlobalEnv(),
+            );
+            assert_eq!(
+                compiler_cmpfun(unsupported),
+                Err("function body uses unsupported compiler syntax")
+            );
+            assert_eq!(TYPEOF(BODY(unsupported)), SEXPTYPE::LANGSXP);
         });
     }
 

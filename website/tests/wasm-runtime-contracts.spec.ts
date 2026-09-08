@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
-test("interactive plots retain layers across commands in the actual Wasm worker", async ({ page }) => {
+test("interactive plots retain layers across commands in the actual Wasm worker", async ({
+  page,
+}) => {
   await page.goto("/console/")
   const result = await page.evaluate(async () => {
     const { RRuntime } = await import("/src/runtime/r-runtime.ts")
@@ -11,7 +13,10 @@ test("interactive plots retain layers across commands in the actual Wasm worker"
       await split.run("plot(1:2)", "interactive")
       const text = await split.run("2 + 2", "interactive")
       const actual = await split.run("lines(2:1, col='red')", "interactive")
-      const expected = await combined.run("plot(1:2); lines(2:1, col='red')", "interactive")
+      const expected = await combined.run(
+        "plot(1:2); lines(2:1, col='red')",
+        "interactive"
+      )
       return {
         text: text.output,
         textHasPlot: !!text.png,
@@ -29,20 +34,31 @@ test("interactive plots retain layers across commands in the actual Wasm worker"
   expect(result.actual).toEqual(result.expected)
 })
 
-test("named S4 signatures dispatch and reject invalid argument names recoverably", async ({ page }) => {
+test("named S4 signatures dispatch and reject invalid argument names recoverably", async ({
+  page,
+}) => {
   await page.goto("/console/")
   const result = await page.evaluate(async () => {
     const { RRuntime } = await import("/src/runtime/r-runtime.ts")
     const runtime = new RRuntime()
     try {
-      await runtime.run("setGeneric('mix',function(x,y) standardGeneric('mix'))", "console")
+      await runtime.run(
+        "setGeneric('mix',function(x,y) standardGeneric('mix'))",
+        "console"
+      )
       let error = ""
       try {
-        await runtime.run("setMethod('mix',c(z='numeric'),function(x,y) 'wrong')", "console")
+        await runtime.run(
+          "setMethod('mix',c(z='numeric'),function(x,y) 'wrong')",
+          "console"
+        )
       } catch (cause) {
         error = String(cause)
       }
-      const value = await runtime.run("setMethod('mix',c(y='character',x='numeric'),function(x,y) 'matched'); mix(1,'a')", "console")
+      const value = await runtime.run(
+        "setMethod('mix',c(y='character',x='numeric'),function(x,y) 'matched'); mix(1,'a')",
+        "console"
+      )
       return { error, output: value.output }
     } finally {
       runtime.dispose()
@@ -52,14 +68,18 @@ test("named S4 signatures dispatch and reject invalid argument names recoverably
   expect(result.output).toContain("matched")
 })
 
-
 test("S4 generic method tables are independent", async ({ page }) => {
   await page.goto("/console/")
   const output = await page.evaluate(async () => {
     const { RRuntime } = await import("/src/runtime/r-runtime.ts")
     const runtime = new RRuntime()
     try {
-      return (await runtime.run("setGeneric('aa',function(x) standardGeneric('aa')); setMethod('aa','numeric',function(x) 'a'); setGeneric('bb',function(x) standardGeneric('bb')); setMethod('bb','numeric',function(x) 'b'); cat(aa(1),bb(1))", "console")).output
+      return (
+        await runtime.run(
+          "setGeneric('aa',function(x) standardGeneric('aa')); setMethod('aa','numeric',function(x) 'a'); setGeneric('bb',function(x) standardGeneric('bb')); setMethod('bb','numeric',function(x) 'b'); cat(aa(1),bb(1))",
+          "console"
+        )
+      ).output
     } finally {
       runtime.dispose()
     }
@@ -73,7 +93,12 @@ test("nested grob edits preserve the original in Wasm", async ({ page }) => {
     const { RRuntime } = await import("/src/runtime/r-runtime.ts")
     const runtime = new RRuntime()
     try {
-      return (await runtime.run("library(grid); g <- grobTree(grobTree(rectGrob(name='leaf',gp=gpar(fill='red',col='black')),name='inner')); before <- serialize(g,NULL); h <- editGrob(g,'leaf',gp=gpar(col='blue')); identical(before,serialize(g,NULL)) && identical(getGrob(h,gPath('inner','leaf'))$gp$fill,'red') && identical(getGrob(h,'leaf')$gp$col,'blue')", "console")).output
+      return (
+        await runtime.run(
+          "library(grid); g <- grobTree(grobTree(rectGrob(name='leaf',gp=gpar(fill='red',col='black')),name='inner')); before <- serialize(g,NULL); h <- editGrob(g,'leaf',gp=gpar(col='blue')); identical(before,serialize(g,NULL)) && identical(getGrob(h,gPath('inner','leaf'))$gp$fill,'red') && identical(getGrob(h,'leaf')$gp$col,'blue')",
+          "console"
+        )
+      ).output
     } finally {
       runtime.dispose()
     }
@@ -81,9 +106,15 @@ test("nested grob edits preserve the original in Wasm", async ({ page }) => {
   expect(output).toContain("TRUE")
 })
 
-
-test("GNU compiled closures and ANY signatures work in the browser runtime", async ({ page }) => {
-  const fixture = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-compiled-captured.rds", import.meta.url))
+test("GNU compiled closures and ANY signatures work in the browser runtime", async ({
+  page,
+}) => {
+  const fixture = readFileSync(
+    new URL(
+      "../../crates/r-embed/tests/fixtures/gnu-compiled-captured.rds",
+      import.meta.url
+    )
+  )
   const code = `g <- unserialize(as.raw(c(${Array.from(fixture).join(",")}))); cat(g(),g(4))`
   await page.goto("/console/")
   const result = await page.evaluate(async (code) => {
@@ -91,10 +122,69 @@ test("GNU compiled closures and ANY signatures work in the browser runtime", asy
     const runtime = new RRuntime()
     try {
       const compiled = await runtime.run(code, "console")
-      const methods = await runtime.run("setGeneric('wild',function(x,y) standardGeneric('wild')); setMethod('wild',c('ANY','ANY'),function(x,y) 'fallback'); setMethod('wild','numeric',function(x,y) 'number'); cat(wild(2,NULL),wild(NULL,TRUE))", "console")
+      const methods = await runtime.run(
+        "setGeneric('wild',function(x,y) standardGeneric('wild')); setMethod('wild',c('ANY','ANY'),function(x,y) 'fallback'); setMethod('wild','numeric',function(x,y) 'number'); cat(wild(2,NULL),wild(NULL,TRUE))",
+        "console"
+      )
       return { compiled: compiled.output, methods: methods.output }
-    } finally { runtime.dispose() }
+    } finally {
+      runtime.dispose()
+    }
   }, code)
   expect(result.compiled).toBe("9 22")
   expect(result.methods).toBe("number fallback")
+})
+
+test("long vector density and deparsing remain within string buffer allocation", async ({
+  page,
+}) => {
+  await page.goto("/console/")
+  const output = await page.evaluate(async () => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      return (
+        await runtime.run(
+          'x <- seq(-4, 4, length.out=300); y <- dnorm(x); cat(length(y), "\\n"); cat(nchar(paste(deparse(x), collapse="")) > 1000)',
+          "console"
+        )
+      ).output
+    } finally {
+      runtime.dispose()
+    }
+  })
+  expect(output).toContain("300")
+  expect(output).toContain("TRUE")
+})
+
+test("simulation drawing is silent while explicit NULL and custom method results remain visible", async ({
+  page,
+}) => {
+  await page.goto("/console/")
+  const result = await page.evaluate(async () => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const { examples } = await import("/src/data/examples.ts")
+    const runtime = new RRuntime()
+    try {
+      const example = examples.find((item) => item.id === "constellation")!
+      const drawing = await runtime.run(example.code, "interactive")
+      const explicit = await runtime.run("print(NULL)", "interactive")
+      const custom = await runtime.run(
+        "x <- structure(1,class='probe'); plot.probe <- function(x,...) 42; plot(x)",
+        "interactive"
+      )
+      return {
+        drawing: drawing.output,
+        image: !!drawing.png,
+        explicit: explicit.output,
+        custom: custom.output,
+      }
+    } finally {
+      runtime.dispose()
+    }
+  })
+  expect(result.drawing).toBe("")
+  expect(result.image).toBe(true)
+  expect(result.explicit.trim()).toBe("NULL")
+  expect(result.custom).toContain("42")
 })

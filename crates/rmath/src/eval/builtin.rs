@@ -687,6 +687,10 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 }
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
+    EvaluatedBuiltin {
+        name: "cmpfun",
+        handler: crate::eval::compiler::do_cmpfun,
+    },
     #[cfg(feature = "renderplot-device")]
     EvaluatedBuiltin {
         name: ".rport_grid",

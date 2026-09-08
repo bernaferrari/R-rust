@@ -449,18 +449,12 @@ type Confined<'a> = PhantomData<(&'a (), *mut ())>;
 ///
 /// # Owner discipline (the type-level contract)
 ///
-/// Guards must act on their OWNING instance even when the ambient current
-/// instance has since switched to another session (see the
-/// `drops_against_original_instance` tests), and a borrow-like tag captured
-/// at creation (the old `NonNull::from(&mut inst)`) is invalidated by every
-/// later `&mut RInstance` re-acquisition from the thread-local. The owner is
-/// therefore stored as an address with exposed provenance and reconstituted
-/// through `ptr::with_exposed_provenance` — the sanctioned wildcard-
-/// provenance escape hatch for ambient instance back-references (permissive
-/// provenance, the mode CI's Miri job runs in). The cleanup helpers take a
-/// raw `*mut RInstance` and only touch `RefCell` fields through raw place
-/// accesses, so no borrow tag is created and nothing can be popped by
-/// reentrant ambient writes.
+/// Guards must act on their owning instance even when the ambient current
+/// instance has switched to another session. The owner retains the original
+/// session allocation's pointer provenance in a `NonNull<RInstance>` handle;
+/// it is never reconstructed from an integer address. Cleanup uses raw place
+/// accesses to the owner's `RefCell` fields without creating a new exclusive
+/// borrow of the complete instance.
 ///
 /// Soundness relies on the owner instance outliving every guard created
 /// against it — the session APIs keep the instance alive across the scoped
@@ -469,9 +463,12 @@ type Confined<'a> = PhantomData<(&'a (), *mut ())>;
 /// separately: root-slot releases check the slot's generation
 /// ([`RootTable::release`]) so a guard whose entry was already recycled or
 /// unwound is a no-op instead of evicting the live owner.
-fn with_guard_owner<R>(owner: usize, f: impl FnOnce(*mut RInstance) -> R) -> R {
+#[derive(Clone, Copy)]
+struct GuardOwner(std::ptr::NonNull<RInstance>);
+
+fn with_guard_owner<R>(owner: GuardOwner, f: impl FnOnce(*mut RInstance) -> R) -> R {
     // SAFETY: see the function docs; the owner outlives the guard.
-    unsafe { f(std::ptr::with_exposed_provenance_mut::<RInstance>(owner)) }
+    unsafe { f(owner.0.as_ptr()) }
 }
 
 /// How a [`ProtectGuard`] releases its protection at drop.
@@ -508,9 +505,9 @@ enum GuardRelease {
 /// // guard automatically unprotects when it goes out of scope
 /// ```
 pub struct ProtectGuard<'a> {
-    /// Owning instance address, stored with exposed provenance — see
+    /// Provenance-preserving owning instance handle — see
     /// [`with_guard_owner`].
-    owner: Option<usize>,
+    owner: Option<GuardOwner>,
     release: GuardRelease,
     _confined: Confined<'a>,
 }
@@ -547,7 +544,7 @@ pub fn protect_sexp<'a>(value: Sexp<'a>) -> ProtectGuard<'a> {
 /// Try to protect an owner-scoped SEXP handle.
 pub fn try_protect_sexp<'a>(value: Sexp<'a>) -> Result<ProtectGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "protect_sexp")?;
-    let owner = session_owner(&value);
+    let owner = session_owner_handle(&value);
     Ok(ProtectGuard {
         owner,
         release: GuardRelease::RootSlot(owner.map_or_else(ProtectionSlot::inactive, |owner| {
@@ -585,7 +582,9 @@ fn protect_raw(s: SEXP) -> ProtectGuard<'static> {
         // SAFETY: guard creation requires an active instance; `inst` is it.
         let slot = unsafe { protect_raw_with_slot_in(inst, s, "protect") };
         ProtectGuard {
-            owner: Some(inst as usize),
+            owner: Some(GuardOwner(
+                std::ptr::NonNull::new(inst).expect("active instance"),
+            )),
             release: GuardRelease::RootSlot(slot),
             _confined: PhantomData,
         }
@@ -603,7 +602,9 @@ pub(crate) fn protect_n(n: usize) -> ProtectGuard<'static> {
         owner: if n == 0 {
             None
         } else {
-            Some(with_required_current_instance(|inst| inst as usize))
+            Some(with_required_current_instance(|inst| {
+                GuardOwner(std::ptr::NonNull::new(inst).expect("active instance"))
+            }))
         },
         release: GuardRelease::LegacyCount(n),
         _confined: PhantomData,
@@ -831,7 +832,7 @@ fn protect_slot_is_stale_in(inst: *mut RInstance, slot: ProtectionSlot) -> bool 
 
 /// RAII guard for a replaceable root-table slot.
 pub struct IndexedProtectGuard<'a> {
-    owner: Option<usize>,
+    owner: Option<GuardOwner>,
     slot: ProtectionSlot,
     value_owner: SexpOwner,
     _confined: Confined<'a>,
@@ -1022,7 +1023,7 @@ pub fn try_protect_sexp_with_index<'a>(
     value: Sexp<'a>,
 ) -> Result<IndexedProtectGuard<'a>, ProtectError> {
     ensure_owner_scoped(value.clone(), "protect_sexp_with_index")?;
-    let owner = session_owner(&value);
+    let owner = session_owner_handle(&value);
     Ok(IndexedProtectGuard {
         owner,
         slot: owner.map_or_else(ProtectionSlot::inactive, |owner| {
@@ -1058,7 +1059,9 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard<
     }
 
     with_required_current_instance(|inst| IndexedProtectGuard {
-        owner: Some(inst as usize),
+        owner: Some(GuardOwner(
+            std::ptr::NonNull::new(inst).expect("active instance"),
+        )),
         slot: protect_raw_with_slot_in(inst, s, api),
         value_owner: SexpOwner::Unknown,
         _confined: PhantomData,
@@ -1145,7 +1148,7 @@ fn release_preserved(s: SEXP) {
 /// Dropping the guard releases the preserved object from the owning session.
 /// Like every protection guard it is `!Send + !Sync` ([`Confined`]).
 pub struct PreserveGuard<'a> {
-    owner: Option<usize>,
+    owner: Option<GuardOwner>,
     value: SEXP,
     _confined: Confined<'a>,
 }
@@ -1177,7 +1180,7 @@ pub fn try_preserve_sexp<'a>(value: Sexp<'a>) -> Result<PreserveGuard<'a>, Prote
         });
     }
 
-    let owner = session_owner(&value);
+    let owner = session_owner_handle(&value);
     if let Some(owner) = owner {
         with_guard_owner(owner, |inst| push_preserve_in(inst, raw));
     }
@@ -1206,9 +1209,9 @@ pub(crate) unsafe fn R_ReleaseObject(s: SEXP) {
 // Arena handles borrow their arena, preventing collection through its mutable API.
 // Static objects never require roots. Session values are rooted in their own
 // instance, independently of the ambient thread-local session.
-fn session_owner(value: &Sexp<'_>) -> Option<usize> {
+fn session_owner_handle(value: &Sexp<'_>) -> Option<GuardOwner> {
     match value.owner() {
-        SexpOwner::Session(owner) => Some(owner),
+        SexpOwner::Session(_) => value.session_owner_ptr.map(GuardOwner),
         _ => None,
     }
 }

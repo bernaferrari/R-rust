@@ -514,18 +514,204 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y_cdr = CDR(args);
-        let y = if y_cdr.is_null() || y_cdr == R_NilValue() {
+        let y = if y_cdr.is_null() || y_cdr == R_NilValue() || CAR(y_cdr) == R_MissingArg() {
             R_NilValue()
         } else {
             CAR(y_cdr)
         };
 
-        if x.is_null() || x == R_NilValue() {
+        if x.is_null() || x == R_NilValue() || x == R_MissingArg() {
             return Rf_ScalarReal(NA_REAL);
         }
 
+        let mut extra = if y_cdr.is_null() || y_cdr == R_NilValue() {
+            R_NilValue()
+        } else {
+            CDR(y_cdr)
+        };
+        let mut position = 2;
+        while !extra.is_null() && extra != R_NilValue() {
+            let name = tag_name(extra).unwrap_or_else(|| {
+                if position == 2 {
+                    "use".into()
+                } else if position == 3 {
+                    "method".into()
+                } else {
+                    "unknown".into()
+                }
+            });
+            let expected = match name.as_str() {
+                "use" => "everything",
+                "method" => "pearson",
+                _ => base_error("unsupported cor argument"),
+            };
+            let value = CAR(extra);
+            if value != R_MissingArg() {
+                if TYPEOF(value) != SEXPTYPE::STRSXP
+                    || XLENGTH(value) != 1
+                    || std::ffi::CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_bytes()
+                        != expected.as_bytes()
+                {
+                    base_error("cor currently supports only use='everything', method='pearson'");
+                }
+            }
+            position += 1;
+            extra = CDR(extra);
+        }
+
+        // Matrices are column-major in R.  Support Pearson correlation for
+        // finite numeric columns while retaining the scalar vector path below.
+        let dims = |value: SEXP| -> Option<(usize, usize)> {
+            let dim =
+                crate::eval::attrib_core::getAttrib(value, crate::eval::attrib_core::R_DimSymbol());
+            if TYPEOF(dim) != SEXPTYPE::INTSXP || XLENGTH(dim) != 2 {
+                return None;
+            }
+            let rows = *INTEGER(dim) as isize;
+            let cols = *INTEGER(dim).add(1) as isize;
+            (rows >= 0 && cols >= 0).then_some((rows as usize, cols as usize))
+        };
+        let x_dims = dims(x);
+        let y_missing = y.is_null() || y == R_NilValue() || y == R_MissingArg();
+        let y_dims = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+            None
+        } else {
+            dims(y)
+        };
+        if x_dims.is_some() || y_dims.is_some() {
+            let (x_rows, nx) = x_dims.unwrap_or((XLENGTH(x) as usize, 1));
+            let (y_rows, ny) = match y_dims {
+                Some((rows, cols)) => (rows, cols),
+                None if x_dims.is_some() && y_missing => (x_rows, nx),
+                None => (x_rows, 1),
+            };
+            if y_rows != x_rows {
+                base_error(format!("incompatible dimensions ({x_rows} vs {y_rows})"));
+            }
+            let x_data = get_numeric_data(x);
+            let y_data = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+                x_data.clone()
+            } else {
+                get_numeric_data(y)
+            };
+            // The matrix implementation intentionally covers the finite,
+            // default Pearson case only.  Do not silently turn R's default
+            // `use = "everything"` NA semantics into pairwise deletion.
+            if x_data.iter().any(|value| !value.is_finite())
+                || y_data.iter().any(|value| !value.is_finite())
+            {
+                base_error("matrix cor currently requires finite numeric data");
+            }
+            let x_is_matrix = x_dims.is_some();
+            let y_is_matrix = y_dims.is_some() || y_missing && x_is_matrix;
+            if (!x_is_matrix && x_data.len() != x_rows) || (!y_is_matrix && y_data.len() != y_rows)
+            {
+                base_error("incompatible dimensions");
+            }
+            if x_rows.checked_mul(nx) != Some(x_data.len())
+                || y_rows.checked_mul(ny) != Some(y_data.len())
+            {
+                base_error("matrix dimensions do not match correlation data");
+            }
+            let result_len = nx
+                .checked_mul(ny)
+                .unwrap_or_else(|| base_error("correlation matrix is too large"));
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len as i64);
+            let _guard = protect(result);
+            for j in 0..ny {
+                for i in 0..nx {
+                    let (mut sx, mut sy, mut count) = (0., 0., 0usize);
+                    for r in 0..x_rows {
+                        let xv = x_data[if x_is_matrix { i * x_rows + r } else { r }];
+                        let yv = y_data[if y_is_matrix { j * y_rows + r } else { r }];
+                        if xv.is_finite() && yv.is_finite() {
+                            sx += xv;
+                            sy += yv;
+                            count += 1;
+                        }
+                    }
+                    let value = if count < 2 {
+                        NA_REAL
+                    } else {
+                        let (mx, my) = (sx / count as f64, sy / count as f64);
+                        let (mut cov, mut vx, mut vy) = (0., 0., 0.);
+                        for r in 0..x_rows {
+                            let xv = x_data[if x_is_matrix { i * x_rows + r } else { r }];
+                            let yv = y_data[if y_is_matrix { j * y_rows + r } else { r }];
+                            if xv.is_finite() && yv.is_finite() {
+                                let dx = xv - mx;
+                                let dy = yv - my;
+                                cov += dx * dy;
+                                vx += dx * dx;
+                                vy += dy * dy;
+                            }
+                        }
+                        let denom = (vx * vy).sqrt();
+                        if denom == 0. { NA_REAL } else { cov / denom }
+                    };
+                    *REAL(result).add(j * nx + i) = value;
+                }
+            }
+            // R returns a matrix whenever either argument is a matrix,
+            // including matrix/vector and vector/matrix correlations.
+            if x_is_matrix || y_is_matrix {
+                let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+                let _dim_guard = protect(dim);
+                *INTEGER(dim) = nx as i32;
+                *INTEGER(dim).add(1) = ny as i32;
+                crate::eval::attrib_core::setAttrib(
+                    result,
+                    crate::eval::attrib_core::R_DimSymbol(),
+                    dim,
+                );
+                let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+                let _dng = protect(dimnames);
+                let column_names = |value: SEXP| {
+                    let dn = crate::eval::attrib_core::getAttrib(
+                        value,
+                        crate::eval::attrib_core::R_DimNamesSymbol(),
+                    );
+                    if TYPEOF(dn) == SEXPTYPE::VECSXP && XLENGTH(dn) >= 2 {
+                        VECTOR_ELT(dn, 1)
+                    } else {
+                        R_NilValue()
+                    }
+                };
+                SET_VECTOR_ELT(
+                    dimnames,
+                    0,
+                    if x_is_matrix {
+                        column_names(x)
+                    } else {
+                        R_NilValue()
+                    },
+                );
+                SET_VECTOR_ELT(
+                    dimnames,
+                    1,
+                    if y_is_matrix {
+                        if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+                            column_names(x)
+                        } else {
+                            column_names(y)
+                        }
+                    } else if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
+                        column_names(x)
+                    } else {
+                        R_NilValue()
+                    },
+                );
+                crate::eval::attrib_core::setAttrib(
+                    result,
+                    crate::eval::attrib_core::R_DimNamesSymbol(),
+                    dimnames,
+                );
+            }
+            return result;
+        }
+
         let x_data = get_numeric_data(x);
-        let y_data = if y.is_null() || y == R_NilValue() {
+        let y_data = if y.is_null() || y == R_NilValue() || y == R_MissingArg() {
             x_data.clone()
         } else {
             get_numeric_data(y)

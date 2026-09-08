@@ -69,8 +69,12 @@ export function Playground({
     (example) => example.id === input.exampleId
   )
   const [code, setCode] = useState(input.code)
-  const [mode, setMode] = useState<RuntimeMode>(input.mode)
+  const [mode, setMode] = useState<"plot" | "console">(
+    input.mode === "console" ? "console" : "plot"
+  )
   const [busy, setBusy] = useState(false)
+  const [slowRun, setSlowRun] = useState(0)
+  const stopTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [error, setError] = useState("")
   const [output, setOutput] = useState("")
   const [png, setPng] = useState("")
@@ -98,6 +102,7 @@ export function Playground({
     return () => {
       ++generation.current
       clearTimeout(autoTimer.current)
+      clearTimeout(stopTimer.current)
       clearTimeout(copyTimer.current)
       runtime.current?.dispose()
       URL.revokeObjectURL(imageUrl.current)
@@ -110,12 +115,24 @@ export function Playground({
     if (busy) runtime.current.reset()
     const id = ++runId.current
     setBusy(true)
+    clearTimeout(stopTimer.current)
+    stopTimer.current = setTimeout(() => {
+      if (id === runId.current) setSlowRun(id)
+    }, 800)
     setError("")
     setFeedback("")
     try {
-      const result = await runtime.current.run(code, mode)
+      const result = await runtime.current.run(code, "interactive")
       if (id !== runId.current) return
       setOutput(result.output)
+      setError(result.error ?? "")
+      setMode((current) =>
+        result.png
+          ? current === "console" && (result.output || result.error)
+            ? "console"
+            : "plot"
+          : "console"
+      )
       setDuration(result.durationMs)
       URL.revokeObjectURL(imageUrl.current)
       imageUrl.current = result.png
@@ -125,10 +142,15 @@ export function Playground({
         : ""
       setPng(imageUrl.current)
     } catch (e) {
-      if (id === runId.current)
+      if (id === runId.current) {
         setError(e instanceof Error ? e.message : String(e))
+        setMode("console")
+      }
     } finally {
-      if (id === runId.current) setBusy(false)
+      if (id === runId.current) {
+        clearTimeout(stopTimer.current)
+        setBusy(false)
+      }
     }
   }
   const autoRun = useEffectEvent(() => {
@@ -138,7 +160,7 @@ export function Playground({
     if (!automatic || !code.trim()) return
     autoTimer.current = setTimeout(() => autoRun(), 650)
     return () => clearTimeout(autoTimer.current)
-  }, [code, mode, automatic])
+  }, [code, automatic])
 
   function changeCode(next: string) {
     ++runId.current
@@ -152,13 +174,11 @@ export function Playground({
       setDuration(undefined)
     }
   }
-  function changeMode(next: RuntimeMode) {
-    ++runId.current
-    if (busy) runtime.current?.reset()
-    setBusy(false)
+  function changeMode(next: "plot" | "console") {
     setMode(next)
   }
   function reset() {
+    clearTimeout(stopTimer.current)
     clearTimeout(autoTimer.current)
     ++runId.current
     runtime.current?.reset()
@@ -322,7 +342,7 @@ export function Playground({
               <div
                 className="output-tabs"
                 role="group"
-                aria-label="Execution mode"
+                aria-label="Output view"
               >
                 <button
                   aria-pressed={mode === "plot"}
@@ -333,6 +353,12 @@ export function Playground({
                 </button>
                 <button
                   aria-pressed={mode === "console"}
+                  disabled={!output && !error}
+                  title={
+                    !output && !error
+                      ? "No console output from this run"
+                      : undefined
+                  }
                   onClick={() => changeMode("console")}
                 >
                   <Terminal size={14} />
@@ -377,7 +403,7 @@ export function Playground({
                   </SelectContent>
                 </Select>
 
-                {(!automatic || busy) && (
+                {(!automatic || (busy && slowRun === runId.current)) && (
                   <Button
                     className="run-button"
                     size="sm"
@@ -423,10 +449,10 @@ export function Playground({
                 </span>
               </Button>
 
-              {error ? (
+              {error && mode === "console" ? (
                 <div className="run-error" role="alert">
                   <strong>Something needs a tweak.</strong>
-                  <pre>{error}</pre>
+                  <pre>{output ? `${output.trim()}\n${error}` : error}</pre>
                   <p>Edit the code and try again.</p>
                 </div>
               ) : mode === "plot" ? (

@@ -19,13 +19,15 @@ const darkPlotDefaults = `par(bg = "#171e1c", fg = "#d7e1db",
  */
 export function getExampleCode(example: Example, dark = false): string {
   if (!dark || example.mode !== "plot") return example.code
-  if (example.id === "grid") {
+  if (example.id === "grid" || example.id === "woven-rosette") {
     return example.code
       .replaceAll("#f8f6ef", "#171e1c")
       .replaceAll("#52695e", "#9fb4a8")
       .replaceAll("#244e44", "#d7e8de")
   }
-  const code = example.code.replaceAll('border = "white"', 'border = "#30403b"')
+  const code = example.code
+    .replaceAll('border = "white"', 'border = "#30403b"')
+    .replaceAll("#faf3e6", "#171e1c")
   return `${darkPlotDefaults}${code}`
 }
 
@@ -50,38 +52,39 @@ lines(x, predict(fit), col = "#cc5636", lwd = 3)`,
   },
   {
     id: "sunflower",
-    title: "Grow a spiral garden",
-    category: "Creative",
+    title: "Watch averages settle",
+    category: "Simulation",
     description:
-      "Turn the golden angle into a garden of sculpted petals. Three blooms, one simple rule.",
+      "Start with skewed data. Repeated samples reveal why averages become easier to predict.",
     mode: "plot",
     color: "#43877b",
-    code: `# A spiral garden: every petal turns by the golden angle
-plot.new()
-plot.window(xlim = c(-1.4, 1.4), ylim = c(-1, 1), asp = 1)
-t <- seq(0, 2 * pi, length.out = 24)
-golden <- pi * (3 - sqrt(5))
-
-bloom <- function(cx, cy, size, colors) {
-  for (k in 150:1) {
-    angle <- k * golden
-    r <- size * sqrt(k / 150)
-    # Radial petals overlap like the scales of a pine cone
-    a <- size * (0.10 + 0.045 * sqrt(k / 150))
-    b <- a * 0.42
-    u <- r + a * cos(t)
-    v <- b * sin(t)
-    polygon(cx + u * cos(angle) - v * sin(angle),
-            cy + u * sin(angle) + v * cos(angle),
-            col = colors[1 + (k %% length(colors))], border = NA)
-  }
+    code: `# The central limit theorem, seen through repeated experiments
+set.seed(42)
+means <- function(n) {
+  result <- numeric(600)
+  for (i in 1:600) result[i] <- mean(rexp(n))
+  result
 }
-bloom(0.34, 0.12, 0.73,
-      c("#24594f", "#357466", "#4b907c", "#7fb69a", "#b3d4b4"))
-bloom(-0.80, 0.38, 0.32,
-      c("#9e4635", "#bb6549", "#d58e65", "#edbd91"))
-bloom(-0.66, -0.49, 0.24,
-      c("#ae813b", "#caa05a", "#dfbd7e", "#eed6a7"))`,
+a <- means(1)
+b <- means(5)
+c <- means(30)
+x <- seq(0, 4, length.out = 240)
+plot(x, dnorm(x, 1, 1), type = "n", ylim = c(0, 2.4),
+     main = "More observations. Less uncertainty.",
+     xlab = "Sample average", ylab = "Density")
+colors <- c("#cf9477", "#77a798", "#386d66")
+for (i in 1:3) {
+  values <- list(a, b, c)[[i]]
+  # Gaussian kernel density, evaluated directly
+  bandwidth <- 1.06 * sd(values) * length(values)^(-0.2)
+  estimate <- numeric(length(x))
+  for (j in seq_along(x)) {
+    estimate[j] <- mean(dnorm(x[j], values, bandwidth))
+  }
+  lines(x, estimate, col = colors[i], lwd = 3)
+}
+text(c(0.5, 1.9, 3.3), c(2.2, 2.2, 2.2),
+     c("n = 1", "n = 5", "n = 30"), col = colors, cex = 1.1)`,
   },
   {
     id: "distribution",
@@ -99,20 +102,24 @@ hist(samples, breaks = 24, col = "#92b4a7",
   },
   {
     id: "waves",
-    title: "Make some waves",
-    category: "Creative",
-    description: "Layer sine waves into a small piece of mathematical art.",
+    title: "Separate the seasons",
+    category: "Statistics",
+    description:
+      "A time series hides a trend inside its seasonal rhythm. Compare the signal with what you observe.",
     mode: "plot",
-    color: "#75659a",
-    code: `x <- seq(0, 4 * pi, length.out = 250)
-plot(x, sin(x), type = "n", ylim = c(-2, 5),
-     axes = FALSE, xlab = "", ylab = "")
-colors <- c("#3d5b56", "#67867e", "#a3b8a5",
-            "#d7b878", "#cc774b", "#b14e38")
-for (i in 1:6) {
-  lines(x, sin(x + i / 2) + i * 0.55,
-        col = colors[i], lwd = 3)
-}`,
+    color: "#43877b",
+    code: `# Separate a trend, a seasonal cycle, and measurement noise
+set.seed(15)
+month <- 1:72
+trend <- 30 + month * 0.4
+season <- 7 * sin(2 * pi * month / 12)
+observed <- trend + season + rnorm(72, sd = 1.4)
+plot(month, observed, type = "l", col = "#90afa5", lwd = 2,
+     xlab = "Month", ylab = "Demand", main = "A rhythm beneath the noise")
+lines(month, trend + season, col = "#39796c", lwd = 3)
+lines(month, trend, col = "#c67d58", lwd = 3)
+text(18, 57, "Seasonal signal", col = "#39796c")
+text(18, 53, "Underlying trend", col = "#c67d58")`,
   },
   {
     id: "grid",
@@ -148,18 +155,33 @@ grid.text("Twelve weeks. Eighty-four little possibilities.",
   },
   {
     id: "plotmath",
-    title: "Say it with symbols",
-    category: "Graphics",
+    title: "See uncertainty take shape",
+    category: "Statistics",
     description:
-      "Fractions, Greek letters, radicals, and a little mathematical poetry.",
+      "Connect a probability formula to its curve. Shade one standard deviation and see how much it contains.",
     mode: "plot",
-    color: "#414c65",
-    code: `plot.new()
-plot.window(xlim = c(0, 1), ylim = c(0, 1))
-text(.5, .7, expression(frac(alpha[1]^2, sqrt(beta))),
-     cex = 3, col = "#345d55")
-text(.5, .3, expression(sum(x[i], i == 1, n)),
-     cex = 2, col = "#cc5636")`,
+    color: "#43877b",
+    code: `# The formula, the curve, and the probability between
+mu <- 0
+sigma <- 1
+x <- seq(-4, 4, length.out = 300)
+y <- dnorm(x, mean = mu, sd = sigma)
+plot(x, y, type = "n", ylim = c(0, 0.62),
+     xlab = "Standard deviations from the mean", ylab = "Density",
+     main = "The shape of uncertainty")
+inside <- seq(-sigma, sigma, length.out = 100) + mu
+polygon(c(inside[1], inside, inside[length(inside)]),
+        c(0, dnorm(inside, mu, sigma), 0),
+        col = "#93bfae", border = NA)
+lines(x, y, col = "#43877b", lwd = 3)
+text(0, 0.52,
+     expression(f(x) == frac(1, sigma * sqrt(2 * pi)) *
+                e^(-frac((x - mu)^2, 2 * sigma^2))),
+     cex = 1.3, col = "#bc8060")
+probability <- pnorm(mu + sigma, mu, sigma) -
+               pnorm(mu - sigma, mu, sigma)
+text(0, 0.13, paste(round(100 * probability, 1), "%"),
+     cex = 1.6, col = "#244e44")`,
   },
   {
     id: "boxplot",
@@ -190,17 +212,23 @@ barplot(hours, col = "#c87951", border = NA,
   },
   {
     id: "spiral",
-    title: "Follow your curiosity",
-    category: "Creative",
+    title: "Estimate pi by chance",
+    category: "Simulation",
     description:
-      "A parametric spiral. Change the frequency and see what happens.",
+      "Random points estimate an ancient constant. More samples bring the estimate closer to pi.",
     mode: "plot",
-    color: "#ba634a",
-    code: `t <- seq(0, 12 * pi, length.out = 1200)
-x <- t * cos(t)
-y <- t * sin(t)
-plot(x, y, type = "l", col = "#bb644a", lwd = 2,
-     axes = FALSE, xlab = "", ylab = "")`,
+    color: "#43877b",
+    code: `# Monte Carlo integration: area estimates a constant
+set.seed(27)
+x <- runif(1600, -1, 1)
+y <- runif(1600, -1, 1)
+inside <- x^2 + y^2 <= 1
+colors <- ifelse(inside, "#589688", "#d6b59b")
+plot(x, y, pch = 16, cex = 0.45, col = colors,
+     asp = 1, xlab = "x", ylab = "y",
+     main = paste("An estimate of pi:", round(4 * mean(inside), 3)))
+t <- seq(0, 2 * pi, length.out = 300)
+lines(cos(t), sin(t), col = "#31665d", lwd = 2)`,
   },
   {
     id: "matrix",
@@ -265,62 +293,145 @@ abline(h = 0, col = "#c8d4cb", lty = 2)`,
   },
   {
     id: "orbit-lines",
-    title: "Draw an orbit",
-    category: "Graphics",
-    description:
-      "Two quiet frequencies make a looping figure with a compass-like rhythm.",
+    title: "Measure an area by chance",
+    category: "Simulation",
+    description: "Random darts estimate the area under a curve. Count the hits, then change the function.",
     mode: "plot",
-    color: "#586d92",
-    code: `t <- seq(0, 2 * pi, length.out = 500)
-x <- 1.2 * sin(3 * t + pi / 2)
-y <- 0.8 * sin(2 * t)
-plot(x, y, type = "l", lwd = 3, col = "#586d92",
-     axes = FALSE, xlab = "", ylab = "", asp = 1,
-     main = "An orbit in two frequencies")
-points(x[c(1, 126, 251, 376)], y[c(1, 126, 251, 376)],
-       pch = 16, cex = 1.2, col = "#d2874f")`,
+    color: "#538e7d",
+    code: `# Monte Carlo integration under a Gaussian-shaped curve
+set.seed(51)
+x <- runif(1800, 0, 2)
+y <- runif(1800, 0, 1)
+f <- function(x) exp(0 - x * x)
+hit <- y <= f(x)
+area <- 2 * mean(hit)
+plot(x, y, pch = 16, cex = 0.4,
+     col = ifelse(hit, "#4c927e", "#d3b6a0"),
+     main = paste("Estimated area:", round(area, 3)),
+     xlab = "x", ylab = "exp(-x squared)")
+curve_x <- seq(0, 2, length.out = 200)
+lines(curve_x, f(curve_x), col = "#285e51", lwd = 3)`,
   },
   {
     id: "constellation",
-    title: "Map a constellation",
-    category: "Creative",
+    title: "Explore possible futures",
+    category: "Simulation",
     description:
-      "A handful of points becomes a little night sky when you connect the dots.",
+      "One process can take many paths. Simulate uncertain growth and see how the possibilities spread.",
     mode: "plot",
-    color: "#4b5878",
-    code: `set.seed(18)
-stars <- matrix(runif(14, -1, 1), ncol = 2)
-plot(stars, pch = 16, cex = 1.4, col = "#d8ad58",
-     axes = FALSE, xlab = "", ylab = "", asp = 1,
-     xlim = c(-1.1, 1.1), ylim = c(-1.1, 1.1),
-     main = "A small constellation")
-for (i in 1:6) {
-  j <- i + 1
-  segments(stars[i, 1], stars[i, 2], stars[j, 1], stars[j, 2],
-           col = "#697995", lwd = 1.5)
-}`,
+    color: "#43877b",
+    code: `# Independent random walks share a trend, not a destination
+set.seed(19)
+time <- 0:80
+plot(time, time, type = "n", ylim = c(-20, 65),
+     xlab = "Time", ylab = "Change", main = "One process, many possible futures")
+colors <- c("#b9ccc1", "#93b6a8", "#70a18f", "#548674", "#35695b")
+for (i in 1:70) {
+  path <- c(0, cumsum(rnorm(80, mean = 0.35, sd = 1.8)))
+  lines(time, path, col = colors[1 + (i %% 5)], lwd = 0.7)
+}
+lines(time, time * 0.35, col = "#d58c62", lwd = 3)
+text(18, 55, "70 simulated paths", col = "#548674")
+text(18, 49, "Expected trend", col = "#d58c62")`,
   },
   {
     id: "dice-counts",
-    title: "Count the dice",
-    category: "Everyday R",
+    title: "Drop a needle, discover pi",
+    category: "Simulation",
+    description: "Buffon’s experiment turns random angles and parallel lines into another estimate of pi.",
+    mode: "plot",
+    color: "#538e7d",
+    code: `# Buffon's needle: length 0.75, parallel lines one unit apart
+set.seed(81)
+n <- 240
+length <- 0.75
+x <- runif(n, 0.5, 5.5)
+y <- runif(n, 0, 4)
+angle <- runif(n, 0, pi)
+dx <- length * cos(angle) / 2
+dy <- length * sin(angle) / 2
+crosses <- floor(y - dy) != floor(y + dy)
+estimate <- 2 * length / mean(crosses)
+plot.new()
+plot.window(xlim = c(0, 6), ylim = c(-0.5, 4.5))
+for (i in 0:4) abline(h = i, col = "#bccbc1", lwd = 1)
+segments(x - dx, y - dy, x + dx, y + dy,
+         col = ifelse(crosses, "#c77f60", "#4c8877"), lwd = 2)
+title(main = paste("Needles estimate pi:", round(estimate, 3)))`,
+  },
+  {
+    id: "sunset-ridges",
+    title: "Give an estimate room to breathe",
+    category: "Simulation",
     description:
-      "A compact simulation that turns ten thousand rolls into a readable check.",
-    mode: "console",
-    color: "#7d6a92",
-    code: `set.seed(31)
-rolls <- sample(1:6, 10000, replace = TRUE)
-counts <- tabulate(rolls, nbins = 6)
-cat("Roll counts:\n")
-print(counts)
-cat("Most common face:", which.max(counts), "\\n")
-cat("Mean roll:", round(mean(rolls), 3))`,
+      "Resample observed data to estimate uncertainty. A bootstrap distribution makes the interval visible.",
+    mode: "plot",
+    color: "#43877b",
+    code: `# Bootstrap the mean from an observed sample
+set.seed(8)
+observed <- c(18, 22, 25, 19, 31, 27, 24, 21, 35, 29, 23, 26)
+boot <- numeric(800)
+for (i in 1:800) {
+  boot[i] <- mean(sample(observed, length(observed), replace = TRUE))
+}
+hist(boot, breaks = 28, col = "#8db6a5", border = "white",
+     main = "How certain is this average?", xlab = "Resampled mean", ylab = "Frequency")
+# Interpolate the 2.5th and 97.5th percentiles (R type 7)
+ordered <- sort(boot)
+ranks <- 1 + (length(boot) - 1) * c(0.025, 0.975)
+low <- floor(ranks)
+interval <- ordered[low] + (ranks - low) * (ordered[low + 1] - ordered[low])
+abline(v = interval, col = "#c77f58", lwd = 3, lty = 2)
+abline(v = mean(observed), col = "#305e53", lwd = 3)
+cat("Observed mean:", mean(observed), "\\n")
+cat("95% bootstrap interval:", round(interval, 2))`,
+  },
+  {
+    id: "woven-rosette",
+    title: "Find hidden relationships",
+    category: "Graphics",
+    description:
+      "A correlation matrix reveals which measurements move together, in opposite directions, or independently.",
+    mode: "plot",
+    color: "#57998d",
+    code: `# Turn correlations into a matrix you can read at a glance
+library(grid)
+set.seed(33)
+sun <- rnorm(160)
+water <- rnorm(160)
+growth <- 0.8 * sun + 0.5 * water + rnorm(160, sd = 0.4)
+stress <- -0.7 * water + rnorm(160, sd = 0.5)
+data <- cbind(sun, water, growth, stress)
+r <- cor(data)
+labels <- c("Sun", "Water", "Growth", "Stress")
+colors <- c("#914e5d", "#b8757d", "#d6a4a5", "#ead2c7", "#f1ecdf",
+            "#c9ddd0", "#94beab", "#548f7c", "#286452")
+grid.newpage()
+grid.rect(gp = gpar(fill = "#f8f6ef", col = NA))
+grid.text("What moves together?", x = .5, y = .92,
+          gp = gpar(fontsize = 24, col = "#244e44"))
+for (i in 1:4) {
+  for (j in 1:4) {
+    value <- r[i, j]
+    grid.rect(x = .29 + (j - 1) * .16, y = .72 - (i - 1) * .16,
+              width = .15, height = .15,
+              gp = gpar(fill = colors[1 + round((value + 1) * 4)], col = NA))
+    grid.text(round(value, 2), x = .29 + (j - 1) * .16,
+              y = .72 - (i - 1) * .16,
+              gp = gpar(fontsize = 17,
+                        col = ifelse(abs(value) > .6, "#ffffff", "#244e44")))
+  }
+}
+grid.text(labels, x = seq(.29, .77, length.out = 4), y = .12,
+          gp = gpar(fontsize = 13, col = "#52695e"))
+grid.text(labels, x = .17, y = seq(.72, .24, length.out = 4),
+          just = "right", gp = gpar(fontsize = 13, col = "#52695e"))`,
   },
 ]
 export const categories = [
   "All examples",
   "Statistics",
   "Graphics",
-  "Creative",
+  "Simulation",
   "Everyday R",
 ]

@@ -1060,16 +1060,15 @@ pub unsafe fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut
         }
 
         let needed = (blen + 1) * std::mem::size_of::<c_char>();
-        if needed < buf.bufsize {
+        if !buf.data.is_null() && needed <= buf.bufsize {
             return buf.data as *mut c_void;
         }
 
-        let mut newsize = needed;
-        let bsize = buf.defaultSize;
-        newsize = (newsize / bsize) * bsize;
-        if newsize < needed {
-            newsize += bsize;
-        }
+        let bsize = buf.defaultSize.max(1);
+        let newsize = needed
+            .div_ceil(bsize)
+            .checked_mul(bsize)
+            .unwrap_or_else(|| error("string buffer size overflow"));
 
         // The buffer is a Vec<u8> handed out as a raw pointer; `bufsize`
         // always equals its capacity so it can be reconstructed on the
@@ -1081,7 +1080,10 @@ pub unsafe fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut
             v
         } else {
             let mut v = Vec::from_raw_parts(buf.data as *mut u8, 0, buf.bufsize);
-            v.reserve_exact(newsize - v.capacity());
+            // reserve_exact is relative to length (zero), not capacity.
+            // Reserving only the capacity delta could leave the allocation
+            // unchanged and allow the caller to write past its end.
+            v.reserve_exact(newsize);
             v
         };
         buf.data = v.as_mut_ptr() as *mut c_char;
@@ -1626,6 +1628,31 @@ mod tests {
             R_FreeStringBuffer(&mut buf);
             assert!(buf.data.is_null());
             assert_eq!(buf.bufsize, 0);
+        }
+    }
+
+    #[test]
+    fn string_buffer_small_growth_preserves_contents_and_capacity() {
+        // No interpreter needed: exercise the raw allocation boundary under Miri.
+        unsafe {
+            let mut buf = R_StringBuffer::default();
+            buf.defaultSize = 16;
+            R_AllocStringBuffer(15, &mut buf);
+            for i in 0..15 {
+                *buf.data.add(i) = b'a' as c_char;
+            }
+            *buf.data.add(15) = 0;
+            R_AllocStringBuffer(20, &mut buf);
+            assert!(buf.bufsize >= 21);
+            for i in 0..15 {
+                assert_eq!(*buf.data.add(i), b'a' as c_char);
+            }
+            for i in 15..20 {
+                *buf.data.add(i) = b'b' as c_char;
+            }
+            *buf.data.add(20) = 0;
+            assert_eq!(std::ffi::CStr::from_ptr(buf.data).to_bytes().len(), 20);
+            R_FreeStringBuffer(&mut buf);
         }
     }
 

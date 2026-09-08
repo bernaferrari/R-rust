@@ -22,7 +22,12 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Message, MessageContent, MessageHeader } from "@/components/ui/message"
+import {
+  Message,
+  MessageContent,
+  MessageHeader,
+  MessageFooter,
+} from "@/components/ui/message"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import {
   Select,
@@ -50,6 +55,8 @@ export function RConsole() {
   const input = useRef<HTMLTextAreaElement>(null)
   const [entries, setEntries] = useState<Entry[]>([])
   const [draft, setDraft] = useState("")
+  const historyCursor = useRef<number | null>(null)
+  const savedDraft = useRef("")
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState("")
   const viewport = useRef<HTMLDivElement>(null)
@@ -83,10 +90,12 @@ export function RConsole() {
     }
   }, [])
   function restore(code: string) {
+    historyCursor.current = null
     setDraft(code)
     input.current?.focus()
   }
   function reset() {
+    historyCursor.current = null
     generation.current++
     runtime.current?.reset()
     locked.current = false
@@ -98,6 +107,7 @@ export function RConsole() {
     input.current?.focus()
   }
   async function execute(commands: ConsoleCommand[], next?: ConsoleCommand) {
+    historyCursor.current = null
     if (locked.current || !runtime.current) return
     locked.current = true
     followOutput.current = true
@@ -139,9 +149,7 @@ export function RConsole() {
       if (next) {
         setDraft(next.code)
       }
-      setNotice(
-        next ? "Your turn. The example’s variables are ready to use." : ""
-      )
+      setNotice("")
     } catch (error) {
       if (generation.current !== epoch) return
       const message = error instanceof Error ? error.message : String(error)
@@ -195,14 +203,6 @@ export function RConsole() {
             off.
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={reset}
-          title="Clear history and all R variables"
-        >
-          <RotateCcw />
-          New session
-        </Button>
       </div>
       {entries.length > 0 && (
         <div className="r-chat-example-picker">
@@ -227,7 +227,14 @@ export function RConsole() {
               ))}
             </SelectContent>
           </Select>
-          <span>Starts a fresh session</span>
+          <Button
+            variant="outline"
+            onClick={reset}
+            title="Clear history and all R variables"
+          >
+            <RotateCcw />
+            New session
+          </Button>
         </div>
       )}
       <div className="r-chat-workspace">
@@ -312,7 +319,11 @@ export function RConsole() {
                           >
                             <Message align="end">
                               <MessageContent>
-                                <MessageHeader>You · R command</MessageHeader>
+                                <MessageHeader className="sr-only">
+                                  <span className="sr-only">
+                                    You · R command
+                                  </span>
+                                </MessageHeader>
                                 <Bubble variant="tinted">
                                   <BubbleContent>
                                     <pre>{entry.code}</pre>
@@ -331,15 +342,10 @@ export function RConsole() {
                             </Message>
                             <Message>
                               <MessageContent>
-                                <MessageHeader>
-                                  R{" "}
-                                  {entry.ms !== undefined && (
-                                    <span> · {Math.round(entry.ms)} ms</span>
-                                  )}
-                                </MessageHeader>
+                                <span className="sr-only">R response</span>
                                 <Bubble
                                   variant={
-                                    entry.error ? "destructive" : "ghost"
+                                    entry.error ? "destructive" : "muted"
                                   }
                                 >
                                   <BubbleContent>
@@ -371,6 +377,11 @@ export function RConsole() {
                                     )}
                                   </BubbleContent>
                                 </Bubble>
+                                {entry.ms !== undefined && (
+                                  <MessageFooter>
+                                    <span>{Math.round(entry.ms)} ms</span>
+                                  </MessageFooter>
+                                )}
                               </MessageContent>
                             </Message>
                           </div>
@@ -399,15 +410,65 @@ export function RConsole() {
             id="r-command"
             value={draft}
             maxLength={65536}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              historyCursor.current = null
+              setDraft(event.target.value)
+            }}
             placeholder={"Try mean(c(2, 4, 8))"}
             onKeyDown={(event) => {
+              const field = event.currentTarget
+              if (
+                !event.nativeEvent.isComposing &&
+                !event.shiftKey &&
+                !event.altKey &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                field.selectionStart === field.selectionEnd
+              ) {
+                const atFirstLine = !draft
+                  .slice(0, field.selectionStart)
+                  .includes("\n")
+                const atLastLine = !draft
+                  .slice(field.selectionEnd)
+                  .includes("\n")
+                if (event.key === "ArrowUp" && atFirstLine && entries.length) {
+                  event.preventDefault()
+                  if (historyCursor.current === null) savedDraft.current = draft
+                  const index = Math.max(
+                    0,
+                    (historyCursor.current ?? entries.length) - 1
+                  )
+                  historyCursor.current = index
+                  setDraft(entries[index].code)
+                  requestAnimationFrame(() => field.setSelectionRange(0, 0))
+                  return
+                }
+                if (
+                  event.key === "ArrowDown" &&
+                  atLastLine &&
+                  historyCursor.current !== null
+                ) {
+                  event.preventDefault()
+                  const index = historyCursor.current + 1
+                  historyCursor.current = index < entries.length ? index : null
+                  const value =
+                    index < entries.length
+                      ? entries[index].code
+                      : savedDraft.current
+                  setDraft(value)
+                  requestAnimationFrame(() =>
+                    field.setSelectionRange(value.length, value.length)
+                  )
+                  return
+                }
+              }
               if (
                 event.key === "Enter" &&
                 !event.shiftKey &&
                 !event.nativeEvent.isComposing
               ) {
                 event.preventDefault()
+                historyCursor.current = null
                 void run()
               }
             }}
@@ -438,8 +499,8 @@ export function RConsole() {
         </form>
       </div>
       <p className="r-chat-footnote">
-        A browser R runtime, still evolving. History keeps the latest 500
-        commands. <a href="../compatibility/">Compatibility & limits ↗</a>
+        A browser R runtime, still evolving.{" "}
+        <a href="../compatibility/">Compatibility & limits ↗</a>
       </p>
     </section>
   )

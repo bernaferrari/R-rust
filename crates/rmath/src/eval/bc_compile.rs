@@ -327,6 +327,7 @@ fn is_eager_builtin_call(name: &str) -> bool {
     matches!(
         name,
         "+" | "-"
+            | "!"
             | "*"
             | "/"
             | "^"
@@ -487,6 +488,32 @@ mod tests {
             let bcode = compile_expr(call, env.clone().as_raw()).expect("addition should compile");
             let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
             assert_eq!(*INTEGER(result), 6);
+        }
+    }
+
+    #[test]
+    fn compile_logical_not_round_trips_through_bc_eval() {
+        // Pinned GNU R oracle (`compiler::cmpfun(function(x) !x)` applied to
+        // FALSE) returns TRUE; this exercises the same supported expression
+        // through the portable private bytecode evaluator.
+        let session = RSession::new();
+        let env = session.global_env().expect("global env");
+
+        unsafe {
+            let call = Rf_cons(
+                Rf_install(c"!".as_ptr()),
+                Rf_cons(
+                    crate::sexp::constructors::Rf_ScalarLogical(crate::sexp::ffi::FALSE),
+                    R_NilValue(),
+                ),
+            );
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let bcode = compile_expr(call, env.clone().as_raw()).expect("! should compile");
+            let result = super::super::bc_eval::bcEval(bcode, env.as_raw());
+            assert_eq!(
+                *crate::sexp::accessors::LOGICAL(result),
+                crate::sexp::ffi::TRUE
+            );
         }
     }
 

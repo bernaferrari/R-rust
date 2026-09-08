@@ -745,7 +745,11 @@ impl MathExpr {
                 let rad_space = 0.2 * x_height;
                 let rad_trail = 0.055_555_56 * target.measure_text("M", params).width;
                 let mut out = MathLayout {
-                    width: l.width + rad_width + rad_space + 2. * rad_trail,
+                    // The radical bar follows the italic correction of its
+                    // radicand as GNU R's RenderRadical does.  Include that
+                    // correction in the advance so the overbar never hangs
+                    // past the reported width for an italic expression.
+                    width: l.width + l.italic + rad_width + rad_space + 2. * rad_trail,
                     ..Default::default()
                 };
                 let top = -l.ascent - 0.4 * x_height;
@@ -918,6 +922,34 @@ mod tests {
                 && scripts.ascent > plain.ascent
                 && scripts.descent > plain.descent
         );
+    }
+
+    #[test]
+    fn gaussian_radical_bar_respects_italic_advance() {
+        let target = Scene::new(400, 240);
+        let params = PlotParameters {
+            font_size: 24.,
+            font_face: crate::FontFace::Italic,
+            ..Default::default()
+        };
+        let expr = MathExpr::Fraction(
+            Box::new(MathExpr::Text("1".into())),
+            Box::new(MathExpr::Radical(Box::new(MathExpr::Row(vec![
+                MathExpr::Variable("2".into()),
+                MathExpr::Text("π".into()),
+            ])))),
+        );
+        let layout = expr.layout(&target, &params);
+        let max_x = layout.marks.iter().fold(0.0f32, |max, mark| match mark {
+            Mark::Line(a, b, _) => max.max(a.x).max(b.x),
+            Mark::Curve(points, _) => points.iter().fold(max, |m, p| m.max(p.x)),
+            Mark::Text(_, p, _, _) => max.max(p.x),
+        });
+        assert!(
+            max_x <= layout.width + 0.001,
+            "radical geometry exceeds advance"
+        );
+        assert!(layout.ascent > params.font_size && layout.descent > 0.);
     }
 
     #[test]

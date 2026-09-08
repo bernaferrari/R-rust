@@ -2942,7 +2942,6 @@ footer { flex-wrap: wrap; }
 .r-chat-starters strong { display: block; font-size: 13px; font-weight: 550; }
 .r-chat-starters small { display: block; margin-top: 5px; font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
 .r-chat-example-picker { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.r-chat-example-picker > span { color: var(--muted-foreground); font-size: 12px; }
 @media (max-width: 600px) { .r-chat-example-picker { flex-wrap: wrap; gap: 6px; } }
 .site-header { height: 56px; gap: 16px; }
 /* Navigation uses links and a menu, rather than a form-style page selector. */
@@ -2951,7 +2950,7 @@ footer { flex-wrap: wrap; }
 .site-navigation-trigger {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px;
-  background: transparent; color: var(--muted-foreground); font-size: 13px;
+  background: transparent; color: var(--ink); font-size: 13px;
   font-weight: 500; text-decoration: none; cursor: pointer;
 }
 .site-header .site-navigation-link[aria-current="page"] {
@@ -3039,5 +3038,7 @@ footer { flex-wrap: wrap; }
   line-height: 1.6;
 }
 .ai-setup-note code { font-size: .95em; color: var(--foreground); }
-.ai-setup-note a { color: var(--primary); text-underline-offset: 3px; }
+.ai-setup-note a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 .ai-setup-note a:hover { text-decoration: underline; }
+
+@media (pointer: fine) { .r-chat-composer textarea { font-size: 14px; } }

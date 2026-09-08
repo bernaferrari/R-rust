@@ -12,7 +12,7 @@ test("focused editor runs R and gallery opens its chosen recipe", async ({
     timeout: 30000,
   })
   await page.goto("/examples/")
-  await expect(page.locator(".example-card")).toHaveCount(16)
+  await expect(page.locator(".example-card")).toHaveCount(18)
   await page
     .getByRole("button", { name: "Try Let R do the algebra", exact: true })
     .click()

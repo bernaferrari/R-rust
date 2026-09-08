@@ -188,6 +188,28 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "tryCatch"
             | "withCallingHandlers"
             | "withRestarts"
+            | "UseMethod"
+            | "NextMethod"
+            // Preserve drawing handlers and S3 methods' own visibility.
+            // Custom plotting methods may return visible values.
+            | "plot"
+            | "plot.default"
+            | "lines"
+            | "points"
+            | "text"
+            | "lines.default"
+            | "points.default"
+            | "text.default"
+            | "segments"
+            | "arrows"
+            | "abline"
+            | "rect"
+            | "polygon"
+            | "title"
+            | "box"
+            | "axis"
+            | "plot.new"
+            | "plot.window"
     )
 }
 

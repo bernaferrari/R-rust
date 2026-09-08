@@ -3086,7 +3086,9 @@ portable_graphics_handlers! {
 macro_rules! graphics_generics {
     ($($handler:ident => $name:literal),* $(,)?) => {$(
         pub unsafe fn $handler(_call:SEXP,_op:SEXP,args:SEXP,rho:SEXP)->SEXP {
-            unsafe {crate::mainutils::base_wrappers::apply($name,concat!("function(x,...) UseMethod('",$name,"')"),args,rho,false)}
+            unsafe {
+                crate::mainutils::base_wrappers::apply($name,concat!("function(x,...) UseMethod('",$name,"')"),args,rho,false)
+            }
         }
     )*};
 }

@@ -99,14 +99,15 @@ unsafe fn dist_match(args: SEXP, names: &[&str]) -> (Vec<SEXP>, Vec<bool>) {
             if matched[i] {
                 continue;
             }
-            let deparsed = deparse_arg_value(supplied[i].1);
             if let Some(tag) = supplied[i].0.as_deref() {
+                let deparsed = deparse_arg_value(supplied[i].1);
                 base_error(format!("unused argument ({tag} = {deparsed})"));
             }
             while slot < names.len() && filled[slot] {
                 slot += 1;
             }
             if slot >= names.len() {
+                let deparsed = deparse_arg_value(supplied[i].1);
                 base_error(format!("unused argument ({deparsed})"));
             }
             out[slot] = supplied[i].1;

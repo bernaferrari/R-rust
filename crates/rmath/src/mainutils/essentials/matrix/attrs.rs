@@ -556,6 +556,17 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
             return crate::sexp::envir::R_findVarInFrame(namespace, name);
         }
 
+        if package_name == "compiler" {
+            if !crate::eval::compiler::EXPORTS.contains(&lookup_name.as_str()) {
+                package_error(format!(
+                    "'{lookup_name}' is not exported by the portable compiler namespace"
+                ));
+            }
+            let namespace = crate::eval::compiler::namespace();
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+            return crate::sexp::envir::R_findVarInFrame(namespace, name);
+        }
+
         if package_name == "tools" {
             if lookup_name == "langElts" {
                 let values = crate::sexp::init::LANGUAGE_ELEMENTS;

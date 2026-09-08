@@ -1922,15 +1922,25 @@ impl<'arena> Parser<'arena> {
         Ok(left)
     }
 
+    /// Parse a sign chain without changing power precedence.  A second sign
+    /// is another unary expression (`--2`), while a normal operand goes
+    /// through power first (`-x^2`).
+    fn parse_unary_operand(&mut self) -> Result<SEXP, ParseError> {
+        if matches!(self.peek(), Token::Minus | Token::Plus | Token::Not) {
+            self.parse_unary()
+        } else {
+            self.parse_power()
+        }
+    }
+
     fn parse_unary(&mut self) -> Result<SEXP, ParseError> {
         match self.peek() {
             Token::Minus => {
                 self.advance();
-                // Unary sign binds its full postfix operand (`-x[1]`,
-                // `-f()[1]`): the operand includes calls/subscripts, so a
-                // nested subscript inside an outer subscript parses as one
-                // index expression instead of stranding the inner `]`.
-                let operand = self.parse_postfix()?;
+                // R's power operator binds tighter than a unary sign:
+                // `-x^2` is `-(x^2)`.  parse_power also delegates the
+                // exponent back to parse_unary, so `2^-2` remains valid.
+                let operand = self.parse_unary_operand()?;
                 unsafe {
                     let op = Rf_install(c"-".as_ptr());
                     self.lang2(op, operand)
@@ -1938,8 +1948,7 @@ impl<'arena> Parser<'arena> {
             }
             Token::Plus => {
                 self.advance();
-                // Same postfix-operand rule as unary minus above.
-                let operand = self.parse_postfix()?;
+                let operand = self.parse_unary_operand()?;
                 unsafe {
                     // stock R keeps the call: `+"a"` errors at runtime
                     // ("invalid argument to unary operator")
@@ -1949,8 +1958,7 @@ impl<'arena> Parser<'arena> {
             }
             Token::Not => {
                 self.advance();
-                // Same postfix-operand rule as unary minus above.
-                let operand = self.parse_postfix()?;
+                let operand = self.parse_unary_operand()?;
                 unsafe {
                     let op = Rf_install(c"!".as_ptr());
                     self.lang2(op, operand)
@@ -2978,6 +2986,29 @@ mod tests {
         unsafe {
             let result = must(parse_str("-5"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+        }
+    }
+
+    #[test]
+    fn unary_minus_is_looser_than_power() {
+        unsafe {
+            let result = must(parse_str("exp(-x^2)"));
+            let call = CADR(result);
+            assert_eq!(call_head_name(call), "-");
+            assert_eq!(call_head_name(CADR(call)), "^");
+        }
+    }
+
+    #[test]
+    fn unary_exponent_is_allowed_and_power_remains_right_associative() {
+        unsafe {
+            let result = must(parse_str("2^-2"));
+            assert_eq!(call_head_name(result), "^");
+            assert_eq!(call_head_name(crate::sexp::accessors::CADDR(result)), "-");
+
+            let nested = must(parse_str("2^3^2"));
+            assert_eq!(call_head_name(nested), "^");
+            assert_eq!(call_head_name(crate::sexp::accessors::CADDR(nested)), "^");
         }
     }
 

@@ -246,3 +246,32 @@ The additional malformed-bytecode Miri run was stopped during runtime
 initialization without a test result. It reported an exposed-provenance warning
 in protection-guard owner reconstruction (`sexp/protect.rs:474`), tracked as
 `rport-q1in`; this run is not counted as a Miri pass.
+
+
+## September 8: drawing visibility and bounded compiler support
+
+Drawing defaults preserve invisible results through S3 dispatch, so an
+interactive plot no longer emits spurious `NULL` lines. Custom S3 plotting
+methods retain their own visibility, and explicit `print(NULL)` still prints.
+Browser plot/log tabs inspect one captured execution rather than rerunning code
+without a graphics device. The 70-path Monte Carlo example is covered by an
+actual Wasm regression.
+
+The portable `compiler::cmpfun` namespace now exposes the existing private
+compiler for supported closure bodies. It preserves the original function and
+rejects unsupported syntax or non-NULL options explicitly. JIT reports success
+only when compilation actually succeeds. This is not the GNU bytecode VM or
+complete compiler package compatibility. Compiled GNU imports still follow the
+previous retained-source policy.
+
+The shared deparse string buffer now reserves against vector length rather than
+subtracting capacity incorrectly. A growing-buffer regression passes strict-
+provenance Miri without disabling leak checks. Protection guards preserve the
+owning session pointer's provenance; their focused owner-switch Miri regression
+also passes (with runtime leak checking disabled). Neither check establishes
+whole-runtime memory safety or total allocation accounting.
+
+Matrix Pearson correlation now preserves dimensions and column names, validates
+shape and result allocation sizes, and matches a pinned GNU matrix fixture.
+Unsupported matrix missing-value policies and correlation methods fail
+explicitly. Full correlation semantics remain broader than these cases.

@@ -24,16 +24,16 @@ export const pages = {
     path: "examples/",
     label: "Examples",
     title:
-      "16 runnable R examples — Statistics, graphics and creative coding | Rove",
+      "18 runnable R examples — Statistics, graphics and simulations | Rove",
     description:
-      "Explore editable R examples: LOESS curves, distributions, grid calendars, mathematical labels, spiral gardens and everyday data analysis.",
+      "Explore editable R examples: LOESS curves, distributions, grid calendars, probability formulas, sampling simulations and everyday data analysis.",
   },
   ai: {
     path: "local-ai/",
     label: "Local AI",
-    title: "Local AI for R — Browser models and Ollama | Rove",
+    title: "Local AI for R — Ollama code drafting | Rove",
     description:
-      "Draft R code with a local language model, review it, and run the analysis. Use a WebGPU browser model or connect Ollama.",
+      "Draft R code with Ollama on your computer, review it, and run the analysis in your browser.",
   },
   embed: {
     path: "embedding/",

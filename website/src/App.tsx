@@ -1,4 +1,11 @@
-import { NavigationMenu, NavigationMenuList, NavigationMenuItem, NavigationMenuLink, NavigationMenuTrigger, NavigationMenuContent } from "@/components/ui/navigation-menu"
+import {
+  NavigationMenu,
+  NavigationMenuList,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuTrigger,
+  NavigationMenuContent,
+} from "@/components/ui/navigation-menu"
 import { RConsole } from "@/components/RConsole"
 import { useState, useSyncExternalStore } from "react"
 import {
@@ -325,24 +332,42 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
             rove<span className="wordmark-dot">.</span>
           </span>
         </a>
-        <NavigationMenu aria-label="Main navigation" className="site-navigation">
+        <NavigationMenu
+          aria-label="Main navigation"
+          className="site-navigation"
+        >
           <NavigationMenuList>
             {(["editor", "console"] as const).map((key) => (
               <NavigationMenuItem className="site-navigation-direct" key={key}>
-                <NavigationMenuLink className="site-navigation-link" href={pageHref(key)}
-                  active={page === key} aria-current={page === key ? "page" : undefined}>
-                  {key === "editor" ? <Code2 size={16} aria-hidden="true" /> : <Terminal size={16} aria-hidden="true" />}
+                <NavigationMenuLink
+                  className="site-navigation-link"
+                  href={pageHref(key)}
+                  active={page === key}
+                  aria-current={page === key ? "page" : undefined}
+                >
+                  {key === "editor" ? (
+                    <Code2 size={16} aria-hidden="true" />
+                  ) : (
+                    <Terminal size={16} aria-hidden="true" />
+                  )}
                   {key === "editor" ? "Editor" : "Console"}
                 </NavigationMenuLink>
               </NavigationMenuItem>
             ))}
             <NavigationMenuItem>
-              <NavigationMenuTrigger className="site-navigation-trigger"><Compass size={16} aria-hidden="true" />Explore</NavigationMenuTrigger>
+              <NavigationMenuTrigger className="site-navigation-trigger">
+                <Compass size={16} aria-hidden="true" />
+                Explore
+              </NavigationMenuTrigger>
               <NavigationMenuContent className="site-navigation-content">
                 {(Object.keys(pages) as Page[]).map((key) => (
-                  <NavigationMenuLink key={key} href={pageHref(key)}
-                    className="site-navigation-item" active={page === key}
-                    aria-current={page === key ? "page" : undefined}>
+                  <NavigationMenuLink
+                    key={key}
+                    href={pageHref(key)}
+                    className="site-navigation-item"
+                    active={page === key}
+                    aria-current={page === key ? "page" : undefined}
+                  >
                     <span>{pages[key].label}</span>
                     {page === key && <Check size={14} aria-hidden="true" />}
                   </NavigationMenuLink>
@@ -502,7 +527,7 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
                   <strong>Mobile</strong>
                   <span>Swift & Kotlin</span>
                 </a>
-                <a href={home ? "#local-ai" : pageHref("ai")}>
+                <a href={pageHref("ai")}>
                   <Sparkles size={22} />
                   <strong>Local AI</strong>
                   <span>Your model, your device</span>
@@ -524,7 +549,7 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
         {(home || page === "examples") && (
           <Gallery onSelect={selectExample} standalone={!home} />
         )}
-        {(home || page === "ai") && (
+        {page === "ai" && (
           <section id="local-ai" className="section local-ai-section">
             <div className="section-heading">
               <div>
@@ -536,8 +561,8 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
                 </h2>
               </div>
               <p>
-                A local language model drafts the code. R computes the answer.
-                Try a browser model or connect Ollama on your computer.
+                Ollama drafts the code on your computer. Review it, then let R
+                compute the answer.
               </p>
             </div>
             <LocalAI
@@ -600,7 +625,6 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
             Source <ArrowUpRight size={12} />
           </a>
 
-          <a href={`${github}/blob/main/COPYING`}>GPL license</a>
         </div>
         <nav className="footer-sitemap" aria-label="Site map">
           {(Object.keys(pages) as Page[]).map((key) => (

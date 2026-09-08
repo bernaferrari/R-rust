@@ -132,6 +132,7 @@ pub enum SexpOwner {
 pub struct Sexp<'a> {
     ptr: SEXP,
     owner: SexpOwner,
+    pub(crate) session_owner_ptr: Option<std::ptr::NonNull<crate::sexp::instance::RInstance>>,
     _marker: std::marker::PhantomData<&'a SexprecCore>,
 }
 
@@ -151,6 +152,7 @@ impl Clone for Sexp<'_> {
         Self {
             ptr: self.ptr,
             owner: self.owner,
+            session_owner_ptr: self.session_owner_ptr,
             _marker: std::marker::PhantomData,
         }
     }
@@ -230,6 +232,7 @@ impl<'a> Sexp<'a> {
             Ok(Sexp {
                 ptr,
                 owner: SexpOwner::Unknown,
+                session_owner_ptr: None,
                 _marker: std::marker::PhantomData,
             })
         }
@@ -255,6 +258,7 @@ impl<'a> Sexp<'a> {
     ) -> SexpResult<Sexp<'session>> {
         let mut sexp = Sexp::try_from_raw(ptr)?;
         sexp.owner = SexpOwner::Session(Self::session_owner_token(instance));
+        sexp.session_owner_ptr = std::ptr::NonNull::new(instance as *const _ as *mut _);
         Ok(sexp)
     }
 
@@ -269,6 +273,7 @@ impl<'a> Sexp<'a> {
         Sexp {
             ptr,
             owner: SexpOwner::Unknown,
+            session_owner_ptr: None,
             _marker: std::marker::PhantomData,
         }
     }
@@ -279,6 +284,7 @@ impl<'a> Sexp<'a> {
         Sexp {
             ptr,
             owner: SexpOwner::Static,
+            session_owner_ptr: None,
             _marker: std::marker::PhantomData,
         }
     }

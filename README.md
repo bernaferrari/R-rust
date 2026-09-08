@@ -37,11 +37,11 @@ plot(x, y, pch = 16, col = "#a8b6ae",
 lines(x, predict(fit), col = "#cc5636", lwd = 3)
 ```
 
-The website has **16 editable examples**: statistics, creative coding, grid layouts, mathematical labels, and everyday data work. Run them automatically as you edit, or switch to manual execution. Open the standalone editor when you want a quieter workspace.
+The website has **18 editable examples**: statistics, simulations, correlation matrices, probability formulas, and everyday data work. Run them automatically as you edit, or switch to manual execution. Open the standalone editor when you want a quieter workspace.
 
 <table>
 <tr>
-<td width="50%"><img src="website/public/examples/sunflower.png" alt="Three botanical blooms composed from golden-angle petals in R"><br><strong>Grow a spiral garden.</strong> Three sculpted blooms, one golden angle.</td>
+<td width="50%"><img src="website/public/examples/sunflower.png" alt="Simulated sample means approaching a bell curve"><br><strong>Watch averages settle.</strong> See the central limit theorem emerge from simulation.</td>
 <td width="50%"><img src="website/public/examples/grid.png" alt="A calendar composed with R grid viewports"><br><strong>Find your rhythm.</strong> Build a calendar from small moments.</td>
 </tr>
 </table>

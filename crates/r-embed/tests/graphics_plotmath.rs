@@ -1,5 +1,17 @@
 use r_embed::RSession;
 
+#[test]
+fn gaussian_density_website_expression_renders_natively() {
+    let mut session = RSession::new().unwrap();
+    session
+        .render_with_dimensions(
+            r#"mu <- 0; sigma <- 1; x <- seq(-4,4,length.out=300); y <- dnorm(x,mean=mu,sd=sigma); plot(x,y,type='n',ylim=c(0,.62)); inside <- seq(-sigma,sigma,length.out=100)+mu; polygon(c(inside[1],inside,inside[length(inside)]),c(0,dnorm(inside,mu,sigma),0),col='#93bfae',border=NA); lines(x,y,col='#43877b',lwd=3); text(0,.52,expression(f(x)==frac(1,sigma*sqrt(2*pi))*e^(-frac((x-mu)^2,2*sigma^2))),cex=1.3,col='#bc8060'); probability <- pnorm(mu+sigma,mu,sigma)-pnorm(mu-sigma,mu,sigma); text(0,.13,paste(round(100*probability,1),'%'),cex=1.6,col='#244e44')"#,
+            640,
+            480,
+        )
+        .unwrap();
+}
+
 fn pixels(png: &[u8]) -> (Vec<u8>, usize, usize) {
     let mut reader = png::Decoder::new(std::io::Cursor::new(png))
         .read_info()
