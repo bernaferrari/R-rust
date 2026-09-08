@@ -2830,11 +2830,17 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
             return "NULL".to_string();
         }
         let t = TYPEOF(x);
-        let n = XLENGTH(x);
+        let n = match SEXPTYPE(t) {
+            SEXPTYPE::NILSXP => 0,
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::STRSXP => {
+                XLENGTH(x)
+            }
+            _ => 1,
+        };
         if n == 0 {
             return String::new();
         }
-        let idx = i % n;
+        let idx = i.rem_euclid(n);
 
         if t == SEXPTYPE::REALSXP {
             let v = *REAL(x).add(idx as usize);

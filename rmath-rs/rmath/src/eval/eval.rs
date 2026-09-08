@@ -143,6 +143,10 @@ pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 /// * `Ok(Sexp)` - The result of evaluation
 /// * `Err(String)` - A description of the error that occurred
 pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    // Dynamically constructed calls can contain literal heap values that are
+    // reachable only through this expression while recursive evaluation runs.
+    let _expr_root = unsafe { crate::sexp::protect::protect(expr.clone().as_raw()) };
+    let _env_root = unsafe { crate::sexp::protect::protect(env.clone().as_raw()) };
     let _guard = check_eval_depth()?;
 
     let result =

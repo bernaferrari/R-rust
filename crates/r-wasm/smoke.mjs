@@ -37,6 +37,9 @@ if (!rejected) throw new Error('errors must reject checked evaluation');
 runtime.eval_checked("stopifnot(identical(mapply(function(x)x,1:3),1:3)); a <- matrix(c(1,2,3,4),2); stopifnot(isTRUE(all.equal(solve(a,c(5,6)),c(-1,2))))");
 const png = runtime.render_png("plot(x=1:3,y=3:1,col='red')", 100, 100);
 if (png[0] !== 137 || png[1] !== 80 || png.length < 100) throw new Error('render bridge');
+runtime.eval_checked("x<-seq(0,1,length.out=15); y<-sin(5*x)+x^2; f<-loess(y~x); stopifnot(abs(f$fitted[1]+.02619684)<1e-8)");
+const smooth = runtime.render_png("plot(x,y,main='LOESS μ'); lines(x,predict(f),col='red',lwd=2)",320,240);
+if (smooth.length < 1000) throw new Error('LOESS layered render bridge');
 const isolated = new WasmRSession();
 if (isolated.global_binding_names().includes('a')) throw new Error('session isolation');
 for (const instance of [runtime, isolated]) { instance.close(); instance.free(); }

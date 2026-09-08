@@ -377,7 +377,7 @@ pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return R_NilValue();
         }
         let t = TYPEOF(x);
-        let n = XLENGTH(x);
+        let n = crate::sexp::constructors::Rf_length(x) as R_xlen_t;
 
         // str.default for is.language && !is.expression: prints
         // " language "/" symbol " followed by the deparsed object

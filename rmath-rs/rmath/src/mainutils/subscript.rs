@@ -1342,7 +1342,18 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
             }
         }
 
-        let ns = XLENGTH(s);
+        let ns = if matches!(
+            SEXPTYPE(TYPEOF(s)),
+            SEXPTYPE::NILSXP
+                | SEXPTYPE::LGLSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::STRSXP
+        ) {
+            XLENGTH(s)
+        } else {
+            0
+        };
         let mut _stretch_val: R_xlen_t = 0;
 
         let stype2 = TYPEOF(s);

@@ -39,6 +39,7 @@ unsafe fn is_bind_pairlist(t: c_int) -> bool {
 /// pairlist pointers, which used to yield astronomic allocations).
 unsafe fn is_bind_single_object(t: c_int) -> bool {
     t == SEXPTYPE::LANGSXP
+        || t == SEXPTYPE::ENVSXP
         || t == SEXPTYPE::DOTSXP
         || t == SEXPTYPE::SYMSXP
         || t == SEXPTYPE::CLOSXP

@@ -128,7 +128,10 @@ pub unsafe fn persistent_mkChar(s: *const c_char) -> SEXP {
         // the returned SEXP under Stacked Borrows.
         let charsxp: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::CHARSXP)));
         (*charsxp).data = SexprecData {
-            charsxp_truelen: len,
+            vecsxp: super::ffi::Vecsxp {
+                length: len,
+                truelength: 0,
+            },
         };
         (*charsxp).gengc_next_node = data_ptr as SEXP;
         charsxp
@@ -279,8 +282,21 @@ pub unsafe fn Rf_length(x: SEXP) -> c_int {
                 current = (*current).data.listsxp.cdrval;
             }
             count
+        } else if matches!(
+            t,
+            SEXPTYPE::CHARSXP
+                | SEXPTYPE::LGLSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::CPLXSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::VECSXP
+                | SEXPTYPE::EXPRSXP
+                | SEXPTYPE::RAWSXP
+        ) {
+            super::accessors::LENGTH(x)
         } else {
-            (*x).vecsxp_length() as c_int
+            1
         }
     }
 }
@@ -632,7 +648,10 @@ pub unsafe fn persistent_mkstring(s: *const c_char) -> SEXP {
         let charsxp_boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
         let charsxp: SEXP = Box::leak(charsxp_boxed);
         (*charsxp).data = SexprecData {
-            charsxp_truelen: len,
+            vecsxp: super::ffi::Vecsxp {
+                length: len,
+                truelength: 0,
+            },
         };
         let Ok(char_layout) = Layout::from_size_align(len as usize + 1, 1) else {
             return ptr::null_mut();

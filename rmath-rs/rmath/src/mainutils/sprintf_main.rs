@@ -687,7 +687,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 fmtp = fmt.as_ptr();
                             }
 
-                            let thislen = LENGTH(_this);
+                            let thislen = crate::sexp::constructors::Rf_length(_this);
                             if thislen == 0 {
                                 error(b"coercion has changed vector length to 0\0".as_ptr()
                                     as *const c_char);
@@ -787,7 +787,7 @@ pub unsafe fn do_sprintf(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 }
                             }
 
-                            let thislen = LENGTH(_this);
+                            let thislen = crate::sexp::constructors::Rf_length(_this);
 
                             match TYPEOF(_this) {
                                 LGLSXP => {

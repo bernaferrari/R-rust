@@ -112,3 +112,5 @@ mod sample_contract_test;
 
 #[cfg(feature = "renderplot-device")]
 pub(crate) mod portable_plot;
+
+pub(crate) mod loess;

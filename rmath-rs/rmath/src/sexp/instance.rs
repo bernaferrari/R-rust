@@ -441,6 +441,8 @@ pub struct RInstance {
     /// for real R graphics calls on Android/WASM hosts.
     #[cfg(feature = "renderplot-device")]
     pub(crate) current_renderplot_backend: Option<*mut dyn r_graphics_engine::DrawTarget>,
+    #[cfg(feature = "renderplot-device")]
+    pub(crate) portable_graphics: crate::mainutils::portable_plot::GraphicsState,
     /// Per-instance base graphics `par()` overrides.
     pub(crate) graphics_par_state: crate::library::graphics::par::GraphicsParState,
     /// Per-instance grDevices color palette and scratch buffer state.
@@ -562,6 +564,8 @@ impl RInstance {
             graphics_par_state: crate::library::graphics::par::GraphicsParState::default(),
             #[cfg(feature = "renderplot-device")]
             current_renderplot_backend: None,
+            #[cfg(feature = "renderplot-device")]
+            portable_graphics: crate::mainutils::portable_plot::GraphicsState::default(),
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             color_dispatch_state: crate::mainutils::colors::ColorDispatchState::default(),
             postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
@@ -673,6 +677,7 @@ pub unsafe fn set_current_renderplot_backend(backend: *mut dyn r_graphics_engine
         // P2: single-field write; no other raw path touches the instance
         // inside this closure.
         (*inst).current_renderplot_backend = Some(backend);
+        (*inst).portable_graphics = crate::mainutils::portable_plot::GraphicsState::default();
     });
 }
 
@@ -682,6 +687,7 @@ pub unsafe fn clear_current_renderplot_backend() {
         // P2: single-field write; no other raw path touches the instance
         // inside this closure.
         (*inst).current_renderplot_backend = None;
+        (*inst).portable_graphics = crate::mainutils::portable_plot::GraphicsState::default();
     });
 }
 

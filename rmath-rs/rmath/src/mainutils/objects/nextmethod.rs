@@ -61,12 +61,11 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
             });
         }
 
-        // Determine callenv and defenv
-        let callenv = if !cptr.is_null() {
-            // sysparent in our context struct is an int, not SEXP.
-            // In the full C implementation, sysparent is an environment.
-            // Using env as fallback.
-            env
+        // Methods are searched from the generic's caller, including caller-local
+        // methods when the generic itself is a cached base wrapper.
+        let caller = (*cptr).sysparent;
+        let callenv = if !caller.is_null() && TYPEOF(caller) == SEXPTYPE::ENVSXP {
+            caller
         } else {
             env
         };

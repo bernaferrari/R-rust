@@ -219,7 +219,7 @@ fixture counts are not implementation percentages.
 
 ## Known gaps
 
-The optional system LAPACK backend does not supply GNU R’s LOESS helpers. Those unported routines fail explicitly; LOESS support remains tracked separately.
+LOESS fitting and prediction now use an owned Rust engine, with faer SVD by default. Portable plots support layered LOESS curves and bundled text rendering on Wasm. See [supported contracts and remaining limits](docs/loess-and-portable-graphics.md); the legacy native LOESS helper ABI remains unsupported.
 
 Honest ledger, each scoped with a reproduction:
 

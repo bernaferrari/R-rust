@@ -1,3 +1,18 @@
+// Rust adaptation of the upstream LOESS algorithms.
+// Copyright (C) 1998--2020 The R Core Team
+//
+// The authors of this software are Cleveland, Grosse, and Shyu.
+// Copyright (c) 1989, 1992 by AT&T.
+// Permission to use, copy, modify, and distribute this software for any
+// purpose without fee is hereby granted, provided that this entire notice
+// is included in all copies of any software which is or includes a copy
+// or modification of this software and in all copies of the supporting
+// documentation for such software.
+// THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+// WARRANTY. IN PARTICULAR, NEITHER THE AUTHORS NOR AT&T MAKE ANY
+// REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+// OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+
 //! Hat-matrix diagnostics and upstream empirical trace corrections.
 use super::surface::hermite;
 pub(super) fn exact(l: &[Vec<f64>]) -> (f64, f64) {
@@ -38,6 +53,9 @@ const NODES: [(f64, f64, f64); 10] = [
     (1.005, -0.010856, -0.7736),
 ];
 pub(super) fn approximate(n: usize, d: usize, tau: usize, trace: f64) -> (f64, f64) {
+    if n == tau || !trace.is_finite() || trace <= 0. {
+        return (f64::NAN, f64::NAN);
+    }
     let cor = (tau as f64 / n as f64).sqrt();
     let z = (((tau as f64 / trace).sqrt() - cor) / (1. - cor)).clamp(0., 1.);
     let pair = NODES

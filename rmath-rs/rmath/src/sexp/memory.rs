@@ -554,10 +554,15 @@ impl RArena {
             *data_ptr.add(s.len()) = 0;
         }
 
+        // CHARSXP shares the vector header prefix. Initialize true length as
+        // well: writing only charsxp_truelen leaves that accessor uninitialized.
         let node_ptr = self.allocate_core_in_slab(|| {
             let mut c = SexprecCore::new(SEXPTYPE::CHARSXP);
             c.data = SexprecData {
-                charsxp_truelen: len,
+                vecsxp: super::ffi::Vecsxp {
+                    length: len,
+                    truelength: 0,
+                },
             };
             c
         });
@@ -811,6 +816,29 @@ where
     super::instance::with_required_current_instance(|inst| with_arena_in(inst, f))
 }
 
+thread_local! {
+    static LENT_ARENAS: std::cell::RefCell<std::collections::HashSet<usize>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+}
+struct ArenaLend(usize);
+impl ArenaLend {
+    fn new(instance: *mut super::instance::RInstance) -> Self {
+        let key = instance.addr();
+        assert!(
+            LENT_ARENAS.with(|lent| lent.borrow_mut().insert(key)),
+            "reentrant mutable arena access; release the arena before calling the interpreter"
+        );
+        Self(key)
+    }
+}
+impl Drop for ArenaLend {
+    fn drop(&mut self) {
+        LENT_ARENAS.with(|lent| {
+            lent.borrow_mut().remove(&self.0);
+        });
+    }
+}
+
 pub(crate) fn with_arena_in<F, R>(inst: *mut super::instance::RInstance, f: F) -> R
 where
     F: FnOnce(&mut RArena) -> R,
@@ -821,8 +849,10 @@ where
     // nothing reenters the interpreter while the lend is live. The
     // deferred firings are processed only after it is released.
     unsafe {
-        let arena = &mut (*inst).arena;
-        let result = f(arena);
+        let result = {
+            let _lend = ArenaLend::new(inst);
+            f(&mut (*inst).arena)
+        };
         let torture_ticks = std::mem::take(&mut (*inst).arena.alloc_gc_torture_ticks);
         let collect_requested = std::mem::take(&mut (*inst).arena.alloc_gc_collect_requested);
         crate::sexp::gengc::process_deferred_alloc_gc_in(inst, torture_ticks, collect_requested);
@@ -860,6 +890,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn nested_arena_lend_is_rejected_and_outer_borrow_survives() {
+        let _session = crate::sexp::session::RSession::new();
+        with_arena(|outer| {
+            let before = outer.node_count();
+            let failure = std::panic::catch_unwind(|| with_arena(|_| ()));
+            assert!(failure.is_err());
+            outer.alloc_node(SEXPTYPE::LISTSXP);
+            assert_eq!(outer.node_count(), before + 1);
+        });
+        with_arena(|arena| {
+            arena.alloc_node(SEXPTYPE::LISTSXP);
+        });
+    }
+
+    #[test]
     fn test_arena_alloc_node() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
@@ -878,6 +923,16 @@ mod tests {
         unsafe {
             assert_eq!((*ptr).sxpinfo.type_of(), SEXPTYPE::REALSXP);
             assert_eq!((*ptr).vecsxp_length(), 5);
+        }
+    }
+
+    #[test]
+    fn charsxp_header_initializes_length_and_truelength() {
+        let mut arena = RArena::new();
+        let value = arena.alloc_charsxp(b"header");
+        unsafe {
+            assert_eq!((*value).vecsxp_length(), 6);
+            assert_eq!((*value).vecsxp_truelength(), 0);
         }
     }
 

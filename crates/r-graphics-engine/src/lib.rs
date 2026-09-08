@@ -193,6 +193,9 @@ pub trait RenderPlot: Sized {
     /// Clear canvas with background color
     fn clear(&mut self, background: Color);
 
+    /// Set an optional device-space rectangular clip [left, top, right, bottom].
+    fn set_clip(&mut self, _rect: Option<[f32; 4]>) {}
+
     /// Draw path geometry
     fn draw_path(&mut self, path: &Path);
 
@@ -215,6 +218,7 @@ pub trait DrawTarget {
         (640, 480)
     }
     fn clear(&mut self, background: Color);
+    fn set_clip(&mut self, _rect: Option<[f32; 4]>) {}
     fn draw_path(&mut self, path: &Path);
     fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters);
 }
@@ -225,6 +229,9 @@ impl<T: RenderPlot> DrawTarget for T {
     }
     fn clear(&mut self, background: Color) {
         <Self as RenderPlot>::clear(self, background);
+    }
+    fn set_clip(&mut self, rect: Option<[f32; 4]>) {
+        <Self as RenderPlot>::set_clip(self, rect);
     }
     fn draw_path(&mut self, path: &Path) {
         <Self as RenderPlot>::draw_path(self, path);

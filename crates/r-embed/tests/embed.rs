@@ -1114,8 +1114,8 @@ fn render_reports_actionable_plot_errors() {
     assert!(non_numeric.to_string().contains("numeric"));
 
     let non_finite = session
-        .render_with_dimensions("plot(c(1, Inf))", 320, 240)
-        .expect_err("non-finite plot should fail");
+        .render_with_dimensions("plot(c(Inf, Inf))", 320, 240)
+        .expect_err("plot with no finite limits should fail");
     assert!(non_finite.to_string().contains("finite"));
 }
 
@@ -2037,4 +2037,56 @@ fn real_package_corpus() {
             .expect("crayon has_color"),
         "[1] FALSE"
     );
+}
+
+#[test]
+fn render_loess_and_layered_base_graphics() {
+    let mut session = RSession::new().unwrap();
+    let png=session.render_with_dimensions("x<-seq(0,1,length.out=30); y<-sin(5*x)+cos(31*x)/8; f<-loess(y~x); plot(x,y,pch=21,bg='gold',main='LOESS μ'); lines(x,predict(f),col='red',lwd=3); points(.5,.5,pch=4,col='blue'); abline(h=0,lty=2); segments(.1,.1,.3,.4,col='green'); arrows(.6,.2,.7,.4); rect(.8,.1,.9,.2,border='blue'); polygon(c(.1,.2,.3),c(.2,.3,.2),col='gray'); text(.5,.8,labels='fit',srt=30)",640,480).unwrap();
+    let decoded = decode_png_rgba(&png);
+    assert!(decoded.red_pixels() > 50);
+    assert!(decoded.green_pixels() > 5);
+    assert!(decoded.non_white_in_region(0, 0, 640, 42) > 30);
+}
+
+#[test]
+fn render_plot_window_s3_layers_and_nonfinite_data() {
+    let mut session = RSession::new().unwrap();
+    for code in [
+        "plot.new(); plot.window(xlim=c(0,2),ylim=c(0,2)); lines(c(0,2),c(0,2),col='red'); axis(1); box()",
+        "lines.example<-function(x,...) {called <<- TRUE; lines.default(c(0,1),c(0,1),col='red')}; called<-FALSE; plot(c(0,1),c(0,1),type='n'); lines(structure(1,class='example'))",
+        "plot(c(1,Inf,2,NA,3),c(1,2,3,4,5),type='b',col='red')",
+        "par(mfrow=c(1,2)); plot(1:3,col='red'); plot(1:3,col='red',log='y')",
+    ] {
+        let png = session
+            .render_with_dimensions(code, 640, 480)
+            .unwrap_or_else(|e| panic!("{code}: {e}"));
+        assert!(
+            decode_png_rgba(&png).red_pixels() > 5,
+            "{code}: {:?}",
+            session.eval("called")
+        );
+    }
+}
+
+#[test]
+fn evaluated_builtin_arguments_survive_gc() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("gctorture(TRUE); result<-c(list(a=list(1,2)),list(b=list(3,4))); gctorture(FALSE); identical(result,list(a=list(1,2),b=list(3,4)))").unwrap(),"[1] TRUE");
+}
+
+#[test]
+fn bytecode_lookup_roots_earlier_operands_while_forcing_promises() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("f<-function(x)c(list(a=1),x); value<-f({invisible(gc());list(b=2)}); identical(value,list(a=1,b=2))").unwrap(),"[1] TRUE");
+    assert_eq!(session.eval("e<-new.env(); makeActiveBinding('x',function(){invisible(gc());list(b=2)},e); f<-function()c(list(a=1),x); environment(f)<-e; identical(f(),list(a=1,b=2))").unwrap(),"[1] TRUE");
+}
+
+#[test]
+fn render_plot_window_preserves_the_last_panel_after_layout_wrap() {
+    let mut session = RSession::new().unwrap();
+    let png=session.render_with_dimensions("par(mfrow=c(1,2));plot.new();plot.new();plot.window(xlim=c(0,1),ylim=c(0,1));lines(c(0,1),c(0,1),col='red',lwd=3)",640,480).unwrap();
+    let p = decode_png_rgba(&png);
+    assert_eq!(p.non_white_in_region(0, 0, 320, 480), 0);
+    assert!(p.non_white_in_region(320, 0, 640, 480) > 30);
 }

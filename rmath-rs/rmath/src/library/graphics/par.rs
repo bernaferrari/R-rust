@@ -806,11 +806,18 @@ unsafe fn Query(what: *const c_char, _dd: pGEDevDesc) -> SEXP {
                 "invalid value specified for graphical parameter \"{name}\""
             ));
         }
-        with_par_state(|state| {
-            let value = current_par_value(state, &name);
-            par_value_to_sexp(&value)
-        })
+        let value = parameter(&name);
+        par_value_to_sexp(&value)
     }
+}
+
+pub(crate) fn parameter(name: &str) -> ParValue {
+    with_par_state(|state| current_par_value(state, name))
+}
+pub(crate) fn set_plot_parameter(name: &str, value: ParValue) {
+    with_par_state(|state| {
+        state.overrides.insert(name.to_owned(), value);
+    });
 }
 
 fn with_par_state<T>(f: impl FnOnce(&mut GraphicsParState) -> T) -> T {
@@ -1032,7 +1039,9 @@ unsafe fn par_value_to_sexp(value: &ParValue) -> SEXP {
     }
 }
 
-unsafe fn named_par_list(names: &[String], state: &GraphicsParState) -> SEXP {
+unsafe fn named_par_list(names: &[String]) -> SEXP {
+    let values: Vec<_> =
+        with_par_state(|state| names.iter().map(|n| current_par_value(state, n)).collect());
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, names.len() as R_xlen_t);
         if result.is_null() {
@@ -1046,7 +1055,7 @@ unsafe fn named_par_list(names: &[String], state: &GraphicsParState) -> SEXP {
         let _name_guard = protect(name_vec);
 
         for (i, name) in names.iter().enumerate() {
-            let value = current_par_value(state, name);
+            let value = &values[i];
             SET_VECTOR_ELT(result, i as R_xlen_t, par_value_to_sexp(&value));
             let cstr = std::ffi::CString::new(name.as_str()).unwrap_or_default();
             SET_STRING_ELT(name_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
@@ -1209,23 +1218,23 @@ pub unsafe fn do_par(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         if set_names.is_empty() && query_names.is_empty() {
             let names = all_query_names(no_readonly);
-            return with_par_state(|state| named_par_list(&names, state));
+            return named_par_list(&names);
         }
 
-        let result = with_par_state(|state| {
-            if !set_names.is_empty() {
-                let old = named_par_list(&set_names, state);
-                for (name, value) in set_names.iter().zip(set_values.into_iter()) {
+        let result = if !set_names.is_empty() {
+            let old = named_par_list(&set_names);
+            let _old = protect(old);
+            with_par_state(|state| {
+                for (name, value) in set_names.iter().zip(set_values) {
                     state.overrides.insert(name.clone(), value);
                 }
-                old
-            } else if query_names.len() == 1 {
-                let value = current_par_value(state, &query_names[0]);
-                par_value_to_sexp(&value)
-            } else {
-                named_par_list(&query_names, state)
-            }
-        });
+            });
+            old
+        } else if query_names.len() == 1 {
+            par_value_to_sexp(&parameter(&query_names[0]))
+        } else {
+            named_par_list(&query_names)
+        };
 
         if !set_names.is_empty() {
             crate::sexp::globals::set_R_Visible(FALSE);

@@ -33,6 +33,19 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await request('eval',"f <- function() { on.exit(cat('exit')); return(7L) }; f()"), 'exit\n[1] 7');
     await request('eval','i <- 0L; repeat { i <- i + 1L; if (i < 3) next; break }; stopifnot(i == 3)');
     assert.match(await request('plot',"plot(x=1:3,y=3:1,col='red')"), /data:image\/png;base64,/);
+    assert.equal(await request('eval', "xx<-seq(0,1,length.out=15); yy<-sin(5*xx)+xx^2; ff<-loess(yy~xx); round(ff$fitted[1],8)"), '[1] -0.02619684');
+    const smooth=await request('plot', "plot(xx,yy,main='LOESS μ'); lines(xx,predict(ff),col='red',lwd=3)");
+    assert.match(smooth,/data:image\/png;base64,/);
+    if (process.env.RPORT_PLOT_ARTIFACT) await fs.writeFile(process.env.RPORT_PLOT_ARTIFACT,Buffer.from(smooth.match(/data:image\/png;base64,([^"]+)/)[1],'base64'));
+    const ink=await page.evaluate(async src=>{
+      const img=new Image();img.src=new DOMParser().parseFromString(src,'image/svg+xml').querySelector('image').getAttribute('href');await img.decode();
+      const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;
+      const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);
+      const data=ctx.getImageData(0,0,img.width,42).data;let n=0;
+      for(let i=0;i<data.length;i+=4) if(data[i]<200&&data[i+3]>0)n++;
+      return n;
+    },smooth);
+    assert.ok(ink>30,'bundled font renders a title in Wasm');
     await page.locator('#console-command').fill('x + 2');
     await page.locator('#console-run').click();
     await page.waitForFunction(() => document.querySelector('#console').textContent.includes('[1] 43'));

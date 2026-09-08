@@ -1,3 +1,18 @@
+// Rust adaptation of the upstream LOESS algorithms.
+// Copyright (C) 1998--2020 The R Core Team
+//
+// The authors of this software are Cleveland, Grosse, and Shyu.
+// Copyright (c) 1989, 1992 by AT&T.
+// Permission to use, copy, modify, and distribute this software for any
+// purpose without fee is hereby granted, provided that this entire notice
+// is included in all copies of any software which is or includes a copy
+// or modification of this software and in all copies of the supporting
+// documentation for such software.
+// THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+// WARRANTY. IN PARTICULAR, NEITHER THE AUTHORS NOR AT&T MAKE ANY
+// REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+// OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+
 //! Owned LOESS numerical engine, following Cleveland/Grosse/Shyu's algorithms
 //! in the pinned R stats/src/loessf.f. No interpreter pointers enter this module.
 #![forbid(unsafe_code)]
@@ -106,14 +121,27 @@ impl Model {
         let base = model.influence(&model.x, &model.weights)?;
         model.trace = (0..n).map(|i| base[i][i]).sum();
         if model.config.approximate_trace && model.config.interpolate && !model.config.exact {
-            let tau = model.basis(&vec![0.; d]).len() as f64;
+            let tau = if model.config.degree == 0 {
+                d + 1
+            } else {
+                model.basis(&vec![0.; d]).len()
+            } as f64;
             let g1 = (-0.08125 * d as f64 + 0.13) * d as f64 + 1.05;
             model.trace = tau * (1. + ((g1 - model.config.span) / model.config.span).max(0.));
         }
         (model.delta1, model.delta2) = if model.config.exact {
             diagnostics::exact(&base)
         } else {
-            diagnostics::approximate(n, d, model.basis(&vec![0.; d]).len(), model.trace)
+            diagnostics::approximate(
+                n,
+                d,
+                if model.config.degree == 0 {
+                    d + 1
+                } else {
+                    model.basis(&vec![0.; d]).len()
+                },
+                model.trace,
+            )
         };
         model.fitted = multiply(&base, &model.y);
         for _ in 1..model.config.iterations {
@@ -199,6 +227,33 @@ impl Model {
 
     pub fn predict(&self, queries: &[Vec<f64>], se: bool) -> Result<(Vec<f64>, Vec<f64>), String> {
         let d = self.divisor.len();
+        let n = self.y.len();
+        if n == 0
+            || !(1..=4).contains(&d)
+            || self.x.len() != n
+            || self.weights.len() != n
+            || self.robust.len() != n
+            || self
+                .x
+                .iter()
+                .any(|r| r.len() != d || r.iter().any(|v| !v.is_finite()))
+            || self.divisor.iter().any(|v| !v.is_finite() || *v <= 0.)
+            || self
+                .weights
+                .iter()
+                .chain(&self.robust)
+                .any(|v| !v.is_finite() || *v < 0.)
+            || self.config.degree > 2
+            || !self.config.span.is_finite()
+            || self.config.span <= 0.
+            || !self.config.cell.is_finite()
+            || self.config.cell <= 0.
+            || self.config.parametric.len() != d
+            || self.config.drop_square.len() != d
+            || self.config.parametric.iter().all(|v| *v)
+        {
+            return Err("invalid LOESS model".into());
+        }
         if queries.iter().any(|q| q.len() != d) {
             return Err("wrong number of LOESS predictors".into());
         }
@@ -232,10 +287,24 @@ impl Model {
             })
             .collect();
         let q: Vec<_> = valid.iter().map(|(_, q)| (*q).clone()).collect();
-        let l = self.influence(&q, &weights)?;
+        // GNU R's direct robust prediction uses robustness weights alone when
+        // standard errors are requested (loess_dfitse); preserve that contract.
+        let fit_weights = if se && !self.config.interpolate && self.config.iterations > 1 {
+            &self.robust
+        } else {
+            &weights
+        };
+        let l = self.influence(&q, fit_weights)?;
         let values = multiply(&l, &self.y);
         let uncertainty = if se {
-            self.influence(&q, &self.weights)?
+            self.influence(
+                &q,
+                if self.config.interpolate {
+                    &self.weights
+                } else {
+                    &weights
+                },
+            )?
         } else {
             vec![]
         };
@@ -308,7 +377,7 @@ impl Model {
             .collect();
         order.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
         let radius = order[nf - 1].1 * self.config.span.max(1.);
-        if radius <= 0. {
+        if !radius.is_finite() || radius <= 0. {
             return Err("LOESS neighborhood has zero width".into());
         }
         let k = self.basis(q).len();

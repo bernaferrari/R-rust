@@ -820,6 +820,16 @@ pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
             ],
         );
         let ptrs = DATAPTR(x) as *mut SEXP;
+        if ptrs.is_null() || i < 0 || i >= (*x).vecsxp_length() {
+            std::panic::panic_any(super::context::RError {
+                message: format!(
+                    "invalid vector buffer/index: type {} length {} index {}",
+                    TYPEOF(x),
+                    (*x).vecsxp_length(),
+                    i
+                ),
+            });
+        }
         *ptrs.add(i as usize)
     }
 }
@@ -965,21 +975,43 @@ pub unsafe fn SCALAR_DVAL(x: SEXP) -> c_double {
 // ---------------------------------------------------------------------------
 
 impl SexprecCore {
+    fn require_vector_header(&self) {
+        if !matches!(
+            self.sxpinfo.type_of(),
+            SEXPTYPE::CHARSXP
+                | SEXPTYPE::LGLSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::CPLXSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::VECSXP
+                | SEXPTYPE::EXPRSXP
+                | SEXPTYPE::BCODESXP // This runtime stores bytecode in a vector payload.
+                | SEXPTYPE::RAWSXP
+        ) {
+            std::panic::panic_any(super::context::RError {
+                message: "internal vector header requested for non-vector".into(),
+            });
+        }
+    }
     /// Get the vector length from the data union.
     #[inline]
     pub unsafe fn vecsxp_length(&self) -> R_xlen_t {
+        self.require_vector_header();
         unsafe { self.data.vecsxp.length }
     }
 
     /// Get the vector true length from the data union.
     #[inline]
     pub unsafe fn vecsxp_truelength(&self) -> R_xlen_t {
+        self.require_vector_header();
         unsafe { self.data.vecsxp.truelength }
     }
 
     /// Set the vector true length.
     #[inline]
     pub unsafe fn set_vecsxp_truelength(&mut self, v: R_xlen_t) {
+        self.require_vector_header();
         unsafe {
             self.data = SexprecData {
                 vecsxp: super::ffi::Vecsxp {

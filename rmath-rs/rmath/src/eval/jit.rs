@@ -769,7 +769,6 @@ pub unsafe fn do_declare(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use crate::sexp::ffi::SEXPTYPE;
-    use crate::sexp::memory::with_arena;
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -874,7 +873,8 @@ mod tests {
     #[test]
     fn test_compile_expr_compiles_simple_expressions() {
         let _session = RSession::new();
-        let expr = with_arena(|arena| unsafe { crate::sexp::constructors::Rf_ScalarInteger(7) });
+        let expr =
+            _session.with_active(|| unsafe { crate::sexp::constructors::Rf_ScalarInteger(7) });
         unsafe {
             let compiled = R_compileExpr(expr, R_NilValue());
             assert_eq!(TYPEOF(compiled), SEXPTYPE::BCODESXP);

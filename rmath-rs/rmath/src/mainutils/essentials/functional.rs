@@ -756,7 +756,13 @@ fn simplify_scalar_list(list: SEXP) -> SEXP {
             return list;
         }
         let first = VECTOR_ELT(list, 0);
-        if first.is_null() || XLENGTH(first) != 1 {
+        if first.is_null()
+            || !matches!(
+                SEXPTYPE(TYPEOF(first)),
+                SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::STRSXP
+            )
+            || XLENGTH(first) != 1
+        {
             return list;
         }
         simplify_scalar_list_as(list, SEXPTYPE(TYPEOF(first)))
@@ -3061,3 +3067,27 @@ pub unsafe fn do_plot_default(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         base_error("plot requires the renderplot-device feature".to_owned())
     }
 }
+
+macro_rules! portable_graphics_handlers {
+    ($($handler:ident => $name:literal),* $(,)?) => {$(
+        pub unsafe fn $handler(_call:SEXP,_op:SEXP,args:SEXP,_rho:SEXP)->SEXP {
+            #[cfg(feature="renderplot-device")]
+            unsafe {crate::mainutils::portable_plot::draw_builtin($name,args)}
+            #[cfg(not(feature="renderplot-device"))]
+            {let _=args; base_error("graphics requires the renderplot-device feature")}
+        }
+    )*};
+}
+portable_graphics_handlers! {
+    do_lines_default=>"lines.default",do_points_default=>"points.default",
+    do_segments=>"segments",do_arrows=>"arrows",do_abline=>"abline",do_rect=>"rect",do_polygon=>"polygon",
+    do_text_default=>"text.default",do_title=>"title",do_box=>"box",do_axis=>"axis",do_plot_new=>"plot.new",do_plot_window=>"plot.window",
+}
+macro_rules! graphics_generics {
+    ($($handler:ident => $name:literal),* $(,)?) => {$(
+        pub unsafe fn $handler(_call:SEXP,_op:SEXP,args:SEXP,rho:SEXP)->SEXP {
+            unsafe {crate::mainutils::base_wrappers::apply($name,concat!("function(x,...) UseMethod('",$name,"')"),args,rho,false)}
+        }
+    )*};
+}
+graphics_generics! {do_lines=>"lines",do_points=>"points",do_text=>"text"}

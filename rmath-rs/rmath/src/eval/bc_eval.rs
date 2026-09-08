@@ -594,7 +594,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let sym = constant_at(consts, idx, "GETVAR");
                     // eval.c DO_GETVAR: variable loads are visible.
                     super::runtime::set_visible(TRUE);
-                    let val = R_findVar(sym, rho);
+                    // Lookup can force a promise or invoke an active binding before
+                    // returning; root the operand stack for the lookup itself.
+                    let val = with_stack_rooted(&stack, sym, || R_findVar(sym, rho));
                     if val == R_UnboundValue() {
                         bc_error("object not found");
                     } else if val == R_MissingArg() {
@@ -625,7 +627,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     // stack so assignment remains an expression. Blocks and
                     // loops decide separately whether to discard that value.
                     let val = stack_top_checked(&stack, "SETVAR");
-                    defineVar(sym, val, rho);
+                    with_stack_rooted(&stack, val, || defineVar(sym, val, rho));
                     super::runtime::set_visible(FALSE);
                 }
 
@@ -855,7 +857,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_STARTASSIGN => {
                     let idx = read_operand(code_ptr, &mut pc, code_len, "STARTASSIGN");
                     let sym = constant_at(consts, idx, "STARTASSIGN");
-                    let val = R_findVar(sym, rho);
+                    // Lookup can force a promise or invoke an active binding before
+                    // returning; root the operand stack for the lookup itself.
+                    let val = with_stack_rooted(&stack, sym, || R_findVar(sym, rho));
                     stack.push(sym);
                     stack.push(val);
                 }
@@ -864,7 +868,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let _nargs = read_operand(code_ptr, &mut pc, code_len, "ENDASSIGN");
                     let val = stack_pop_checked(&mut stack, "ENDASSIGN value");
                     let sym = stack_pop_checked(&mut stack, "ENDASSIGN symbol");
-                    defineVar(sym, val, rho);
+                    with_stack_rooted(&stack, val, || defineVar(sym, val, rho));
                     stack.push(val);
                     super::runtime::set_visible(FALSE);
                 }
@@ -1159,7 +1163,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let sym = stack_pop_checked(&mut stack, "PUTBASE symbol");
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
-                            defineVar(sym, val, super::runtime::base_env());
+                            with_stack_rooted(&stack, val, || {
+                                defineVar(sym, val, super::runtime::base_env())
+                            });
                         }
                     }
                     stack.push(val);
@@ -1172,7 +1178,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let sym = stack_pop_checked(&mut stack, "PUTBASE_SEP symbol");
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
-                            defineVar(sym, val, super::runtime::base_env());
+                            with_stack_rooted(&stack, val, || {
+                                defineVar(sym, val, super::runtime::base_env())
+                            });
                         }
                     }
                     stack.push(val);
@@ -1514,20 +1522,18 @@ mod tests {
 
         // Callee whose body forces a full collection while the caller's
         // bytecode frame is suspended mid-OP_CALL.
-        let gc_closure = session
-            .with_arena(|arena| unsafe {
-                let clos = arena.alloc_node(SEXPTYPE::CLOSXP);
-                (*clos).data.closxp.formals = R_NilValue();
-                let body = Rf_cons(
-                    crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
-                    R_NilValue(),
-                );
-                (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                (*clos).data.closxp.body = body;
-                (*clos).data.closxp.env = crate::sexp::globals::R_BaseEnv();
-                clos
-            })
-            .expect("session active");
+        let gc_closure = session.with_active(|| unsafe {
+            let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
+            (*clos).data.closxp.formals = R_NilValue();
+            let body = Rf_cons(
+                crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
+                R_NilValue(),
+            );
+            (*body).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            (*clos).data.closxp.body = body;
+            (*clos).data.closxp.env = crate::sexp::globals::R_BaseEnv();
+            clos
+        });
         let _callee_guard = crate::sexp::protect::protect(gc_closure);
 
         // Detached arena keeps the bytecode alive for the whole test but is
@@ -1562,6 +1568,48 @@ mod tests {
         assert!(
             still_active,
             "operand-stack value was swept by the GC run inside the callee"
+        );
+        unsafe {
+            assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
+            assert_eq!(*LOGICAL(result), TRUE);
+        }
+    }
+    #[test]
+    fn test_bc_eval_operand_stack_survives_gc_during_lookup() {
+        let mut session = crate::sexp::session::RSession::new();
+        let (symbol, env) = session.with_active(|| unsafe {
+            let env = crate::sexp::globals::R_GlobalEnv();
+            let symbol = crate::sexp::symbol::Rf_install(c"lookup_gc_value".as_ptr());
+            let call = Rf_cons(
+                crate::sexp::symbol::Rf_install(c"gc".as_ptr()),
+                R_NilValue(),
+            );
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let promise = crate::sexp::memory_ext::mkPROMISE(call, env);
+            defineVar(symbol, promise, env);
+            (symbol, env)
+        });
+        let mut arena = crate::sexp::memory::RArena::new();
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+        unsafe {
+            crate::sexp::accessors::SET_VECTOR_ELT(consts, 0, symbol);
+        }
+        let bcode = bcode_with(
+            &mut arena,
+            &[
+                opcodes::OP_PUSHTRUE,
+                opcodes::OP_GETVAR,
+                0,
+                opcodes::OP_POP,
+                opcodes::OP_RETURN,
+            ],
+            consts,
+        );
+        let result = session.with_active(|| unsafe { bcEval(bcode, env) });
+        assert!(
+            session
+                .with_arena(|a| a.active_nodes().any(|p| p == result))
+                .unwrap()
         );
         unsafe {
             assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);

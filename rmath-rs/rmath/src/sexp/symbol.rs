@@ -39,7 +39,10 @@ fn persistent_charsxp_from_bytes(bytes: &[u8]) -> SEXP {
         // the returned SEXP under Stacked Borrows.
         let charsxp: SEXP = Box::into_raw(Box::new(SexprecCore::new(SEXPTYPE::CHARSXP)));
         (*charsxp).data = SexprecData {
-            charsxp_truelen: len,
+            vecsxp: super::ffi::Vecsxp {
+                length: len,
+                truelength: 0,
+            },
         };
         (*charsxp).gengc_next_node = data_ptr as SEXP;
         charsxp

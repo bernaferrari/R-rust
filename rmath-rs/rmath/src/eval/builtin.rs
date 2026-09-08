@@ -230,6 +230,41 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     UnevaluatedBuiltin {
+        name: "loess",
+        handler: crate::mainutils::loess::do_loess,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "loess.control",
+        handler: crate::mainutils::loess::do_control,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "predict",
+        handler: crate::mainutils::loess::do_predict,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "predict.loess",
+        handler: crate::mainutils::loess::do_predict_loess,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "lines",
+        handler: crate::mainutils::essentials::do_lines,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "points",
+        handler: crate::mainutils::essentials::do_points,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
+        name: "text",
+        handler: crate::mainutils::essentials::do_text,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "plot",
         handler: crate::mainutils::essentials::do_plot,
         restore_visibility_always: false,
@@ -1048,6 +1083,78 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "tapply",
         handler: crate::mainutils::essentials::do_tapply,
+    },
+    EvaluatedBuiltin {
+        name: ".rport_loess_fit",
+        handler: crate::mainutils::loess::do_fit,
+    },
+    EvaluatedBuiltin {
+        name: ".rport_loess_predict",
+        handler: crate::mainutils::loess::do_predict_core,
+    },
+    EvaluatedBuiltin {
+        name: "lines",
+        handler: crate::mainutils::essentials::do_lines,
+    },
+    EvaluatedBuiltin {
+        name: "lines.default",
+        handler: crate::mainutils::essentials::do_lines_default,
+    },
+    EvaluatedBuiltin {
+        name: "points",
+        handler: crate::mainutils::essentials::do_points,
+    },
+    EvaluatedBuiltin {
+        name: "points.default",
+        handler: crate::mainutils::essentials::do_points_default,
+    },
+    EvaluatedBuiltin {
+        name: "segments",
+        handler: crate::mainutils::essentials::do_segments,
+    },
+    EvaluatedBuiltin {
+        name: "arrows",
+        handler: crate::mainutils::essentials::do_arrows,
+    },
+    EvaluatedBuiltin {
+        name: "abline",
+        handler: crate::mainutils::essentials::do_abline,
+    },
+    EvaluatedBuiltin {
+        name: "rect",
+        handler: crate::mainutils::essentials::do_rect,
+    },
+    EvaluatedBuiltin {
+        name: "polygon",
+        handler: crate::mainutils::essentials::do_polygon,
+    },
+    EvaluatedBuiltin {
+        name: "text",
+        handler: crate::mainutils::essentials::do_text,
+    },
+    EvaluatedBuiltin {
+        name: "text.default",
+        handler: crate::mainutils::essentials::do_text_default,
+    },
+    EvaluatedBuiltin {
+        name: "title",
+        handler: crate::mainutils::essentials::do_title,
+    },
+    EvaluatedBuiltin {
+        name: "box",
+        handler: crate::mainutils::essentials::do_box,
+    },
+    EvaluatedBuiltin {
+        name: "axis",
+        handler: crate::mainutils::essentials::do_axis,
+    },
+    EvaluatedBuiltin {
+        name: "plot.new",
+        handler: crate::mainutils::essentials::do_plot_new,
+    },
+    EvaluatedBuiltin {
+        name: "plot.window",
+        handler: crate::mainutils::essentials::do_plot_window,
     },
     EvaluatedBuiltin {
         name: "plot.default",

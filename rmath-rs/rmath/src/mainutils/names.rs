@@ -4920,6 +4920,9 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             });
         }
 
+        // On-demand primitives are not necessarily installed in a symbol's
+        // INTERNAL slot. Argument evaluation can collect, so root this one.
+        let _internal_guard = protect(internal_val);
         // Get the actual arguments (CDR of the pairlist)
         let actual_args = CDR(s);
 
@@ -4937,7 +4940,11 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         crate::sexp::globals::set_R_Visible(if flag != 1 { 1 } else { 0 });
 
         let offset = PRIMOFFSET(internal_val);
-        let entry = &R_FunTab[offset as usize];
+        let entry = R_FunTab.get(offset as usize).unwrap_or_else(|| {
+            panic_any(RError {
+                message: "invalid internal primitive offset".into(),
+            })
+        });
         let mut end = entry.name.len();
         if end > 0 && entry.name[end - 1] == 0 {
             end -= 1;
@@ -5027,11 +5034,14 @@ fn internal_builtin_handler(name: &str) -> Option<InternalBuiltinHandler> {
 /// R's `.Internal(builtins(internal))` — sorted builtin/internal name listing.
 pub unsafe fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let internal = if args.is_null() || args == R_NilValue() || LENGTH(args) == 0 {
+        let internal = if args.is_null() || args == R_NilValue() {
             false
         } else {
             let first = CAR(args);
-            if first.is_null() || first == R_NilValue() || LENGTH(first) == 0 {
+            if first.is_null()
+                || !matches!(SEXPTYPE(TYPEOF(first)), SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP)
+                || LENGTH(first) == 0
+            {
                 false
             } else if TYPEOF(first) == SEXPTYPE::LGLSXP || TYPEOF(first) == SEXPTYPE::INTSXP {
                 let value = *INTEGER(first);

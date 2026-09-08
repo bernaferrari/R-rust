@@ -1,8 +1,8 @@
 //! Headless pure Rust graphics backend (tiny-skia + fontdue PNG).
 //!
 //! Suitable for Android (via r-embed), WASM (wasm32-unknown-unknown), servers,
-//! and other targets without a display. Text rendering gracefully degrades if
-//! no system fonts are loadable (e.g. WASM no FS). Use set_font() to embed a TTF.
+//! and other targets without a display. A bundled Noto Sans font supplies text
+//! when system fonts are unavailable, including WASM. Use set_font() to override it.
 //!
 //! The r-embed crate's render_* API uses this for simple plot PNG output.
 //! Internal R grDevices on Android uses a separate pure pixel DeviceRegistry.
@@ -55,7 +55,11 @@ fn load_system_font() -> Option<TextFont> {
                 return Some(font);
             }
         }
-        None
+        fontdue::Font::from_bytes(
+            include_bytes!("../assets/NotoSans.ttf") as &[u8],
+            fontdue::FontSettings::default(),
+        )
+        .ok()
     });
     cached.clone().map(TextFont)
 }
@@ -66,6 +70,7 @@ pub struct AndroidHeadlessRenderer {
     height: u32,
     pixmap: Option<tiny_skia::Pixmap>,
     font: Option<TextFont>,
+    clip_mask: Option<tiny_skia::Mask>,
 }
 
 impl std::fmt::Debug for AndroidHeadlessRenderer {
@@ -86,6 +91,7 @@ impl Default for AndroidHeadlessRenderer {
             height: 0,
             pixmap: None,
             font: load_system_font(),
+            clip_mask: None,
         }
     }
 }
@@ -100,6 +106,7 @@ impl AndroidHeadlessRenderer {
             height,
             pixmap: tiny_skia::Pixmap::new(width, height),
             font: load_system_font(),
+            clip_mask: None,
         }
     }
 
@@ -173,6 +180,22 @@ impl RenderPlot for AndroidHeadlessRenderer {
         }
     }
 
+    fn set_clip(&mut self, rect: Option<[f32; 4]>) {
+        self.clip_mask = rect.and_then(|[left, top, right, bottom]| {
+            let mut mask = tiny_skia::Mask::new(self.width, self.height)?;
+            if let Some(rect) = tiny_skia::Rect::from_ltrb(left, top, right, bottom) {
+                let path = tiny_skia::PathBuilder::from_rect(rect);
+                mask.fill_path(
+                    &path,
+                    tiny_skia::FillRule::Winding,
+                    false,
+                    tiny_skia::Transform::identity(),
+                );
+            }
+            Some(mask)
+        });
+    }
+
     fn draw_path(&mut self, path: &Path) {
         if let Some(pixmap) = &mut self.pixmap {
             let Some(skia_path) = path_to_skia(path) else {
@@ -187,7 +210,7 @@ impl RenderPlot for AndroidHeadlessRenderer {
                 &paint,
                 tiny_skia::FillRule::Winding,
                 tiny_skia::Transform::identity(),
-                None,
+                self.clip_mask.as_ref(),
             );
 
             if path.stroke.width > 0.0 {
@@ -206,7 +229,7 @@ impl RenderPlot for AndroidHeadlessRenderer {
                     &stroke_paint,
                     &skia_stroke,
                     tiny_skia::Transform::identity(),
-                    None,
+                    self.clip_mask.as_ref(),
                 );
             }
         }
@@ -225,11 +248,15 @@ impl RenderPlot for AndroidHeadlessRenderer {
         } else {
             12.0
         };
-        let text_color = if params.text_color.a > 0 {
-            params.text_color
-        } else {
-            Color::WHITE
-        };
+        if !pos.x.is_finite()
+            || !pos.y.is_finite()
+            || !font_size.is_finite()
+            || params.text_color.a == 0
+        {
+            return;
+        }
+        let text_color = params.text_color;
+        let (sin, cos) = (-params.text_angle.to_radians()).sin_cos();
 
         let text_width: f32 = text
             .chars()
@@ -266,7 +293,7 @@ impl RenderPlot for AndroidHeadlessRenderer {
             let gh = metrics.height;
 
             let glyph_base_x = x_cursor + metrics.xmin as f32;
-            let glyph_base_y = pos.y + metrics.ymin as f32;
+            let glyph_base_y = pos.y - metrics.ymin as f32 - gh as f32;
 
             for row in 0..gh {
                 for col in 0..gw {
@@ -275,21 +302,26 @@ impl RenderPlot for AndroidHeadlessRenderer {
                         continue;
                     }
 
-                    let px = (glyph_base_x + col as f32) as usize;
-                    let py = (glyph_base_y + row as f32) as usize;
-
-                    if px >= pw || py >= ph {
+                    let dx = glyph_base_x + col as f32 - pos.x;
+                    let dy = glyph_base_y + row as f32 - pos.y;
+                    let px = (pos.x + cos * dx - sin * dy).round() as i64;
+                    let py = (pos.y + sin * dx + cos * dy).round() as i64;
+                    if px < 0 || py < 0 || px >= pw as i64 || py >= ph as i64 {
                         continue;
                     }
-
-                    let idx = (py * pw + px) * 4;
-                    let a = coverage as f32 / 255.0;
-                    let inv_a = 1.0 - a;
+                    let pixel = py as usize * pw + px as usize;
+                    let clip = self
+                        .clip_mask
+                        .as_ref()
+                        .map_or(1., |m| m.data()[pixel] as f32 / 255.);
+                    let idx = pixel * 4;
+                    let a = coverage as f32 / 255. * text_color.a as f32 / 255. * clip;
+                    let inv_a = 1. - a;
 
                     let sr = text_color.r as f32 * a;
                     let sg = text_color.g as f32 * a;
                     let sb = text_color.b as f32 * a;
-                    let sa = text_color.a as f32 * a;
+                    let sa = 255. * a;
 
                     data[idx] = (sr + data[idx] as f32 * inv_a).min(255.0) as u8;
                     data[idx + 1] = (sg + data[idx + 1] as f32 * inv_a).min(255.0) as u8;
@@ -309,7 +341,16 @@ impl RenderPlot for AndroidHeadlessRenderer {
             encoder.set_color(png::ColorType::Rgba);
             encoder.set_depth(png::BitDepth::Eight);
             if let Ok(mut writer) = encoder.write_header() {
-                let _ = writer.write_image_data(pixmap.data());
+                let mut rgba = pixmap.data().to_vec();
+                for p in rgba.chunks_exact_mut(4) {
+                    if p[3] > 0 && p[3] < 255 {
+                        for j in 0..3 {
+                            p[j] = ((p[j] as u32 * 255 + p[3] as u32 / 2) / p[3] as u32).min(255)
+                                as u8;
+                        }
+                    }
+                }
+                let _ = writer.write_image_data(&rgba);
             }
             buf
         } else {
@@ -353,6 +394,7 @@ mod tests {
             height: 100,
             pixmap: tiny_skia::Pixmap::new(200, 100),
             font: None,
+            clip_mask: None,
         };
         renderer.draw_text(
             "Hello",
@@ -367,9 +409,7 @@ mod tests {
     fn test_draw_text_keeps_non_ascii_glyphs() {
         let mut renderer = AndroidHeadlessRenderer::new(120, 60);
         renderer.clear(Color::WHITE);
-        if renderer.font.is_none() {
-            return;
-        }
+        assert!(renderer.font.is_some(), "bundled font must be available");
 
         renderer.draw_text(
             "μ",
@@ -389,5 +429,50 @@ mod tests {
                 .chunks_exact(4)
                 .any(|rgba| rgba != [255, 255, 255, 255])
         );
+    }
+    #[test]
+    fn clips_geometry_and_can_restore_full_canvas() {
+        let mut r = AndroidHeadlessRenderer::new(40, 40);
+        r.clear(Color::WHITE);
+        r.set_clip(Some([10., 10., 30., 30.]));
+        r.draw_path(&Path::rect(0., 0., 40., 40.).with_fill(Color::RED));
+        let p = r.pixmap.as_ref().unwrap();
+        assert_eq!(p.pixel(5, 5).unwrap().red(), 255);
+        assert_eq!(p.pixel(5, 5).unwrap().green(), 255);
+        assert_eq!(p.pixel(20, 20).unwrap().green(), 0);
+        r.set_clip(None);
+        r.draw_path(&Path::rect(0., 0., 8., 8.).with_fill(Color::BLUE));
+        assert_eq!(r.pixmap.as_ref().unwrap().pixel(5, 5).unwrap().red(), 0);
+    }
+
+    #[test]
+    fn bundled_font_draws_rotated_clipped_unicode() {
+        let mut r = AndroidHeadlessRenderer::new(100, 100);
+        r.set_font(include_bytes!("../assets/NotoSans.ttf").to_vec())
+            .unwrap();
+        r.clear(Color::WHITE);
+        r.set_clip(Some([20., 20., 80., 80.]));
+        r.draw_text(
+            "μabc",
+            Point { x: 50., y: 70. },
+            &PlotParameters {
+                font_size: 25.,
+                text_color: Color::BLACK,
+                text_angle: 90.,
+                ..Default::default()
+            },
+        );
+        let p = r.pixmap.as_ref().unwrap();
+        let mut ink = 0;
+        for y in 0..100 {
+            for x in 0..100 {
+                let c = p.pixel(x, y).unwrap();
+                if c.red() != 255 {
+                    ink += 1;
+                    assert!((20..80).contains(&x) && (20..80).contains(&y));
+                }
+            }
+        }
+        assert!(ink > 50);
     }
 }

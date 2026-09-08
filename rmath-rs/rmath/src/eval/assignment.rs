@@ -412,7 +412,14 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
         if subs == R_NilValue() || subs.is_null() || CDR(subs) != R_NilValue() {
             return None;
         }
-        if XLENGTH(value) < 1 {
+        if !matches!(
+            SEXPTYPE(TYPEOF(target)),
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+        ) || !matches!(
+            SEXPTYPE(TYPEOF(value)),
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP
+        ) || XLENGTH(value) < 1
+        {
             return None;
         }
 
@@ -466,7 +473,13 @@ unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> 
 
 unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_t> {
     unsafe {
-        if index.is_null() || index == R_NilValue() || XLENGTH(index) != 1 {
+        if index.is_null()
+            || !matches!(
+                SEXPTYPE(TYPEOF(index)),
+                SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
+            )
+            || XLENGTH(index) != 1
+        {
             return None;
         }
         let raw = match TYPEOF(index) {

@@ -59,3 +59,11 @@ internal transient roots by generation without revoking managed guards.
 Internal unsafe routines still require root and aliasing discipline. Miri's
 current runs permit exposed provenance; they are useful counterexample checks,
 not a formal proof of safety or a security boundary for hostile R programs.
+
+The LOESS numerical engine and headless renderer use `#![forbid(unsafe_code)]`.
+The R adapters remain inside the crate-private interpreter boundary. Mutable
+arena lends reject re-entry; vector header helpers validate their union tag,
+including the runtime's vector-backed BCODESXP representation. Evaluator inputs,
+builtin argument lists and temporary internal primitives stay rooted during
+nested evaluation. Bytecode variable lookup and writes root their live operand
+stack before promise or active-binding evaluation can trigger collection.

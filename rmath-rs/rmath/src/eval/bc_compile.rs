@@ -526,64 +526,61 @@ mod tests {
 
     #[test]
     fn compile_for_loop_updates_binding_and_returns_invisible_null() {
-        let mut session = RSession::new();
+        let session = RSession::new();
         let env = session.global_env().expect("global env").as_raw();
 
-        session
-            .with_arena(|arena| unsafe {
-                let sequence = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-                let values = INTEGER(sequence);
-                *values = 1;
-                *values.add(1) = 2;
-                *values.add(2) = 3;
+        session.with_active(|| unsafe {
+            let sequence = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 3);
+            let values = INTEGER(sequence);
+            *values = 1;
+            *values.add(1) = 2;
+            *values.add(2) = 3;
 
-                let sum = Rf_install(c"sum".as_ptr());
-                defineVar(sum, Rf_ScalarInteger(0), env);
-                let add = Rf_cons(
-                    Rf_install(c"+".as_ptr()),
-                    Rf_cons(sum, Rf_cons(Rf_install(c"i".as_ptr()), R_NilValue())),
-                );
-                (*add).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                let assign = Rf_cons(
-                    Rf_install(c"<-".as_ptr()),
-                    Rf_cons(sum, Rf_cons(add, R_NilValue())),
-                );
-                (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                let for_call = Rf_cons(
-                    Rf_install(c"for".as_ptr()),
-                    Rf_cons(
-                        Rf_install(c"i".as_ptr()),
-                        Rf_cons(sequence, Rf_cons(assign, R_NilValue())),
-                    ),
-                );
-                (*for_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let sum = Rf_install(c"sum".as_ptr());
+            defineVar(sum, Rf_ScalarInteger(0), env);
+            let add = Rf_cons(
+                Rf_install(c"+".as_ptr()),
+                Rf_cons(sum, Rf_cons(Rf_install(c"i".as_ptr()), R_NilValue())),
+            );
+            (*add).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let assign = Rf_cons(
+                Rf_install(c"<-".as_ptr()),
+                Rf_cons(sum, Rf_cons(add, R_NilValue())),
+            );
+            (*assign).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let for_call = Rf_cons(
+                Rf_install(c"for".as_ptr()),
+                Rf_cons(
+                    Rf_install(c"i".as_ptr()),
+                    Rf_cons(sequence, Rf_cons(assign, R_NilValue())),
+                ),
+            );
+            (*for_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
 
-                let bcode = compile_expr(for_call, env).expect("for loop should compile");
-                let result = super::super::bc_eval::bcEval(bcode, env);
-                assert_eq!(result, R_NilValue());
-                assert_eq!(*INTEGER(crate::sexp::envir::R_findVar(sum, env)), 6);
+            let bcode = compile_expr(for_call, env).expect("for loop should compile");
+            let result = super::super::bc_eval::bcEval(bcode, env);
+            assert_eq!(result, R_NilValue());
+            assert_eq!(*INTEGER(crate::sexp::envir::R_findVar(sum, env)), 6);
 
-                let empty = arena.alloc_vector(SEXPTYPE::INTSXP, 0);
-                let empty_for = Rf_cons(
-                    Rf_install(c"for".as_ptr()),
-                    Rf_cons(
-                        Rf_install(c"i".as_ptr()),
-                        Rf_cons(empty, Rf_cons(R_NilValue(), R_NilValue())),
-                    ),
-                );
-                (*empty_for).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                let empty_bcode =
-                    compile_expr(empty_for, env).expect("empty for loop should compile");
-                assert_eq!(
-                    super::super::bc_eval::bcEval(empty_bcode, env),
-                    R_NilValue()
-                );
-                assert_eq!(
-                    crate::sexp::envir::R_findVar(Rf_install(c"i".as_ptr()), env),
-                    R_NilValue()
-                );
-            })
-            .expect("session active");
+            let empty = crate::sexp::constructors::Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+            let empty_for = Rf_cons(
+                Rf_install(c"for".as_ptr()),
+                Rf_cons(
+                    Rf_install(c"i".as_ptr()),
+                    Rf_cons(empty, Rf_cons(R_NilValue(), R_NilValue())),
+                ),
+            );
+            (*empty_for).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            let empty_bcode = compile_expr(empty_for, env).expect("empty for loop should compile");
+            assert_eq!(
+                super::super::bc_eval::bcEval(empty_bcode, env),
+                R_NilValue()
+            );
+            assert_eq!(
+                crate::sexp::envir::R_findVar(Rf_install(c"i".as_ptr()), env),
+                R_NilValue()
+            );
+        });
     }
 
     #[test]

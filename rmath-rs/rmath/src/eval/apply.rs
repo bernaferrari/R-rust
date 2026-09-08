@@ -232,6 +232,9 @@ pub(crate) fn apply_builtin_safe<'a>(
     }
 
     let evaled_args = frame.clone().eval_args();
+    // Evaluated arguments are a fresh list; the source call only roots the
+    // expressions. Keep their values alive across allocations inside handlers.
+    let _evaled_args = unsafe { crate::sexp::protect::protect(evaled_args) };
     let result = apply_evaluated_builtin(frame, &op_name, evaled_args);
     finish_application(
         result,
