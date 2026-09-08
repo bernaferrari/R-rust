@@ -29,7 +29,7 @@ paths and glyph outlines, transformed RGBA images, alpha compositing and clippin
 The synchronous host API works without a GPU on native and Wasm. The optional
 `r-device-vello-gpu` crate uses Vello 0.10 and wgpu 29 compute pipelines, with
 explicit asynchronous initialization, adapter information, texture rendering and
-RGBA/PNG readback or a GPU texture for host compositing. `RSession::record_scene` finishes R evaluation synchronously;
+RGBA/PNG readback or a GPU texture for host compositing. The browser API can attach, resize and present directly to an HTML canvas. Native Rust hosts can pass a safe wgpu window target into `new_for_surface` and use the same intermediate-texture/blit strategy. Android/Swift UI-layer surface integration still requires a host implementation. `RSession::record_scene` finishes R evaluation synchronously;
 the resulting owned scene can outlive the session and be rendered asynchronously.
 Enable `r-embed/vello-gpu` for its `GpuRenderer` re-export. See [GPU API and tests](../crates/r-device-vello-gpu/README.md) for native and
 browser usage. GPU initialization
@@ -71,26 +71,24 @@ GC-traced namespace cache as other packages. Package names support the ordinary
 unquoted syntax and `character.only=TRUE`.
 
 The current drawing surface includes `grid.newpage`, rectangles, circles, lines,
-segments, polygons, text and circular points; the corresponding `*Grob`
+segments, grouped polygons, text and standard point symbols; the corresponding `*Grob`
 constructors; `gList`, `gTree`, `grobTree` and `grid.draw`. Grob trees inherit
 `gpar` through their viewport, and viewport scopes unwind when child drawing
 fails. Text supports the shared plotmath decoder. Viewports compose translation,
 rotation, sizing and native axis scales, with push/pop stacks owned by the R
-session. Axis-aligned clipping and equal/weighted/absolute grid layouts work.
+session. Named navigation within the active viewport stack is available. Axis-aligned clipping and equal/weighted/absolute grid layouts work, including centered aspect-preserving `respect=TRUE` layouts. Line dashes and arrowheads are supported.
 Drawing commands feed the same owned scene used by CPU/GPU devices and
 `recordPlot`/`replayPlot`.
 
 `unit` and `convertX`, `convertY`, `convertWidth`, `convertHeight` support npc,
 snpc, native, inches, centimetres, millimetres, points, big points, picas, dida,
-cicero, scaled points, lines and char units. Layout null units share remaining
+cicero, scaled points, lines, char, strwidth and strheight units. String dimensions use the shared font metrics. Same-dimension unit arithmetic, numeric scaling, unary signs and sum/min/max retain owned unit coefficients and survive GC torture. Missing coefficients propagate through summaries, including `na.rm=TRUE`, as in the pinned GNU R grid oracle. Layout null units share remaining
 space after absolute dimensions. Numeric regression values for physical/native
 units and weighted layouts were checked against the pinned GNU R oracle at a
 known device size; PNG tests check actual viewport placement and clipping.
 
 This is a bounded grid frontend, not the complete GNU R grid package. Unit
-arithmetic and data-dependent units, named viewport navigation, gPath editing,
-layout respect, rotated clipping, arrows, compound polygon groups, non-solid
-line types, text overlap checking and non-circular point symbols remain gaps.
+expression trees for mixed dimensions, grob-dependent dimensions, persistent named viewport trees, gPath editing, rotated clipping and text overlap checking remain gaps. Arithmetic on mixed dimensions or combinations of data-dependent units reports an error.
 Unsupported drawing parameters fail explicitly. Text-dependent char/line units
 currently use device font-size conventions, not GNU R font metric parity.
 Recordings preserve drawing commands; restoring a live grid viewport stack
@@ -116,20 +114,31 @@ stacked expressions without a rule (`atop`), subscripts and superscripts,
 square roots, fixed delimiters (`group` and parentheses), concatenation and
 spacing (`paste`, `*`, `~`), phantom contents, arithmetic/comparison operators,
 and common function names. `sum`, `prod`, and `integral` accept a body and optional
-lower/upper limits placed as scripts. Ordinary `hat`, `tilde`, `dot`, `ring`,
-`bar`, and `underline` accents are also available. `plain`, `bold`, `italic`, and
+lower/upper limits centered in a separate operator column. Ordinary `hat`, `tilde`, `dot`, `ring`,
+`bar`, and `underline` accents are also available, along with `widehat`, `widetilde` and scalable `bgroup` parentheses, brackets, braces and bars. Omitted delimiters produce no ink. `plain`, `bold`, `italic`, and
 `bolditalic` explicitly select the shared renderer's font face; bold and italic
 are synthetic treatments of the same outlines. Latin variable names default to italic; explicit face wrappers override that convention. Greek symbols and numeric constants remain upright, as specified by [R mathematical annotation](https://stat.ethz.ch/R-manual/R-devel/library/grDevices/html/plotmath.html).
 
 This is a bounded plotmath implementation, not an exact port of GNU R's
-font-specific mathematical typography. It does not yet implement stretchy
-`bgroup` delimiters, wide accents,
-display-style centered operator limits, or every plotmath symbol/operator.
+font-specific mathematical typography. The layout now uses visible glyph heights for accents/scripts and draws distinct scalable delimiter curves, but its spacing, delimiter construction, integral-limit placement and synthetic font faces are not pixel-equivalent to GNU R. Not every plotmath symbol/operator is implemented.
 Unsupported operators report errors. The decoder rejects trees deeper than 64
 levels or exceeding 4096 decoded nodes per expression. Public tests verify
 Greek glyph selection, independently positioned scripts, fraction/radical
 geometry, actual rendered pixels, style propagation, title/axis integration,
 and record/replay; they do not establish pixel equivalence with GNU R devices.
+
+## Web showcase
+
+The [Rove website](../website/README.md) includes twelve editable examples, real
+Wasm execution in a worker, PNG export, and a local AI demo using browser WebGPU
+models or an optional Ollama endpoint. Browser weights load on explicit request;
+generated code remains editable before execution. The page is prerendered and
+hydrates into a playground. No sharing feature is enabled.
+
+Browser testing exposed and fixed two runtime issues: random-seed bootstrapping
+now uses browser entropy instead of unsupported native time/process APIs, and
+`rnorm` uses the existing portable sampler rather than the Wasm unavailable stub.
+Explicit `set.seed` remains reproducible across fresh browser sessions.
 
 ## Evidence and limits
 

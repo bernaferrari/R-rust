@@ -50,24 +50,35 @@ pub fn currentTime() -> f64 {
 /// sub-second time components with the full seconds via XOR, then mixing
 /// in the process ID shifted left by 16 bits.
 pub fn TimeToSeed() -> c_uint {
-    let pid: c_uint = std::process::id();
-    let mut seed: c_uint;
-
-    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(dur) => {
-            let secs = dur.as_secs() as c_uint;
-            // Replicate the C logic: (subsecond_part << 16) ^ secs
-            // The C code uses nanoseconds when clock_gettime is available.
-            seed = ((dur.subsec_nanos() as u64) << 16) as c_uint ^ secs;
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Bare wasm has no SystemTime/process API. The existing getrandom
+        // wasm_js backend obtains browser entropy; set.seed still replaces it.
+        let mut bytes = [0; 4];
+        if getrandom::fill(&mut bytes).is_ok() {
+            return c_uint::from_ne_bytes(bytes);
         }
-        Err(_) => {
-            // System clock before UNIX epoch -- fall back to zero
-            seed = 0;
-        }
+        // Keep explicit seeded computation usable on entropy-less hosts.
+        return 0x9E37_79B9;
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let pid: c_uint = std::process::id();
+        let mut seed: c_uint;
 
-    seed ^= pid << 16;
-    seed
+        match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(dur) => {
+                let secs = dur.as_secs() as c_uint;
+                seed = ((dur.subsec_nanos() as u64) << 16) as c_uint ^ secs;
+            }
+            Err(_) => {
+                seed = 0;
+            }
+        }
+
+        seed ^= pid << 16;
+        seed
+    }
 }
 
 /// Returns the current system time as a floating-point number of seconds

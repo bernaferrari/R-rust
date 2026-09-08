@@ -1587,6 +1587,7 @@ dependencies = [
  "r-graphics-engine",
  "thiserror 2.0.20",
  "vello",
+ "web-sys",
 ]
 
 [[package]]
@@ -1646,6 +1647,7 @@ dependencies = [
  "r-graphics-engine",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

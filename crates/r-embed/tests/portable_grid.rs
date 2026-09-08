@@ -125,6 +125,86 @@ fn malformed_internal_conversion_reports_an_r_error() {
 }
 
 #[test]
+fn grouped_polygons_dash_styles_symbols_and_arrows_are_drawn() {
+    let mut session = RSession::new().unwrap();
+    let png = session
+        .render_with_dimensions(
+            "library(grid); grid.newpage(); grid.polygon(x=unit(c(.1,.4,.4,.1,.6,.9,.9,.6),'npc'), y=unit(c(.1,.1,.4,.4,.6,.6,.9,.9),'npc'), id.lengths=c(4,4), gp=gpar(fill=c('red','blue'),lty='dashed')); grid.points(x=seq(.15,.85,length.out=6),y=.5,pch=0:5,size=unit(.2,'npc'),gp=gpar(col='black')); grid.segments(.1,.05,.9,.05,arrow=list(ends='both',type='closed',angle=30,length=unit(.2,'npc')),gp=gpar(col='black'))",
+            320,
+            240,
+        )
+        .unwrap();
+    let (_, p) = pixels(&png);
+    assert!(
+        p.chunks_exact(4)
+            .filter(|p| p[0] > 180 && p[1] < 80)
+            .count()
+            > 500
+    );
+    assert!(
+        p.chunks_exact(4)
+            .filter(|p| p[2] > 120 && p[0] < 100)
+            .count()
+            > 500
+    );
+    assert!(
+        p.chunks_exact(4)
+            .filter(|p| p[0] < 60 && p[1] < 60 && p[2] < 60)
+            .count()
+            > 40
+    );
+}
+
+#[test]
+fn unit_arithmetic_summaries_and_named_navigation_have_bounded_contracts() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("library(grid); a<-unit(c(1,2),'npc'); b<-unit(3,'npc'); identical((a+b)$value,c(4,5)) && identical((a*2)$value,c(2,4))").unwrap(), "[1] TRUE");
+    assert_eq!(
+        session
+            .eval("library(grid); a<-unit(c(1,2),'npc'); c(sum(a)$value,min(a)$value,max(a)$value)")
+            .unwrap(),
+        "[1] 3 1 2"
+    );
+    assert!(
+        session
+            .eval("library(grid); unit(1,'npc') + unit(1,'inches')")
+            .is_err()
+    );
+    assert!(
+        session
+            .eval("library(grid); min(unit(1,'npc'),unit(1,'inches'))")
+            .is_err()
+    );
+    assert_eq!(
+        session
+            .eval("library(grid); is.unit(unit(1,'strwidth',data='abcd'))")
+            .unwrap(),
+        "[1] TRUE"
+    );
+    assert!(session.render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(name='outer')); pushViewport(viewport(name='inner')); seekViewport('outer'); grid.rect(gp=gpar(fill='red')); upViewport()", 160, 120).is_ok());
+}
+
+#[test]
+fn unit_arithmetic_matches_gnu_r_contract_and_survives_gc() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("library(grid); test_units<-function(){gctorture(TRUE); on.exit(gctorture(FALSE)); a<-unit(c(1,2),'npc'); b<-unit(c(3,4),'npc'); identical((a+b)$value,c(4,6)) && identical((-a)$value,c(-1,-2)) && identical((0*a)$value,c(0,0))};test_units()").unwrap(), "[1] TRUE");
+    assert!(
+        session
+            .eval("library(grid); unit(1,'npc') * unit(2,'npc')")
+            .is_err()
+    );
+    assert!(session.eval("library(grid); 2 / unit(1,'npc')").is_err());
+    assert_eq!(
+        session
+            .eval("library(grid); length((unit(1,'npc') * numeric(0))$value)")
+            .unwrap(),
+        "[1] 0"
+    );
+    assert_eq!(session.eval("library(grid); a<-unit(c(1,NA_real_,3),'npc'); is.na(sum(a,na.rm=TRUE)$value) && is.na(sum(a,na.rm=FALSE)$value)").unwrap(), "[1] TRUE");
+    assert_eq!(session.eval("library(grid); a<-unit(c(1,2),'npc'); b<-unit(c(3,4),'npc'); identical(sum(a,b)$value,10) && identical(min(a,b)$value,1) && identical(max(a,b)$value,4)").unwrap(), "[1] TRUE");
+}
+
+#[test]
 fn grid_exports_require_attachment_but_namespace_calls_do_not() {
     let mut session = RSession::new().unwrap();
     assert!(session.eval("unit(1,'npc')").is_err());

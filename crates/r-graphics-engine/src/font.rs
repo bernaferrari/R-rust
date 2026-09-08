@@ -7,6 +7,19 @@
 use crate::{FontFace, TextMetrics};
 use std::sync::{Arc, OnceLock};
 
+/// Ink bounds for one glyph in baseline coordinates.  Advances and line
+/// metrics are deliberately kept separate: plotmath uses the ink box when
+/// placing accents and scripts, while rows continue to advance by the font's
+/// horizontal metrics.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct GlyphInkMetrics {
+    pub x_min: f32,
+    pub y_min: f32,
+    pub width: f32,
+    pub height: f32,
+    pub advance_width: f32,
+}
+
 #[derive(Clone)]
 pub struct FontBook {
     bytes: Arc<Vec<u8>>,
@@ -34,6 +47,35 @@ impl FontBook {
     }
     pub fn advance_width(&self, ch: char, size: f32) -> f32 {
         self.metrics.metrics(ch, size).advance_width
+    }
+    pub fn glyph_ink_metrics(&self, ch: char, size: f32) -> GlyphInkMetrics {
+        let m = self.metrics.metrics(ch, normalized_size(size));
+        GlyphInkMetrics {
+            x_min: m.bounds.xmin,
+            y_min: m.bounds.ymin,
+            width: m.bounds.width,
+            height: m.bounds.height,
+            advance_width: m.advance_width,
+        }
+    }
+    /// Advance width and visible vertical bounds, for mathematical composition.
+    pub fn measure_math_text(&self, text: &str, size: f32, face: FontFace) -> TextMetrics {
+        let size = normalized_size(size);
+        let mut out = TextMetrics::default();
+        let weight = if face.is_bold() {
+            face.bold_stroke_width(size) as f32 / 2.
+        } else {
+            0.
+        };
+        for ch in text.chars().filter(|c| !c.is_control()) {
+            let ink = self.glyph_ink_metrics(ch, size);
+            out.width += ink.advance_width;
+            if ink.height > 0. {
+                out.ascent = out.ascent.max(ink.y_min + ink.height + weight);
+                out.descent = out.descent.max(-ink.y_min + weight);
+            }
+        }
+        out
     }
     pub fn measure_text(&self, text: &str, size: f32, _face: FontFace) -> TextMetrics {
         let size = normalized_size(size);
@@ -110,5 +152,14 @@ mod tests {
     #[test]
     fn invalid_custom_font_is_rejected() {
         assert!(FontBook::from_bytes(vec![1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn glyph_ink_box_is_available_alongside_advance() {
+        let font = FontBook::default();
+        let glyph = font.glyph_ink_metrics('A', 20.);
+        assert!(glyph.width > 0. && glyph.height > 0.);
+        assert!(glyph.advance_width >= glyph.width);
+        assert_eq!(font.glyph_ink_metrics(' ', 20.).width, 0.);
     }
 }

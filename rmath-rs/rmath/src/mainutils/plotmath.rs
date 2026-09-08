@@ -209,22 +209,43 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                     "prod" => "∏",
                     _ => "∫",
                 };
-                MathExpr::Row(vec![
-                    MathExpr::Scripts {
-                        base: Box::new(MathExpr::Text(symbol.into())),
-                        sub,
-                        sup,
-                    },
-                    MathExpr::Space(0.15),
-                    body,
-                ])
+                MathExpr::DisplayOperator {
+                    symbol: symbol.into(),
+                    body: Box::new(body),
+                    sub,
+                    sup,
+                }
+            }
+            "bgroup" => {
+                need(3);
+                let right = args.pop().unwrap();
+                let body = args.pop().unwrap();
+                let left = args.pop().unwrap();
+                let delim = |v: &MathExpr| match v {
+                    MathExpr::Text(s) | MathExpr::Upright(s) | MathExpr::Variable(s)
+                        if matches!(
+                            s.as_str(),
+                            "" | "." | "(" | ")" | "[" | "]" | "{" | "}" | "|" | "||"
+                        ) =>
+                    {
+                        s.clone()
+                    }
+                    _ => base_error("plotmath bgroup delimiters must be strings or symbols"),
+                };
+                MathExpr::BGroup {
+                    left: delim(&left),
+                    body: Box::new(body),
+                    right: delim(&right),
+                }
             }
             "group" => {
                 need(3);
                 let right = args.pop().unwrap();
                 let body = args.pop().unwrap();
                 let left = args.pop().unwrap();
-                if !matches!(left, MathExpr::Text(_)) || !matches!(right, MathExpr::Text(_)) {
+                if !matches!(left, MathExpr::Text(_) | MathExpr::Upright(_))
+                    || !matches!(right, MathExpr::Text(_) | MathExpr::Upright(_))
+                {
                     base_error("plotmath group delimiters must be strings or symbols");
                 }
                 MathExpr::Row(vec![left, body, right])
@@ -239,6 +260,13 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                     _ => "¯",
                 };
                 MathExpr::Accent(Box::new(args.pop().unwrap()), accent.into())
+            }
+            "widehat" | "widetilde" => {
+                need(1);
+                MathExpr::WideAccent(
+                    Box::new(args.pop().unwrap()),
+                    if name == "widehat" { "hat" } else { "tilde" }.into(),
+                )
             }
             "underline" => {
                 need(1);

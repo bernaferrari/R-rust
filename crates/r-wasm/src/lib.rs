@@ -16,6 +16,8 @@
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(all(target_arch = "wasm32", feature = "vello-gpu"))]
+use web_sys::HtmlCanvasElement;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native_shim {
@@ -229,6 +231,10 @@ pub struct WasmGpuRenderer {
     inner: std::panic::AssertUnwindSafe<
         std::rc::Rc<std::cell::RefCell<Option<r_device_vello_gpu::GpuRenderer>>>,
     >,
+    #[cfg(target_arch = "wasm32")]
+    canvas: std::panic::AssertUnwindSafe<
+        std::rc::Rc<std::cell::RefCell<Option<r_device_vello_gpu::CanvasSurface>>>,
+    >,
 }
 
 #[cfg(all(feature = "vello-gpu", target_arch = "wasm32"))]
@@ -242,6 +248,34 @@ impl WasmGpuRenderer {
             Ok(Self {
                 inner: std::panic::AssertUnwindSafe(std::rc::Rc::new(std::cell::RefCell::new(
                     Some(renderer),
+                ))),
+                canvas: std::panic::AssertUnwindSafe(std::rc::Rc::new(std::cell::RefCell::new(
+                    None,
+                ))),
+            }
+            .into())
+        }))
+    }
+
+    /// Create a renderer using an adapter compatible with the supplied canvas.
+    /// Prefer this constructor for browser presentation when the host canvas
+    /// is available before GPU initialization.
+    pub fn create_for_canvas(
+        canvas: HtmlCanvasElement,
+        width: u32,
+        height: u32,
+    ) -> js_sys::Promise {
+        wasm_bindgen_futures::future_to_promise(std::panic::AssertUnwindSafe(async move {
+            let (renderer, surface) =
+                r_device_vello_gpu::GpuRenderer::new_for_canvas(canvas, width, height)
+                    .await
+                    .map_err(|error| JsError::new(&error.to_string()))?;
+            Ok(Self {
+                inner: std::panic::AssertUnwindSafe(std::rc::Rc::new(std::cell::RefCell::new(
+                    Some(renderer),
+                ))),
+                canvas: std::panic::AssertUnwindSafe(std::rc::Rc::new(std::cell::RefCell::new(
+                    Some(surface),
                 ))),
             }
             .into())
@@ -269,6 +303,71 @@ impl WasmGpuRenderer {
             .as_ref()
             .map(|renderer| renderer.adapter_info().name.clone())
             .ok_or_else(|| JsError::new("GPU renderer busy or closed"))
+    }
+
+    /// Attach a browser canvas for direct WebGPU presentation.
+    ///
+    /// The canvas is configured with the supplied backing-pixel dimensions;
+    /// call `resize_canvas` after a DPR or layout change. Frames are presented
+    /// directly to the canvas and never read back through JavaScript.
+    pub fn attach_canvas(
+        &self,
+        canvas: HtmlCanvasElement,
+        width: u32,
+        height: u32,
+    ) -> Result<(), JsError> {
+        let renderer = self.inner.borrow();
+        let renderer = renderer
+            .as_ref()
+            .ok_or_else(|| JsError::new("GPU renderer busy or closed"))?;
+        let surface = renderer
+            .attach_canvas(canvas, width, height)
+            .map_err(|error| JsError::new(&error.to_string()))?;
+        *self.canvas.0.borrow_mut() = Some(surface);
+        Ok(())
+    }
+
+    pub fn resize_canvas(&self, width: u32, height: u32) -> Result<(), JsError> {
+        let renderer = self.inner.borrow();
+        let renderer = renderer
+            .as_ref()
+            .ok_or_else(|| JsError::new("GPU renderer busy or closed"))?;
+        let mut canvas = self.canvas.0.borrow_mut();
+        let canvas = canvas
+            .as_mut()
+            .ok_or_else(|| JsError::new("No canvas is attached"))?;
+        renderer
+            .resize_canvas(canvas, width, height)
+            .map_err(|error| JsError::new(&error.to_string()))
+    }
+
+    /// Render an owned scene directly to the attached canvas.
+    pub fn render_canvas(&self, scene: &WasmPlotScene) -> js_sys::Promise {
+        let inner = self.inner.clone();
+        let canvas_state = self.canvas.0.clone();
+        let scene = scene.inner.clone();
+        if inner.borrow().is_none() {
+            return wasm_bindgen_futures::future_to_promise(async {
+                Err(JsError::new("GPU renderer busy or closed").into())
+            });
+        }
+        if canvas_state.borrow().is_none() {
+            return wasm_bindgen_futures::future_to_promise(async {
+                Err(JsError::new("No canvas is attached").into())
+            });
+        }
+        let renderer = inner.borrow_mut().take();
+        let canvas = canvas_state.borrow_mut().take();
+        wasm_bindgen_futures::future_to_promise(std::panic::AssertUnwindSafe(async move {
+            let mut renderer =
+                renderer.ok_or_else(|| JsError::new("GPU renderer busy or closed"))?;
+            let canvas = canvas.ok_or_else(|| JsError::new("No canvas is attached"))?;
+            let result = renderer.render_canvas(&canvas, &scene).await;
+            *inner.borrow_mut() = Some(renderer);
+            *canvas_state.borrow_mut() = Some(canvas);
+            result.map_err(|error| JsError::new(&error.to_string()))?;
+            Ok(JsValue::UNDEFINED)
+        }))
     }
 }
 

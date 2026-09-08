@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::vec::Vec;
 
 pub mod font;
-pub use font::FontBook;
+pub use font::{FontBook, default_font_book};
 
 /// An owned straight-alpha RGBA8 image.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -348,6 +348,10 @@ pub trait RenderPlot: Sized {
     fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
         font::default_font_book().measure_text(text, params.font_size, params.font_face)
     }
+    /// Measure advance and visible vertical bounds using the drawing font.
+    fn measure_math_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        font::default_font_book().measure_math_text(text, params.font_size, params.font_face)
+    }
 
     /// Draw an owned RGBA8 image through an affine device-space transform.
     ///
@@ -380,6 +384,10 @@ pub trait DrawTarget {
     fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
         font::default_font_book().measure_text(text, params.font_size, params.font_face)
     }
+    /// Measure advance and visible vertical bounds using the drawing font.
+    fn measure_math_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        font::default_font_book().measure_math_text(text, params.font_size, params.font_face)
+    }
 
     fn draw_image(&mut self, image: &RasterImage, transform: [f64; 6], interpolate: bool) {
         draw_raster_image_as_quads(image, transform, interpolate, |path| self.draw_path(path));
@@ -387,6 +395,10 @@ pub trait DrawTarget {
 }
 
 impl<T: RenderPlot> DrawTarget for T {
+    fn measure_math_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        <Self as RenderPlot>::measure_math_text(self, text, params)
+    }
+
     fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
         <Self as RenderPlot>::measure_text(self, text, params)
     }

@@ -1127,6 +1127,18 @@ unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let op_name = get_op_name(call);
+        #[cfg(feature = "renderplot-device")]
+        if let Some(result) = crate::mainutils::portable_grid::unit_binary(
+            op_name,
+            CAR(args),
+            if CDR(args).is_null() || CDR(args) == R_NilValue() {
+                R_NilValue()
+            } else {
+                CAR(CDR(args))
+            },
+        ) {
+            return result;
+        }
         match op_name {
             "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" => {
                 let a = CAR(args);
@@ -1961,6 +1973,11 @@ pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let op = SummaryOp::from_name(get_op_name(call));
+        #[cfg(feature = "renderplot-device")]
+        if let Some(result) = crate::mainutils::portable_grid::unit_summary(get_op_name(call), args)
+        {
+            return result;
+        }
         let na_rm = parse_summary_na_rm(args);
         let shape = scan_summary_shape(args, op);
 

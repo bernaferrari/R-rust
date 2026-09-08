@@ -10,8 +10,171 @@ use crate::sexp::{
     instance::with_required_current_instance,
 };
 use r_graphics_engine::{
-    Color, DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke, TextAnchor,
+    Color, DashPattern, DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke, TextAnchor,
 };
+
+// Unit computations keep R allocations rooted and numeric work in owned vectors.
+// Mixed dimensions need a deferred unit expression tree; reject them until that
+// representation exists rather than silently interpreting everything as npc.
+unsafe fn unit_kind(x: SEXP) -> String {
+    unsafe {
+        let u = field(x, "units");
+        let name = string(u, "");
+        if name.is_empty() || (0..XLENGTH(u)).any(|i| elt_to_string(u, i) != name) {
+            base_error("arithmetic on mixed grid units is not supported");
+        }
+        name
+    }
+}
+unsafe fn unit_values(x: SEXP) -> Vec<f64> {
+    unsafe {
+        match SEXPTYPE(TYPEOF(x)) {
+            SEXPTYPE::REALSXP => (0..XLENGTH(x)).map(|i| *REAL(x).add(i as usize)).collect(),
+            SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => (0..XLENGTH(x))
+                .map(|i| {
+                    let n = if TYPEOF(x) == SEXPTYPE::INTSXP {
+                        *INTEGER(x).add(i as usize)
+                    } else {
+                        *LOGICAL(x).add(i as usize)
+                    };
+                    if n == i32::MIN {
+                        crate::sexp::ffi::NA_REAL
+                    } else {
+                        f64::from(n)
+                    }
+                })
+                .collect(),
+            _ => base_error("unit arithmetic requires numeric values"),
+        }
+    }
+}
+unsafe fn unit_result(template: SEXP, values: &[f64]) -> SEXP {
+    unsafe {
+        use crate::sexp::protect::protect;
+        let _template = protect(template);
+        let value = result(values);
+        let _value = protect(value);
+        let obj = crate::mainutils::seq::Rf_shallow_duplicate(template);
+        let _obj = protect(obj);
+        // Preserve attributes, unit names and string/grob data while replacing
+        // only the owned numeric coefficient vector.
+        let names = getAttrib(obj, R_NamesSymbol());
+        for i in 0..XLENGTH(obj).min(XLENGTH(names)) {
+            if elt_to_string(names, i) == "value" {
+                SET_VECTOR_ELT(obj, i, value);
+                return obj;
+            }
+        }
+        base_error("invalid grid unit: missing values")
+    }
+}
+pub unsafe fn unit_binary(op: &str, a: SEXP, b: SEXP) -> Option<SEXP> {
+    unsafe {
+        let au = crate::mainutils::essentials::sexp_has_class(a, "unit");
+        let bu = crate::mainutils::essentials::sexp_has_class(b, "unit");
+        if !au && !bu {
+            return None;
+        }
+        let unary = b == R_NilValue();
+        match op {
+            "+" | "-" if au && (bu || unary) => {}
+            "*" if au != bu && !unary => {}
+            "/" if au && !bu && !unary => {}
+            _ => base_error("invalid unit arithmetic operands"),
+        }
+        let template = if au { a } else { b };
+        let kind = unit_kind(template);
+        if au && bu {
+            if unit_kind(b) != kind {
+                base_error("unit arithmetic requires matching units");
+            }
+            if field(a, "data") != R_NilValue() || field(b, "data") != R_NilValue() {
+                base_error("combining data-dependent units is not supported");
+            }
+        }
+        let av = unit_values(if au { field(a, "value") } else { a });
+        let out = if unary {
+            av.into_iter()
+                .map(|v| if op == "-" { -v } else { v })
+                .collect()
+        } else {
+            let bv = unit_values(if bu { field(b, "value") } else { b });
+            let n = if av.is_empty() || bv.is_empty() {
+                0
+            } else {
+                av.len().max(bv.len())
+            };
+            (0..n)
+                .map(|i| {
+                    let x = av[i % av.len()];
+                    let y = bv[i % bv.len()];
+                    match op {
+                        "+" => x + y,
+                        "-" => x - y,
+                        "*" => x * y,
+                        "/" => x / y,
+                        _ => unreachable!(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        Some(unit_result(template, &out))
+    }
+}
+pub unsafe fn unit_summary(op: &str, args: SEXP) -> Option<SEXP> {
+    unsafe {
+        let na_tag = crate::sexp::symbol::Rf_install(c"na.rm".as_ptr());
+        let mut p = args;
+        let mut template = R_NilValue();
+        while p != R_NilValue() {
+            if TAG(p) != na_tag && crate::mainutils::essentials::sexp_has_class(CAR(p), "unit") {
+                template = CAR(p);
+                break;
+            }
+            p = CDR(p);
+        }
+        if template == R_NilValue() {
+            return None;
+        }
+        if !matches!(op, "sum" | "min" | "max") {
+            base_error("unit summary is not supported");
+        }
+        let kind = unit_kind(template);
+        let mut values = Vec::new();
+        p = args;
+        while p != R_NilValue() {
+            if TAG(p) != na_tag {
+                let x = CAR(p);
+                if !crate::mainutils::essentials::sexp_has_class(x, "unit") || unit_kind(x) != kind
+                {
+                    base_error("unit summary requires matching units");
+                }
+                if field(x, "data") != R_NilValue() {
+                    base_error("summary of data-dependent units is not supported");
+                }
+                values.extend(unit_values(field(x, "value")));
+            }
+            p = CDR(p);
+        }
+        // GNU R grid propagates missing coefficients even with na.rm=TRUE.
+        let v = if values
+            .iter()
+            .any(|v| v.to_bits() == crate::sexp::ffi::NA_REAL.to_bits())
+        {
+            crate::sexp::ffi::NA_REAL
+        } else if values.iter().any(|v| v.is_nan()) {
+            f64::NAN
+        } else {
+            match op {
+                "sum" => values.iter().sum(),
+                "min" => values.iter().copied().fold(f64::INFINITY, f64::min),
+                "max" => values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+                _ => unreachable!(),
+            }
+        };
+        Some(unit_result(template, &[v]))
+    }
+}
 
 const DPI: f64 = 96.;
 const CLEAR: Color = Color {
@@ -28,6 +191,7 @@ struct Gp {
     size: f64,
     alpha: f64,
     face: r_graphics_engine::FontFace,
+    dash: Option<DashPattern>,
 }
 impl Default for Gp {
     fn default() -> Self {
@@ -38,6 +202,7 @@ impl Default for Gp {
             size: 12. * DPI / 72.,
             alpha: 1.,
             face: r_graphics_engine::FontFace::Plain,
+            dash: None,
         }
     }
 }
@@ -50,11 +215,15 @@ struct Frame {
     clip: Option<[f32; 4]>,
     gp: Gp,
     layout: Option<Layout>,
+    name: Option<String>,
 }
 #[derive(Clone)]
 struct Layout {
     widths: Vec<f64>,
     heights: Vec<f64>,
+    respect: bool,
+    offset_x: f64,
+    offset_y: f64,
 }
 #[derive(Clone, Default)]
 pub(crate) struct GridState {
@@ -73,6 +242,7 @@ impl GridState {
                 clip: None,
                 gp: Gp::default(),
                 layout: None,
+                name: None,
             }];
         }
     }
@@ -117,6 +287,7 @@ impl Frame {
             "scaledpts" => (DPI / 72.27 / 65536., 0.),
             "lines" => (self.gp.size * 1.2, 0.),
             "char" => (self.gp.size, 0.),
+            "strwidth" | "strheight" => (self.gp.size * 0.6, 0.),
             _ => return Err(format!("grid unit '{u}' is not supported")),
         })
     }
@@ -208,10 +379,14 @@ unsafe fn result(v: &[f64]) -> SEXP {
 }
 unsafe fn units(x: SEXP, default: &str, frame: &Frame, axis: usize, dimension: bool) -> Vec<f64> {
     unsafe {
-        let (values, names) = if TYPEOF(x) == SEXPTYPE::VECSXP {
-            (numbers(field(x, "value")), field(x, "units"))
+        let (values, names, data) = if TYPEOF(x) == SEXPTYPE::VECSXP {
+            (
+                numbers(field(x, "value")),
+                field(x, "units"),
+                field(x, "data"),
+            )
         } else {
-            (numbers(x), R_NilValue())
+            (numbers(x), R_NilValue(), R_NilValue())
         };
         if values.is_empty() {
             base_error("grid unit must have positive length");
@@ -228,6 +403,27 @@ unsafe fn units(x: SEXP, default: &str, frame: &Frame, axis: usize, dimension: b
                     }
                     elt_to_string(names, (i as i64) % XLENGTH(names))
                 };
+                let mut v = v;
+                if name == "strwidth" || name == "strheight" {
+                    if data == R_NilValue() {
+                        base_error("data is required for stringWidth/stringHeight units");
+                    }
+                    let text = if TYPEOF(data) == SEXPTYPE::STRSXP {
+                        elt_to_string(data, (i as i64) % XLENGTH(data))
+                    } else {
+                        base_error("string units require character data")
+                    };
+                    let metrics = r_graphics_engine::default_font_book().measure_text(
+                        &text,
+                        frame.gp.size as f32,
+                        frame.gp.face,
+                    );
+                    v *= if name == "strwidth" {
+                        metrics.width as f64
+                    } else {
+                        (metrics.ascent + metrics.descent) as f64
+                    };
+                }
                 let (f, o) = frame
                     .unit_factor(&name, axis, dimension)
                     .unwrap_or_else(|e| base_error(e));
@@ -322,9 +518,30 @@ unsafe fn gp(x: SEXP, old: &Gp) -> Gp {
             base_error("grid currently supports the device sans font only");
         }
         let lty = string(field(x, "lty"), "solid");
-        if lty != "solid" && lty != "1" {
-            base_error("grid currently supports solid lty only");
-        }
+        p.dash = match lty.as_str() {
+            "solid" | "1" => None,
+            "dashed" | "2" => Some(DashPattern {
+                intervals: vec![6., 4.],
+                offset: 0.,
+            }),
+            "dotted" | "3" => Some(DashPattern {
+                intervals: vec![1., 3.],
+                offset: 0.,
+            }),
+            "dotdash" | "4" => Some(DashPattern {
+                intervals: vec![1., 3., 6., 3.],
+                offset: 0.,
+            }),
+            "longdash" | "5" => Some(DashPattern {
+                intervals: vec![10., 4.],
+                offset: 0.,
+            }),
+            "twodash" | "6" => Some(DashPattern {
+                intervals: vec![8., 4., 2., 4.],
+                offset: 0.,
+            }),
+            _ => base_error("invalid grid line type"),
+        };
         if field(x, "lineheight") != R_NilValue() && num(field(x, "lineheight"), 1.2) != 1.2 {
             base_error("custom grid lineheight is not supported");
         }
@@ -343,10 +560,13 @@ fn style_path(frame: &Frame, commands: Vec<PathCommand>, i: usize, filled: bool)
         } else {
             CLEAR
         },
-        stroke: Stroke::new(
-            frame.gp.width as f32,
-            alpha(frame.gp.col[i % frame.gp.col.len()], frame.gp.alpha),
-        ),
+        stroke: Stroke {
+            dash_pattern: frame.gp.dash.clone(),
+            ..Stroke::new(
+                frame.gp.width as f32,
+                alpha(frame.gp.col[i % frame.gp.col.len()], frame.gp.alpha),
+            )
+        },
         anti_alias: true,
     }
 }
@@ -454,8 +674,8 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
             };
             let (r0, r1) = span(&row, layout.heights.len());
             let (c0, c1) = span(&col, layout.widths.len());
-            x = layout.widths[..c0].iter().sum();
-            y = parent.height - layout.heights[..r1].iter().sum::<f64>();
+            x = layout.offset_x + layout.widths[..c0].iter().sum::<f64>();
+            y = parent.height - layout.offset_y - layout.heights[..r1].iter().sum::<f64>();
             width = layout.widths[c0..c1].iter().sum();
             height = layout.heights[r0..r1].iter().sum();
             just = [0., 0.];
@@ -481,6 +701,7 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
             clip: parent.clip,
             gp: gp(field(data, "gp"), &parent.gp),
             layout: None,
+            name: None,
         };
         if f.matrix.iter().any(|v| !v.is_finite()) {
             base_error("viewport transform overflow");
@@ -523,11 +744,34 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
             if rows == 0 || cols == 0 || rows > 10000 || cols > 10000 {
                 base_error("invalid grid layout dimensions");
             }
+            let mut widths = layout_lengths(field(layout, "widths"), cols, &f, 0);
+            let mut heights = layout_lengths(field(layout, "heights"), rows, &f, 1);
+            let respect = num(field(layout, "respect"), 0.) != 0.;
+            let mut offset_x = 0.;
+            let mut offset_y = 0.;
+            if respect {
+                let sx = f.width / widths.iter().sum::<f64>().max(1e-12);
+                let sy = f.height / heights.iter().sum::<f64>().max(1e-12);
+                let scale = sx.min(sy);
+                for v in &mut widths {
+                    *v *= scale;
+                }
+                for v in &mut heights {
+                    *v *= scale;
+                }
+                offset_x = (f.width - widths.iter().sum::<f64>()).max(0.) / 2.;
+                offset_y = (f.height - heights.iter().sum::<f64>()).max(0.) / 2.;
+            }
             f.layout = Some(Layout {
-                widths: layout_lengths(field(layout, "widths"), cols, &f, 0),
-                heights: layout_lengths(field(layout, "heights"), rows, &f, 1),
+                widths,
+                heights,
+                respect,
+                offset_x,
+                offset_y,
             });
         }
+        let name = string(field(data, "name"), "");
+        f.name = if name.is_empty() { None } else { Some(name) };
         f
     }
 }
@@ -566,6 +810,33 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     base_error("cannot pop the top-level viewport");
                 }
                 state.frames.truncate(state.frames.len() - n);
+            }
+            "up" => {
+                let n = num(data, 1.);
+                if n < 0. || n.fract() != 0. {
+                    base_error("invalid viewport up count");
+                }
+                let n = if n == 0. {
+                    state.frames.len() - 1
+                } else {
+                    n as usize
+                };
+                if n >= state.frames.len() {
+                    base_error("cannot move above top-level viewport");
+                }
+                state.frames.truncate(state.frames.len() - n);
+            }
+            "seek" => {
+                let name = string(field(data, "name"), "");
+                if name.is_empty() {
+                    base_error("viewport name must not be empty");
+                }
+                let index = state
+                    .frames
+                    .iter()
+                    .rposition(|f| f.name.as_deref() == Some(name.as_str()))
+                    .unwrap_or_else(|| base_error("named viewport was not found"));
+                state.frames.truncate(index + 1);
             }
             "convert" => {
                 let axis = num(field(data, "axis"), 0.);
@@ -623,13 +894,163 @@ fn polygon(frame: &Frame, points: Vec<Point>, closed: bool, i: usize) -> Drawing
     }
     Drawing::Path(style_path(frame, c, i, closed))
 }
+
+fn point_symbol(frame: &Frame, x: f64, y: f64, size: f64, pch: f64, i: usize) -> Drawing {
+    let radius = size * 0.375;
+    let code = pch as i32;
+    if matches!(code, 3 | 4 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14) {
+        let q = |dx: f64, dy: f64| frame.map(x + dx, y + dy);
+        let mut commands = Vec::new();
+        let lines: &[(f64, f64, f64, f64)] = match code {
+            3 => &[(-radius, 0., radius, 0.)],
+            4 => &[
+                (-radius, -radius, radius, radius),
+                (-radius, radius, radius, -radius),
+            ],
+            7 => &[(-radius, 0., radius, 0.), (0., -radius, 0., radius)],
+            8 => &[
+                (-radius, 0., radius, 0.),
+                (0., -radius, 0., radius),
+                (-radius * 0.7, -radius * 0.7, radius * 0.7, radius * 0.7),
+                (-radius * 0.7, radius * 0.7, radius * 0.7, -radius * 0.7),
+            ],
+            9 => &[
+                (-radius, -radius, radius, radius),
+                (-radius, radius, radius, -radius),
+            ],
+            10 => &[(-radius, 0., radius, 0.), (0., -radius, 0., radius)],
+            11 => &[(-radius, -radius, radius, radius)],
+            12 => &[(-radius, radius, radius, -radius)],
+            13 => &[(-radius, 0., radius, 0.)],
+            _ => &[(0., -radius, 0., radius)],
+        };
+        for (x0, y0, x1, y1) in lines {
+            commands.push(PathCommand::MoveTo(q(*x0, *y0).x, q(*x0, *y0).y));
+            commands.push(PathCommand::LineTo(q(*x1, *y1).x, q(*x1, *y1).y));
+        }
+        return Drawing::Path(style_path(frame, commands, i, false));
+    }
+    let n = match pch as i32 {
+        0 | 1 | 2 | 5 | 6 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 => 4,
+        _ => 32,
+    };
+    let points: Vec<_> = match pch as i32 {
+        0 => (0..4)
+            .map(|j| {
+                let a = std::f64::consts::FRAC_PI_4 + j as f64 * std::f64::consts::FRAC_PI_2;
+                frame.map(x + radius * a.cos(), y + radius * a.sin())
+            })
+            .collect(),
+        1 => (0..4)
+            .map(|j| {
+                let a = std::f64::consts::FRAC_PI_4 + j as f64 * std::f64::consts::FRAC_PI_2;
+                frame.map(x + radius * a.cos(), y + radius * a.sin())
+            })
+            .collect(),
+        2 => (0..4)
+            .map(|j| {
+                let a = j as f64 * std::f64::consts::FRAC_PI_2;
+                frame.map(x + radius * a.cos(), y + radius * a.sin())
+            })
+            .collect(),
+        5 => (0..4)
+            .map(|j| {
+                let a = j as f64 * std::f64::consts::FRAC_PI_2;
+                frame.map(x + radius * a.cos(), y + radius * a.sin())
+            })
+            .collect(),
+        6 => (0..4)
+            .map(|j| {
+                let a = std::f64::consts::FRAC_PI_4 + j as f64 * std::f64::consts::FRAC_PI_2;
+                frame.map(x + radius * a.cos(), y + radius * a.sin())
+            })
+            .collect(),
+        15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 => (0..n)
+            .map(|j| {
+                let a = j as f64 * std::f64::consts::TAU / n as f64;
+                frame.map(x + radius * a.cos(), y + radius * a.sin())
+            })
+            .collect(),
+        _ => (0..n)
+            .map(|j| {
+                let a = j as f64 * std::f64::consts::TAU / n as f64;
+                frame.map(x + radius * a.cos(), y + radius * a.sin())
+            })
+            .collect(),
+    };
+    let mut d = polygon(frame, points, true, i);
+    if let Drawing::Path(ref mut p) = d {
+        match pch as i32 {
+            1 | 2 | 5 | 6 | 15 | 16 | 17 | 18 => p.fill = CLEAR,
+            3 => {
+                p.fill = CLEAR;
+            }
+            4 => {
+                p.fill = CLEAR;
+            }
+            _ => {}
+        }
+    }
+    d
+}
+
+unsafe fn arrow_heads(frame: &Frame, arrow: SEXP, a: Point, b: Point, i: usize) -> Vec<Drawing> {
+    unsafe {
+        if arrow == R_NilValue() {
+            return vec![];
+        }
+        let ends = string(field(arrow, "ends"), "last");
+        let kind = string(field(arrow, "type"), "open");
+        if kind != "open" && kind != "closed" {
+            base_error("grid arrow type must be open or closed");
+        }
+        let angle = num(field(arrow, "angle"), 30.).to_radians();
+        let length = units(field(arrow, "length"), "inches", frame, 0, true)
+            .first()
+            .copied()
+            .unwrap_or(0.25 * DPI);
+        if !length.is_finite() || length <= 0. {
+            base_error("grid arrow length must be positive");
+        }
+        let mut out = Vec::new();
+        for (tip, from, enabled) in [
+            (b, a, ends == "last" || ends == "both"),
+            (a, b, ends == "first" || ends == "both"),
+        ] {
+            if !enabled {
+                continue;
+            }
+            let dx = (from.x - tip.x) as f64;
+            let dy = (from.y - tip.y) as f64;
+            let scale = (dx * dx + dy * dy).sqrt();
+            if scale == 0. {
+                continue;
+            }
+            let (ux, uy) = (dx / scale, dy / scale);
+            let (c, s) = (angle.cos(), angle.sin());
+            let left = Point {
+                x: (tip.x as f64 + length * (ux * c - uy * s)) as f32,
+                y: (tip.y as f64 + length * (ux * s + uy * c)) as f32,
+            };
+            let right = Point {
+                x: (tip.x as f64 + length * (ux * c + uy * s)) as f32,
+                y: (tip.y as f64 + length * (ux * -s + uy * c)) as f32,
+            };
+            let mut d = polygon(frame, vec![tip, left, right], kind == "closed", i);
+            if kind == "open" {
+                if let Drawing::Path(ref mut p) = d {
+                    p.fill = CLEAR;
+                }
+            }
+            out.push(d);
+        }
+        out
+    }
+}
 unsafe fn draw_commands(kind: &str, data: SEXP, frame: &Frame) -> Vec<Drawing> {
     unsafe {
         let default = string(field(data, "default.units"), "npc");
         let coordinate = |name, axis, dim| units(field(data, name), &default, frame, axis, dim);
-        if field(data, "arrow") != R_NilValue() {
-            base_error("grid arrows are not supported");
-        }
         let mut out = vec![];
         if kind == "segments" {
             let x0 = coordinate("x0", 0, false);
@@ -637,15 +1058,10 @@ unsafe fn draw_commands(kind: &str, data: SEXP, frame: &Frame) -> Vec<Drawing> {
             let x1 = coordinate("x1", 0, false);
             let y1 = coordinate("y1", 1, false);
             for i in 0..x0.len().max(y0.len()).max(x1.len()).max(y1.len()) {
-                out.push(polygon(
-                    frame,
-                    vec![
-                        frame.map(x0[i % x0.len()], y0[i % y0.len()]),
-                        frame.map(x1[i % x1.len()], y1[i % y1.len()]),
-                    ],
-                    false,
-                    i,
-                ));
+                let a = frame.map(x0[i % x0.len()], y0[i % y0.len()]);
+                let b = frame.map(x1[i % x1.len()], y1[i % y1.len()]);
+                out.push(polygon(frame, vec![a, b], false, i));
+                out.extend(arrow_heads(frame, field(data, "arrow"), a, b, i));
             }
             return out;
         }
@@ -654,16 +1070,61 @@ unsafe fn draw_commands(kind: &str, data: SEXP, frame: &Frame) -> Vec<Drawing> {
         let n = x.len().max(y.len());
         match kind {
             "lines" | "polygon" => {
-                if field(data, "id") != R_NilValue() || field(data, "id.lengths") != R_NilValue() {
-                    base_error("grid polygon grouping is not supported");
-                }
                 if string(field(data, "rule"), "winding") != "winding" {
                     base_error("grid polygon fill rule is not supported");
                 }
-                let points = (0..n)
-                    .map(|i| frame.map(x[i % x.len()], y[i % y.len()]))
-                    .collect();
-                out.push(polygon(frame, points, kind == "polygon", 0));
+                let ids = numbers(field(data, "id"));
+                let lengths = numbers(field(data, "id.lengths"));
+                if !ids.is_empty() && !lengths.is_empty() {
+                    base_error("grid polygon cannot specify both id and id.lengths");
+                }
+                if !lengths.is_empty() {
+                    let mut at = 0usize;
+                    for (g, len) in lengths.iter().enumerate() {
+                        let len = *len as usize;
+                        if len == 0 || at + len > n {
+                            base_error("invalid grid polygon id.lengths");
+                        }
+                        let points = (at..at + len)
+                            .map(|i| frame.map(x[i % x.len()], y[i % y.len()]))
+                            .collect();
+                        out.push(polygon(frame, points, kind == "polygon", g));
+                        at += len;
+                    }
+                } else if !ids.is_empty() {
+                    let mut groups: Vec<(i32, Vec<Point>)> = Vec::new();
+                    for i in 0..n {
+                        let id = ids[i % ids.len()] as i32;
+                        if id <= 0 {
+                            continue;
+                        }
+                        if let Some((_, points)) = groups.iter_mut().find(|(g, _)| *g == id) {
+                            points.push(frame.map(x[i % x.len()], y[i % y.len()]));
+                        } else {
+                            groups.push((id, vec![frame.map(x[i % x.len()], y[i % y.len()])]));
+                        }
+                    }
+                    for (g, (_, points)) in groups.into_iter().enumerate() {
+                        if points.len() >= 2 {
+                            out.push(polygon(frame, points, kind == "polygon", g));
+                        }
+                    }
+                } else {
+                    let points = (0..n)
+                        .map(|i| frame.map(x[i % x.len()], y[i % y.len()]))
+                        .collect();
+                    let points: Vec<Point> = points;
+                    out.push(polygon(frame, points.clone(), kind == "polygon", 0));
+                    if kind == "lines" && points.len() >= 2 {
+                        out.extend(arrow_heads(
+                            frame,
+                            field(data, "arrow"),
+                            *points.first().unwrap(),
+                            *points.last().unwrap(),
+                            0,
+                        ));
+                    }
+                }
             }
             "rect" => {
                 let w = coordinate("width", 0, true);
@@ -708,29 +1169,23 @@ unsafe fn draw_commands(kind: &str, data: SEXP, frame: &Frame) -> Vec<Drawing> {
             }
             "points" => {
                 let pch = numbers(field(data, "pch"));
-                if pch.is_empty() || pch.iter().any(|p| *p != 1. && *p != 16. && *p != 19.) {
-                    base_error("grid.points currently supports pch 1, 16 and 19");
+                if pch.is_empty()
+                    || pch
+                        .iter()
+                        .any(|p| !p.is_finite() || *p < 0. || *p > 25. || p.fract() != 0.)
+                {
+                    base_error("grid.points pch must be an integer from 0 through 25");
                 }
                 let sizes = coordinate("size", 0, true);
                 for i in 0..n.max(sizes.len()).max(pch.len()) {
-                    let radius = sizes[i % sizes.len()] * 0.375;
-                    let points = (0..48)
-                        .map(|j| {
-                            let a = j as f64 * std::f64::consts::TAU / 48.;
-                            frame.map(
-                                x[i % x.len()] + radius * a.cos(),
-                                y[i % y.len()] + radius * a.sin(),
-                            )
-                        })
-                        .collect();
-                    out.push(polygon(frame, points, true, i));
-                    if let Some(Drawing::Path(p)) = out.last_mut() {
-                        p.fill = if pch[i % pch.len()] == 1. {
-                            CLEAR
-                        } else {
-                            p.stroke.color
-                        };
-                    }
+                    out.push(point_symbol(
+                        frame,
+                        x[i % x.len()],
+                        y[i % y.len()],
+                        sizes[i % sizes.len()],
+                        pch[i % pch.len()],
+                        i,
+                    ));
                 }
             }
             "text" => {
@@ -796,6 +1251,12 @@ macro_rules! wrapper {
     };
 }
 wrapper!(do_unit, "unit", "portable_grid/unit.R");
+wrapper!(do_ops_unit, "Ops.unit", "portable_grid/ops_unit.R");
+wrapper!(
+    do_summary_unit,
+    "Summary.unit",
+    "portable_grid/summary_unit.R"
+);
 wrapper!(do_is_unit, "is.unit", "portable_grid/is_unit.R");
 wrapper!(do_gpar, "gpar", "portable_grid/gpar.R");
 wrapper!(do_viewport, "viewport", "portable_grid/viewport.R");
@@ -809,6 +1270,12 @@ wrapper!(
     do_pop_viewport,
     "popViewport",
     "portable_grid/pop_viewport.R"
+);
+wrapper!(do_up_viewport, "upViewport", "portable_grid/up_viewport.R");
+wrapper!(
+    do_seek_viewport,
+    "seekViewport",
+    "portable_grid/seek_viewport.R"
 );
 wrapper!(
     do_grid_newpage,
@@ -866,12 +1333,16 @@ wrapper!(do_grid_points, "grid.points", "portable_grid/grid_points.R");
 /// Exported portable grid surface; namespace lookup is restricted to these names.
 pub(crate) const EXPORTS: &[&str] = &[
     "unit",
+    "Ops.unit",
+    "Summary.unit",
     "is.unit",
     "gpar",
     "viewport",
     "grid.layout",
     "pushViewport",
     "popViewport",
+    "upViewport",
+    "seekViewport",
     "grid.newpage",
     "convertX",
     "convertY",

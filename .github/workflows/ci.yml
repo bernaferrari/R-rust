@@ -29,7 +29,7 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -59,7 +59,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -155,9 +155,9 @@ jobs:
         run: bash scripts/build_wasm_runtime.sh --target web --out-dir /tmp/rport-gpu-pkg
 
   web-release:
-    name: Kotlin/Wasm release bundle
+    name: Browser release bundles
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -191,3 +191,24 @@ jobs:
           npm exec --prefix tests/browser -- playwright install --with-deps chromium
       - name: Exercise the Rust runtime through the browser workbench
         run: node tests/browser/rust-runtime.cjs
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - name: Install showcase dependencies
+        working-directory: website
+        run: pnpm install --frozen-lockfile
+      - name: Build and check the showcase
+        working-directory: website
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test:unit
+          pnpm build
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+      - name: Upload static showcase
+        uses: actions/upload-artifact@v4
+        with:
+          name: rove-website
+          path: website/dist

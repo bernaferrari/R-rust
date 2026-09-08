@@ -223,6 +223,13 @@ impl RenderPlot for VelloRenderer {
         ));
         self.context.reset_transform();
     }
+    fn measure_math_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        self.font
+            .as_ref()
+            .map_or_else(TextMetrics::default, |font| {
+                font.measure_math_text(text, params.font_size, params.font_face)
+            })
+    }
     fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
         self.font
             .as_ref()

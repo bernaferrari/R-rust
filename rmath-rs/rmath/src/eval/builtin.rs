@@ -182,6 +182,18 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     },
     #[cfg(feature = "renderplot-device")]
     UnevaluatedBuiltin {
+        name: "Ops.unit",
+        handler: crate::mainutils::portable_grid::do_ops_unit,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "Summary.unit",
+        handler: crate::mainutils::portable_grid::do_summary_unit,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
         name: "is.unit",
         handler: crate::mainutils::portable_grid::do_is_unit,
         restore_visibility_always: false,
@@ -214,6 +226,18 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
         name: "popViewport",
         handler: crate::mainutils::portable_grid::do_pop_viewport,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "upViewport",
+        handler: crate::mainutils::portable_grid::do_up_viewport,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
+        name: "seekViewport",
+        handler: crate::mainutils::portable_grid::do_seek_viewport,
         restore_visibility_always: false,
     },
     #[cfg(feature = "renderplot-device")]
@@ -625,8 +649,6 @@ macro_rules! wasm_unavailable_builtin {
 
 #[cfg(target_arch = "wasm32")]
 wasm_unavailable_builtin!(do_runif_wasm);
-#[cfg(target_arch = "wasm32")]
-wasm_unavailable_builtin!(do_rnorm_wasm);
 #[cfg(target_arch = "wasm32")]
 wasm_unavailable_builtin!(do_fft_wasm);
 #[cfg(target_arch = "wasm32")]
@@ -1212,10 +1234,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "rnorm",
-        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_rnorm_r,
-        #[cfg(target_arch = "wasm32")]
-        handler: do_rnorm_wasm,
     },
     EvaluatedBuiltin {
         name: "fft",

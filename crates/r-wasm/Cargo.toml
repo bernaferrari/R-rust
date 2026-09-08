@@ -22,5 +22,6 @@ r-embed = { path = "../r-embed", default-features = false, features = ["rust-bac
 # exercises the same session code through the cfg'd non-bindgen shim.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["HtmlCanvasElement"] }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }

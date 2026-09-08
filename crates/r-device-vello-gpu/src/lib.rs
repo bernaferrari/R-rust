@@ -12,6 +12,9 @@ use vello::{
     wgpu,
 };
 
+#[cfg(target_arch = "wasm32")]
+use web_sys::HtmlCanvasElement;
+
 #[derive(Debug, thiserror::Error)]
 pub enum GpuError {
     #[error("GPU initialization failed: {0}")]
@@ -28,19 +31,128 @@ pub enum GpuError {
 
 /// Reusable GPU device and Vello pipelines. Initialization never falls back to Vello CPU.
 pub struct GpuRenderer {
+    // Retained so every SurfaceTarget created from this renderer remains valid.
+    #[allow(dead_code)]
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     renderer: vello::Renderer,
     adapter_info: wgpu::AdapterInfo,
 }
+
+/// A reusable, host-owned wgpu surface and its Vello-compatible presentation
+/// target. Native hosts can construct this with `SurfaceTarget` from an owned
+/// window (for example an `Arc<winit::Window>`), without passing raw handles.
+pub struct SurfaceRenderer<'window> {
+    surface: wgpu::Surface<'window>,
+    config: wgpu::SurfaceConfiguration,
+    target: wgpu::Texture,
+    target_view: wgpu::TextureView,
+    blitter: wgpu::util::TextureBlitter,
+}
+
+/// A configured browser canvas surface owned by a [`GpuRenderer`].
+///
+/// The canvas remains owned by JavaScript; this value retains the canvas, its
+/// wgpu surface, and its configuration. Call the renderer's
+/// [`GpuRenderer::resize_canvas`] whenever the backing pixel dimensions change.
+#[cfg(target_arch = "wasm32")]
+pub struct CanvasSurface {
+    canvas: HtmlCanvasElement,
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+    target: wgpu::Texture,
+    target_view: wgpu::TextureView,
+    blitter: wgpu::util::TextureBlitter,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl CanvasSurface {
+    pub fn width(&self) -> u32 {
+        self.config.width
+    }
+    pub fn height(&self) -> u32 {
+        self.config.height
+    }
+}
+
+fn create_canvas_target(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let target = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("R Vello canvas intermediate"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+    let view = target.create_view(&Default::default());
+    (target, view)
+}
+
 impl GpuRenderer {
+    fn validate_dimensions(&self, width: u32, height: u32) -> Result<(), GpuError> {
+        if width == 0 || height == 0 {
+            return Err(GpuError::InvalidScene(
+                "canvas dimensions must be non-zero".into(),
+            ));
+        }
+        if width > self.device.limits().max_texture_dimension_2d
+            || height > self.device.limits().max_texture_dimension_2d
+            || u64::from(width) * u64::from(height) > 16_777_216
+        {
+            return Err(GpuError::InvalidScene(
+                "canvas exceeds GPU texture or 16M-pixel limit".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn new() -> Result<Self, GpuError> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        Self::new_with_surface(instance, None).await
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn new_for_canvas(
+        canvas: HtmlCanvasElement,
+        width: u32,
+        height: u32,
+    ) -> Result<(Self, CanvasSurface), GpuError> {
+        // Validate before mutating the caller's canvas dimensions.
+        if width == 0 || height == 0 {
+            return Err(GpuError::InvalidScene(
+                "canvas dimensions must be non-zero".into(),
+            ));
+        }
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let surface = instance
+            .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+            .map_err(|error| GpuError::Initialization(error.to_string()))?;
+        let renderer = Self::new_with_surface(instance, Some(&surface)).await?;
+        let canvas_surface = renderer.configure_canvas_surface(surface, canvas, width, height)?;
+        Ok((renderer, canvas_surface))
+    }
+
+    async fn new_with_surface(
+        instance: wgpu::Instance,
+        compatible_surface: Option<&wgpu::Surface<'_>>,
+    ) -> Result<Self, GpuError> {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
-                compatible_surface: None,
+                compatible_surface,
             })
             .await
             .map_err(|e| GpuError::Initialization(e.to_string()))?;
@@ -63,11 +175,306 @@ impl GpuRenderer {
         )
         .map_err(|e| GpuError::Initialization(e.to_string()))?;
         Ok(Self {
+            instance,
+            adapter,
             device,
             queue,
             renderer,
             adapter_info,
         })
+    }
+
+    /// Create a renderer and configure a safe wgpu surface target supplied by
+    /// the native host. The target may own an `Arc` window or borrow a window
+    /// for the returned surface lifetime.
+    pub async fn new_for_surface<'window>(
+        target: impl Into<wgpu::SurfaceTarget<'window>>,
+        width: u32,
+        height: u32,
+    ) -> Result<(Self, SurfaceRenderer<'window>), GpuError> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let surface = instance
+            .create_surface(target)
+            .map_err(|error| GpuError::Initialization(error.to_string()))?;
+        let renderer = Self::new_with_surface(instance, Some(&surface)).await?;
+        let present = renderer.configure_surface(surface, width, height)?;
+        Ok((renderer, present))
+    }
+
+    fn configure_surface<'window>(
+        &self,
+        surface: wgpu::Surface<'window>,
+        width: u32,
+        height: u32,
+    ) -> Result<SurfaceRenderer<'window>, GpuError> {
+        self.validate_dimensions(width, height)?;
+        let capabilities = surface.get_capabilities(&self.adapter);
+        let format = capabilities
+            .formats
+            .iter()
+            .copied()
+            .find(|format| {
+                matches!(
+                    format,
+                    wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+                )
+            })
+            .or_else(|| capabilities.formats.first().copied())
+            .ok_or_else(|| GpuError::Initialization("surface has no supported formats".into()))?;
+        let present_mode = capabilities
+            .present_modes
+            .iter()
+            .copied()
+            .find(|mode| *mode == wgpu::PresentMode::Fifo)
+            .or_else(|| capabilities.present_modes.first().copied())
+            .ok_or_else(|| {
+                GpuError::Initialization("surface has no supported present modes".into())
+            })?;
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width,
+            height,
+            desired_maximum_frame_latency: 2,
+            present_mode,
+            alpha_mode: capabilities
+                .alpha_modes
+                .first()
+                .copied()
+                .unwrap_or(wgpu::CompositeAlphaMode::Auto),
+            view_formats: vec![],
+        };
+        surface.configure(&self.device, &config);
+        let (target, target_view) = create_canvas_target(&self.device, width, height);
+        Ok(SurfaceRenderer {
+            surface,
+            config,
+            target,
+            target_view,
+            blitter: wgpu::util::TextureBlitter::new(&self.device, format),
+        })
+    }
+
+    pub fn resize_surface<'window>(
+        &self,
+        surface: &mut SurfaceRenderer<'window>,
+        width: u32,
+        height: u32,
+    ) -> Result<(), GpuError> {
+        self.validate_dimensions(width, height)?;
+        surface.config.width = width;
+        surface.config.height = height;
+        surface.surface.configure(&self.device, &surface.config);
+        let (target, target_view) = create_canvas_target(&self.device, width, height);
+        surface.target = target;
+        surface.target_view = target_view;
+        Ok(())
+    }
+
+    pub async fn render_surface<'window>(
+        &mut self,
+        surface: &SurfaceRenderer<'window>,
+        scene: &Scene,
+    ) -> Result<(), GpuError> {
+        scene
+            .validate()
+            .map_err(|e| GpuError::InvalidScene(e.into()))?;
+        let (width, height) = scene.dimensions();
+        if (width, height) != (surface.config.width, surface.config.height) {
+            return Err(GpuError::InvalidScene(
+                "scene and surface dimensions differ; resize the surface first".into(),
+            ));
+        }
+        let frame = match surface.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(frame)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            other => return Err(GpuError::Render(format!("surface unavailable: {other:?}"))),
+        };
+        let mut encoded = Encoder::new(width, height);
+        scene.replay(&mut encoded);
+        encoded.set_clip(None);
+        self.renderer
+            .render_to_texture(
+                &self.device,
+                &self.queue,
+                &encoded.scene,
+                &surface.target_view,
+                &vello::RenderParams {
+                    base_color: peniko::Color::TRANSPARENT,
+                    width,
+                    height,
+                    antialiasing_method: vello::AaConfig::Msaa16,
+                },
+            )
+            .map_err(|error| GpuError::Render(error.to_string()))?;
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        surface.blitter.copy(
+            &self.device,
+            &mut encoder,
+            &surface.target_view,
+            &frame.texture.create_view(&Default::default()),
+        );
+        self.queue.submit([encoder.finish()]);
+        frame.present();
+        Ok(())
+    }
+
+    /// Attach a real browser WebGPU canvas and configure its swapchain.
+    ///
+    /// This does not read pixels back to JavaScript. The returned surface can
+    /// be retained and resized as the canvas backing dimensions change.
+    #[cfg(target_arch = "wasm32")]
+    fn configure_canvas_surface(
+        &self,
+        surface: wgpu::Surface<'static>,
+        canvas: HtmlCanvasElement,
+        width: u32,
+        height: u32,
+    ) -> Result<CanvasSurface, GpuError> {
+        self.validate_dimensions(width, height)?;
+        canvas.set_width(width);
+        canvas.set_height(height);
+        let capabilities = surface.get_capabilities(&self.adapter);
+        let format = capabilities
+            .formats
+            .iter()
+            .copied()
+            .find(|format| {
+                matches!(
+                    format,
+                    wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+                )
+            })
+            .or_else(|| capabilities.formats.first().copied())
+            .ok_or_else(|| {
+                GpuError::Initialization("canvas has no supported surface formats".into())
+            })?;
+        let present_mode = capabilities
+            .present_modes
+            .iter()
+            .copied()
+            .find(|mode| *mode == wgpu::PresentMode::Fifo)
+            .or_else(|| capabilities.present_modes.first().copied())
+            .ok_or_else(|| {
+                GpuError::Initialization("canvas has no supported present modes".into())
+            })?;
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width,
+            height,
+            desired_maximum_frame_latency: 2,
+            present_mode,
+            alpha_mode: capabilities
+                .alpha_modes
+                .first()
+                .copied()
+                .unwrap_or(wgpu::CompositeAlphaMode::Auto),
+            view_formats: vec![],
+        };
+        surface.configure(&self.device, &config);
+        let (target, target_view) = create_canvas_target(&self.device, width, height);
+        let blitter = wgpu::util::TextureBlitter::new(&self.device, format);
+        Ok(CanvasSurface {
+            canvas,
+            surface,
+            config,
+            target,
+            target_view,
+            blitter,
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn attach_canvas(
+        &self,
+        canvas: HtmlCanvasElement,
+        width: u32,
+        height: u32,
+    ) -> Result<CanvasSurface, GpuError> {
+        let surface = self
+            .instance
+            .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+            .map_err(|error| GpuError::Initialization(error.to_string()))?;
+        self.configure_canvas_surface(surface, canvas, width, height)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn resize_canvas(
+        &self,
+        canvas: &mut CanvasSurface,
+        width: u32,
+        height: u32,
+    ) -> Result<(), GpuError> {
+        self.validate_dimensions(width, height)?;
+        canvas.config.width = width;
+        canvas.config.height = height;
+        canvas.canvas.set_width(width);
+        canvas.canvas.set_height(height);
+        canvas.surface.configure(&self.device, &canvas.config);
+        let (target, target_view) = create_canvas_target(&self.device, width, height);
+        canvas.target = target;
+        canvas.target_view = target_view;
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn render_canvas(
+        &mut self,
+        canvas: &CanvasSurface,
+        scene: &Scene,
+    ) -> Result<(), GpuError> {
+        scene
+            .validate()
+            .map_err(|e| GpuError::InvalidScene(e.into()))?;
+        let (width, height) = scene.dimensions();
+        if width != canvas.config.width || height != canvas.config.height {
+            return Err(GpuError::InvalidScene(
+                "scene and canvas dimensions differ; resize the canvas first".into(),
+            ));
+        }
+        let frame = match canvas.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(frame)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            other => {
+                return Err(GpuError::Render(format!(
+                    "canvas surface unavailable: {other:?}"
+                )));
+            }
+        };
+        let validation_scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoded = Encoder::new(width, height);
+        scene.replay(&mut encoded);
+        encoded.set_clip(None);
+        self.renderer
+            .render_to_texture(
+                &self.device,
+                &self.queue,
+                &encoded.scene,
+                &canvas.target_view,
+                &vello::RenderParams {
+                    base_color: peniko::Color::TRANSPARENT,
+                    width,
+                    height,
+                    antialiasing_method: vello::AaConfig::Msaa16,
+                },
+            )
+            .map_err(|error| GpuError::Render(error.to_string()))?;
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        canvas.blitter.copy(
+            &self.device,
+            &mut encoder,
+            &canvas.target_view,
+            &frame.texture.create_view(&Default::default()),
+        );
+        self.queue.submit([encoder.finish()]);
+        if let Some(error) = validation_scope.pop().await {
+            return Err(GpuError::Render(format!(
+                "canvas presentation validation failed: {error}"
+            )));
+        }
+        frame.present();
+        Ok(())
     }
     pub fn adapter_info(&self) -> &wgpu::AdapterInfo {
         &self.adapter_info

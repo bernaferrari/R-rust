@@ -20,11 +20,27 @@ pub enum MathExpr {
     Underline(Box<MathExpr>),
     Space(f32),
     Phantom(Box<MathExpr>),
+    /// A delimiter pair whose ink grows to contain the body.
+    BGroup {
+        left: String,
+        body: Box<MathExpr>,
+        right: String,
+    },
+    /// An accent whose rule/tilde is widened to the body's ink width.
+    WideAccent(Box<MathExpr>, String),
+    /// A display operator with limits centered above and below the symbol.
+    DisplayOperator {
+        symbol: String,
+        body: Box<MathExpr>,
+        sub: Option<Box<MathExpr>>,
+        sup: Option<Box<MathExpr>>,
+    },
 }
 #[derive(Clone, Debug)]
 enum Mark {
     Text(String, Point, f32, crate::FontFace),
     Line(Point, Point, f32),
+    Curve(Vec<Point>, f32),
 }
 #[derive(Clone, Debug, Default)]
 pub struct MathLayout {
@@ -48,6 +64,16 @@ impl MathLayout {
                     s,
                     face,
                 ),
+                Mark::Curve(points, w) => Mark::Curve(
+                    points
+                        .into_iter()
+                        .map(|p| Point {
+                            x: p.x + x,
+                            y: p.y + y,
+                        })
+                        .collect(),
+                    w,
+                ),
                 Mark::Line(a, b, w) => Mark::Line(
                     Point {
                         x: a.x + x,
@@ -60,6 +86,78 @@ impl MathLayout {
                     w,
                 ),
             });
+        }
+    }
+    fn delimiter(&mut self, symbol: &str, x: f32, size: f32, top: f32, bottom: f32) {
+        if symbol.is_empty() || symbol == "." {
+            return;
+        }
+        let stroke = (size * 0.055).max(0.5);
+        let left = matches!(symbol, "(" | "[" | "{");
+        let a = x + size * 0.08;
+        let b = x + size * 0.34;
+        let (outer, inner) = if left { (a, b) } else { (b, a) };
+        let mid = (top + bottom) / 2.;
+        let point = |x, y| Point { x, y };
+        match symbol {
+            "(" | ")" => self.marks.push(Mark::Curve(
+                vec![
+                    point(inner, top),
+                    point(outer, top + (bottom - top) * 0.16),
+                    point(outer, bottom - (bottom - top) * 0.16),
+                    point(inner, bottom),
+                ],
+                stroke,
+            )),
+            "[" | "]" => {
+                self.marks
+                    .push(Mark::Line(point(inner, top), point(outer, top), stroke));
+                self.marks
+                    .push(Mark::Line(point(outer, top), point(outer, bottom), stroke));
+                self.marks.push(Mark::Line(
+                    point(outer, bottom),
+                    point(inner, bottom),
+                    stroke,
+                ));
+            }
+            "{" | "}" => {
+                let bend = (outer + inner) / 2.;
+                let quarter = (bottom - top) / 4.;
+                for points in [
+                    vec![
+                        point(inner, top),
+                        point(bend, top),
+                        point(bend, top),
+                        point(bend, mid - quarter),
+                    ],
+                    vec![
+                        point(bend, mid - quarter),
+                        point(bend, mid),
+                        point(bend, mid),
+                        point(outer, mid),
+                    ],
+                    vec![
+                        point(outer, mid),
+                        point(bend, mid),
+                        point(bend, mid),
+                        point(bend, mid + quarter),
+                    ],
+                    vec![
+                        point(bend, mid + quarter),
+                        point(bend, bottom),
+                        point(bend, bottom),
+                        point(inner, bottom),
+                    ],
+                ] {
+                    self.marks.push(Mark::Curve(points, stroke));
+                }
+            }
+            "|" | "||" => self.marks.push(Mark::Line(
+                point((a + b) / 2., top),
+                point((a + b) / 2., bottom),
+                stroke,
+            )),
+            _ => {}
         }
     }
     pub fn draw(&self, target: &mut dyn DrawTarget, origin: Point, params: &PlotParameters) {
@@ -85,6 +183,21 @@ impl MathLayout {
                         ..params.clone()
                     },
                 ),
+                Mark::Curve(points, width) => {
+                    let points: Vec<_> = points.iter().copied().map(transform).collect();
+                    let [start, c1, c2, end] = points.as_slice() else {
+                        continue;
+                    };
+                    target.draw_path(&Path {
+                        commands: vec![
+                            PathCommand::MoveTo(start.x, start.y),
+                            PathCommand::CubicTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y),
+                        ],
+                        stroke: Stroke::new(*width, params.text_color),
+                        anti_alias: true,
+                        ..Default::default()
+                    });
+                }
                 Mark::Line(a, b, width) => {
                     let a = transform(*a);
                     let b = transform(*b);
@@ -140,7 +253,7 @@ impl MathExpr {
                 )
             }
             Self::Text(text) => {
-                let m = target.measure_text(text, params);
+                let m = target.measure_math_text(text, params);
                 MathLayout {
                     width: m.width,
                     ascent: m.ascent,
@@ -202,6 +315,118 @@ impl MathExpr {
                 let mut l = value.layout_inner(target, params, explicit_face);
                 l.marks.clear();
                 l
+            }
+            Self::BGroup { left, body, right } => {
+                let body = body.layout_inner(target, params, explicit_face);
+                let delimiter_width = |s: &str| {
+                    if s.is_empty() || s == "." {
+                        0.
+                    } else {
+                        size * 0.45
+                    }
+                };
+                let lw = delimiter_width(left);
+                let rw = delimiter_width(right);
+                let mut out = MathLayout {
+                    width: lw + body.width + rw,
+                    ..Default::default()
+                };
+                out.append(body, lw, 0.);
+                let top = -out.ascent - size * 0.08;
+                let bottom = out.descent + size * 0.08;
+                let right_x = out.width - rw;
+                out.delimiter(left, 0., size, top, bottom);
+                out.delimiter(right, right_x, size, top, bottom);
+                if lw > 0. || rw > 0. {
+                    out.ascent = -top + size * 0.03;
+                    out.descent = bottom + size * 0.03;
+                }
+                out
+            }
+            Self::WideAccent(value, accent) => {
+                let mut out = value.layout_inner(target, params, explicit_face);
+                let y = -out.ascent - size * 0.14;
+                let stroke = (size * 0.055).max(0.5);
+                let height = size * 0.16;
+                if accent == "tilde" {
+                    out.marks.push(Mark::Curve(
+                        vec![
+                            Point { x: 0., y },
+                            Point {
+                                x: out.width / 3.,
+                                y: y - height * 2.,
+                            },
+                            Point {
+                                x: out.width * 2. / 3.,
+                                y: y + height * 2.,
+                            },
+                            Point { x: out.width, y },
+                        ],
+                        stroke,
+                    ));
+                } else {
+                    out.marks.push(Mark::Line(
+                        Point { x: 0., y },
+                        Point {
+                            x: out.width / 2.,
+                            y: y - height,
+                        },
+                        stroke,
+                    ));
+                    out.marks.push(Mark::Line(
+                        Point {
+                            x: out.width / 2.,
+                            y: y - height,
+                        },
+                        Point { x: out.width, y },
+                        stroke,
+                    ));
+                }
+                out.ascent = -y + height + stroke / 2.;
+                out
+            }
+            Self::DisplayOperator {
+                symbol,
+                body,
+                sub,
+                sup,
+            } => {
+                let op = Self::Text(symbol.clone()).layout_inner(target, params, true);
+                let body = body.layout_inner(target, params, explicit_face);
+                let script_params = PlotParameters {
+                    font_size: size * 0.7,
+                    ..params.clone()
+                };
+                let upper = sup
+                    .as_ref()
+                    .map(|v| v.layout_inner(target, &script_params, explicit_face));
+                let lower = sub
+                    .as_ref()
+                    .map(|v| v.layout_inner(target, &script_params, explicit_face));
+                let column = op
+                    .width
+                    .max(upper.as_ref().map_or(0., |l| l.width))
+                    .max(lower.as_ref().map_or(0., |l| l.width));
+                let op_ascent = op.ascent;
+                let op_descent = op.descent;
+                let op_x = (column - op.width) / 2.;
+                let mut out = MathLayout {
+                    width: column + size * 0.2 + body.width,
+                    ..Default::default()
+                };
+                out.append(op, op_x, 0.);
+                if let Some(l) = upper {
+                    let x = (column - l.width) / 2.;
+                    let y = -op_ascent - size * 0.15 - l.descent;
+                    out.append(l, x, y);
+                }
+                if let Some(l) = lower {
+                    let x = (column - l.width) / 2.;
+                    let y = op_descent + size * 0.15 + l.ascent;
+                    out.append(l, x, y);
+                }
+                out.append(body, column + size * 0.2, 0.);
+                out
             }
             Self::Row(values) => {
                 let mut out = MathLayout::default();
@@ -333,6 +558,90 @@ impl MathExpr {
 mod tests {
     use super::*;
     use crate::{Color, Scene};
+    #[test]
+    fn display_limits_do_not_overlap_body() {
+        let target = Scene::new(400, 200);
+        let params = PlotParameters {
+            font_size: 20.,
+            ..Default::default()
+        };
+        let l = MathExpr::DisplayOperator {
+            symbol: "∑".into(),
+            body: Box::new(MathExpr::Text("body".into())),
+            sub: Some(Box::new(MathExpr::Text("lower".into()))),
+            sup: Some(Box::new(MathExpr::Text("upper".into()))),
+        }
+        .layout(&target, &params);
+        let mut right: f32 = 0.;
+        let mut body_x = 0.;
+        for mark in &l.marks {
+            if let Mark::Text(t, p, size, face) = mark {
+                if t == "body" {
+                    body_x = p.x;
+                } else {
+                    right = right.max(
+                        p.x + crate::default_font_book()
+                            .measure_text(t, *size, *face)
+                            .width,
+                    );
+                }
+            }
+        }
+        assert!(body_x > right, "body begins after operator and limits");
+    }
+    #[test]
+    fn wide_accents_and_delimiters_have_distinct_geometry() {
+        let target = Scene::new(400, 200);
+        let params = PlotParameters {
+            font_size: 20.,
+            ..Default::default()
+        };
+        let text = || Box::new(MathExpr::Text("xyz".into()));
+        let hat = MathExpr::WideAccent(text(), "hat".into()).layout(&target, &params);
+        assert!(
+            hat.marks
+                .iter()
+                .any(|m| matches!(m, Mark::Line(a,b,_) if a.y != b.y))
+        );
+        let tilde = MathExpr::WideAccent(text(), "tilde".into()).layout(&target, &params);
+        assert!(
+            tilde
+                .marks
+                .iter()
+                .any(|m| matches!(m, Mark::Curve(p,_) if p[1].y != p[2].y))
+        );
+        let group = |left: &str| {
+            MathExpr::BGroup {
+                left: left.into(),
+                body: text(),
+                right: "".into(),
+            }
+            .layout(&target, &params)
+        };
+        assert_eq!(group("").marks.len(), 1);
+        assert_eq!(group(".").width, group("").width);
+        assert_eq!(group("[").marks.len(), 4);
+        assert_eq!(group("{").marks.len(), 5);
+        assert!(
+            group("(")
+                .marks
+                .iter()
+                .any(|m| matches!(m, Mark::Curve(..)))
+        );
+    }
+    #[test]
+    fn math_uses_ink_height_instead_of_font_line_height() {
+        let target = Scene::new(200, 200);
+        let params = PlotParameters {
+            font_size: 20.,
+            ..Default::default()
+        };
+        let small = MathExpr::Text("x".into()).layout(&target, &params);
+        let tall = MathExpr::Text("X".into()).layout(&target, &params);
+        assert!(small.ascent < tall.ascent);
+        assert_eq!(small.descent, 0.);
+        assert!(MathExpr::Text("g".into()).layout(&target, &params).descent > 0.);
+    }
     #[test]
     fn fractions_and_scripts_expand_bounds_and_emit_geometry() {
         let mut scene = Scene::new(300, 200);

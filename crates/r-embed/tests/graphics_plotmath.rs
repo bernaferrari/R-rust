@@ -186,7 +186,7 @@ fn tall_math_main_fits_above_plot_without_canvas_clipping() {
         } = op
             && !text.is_empty()
         {
-            let metrics = scene.measure_text(text, params);
+            let metrics = scene.measure_math_text(text, params);
             assert!(
                 position.y - metrics.ascent >= 3.9,
                 "title glyph '{text}' crosses canvas top"
@@ -197,4 +197,35 @@ fn tall_math_main_fits_above_plot_without_canvas_clipping() {
             );
         }
     }
+}
+
+#[test]
+fn stretchy_groups_wide_accents_and_display_limits_emit_owned_geometry() {
+    use r_graphics_engine::{DrawOperation, Scene};
+    let mut session = rmath::android::RSession::new();
+    let mut scene = Scene::new(640, 360);
+    let result = session.eval_script_with_renderplot_backend(
+        "plot.new();text(.5,.5,expression(bgroup('(',frac(alpha+beta,gamma+delta),')')+widehat(alpha+beta)+sum(x[i],i==1,n)))",
+        &mut scene,
+    );
+    assert!(
+        !matches!(result.typed, rmath::android::RValue::Error(_)),
+        "{}",
+        result.output
+    );
+    let paths = scene
+        .operations()
+        .iter()
+        .filter(|op| matches!(op, DrawOperation::Path(_)))
+        .count();
+    assert!(
+        paths >= 5,
+        "stretchy delimiters, fraction, accent, and operator should emit paths"
+    );
+    assert!(
+        scene
+            .operations()
+            .iter()
+            .any(|op| matches!(op, DrawOperation::Text { text, .. } if text == "∑"))
+    );
 }
