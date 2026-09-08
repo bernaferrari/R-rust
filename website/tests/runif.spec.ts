@@ -41,7 +41,7 @@ test("browser Wasm bounds captured console output and keeps the session usable",
     const runtime = new RRuntime({ timeoutMs: 30_000 })
     try {
       const large = await runtime.run(
-        "cat(paste(rep('x', 2 * 1024 * 1024), collapse = ''))",
+        `for (i in 1:2048) cat('${"x".repeat(1024)}')`,
         "console"
       )
       const next = await runtime.run("1 + 1", "console")
@@ -55,4 +55,45 @@ test("browser Wasm bounds captured console output and keeps the session usable",
   )
   expect(result.large.length).toBeLessThan(1024 * 1024 + 128)
   expect(result.next).toBe("[1] 2")
+})
+
+test("browser memory and result budgets reject large requests and recover", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const result = await page.evaluate(async () => {
+    // @ts-expect-error Vite serves this module to browser tests.
+    const { RRuntime } = await import("/src/runtime/index.ts")
+    const runtime = new RRuntime({ timeoutMs: 20000 })
+    const errors: string[] = []
+    try {
+      for (const code of ["numeric(100000000)", "rep('abcdef', 100000)"]) {
+        try {
+          await runtime.run(code, "console")
+          errors.push("unexpected success")
+        } catch (error) {
+          errors.push(String(error))
+        }
+      }
+      const recovered = await runtime.run("1 + 1", "console")
+      // Verify the compiled module has a hard linear-memory maximum. Asking
+      // beyond it must reject without allocating those pages.
+      // @ts-expect-error Vite serves generated bindings.
+      const { default: init } = await import("/src/runtime/assets/r_wasm.js")
+      const module = await init()
+      let bounded = false
+      try {
+        module.memory.grow(4097 - module.memory.buffer.byteLength / 65536)
+      } catch (error) {
+        bounded = error instanceof RangeError
+      }
+      return { errors, recovered: recovered.output, bounded }
+    } finally {
+      runtime.dispose()
+    }
+  })
+  expect(result.errors[0]).toMatch(/alloc|budget|memory/i)
+  expect(result.errors[1]).toContain("export budget")
+  expect(result.recovered).toBe("[1] 2")
+  expect(result.bounded).toBe(true)
 })

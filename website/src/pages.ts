@@ -19,7 +19,7 @@ export const pages = {
     title:
       "16 runnable R examples — Statistics, graphics and creative coding | Rove",
     description:
-      "Explore editable R examples: LOESS curves, distributions, grid calendars, mathematical labels, sunflowers and everyday data analysis.",
+      "Explore editable R examples: LOESS curves, distributions, grid calendars, mathematical labels, spiral gardens and everyday data analysis.",
   },
   ai: {
     path: "local-ai/",

@@ -54,7 +54,7 @@ and explicit embedding boundaries.
 ## Object Ownership and GC Safety
 
 This section documents the ownership model as actually shipped, in
-`rmath-rs/rmath/src/sexp/`. The safe facade built on top of it is
+`crates/rmath/src/sexp/`. The safe facade built on top of it is
 experimental: its exact proof coverage is tracked in
 `docs/conformance.md`, and its remaining gaps are listed in the
 README's known-gaps ledger.

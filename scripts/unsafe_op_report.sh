@@ -23,7 +23,7 @@ import json
 import sys
 from collections import Counter
 
-marker = "rmath-rs/rmath/src/"
+marker = "crates/rmath/src/"
 counts = Counter()
 
 with open(sys.argv[1], encoding="utf-8") as fh:

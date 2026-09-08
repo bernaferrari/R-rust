@@ -55,7 +55,7 @@ The website has **16 editable examples**: statistics, creative coding, grid layo
 | **Mobile** | Kotlin and Swift integrations through UniFFI bindings | [r-uniffi](crates/r-uniffi) |
 | **Local AI** | A model drafts R; the runtime computes and plots the answer | [Runnable AI demo](website/README.md) |
 | **Graphics** | Portable CPU rendering and optional GPU canvas/window presentation APIs | [Vello GPU](crates/r-device-vello-gpu/README.md) |
-| **Numerics** | Distribution and special-function routines without the interpreter | [Standalone nmath](rmath-rs/nmath) |
+| **Numerics** | Distribution and special-function routines without the interpreter | [Standalone nmath](crates/nmath) |
 
 The AI demo supports a WebGPU browser model and an optional Ollama endpoint. You review the generated code before opening it in the playground. Model weights download only when requested; they are separate from the R runtime.
 
@@ -91,13 +91,13 @@ The important limits are concrete:
 - **Language fidelity:** compiler/bytecode behavior, namespaces, locales and parts of the GNU R API remain incomplete.
 - **Graphics:** advanced grid semantics and exact GNU R font typography still need work. The website uses Vello CPU; GPU presentation is a separate integration surface.
 - **Safety:** owned host APIs keep raw interpreter objects private, but unsafe internals still need wider auditing. The runtime is experimental and is not a security boundary for untrusted programs.
-- **Resource limits:** the browser has a worker timeout and a combined 1 MiB console capture limit. Total evaluator memory and final-value formatting are not fully bounded.
+- **Resource limits:** the browser has a worker timeout and a combined 1 MiB console capture limit. The browser also enforces a 64 MiB R arena budget, bounded result export, and a 256 MiB Wasm linear-memory ceiling. Browser overhead and AI model weights are separate; native hosts must configure their own limits.
 
 See the [compatibility evidence](docs/conformance.md) and [graphics contracts](docs/loess-and-portable-graphics.md) for the exact scope. Android, browser and desktop support each have different host constraints; bindings alone do not establish a finished mobile integration.
 
 ## Evidence over percentages
 
-At the latest verified checkpoint, **636 curated GNU R comparison cases** and **2,756 workspace tests** passed. The website also passed 12 browser tests, including actual Wasm execution, theme accessibility, and auto/manual behavior. These are bounded checks, not an implementation percentage or a claim that every R program works.
+At the latest verified checkpoint, **636 curated GNU R comparison cases** and **2,783 workspace tests** passed. Browser tests also exercise actual Wasm execution, memory limits, theme accessibility, and auto/manual behavior. These are bounded checks, not an implementation percentage or a claim that every R program works.
 
 The compatibility oracle is pinned to GNU R source commit [`bac583951b`](oracle/r-oracle.json). Tests compare against that exact revision; the [test contract](docs/conformance.md) explains provenance, upstream tests, Miri and GC stress coverage.
 
@@ -116,12 +116,20 @@ The most useful contributions close a real contract: a small R program, its GNU 
 
 | Inside the repository | Purpose |
 | --- | --- |
-| [`rmath-rs/rmath`](rmath-rs/rmath) | Parser, evaluator, object model, GC and translated library operations |
+| [`crates/rmath`](crates/rmath) | Parser, evaluator, object model, GC and translated library operations |
 | [`crates/r-embed`](crates/r-embed) | Owned host API and session handles |
 | [`crates/r-wasm`](crates/r-wasm) | Browser runtime boundary |
 | [`crates/r-graphics-engine`](crates/r-graphics-engine) | Portable graphics and mathematical layout |
 | [`website`](website) | React showcase, editor, examples and local AI |
+| [`apps/workbench`](apps/workbench) | Full Android and Kotlin/Wasm workbench |
+| [`examples/android-compose`](examples/android-compose) | Minimal Android embedding example: sessions, plots and cancellation |
 | [`tests`](tests) | Differential, conformance and upstream test evidence |
+| [`docs`](docs/README.md) | Maintained contracts, verification and release guides; historical material in `archive/` |
+
+Root configuration files are used by Cargo, formatting, CI and agent tooling.
+`.cargo` must stay here for Cargo discovery. `LICENSE`, `COPYING` and `NOTICE.md`
+preserve license discovery and upstream attribution. Generated artifacts belong
+under `target/`; `r-source/` is an ignored local upstream reference checkout.
 
 Read the [architecture](docs/rust-r-port-architecture.md), [upstream port map](docs/upstream-port-map.tsv), and [contribution instructions](AGENTS.md) before changing runtime invariants. Work is tracked with `bd`.
 

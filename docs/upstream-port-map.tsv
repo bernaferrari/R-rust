@@ -1,89 +1,89 @@
 # Rust path	upstream path	upstream anchor	sync mode	notes
-rmath-rs/nmath/src/dpq.rs	r-source/src/nmath/dpq.h	R_D__0, R_DT_qIv, R_DT_CIv	faithful	Probability/log-tail helper macros translated into explicit Rust helpers.
-rmath-rs/nmath/src/fprec.rs	r-source/src/nmath/fprec.c	fprec	faithful	Numeric precision helper mirrors upstream control flow.
-rmath-rs/nmath/src/dist/normal.rs	r-source/src/nmath/dnorm.c	dnorm4	faithful	Normal density behavior, log flag, NA/NaN handling.
-rmath-rs/nmath/src/dist/normal.rs	r-source/src/nmath/pnorm.c	pnorm5	faithful	Normal CDF behavior and tail/log handling.
-rmath-rs/nmath/src/dist/normal.rs	r-source/src/nmath/qnorm.c	qnorm5	faithful	Normal quantile behavior and boundary handling.
-rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/dbinom.c	dbinom_raw, dbinom	faithful	Binomial density behavior.
-rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/pbinom.c	pbinom	faithful	Binomial CDF behavior.
-rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/qbinom.c	qbinom	faithful	Binomial quantile behavior.
-rmath-rs/nmath/src/dist/binomial.rs	r-source/src/nmath/rbinom.c	rbinom	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/dpois.c	dpois_raw, dpois	faithful	Poisson density behavior.
-rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/ppois.c	ppois	faithful	Poisson CDF behavior.
-rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/qpois.c	qpois	faithful	Poisson quantile behavior.
-rmath-rs/nmath/src/dist/poisson.rs	r-source/src/nmath/rpois.c	rpois	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/dgamma.c	dgamma	faithful	Gamma density behavior.
-rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/pgamma.c	pgamma	faithful	Gamma CDF behavior.
-rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/qgamma.c	qgamma	faithful	Gamma quantile behavior.
-rmath-rs/nmath/src/dist/gamma.rs	r-source/src/nmath/rgamma.c	rgamma	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/dbeta.c	dbeta	faithful	Beta density (Loader); re-exported via dist/beta.
-rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/pbeta.c	pbeta, bratio	faithful	pbeta_raw delegates to nmath::special::toms708::bratio (TOMS 708).
-rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/qbeta.c	qbeta	faithful	Beta quantile behavior.
-rmath-rs/nmath/src/dist/beta.rs	r-source/src/nmath/rbeta.c	rbeta	faithful	Session RNG replaces process-global RNG state.
-rmath-rs/nmath/src/special/toms708.rs	r-source/src/nmath/toms708.c	bratio	faithful	ACM TOMS 708 incomplete beta / bratio implementation.
-rmath-rs/rmath/src/mainutils/altrep.rs	r-source/src/main/altrep.c	ALTREP classes	known-gap	ALTREP bit honored in duplicate; full class method tables and R_tryWrap incomplete.
-rmath-rs/rmath/src/eval/bc_eval.rs	r-source/src/main/eval.c	bcEval	known-gap	Partial bytecode opcode set; not full GNU R bcEval.
-rmath-rs/rmath/src/eval/bc_compile.rs	r-source/src/library/compiler	R_cmpfun	known-gap	Minimal compiler subset; compiler package and full for-loop BC not ported.
-rmath-rs/rmath/src/library/grid/register.rs	r-source/src/library/grid	grid .Call register	known-gap	Grid registration currently no-op; GE integration incomplete.
-rmath-rs/rmath/src/library/graphics/base.rs	r-source/src/main/plot.c	C_* graphics	known-gap	Many base graphics C entrypoints unimplemented vs stock devices.
-rmath-rs/nmath/src/dist/cauchy.rs	r-source/src/nmath/dcauchy.c, r-source/src/nmath/pcauchy.c, r-source/src/nmath/qcauchy.c, r-source/src/nmath/rcauchy.c	dcauchy, pcauchy, qcauchy, rcauchy	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/chisq.rs	r-source/src/nmath/dchisq.c, r-source/src/nmath/pchisq.c, r-source/src/nmath/qchisq.c, r-source/src/nmath/rchisq.c	dchisq, pchisq, qchisq, rchisq	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/exponential.rs	r-source/src/nmath/dexp.c, r-source/src/nmath/pexp.c, r-source/src/nmath/qexp.c, r-source/src/nmath/rexp.c	dexp, pexp, qexp, rexp	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/geometric.rs	r-source/src/nmath/dgeom.c, r-source/src/nmath/pgeom.c, r-source/src/nmath/qgeom.c, r-source/src/nmath/rgeom.c	dgeom, pgeom, qgeom, rgeom	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/hypergeometric.rs	r-source/src/nmath/dhyper.c, r-source/src/nmath/phyper.c, r-source/src/nmath/qhyper.c, r-source/src/nmath/rhyper.c	dhyper, phyper, qhyper, rhyper	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/lnorm.rs	r-source/src/nmath/dlnorm.c, r-source/src/nmath/plnorm.c, r-source/src/nmath/qlnorm.c, r-source/src/nmath/rlnorm.c	dlnorm, plnorm, qlnorm, rlnorm	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/logistic.rs	r-source/src/nmath/dlogis.c, r-source/src/nmath/plogis.c, r-source/src/nmath/qlogis.c, r-source/src/nmath/rlogis.c	dlogis, plogis, qlogis, rlogis	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/t_dist.rs	r-source/src/nmath/dt.c, r-source/src/nmath/pt.c, r-source/src/nmath/qt.c, r-source/src/nmath/rt.c	dt, pt, qt, rt	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/uniform.rs	r-source/src/nmath/dunif.c, r-source/src/nmath/punif.c, r-source/src/nmath/qunif.c, r-source/src/nmath/runif.c	dunif, punif, qunif, runif	faithful	Distribution family grouped in one Rust module.
-rmath-rs/nmath/src/dist/weibull.rs	r-source/src/nmath/dweibull.c, r-source/src/nmath/pweibull.c, r-source/src/nmath/qweibull.c, r-source/src/nmath/rweibull.c	dweibull, pweibull, qweibull, rweibull	faithful	Distribution family grouped in one Rust module.
-rmath-rs/rmath/src/eval/parser.rs	r-source/src/main/gram.y	parse grammar	rust-shaped	Handwritten parser preserves user-visible grammar semantics instead of Bison-generated structure.
-rmath-rs/rmath/src/eval/eval.rs	r-source/src/main/eval.c	Rf_eval, do_begin, do_if, do_for, do_while	rust-shaped	Typed EvalContext/RSession entrypoints own cancellation and visibility; raw shim delegates inward.
-rmath-rs/rmath/src/eval/closure.rs	r-source/src/main/eval.c	applyClosure, matchArgs_NR	rust-shaped	Promise/default-argument semantics with Rust-owned frames and checked ownership.
-rmath-rs/rmath/src/eval/arithmetic.rs	r-source/src/main/arithmetic.c	R_binary, R_unary, arithmetic builtins	faithful	User-visible arithmetic, recycling, NA/NaN and type promotion should track upstream.
-rmath-rs/rmath/src/eval/complex_arith.rs	r-source/src/main/complex.c	complex arithmetic helpers	faithful	Complex arithmetic helpers track upstream edge behavior.
-rmath-rs/rmath/src/eval/dispatch.rs	r-source/src/main/objects.c	UseMethod, NextMethod	rust-shaped	S3 dispatch semantics with session-owned method lookup.
-rmath-rs/rmath/src/eval/context.rs	r-source/src/main/context.c	RCNTXT, findcontext	rust-shaped	Context stack is owned by RInstance rather than process-global state.
-rmath-rs/rmath/src/sexp/accessors.rs	r-source/src/include/Rinternals.h	INTEGER_ELT, REAL_ELT, SET_*_ELT	rust-shaped	Checked exact-type accessors replace raw vector-buffer reinterpretation.
-rmath-rs/rmath/src/sexp/memory.rs	r-source/src/main/memory.c	allocVector, duplicate, PROTECT	rust-shaped	Arena/session ownership replaces process-global heap where possible.
-rmath-rs/rmath/src/sexp/session.rs	r-source/src/main/memory.c	R_InitMemory, Rf_initEmbeddedR	rust-shaped	Session-owned interpreter state enables multiple independent instances.
-rmath-rs/rmath/src/sexp/protect.rs	r-source/src/main/memory.c	PROTECT, UNPROTECT, R_PreserveObject	rust-shaped	Protect/preserve stacks are scoped to RInstance.
-rmath-rs/rmath/src/sexp/gengc.rs	r-source/src/main/memory.c	R_gc_internal	known-gap	Arena ownership currently avoids full moving/mark-sweep GC parity; lifetime discipline is the safety boundary.
-rmath-rs/rmath/src/sexp/attrib_core.rs	r-source/src/main/attrib.c	setAttrib, getAttrib, namesgets	rust-shaped	Attribute manipulation is shared by typed Sexp APIs and compatibility shims.
-rmath-rs/rmath/src/mainutils/essentials/vectors.rs	r-source/src/main/bind.c	do_c	rust-shaped	Essentials c() surface; C-shaped dispatch delegates to safer helpers.
-rmath-rs/rmath/src/mainutils/essentials/functional.rs	r-source/src/main/builtin.c	do_makelist	rust-shaped	Essentials list() surface; C-shaped dispatch delegates to safer helpers.
-rmath-rs/rmath/src/mainutils/seq.rs	r-source/src/main/seq.c	do_seq	faithful	Sequence generation ported from seq.c (seq, seq.int, seq_len, seq_along).
-rmath-rs/rmath/src/mainutils/subset.rs	r-source/src/main/subset.c	do_subset, do_subset2, R_DispatchOrEvalSP	faithful	Subsetting with S3/S4 dispatch via DispatchOrEval on objects.
-rmath-rs/rmath/src/mainutils/subassign.rs	r-source/src/main/subassign.c	do_subassign, R_DispatchOrEvalSP	faithful	Replacement/subassignment with object method dispatch.
-rmath-rs/rmath/src/mainutils/subscript.rs	r-source/src/main/subscript.c	makeSubscript, integerSubscript	faithful	Index coercion, negative/zero/NA handling maps to upstream.
-rmath-rs/rmath/src/mainutils/coerce.rs	r-source/src/main/coerce.c	coerceVector, as* helpers	faithful	Type coercion behavior should track upstream.
-rmath-rs/rmath/src/mainutils/attrib.rs	r-source/src/main/attrib.c	do_attr, do_attributes, classgets	rust-shaped	Compatibility entrypoints delegate into shared attribute helpers.
-rmath-rs/rmath/src/mainutils/objects.rs	r-source/src/main/objects.c	UseMethod, inherits, classgets	rust-shaped	Object system behavior with explicit session state.
-rmath-rs/rmath/src/mainutils/envir.rs	r-source/src/main/envir.c	findVar, defineVar, setVar	rust-shaped	Environment frames are owned by RInstance.
-rmath-rs/rmath/src/mainutils/errors.rs	r-source/src/main/errors.c	errorcall, warningcall, conditions	rust-shaped	Condition/error behavior without setjmp process-global unwinding.
-rmath-rs/rmath/src/mainutils/print.rs	r-source/src/main/print.c	PrintValueEnv, PrintObject	faithful	Print output should match stock R where conformance covers it.
-rmath-rs/rmath/src/mainutils/printutils.rs	r-source/src/main/printutils.c	print utilities	faithful	Formatting support for print paths.
-rmath-rs/rmath/src/mainutils/printvector.rs	r-source/src/main/printvector.c	printVector	faithful	Vector printing behavior.
-rmath-rs/rmath/src/mainutils/format.rs	r-source/src/main/format.c	formatVector	faithful	String/number formatting behavior.
-rmath-rs/rmath/src/mainutils/deparse.rs	r-source/src/main/deparse.c	deparse1, deparse2buff	faithful	Deparse output should track upstream for parser/eval diagnostics.
-rmath-rs/rmath/src/mainutils/names.rs	r-source/src/main/names.c	FUNTAB, builtins table	rust-shaped	Registration table keeps C names but delegates to Rust implementations.
-rmath-rs/rmath/src/mainutils/random.rs	r-source/src/main/random.c	do_sample, FixupSeeds	rust-shaped	User-visible random helpers with session-owned RNG.
-rmath-rs/rmath/src/rng/mod.rs	r-source/src/main/RNG.c	GetRNGstate, PutRNGstate	rust-shaped	RNG state is per session; seeded-default streams and .Random.seed layout match stock bit-for-bit (conformance case 534).
-rmath-rs/rmath/src/mainutils/connections.rs	r-source/src/main/connections.c	Rconnections, file/url helpers	policy	Android path and process policy intentionally constrain host IO.
-rmath-rs/rmath/src/mainutils/paths.rs	r-source/src/main/platform.c	R_HomeDir, R_tmpnam	policy	Android app-private path policy replaces process/user-global paths.
-rmath-rs/rmath/src/mainutils/platform.rs	r-source/src/main/platform.c	platform helpers	policy	Host-sensitive values are normalized for Android embedding.
-rmath-rs/rmath/src/mainutils/source.rs	r-source/src/main/source.c	R_ParseEvalFile	rust-shaped	Package/source loading flows through session-owned parser/evaluator.
-rmath-rs/rmath/src/mainutils/dcf.rs	r-source/src/main/dcf.c	read.dcf support	faithful	DESCRIPTION parsing for pure-R packages.
-rmath-rs/rmath/src/mainutils/registration.rs	r-source/src/main/registration.c	R_registerRoutines	policy	Native routine registration is host-policy-gated on Android.
-rmath-rs/rmath/src/mainutils/rdynload.rs	r-source/src/main/Rdynload.c	dyn.load, useDynLib	policy	Dynamic loading is rejected on Android until host-owned native policy exists.
-rmath-rs/rmath/src/appl/integrate.rs	r-source/src/appl/integrate.c	Rdqags, Rdqagi	faithful	Numerical integration routines.
-rmath-rs/rmath/src/appl/interv.rs	r-source/src/appl/interv.c	findInterval	faithful	Interval search semantics.
-rmath-rs/rmath/src/appl/lbfgsb.rs	r-source/src/appl/lbfgsb.c	lbfgsb	faithful	Optimization routine translation.
-rmath-rs/rmath/src/appl/maxcol.rs	r-source/src/appl/maxcol.c	maxcol	faithful	Matrix max-column helper.
-rmath-rs/rmath/src/appl/optim.rs	r-source/src/appl/optim.c	optim helpers	faithful	Optimization helpers.
-rmath-rs/rmath/src/appl/pretty.rs	r-source/src/appl/pretty.c	pretty	faithful	Pretty break calculation.
-rmath-rs/rmath/src/appl/uncmin.rs	r-source/src/appl/uncmin.c	uncmin	faithful	Optimization routine translation.
+crates/nmath/src/dpq.rs	r-source/src/nmath/dpq.h	R_D__0, R_DT_qIv, R_DT_CIv	faithful	Probability/log-tail helper macros translated into explicit Rust helpers.
+crates/nmath/src/fprec.rs	r-source/src/nmath/fprec.c	fprec	faithful	Numeric precision helper mirrors upstream control flow.
+crates/nmath/src/dist/normal.rs	r-source/src/nmath/dnorm.c	dnorm4	faithful	Normal density behavior, log flag, NA/NaN handling.
+crates/nmath/src/dist/normal.rs	r-source/src/nmath/pnorm.c	pnorm5	faithful	Normal CDF behavior and tail/log handling.
+crates/nmath/src/dist/normal.rs	r-source/src/nmath/qnorm.c	qnorm5	faithful	Normal quantile behavior and boundary handling.
+crates/nmath/src/dist/binomial.rs	r-source/src/nmath/dbinom.c	dbinom_raw, dbinom	faithful	Binomial density behavior.
+crates/nmath/src/dist/binomial.rs	r-source/src/nmath/pbinom.c	pbinom	faithful	Binomial CDF behavior.
+crates/nmath/src/dist/binomial.rs	r-source/src/nmath/qbinom.c	qbinom	faithful	Binomial quantile behavior.
+crates/nmath/src/dist/binomial.rs	r-source/src/nmath/rbinom.c	rbinom	faithful	Session RNG replaces process-global RNG state.
+crates/nmath/src/dist/poisson.rs	r-source/src/nmath/dpois.c	dpois_raw, dpois	faithful	Poisson density behavior.
+crates/nmath/src/dist/poisson.rs	r-source/src/nmath/ppois.c	ppois	faithful	Poisson CDF behavior.
+crates/nmath/src/dist/poisson.rs	r-source/src/nmath/qpois.c	qpois	faithful	Poisson quantile behavior.
+crates/nmath/src/dist/poisson.rs	r-source/src/nmath/rpois.c	rpois	faithful	Session RNG replaces process-global RNG state.
+crates/nmath/src/dist/gamma.rs	r-source/src/nmath/dgamma.c	dgamma	faithful	Gamma density behavior.
+crates/nmath/src/dist/gamma.rs	r-source/src/nmath/pgamma.c	pgamma	faithful	Gamma CDF behavior.
+crates/nmath/src/dist/gamma.rs	r-source/src/nmath/qgamma.c	qgamma	faithful	Gamma quantile behavior.
+crates/nmath/src/dist/gamma.rs	r-source/src/nmath/rgamma.c	rgamma	faithful	Session RNG replaces process-global RNG state.
+crates/nmath/src/dist/beta.rs	r-source/src/nmath/dbeta.c	dbeta	faithful	Beta density (Loader); re-exported via dist/beta.
+crates/nmath/src/dist/beta.rs	r-source/src/nmath/pbeta.c	pbeta, bratio	faithful	pbeta_raw delegates to nmath::special::toms708::bratio (TOMS 708).
+crates/nmath/src/dist/beta.rs	r-source/src/nmath/qbeta.c	qbeta	faithful	Beta quantile behavior.
+crates/nmath/src/dist/beta.rs	r-source/src/nmath/rbeta.c	rbeta	faithful	Session RNG replaces process-global RNG state.
+crates/nmath/src/special/toms708.rs	r-source/src/nmath/toms708.c	bratio	faithful	ACM TOMS 708 incomplete beta / bratio implementation.
+crates/rmath/src/mainutils/altrep.rs	r-source/src/main/altrep.c	ALTREP classes	known-gap	ALTREP bit honored in duplicate; full class method tables and R_tryWrap incomplete.
+crates/rmath/src/eval/bc_eval.rs	r-source/src/main/eval.c	bcEval	known-gap	Partial bytecode opcode set; not full GNU R bcEval.
+crates/rmath/src/eval/bc_compile.rs	r-source/src/library/compiler	R_cmpfun	known-gap	Minimal compiler subset; compiler package and full for-loop BC not ported.
+crates/rmath/src/library/grid/register.rs	r-source/src/library/grid	grid .Call register	known-gap	Grid registration currently no-op; GE integration incomplete.
+crates/rmath/src/library/graphics/base.rs	r-source/src/main/plot.c	C_* graphics	known-gap	Many base graphics C entrypoints unimplemented vs stock devices.
+crates/nmath/src/dist/cauchy.rs	r-source/src/nmath/dcauchy.c, r-source/src/nmath/pcauchy.c, r-source/src/nmath/qcauchy.c, r-source/src/nmath/rcauchy.c	dcauchy, pcauchy, qcauchy, rcauchy	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/chisq.rs	r-source/src/nmath/dchisq.c, r-source/src/nmath/pchisq.c, r-source/src/nmath/qchisq.c, r-source/src/nmath/rchisq.c	dchisq, pchisq, qchisq, rchisq	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/exponential.rs	r-source/src/nmath/dexp.c, r-source/src/nmath/pexp.c, r-source/src/nmath/qexp.c, r-source/src/nmath/rexp.c	dexp, pexp, qexp, rexp	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/geometric.rs	r-source/src/nmath/dgeom.c, r-source/src/nmath/pgeom.c, r-source/src/nmath/qgeom.c, r-source/src/nmath/rgeom.c	dgeom, pgeom, qgeom, rgeom	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/hypergeometric.rs	r-source/src/nmath/dhyper.c, r-source/src/nmath/phyper.c, r-source/src/nmath/qhyper.c, r-source/src/nmath/rhyper.c	dhyper, phyper, qhyper, rhyper	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/lnorm.rs	r-source/src/nmath/dlnorm.c, r-source/src/nmath/plnorm.c, r-source/src/nmath/qlnorm.c, r-source/src/nmath/rlnorm.c	dlnorm, plnorm, qlnorm, rlnorm	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/logistic.rs	r-source/src/nmath/dlogis.c, r-source/src/nmath/plogis.c, r-source/src/nmath/qlogis.c, r-source/src/nmath/rlogis.c	dlogis, plogis, qlogis, rlogis	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/t_dist.rs	r-source/src/nmath/dt.c, r-source/src/nmath/pt.c, r-source/src/nmath/qt.c, r-source/src/nmath/rt.c	dt, pt, qt, rt	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/uniform.rs	r-source/src/nmath/dunif.c, r-source/src/nmath/punif.c, r-source/src/nmath/qunif.c, r-source/src/nmath/runif.c	dunif, punif, qunif, runif	faithful	Distribution family grouped in one Rust module.
+crates/nmath/src/dist/weibull.rs	r-source/src/nmath/dweibull.c, r-source/src/nmath/pweibull.c, r-source/src/nmath/qweibull.c, r-source/src/nmath/rweibull.c	dweibull, pweibull, qweibull, rweibull	faithful	Distribution family grouped in one Rust module.
+crates/rmath/src/eval/parser.rs	r-source/src/main/gram.y	parse grammar	rust-shaped	Handwritten parser preserves user-visible grammar semantics instead of Bison-generated structure.
+crates/rmath/src/eval/eval.rs	r-source/src/main/eval.c	Rf_eval, do_begin, do_if, do_for, do_while	rust-shaped	Typed EvalContext/RSession entrypoints own cancellation and visibility; raw shim delegates inward.
+crates/rmath/src/eval/closure.rs	r-source/src/main/eval.c	applyClosure, matchArgs_NR	rust-shaped	Promise/default-argument semantics with Rust-owned frames and checked ownership.
+crates/rmath/src/eval/arithmetic.rs	r-source/src/main/arithmetic.c	R_binary, R_unary, arithmetic builtins	faithful	User-visible arithmetic, recycling, NA/NaN and type promotion should track upstream.
+crates/rmath/src/eval/complex_arith.rs	r-source/src/main/complex.c	complex arithmetic helpers	faithful	Complex arithmetic helpers track upstream edge behavior.
+crates/rmath/src/eval/dispatch.rs	r-source/src/main/objects.c	UseMethod, NextMethod	rust-shaped	S3 dispatch semantics with session-owned method lookup.
+crates/rmath/src/eval/context.rs	r-source/src/main/context.c	RCNTXT, findcontext	rust-shaped	Context stack is owned by RInstance rather than process-global state.
+crates/rmath/src/sexp/accessors.rs	r-source/src/include/Rinternals.h	INTEGER_ELT, REAL_ELT, SET_*_ELT	rust-shaped	Checked exact-type accessors replace raw vector-buffer reinterpretation.
+crates/rmath/src/sexp/memory.rs	r-source/src/main/memory.c	allocVector, duplicate, PROTECT	rust-shaped	Arena/session ownership replaces process-global heap where possible.
+crates/rmath/src/sexp/session.rs	r-source/src/main/memory.c	R_InitMemory, Rf_initEmbeddedR	rust-shaped	Session-owned interpreter state enables multiple independent instances.
+crates/rmath/src/sexp/protect.rs	r-source/src/main/memory.c	PROTECT, UNPROTECT, R_PreserveObject	rust-shaped	Protect/preserve stacks are scoped to RInstance.
+crates/rmath/src/sexp/gengc.rs	r-source/src/main/memory.c	R_gc_internal	known-gap	Arena ownership currently avoids full moving/mark-sweep GC parity; lifetime discipline is the safety boundary.
+crates/rmath/src/sexp/attrib_core.rs	r-source/src/main/attrib.c	setAttrib, getAttrib, namesgets	rust-shaped	Attribute manipulation is shared by typed Sexp APIs and compatibility shims.
+crates/rmath/src/mainutils/essentials/vectors.rs	r-source/src/main/bind.c	do_c	rust-shaped	Essentials c() surface; C-shaped dispatch delegates to safer helpers.
+crates/rmath/src/mainutils/essentials/functional.rs	r-source/src/main/builtin.c	do_makelist	rust-shaped	Essentials list() surface; C-shaped dispatch delegates to safer helpers.
+crates/rmath/src/mainutils/seq/mod.rs	r-source/src/main/seq.c	do_seq	faithful	Sequence generation ported from seq.c (seq, seq.int, seq_len, seq_along).
+crates/rmath/src/mainutils/subset.rs	r-source/src/main/subset.c	do_subset, do_subset2, R_DispatchOrEvalSP	faithful	Subsetting with S3/S4 dispatch via DispatchOrEval on objects.
+crates/rmath/src/mainutils/subassign/mod.rs	r-source/src/main/subassign.c	do_subassign, R_DispatchOrEvalSP	faithful	Replacement/subassignment with object method dispatch.
+crates/rmath/src/mainutils/subscript.rs	r-source/src/main/subscript.c	makeSubscript, integerSubscript	faithful	Index coercion, negative/zero/NA handling maps to upstream.
+crates/rmath/src/mainutils/coerce/mod.rs	r-source/src/main/coerce.c	coerceVector, as* helpers	faithful	Type coercion behavior should track upstream.
+crates/rmath/src/mainutils/attrib.rs	r-source/src/main/attrib.c	do_attr, do_attributes, classgets	rust-shaped	Compatibility entrypoints delegate into shared attribute helpers.
+crates/rmath/src/mainutils/objects/mod.rs	r-source/src/main/objects.c	UseMethod, inherits, classgets	rust-shaped	Object system behavior with explicit session state.
+crates/rmath/src/mainutils/envir.rs	r-source/src/main/envir.c	findVar, defineVar, setVar	rust-shaped	Environment frames are owned by RInstance.
+crates/rmath/src/mainutils/errors/mod.rs	r-source/src/main/errors.c	errorcall, warningcall, conditions	rust-shaped	Condition/error behavior without setjmp process-global unwinding.
+crates/rmath/src/mainutils/print.rs	r-source/src/main/print.c	PrintValueEnv, PrintObject	faithful	Print output should match stock R where conformance covers it.
+crates/rmath/src/mainutils/printutils.rs	r-source/src/main/printutils.c	print utilities	faithful	Formatting support for print paths.
+crates/rmath/src/mainutils/printvector.rs	r-source/src/main/printvector.c	printVector	faithful	Vector printing behavior.
+crates/rmath/src/mainutils/format.rs	r-source/src/main/format.c	formatVector	faithful	String/number formatting behavior.
+crates/rmath/src/mainutils/deparse/mod.rs	r-source/src/main/deparse.c	deparse1, deparse2buff	faithful	Deparse output should track upstream for parser/eval diagnostics.
+crates/rmath/src/mainutils/names.rs	r-source/src/main/names.c	FUNTAB, builtins table	rust-shaped	Registration table keeps C names but delegates to Rust implementations.
+crates/rmath/src/mainutils/random.rs	r-source/src/main/random.c	do_sample, FixupSeeds	rust-shaped	User-visible random helpers with session-owned RNG.
+crates/rmath/src/rng/mod.rs	r-source/src/main/RNG.c	GetRNGstate, PutRNGstate	rust-shaped	RNG state is per session; seeded-default streams and .Random.seed layout match stock bit-for-bit (conformance case 534).
+crates/rmath/src/mainutils/connections/mod.rs	r-source/src/main/connections.c	Rconnections, file/url helpers	policy	Android path and process policy intentionally constrain host IO.
+crates/rmath/src/mainutils/paths.rs	r-source/src/main/platform.c	R_HomeDir, R_tmpnam	policy	Android app-private path policy replaces process/user-global paths.
+crates/rmath/src/mainutils/platform.rs	r-source/src/main/platform.c	platform helpers	policy	Host-sensitive values are normalized for Android embedding.
+crates/rmath/src/mainutils/source.rs	r-source/src/main/source.c	R_ParseEvalFile	rust-shaped	Package/source loading flows through session-owned parser/evaluator.
+crates/rmath/src/mainutils/dcf.rs	r-source/src/main/dcf.c	read.dcf support	faithful	DESCRIPTION parsing for pure-R packages.
+crates/rmath/src/mainutils/registration.rs	r-source/src/main/registration.c	R_registerRoutines	policy	Native routine registration is host-policy-gated on Android.
+crates/rmath/src/mainutils/rdynload.rs	r-source/src/main/Rdynload.c	dyn.load, useDynLib	policy	Dynamic loading is rejected on Android until host-owned native policy exists.
+crates/rmath/src/appl/integrate.rs	r-source/src/appl/integrate.c	Rdqags, Rdqagi	faithful	Numerical integration routines.
+crates/rmath/src/appl/interv.rs	r-source/src/appl/interv.c	findInterval	faithful	Interval search semantics.
+crates/rmath/src/appl/lbfgsb.rs	r-source/src/appl/lbfgsb.c	lbfgsb	faithful	Optimization routine translation.
+crates/rmath/src/appl/maxcol.rs	r-source/src/appl/maxcol.c	maxcol	faithful	Matrix max-column helper.
+crates/rmath/src/appl/optim.rs	r-source/src/appl/optim.c	optim helpers	faithful	Optimization helpers.
+crates/rmath/src/appl/pretty.rs	r-source/src/appl/pretty.c	pretty	faithful	Pretty break calculation.
+crates/rmath/src/appl/uncmin.rs	r-source/src/appl/uncmin.c	uncmin	faithful	Optimization routine translation.
 crates/r-graphics-engine/src/lib.rs	r-source/src/main/graphics.c	graphics engine device calls	rust-shaped	Device-independent Rust drawing primitives for embedding.
 crates/r-device-android-headless/src/lib.rs	r-source/src/include/R_ext/GraphicsEngine.h	graphics device contract	rust-shaped	PNG-backed headless Android renderer.
-rmath-rs/rmath/src/android.rs	none	Android embedding facade	rust-shaped	No upstream C equivalent; app-facing owned values and session policy.
+crates/rmath/src/android.rs	none	Android embedding facade	rust-shaped	No upstream C equivalent; app-facing owned values and session policy.
 crates/r-embed/src/lib.rs	none	Rust embedding facade	rust-shaped	No upstream C equivalent; public safe owned Rust API.
 crates/r-uniffi/src/lib.rs	none	UniFFI binding facade	rust-shaped	No upstream C equivalent; generated Kotlin/Swift-safe API.

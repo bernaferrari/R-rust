@@ -66,10 +66,11 @@ export function CompatibilityPage() {
           stress tests do not prove the entire interpreter sound.
         </p>
         <p>
-          The browser runs R in a worker, with a 20-second timeout and a
-          combined 1 MiB console capture limit. Total evaluator memory and
-          final-value formatting are not fully bounded. This runtime is not a
-          security boundary for untrusted programs.
+          The browser runs R in a worker with a 20-second timeout, a 64 MiB
+          object arena budget, bounded result export, and a 256 MiB ceiling on
+          Wasm linear memory. Console capture is limited to 1 MiB. Browser
+          rendering and local AI models use separate memory; native applications
+          must configure their own resource limits.
         </p>
         <p>
           Compatibility tests compare curated cases against an exact GNU R

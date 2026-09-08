@@ -2,6 +2,7 @@
 **/target/
 *.o
 *.a
+*.rmeta
 *.so
 *.dylib
 *.dll
@@ -27,5 +28,10 @@ Rplots.pdf
 .tmp/
 
 # Internal work notes (upstream-sync diffs stay tracked)
-/plans/*.md
+/docs/archive/plans/*.md
 crates/r-wasm/pkg/
+
+# Local tools and exploratory output
+/.ruff_cache/
+/oom-*
+/target/bindings/

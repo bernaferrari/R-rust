@@ -4,10 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/target}"
-OUT_DIR="$ROOT_DIR/bindings"
+OUT_DIR="$TARGET_DIR/bindings"
 CHECK_ONLY=0
 LANGUAGE="kotlin"
-CHECKED_IN_DIR="$ROOT_DIR/rstudio-mobile/app/generated"
+CHECKED_IN_DIR="$ROOT_DIR/apps/workbench/app/generated"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

@@ -46,17 +46,15 @@ fn expressions_work_in_titles_axes_and_replay() {
     assert!(replay.len() > 1000);
 }
 #[test]
-fn unsupported_math_fails_and_session_recovers() {
+fn invalid_math_arity_fails_and_session_recovers() {
     let mut session = RSession::new().unwrap();
     let error = session
-        .render_with_dimensions(
-            "plot.new();text(.5,.5,expression(unsupported_math(x)))",
-            320,
-            240,
-        )
+        .render_with_dimensions("plot.new();text(.5,.5,expression(frac(x)))", 320, 240)
         .unwrap_err();
     assert!(
-        error.to_string().contains("unsupported plotmath operator"),
+        error
+            .to_string()
+            .contains("plotmath 'frac' requires 2 arguments"),
         "{error}"
     );
     session
@@ -142,12 +140,12 @@ fn accents_operators_and_fixed_groups_draw_owned_geometry() {
 }
 
 #[test]
-fn latin_variables_default_to_italic_and_explicit_plain_wins() {
+fn latin_variables_default_to_plain_and_explicit_faces_work() {
     use r_graphics_engine::{DrawOperation, FontFace, Scene};
     let mut session = rmath::android::RSession::new();
     let mut scene = Scene::new(300, 200);
     let result = session.eval_script_with_renderplot_backend(
-        "plot.new();text(.5,.5,expression(x+plain(y)+bold(z)))",
+        "plot.new();text(.5,.5,expression(x+italic(y)+bold(z)))",
         &mut scene,
     );
     assert!(
@@ -156,8 +154,8 @@ fn latin_variables_default_to_italic_and_explicit_plain_wins() {
         result.output
     );
     for (name, face) in [
-        ("x", FontFace::Italic),
-        ("y", FontFace::Plain),
+        ("x", FontFace::Plain),
+        ("y", FontFace::Italic),
         ("z", FontFace::Bold),
     ] {
         assert!(scene.operations().iter().any(|op|matches!(op,DrawOperation::Text{text,params,..} if text==name && params.font_face==face)));
@@ -218,10 +216,16 @@ fn stretchy_groups_wide_accents_and_display_limits_emit_owned_geometry() {
         .iter()
         .filter(|op| matches!(op, DrawOperation::Path(_)))
         .count();
-    assert!(
-        paths >= 5,
-        "stretchy delimiters, fraction, accent, and operator should emit paths"
-    );
+    assert!(paths >= 3, "fraction and widehat should emit paths");
+    for glyph in ["⎛", "⎝", "⎞", "⎠"] {
+        assert!(
+            scene
+                .operations()
+                .iter()
+                .any(|op| matches!(op, DrawOperation::Text { text, .. } if text == glyph)),
+            "missing delimiter piece {glyph}"
+        );
+    }
     assert!(
         scene
             .operations()

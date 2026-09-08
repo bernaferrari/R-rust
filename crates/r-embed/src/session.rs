@@ -128,6 +128,13 @@ impl RSession {
         self.inner.set_output_limit(max_bytes);
     }
 
+    /// Limit result export before formatting or recursively copying values.
+    /// The budget includes conservative per-element overhead; oversized or
+    /// deeply nested values produce a recoverable error. None is unlimited.
+    pub fn set_result_limit(&mut self, max_bytes: Option<usize>) {
+        self.inner.set_result_limit(max_bytes);
+    }
+
     /// Create a new R session.
     ///
     /// Initializes an isolated rmath session with its own arena, protection
@@ -152,7 +159,14 @@ impl RSession {
     /// in the global environment. The result is formatted as a string
     /// using rmath's output subsystem.
     pub fn eval(&mut self, code: &str) -> Result<String, RSessionError> {
-        self.eval_script(code).map(|result| result.output)
+        if !self.active {
+            return Err(RSessionError::EvalError("Session closed".into()));
+        }
+        let result = self.inner.eval_display(code);
+        match result.typed {
+            RValue::Error(message) => Err(RSessionError::EvalError(message)),
+            _ => Ok(result.output),
+        }
     }
 
     /// Evaluate a multi-expression R script.

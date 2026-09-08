@@ -182,7 +182,7 @@ jobs:
         run: npm install --global yarn@1.22.22
 
       - name: Build and budget the production bundle
-        working-directory: rstudio-mobile
+        working-directory: apps/workbench
         run: ./gradlew --no-daemon :webApp:checkWasmProductionBundleSize
 
       - name: Install browser test dependencies

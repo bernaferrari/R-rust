@@ -5,6 +5,11 @@ The runtime still contains C-shaped fallback state while the port is being
 sessionized, so every source file with mutable global patterns is classified in
 `docs/android-platform-global-allowlist.tsv`.
 
+This check verifies that declarations are inventoried. A passing inventory does
+not approve `sessionize` or `platform-replace` entries as safe. The remaining
+condition/warning pointers, source-location state, warning-once flag and process
+environment policy are tracked in `rport-eotc`.
+
 The checked policy is:
 
 - `allow-session-dispatch`: compatibility state that exists to route legacy

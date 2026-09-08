@@ -41,7 +41,7 @@ The portable renderer now shares session-owned plot coordinates across `plot`,
 `title`, `axis`, `box`, `plot.new` and `plot.window`. It supports ordinary plot
 types, logarithmic/reversed limits, finite-data filtering, uniform `mfrow`
 panels, color names/palettes, line styles, pch 0–25 and character symbols, xpd clipping and rotated
-text. A licensed, bundled DejaVu Sans font supplies the same text and mathematical
+text. The licensed, bundled DejaVu Sans font family supplies the same text and mathematical
 glyphs on native and Wasm without filesystem access. Explicit custom font bytes
 can override the CPU renderer font.
 
@@ -76,23 +76,26 @@ constructors; `gList`, `gTree`, `grobTree` and `grid.draw`. Grob trees inherit
 `gpar` through their viewport, and viewport scopes unwind when child drawing
 fails. Text supports the shared plotmath decoder. Viewports compose translation,
 rotation, sizing and native axis scales, with push/pop stacks owned by the R
-session. Named navigation within the active viewport stack is available. Axis-aligned clipping and equal/weighted/absolute grid layouts work, including `respect=TRUE` and selective respect matrices. The owned allocator follows GNU R’s fixed-length, respected-null, then remaining-null allocation order. `unit.c` combines physical/null lengths; layouts support numeric and named justification, spans, zero/negative null lengths, and centered oversized fixed layouts. Device-space cell bounds are checked against the pinned GNU R oracle in `tests/grid-layout-oracle.R`. Line dashes and arrowheads are supported.
+session. Named navigation uses a persistent viewport tree: `upViewport` retains children, `popViewport` removes the popped subtree, and `downViewport`, `seekViewport`, and `vpPath` resolve named paths. Axis-aligned clipping and equal/weighted/absolute grid layouts work, including `respect=TRUE` and selective respect matrices. The owned allocator follows GNU R’s fixed-length, respected-null, then remaining-null allocation order. `unit.c` combines physical/null lengths; layouts support numeric and named justification, spans, zero/negative null lengths, and centered oversized fixed layouts. Device-space cell bounds are checked against the pinned GNU R oracle in `tests/grid-layout-oracle.R`. Line dashes and arrowheads are supported.
 Drawing commands feed the same owned scene used by CPU/GPU devices and
 `recordPlot`/`replayPlot`.
 
 `unit` and `convertX`, `convertY`, `convertWidth`, `convertHeight` support npc,
 snpc, native, inches, centimetres, millimetres, points, big points, picas, dida,
-cicero, scaled points, lines, char, strwidth and strheight units. String dimensions use the shared font metrics. Same-dimension unit arithmetic, numeric scaling, unary signs and sum/min/max retain owned unit coefficients and survive GC torture. Missing coefficients propagate through summaries, including `na.rm=TRUE`, as in the pinned GNU R grid oracle. Layout null units share remaining
+cicero, scaled points, lines, char, strwidth and strheight units. String dimensions use the shared font metrics. Mixed-dimension unit arithmetic is represented by deferred expression trees. Numeric scaling, unary signs and sum/min/max retain unit names and string data and are exercised under GC torture. `grobWidth` and `grobHeight` support the implemented rectangle, circle and text grobs. Missing coefficients propagate through summaries, including `na.rm=TRUE`, as in the pinned GNU R grid oracle. Layout null units share remaining
 space after absolute dimensions. Numeric regression values for physical/native
 units and weighted layouts were checked against the pinned GNU R oracle at a
 known device size; PNG tests check actual viewport placement and clipping.
 
-This is a bounded grid frontend, not the complete GNU R grid package. Unit
-expression trees for mixed dimensions, grob-dependent dimensions, persistent named viewport trees, gPath editing, rotated clipping and text overlap checking remain gaps. Arithmetic on mixed dimensions or combinations of data-dependent units reports an error.
+This is a bounded grid frontend, not the complete GNU R grid package. Arbitrary grob measurement and gPath editing remain gaps. Rotated viewport clipping follows GNU R by warning and retaining the parent clip. Text overlap checking uses rotated text bounds and the shared font metrics.
 Unsupported drawing parameters fail explicitly. Text-dependent char/line units
 currently use device font-size conventions, not GNU R font metric parity.
-Recordings preserve drawing commands; restoring a live grid viewport stack
-from a recording is not implemented. Full ggplot2 compatibility is not claimed.
+Recordings preserve drawing commands and a validated, renderer-specific snapshot
+of the portable grid viewport tree, active transforms, layouts, and graphical
+parameters. `replayPlot` restores that state and rescales device-space values
+for the target dimensions; malformed metadata is rejected before replay state
+is committed. The format is Rport-specific and does not provide GNU R recording
+interchange or full ggplot2 compatibility.
 
 ## Mathematical labels
 
@@ -109,27 +112,46 @@ text(.5, .5, expression(frac(alpha[1]^2, sqrt(beta))), cex=2)
 title(main=expression(bold(x) + italic(y)))
 ```
 
-Supported constructions include Greek names, fractions (`frac`, `over`),
-stacked expressions without a rule (`atop`), subscripts and superscripts,
-square roots, fixed delimiters (`group` and parentheses), concatenation and
-spacing (`paste`, `*`, `~`), phantom contents, arithmetic/comparison operators,
-and common function names. `sum`, `prod`, and `integral` accept a body and optional
-lower/upper limits centered in a separate operator column. Ordinary `hat`, `tilde`, `dot`, `ring`,
-`bar`, and `underline` accents are also available, along with `widehat`, `widetilde` and scalable `bgroup` parentheses, brackets, braces and bars. Omitted delimiters produce no ink. `plain`, `bold`, `italic`, and
-`bolditalic` explicitly select the shared renderer's font face; bold and italic
-are synthetic treatments of the same outlines. Latin variable names default to italic; explicit face wrappers override that convention. Greek symbols and numeric constants remain upright, as specified by [R mathematical annotation](https://stat.ethz.ch/R-manual/R-devel/library/grDevices/html/plotmath.html).
+Supported constructions include Greek names, fractions (`frac`, `over`, `atop`),
+subscripts and superscripts, square roots, groups, concatenation, spacing,
+phantoms, arithmetic/comparison operators, accents, and display operators.
+General function calls such as `f(x)` render their names and arguments; they are
+not evaluated. Malformed recognized constructions report errors. The decoder
+rejects trees deeper than 64 levels or exceeding 4096 nodes per expression.
 
-This is a bounded plotmath implementation, not an exact port of GNU R's
-font-specific mathematical typography. The layout now uses visible glyph heights for accents/scripts and draws distinct scalable delimiter curves, but its spacing, delimiter construction, integral-limit placement and synthetic font faces are not pixel-equivalent to GNU R. Not every plotmath symbol/operator is implemented.
-Unsupported operators report errors. The decoder rejects trees deeper than 64
-levels or exceeding 4096 decoded nodes per expression. Public tests verify
-Greek glyph selection, independently positioned scripts, fraction/radical
-geometry, actual rendered pixels, style propagation, title/axis integration,
-and record/replay; they do not establish pixel equivalence with GNU R devices.
+Plain, bold, oblique, and bold-oblique DejaVu Sans 2.37 faces are bundled.
+`plain`, `bold`, `italic`, and `bolditalic` select actual face-specific outlines
+and advances. Like GNU R, math starts in the plain face; variables become
+italic only when the context requests it. Numeric atoms remain plain.
+
+The layout follows GNU R's display/text/script/scriptscript size transitions,
+quad-based operator spacing, script shifts and italic corrections, fraction
+clearances, radical geometry, extensible delimiter glyph pieces, and separate
+sum versus integral limit placement. A test-only GNU R device measures the same
+bundled fonts with FreeType, using point coordinates and a 1/72-inch device
+scale. Symbol codes map to Unicode rather than unavailable private-use glyphs;
+missing glyphs fail the oracle instead of silently measuring a replacement.
+
+The checked-in oracle covers six decoded expressions—Greek alpha, a nested
+fraction, a radical, scalable parentheses, a sum and an integral—at 6, 12 and
+24 points. All 18 width/height pairs are compared through the R parser and
+owned decoder with a 0.00002-point tolerance. Regenerate and check them with
+FreeType, pkg-config, a C compiler, and the pinned GNU R executable available:
+
+```sh
+R_BIN=/path/to/pinned/R bash scripts/plotmath_font_oracle.sh
+cargo test -p rmath --features renderplot-device --lib decoded_expressions_match_gnu_r_same_font_metrics
+```
+
+This establishes same-font metric parity for that corpus, not universal GNU R
+pixel equivalence. Rasterization and host font families differ between devices;
+accent variants, the complete symbol/style catalog, and arbitrary deeply nested
+combinations still need broader oracle coverage. Rendering tests additionally
+check actual pixels, explicit faces, title fitting, axes, and record/replay.
 
 ## Web showcase
 
-The [Rove website](../website/README.md) includes twelve editable examples, real
+The [Rove website](../website/README.md) includes sixteen editable examples, real
 Wasm execution in a worker, PNG export, and a local AI demo using browser WebGPU
 models or an optional Ollama endpoint. Browser weights load on explicit request;
 generated code remains editable before execution. The page is prerendered and
@@ -137,7 +159,7 @@ hydrates into a playground. No sharing feature is enabled.
 
 Browser testing exposed and fixed two runtime issues: random-seed bootstrapping
 now uses browser entropy instead of unsupported native time/process APIs, and
-`rnorm` and `runif` use the shared portable samplers on Wasm. Seeded `runif`, recycled bounds, degenerate ranges, and RNG consumption are covered by native and actual browser tests. Wasm console capture has a combined 1 MiB stdout/stderr limit with an explicit truncation marker; this does not bound final value formatting or the evaluator’s total heap.
+`rnorm` and `runif` use the shared portable samplers on Wasm. Seeded `runif`, recycled bounds, degenerate ranges, and RNG consumption are covered by native and actual browser tests. Wasm sessions have a 64 MiB R arena budget, a 500,000-node budget, conservative 1 MiB result-export admission, and a combined 1 MiB console capture limit with an explicit truncation marker. The website runtime is linked with a 256 MiB linear-memory maximum and rejects replacement artifacts without that ceiling. Oversized result graphs are rejected before formatting or host projection; repeated references count toward the export budget. These limits cover the Wasm instance, not browser rendering, GPU resources, or local AI models. Native hosts must configure resource limits and use OS process limits when a total process-memory boundary is required.
 Explicit `set.seed` remains reproducible across fresh browser sessions.
 
 ## Evidence and limits

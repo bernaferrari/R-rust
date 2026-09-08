@@ -92,7 +92,7 @@ if command -v Rscript >/dev/null 2>&1; then RSCRIPT_STATUS="present ($(command -
 [[ "$MATRIX_COUNT" == "25" ]] || fail "synthetic matrix holds $MATRIX_COUNT entries, want 25"
 
 # Unsafe-token line count (grep, whole workspace Rust sources).
-UNSAFE_LINES="$(grep -rh --include='*.rs' 'unsafe' rmath-rs crates 2>/dev/null | wc -l | tr -d ' ')"
+UNSAFE_LINES="$(grep -rh --include='*.rs' 'unsafe' crates crates 2>/dev/null | wc -l | tr -d ' ')"
 
 # Miri / GC-torture nightly status (workflow-declared, not executed here).
 if grep -q 'cargo +nightly miri test -p rmath sexp::' .github/workflows/nightly.yml 2>/dev/null; then
@@ -145,7 +145,7 @@ report = {
     },
     "synthetic_package_feature_matrix": int(os.environ["MATRIX_COUNT"]),
     "unsafe_matching_lines": int(os.environ["UNSAFE_LINES"]),
-    "unsafe_method": "grep -rh --include='*.rs' 'unsafe' rmath-rs crates | wc -l",
+    "unsafe_method": "grep -rh --include='*.rs' 'unsafe' crates crates | wc -l",
     "miri": os.environ["MIRI_STATUS"],
     "gc_torture": os.environ["GCTORTURE_STATUS"],
 }
@@ -188,7 +188,7 @@ lines = [
     "",
     "## Unsafe Surface (grep)",
     "",
-    f"- Lines matching `unsafe` across `*.rs` under `rmath-rs/` + `crates/`: **{report['unsafe_matching_lines']}**",
+    f"- Lines matching `unsafe` across `*.rs` under `crates/` + `crates/`: **{report['unsafe_matching_lines']}**",
     f"- Method: `{report['unsafe_method']}`",
     "",
     "## Safety Gates (nightly, workflow-declared)",

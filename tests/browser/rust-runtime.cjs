@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const root = path.resolve(__dirname, '../../rstudio-mobile/webApp/build/dist/wasmJs/productionExecutable');
+const root = path.resolve(__dirname, '../../apps/workbench/webApp/build/dist/wasmJs/productionExecutable');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.css': 'text/css' };
 const server = http.createServer(async (req, res) => {
   try {

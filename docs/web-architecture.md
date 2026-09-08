@@ -1,7 +1,7 @@
 # Web architecture
 
 Android and the Kotlin/Wasm browser workbench share `RSessionBackend` and the
-platform-neutral models in `rstudio-mobile/shared`. Android uses Rust through
+platform-neutral models in `apps/workbench/shared`. Android uses Rust through
 UniFFI. The browser defaults to the Rust interpreter through `r-wasm`; add
 `?runtime=webr` to use the separate WebR runtime for broader package support.
 The runtime label identifies which engine is executing a script.
@@ -30,7 +30,7 @@ Java 17, Node 24.15 or later and Yarn classic 1.22.22. Then:
 
 ```bash
 scripts/wasm_m3_smoke.sh
-cd rstudio-mobile
+cd apps/workbench
 ./gradlew --no-daemon :webApp:checkWasmProductionBundleSize
 ./gradlew :webApp:wasmJsBrowserDevelopmentRun
 ```

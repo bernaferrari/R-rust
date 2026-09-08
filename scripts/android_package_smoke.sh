@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GRADLEW="$ROOT_DIR/rstudio-mobile/gradlew"
+GRADLEW="$ROOT_DIR/apps/workbench/gradlew"
 REQUIRE_DEVICE=0
 created_local_properties=0
 
@@ -26,7 +26,7 @@ detect_android_sdk() {
 
 cleanup() {
     if [[ "$created_local_properties" -eq 1 ]]; then
-        rm -f "$ROOT_DIR/rstudio-mobile/local.properties"
+        rm -f "$ROOT_DIR/apps/workbench/local.properties"
     fi
 }
 trap cleanup EXIT
@@ -90,14 +90,14 @@ if command -v java >/dev/null 2>&1; then
     fi
 fi
 
-cd "$ROOT_DIR/rstudio-mobile"
+cd "$ROOT_DIR/apps/workbench"
 if [[ ! -f local.properties ]]; then
     printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
     created_local_properties=1
 fi
 "$GRADLEW" --no-daemon :app:assembleDebug
 
-APK="$ROOT_DIR/rstudio-mobile/app/build/outputs/apk/debug/app-debug.apk"
+APK="$ROOT_DIR/apps/workbench/app/build/outputs/apk/debug/app-debug.apk"
 if [[ ! -f "$APK" ]]; then
     echo "APK not found after assemble: $APK" >&2
     exit 1

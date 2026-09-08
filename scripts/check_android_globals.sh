@@ -80,9 +80,9 @@ scan_kind() {
 
     {
         if [[ -n "$engine" ]]; then
-            rg "$engine" -n --no-heading --glob '*.rs' --glob '!**/support/**' "$pattern" rmath-rs/rmath/src || true
+            rg "$engine" -n --no-heading --glob '*.rs' --glob '!**/support/**' "$pattern" crates/rmath/src || true
         else
-            rg -n --no-heading --glob '*.rs' --glob '!**/support/**' "$pattern" rmath-rs/rmath/src || true
+            rg -n --no-heading --glob '*.rs' --glob '!**/support/**' "$pattern" crates/rmath/src || true
         fi
     } | awk -F: -v kind="$kind" '
         {

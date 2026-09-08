@@ -15,17 +15,12 @@ The Android-facing API is intentionally an owned-value boundary.
   bundledLibraryDir)` before evaluation when app-private library and temp paths
   are known. The configured paths drive `.libPaths()`, `find.package()`,
   `library()`, `require()`, `tempdir()`, and `tempfile()` for that session.
-- `render(code, width, height)` now drives *real* R graphics for full fidelity:
-  the code (any `plot(...)`, grid, ggplot2 if loaded, custom, etc.) is evaluated
-  on the session, a headless device is ensured, drawing happens through the
-  portable DeviceRegistry (now with basic text/label support so axes/titles
-  appear), the result is captured (native raster via GECap/dev.capture), scaled
-  to the requested size, and returned as PNG bytes. This unifies the path so
-  complex/real R graphics "just work" in the Android/UniFFI render surface.
-  The skia `HeadlessRenderer` (also exported as `HeadlessRenderer` for WASM/portable
-  use) is still used for the pure renderer and direct high-quality drawing in
-  other scenarios. Width/height >= 32 px. Legacy non-portable devices (X11 etc.)
-  are cfg-gated on android.
+- `render(code, width, height)` evaluates R against the portable graphics
+  backend and returns PNG bytes. The renderer uses Vello CPU with bundled font
+  outlines. Base plotting, grid and plotmath support is bounded by the
+  [graphics contracts](loess-and-portable-graphics.md); arbitrary ggplot2 and
+  full GNU R graphics compatibility are not established. Platform-specific
+  legacy devices are not part of this embedding path.
 - Legacy `r_embed::RSession::eval()` remains as a string-output convenience wrapper.
 - Long-running evaluations can opt into cooperative cancellation with
   `r_embed::CancellationToken`; the token is explicit and per evaluation.

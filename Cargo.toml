@@ -8,9 +8,9 @@ members = [
   "crates/r-host-cli",
   "crates/r-wasm",
   "crates/r-uniffi",
-  "rmath-rs/nmath",
-  "rmath-rs/rmath",
-  "rmath-rs/rmath-test",
+  "crates/nmath",
+  "crates/rmath",
+  "crates/rmath-test",
   "tests/script-diff",
 ]
 exclude = ["tests/differential", "vendor/wgpu"]

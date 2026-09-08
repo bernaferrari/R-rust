@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# libc ratchet: the engine (rmath-rs/rmath/src) is on a one-way street to
+# libc ratchet: the engine (crates/rmath/src) is on a one-way street to
 # zero libc. Each category has a committed budget in scripts/libc-budget.txt;
 # this gate FAILS if any live count exceeds its budget. Shrinking a count?
 # Also shrink the budget in the same commit — budgets only go down.
@@ -8,7 +8,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT_DIR/rmath-rs/rmath/src"
+SRC="$ROOT_DIR/crates/rmath/src"
 BUDGET="$ROOT_DIR/scripts/libc-budget.txt"
 
 count() {

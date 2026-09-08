@@ -1,9 +1,8 @@
 //! Shared font bytes and layout metrics, independent of a rendering backend.
 //!
-//! Bold uses an additional outline stroke of 3% of the font size; italic uses
-//! a 12 degree shear. Both backends apply these synthetic faces to the same
-//! outlines, including custom fonts, so layout does not depend on installed
-//! bold/italic variants. Complex-script shaping is not provided here.
+//! The bundled DejaVu family supplies real plain, bold, oblique, and
+//! bold-oblique faces. Custom one-face books use that face for every logical
+//! style. Complex-script shaping is not provided here.
 use crate::{FontFace, TextMetrics};
 use std::sync::{Arc, OnceLock};
 
@@ -24,6 +23,8 @@ pub struct GlyphInkMetrics {
 pub struct FontBook {
     bytes: Arc<Vec<u8>>,
     metrics: Arc<fontdue::Font>,
+    face_bytes: [Arc<Vec<u8>>; 4],
+    face_metrics: [Arc<fontdue::Font>; 4],
 }
 impl std::fmt::Debug for FontBook {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -34,9 +35,13 @@ impl FontBook {
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
         let metrics = fontdue::Font::from_bytes(bytes.clone(), fontdue::FontSettings::default())
             .map_err(|error| error.to_string())?;
+        let bytes = Arc::new(bytes);
+        let metrics = Arc::new(metrics);
         Ok(Self {
-            bytes: Arc::new(bytes),
-            metrics: Arc::new(metrics),
+            bytes: bytes.clone(),
+            metrics: metrics.clone(),
+            face_bytes: std::array::from_fn(|_| bytes.clone()),
+            face_metrics: std::array::from_fn(|_| metrics.clone()),
         })
     }
     pub fn bytes(&self) -> Arc<Vec<u8>> {
@@ -44,6 +49,25 @@ impl FontBook {
     }
     pub fn glyph_index(&self, ch: char) -> u16 {
         self.metrics.lookup_glyph_index(ch)
+    }
+    fn face_index(face: FontFace) -> usize {
+        match face {
+            FontFace::Plain => 0,
+            FontFace::Bold => 1,
+            FontFace::Italic => 2,
+            FontFace::BoldItalic => 3,
+        }
+    }
+    pub fn bytes_for_face(&self, face: FontFace) -> Arc<Vec<u8>> {
+        self.face_bytes[Self::face_index(face)].clone()
+    }
+    pub fn glyph_index_for_face(&self, ch: char, face: FontFace) -> u16 {
+        self.face_metrics[Self::face_index(face)].lookup_glyph_index(ch)
+    }
+    pub fn advance_width_for_face(&self, ch: char, size: f32, face: FontFace) -> f32 {
+        self.face_metrics[Self::face_index(face)]
+            .metrics(ch, normalized_size(size))
+            .advance_width
     }
     pub fn advance_width(&self, ch: char, size: f32) -> f32 {
         self.metrics.metrics(ch, size).advance_width
@@ -62,29 +86,32 @@ impl FontBook {
     pub fn measure_math_text(&self, text: &str, size: f32, face: FontFace) -> TextMetrics {
         let size = normalized_size(size);
         let mut out = TextMetrics::default();
-        let weight = if face.is_bold() {
-            face.bold_stroke_width(size) as f32 / 2.
-        } else {
-            0.
-        };
+        let font = &self.face_metrics[Self::face_index(face)];
         for ch in text.chars().filter(|c| !c.is_control()) {
-            let ink = self.glyph_ink_metrics(ch, size);
+            let m = font.metrics(ch, size);
+            let ink = GlyphInkMetrics {
+                x_min: m.bounds.xmin,
+                y_min: m.bounds.ymin,
+                width: m.bounds.width,
+                height: m.bounds.height,
+                advance_width: m.advance_width,
+            };
             out.width += ink.advance_width;
             if ink.height > 0. {
-                out.ascent = out.ascent.max(ink.y_min + ink.height + weight);
-                out.descent = out.descent.max(-ink.y_min + weight);
+                out.ascent = out.ascent.max(ink.y_min + ink.height);
+                out.descent = out.descent.max(-ink.y_min);
             }
         }
         out
     }
     pub fn measure_text(&self, text: &str, size: f32, _face: FontFace) -> TextMetrics {
         let size = normalized_size(size);
-        let line = self.metrics.horizontal_line_metrics(size);
+        let line = self.face_metrics[Self::face_index(_face)].horizontal_line_metrics(size);
         TextMetrics {
             width: text
                 .chars()
                 .filter(|c| !c.is_control())
-                .map(|c| self.advance_width(c, size))
+                .map(|c| self.advance_width_for_face(c, size, _face))
                 .sum(),
             ascent: line.map_or(size * 0.8, |m| m.ascent),
             descent: line.map_or(size * 0.2, |m| -m.descent),
@@ -110,8 +137,24 @@ pub fn normalized_size(size: f32) -> f32 {
 pub fn default_font_book() -> &'static FontBook {
     static FONT: OnceLock<FontBook> = OnceLock::new();
     FONT.get_or_init(|| {
-        FontBook::from_bytes(include_bytes!("../assets/DejaVuSans.ttf").to_vec())
-            .expect("bundled DejaVu Sans is a valid font")
+        let bytes = [
+            include_bytes!("../assets/DejaVuSans.ttf").to_vec(),
+            include_bytes!("../assets/DejaVuSans-Bold.ttf").to_vec(),
+            include_bytes!("../assets/DejaVuSans-Oblique.ttf").to_vec(),
+            include_bytes!("../assets/DejaVuSans-BoldOblique.ttf").to_vec(),
+        ];
+        let parse = |bytes: &Vec<u8>| {
+            Arc::new(
+                fontdue::Font::from_bytes(bytes.clone(), fontdue::FontSettings::default())
+                    .expect("bundled DejaVu Sans is a valid font"),
+            )
+        };
+        FontBook {
+            bytes: Arc::new(bytes[0].clone()),
+            metrics: parse(&bytes[0]),
+            face_bytes: std::array::from_fn(|i| Arc::new(bytes[i].clone())),
+            face_metrics: std::array::from_fn(|i| parse(&bytes[i])),
+        }
     })
 }
 

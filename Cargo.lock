@@ -1748,6 +1748,8 @@ dependencies = [
  "num",
  "r-graphics-engine",
  "rmath-nmath",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

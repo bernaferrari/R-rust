@@ -2,7 +2,23 @@
 
 ## 0.1.0 - Unreleased
 
-This is the first Android-focused Rust R runtime slice.
+This is an experimental, embeddable Rust R runtime. Entries are curated;
+compatibility claims are defined by the maintained docs and executable checks.
+
+### Browser, graphics and repository organization (2026-09-08)
+
+- Added the Rove website with sixteen runnable examples, focused editor pages,
+  light/dark themes, and browser-model or Ollama code drafting.
+- Bounded the browser R arena and result export, with a compiled 256 MiB Wasm
+  linear-memory maximum and recovery tests.
+- Added persistent grid viewport navigation, mixed-unit expressions and live
+  grid snapshot restoration; validated plotmath metrics against same-font GNU R
+  fixtures at three sizes and bundled real bold/oblique font faces.
+- Grouped the workbench under `apps/workbench` and the minimal Android
+  integration under `examples/android-compose`. Archived historical audits
+  and plans, and kept generated output under `target/`.
+- Standardized the GPL license text for GitHub discovery and included the
+  license texts in release bundles.
 
 ### Numerical fidelity fixes (2026-08-29)
 

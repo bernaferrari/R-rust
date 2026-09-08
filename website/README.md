@@ -82,3 +82,23 @@ Use `404.html` as the host's custom **404 response**, rather than rewriting ever
 unknown URL to the homepage with status 200. If hosted below a subdirectory,
 include the sitemap location in the domain's root robots.txt as appropriate.
 The additional pages are useful destinations, not a promise of search ranking.
+
+## Runtime resource contract
+
+The shipped worker uses a **64 MiB R arena budget**, a **500,000-node budget**,
+a **1 MiB result export admission budget**, and a **256 MiB hard maximum on Wasm
+linear memory**. Captured stdout/stderr share a 1 MiB cap. The result admission
+budget conservatively counts values, repeated references, strings and metadata
+before formatting or host copying; it is not a promise to export every object
+whose eventual text fits in 1 MiB. Excessive nesting is rejected as well.
+
+Ordinary budget errors are reported without replacing the value with a successful
+NULL. A fatal Wasm trap closes and resets the worker. The next request creates a
+fresh session. Browser/JavaScript overhead, GPU resources and local AI weights
+are outside the Wasm memory ceiling. Native embedding defaults remain unlimited;
+hosts can set arena and result limits and use OS process controls when they need
+a process-wide memory boundary.
+
+`prepare-runtime.mjs` validates the memory declaration in both newly supplied and
+already prepared Wasm artifacts, so an older unlimited package cannot silently
+replace the bounded runtime. Rebuild old packages with `pnpm build:runtime`.

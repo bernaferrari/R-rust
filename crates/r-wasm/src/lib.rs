@@ -73,6 +73,15 @@ impl WasmRSession {
         }
         let mut inner = r_embed::RSession::new().map_err(|e| JsError::new(&e.to_string()))?;
         inner.set_output_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
+        inner.set_result_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
+        inner
+            .set_resource_limits(r_embed::RResourceLimits {
+                max_eval_depth: 1000,
+                max_execution_time_ms: 15_000,
+                max_alloc_bytes: 64 * 1024 * 1024,
+                max_arena_nodes: 500_000,
+            })
+            .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(WasmRSession {
             inner: std::panic::AssertUnwindSafe(Some(inner)),
         })
@@ -436,6 +445,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn wasm_resource_budgets_reject_and_recover() {
+        let mut session = WasmRSession::new().unwrap();
+        let error = session
+            .eval_checked("numeric(100000000)")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("alloc") || error.contains("budget") || error.contains("memory"),
+            "{error}"
+        );
+        assert_eq!(session.eval_checked("1 + 1").unwrap(), "[1] 2");
+        session.eval_checked("x <- rep('abcdef', 100000)").unwrap();
+        assert!(
+            session
+                .eval_checked("x")
+                .unwrap_err()
+                .to_string()
+                .contains("export budget")
+        );
+        assert_eq!(session.eval_checked("length(x)").unwrap(), "[1] 100000");
+    }
+
     /// The native oracle the wasm boundary must satisfy (docs/web-architecture.md).
     #[test]
     fn wasm_m3_oracle_shape() {
@@ -464,7 +496,7 @@ mod tests {
     fn bounded_console_output_keeps_session_usable() {
         let mut session = WasmRSession::new().expect("session initializes");
         let output = session
-            .eval_checked("cat(paste(rep('x', 2 * 1024 * 1024), collapse = ''))")
+            .eval_checked(&format!("for (i in 1:2048) cat('{}')", "x".repeat(1024)))
             .expect("large output remains a successful evaluation");
         assert!(output.contains("[captured console output truncated by runtime limit]"));
         assert!(output.len() <= WASM_OUTPUT_LIMIT_BYTES + 64);

@@ -37,6 +37,18 @@ fn units_and_layout_match_pinned_r_oracle_values() {
     session.render_with_dimensions("library(grid); grid.newpage(); a<-convertWidth(unit(c(1,2.54,25.4,72.27,72),c('inches','cm','mm','points','bigpts')),'inches',TRUE); pushViewport(viewport(width=.5,height=.5,xscale=c(10,30))); b<-c(convertX(unit(15,'native'),'inches',TRUE),convertWidth(unit(5,'native'),'inches',TRUE),convertY(unit(.5,'npc'),'inches',TRUE)); popViewport(); pushViewport(viewport(layout=grid.layout(2,2,widths=unit(c(1,3),'null'),heights=unit(c(1,1),'null')))); pushViewport(viewport(layout.pos.row=1,layout.pos.col=2)); c1<-c(convertWidth(unit(1,'npc'),'inches',TRUE),convertHeight(unit(1,'npc'),'inches',TRUE)); popViewport(2)",384,192).unwrap();
     assert_eq!(session.eval("all(abs(a-rep(1,5))<1e-12) && all(abs(b-c(.5,.5,.5))<1e-12) && all(abs(c1-c(3,1))<1e-12)").unwrap(),"[1] TRUE");
 }
+
+#[test]
+fn summaries_preserve_every_dimension_in_mixed_unit_vectors() {
+    let mut session = RSession::new().unwrap();
+    session.render_with_dimensions("library(grid); grid.newpage(); u <- unit.c(unit(1,'inches'), unit(1,'cm')); measurements <- c(convertWidth(sum(u),'inches',TRUE), convertWidth(min(u),'inches',TRUE), convertWidth(max(u),'inches',TRUE))", 384, 192).unwrap();
+    assert_eq!(
+        session
+            .eval("all(abs(measurements-c(1+1/2.54,1/2.54,1))<1e-12)")
+            .unwrap(),
+        "[1] TRUE"
+    );
+}
 #[test]
 fn layout_positions_draw_in_top_right_cell() {
     let mut session = RSession::new().unwrap();
@@ -213,12 +225,12 @@ fn unit_arithmetic_summaries_and_named_navigation_have_bounded_contracts() {
     assert!(
         session
             .eval("library(grid); unit(1,'npc') + unit(1,'inches')")
-            .is_err()
+            .is_ok()
     );
     assert!(
         session
             .eval("library(grid); min(unit(1,'npc'),unit(1,'inches'))")
-            .is_err()
+            .is_ok()
     );
     assert_eq!(
         session
@@ -247,6 +259,47 @@ fn unit_arithmetic_matches_gnu_r_contract_and_survives_gc() {
     );
     assert_eq!(session.eval("library(grid); a<-unit(c(1,NA_real_,3),'npc'); is.na(sum(a,na.rm=TRUE)$value) && is.na(sum(a,na.rm=FALSE)$value)").unwrap(), "[1] TRUE");
     assert_eq!(session.eval("library(grid); a<-unit(c(1,2),'npc'); b<-unit(c(3,4),'npc'); identical(sum(a,b)$value,10) && identical(min(a,b)$value,1) && identical(max(a,b)$value,4)").unwrap(), "[1] TRUE");
+}
+
+#[test]
+fn mixed_and_string_units_defer_to_conversion() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("library(grid); x<-unit(c(1,2),c('npc','cm'))+unit(3,'npc'); length(x$value)==2L && x$units[1]=='npc' && x$units[2]=='sum'").unwrap(), "[1] TRUE");
+    assert_eq!(session.eval("library(grid); x<-unit(1,'strwidth',data='abc')+unit(2,'strwidth',data='de'); is.unit(x) && x$units=='sum'").unwrap(), "[1] TRUE");
+    assert!(session.render_with_dimensions("library(grid); grid.newpage(); x<-unit(1,'strwidth',data='abc')+unit(2,'strwidth',data='de'); convertWidth(x,'inches',TRUE)", 240, 160).is_ok());
+    assert!(
+        session
+            .eval("library(grid); x<-unit(c(1,2),c('npc','cm')); sum(x)")
+            .is_ok()
+    );
+    assert_eq!(session.eval("library(grid); gctorture(TRUE); on.exit(gctorture(FALSE)); x<-unit(c(1,2),c('npc','cm'))+unit(c(3,4),c('npc','inches')); z<-unit.c(unit(c(1,2),c('npc','cm')),unit(c(3,4),c('inches','null'))); y<-unit(1,'strwidth',data='abc')+unit(2,'strwidth',data='de'); is.unit(x) && is.unit(y) && length(z$value)==4L && identical(z$units,c('npc','cm','inches','null'))").unwrap(), "[1] TRUE");
+}
+
+#[test]
+fn grob_units_measure_builtin_primitives_with_gpar_snapshot() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("library(grid); r<-rectGrob(width=unit(.25,'npc'),height=unit(.5,'npc')); is.unit(grobWidth(r)) && is.unit(grobHeight(r))").unwrap(), "[1] TRUE");
+    assert!(session.render_with_dimensions("library(grid); grid.newpage(); r<-rectGrob(width=unit(.25,'npc'),height=unit(.5,'npc')); convertWidth(grobWidth(r),'inches',TRUE)", 400, 200).is_ok());
+    assert!(session.render_with_dimensions("library(grid); grid.newpage(); t<-textGrob('abc',gp=gpar(fontsize=20)); convertWidth(grobWidth(t),'inches',TRUE)", 400, 200).is_ok());
+    assert!(
+        session
+            .render_with_dimensions(
+                "library(grid); grid.newpage(); convertWidth(unit(1,'grobwidth'),'inches',TRUE)",
+                400,
+                200
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn mixed_fixed_null_respected_layout_matches_gnu_oracle() {
+    let mut session = RSession::new().unwrap();
+    session.render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(layout=grid.layout(1,3,widths=unit.c(unit(1,'inches'),unit(c(1,1),'null')),respect=TRUE))); for(i in 1:3){pushViewport(viewport(layout.pos.col=i)); assign(paste0('w',i),convertWidth(unit(1,'npc'),'inches',TRUE),.GlobalEnv); popViewport()}", 384, 192).unwrap();
+    assert_eq!(
+        session.eval("identical(c(w1,w2,w3),c(1,1.5,1.5))").unwrap(),
+        "[1] TRUE"
+    );
 }
 
 #[test]

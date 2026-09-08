@@ -1,0 +1,1 @@
+function(name, strict=TRUE, recording=TRUE) { if(!isTRUE(recording)) stop('unrecorded grid operations are not supported'); if(length(name)!=1L || !is.character(name)) stop('invalid viewport name'); .rport_grid('down', list(name=name, strict=isTRUE(strict))); invisible(NULL) }

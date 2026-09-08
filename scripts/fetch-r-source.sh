@@ -8,7 +8,7 @@
 #
 # The checkout is pinned to an exact commit so every machine diffs against
 # the same upstream tree. The pin is the base of the last documented upstream
-# sync (plans/upstream-sync-2026-08/); the parity oracle (a locally built
+# sync (docs/archive/plans/upstream-sync-2026-08/); the parity oracle (a locally built
 # trunk R) sits exactly 273 commits later in the same history:
 #
 #   vendored pin : d4cc5d9e196a144bbb087a798bb945b37121383b

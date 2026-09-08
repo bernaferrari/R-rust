@@ -1,0 +1,7 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+app/generated/
+app/src/main/jniLibs/
+local.properties

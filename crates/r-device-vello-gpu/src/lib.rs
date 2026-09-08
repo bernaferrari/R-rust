@@ -777,44 +777,23 @@ impl DrawTarget for Encoder {
             .filter(|c| !c.is_control())
             .map(|c| {
                 let glyph = vello::Glyph {
-                    id: self.font.glyph_index(c).into(),
+                    id: self.font.glyph_index_for_face(c, params.font_face).into(),
                     x,
                     y: 0.,
                 };
-                x += self.font.advance_width(c, size);
+                x += self.font.advance_width_for_face(c, size, params.font_face);
                 glyph
             })
             .collect();
-        let data = FontData::new(Blob::new(self.font.bytes()), 0);
+        let data = FontData::new(Blob::new(self.font.bytes_for_face(params.font_face)), 0);
         let transform = Affine::translate((pos.x as f64, pos.y as f64))
             * Affine::rotate(-(params.text_angle as f64).to_radians());
-        let shear = Some(Affine::new([
-            1.,
-            0.,
-            params.font_face.italic_shear(),
-            1.,
-            0.,
-            0.,
-        ]));
         self.scene
             .draw_glyphs(&data)
             .font_size(size)
             .transform(transform)
-            .glyph_transform(shear)
             .brush(color(params.text_color))
             .draw(Fill::NonZero, glyphs.iter().copied());
-        if params.font_face.is_bold() {
-            self.scene
-                .draw_glyphs(&data)
-                .font_size(size)
-                .transform(transform)
-                .glyph_transform(shear)
-                .brush(color(params.text_color))
-                .draw(
-                    &kurbo::Stroke::new(params.font_face.bold_stroke_width(size)),
-                    glyphs.iter().copied(),
-                );
-        }
     }
 }
 

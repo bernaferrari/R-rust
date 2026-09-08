@@ -256,7 +256,10 @@ impl RenderPlot for VelloRenderer {
             return;
         }
         let chars: Vec<_> = text.chars().filter(|c| !c.is_control()).collect();
-        let width: f32 = chars.iter().map(|c| font.advance_width(*c, size)).sum();
+        let width: f32 = chars
+            .iter()
+            .map(|c| font.advance_width_for_face(*c, size, params.font_face))
+            .sum();
         let mut x = match params.text_anchor {
             TextAnchor::Start => 0.,
             TextAnchor::Middle => -width / 2.,
@@ -266,11 +269,11 @@ impl RenderPlot for VelloRenderer {
             .into_iter()
             .map(|c| {
                 let g = Glyph {
-                    id: u32::from(font.glyph_index(c)),
+                    id: u32::from(font.glyph_index_for_face(c, params.font_face)),
                     x,
                     y: 0.,
                 };
-                x += font.advance_width(c, size);
+                x += font.advance_width_for_face(c, size, params.font_face);
                 g
             })
             .collect();
@@ -279,22 +282,11 @@ impl RenderPlot for VelloRenderer {
             Affine::translate((f64::from(pos.x), f64::from(pos.y)))
                 * Affine::rotate(-f64::from(params.text_angle).to_radians()),
         );
-        let data = FontData::new(Blob::new(font.bytes()), 0);
-        let shear = Affine::new([1., 0., params.font_face.italic_shear(), 1., 0., 0.]);
+        let data = FontData::new(Blob::new(font.bytes_for_face(params.font_face)), 0);
         self.context
             .glyph_run(&mut self.resources, &data)
             .font_size(size)
-            .glyph_transform(shear)
             .fill_glyphs(glyphs.iter().copied());
-        if params.font_face.is_bold() {
-            self.context
-                .set_stroke(kurbo::Stroke::new(params.font_face.bold_stroke_width(size)));
-            self.context
-                .glyph_run(&mut self.resources, &data)
-                .font_size(size)
-                .glyph_transform(shear)
-                .stroke_glyphs(glyphs.iter().copied());
-        }
         self.context.reset_transform();
     }
     fn finish(self) -> Vec<u8> {
