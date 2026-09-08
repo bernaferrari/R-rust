@@ -8,8 +8,8 @@ const contracts = [
   ],
   [
     "Statistics",
-    "Seeded random numbers, supported distributions, linear algebra with faer, and LOESS fitting and prediction.",
-    "FFT is still unavailable in the browser build. Coverage is tested operation by operation; passing examples does not establish every numerical or statistical contract.",
+    "Seeded random distributions, FFT and column-wise mvfft, linear algebra with faer, and LOESS fitting and prediction.",
+    "Coverage is tested operation by operation; passing examples does not establish every numerical or statistical contract.",
   ],
   [
     "Graphics",

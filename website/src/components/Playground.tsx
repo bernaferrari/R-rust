@@ -473,7 +473,7 @@ export function Playground({
       <details id="compatibility" className="compat-note">
         <summary>What can I run?</summary>
         <p>
-          Run R functions, vectors and data frames; seeded random numbers,
+          Run R functions, vectors and data frames; seeded random numbers, FFT,
           linear algebra and LOESS; base plots, grid layouts and grob trees; and
           mathematical labels with fractions, Greek letters and radicals.
         </p>

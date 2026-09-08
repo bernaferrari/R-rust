@@ -106,3 +106,19 @@ replace the bounded runtime. Rebuild old packages with `pnpm build:runtime`.
 ### Interactive R console
 
 `/console/` is a chat-style REPL using Shadcn Message, Bubble, and Message Scroller. One isolated Wasm worker keeps variables between commands until navigation, reset, or a fatal runtime error. Enter runs; Shift+Enter inserts a line. Text and plots are returned automatically from a single evaluation. Reuse a command or download its plot. Each plot command opens a fresh device; put plot overlays in the same command. Stop resets the worker and its variables. The latest 500 commands are retained in browser memory and displayed with TanStack Virtual, with plot URLs released when discarded. Three starter conversations run real commands and leave a suggested follow-up with their variables available.
+
+### Portable statistics checks
+
+The browser dispatches `fft`, `mvfft`, and the statistical random generators to
+the same portable Rust handlers used by native sessions. The former Wasm-only
+unavailable stubs have been removed. `tests/wasm-stats.spec.ts` executes the real
+worker against 29 pinned-GNU-R numerical fixtures, including forward/inverse FFT,
+array and column transforms, 17 distribution samplers, parameter recycling and
+RNG stream continuation. The tolerance accounts for R's printed numeric precision;
+this is numerical fixture coverage, not universal floating-point parity.
+
+Regenerate the fixture using the pinned oracle (the script checks its revision):
+
+```sh
+python3 website/scripts/generate-stats-oracle.py /path/to/pinned/bin/Rscript
+```
