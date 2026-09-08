@@ -12,6 +12,7 @@ export type RuntimeResponse =
       ok: true
       output: string
       png?: Uint8Array
+      error?: string
       durationMs: number
     }
   | { id: number; ok: false; error: string; fatal?: boolean }

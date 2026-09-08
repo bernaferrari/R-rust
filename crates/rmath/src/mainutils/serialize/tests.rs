@@ -276,8 +276,8 @@ fn test_write_hash_table() {
 fn test_read_ref_table() {
     let _session = crate::sexp::session::RSession::new();
     let mut rt = ReadRefTable::new();
-    let fake1 = 0x1000 as *mut std::os::raw::c_void as SEXP;
-    let fake2 = 0x2000 as *mut std::os::raw::c_void as SEXP;
+    let fake1 = unsafe { Rf_install(c"read_ref_one".as_ptr()) };
+    let fake2 = unsafe { Rf_install(c"read_ref_two".as_ptr()) };
 
     rt.add(fake1);
     rt.add(fake2);
@@ -285,6 +285,7 @@ fn test_read_ref_table() {
     assert_eq!(must(rt.get(2)), fake2);
     assert!(rt.get(3).is_err());
     assert!(rt.get(0).is_err());
+    assert!(rt.get(i32::MIN).is_err());
 }
 
 #[test]
@@ -357,6 +358,45 @@ fn test_writebc_readbc_round_trip() {
         assert_eq!(LENGTH(got), 1);
         assert_eq!(*INTEGER(got), 77);
     }
+}
+
+fn gnu_bc_item_bytes(code: &[i32]) -> Vec<u8> {
+    let mut writer = BinaryWriter::new();
+    writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
+    // WriteBC emits the repetition table length before WriteBC1.  A stream
+    // without repeated language constants still has the one-slot table.
+    writer.write_i32(1);
+    writer.write_i32(SEXPTYPE::INTSXP.as_c_int());
+    writer.write_i32(code.len() as i32);
+    for &word in code {
+        writer.write_i32(word);
+    }
+    writer.into_vec()
+}
+
+#[test]
+fn test_gnu_bytecode_stream_is_validated_before_adapter_rejection() {
+    let _session = crate::sexp::session::RSession::new();
+
+    let bytes = gnu_bc_item_bytes(&[
+        crate::eval::bytecode::GNU_BC_MAX_VERSION,
+        1, // RETURN_OP, zero operands
+    ]);
+    let mut reader = BinaryReader::new(&bytes);
+    let mut refs = ReadRefTable::new();
+    let err = unsafe { ReadItemInternal(&mut reader, &mut refs) }
+        .expect_err("GNU BCODESXP must be rejected until its adapter exists");
+    assert!(err.contains("execution adapter is unavailable"));
+
+    let malformed = gnu_bc_item_bytes(&[
+        crate::eval::bytecode::GNU_BC_MAX_VERSION,
+        2, // GOTO_OP requires one operand
+    ]);
+    let mut reader = BinaryReader::new(&malformed);
+    let mut refs = ReadRefTable::new();
+    let err = unsafe { ReadItemInternal(&mut reader, &mut refs) }
+        .expect_err("truncated GNU opcode must fail deterministically");
+    assert!(err.contains("truncated GNU R bytecode opcode 2"));
 }
 
 /// Open a fresh read/write temp file (replaces libc tmpfile in tests):

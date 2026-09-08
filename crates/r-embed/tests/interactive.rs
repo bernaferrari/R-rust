@@ -40,6 +40,31 @@ fn interactive_evaluation_omits_png_without_drawing_and_recovers_after_error() {
 }
 
 #[test]
+fn interactive_evaluation_error_keeps_partial_output_and_scene() {
+    let mut session = RSession::new().unwrap();
+    let error =
+        session.eval_interactive("cat('partial\\n'); plot(1:2, 1:2); stop('boom')", 320, 240);
+    let (message, output, png) = match error {
+        Err(r_embed::RSessionError::EvalErrorWithOutput {
+            message,
+            output,
+            png,
+        }) => (message, output, png),
+        other => panic!("expected partial interactive error, got {other:?}"),
+    };
+    assert!(message.contains("boom"));
+    assert!(output.contains("partial"), "{output}");
+    assert!(png.is_some(), "drawing before the error should be retained");
+
+    let recovered = session.eval_interactive("lines(1:2, 2:1)", 320, 240);
+    assert!(
+        recovered.is_ok(),
+        "session should recover after partial error"
+    );
+    assert!(recovered.unwrap().png.is_some());
+}
+
+#[test]
 fn interactive_graphics_scene_persists_across_calls() {
     let mut session = RSession::new().unwrap();
     let first = session

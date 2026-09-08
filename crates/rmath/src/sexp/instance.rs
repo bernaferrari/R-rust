@@ -193,8 +193,9 @@ impl Default for ProfilingState {
 pub struct SessionCapabilities {
     pub allow_system_commands: bool,
     pub allow_pipe_commands: bool,
-    /// Permit Sys.setenv/Sys.unsetenv to mutate the host process environment.
-    /// This is opt-in because the environment is process-global, not session-local.
+    /// Permit host-process mutations such as Sys.setenv/Sys.unsetenv,
+    /// setwd, and Sys.setlocale. These are opt-in because process state is
+    /// global rather than session-local.
     pub allow_environment_mutation: bool,
 }
 

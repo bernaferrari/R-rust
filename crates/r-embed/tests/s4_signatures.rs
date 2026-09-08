@@ -40,3 +40,30 @@ fn generic_setup_and_dispatch_survive_forced_collection() {
     let output = session.eval("gctorture(TRUE); setGeneric('safeGeneric',function(x) standardGeneric('safeGeneric')); setMethod('safeGeneric','numeric',function(x) x+1); answer <- safeGeneric(4); gctorture(FALSE); cat(answer)").unwrap();
     assert_eq!(output.trim(), "5");
 }
+
+#[test]
+fn wildcard_and_partial_s4_signatures_dispatch_with_exact_precedence() {
+    let mut session = RSession::new().unwrap();
+    let result = session.eval("setGeneric('wild',function(x,y) standardGeneric('wild')); setMethod('wild',c('ANY','ANY'),function(x,y) 'fallback'); setMethod('wild','numeric',function(x,y) 'numeric-any'); setMethod('wild',c('numeric','character'),function(x,y) 'exact'); cat(wild(1,'a'),wild(1,TRUE),wild(NULL,1))").unwrap();
+    assert_eq!(result.trim(), "exact numeric-any fallback");
+}
+
+#[test]
+fn s4_null_and_missing_have_distinct_method_signatures() {
+    let mut session = RSession::new().unwrap();
+    let result = session.eval("setGeneric('kind',function(x) standardGeneric('kind')); setMethod('kind','NULL',function(x) 'null'); setMethod('kind','missing',function(x) 'absent'); setMethod('kind','ANY',function(x) 'other'); cat(kind(NULL),kind(),kind(TRUE))").unwrap();
+    assert_eq!(result.trim(), "null absent other");
+}
+
+#[test]
+fn wildcard_dispatch_survives_gc_and_rejects_oversized_signatures() {
+    let mut session = RSession::new().unwrap();
+    session.eval("setGeneric('wildgc',function(x,y) standardGeneric('wildgc')); setMethod('wildgc',c('ANY','ANY'),function(x,y) 'fallback')").unwrap();
+    assert!(
+        session
+            .eval("setMethod('wildgc',c('numeric','numeric','numeric'),function(x,y) 'wrong')")
+            .is_err()
+    );
+    let result = session.eval("gctorture(TRUE); setMethod('wildgc',c(y='character'),function(x,y) 'character'); answer <- wildgc(NULL,'text'); gctorture(FALSE); cat(answer)").unwrap();
+    assert_eq!(result.trim(), "character");
+}

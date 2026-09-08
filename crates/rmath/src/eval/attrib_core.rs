@@ -243,6 +243,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
             // Return the default class based on type
             let t = TYPEOF(x);
             let name = match t {
+                0 => "NULL",
                 10 => "logical",
                 13 => "integer",
                 14 => "numeric",

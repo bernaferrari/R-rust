@@ -46,6 +46,18 @@ test("console mobile layout and multiline input", async ({ page }) => {
   ).toBeTruthy()
 })
 
+test("interactive errors keep partial console output and plots", async ({
+  page,
+}) => {
+  await page.goto("/console/")
+  const command = page.getByRole("textbox", { name: "R command", exact: true })
+  await command.fill("cat('partial\\n'); plot(1:2); stop('boom')")
+  await page.getByRole("button", { name: "Run command", exact: true }).click()
+  await expect(page.getByRole("log")).toContainText("partial")
+  await expect(page.getByRole("log")).toContainText("boom")
+  await expect(page.getByRole("img", { name: "Plot from command 1" })).toBeVisible()
+})
+
 test("stop resets a busy session and remains usable", async ({ page }) => {
   await page.goto("/console/")
   const command = page.getByRole("textbox", { name: "R command", exact: true })

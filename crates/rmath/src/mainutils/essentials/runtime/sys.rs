@@ -874,6 +874,13 @@ pub unsafe fn do_Sys_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 /// R's `Sys.setlocale(category, locale)` — set locale (simplified).
 pub unsafe fn do_Sys_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
+            (*inst).eval_state.capabilities.allow_environment_mutation
+        });
+        if !allowed {
+            return Rf_mkString(c"".as_ptr());
+        }
+
         let category = locale_category_from_arg(CAR(args));
         let locale_arg = CAR(CDR(args));
         let locale = locale_string_arg(locale_arg);

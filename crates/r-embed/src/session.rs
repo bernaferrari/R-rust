@@ -564,13 +564,31 @@ impl RSession {
             .inner
             .eval_script_with_renderplot_backend(code, &mut target);
         let budget_exceeded = target.budget_exceeded;
-        if let RValue::Error(message) = &result.typed {
-            return Err(RSessionError::EvalError(message.clone()));
-        }
         if budget_exceeded {
+            drop(target);
             return Err(RSessionError::RenderError(
                 "interactive graphics scene exceeds the 16 MiB memory budget".into(),
             ));
+        }
+        if let RValue::Error(message) = &result.typed {
+            let drew = target.drew;
+            let output = result.output.clone();
+            drop(target);
+            let png = if drew {
+                scene.replay_scaled(&mut renderer);
+                Some(
+                    renderer
+                        .try_finish()
+                        .map_err(|e| RSessionError::RenderError(e.to_string()))?,
+                )
+            } else {
+                None
+            };
+            return Err(RSessionError::EvalErrorWithOutput {
+                message: message.clone(),
+                output,
+                png,
+            });
         }
         let drew = target.drew;
         drop(target);

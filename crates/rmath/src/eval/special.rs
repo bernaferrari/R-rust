@@ -14,7 +14,6 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::protect;
-use crate::sexp::symbol::R_BraceSymbol;
 use std::os::raw::c_int;
 
 use super::eval::Rf_eval;
@@ -652,22 +651,14 @@ pub unsafe fn do_next() -> SEXP {
 unsafe fn do_function(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let formals = CAR(args);
-        let body = CDR(args);
-
-        // Create a CLOSXP
+        // GNU function calls carry formals, one body expression, and optional
+        // source-reference metadata. The latter is not executable body code.
+        let body = CAR(CDR(args));
         let clos = crate::sexp::memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
+        let _clos = crate::sexp::protect::protect(clos);
         if !clos.is_null() {
             (*clos).data.closxp.formals = formals;
-            (*clos).data.closxp.body = if CDR(body) == R_NilValue() {
-                CAR(body)
-            } else {
-                // Multiple expressions — wrap in { }
-                let begin = Rf_cons(R_BraceSymbol(), body);
-                if !begin.is_null() {
-                    (*begin).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-                }
-                begin
-            };
+            (*clos).data.closxp.body = body;
             (*clos).data.closxp.env = rho;
         }
 

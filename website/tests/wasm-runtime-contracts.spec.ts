@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test"
+import { readFileSync } from "node:fs"
 
 test("interactive plots retain layers across commands in the actual Wasm worker", async ({ page }) => {
   await page.goto("/console/")
@@ -78,4 +79,22 @@ test("nested grob edits preserve the original in Wasm", async ({ page }) => {
     }
   })
   expect(output).toContain("TRUE")
+})
+
+
+test("GNU compiled closures and ANY signatures work in the browser runtime", async ({ page }) => {
+  const fixture = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-compiled-captured.rds", import.meta.url))
+  const code = `g <- unserialize(as.raw(c(${Array.from(fixture).join(",")}))); cat(g(),g(4))`
+  await page.goto("/console/")
+  const result = await page.evaluate(async (code) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const compiled = await runtime.run(code, "console")
+      const methods = await runtime.run("setGeneric('wild',function(x,y) standardGeneric('wild')); setMethod('wild',c('ANY','ANY'),function(x,y) 'fallback'); setMethod('wild','numeric',function(x,y) 'number'); cat(wild(2,NULL),wild(NULL,TRUE))", "console")
+      return { compiled: compiled.output, methods: methods.output }
+    } finally { runtime.dispose() }
+  }, code)
+  expect(result.compiled).toBe("9 22")
+  expect(result.methods).toBe("number fallback")
 })

@@ -128,6 +128,7 @@ export function RConsole() {
               ? {
                   ...entry,
                   output: result.output,
+                  error: result.error,
                   image,
                   ms: result.durationMs,
                 }
@@ -355,7 +356,11 @@ export function RConsole() {
                                       </a>
                                     )}
                                     {entry.error ? (
-                                      <pre>{entry.error}</pre>
+                                      <pre>
+                                        {entry.output
+                                          ? `${entry.output.trim()}\n${entry.error}`
+                                          : entry.error}
+                                      </pre>
                                     ) : entry.ms !== undefined ? (
                                       <pre>
                                         {(entry.output ?? "").trim() ||

@@ -36,11 +36,13 @@ self.onmessage = ({ data }: MessageEvent<RuntimeRequest>) => {
       const runtime = await getSession()
       let output = ""
       let png: Uint8Array | undefined
+      let evaluationError: string | undefined
       if (request.mode === "interactive") {
         const result = runtime.eval_interactive(request.code, WIDTH, HEIGHT)
         try {
           output = result.output()
           if (result.has_png()) png = result.png()
+          if (result.has_error()) evaluationError = result.error()
         } finally {
           result.free()
         }
@@ -58,6 +60,7 @@ self.onmessage = ({ data }: MessageEvent<RuntimeRequest>) => {
           ok: true,
           output,
           ...(png ? { png } : {}),
+          ...(evaluationError ? { error: evaluationError } : {}),
           durationMs: performance.now() - started,
         },
         png ? [png.buffer] : undefined

@@ -265,6 +265,7 @@ pub struct BinaryReader<'a> {
     pub ascii_body: bool,
     pub xdr_body: bool,
     item_depth: usize,
+    bc_source_depth: usize,
 }
 
 impl<'a> BinaryReader<'a> {
@@ -275,6 +276,7 @@ impl<'a> BinaryReader<'a> {
             ascii_body: false,
             xdr_body: false,
             item_depth: 0,
+            bc_source_depth: 0,
         }
     }
 
@@ -509,21 +511,27 @@ impl WriteHashTable {
 /// A growable array for tracking deserialized reference objects.
 pub struct ReadRefTable {
     pub entries: Vec<SEXP>,
+    roots: Vec<crate::sexp::protect::ProtectGuard<'static>>,
 }
 
 impl ReadRefTable {
     pub fn new() -> Self {
         ReadRefTable {
             entries: Vec::with_capacity(INITIAL_REFREAD_TABLE_SIZE as usize),
+            roots: Vec::new(),
         }
     }
 
     pub fn add(&mut self, value: SEXP) {
+        self.roots.push(protect(value));
         self.entries.push(value);
     }
 
     pub fn get(&self, index: i32) -> Result<SEXP, String> {
-        let i = (index - 1) as usize;
+        let i = index
+            .checked_sub(1)
+            .and_then(|i| usize::try_from(i).ok())
+            .ok_or_else(|| "reference index out of range".to_string())?;
         if i >= self.entries.len() {
             Err("reference index out of range".into())
         } else {
@@ -697,6 +705,30 @@ pub unsafe fn WriteItemInternal(
 
         let stype = TYPEOF(s);
 
+        if stype == SEXPTYPE::ENVSXP {
+            let mut binding = FRAME(s);
+            while !binding.is_null() && binding != R_NilValue() {
+                let symbol = TAG(binding);
+                if crate::sexp::envir::binding_is_active_raw(s, symbol)
+                    || crate::sexp::envir::binding_is_locked_raw(s, symbol)
+                {
+                    error(
+                        "serialization of active or individually locked bindings is not supported",
+                    );
+                }
+                binding = CDR(binding);
+            }
+            ref_table.add(s);
+            writer.write_i32(SEXPTYPE::ENVSXP.as_c_int());
+            writer.write_i32(i32::from(crate::sexp::envir::environment_is_locked_raw(s)));
+            WriteItemInternal(ENCLOS(s), ref_table, writer);
+            WriteItemInternal(FRAME(s), ref_table, writer);
+            // Rust bindings are canonical in FRAME; do not serialize the host hash cache.
+            WriteItemInternal(R_NilValue(), ref_table, writer);
+            WriteItemInternal(ATTRIB(s), ref_table, writer);
+            return;
+        }
+
         // Handle SYMSXP
         if stype == SEXPTYPE::SYMSXP {
             ref_table.add(s);
@@ -752,6 +784,16 @@ pub unsafe fn WriteItemInternal(
             WriteItemInternal(FORMALS(s), ref_table, writer);
             WriteItemInternal(BODY(s), ref_table, writer);
             return;
+        }
+
+        // GNU R stores BCODESXP as a CAR/CDR/TAG node and serializes its
+        // versioned threaded instruction vector with WriteBC1.  This runtime
+        // currently has a private vector-backed opcode dialect; emitting it
+        // as an ordinary vector would create a stream that GNU R could parse
+        // but dispatch incorrectly.  Reject it at the boundary until the
+        // adapter is complete.
+        if stype == SEXPTYPE::BCODESXP {
+            error("cannot serialize private bytecode dialect as GNU R BCODESXP");
         }
 
         // Handle CHARSXP
@@ -848,7 +890,119 @@ pub unsafe fn ReadItemInternal(
         return Err("read error: serialized object nesting exceeds 128 levels".into());
     }
     reader.item_depth += 1;
-    let result = unsafe { read_item_body(reader, ref_table) };
+    let result = unsafe { read_item_body(reader, ref_table, false) };
+    reader.item_depth -= 1;
+    result
+}
+
+// Read GNU compiler constants completely, retaining only the source expression
+// for an interpreted closure body. Never feed GNU opcodes to the private VM.
+unsafe fn read_bc_source(
+    reader: &mut BinaryReader,
+    refs: &mut ReadRefTable,
+    reps: SEXP,
+) -> Result<SEXP, String> {
+    if reader.item_depth >= 128 {
+        return Err("read error: bytecode nesting exceeds 128 levels".into());
+    }
+    reader.item_depth += 1;
+    reader.bc_source_depth += 1;
+    let result = (|| unsafe {
+        let code = ReadItemInternal(reader, refs)?;
+        let _code = protect(code);
+        if TYPEOF(code) != SEXPTYPE::INTSXP {
+            return Err("GNU bytecode instructions must be integers".into());
+        }
+        let n = XLENGTH(code) as usize;
+        let words = if n == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(INTEGER(code), n)
+        };
+        crate::eval::bytecode::validate_gnu_bytecode_stream(words)?;
+        let count = reader.read_vector_length(4)?;
+        if count == 0 {
+            return Err("GNU compiled closure has no source expression".into());
+        }
+        let constants = Rf_allocVector(SEXPTYPE::VECSXP, count);
+        let _constants = protect(constants);
+        for i in 0..count {
+            let kind = reader.read_i32()?;
+            let value = if kind == SEXPTYPE::BCODESXP.as_c_int() {
+                read_bc_source(reader, refs, reps)?
+            } else {
+                read_bc_language(kind, reader, refs, reps)?
+            };
+            SET_VECTOR_ELT(constants, i as R_xlen_t, value);
+        }
+        Ok(VECTOR_ELT(constants, 0))
+    })();
+    reader.item_depth -= 1;
+    reader.bc_source_depth -= 1;
+    result
+}
+
+unsafe fn read_bc_language(
+    kind: i32,
+    reader: &mut BinaryReader,
+    refs: &mut ReadRefTable,
+    reps: SEXP,
+) -> Result<SEXP, String> {
+    if reader.item_depth >= 128 {
+        return Err("read error: bytecode language nesting exceeds 128 levels".into());
+    }
+    reader.item_depth += 1;
+    let result = (|| unsafe {
+        if kind == 243 {
+            // BCREPREF
+            let index = reader.read_i32()?;
+            if index < 0 || index as R_xlen_t >= XLENGTH(reps) {
+                return Err("invalid bytecode repetition reference".into());
+            }
+            let value = VECTOR_ELT(reps, index as R_xlen_t);
+            if value == R_NilValue() {
+                return Err("undefined bytecode repetition reference".into());
+            }
+            return Ok(value);
+        }
+        if ![244, 6, 2, 240, 239].contains(&kind) {
+            return ReadItemInternal(reader, refs);
+        }
+        let (position, kind) = if kind == 244 {
+            // BCREPDEF
+            let pos = reader.read_i32()?;
+            if pos < 0 || pos as R_xlen_t >= XLENGTH(reps) {
+                return Err("invalid bytecode repetition definition".into());
+            }
+            if VECTOR_ELT(reps, pos as R_xlen_t) != R_NilValue() {
+                return Err("duplicate bytecode repetition definition".into());
+            }
+            (Some(pos), reader.read_i32()?)
+        } else {
+            (None, kind)
+        };
+        let (node_type, attributes) = match kind {
+            6 => (SEXPTYPE::LANGSXP, false),
+            2 => (SEXPTYPE::LISTSXP, false),
+            240 => (SEXPTYPE::LANGSXP, true),
+            239 => (SEXPTYPE::LISTSXP, true),
+            _ => return Err("invalid bytecode language node type".into()),
+        };
+        let node = allocSExp(node_type);
+        let _node = protect(node);
+        if let Some(pos) = position {
+            SET_VECTOR_ELT(reps, pos as R_xlen_t, node);
+        }
+        if attributes {
+            SET_ATTRIB(node, ReadItemInternal(reader, refs)?);
+        }
+        SETTAG(node, ReadItemInternal(reader, refs)?);
+        let car_kind = reader.read_i32()?;
+        SETCAR(node, read_bc_language(car_kind, reader, refs, reps)?);
+        let cdr_kind = reader.read_i32()?;
+        SETCDR(node, read_bc_language(cdr_kind, reader, refs, reps)?);
+        Ok(node)
+    })();
     reader.item_depth -= 1;
     result
 }
@@ -856,6 +1010,7 @@ pub unsafe fn ReadItemInternal(
 unsafe fn read_item_body(
     reader: &mut BinaryReader,
     ref_table: &mut ReadRefTable,
+    closure_body: bool,
 ) -> Result<SEXP, String> {
     unsafe {
         let flags = reader.read_i32()?;
@@ -888,6 +1043,73 @@ unsafe fn read_item_body(
         } else if stype == REFSXP {
             let idx = InRefIndex(flags, reader)?;
             ref_table.get(idx)
+        } else if stype == SEXPTYPE::ENVSXP {
+            let locked = reader.read_i32()?;
+            if locked != 0 && locked != 1 {
+                return Err("invalid environment lock flag".into());
+            }
+            let env =
+                crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
+            let _env = protect(env);
+            ref_table.add(env); // Cyclic environments must resolve before their bindings are read.
+            let parent = ReadItemInternal(reader, ref_table)?;
+            if parent != R_NilValue() && TYPEOF(parent) != SEXPTYPE::ENVSXP {
+                return Err("invalid environment enclosure".into());
+            }
+            SET_ENCLOS(
+                env,
+                if parent == R_NilValue() {
+                    R_BaseEnv()
+                } else {
+                    parent
+                },
+            );
+            let frame = ReadItemInternal(reader, ref_table)?;
+            let _frame = protect(frame);
+            let hash = ReadItemInternal(reader, ref_table)?;
+            let _hash = protect(hash);
+            let attributes = ReadItemInternal(reader, ref_table)?;
+            SET_ATTRIB(env, attributes);
+            let mut chains = vec![frame];
+            if hash != R_NilValue() {
+                if TYPEOF(hash) != SEXPTYPE::VECSXP {
+                    return Err("invalid environment hash table".into());
+                }
+                for i in 0..XLENGTH(hash) {
+                    chains.push(VECTOR_ELT(hash, i));
+                }
+            }
+            let mut seen = std::collections::HashSet::new();
+            for mut cell in chains {
+                while !cell.is_null() && cell != R_NilValue() {
+                    if TYPEOF(cell) != SEXPTYPE::LISTSXP || !seen.insert(cell as usize) {
+                        return Err("invalid or cyclic environment binding list".into());
+                    }
+                    // GNU Defn.h stores active/locked binding flags in gp15/gp14.
+                    // Reject rather than silently turn these into ordinary bindings.
+                    if LEVELS(cell) & ((1 << 15) | (1 << 14)) != 0 {
+                        return Err("restoration of active or individually locked bindings is not supported".into());
+                    }
+                    let symbol = TAG(cell);
+                    if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        return Err("invalid environment binding name".into());
+                    }
+                    crate::sexp::envir::defineVar(symbol, CAR(cell), env);
+                    cell = CDR(cell);
+                }
+            }
+            if attributes != R_NilValue()
+                && crate::eval::attrib_core::getAttrib(
+                    env,
+                    crate::eval::attrib_core::R_ClassSymbol(),
+                ) != R_NilValue()
+            {
+                SET_OBJECT(env, 1);
+            }
+            if locked != 0 {
+                crate::sexp::envir::lock_environment_raw(env);
+            }
+            Ok(env)
         } else if stype == SEXPTYPE::SYMSXP {
             let pname = ReadItemInternal(reader, ref_table)?;
             let sym = Rf_install(CHAR(pname));
@@ -924,8 +1146,13 @@ unsafe fn read_item_body(
             SET_CLOENV(s, cloenv);
             let formals = ReadItemInternal(reader, ref_table)?;
             SET_FORMALS(s, formals);
-            let body = ReadItemInternal(reader, ref_table)?;
-            SET_BODY(s, body);
+            if reader.item_depth >= 128 {
+                return Err("read error: serialized object nesting exceeds 128 levels".into());
+            }
+            reader.item_depth += 1;
+            let body = read_item_body(reader, ref_table, true);
+            reader.item_depth -= 1;
+            SET_BODY(s, body?);
             SETLEVELS(s, levs);
             if isobj != 0 {
                 SET_OBJECT(s, 1);
@@ -1047,6 +1274,35 @@ unsafe fn read_item_body(
                 SET_ATTRIB(s, attr);
             }
             Ok(s)
+        } else if stype == SEXPTYPE::BCODESXP && (closure_body || reader.bc_source_depth > 0) {
+            let repeated = reader.read_vector_length(4)?;
+            let reps = Rf_allocVector(SEXPTYPE::VECSXP, repeated);
+            let _reps = protect(reps);
+            for i in 0..repeated {
+                SET_VECTOR_ELT(reps, i as R_xlen_t, R_NilValue());
+            }
+            read_bc_source(reader, ref_table, reps)
+        } else if stype == SEXPTYPE::BCODESXP {
+            let repeated = reader.read_i32()?;
+            if repeated < 1 {
+                return Err("GNU R BCODESXP has an invalid repetition table length".into());
+            }
+            let code = ReadItemInternal(reader, ref_table)?;
+            if TYPEOF(code) != SEXPTYPE::INTSXP {
+                return Err("GNU R BCODESXP instruction stream is not an integer vector".into());
+            }
+            let code_len = XLENGTH(code) as usize;
+            let code_ptr = INTEGER(code);
+            if code_len > 0 && code_ptr.is_null() {
+                return Err("GNU R BCODESXP instruction stream has a null data pointer".into());
+            }
+            let code_slice = if code_len == 0 {
+                &[][..]
+            } else {
+                std::slice::from_raw_parts(code_ptr, code_len)
+            };
+            crate::eval::bytecode::validate_gnu_bytecode_stream(code_slice)?;
+            Err("GNU R BCODESXP is well-framed but execution adapter is unavailable".into())
         } else {
             Err(format!("ReadItem: unknown type {}", stype))
         }
@@ -1059,4 +1315,31 @@ unsafe fn read_item_body(
 
 pub unsafe fn defaultSerializeVersion() -> c_int {
     R_DEFAULT_SERIALIZE_VERSION
+}
+
+#[cfg(test)]
+mod bytecode_reader_tests {
+    use super::*;
+
+    #[test]
+    fn invalid_repetition_references_and_definitions_are_rejected() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let reps = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            let _reps = protect(reps);
+            SET_VECTOR_ELT(reps, 0, R_NilValue());
+            for index in [-1_i32, 0, 1, i32::MAX] {
+                let bytes = index.to_ne_bytes();
+                let mut reader = BinaryReader::new(&bytes);
+                let mut refs = ReadRefTable::new();
+                assert!(read_bc_language(243, &mut reader, &mut refs, reps).is_err());
+                assert_eq!(reader.item_depth, 0);
+            }
+            let mut bytes = 0_i32.to_ne_bytes().to_vec();
+            bytes.extend_from_slice(&13_i32.to_ne_bytes()); // integer is not a language definition
+            let mut reader = BinaryReader::new(&bytes);
+            assert!(read_bc_language(244, &mut reader, &mut ReadRefTable::new(), reps).is_err());
+            assert_eq!(reader.item_depth, 0);
+        }
+    }
 }

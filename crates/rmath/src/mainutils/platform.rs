@@ -1630,6 +1630,15 @@ pub unsafe fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             String::new()
         };
 
+        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
+            (*inst).eval_state.capabilities.allow_environment_mutation
+        });
+        if !allowed {
+            // Queries use Sys.getlocale; every Sys.setlocale call mutates
+            // or selects process-global locale state.
+            return Rf_mkString(b"\0".as_ptr() as *const _);
+        }
+
         // Attempt to set locale via libc
         #[cfg(not(target_arch = "wasm32"))]
         let result = libc::setlocale(
@@ -1752,9 +1761,59 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 mod tests {
     use std::ffi::CStr;
 
+    use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
 
     use super::*;
+
+    #[test]
+    fn setlocale_denies_mutation_by_default() {
+        let session = crate::sexp::session::RSession::new();
+        let mutation = session.with_active(|| unsafe {
+            let category = crate::sexp::constructors::Rf_ScalarInteger(1);
+            let _category = crate::sexp::protect::protect(category);
+            let denied_locale = crate::sexp::constructors::Rf_mkString(c"C".as_ptr());
+            let _locale = crate::sexp::protect::protect(denied_locale);
+            let tail = crate::sexp::constructors::Rf_cons(
+                denied_locale,
+                crate::sexp::globals::R_NilValue(),
+            );
+            let _tail = crate::sexp::protect::protect(tail);
+            let denied_args = crate::sexp::constructors::Rf_cons(category, tail);
+            let _args = crate::sexp::protect::protect(denied_args);
+            do_setlocale(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                denied_args,
+                std::ptr::null_mut(),
+            )
+        });
+        unsafe {
+            assert_eq!(crate::sexp::accessors::TYPEOF(mutation), SEXPTYPE::STRSXP);
+            assert_eq!(crate::sexp::accessors::XLENGTH(mutation), 1);
+            assert_eq!(
+                CStr::from_ptr(crate::sexp::accessors::CHAR(
+                    crate::sexp::accessors::STRING_ELT(mutation, 0),
+                ))
+                .to_bytes(),
+                b""
+            );
+        }
+
+        let mut public_session = crate::sexp::session::RSession::new();
+        let (mutation, output, _) = public_session
+            .eval_script_with_output_capture("cat(typeof(Sys.setlocale(\"LC_ALL\", \"C\")))");
+        mutation.expect("public Sys.setlocale should return a failure string");
+        assert_eq!(output.stdout, "character");
+        let (empty, empty_output, _) = public_session
+            .eval_script_with_output_capture("cat(nchar(Sys.setlocale(\"LC_ALL\", \"\")))");
+        empty.expect("empty locale also requests a mutation");
+        assert_eq!(empty_output.stdout, "0");
+        let (query, query_output, _) = public_session
+            .eval_script_with_output_capture("cat(nchar(Sys.getlocale(\"LC_ALL\")) > 0)");
+        query.expect("public Sys.getlocale should remain available");
+        assert_eq!(query_output.stdout, "TRUE");
+    }
 
     #[test]
     fn platform_scratch_buffers_are_session_local() {

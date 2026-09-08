@@ -62,6 +62,7 @@ pub struct WasmRSession {
 pub struct WasmInteractiveOutput {
     output: String,
     png: Option<Vec<u8>>,
+    error: Option<String>,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -75,6 +76,12 @@ impl WasmInteractiveOutput {
     /// Return PNG bytes, or an empty byte array when this evaluation drew no plot.
     pub fn png(&self) -> Vec<u8> {
         self.png.clone().unwrap_or_default()
+    }
+    pub fn has_error(&self) -> bool {
+        self.error.is_some()
+    }
+    pub fn error(&self) -> String {
+        self.error.clone().unwrap_or_default()
     }
 }
 
@@ -165,15 +172,25 @@ impl WasmRSession {
         width: u32,
         height: u32,
     ) -> Result<WasmInteractiveOutput, JsError> {
-        self.with_session(|session| {
-            session
-                .eval_interactive(code, width, height)
-                .map(|result| WasmInteractiveOutput {
+        self.with_session(
+            |session| match session.eval_interactive(code, width, height) {
+                Ok(result) => Ok(WasmInteractiveOutput {
                     output: result.output,
                     png: result.png,
-                })
-                .map_err(|e| JsError::new(&e.to_string()))
-        })
+                    error: None,
+                }),
+                Err(r_embed::RSessionError::EvalErrorWithOutput {
+                    message,
+                    output,
+                    png,
+                }) => Ok(WasmInteractiveOutput {
+                    output,
+                    png,
+                    error: Some(message),
+                }),
+                Err(error) => Err(JsError::new(&error.to_string())),
+            },
+        )
     }
 
     /// Capture an owned graphics scene synchronously before any GPU work.

@@ -3,6 +3,7 @@ import type { RuntimeMode, RuntimeResponse, RuntimeStatus } from "./protocol"
 export type RuntimeResult = {
   output: string
   png?: Uint8Array
+  error?: string
   durationMs: number
 }
 
@@ -99,6 +100,7 @@ export class RRuntime {
     request.resolve({
       output: data.output,
       png: data.png,
+      error: data.error,
       durationMs: data.durationMs,
     })
     this.onStatus?.("ready")

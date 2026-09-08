@@ -300,6 +300,50 @@ pub unsafe fn R_standardGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     }
 }
 
+// Match exact/ANY table signatures without generating 2^arity combinations.
+// Class inheritance remains the responsibility of the full methods selector.
+unsafe fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
+    unsafe {
+        let mut candidates: Vec<(Vec<bool>, SEXP)> = Vec::new();
+        let mut binding = FRAME(table);
+        while !binding.is_null() && binding != R_NilValue() {
+            let symbol = TAG(binding);
+            if !symbol.is_null() && TYPEOF(symbol) == SEXPTYPE::SYMSXP {
+                let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+                let signature: Vec<&str> = label.split('#').collect();
+                if signature.len() == classes.len()
+                    && signature
+                        .iter()
+                        .zip(classes)
+                        .all(|(want, got)| *want == "ANY" || *want == got)
+                {
+                    let specificity = signature.iter().map(|want| *want != "ANY").collect();
+                    let method = CAR(binding);
+                    if method != R_UnboundValue() && method != R_NilValue() {
+                        candidates.push((specificity, method));
+                    }
+                }
+            }
+            binding = CDR(binding);
+        }
+        let best: Vec<_> = candidates
+            .iter()
+            .filter(|(rank, _)| {
+                !candidates.iter().any(|(other, _)| {
+                    other != rank && other.iter().zip(rank).all(|(a, b)| *a || !*b)
+                })
+            })
+            .collect();
+        match best.as_slice() {
+            [] => R_UnboundValue(),
+            [(_, method)] => *method,
+            _ => r_error(
+                "ambiguous ANY method signatures require the full inherited-method selector",
+            ),
+        }
+    }
+}
+
 /// R_dispatchGeneric - table-based method dispatch.
 pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     unsafe {
@@ -359,7 +403,7 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
                 classes.push("missing".to_string());
             } else if TYPEOF(arg) == SEXPTYPE::PROMSXP {
                 let forced = crate::sexp::envir::forcePromise(arg);
-                if forced.is_null() || forced == R_NilValue() {
+                if forced.is_null() {
                     return R_NilValue();
                 }
                 let Some(class) = first_data_class_name(forced) else {
@@ -375,7 +419,12 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
         }
         let label = CString::new(classes.join("#")).unwrap_or_default();
         let method_sym = crate::sexp::symbol::Rf_install(label.as_ptr());
-        let method = crate::sexp::envir::R_findVarInFrame(mtable, method_sym);
+        let exact = crate::sexp::envir::R_findVarInFrame(mtable, method_sym);
+        let method = if exact == R_UnboundValue() || exact == R_NilValue() {
+            wildcard_table_method(mtable, &classes)
+        } else {
+            exact
+        };
         if method == R_UnboundValue() || method == R_NilValue() {
             r_error(format!(
                 "no direct or inherited method for function '{}' for this call",

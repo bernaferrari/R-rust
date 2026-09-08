@@ -362,6 +362,14 @@ pub unsafe fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
 /// R's `setwd(dir)` — set working directory.
 pub unsafe fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let allowed = crate::sexp::instance::with_required_current_instance(|inst| {
+            (*inst).eval_state.capabilities.allow_environment_mutation
+        });
+        if !allowed {
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "changing the working directory is disabled for this session".into(),
+            });
+        }
         let dir_arg = CAR(args);
         if dir_arg.is_null() {
             return R_NilValue();
@@ -379,6 +387,32 @@ pub unsafe fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod host_state_tests {
+    #[test]
+    fn setwd_is_denied_without_host_environment_capability() {
+        let session = crate::sexp::session::RSession::new();
+        let denied = session.with_active(|| unsafe {
+            let path = crate::sexp::constructors::Rf_mkString(c".".as_ptr());
+            let _path = crate::sexp::protect::protect(path);
+            let args = crate::sexp::constructors::Rf_cons(path, crate::sexp::globals::R_NilValue());
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                super::do_setwd(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    args,
+                    std::ptr::null_mut(),
+                )
+            }))
+        });
+        let payload = denied.expect_err("setwd should be denied");
+        let error = payload
+            .downcast_ref::<crate::sexp::context::RError>()
+            .expect("denial should use the RError payload");
+        assert!(error.message.contains("working directory"));
     }
 }
 
@@ -2136,8 +2170,23 @@ pub unsafe fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 }
                 ordered.join("#")
             } else {
-                (0..n)
-                    .map(|i| elt_to_string(signature_arg, i))
+                let sigargs =
+                    crate::sexp::envir::R_findVarInFrame(f_env, Rf_install(c".SigArgs".as_ptr()));
+                if sigargs == R_UnboundValue() || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+                    base_error("generic has no valid signature arguments");
+                }
+                let arity = XLENGTH(sigargs);
+                if n > arity {
+                    base_error("method signature is longer than the generic signature");
+                }
+                (0..arity)
+                    .map(|i| {
+                        if i < n {
+                            elt_to_string(signature_arg, i)
+                        } else {
+                            "ANY".to_string()
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join("#")
             }

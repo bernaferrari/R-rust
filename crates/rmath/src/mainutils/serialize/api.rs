@@ -521,7 +521,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
         let mut ref_table = ReadRefTable::new();
         match ReadItemInternal(&mut reader, &mut ref_table) {
             Ok(s) => s,
-            Err(_) => error("read error"),
+            Err(message) => error(&message),
         }
     }
 }

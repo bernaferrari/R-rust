@@ -87,6 +87,65 @@ pub const BCneg: c_int = 41;
 pub const BCmod: c_int = 42;
 pub const BCpow: c_int = 43;
 
+/// GNU R's serialized bytecode ABI (the `eval.c` enum and `R_bcVersion`).
+///
+/// The local evaluator has a deliberately private opcode dialect.  GNU R
+/// bytecode must therefore be validated at the serialization boundary before
+/// it can reach that evaluator.  These widths are copied from the pinned
+/// `r-source/src/main/eval.c` `OP(name, argc)` table; the opcode numbers are
+/// the enum order, 0 through 128.
+pub const GNU_BC_MIN_VERSION: c_int = 12;
+pub const GNU_BC_MAX_VERSION: c_int = 12;
+pub const GNU_BC_OPCODE_COUNT: usize = 129;
+
+const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
+    0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
+    0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2,
+    0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 0, 1,
+    1, 1, 2, 1, 0, 0, 4, 0, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 1, 1, 1, 2, 0, 0, 1, 0,
+    0,
+];
+
+/// Validate the integer instruction vector stored by GNU R's BCODESXP
+/// serializer.  The first integer is the bytecode ABI version; each
+/// subsequent opcode consumes the exact operand count from GNU R's table.
+/// This validates framing and version/opcode identity, while operand meaning
+/// (for example, whether a constant index is in range) remains a later
+/// compiler/interpreter concern.
+pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
+    let Some(&version) = code.first() else {
+        return Err("GNU R bytecode stream is empty".to_string());
+    };
+    if !(GNU_BC_MIN_VERSION..=GNU_BC_MAX_VERSION).contains(&version) {
+        return Err(format!(
+            "unsupported GNU R bytecode version {version} (supported {GNU_BC_MIN_VERSION}..={GNU_BC_MAX_VERSION})"
+        ));
+    }
+
+    let mut pc = 1usize;
+    while pc < code.len() {
+        let opcode_position = pc;
+        let opcode = code[pc];
+        pc += 1;
+        let Some(&width) = GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
+            return Err(format!(
+                "unknown GNU R bytecode opcode {opcode} at stream offset {opcode_position}"
+            ));
+        };
+        let width = width as usize;
+        let end = pc
+            .checked_add(width)
+            .ok_or_else(|| format!("GNU R bytecode operand range overflows at opcode {opcode}"))?;
+        if end > code.len() {
+            return Err(format!(
+                "truncated GNU R bytecode opcode {opcode} at stream offset {opcode_position}: expected {width} operand(s)"
+            ));
+        }
+        pc = end;
+    }
+    Ok(())
+}
+
 fn read_operand(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<c_int, String> {
     let value = bytecode
         .get(*pc)
@@ -861,5 +920,57 @@ mod tests {
         let err = eval_bytecode_loop(&[BCjump, 99], &mut pc, &mut stack, None, nil_sexp())
             .expect_err("invalid jump should return an error");
         assert!(err.contains("jump bytecode jump target 99 is outside"));
+    }
+
+    #[test]
+    fn validates_every_pinned_gnu_opcode_width() {
+        // Independent copy of the pinned `OP(name, argc)` table in
+        // r-source/src/main/eval.c.  Keeping this fixture separate catches a
+        // drift in the implementation table instead of inferring expected
+        // widths by calling the validator under test.
+        let expected: Vec<u8> = include_str!("../../tests/fixtures/gnu-bytecode-opcodes.tsv")
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .map(|line| line.split('\t').nth(2).unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(expected.len(), GNU_BC_OPCODE_COUNT);
+        assert_eq!(GNU_BC_OPERAND_WIDTHS.as_slice(), expected.as_slice());
+
+        for (opcode, &width) in expected.iter().enumerate() {
+            // Zero is a valid framing value for every operand slot; semantic
+            // indices are intentionally outside this wire-level validator's
+            // scope.
+            let mut stream = vec![GNU_BC_MAX_VERSION, opcode as c_int];
+            stream.extend(std::iter::repeat_n(0, usize::from(width)));
+            assert!(
+                validate_gnu_bytecode_stream(&stream).is_ok(),
+                "GNU opcode {opcode} should accept its pinned operand width"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_gnu_bytecode_version_opcode_and_truncation() {
+        assert!(validate_gnu_bytecode_stream(&[]).is_err());
+        assert!(validate_gnu_bytecode_stream(&[GNU_BC_MIN_VERSION - 1]).is_err());
+        assert!(validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION + 1]).is_err());
+        assert!(
+            validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION, GNU_BC_OPCODE_COUNT as c_int])
+                .is_err()
+        );
+        // GNU GOTO (opcode 2) has one operand.
+        let err = validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION, 2]).unwrap_err();
+        assert!(err.contains("truncated GNU R bytecode opcode 2"));
+    }
+
+    #[test]
+    fn accepts_pinned_compiler_fixture_stream() {
+        // `compiler:::disassemble(compiler::cmpfun(function(x)
+        // if (x) x + 1 else 0))` under the pinned GNU R oracle reports this
+        // exact integer stream (version 12, GETVAR, BRIFNOT, LDCONST, ADD,
+        // RETURN).  The opcode names and operands are therefore sourced from
+        // an actual compiler-produced fixture, not the private dialect.
+        let fixture = [12, 20, 1, 3, 0, 13, 20, 1, 16, 2, 44, 3, 1, 16, 4, 17];
+        assert!(validate_gnu_bytecode_stream(&fixture).is_ok());
     }
 }

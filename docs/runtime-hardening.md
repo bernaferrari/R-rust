@@ -196,3 +196,53 @@ they do not establish full language, package, graphics or I/O compatibility.
 Compiler/bytecode and lazy-load formats, broader methods behavior, advanced grid
 and device semantics, font/device typography, host-state isolation and total
 resource accounting remain substantial work alongside package support.
+
+## Compiled-closure import and dispatch follow-up
+
+GNU R bytecode version 12 instruction framing is checked against all 129 pinned
+opcode widths. Imported compiled closure bodies are decoded with bounded
+language/repetition records and evaluated from their retained source expression.
+This supports interpreted execution of the tested compiler-produced closures,
+including defaults, branches, captured environments, nested functions and loops.
+It does **not** implement the GNU bytecode VM or preserve compiled-body identity.
+If bytecode is independently modified to disagree with its retained source, this
+fallback follows the source and cannot reproduce the modified bytecode behavior.
+Standalone GNU bytecode objects and serialization of the private VM dialect
+still fail explicitly. Compiler package APIs, older bytecode versions, namespace
+restoration, package lazy-load databases and full wire-format parity remain open.
+The reproducible fixtures and their GNU R generator live in
+`crates/r-embed/tests/fixtures/generate-compiled-closures.R`.
+
+Environment serialization now preserves binding frames, shared/cyclic references,
+parents and environment locks; imported GNU hash buckets are restored as bindings.
+Read-reference entries stay rooted until decoding finishes, including compiled
+constants that are discarded after source extraction. This does not implement
+active-binding or per-binding lock serialization contracts.
+
+S4 table dispatch now supports unambiguous exact/ANY combinations, omitted
+trailing signature arguments, and distinct NULL/missing dispatch. Oversized
+signatures fail before registration. Ambiguous wildcard combinations still fail
+explicitly; complete class-distance selection and its diagnostics remain open.
+
+Default host capabilities now also deny process working-directory and locale
+mutations. An empty string passed to `Sys.setlocale` is a mutation request, not a
+query, and is denied too; `Sys.getlocale` remains available. This is containment,
+not a complete virtual filesystem, locale or environment snapshot per session.
+
+Interactive errors now carry partial console output and an optional plot through
+r-embed, Wasm and the browser console. Retained-scene budget errors take priority
+and do not return a truncated plot as a successful drawing. Wasm callers should
+inspect `WasmInteractiveOutput.has_error()` as well as output and PNG; evaluation
+errors with partial output now return this result instead of throwing away the
+output in a JavaScript exception.
+
+Validation for this batch: `cargo test --workspace` passed 2,823 tests with five
+ignored tests; the console and Wasm contract browser suites passed all 13 tests.
+Website lint, production/prerender build and the Wasm rebuild passed. These are
+regression results, not evidence of complete GNU R compatibility or a security
+certification.
+
+The additional malformed-bytecode Miri run was stopped during runtime
+initialization without a test result. It reported an exposed-provenance warning
+in protection-guard owner reconstruction (`sexp/protect.rs:474`), tracked as
+`rport-q1in`; this run is not counted as a Miri pass.

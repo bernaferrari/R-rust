@@ -37,6 +37,12 @@ pub enum RSessionError {
     InitFailed(String),
     #[error("Evaluation error: {0}")]
     EvalError(String),
+    #[error("Evaluation error: {message}")]
+    EvalErrorWithOutput {
+        message: String,
+        output: String,
+        png: Option<Vec<u8>>,
+    },
     #[error("Render error: {0}")]
     RenderError(String),
 }
