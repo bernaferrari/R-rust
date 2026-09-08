@@ -26,9 +26,14 @@ lines(x, predict(fit), col="red", lwd=3)
 
 The PNG backend uses [Vello CPU](https://github.com/linebender/vello), with vector
 paths and glyph outlines, transformed RGBA images, alpha compositing and clipping.
-The synchronous host API works without a GPU on native and Wasm. GPU Vello/wgpu
-initialization is not implemented. The owned scene interface keeps a future GPU
-backend separate from R evaluation. Canvas admission rejects zero dimensions,
+The synchronous host API works without a GPU on native and Wasm. The optional
+`r-device-vello-gpu` crate uses Vello 0.10 and wgpu 29 compute pipelines, with
+explicit asynchronous initialization, adapter information, texture rendering and
+RGBA/PNG readback or a GPU texture for host compositing. `RSession::record_scene` finishes R evaluation synchronously;
+the resulting owned scene can outlive the session and be rendered asynchronously.
+Enable `r-embed/vello-gpu` for its `GpuRenderer` re-export. See [GPU API and tests](../crates/r-device-vello-gpu/README.md) for native and
+browser usage. GPU initialization
+errors are returned to the caller; no implicit CPU fallback is performed. Canvas admission rejects zero dimensions,
 dimensions above 65,535, and more than 16,777,216 pixels.
 
 The portable renderer now shares session-owned plot coordinates across `plot`,
@@ -36,8 +41,9 @@ The portable renderer now shares session-owned plot coordinates across `plot`,
 `title`, `axis`, `box`, `plot.new` and `plot.window`. It supports ordinary plot
 types, logarithmic/reversed limits, finite-data filtering, uniform `mfrow`
 panels, color names/palettes, line styles, pch 0–25 and character symbols, xpd clipping and rotated
-text. A licensed, bundled Noto Sans font supplies text on Wasm without filesystem
-access. Host fonts and explicitly supplied fonts can still override it.
+text. A licensed, bundled DejaVu Sans font supplies the same text and mathematical
+glyphs on native and Wasm without filesystem access. Explicit custom font bytes
+can override the CPU renderer font.
 
 The additional numeric `hist`, vector/matrix `barplot`, and numeric/list `boxplot`
 methods return statistical objects as well as drawing through the portable
@@ -56,6 +62,75 @@ format is specific to Rport. It does not implement GNU R recording interchange,
 package-reload metadata or full replay of the R expressions and graphical state
 that produced the plot.
 
+## Portable grid
+
+`library(grid)` and `require(grid)` attach a built-in grid package; `grid::`
+resolves the exported portable functions and rejects names outside that surface.
+`getNamespace("grid")` and `requireNamespace("grid")` use the same session-owned,
+GC-traced namespace cache as other packages. Package names support the ordinary
+unquoted syntax and `character.only=TRUE`.
+
+The current drawing surface includes `grid.newpage`, rectangles, circles, lines,
+segments, polygons, text and circular points; the corresponding `*Grob`
+constructors; `gList`, `gTree`, `grobTree` and `grid.draw`. Grob trees inherit
+`gpar` through their viewport, and viewport scopes unwind when child drawing
+fails. Text supports the shared plotmath decoder. Viewports compose translation,
+rotation, sizing and native axis scales, with push/pop stacks owned by the R
+session. Axis-aligned clipping and equal/weighted/absolute grid layouts work.
+Drawing commands feed the same owned scene used by CPU/GPU devices and
+`recordPlot`/`replayPlot`.
+
+`unit` and `convertX`, `convertY`, `convertWidth`, `convertHeight` support npc,
+snpc, native, inches, centimetres, millimetres, points, big points, picas, dida,
+cicero, scaled points, lines and char units. Layout null units share remaining
+space after absolute dimensions. Numeric regression values for physical/native
+units and weighted layouts were checked against the pinned GNU R oracle at a
+known device size; PNG tests check actual viewport placement and clipping.
+
+This is a bounded grid frontend, not the complete GNU R grid package. Unit
+arithmetic and data-dependent units, named viewport navigation, gPath editing,
+layout respect, rotated clipping, arrows, compound polygon groups, non-solid
+line types, text overlap checking and non-circular point symbols remain gaps.
+Unsupported drawing parameters fail explicitly. Text-dependent char/line units
+currently use device font-size conventions, not GNU R font metric parity.
+Recordings preserve drawing commands; restoring a live grid viewport stack
+from a recording is not implemented. Full ggplot2 compatibility is not claimed.
+
+## Mathematical labels
+
+`text`, `title`, `axis`, and plot titles/axis captions accept `expression()`
+labels. `grid.text` uses the same owned math layout. The R adapter decodes the
+expression tree before borrowing the renderer; the graphics engine then measures
+shared font advances and emits ordinary positioned glyphs and paths. These
+commands remain available to scene recording and GPU replay.
+
+```r
+plot.new()
+plot.window(xlim=c(0, 1), ylim=c(0, 1))
+text(.5, .5, expression(frac(alpha[1]^2, sqrt(beta))), cex=2)
+title(main=expression(bold(x) + italic(y)))
+```
+
+Supported constructions include Greek names, fractions (`frac`, `over`),
+stacked expressions without a rule (`atop`), subscripts and superscripts,
+square roots, fixed delimiters (`group` and parentheses), concatenation and
+spacing (`paste`, `*`, `~`), phantom contents, arithmetic/comparison operators,
+and common function names. `sum`, `prod`, and `integral` accept a body and optional
+lower/upper limits placed as scripts. Ordinary `hat`, `tilde`, `dot`, `ring`,
+`bar`, and `underline` accents are also available. `plain`, `bold`, `italic`, and
+`bolditalic` explicitly select the shared renderer's font face; bold and italic
+are synthetic treatments of the same outlines. Latin variable names default to italic; explicit face wrappers override that convention. Greek symbols and numeric constants remain upright, as specified by [R mathematical annotation](https://stat.ethz.ch/R-manual/R-devel/library/grDevices/html/plotmath.html).
+
+This is a bounded plotmath implementation, not an exact port of GNU R's
+font-specific mathematical typography. It does not yet implement stretchy
+`bgroup` delimiters, wide accents,
+display-style centered operator limits, or every plotmath symbol/operator.
+Unsupported operators report errors. The decoder rejects trees deeper than 64
+levels or exceeding 4096 decoded nodes per expression. Public tests verify
+Greek glyph selection, independently positioned scripts, fraction/radical
+geometry, actual rendered pixels, style propagation, title/axis integration,
+and record/replay; they do not establish pixel equivalence with GNU R devices.
+
 ## Evidence and limits
 
 The numerical regression module compares fits, residual diagnostics, robust
@@ -69,7 +144,7 @@ S3 methods and verify clipping and bundled-font glyphs.
 
 This is not complete GNU R graphics compatibility. Portable primitives do not
 establish complete base/grid/ggplot rendering or the GNU R device lifecycle,
-plotmath, patterns/masks/groups, or every graphical parameter. Automatic linear
+complete plotmath typography, patterns/masks/groups, or every graphical parameter. Automatic linear
 ticks follow GNU R's GEPretty spacing and `par("lab")`,
 including reversed axes; automatic axes reject requests above 10,000 intervals.
 Logarithmic tick selection, margins and logarithmic ablines

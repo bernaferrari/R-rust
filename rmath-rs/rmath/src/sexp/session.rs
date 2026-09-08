@@ -205,7 +205,11 @@ impl r_graphics_engine::DrawTarget for RecordingTarget<'_> {
     fn dimensions(&self) -> (u32, u32) {
         self.target.dimensions()
     }
-    fn measure_text(&self, text: &str, params: &r_graphics_engine::PlotParameters) -> r_graphics_engine::TextMetrics {
+    fn measure_text(
+        &self,
+        text: &str,
+        params: &r_graphics_engine::PlotParameters,
+    ) -> r_graphics_engine::TextMetrics {
         self.target.measure_text(text, params)
     }
     fn clear(&mut self, color: r_graphics_engine::Color) {
@@ -854,7 +858,8 @@ impl RSession {
             ));
             unsafe {
                 (*self.instance).graphics_recording = Some(recording.clone());
-                (*self.instance).portable_grid = Default::default();
+                (*self.instance).portable_grid =
+                    crate::mainutils::portable_grid::GridState::default();
             }
             let mut forwarding = RecordingTarget { target, recording };
             let _backend_guard =

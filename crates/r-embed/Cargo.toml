@@ -6,6 +6,7 @@ license.workspace = true
 description = "R interpreter embedding library"
 
 [features]
+vello-gpu = ["dep:r-device-vello-gpu"]
 default = ["rust-backend"]
 # Portable pure-Rust dense linear algebra through rmath/faer.
 rust-backend = ["rmath/rust-backend"]
@@ -13,6 +14,7 @@ rust-backend = ["rmath/rust-backend"]
 fortran-backend = ["rmath/fortran-backend"]
 
 [dependencies]
+r-device-vello-gpu = { path = "../r-device-vello-gpu", optional = true }
 thiserror = { workspace = true }
 rmath = { path = "../../rmath-rs/rmath", default-features = false, features = ["renderplot-device"] }
 r-graphics-engine = { path = "../r-graphics-engine" }
@@ -20,4 +22,5 @@ r-device-android-headless = { path = "../r-device-android-headless" }
 png = "0.18.1"  # for encoding captured native rasters from real R graphics devices to PNG
 
 [dev-dependencies]
+pollster = "0.4"
 tempfile = "3"

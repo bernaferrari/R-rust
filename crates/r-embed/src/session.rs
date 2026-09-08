@@ -1,7 +1,7 @@
 //! The embedded R session facade: evaluation, configuration, and rendering.
 
 use r_device_android_headless::AndroidHeadlessRenderer;
-use r_graphics_engine::{Color, RenderPlot};
+use r_graphics_engine::Color;
 use rmath::android::{RArenaStats, RResourceLimits, RRuntimeInfo, RValue};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -356,23 +356,58 @@ impl RSession {
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>, RSessionError> {
+        if width < 32 || height < 32 {
+            return Err(RSessionError::RenderError(
+                "plot width and height must be at least 32 pixels".into(),
+            ));
+        }
+        let mut renderer =
+            AndroidHeadlessRenderer::try_new(width, height).map_err(RSessionError::RenderError)?;
+        self.render_to(code, &mut renderer)?;
+        renderer
+            .try_finish()
+            .map_err(|e| RSessionError::RenderError(e.to_string()))
+    }
+
+    /// Evaluate into an owned scene that can be sent to another thread or GPU.
+    pub fn record_scene(
+        &mut self,
+        code: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<r_graphics_engine::Scene, RSessionError> {
+        let mut scene = r_graphics_engine::Scene::new(width, height);
+        scene
+            .validate()
+            .map_err(|e| RSessionError::RenderError(e.into()))?;
+        if u64::from(width) * u64::from(height) > 16_777_216 {
+            return Err(RSessionError::RenderError(
+                "plot exceeds 16M-pixel limit".into(),
+            ));
+        }
+        self.render_to(code, &mut scene)?;
+        Ok(scene)
+    }
+
+    /// Draw synchronously into a caller-owned device. The device is detached on
+    /// success, R errors and unwinding, before this method returns.
+    pub fn render_to(
+        &mut self,
+        code: &str,
+        target: &mut dyn r_graphics_engine::DrawTarget,
+    ) -> Result<(), RSessionError> {
         if !self.active {
             return Err(RSessionError::RenderError("Session closed".into()));
         }
+        let (width, height) = target.dimensions();
         if width < 32 || height < 32 {
             return Err(RSessionError::RenderError(
-                "plot width and height must be at least 32 pixels".to_string(),
+                "plot width and height must be at least 32 pixels".into(),
             ));
         }
-
-        let mut renderer =
-            AndroidHeadlessRenderer::try_new(width, height).map_err(RSessionError::RenderError)?;
-        renderer.clear(Color::WHITE);
-
+        target.clear(Color::WHITE);
         if code.trim().is_empty() {
-            return renderer
-                .try_finish()
-                .map_err(|e| RSessionError::RenderError(e.to_string()));
+            return Ok(());
         }
 
         // Evaluate R code through the interpreter while the portable device is installed.
@@ -398,14 +433,12 @@ local({{
         );
         let result = self
             .inner
-            .eval_script_with_renderplot_backend(&wrapped, &mut renderer);
+            .eval_script_with_renderplot_backend(&wrapped, target);
         if let RValue::Error(message) = result.typed {
             return Err(RSessionError::RenderError(message));
         }
 
-        renderer
-            .try_finish()
-            .map_err(|e| RSessionError::RenderError(e.to_string()))
+        Ok(())
     }
 
     /// Evaluate `expr` and keep the resulting value rooted in the session's

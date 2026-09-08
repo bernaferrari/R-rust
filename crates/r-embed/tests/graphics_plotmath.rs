@@ -103,7 +103,8 @@ fn expression_scene_contains_greek_and_independently_positioned_scripts() {
     assert!(alpha.1.y < beta.1.y);
     assert!(sub.1.y > alpha.1.y && sup.1.y < alpha.1.y);
     assert!(sub.2.font_size < alpha.2.font_size);
-    assert_eq!(alpha.2.font_face, FontFace::Bold);
+    assert_eq!(alpha.2.font_face, FontFace::Plain);
+    assert_eq!(sub.2.font_face, FontFace::Plain);
     assert_eq!(beta.2.font_face, FontFace::Plain);
     assert!(
         scene
@@ -111,4 +112,89 @@ fn expression_scene_contains_greek_and_independently_positioned_scripts() {
             .iter()
             .any(|op| matches!(op,DrawOperation::Path(path) if path.stroke.width>0.))
     );
+}
+
+#[test]
+fn accents_operators_and_fixed_groups_draw_owned_geometry() {
+    use r_graphics_engine::{DrawOperation, Scene};
+    let mut session = rmath::android::RSession::new();
+    let mut scene = Scene::new(500, 300);
+    let result=session.eval_script_with_renderplot_backend("plot.new();text(c(.2,.5,.8),c(.5,.5,.5),expression(bar(x)+underline(y),sum(x[i],i==1,n),group('(',hat(theta),' )')))",&mut scene);
+    assert!(
+        !matches!(result.typed, rmath::android::RValue::Error(_)),
+        "{}",
+        result.output
+    );
+    assert!(
+        scene
+            .operations()
+            .iter()
+            .filter(|op| matches!(op, DrawOperation::Path(_)))
+            .count()
+            >= 2
+    );
+    assert!(
+        scene
+            .operations()
+            .iter()
+            .any(|op| matches!(op,DrawOperation::Text{text,..} if text=="∑"))
+    );
+}
+
+#[test]
+fn latin_variables_default_to_italic_and_explicit_plain_wins() {
+    use r_graphics_engine::{DrawOperation, FontFace, Scene};
+    let mut session = rmath::android::RSession::new();
+    let mut scene = Scene::new(300, 200);
+    let result = session.eval_script_with_renderplot_backend(
+        "plot.new();text(.5,.5,expression(x+plain(y)+bold(z)))",
+        &mut scene,
+    );
+    assert!(
+        !matches!(result.typed, rmath::android::RValue::Error(_)),
+        "{}",
+        result.output
+    );
+    for (name, face) in [
+        ("x", FontFace::Italic),
+        ("y", FontFace::Plain),
+        ("z", FontFace::Bold),
+    ] {
+        assert!(scene.operations().iter().any(|op|matches!(op,DrawOperation::Text{text,params,..} if text==name && params.font_face==face)));
+    }
+}
+
+#[test]
+fn tall_math_main_fits_above_plot_without_canvas_clipping() {
+    use r_graphics_engine::{DrawOperation, DrawTarget, Scene};
+    let mut session = rmath::android::RSession::new();
+    let mut scene = Scene::new(640, 480);
+    let result = session.eval_script_with_renderplot_backend(
+        "plot(1:3,axes=FALSE,xlab='',ylab='',main=expression(frac(alpha[1]^2,sqrt(beta))))",
+        &mut scene,
+    );
+    assert!(
+        !matches!(result.typed, rmath::android::RValue::Error(_)),
+        "{}",
+        result.output
+    );
+    for op in scene.operations() {
+        if let DrawOperation::Text {
+            text,
+            position,
+            params,
+        } = op
+            && !text.is_empty()
+        {
+            let metrics = scene.measure_text(text, params);
+            assert!(
+                position.y - metrics.ascent >= 3.9,
+                "title glyph '{text}' crosses canvas top"
+            );
+            assert!(
+                position.y + metrics.descent <= 40.1,
+                "title glyph '{text}' touches plot rectangle"
+            );
+        }
+    }
 }

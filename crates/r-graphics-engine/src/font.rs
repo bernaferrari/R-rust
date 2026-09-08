@@ -63,29 +63,13 @@ pub fn normalized_size(size: f32) -> f32 {
     }
 }
 
-/// Cached system font with a bundled, licensed fallback for Wasm and mobile.
+/// Deterministic bundled font shared by every platform and renderer.
+/// DejaVu Sans covers the mathematical operators used by plotmath.
 pub fn default_font_book() -> &'static FontBook {
     static FONT: OnceLock<FontBook> = OnceLock::new();
     FONT.get_or_init(|| {
-        for path in [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            "/System/Library/Fonts/Geneva.ttf",
-            "/System/Library/Fonts/SFNSDisplay.ttf",
-            "/Library/Fonts/Arial.ttf",
-            "/system/fonts/NotoSans-Regular.ttf",
-            "/system/fonts/DroidSans.ttf",
-            "C:\\Windows\\Fonts\\arial.ttf",
-        ] {
-            if let Ok(bytes) = std::fs::read(path)
-                && let Ok(font) = FontBook::from_bytes(bytes)
-            {
-                return font;
-            }
-        }
-        FontBook::from_bytes(include_bytes!("../assets/NotoSans.ttf").to_vec())
-            .expect("bundled Noto Sans is a valid font")
+        FontBook::from_bytes(include_bytes!("../assets/DejaVuSans.ttf").to_vec())
+            .expect("bundled DejaVu Sans is a valid font")
     })
 }
 
@@ -112,6 +96,15 @@ mod tests {
         value.as_object_mut().unwrap().remove("font_face");
         let decoded: crate::PlotParameters = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.font_face, FontFace::Plain);
+    }
+
+    #[test]
+    fn bundled_font_covers_plotmath_operators_and_greek() {
+        let font = default_font_book();
+        for ch in "αβγδεζηθικλμνξοπρστυφχψω∑∏∫∂∇∞≠≤≥±×÷∈≈".chars()
+        {
+            assert_ne!(font.glyph_index(ch), 0, "missing glyph: {ch}");
+        }
     }
 
     #[test]

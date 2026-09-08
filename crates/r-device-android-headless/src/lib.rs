@@ -338,7 +338,7 @@ mod tests {
     fn custom_font_measurement_matches_draw_advances() {
         let mut renderer = VelloRenderer::new(100, 70);
         renderer
-            .set_font(include_bytes!("../../r-graphics-engine/assets/NotoSans.ttf").to_vec())
+            .set_font(include_bytes!("../../r-graphics-engine/assets/DejaVuSans.ttf").to_vec())
             .unwrap();
         let params = PlotParameters {
             font_size: 20.,
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn bundled_font_draws_rotated_clipped_unicode() {
         let mut r = AndroidHeadlessRenderer::new(100, 100);
-        r.set_font(include_bytes!("../../r-graphics-engine/assets/NotoSans.ttf").to_vec())
+        r.set_font(include_bytes!("../../r-graphics-engine/assets/DejaVuSans.ttf").to_vec())
             .unwrap();
         r.clear(Color::WHITE);
         r.set_clip(Some([20., 20., 80., 80.]));

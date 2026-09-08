@@ -80,10 +80,14 @@ impl GridState {
 impl Frame {
     fn map(&self, x: f64, y: f64) -> Point {
         let m = self.matrix;
-        Point {
+        let point = Point {
             x: (m[0] * x + m[2] * y + m[4]) as f32,
             y: (m[1] * x + m[3] * y + m[5]) as f32,
+        };
+        if !point.x.is_finite() || !point.y.is_finite() {
+            base_error("grid coordinate exceeds device range");
         }
+        point
     }
     fn extent(&self, axis: usize) -> f64 {
         if axis == 0 { self.width } else { self.height }
@@ -227,7 +231,11 @@ unsafe fn units(x: SEXP, default: &str, frame: &Frame, axis: usize, dimension: b
                 let (f, o) = frame
                     .unit_factor(&name, axis, dimension)
                     .unwrap_or_else(|e| base_error(e));
-                v * f + o
+                let resolved = v * f + o;
+                if !resolved.is_finite() {
+                    base_error("grid unit conversion overflow");
+                }
+                resolved
             })
             .collect()
     }
@@ -239,6 +247,12 @@ unsafe fn color_values(x: SEXP, old: &[Color]) -> Vec<Color> {
         }
         if XLENGTH(x) == 0 {
             base_error("grid color cannot be empty");
+        }
+        if !matches!(
+            SEXPTYPE(TYPEOF(x)),
+            SEXPTYPE::STRSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::LGLSXP
+        ) {
+            base_error("invalid grid color");
         }
         (0..XLENGTH(x))
             .map(|i| {
@@ -284,7 +298,13 @@ unsafe fn gp(x: SEXP, old: &Gp) -> Gp {
         p.size =
             num(field(x, "fontsize"), p.size * 72. / DPI) * DPI / 72. * num(field(x, "cex"), 1.);
         p.alpha *= num(field(x, "alpha"), 1.);
-        if p.width < 0. || p.size <= 0. || !(0. ..=1.).contains(&p.alpha) {
+        if p.width < 0.
+            || p.width > f32::MAX as f64
+            || p.size <= 0.
+            || p.size > f32::MAX as f64
+            || !p.size.is_finite()
+            || !(0. ..=1.).contains(&p.alpha)
+        {
             base_error("invalid grid graphical parameters");
         }
         let face = string(field(x, "fontface"), "");
@@ -462,9 +482,12 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
             gp: gp(field(data, "gp"), &parent.gp),
             layout: None,
         };
+        if f.matrix.iter().any(|v| !v.is_finite()) {
+            base_error("viewport transform overflow");
+        }
         for (axis, name) in ["xscale", "yscale"].iter().enumerate() {
             let v = numbers(field(data, name));
-            if v.len() != 2 || v[0] == v[1] {
+            if v.len() != 2 || v[0] == v[1] || !(v[1] - v[0]).is_finite() {
                 base_error("viewport scales require two different finite values");
             }
             f.scale[axis] = [v[0], v[1]];
@@ -545,8 +568,13 @@ pub unsafe fn dispatch(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 state.frames.truncate(state.frames.len() - n);
             }
             "convert" => {
-                let axis = num(field(data, "axis"), 0.) as usize;
-                let dimension = num(field(data, "dimension"), 0.) != 0.;
+                let axis = num(field(data, "axis"), 0.);
+                let dimension = num(field(data, "dimension"), 0.);
+                if ![0., 1.].contains(&axis) || ![0., 1.].contains(&dimension) {
+                    base_error("grid conversion axis and dimension must be 0 or 1");
+                }
+                let axis = axis as usize;
+                let dimension = dimension != 0.;
                 let values = units(field(data, "x"), "npc", &parent, axis, dimension);
                 let to = string(field(data, "to"), "npc");
                 let (f, o) = parent
@@ -733,8 +761,7 @@ unsafe fn draw_commands(kind: &str, data: SEXP, frame: &Frame) -> Vec<Drawing> {
                     } else {
                         TextAnchor::Middle
                     },
-                    text_angle: (rotation
-                        + frame.matrix[1].atan2(frame.matrix[0]).to_degrees() * -1.)
+                    text_angle: (rotation - frame.matrix[1].atan2(frame.matrix[0]).to_degrees())
                         as f32,
                 };
                 for i in 0..n.max(count) {
@@ -756,12 +783,13 @@ macro_rules! wrapper {
     ($name:ident, $public:literal, $file:literal) => {
         pub unsafe fn $name(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             unsafe {
-                crate::mainutils::base_wrappers::apply(
+                crate::mainutils::base_wrappers::apply_in_environment(
                     $public,
                     include_str!($file),
                     args,
                     rho,
                     false,
+                    namespace(),
                 )
             }
         }
@@ -834,3 +862,87 @@ wrapper!(do_text_grob, "textGrob", "portable_grid/text_grob.R");
 wrapper!(do_grid_text, "grid.text", "portable_grid/grid_text.R");
 wrapper!(do_points_grob, "pointsGrob", "portable_grid/points_grob.R");
 wrapper!(do_grid_points, "grid.points", "portable_grid/grid_points.R");
+
+/// Exported portable grid surface; namespace lookup is restricted to these names.
+pub(crate) const EXPORTS: &[&str] = &[
+    "unit",
+    "is.unit",
+    "gpar",
+    "viewport",
+    "grid.layout",
+    "pushViewport",
+    "popViewport",
+    "grid.newpage",
+    "convertX",
+    "convertY",
+    "convertWidth",
+    "convertHeight",
+    "grid.draw",
+    "gList",
+    "gTree",
+    "grobTree",
+    "is.grob",
+    "rectGrob",
+    "grid.rect",
+    "circleGrob",
+    "grid.circle",
+    "linesGrob",
+    "grid.lines",
+    "polygonGrob",
+    "grid.polygon",
+    "segmentsGrob",
+    "grid.segments",
+    "textGrob",
+    "grid.text",
+    "pointsGrob",
+    "grid.points",
+];
+
+unsafe fn new_grid_environment() -> SEXP {
+    unsafe {
+        use crate::sexp::{
+            envir::defineVar, globals::R_BaseEnv, protect::protect, symbol::Rf_install,
+        };
+        let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
+        let _guard = protect(env);
+        crate::mainutils::essentials::define_package_metadata("grid", env);
+        for name in EXPORTS {
+            let symbol_name = std::ffi::CString::new(*name).expect("static grid export");
+            let symbol = Rf_install(symbol_name.as_ptr());
+            let value = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
+            let _value_guard = protect(value);
+            defineVar(symbol, value, env);
+        }
+        env
+    }
+}
+pub(crate) unsafe fn namespace() -> SEXP {
+    unsafe {
+        let cached = with_required_current_instance(|p| {
+            (*p).package_namespace_cache
+                .get("grid")
+                .map(|(_, env)| *env)
+        });
+        if let Some(env) = cached {
+            return env;
+        }
+        let env = new_grid_environment();
+        with_required_current_instance(|p| {
+            (*p).package_namespace_cache.insert(
+                "grid".into(),
+                (std::path::PathBuf::from("<builtin:grid>"), env),
+            );
+        });
+        env
+    }
+}
+pub(crate) unsafe fn attach() {
+    unsafe {
+        if !crate::mainutils::essentials::package_attached("grid") {
+            namespace();
+            let env = new_grid_environment();
+            let _guard = crate::sexp::protect::protect(env);
+            crate::mainutils::essentials::attach_package_env(env);
+        }
+    }
+}

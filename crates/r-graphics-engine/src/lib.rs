@@ -284,11 +284,21 @@ pub enum FontFace {
     BoldItalic,
 }
 impl FontFace {
-    pub fn is_bold(self) -> bool { matches!(self, Self::Bold | Self::BoldItalic) }
-    pub fn is_italic(self) -> bool { matches!(self, Self::Italic | Self::BoldItalic) }
-    pub fn italic_shear(self) -> f64 { if self.is_italic() { -0.2125565617 } else { 0.0 } }
+    pub fn is_bold(self) -> bool {
+        matches!(self, Self::Bold | Self::BoldItalic)
+    }
+    pub fn is_italic(self) -> bool {
+        matches!(self, Self::Italic | Self::BoldItalic)
+    }
+    pub fn italic_shear(self) -> f64 {
+        if self.is_italic() { -0.2125565617 } else { 0.0 }
+    }
     pub fn bold_stroke_width(self, size: f32) -> f64 {
-        if self.is_bold() { f64::from(size) * 0.03 } else { 0.0 }
+        if self.is_bold() {
+            f64::from(size) * 0.03
+        } else {
+            0.0
+        }
     }
 }
 
@@ -338,7 +348,6 @@ pub trait RenderPlot: Sized {
     fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
         font::default_font_book().measure_text(text, params.font_size, params.font_face)
     }
-
 
     /// Draw an owned RGBA8 image through an affine device-space transform.
     ///

@@ -658,6 +658,11 @@ pub(crate) unsafe fn load_package_namespace_by_name(package: &str) -> Result<SEX
             return Err("invalid package name".to_string());
         }
 
+        #[cfg(feature = "renderplot-device")]
+        if package == "grid" {
+            return Ok(crate::mainutils::portable_grid::namespace());
+        }
+
         let package_path = find_package_path(package);
         if package_path.is_empty() {
             return Err(format!("there is no package called '{}'", package));

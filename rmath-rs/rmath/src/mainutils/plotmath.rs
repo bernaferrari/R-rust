@@ -89,6 +89,13 @@ fn greek(name: &str) -> Option<&'static str> {
         "nabla" => "∇",
         "degree" => "°",
         "cdot" => "·",
+        "ldots" => "…",
+        "cdots" => "⋯",
+        "vartheta" => "ϑ",
+        "varphi" => "ϕ",
+        "varsigma" => "ς",
+        "aleph" => "ℵ",
+        "emptyset" => "∅",
         _ => return None,
     })
 }
@@ -102,12 +109,25 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
             return match SEXPTYPE(TYPEOF(value)) {
                 SEXPTYPE::SYMSXP => {
                     let name = elt_to_string(value, 0);
-                    MathExpr::Text(greek(&name).unwrap_or(&name).to_owned())
+                    if let Some(symbol) = greek(&name) {
+                        MathExpr::Upright(symbol.into())
+                    } else {
+                        MathExpr::Variable(name)
+                    }
                 }
-                SEXPTYPE::STRSXP | SEXPTYPE::CHARSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
+                SEXPTYPE::STRSXP
+                | SEXPTYPE::CHARSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::LGLSXP
                     if XLENGTH(value) == 1 =>
                 {
-                    MathExpr::Text(elt_to_string(value, 0))
+                    let text = elt_to_string(value, 0);
+                    if TYPEOF(value) == SEXPTYPE::INTSXP || TYPEOF(value) == SEXPTYPE::REALSXP {
+                        MathExpr::Upright(text)
+                    } else {
+                        MathExpr::Text(text)
+                    }
                 }
                 _ => base_error("invalid plotmath atom"),
             };
@@ -209,6 +229,21 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                 }
                 MathExpr::Row(vec![left, body, right])
             }
+            "hat" | "tilde" | "dot" | "ring" | "bar" => {
+                need(1);
+                let accent = match name.as_str() {
+                    "hat" => "ˆ",
+                    "tilde" => "˜",
+                    "dot" => "˙",
+                    "ring" => "˚",
+                    _ => "¯",
+                };
+                MathExpr::Accent(Box::new(args.pop().unwrap()), accent.into())
+            }
+            "underline" => {
+                need(1);
+                MathExpr::Underline(Box::new(args.pop().unwrap()))
+            }
             "sqrt" => {
                 need(1);
                 MathExpr::Radical(Box::new(args.pop().unwrap()))
@@ -251,8 +286,8 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                     ])
                 }
             }
-            "+" | "-" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "%+-%" | "%*%" | "%/%" | "%in%"
-            | "%~~%" => {
+            "+" | "-" | "/" | ":" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "%+-%" | "%*%"
+            | "%/%" | "%in%" | "%~~%" => {
                 if args.is_empty() || args.len() > 2 {
                     base_error("invalid plotmath operator arity");
                 }

@@ -78,6 +78,30 @@ pub unsafe fn do_library_dynam(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) 
     )
 }
 
+/// Preserve the non-standard evaluation of library's package argument.
+pub unsafe fn do_library_frontend(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "library",
+            "function(package, help, pos=2, lib.loc=NULL, character.only=FALSE, logical.return=FALSE, warn.conflicts=TRUE, quietly=FALSE, verbose=FALSE, mask.ok, exclude, include.only, attach.required=missing(include.only)) { if(!missing(help)) stop('library help is not supported'); if(!character.only) package<-as.character(substitute(package)); if(logical.return) return(invisible(.rport_require(package))); .rport_library(package); invisible(NULL) }",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+pub unsafe fn do_require_frontend(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::base_wrappers::apply(
+            "require",
+            "function(package, lib.loc=NULL, quietly=FALSE, warn.conflicts=TRUE, character.only=FALSE, ...) { if(!character.only) package<-as.character(substitute(package)); invisible(.rport_require(package)) }",
+            args,
+            rho,
+            false,
+        )
+    }
+}
+
 /// R's `library(package, ...)` — load a package.
 pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
@@ -88,6 +112,12 @@ pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let package_name = elt_to_string(pkg_arg, 0);
         if package_name.is_empty() || package_name == "NA" {
             package_error("invalid package name");
+        }
+        #[cfg(feature = "renderplot-device")]
+        if package_name == "grid" {
+            crate::mainutils::portable_grid::attach();
+            crate::eval::runtime::set_visible(0);
+            return R_NilValue();
         }
         let lib_path = find_package_path(&package_name);
         if lib_path.is_empty() {
@@ -116,6 +146,12 @@ pub unsafe fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return Rf_ScalarLogical(FALSE);
         }
         let package_name = elt_to_string(pkg_arg, 0);
+        #[cfg(feature = "renderplot-device")]
+        if package_name == "grid" {
+            crate::mainutils::portable_grid::attach();
+            crate::eval::runtime::set_visible(0);
+            return Rf_ScalarLogical(TRUE);
+        }
         let lib_path = find_package_path(&package_name);
         if lib_path.is_empty() {
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
@@ -221,7 +257,7 @@ pub unsafe fn do_load_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
 /// R's `requireNamespace(package, quietly = FALSE)` — namespace availability probe.
 pub unsafe fn do_require_namespace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let package_arg = arg_by_name_or_position(args, &["package", "quietly"], 0);
+        let package_arg = arg_by_name_or_position(args, &["package"], 0);
         let package = elt_to_string(package_arg, 0);
         Rf_ScalarLogical(if load_package_namespace_by_name(&package).is_ok() {
             TRUE

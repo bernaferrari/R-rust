@@ -219,7 +219,7 @@ fixture counts are not implementation percentages.
 
 ## Known gaps
 
-LOESS fitting and prediction now use an owned Rust engine, with faer SVD by default. Portable plots support layered LOESS curves and bundled text rendering on Wasm. See [supported contracts and remaining limits](docs/loess-and-portable-graphics.md); the legacy native LOESS helper ABI remains unsupported.
+LOESS fitting and prediction now use an owned Rust engine, with faer SVD by default. Portable plots support layered LOESS curves, grid viewports/grobs and mathematical expression labels with a shared bundled font. Vello CPU provides synchronous PNGs; optional Vello GPU provides async textures/PNGs on native and WebGPU. See the [GPU embedding API](crates/r-device-vello-gpu/README.md). See [supported contracts and remaining limits](docs/loess-and-portable-graphics.md); the legacy native LOESS helper ABI remains unsupported.
 
 Honest ledger, each scoped with a reproduction:
 

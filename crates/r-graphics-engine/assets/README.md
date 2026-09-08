@@ -1,4 +1,12 @@
 # Bundled plot font
 
-Noto Sans, unmodified, from [google/fonts](https://github.com/google/fonts/tree/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notosans).
-Licensed under the SIL Open Font License in OFL.txt. Used when no system font is available, including Wasm.
+DejaVu Sans is the deterministic default on all platforms, including Wasm.
+Its Latin, Greek and mathematical operators support portable plotmath labels.
+The unmodified font was copied from the workspace's Poppler font distribution;
+its upstream project is https://dejavu-fonts.github.io/.
+
+DejaVu-LICENSE.txt includes the Bitstream Vera and Arev notices from the
+upstream version_2_37 tag. DejaVu changes are public domain. The renderer's
+synthetic bold and italic transformations do not modify the bundled font file.
+
+Hosts can opt into different fonts through the renderer's set_font API.

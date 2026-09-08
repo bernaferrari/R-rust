@@ -14,4 +14,9 @@ if ! rustup run "$WASM_TOOLCHAIN" rustc --version >/dev/null 2>&1; then
 fi
 # Skip wasm-opt: the stable bundled optimiser can lag Rust's Wasm EH encoding.
 # The release size gate measures the actual unoptimised-by-wasm-opt artifact.
-exec wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind
+# Optional GPU builds stay separate from the default CPU distribution.
+if [[ -n "${RPORT_WASM_FEATURES:-}" ]]; then
+    exec wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind --features "$RPORT_WASM_FEATURES"
+else
+    exec wasm-pack build crates/r-wasm --no-opt "$@" -- -Zbuild-std=std,panic_unwind
+fi

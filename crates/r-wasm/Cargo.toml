@@ -9,10 +9,18 @@ description = "wasm-bindgen session boundary over r-embed::RSession for browser 
 # cdylib for wasm-pack; rlib so `cargo check -p r-wasm` also works natively.
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+vello-gpu = ["dep:r-device-vello-gpu", "dep:r-graphics-engine", "dep:wasm-bindgen-futures", "dep:js-sys"]
+
 [dependencies]
+r-device-vello-gpu = { path = "../r-device-vello-gpu", optional = true }
+r-graphics-engine = { path = "../r-graphics-engine", optional = true }
 r-embed = { path = "../r-embed", default-features = false, features = ["rust-backend"] }
 
 # wasm-bindgen is only linked on wasm32; native `cargo check -p r-wasm`
 # exercises the same session code through the cfg'd non-bindgen shim.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }

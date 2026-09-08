@@ -42,6 +42,9 @@ jobs:
       - name: Clippy (workspace, deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Check optional GPU embedding API
+        run: cargo clippy -p r-embed --features vello-gpu --all-targets -- -D warnings
+
       - name: Install system BLAS/LAPACK
         run: sudo apt-get update && sudo apt-get install -y liblapack-dev libblas-dev
 
@@ -146,6 +149,10 @@ jobs:
         run: bash scripts/wasm_toolchain_check.sh
       - name: Execute Rust interpreter in Node
         run: bash scripts/wasm_m3_smoke.sh
+      - name: Build optional WebGPU API with R unwind support
+        env:
+          RPORT_WASM_FEATURES: vello-gpu
+        run: bash scripts/build_wasm_runtime.sh --target web --out-dir /tmp/rport-gpu-pkg
 
   web-release:
     name: Kotlin/Wasm release bundle

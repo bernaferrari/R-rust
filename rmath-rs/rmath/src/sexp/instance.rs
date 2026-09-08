@@ -570,7 +570,7 @@ impl RInstance {
             #[cfg(feature = "renderplot-device")]
             current_renderplot_backend: None,
             #[cfg(feature = "renderplot-device")]
-            portable_grid: Default::default(),
+            portable_grid: crate::mainutils::portable_grid::GridState::default(),
             #[cfg(feature = "renderplot-device")]
             portable_graphics: crate::mainutils::portable_plot::GraphicsState::default(),
             #[cfg(feature = "renderplot-device")]

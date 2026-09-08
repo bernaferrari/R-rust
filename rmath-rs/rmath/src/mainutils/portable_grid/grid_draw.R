@@ -1,4 +1,4 @@
-function(x,recording=TRUE) {
+function(x,recording=TRUE) { if(!isTRUE(recording)) stop('unrecorded grid operations are not supported');
     if(is.null(x)) return(invisible(NULL))
     if(!inherits(x,'grob')) stop('grid.draw requires a grob')
     pushed <- 0L

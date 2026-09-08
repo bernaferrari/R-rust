@@ -74,12 +74,84 @@ fn failed_grob_restores_viewport_and_session_remains_usable() {
     assert_eq!(at(w, &p, 300, 100), [0, 0, 255, 255]);
     assert!(
         session
-            .render_with_dimensions("grid.newpage(); popViewport()", 400, 200)
+            .render_with_dimensions("library(grid); grid.newpage(); popViewport()", 400, 200)
             .is_err()
     );
     assert!(
         session
-            .render_with_dimensions("grid.newpage(); grid.circle(r=.2)", 400, 200)
+            .render_with_dimensions("library(grid); grid.newpage(); grid.circle(r=.2)", 400, 200)
             .is_ok()
+    );
+}
+
+#[test]
+fn grid_namespace_is_attached_cached_and_export_restricted() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("library(grid); pkg<-'grid'; isTRUE(require(pkg,character.only=TRUE)) && requireNamespace('grid',quietly=TRUE) && is.environment(getNamespace('grid')) && is.unit(grid::unit(1,'npc')) && 'package:grid' %in% search() && 'grid' %in% loadedNamespaces()").unwrap(),"[1] TRUE");
+    assert!(session.eval("grid::mean(1:3)").is_err());
+}
+#[test]
+fn grid_objects_namespace_and_recording_survive_forced_collection() {
+    let mut session = RSession::new().unwrap();
+    let png=session.render_with_dimensions("gctorture(TRUE); library(grid); grid.newpage(); g<-grobTree(rectGrob(width=.8,height=.8,gp=gpar(fill='red')),textGrob(expression(alpha[1]^2))); grid.draw(g); saved<-serialize(recordPlot(),NULL); gc(); grid.newpage(); replayPlot(unserialize(saved)); gctorture(FALSE)",240,160).unwrap();
+    let (_, p) = pixels(&png);
+    assert!(
+        p.chunks_exact(4)
+            .filter(|p| p[0] > 200 && p[1] < 20 && p[2] < 20)
+            .count()
+            > 1000
+    );
+    assert_eq!(
+        session
+            .eval("is.grob(g) && is.environment(getNamespace('grid'))")
+            .unwrap(),
+        "[1] TRUE"
+    );
+}
+#[test]
+fn malformed_internal_conversion_reports_an_r_error() {
+    let mut session = RSession::new().unwrap();
+    for axis in ["2", "-1", "0.5"] {
+        let script = format!(
+            "library(grid); grid.newpage(); .rport_grid('convert',list(x=unit(1,'npc'),axis={axis},dimension=FALSE,to='inches'))"
+        );
+        assert!(session.render_with_dimensions(&script, 240, 160).is_err());
+    }
+    assert!(
+        session
+            .render_with_dimensions("library(grid); grid.newpage(); grid.rect()", 240, 160)
+            .is_ok()
+    );
+}
+
+#[test]
+fn grid_exports_require_attachment_but_namespace_calls_do_not() {
+    let mut session = RSession::new().unwrap();
+    assert!(session.eval("unit(1,'npc')").is_err());
+    assert!(
+        session
+            .render_with_dimensions("grid.rect()", 240, 160)
+            .is_err()
+    );
+    assert!(
+        session
+            .render_with_dimensions(
+                "grid::grid.newpage(); grid::grid.rect(gp=grid::gpar(fill='red'))",
+                240,
+                160
+            )
+            .is_ok()
+    );
+    assert_eq!(
+        session
+            .eval("inherits(grid::unit(1,'npc'),'unit') && !('package:grid' %in% search())")
+            .unwrap(),
+        "[1] TRUE"
+    );
+    assert_eq!(
+        session
+            .eval("library(grid); is.unit(unit(1,'npc'))")
+            .unwrap(),
+        "[1] TRUE"
     );
 }

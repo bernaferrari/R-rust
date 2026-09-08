@@ -40,3 +40,6 @@ pub enum RSessionError {
     #[error("Render error: {0}")]
     RenderError(String),
 }
+
+#[cfg(feature = "vello-gpu")]
+pub use r_device_vello_gpu::{GpuError, GpuRenderer};

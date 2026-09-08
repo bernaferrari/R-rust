@@ -4,6 +4,8 @@ use crate::{DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke, TextAn
 #[derive(Clone, Debug, PartialEq)]
 pub enum MathExpr {
     Text(String),
+    Variable(String),
+    Upright(String),
     Row(Vec<MathExpr>),
     Fraction(Box<MathExpr>, Box<MathExpr>),
     Atop(Box<MathExpr>, Box<MathExpr>),
@@ -14,6 +16,8 @@ pub enum MathExpr {
         sup: Option<Box<MathExpr>>,
     },
     Radical(Box<MathExpr>),
+    Accent(Box<MathExpr>, String),
+    Underline(Box<MathExpr>),
     Space(f32),
     Phantom(Box<MathExpr>),
 }
@@ -100,8 +104,41 @@ impl MathLayout {
 }
 impl MathExpr {
     pub fn layout(&self, target: &dyn DrawTarget, params: &PlotParameters) -> MathLayout {
+        self.layout_inner(target, params, false)
+    }
+    fn layout_inner(
+        &self,
+        target: &dyn DrawTarget,
+        params: &PlotParameters,
+        explicit_face: bool,
+    ) -> MathLayout {
         let size = params.font_size;
         match self {
+            Self::Upright(text) => Self::Text(text.clone()).layout_inner(
+                target,
+                &PlotParameters {
+                    font_face: crate::FontFace::Plain,
+                    ..params.clone()
+                },
+                true,
+            ),
+            Self::Variable(text) => {
+                let face = if explicit_face {
+                    params.font_face
+                } else if params.font_face.is_bold() {
+                    crate::FontFace::BoldItalic
+                } else {
+                    crate::FontFace::Italic
+                };
+                Self::Text(text.clone()).layout_inner(
+                    target,
+                    &PlotParameters {
+                        font_face: face,
+                        ..params.clone()
+                    },
+                    true,
+                )
+            }
             Self::Text(text) => {
                 let m = target.measure_text(text, params);
                 MathLayout {
@@ -116,26 +153,60 @@ impl MathExpr {
                     )],
                 }
             }
-            Self::Style(value, face) => value.layout(
+            Self::Style(value, face) => value.layout_inner(
                 target,
                 &PlotParameters {
                     font_face: *face,
                     ..params.clone()
                 },
+                true,
             ),
+            Self::Accent(value, accent) => {
+                let mut out = value.layout_inner(target, params, explicit_face);
+                let mut mark =
+                    MathExpr::Text(accent.clone()).layout_inner(target, params, explicit_face);
+                if accent == "¯" {
+                    mark.width = out.width;
+                    mark.marks = vec![Mark::Line(
+                        Point { x: 0., y: 0. },
+                        Point {
+                            x: out.width,
+                            y: 0.,
+                        },
+                        (size * 0.055).max(0.5),
+                    )];
+                    mark.ascent = size * 0.05;
+                    mark.descent = 0.;
+                }
+                let x = (out.width - mark.width) / 2.;
+                let y = -out.ascent - size * 0.1 - mark.descent;
+                out.append(mark, x, y);
+                out
+            }
+            Self::Underline(value) => {
+                let mut out = value.layout_inner(target, params, explicit_face);
+                let y = out.descent + size * 0.1;
+                out.marks.push(Mark::Line(
+                    Point { x: 0., y },
+                    Point { x: out.width, y },
+                    (size * 0.055).max(0.5),
+                ));
+                out.descent = y + size * 0.03;
+                out
+            }
             Self::Space(em) => MathLayout {
                 width: em * size,
                 ..Default::default()
             },
             Self::Phantom(value) => {
-                let mut l = value.layout(target, params);
+                let mut l = value.layout_inner(target, params, explicit_face);
                 l.marks.clear();
                 l
             }
             Self::Row(values) => {
                 let mut out = MathLayout::default();
                 for value in values {
-                    let item = value.layout(target, params);
+                    let item = value.layout_inner(target, params, explicit_face);
                     let width = item.width;
                     out.append(item, out.width, 0.);
                     out.width += width;
@@ -143,19 +214,21 @@ impl MathExpr {
                 out
             }
             Self::Fraction(a, b) | Self::Atop(a, b) => {
-                let a = a.layout(
+                let a = a.layout_inner(
                     target,
                     &PlotParameters {
                         font_size: size * 0.9,
                         ..params.clone()
                     },
+                    explicit_face,
                 );
-                let b = b.layout(
+                let b = b.layout_inner(
                     target,
                     &PlotParameters {
                         font_size: size * 0.9,
                         ..params.clone()
                     },
+                    explicit_face,
                 );
                 let width = a.width.max(b.width) + size * 0.3;
                 let mut out = MathLayout {
@@ -182,28 +255,30 @@ impl MathExpr {
                 out
             }
             Self::Scripts { base, sub, sup } => {
-                let mut out = base.layout(target, params);
+                let mut out = base.layout_inner(target, params, explicit_face);
                 let x = out.width + size * 0.05;
                 let mut extra: f32 = 0.;
                 if let Some(sup) = sup {
-                    let l = sup.layout(
+                    let l = sup.layout_inner(
                         target,
                         &PlotParameters {
                             font_size: size * 0.7,
                             ..params.clone()
                         },
+                        explicit_face,
                     );
                     extra = extra.max(l.width);
                     let y = -(out.ascent * 0.65).max(size * 0.5) - l.descent;
                     out.append(l, x, y);
                 }
                 if let Some(sub) = sub {
-                    let l = sub.layout(
+                    let l = sub.layout_inner(
                         target,
                         &PlotParameters {
                             font_size: size * 0.7,
                             ..params.clone()
                         },
+                        explicit_face,
                     );
                     extra = extra.max(l.width);
                     let y = (size * 0.25).max(l.ascent * 0.5);
@@ -213,7 +288,7 @@ impl MathExpr {
                 out
             }
             Self::Radical(value) => {
-                let l = value.layout(target, params);
+                let l = value.layout_inner(target, params, explicit_face);
                 let mut out = MathLayout {
                     width: l.width + size * 0.75,
                     ..Default::default()

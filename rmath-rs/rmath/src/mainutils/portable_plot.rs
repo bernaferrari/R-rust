@@ -1403,6 +1403,36 @@ fn titles(
     .enumerate()
     {
         if let Some(text) = &labels[i] {
+            // Stacked mathematical titles can exceed a one-line baseline.
+            // Measure their full box and fit it inside the existing top margin.
+            if i == 0
+                && let crate::mainutils::plotmath::Label::Math(expr) = text
+            {
+                let mut params = PlotParameters {
+                    font_size: size,
+                    text_color: Color::BLACK,
+                    text_anchor: TextAnchor::Middle,
+                    ..Default::default()
+                };
+                let mut layout = expr.layout(target, &params);
+                let top = c.figure[1] + 4.;
+                let bottom = (c.rect[1] - 8.).max(top + 1.);
+                let available = bottom - top;
+                let height = layout.ascent + layout.descent;
+                if height > available && height > 0. {
+                    params.font_size *= available / height;
+                    layout = expr.layout(target, &params);
+                }
+                layout.draw(
+                    target,
+                    Point {
+                        x: position.x,
+                        y: bottom - layout.descent,
+                    },
+                    &params,
+                );
+                continue;
+            }
             text.draw(
                 target,
                 position,

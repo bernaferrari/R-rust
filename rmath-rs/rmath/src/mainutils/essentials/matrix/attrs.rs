@@ -545,6 +545,17 @@ pub unsafe fn do_namespace_get(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
         }
         let lookup_name = symbol_name(name).unwrap_or_default();
 
+        #[cfg(feature = "renderplot-device")]
+        if package_name == "grid" {
+            if !crate::mainutils::portable_grid::EXPORTS.contains(&lookup_name.as_str()) {
+                package_error(format!(
+                    "'{lookup_name}' is not exported by the portable grid namespace"
+                ));
+            }
+            let namespace = crate::mainutils::portable_grid::namespace();
+            return crate::sexp::envir::R_findVarInFrame(namespace, name);
+        }
+
         if package_name == "tools" {
             if lookup_name == "langElts" {
                 let values = crate::sexp::init::LANGUAGE_ELEMENTS;

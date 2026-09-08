@@ -122,6 +122,24 @@ impl WasmRSession {
         })
     }
 
+    /// Capture an owned graphics scene synchronously before any GPU work.
+    /// The returned scene contains no interpreter references. JavaScript may
+    /// continue evaluating or close this session while the GPU renders it.
+    #[cfg(feature = "vello-gpu")]
+    pub fn record_scene(
+        &mut self,
+        code: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<WasmPlotScene, JsError> {
+        self.with_session(|session| {
+            session
+                .record_scene(code, width, height)
+                .map(|inner| WasmPlotScene { inner })
+                .map_err(|error| JsError::new(&error.to_string()))
+        })
+    }
+
     /// Report whether `code` is syntactically complete R input.
     ///
     /// Incomplete input (`f <- function(x) {`) reports `false` so hosts show
@@ -176,6 +194,112 @@ impl WasmRSession {
                 ))
             }
         }
+    }
+}
+
+/// An owned drawing captured from R, safe to retain after its session closes.
+#[cfg(feature = "vello-gpu")]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct WasmPlotScene {
+    inner: r_graphics_engine::Scene,
+}
+
+#[cfg(feature = "vello-gpu")]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl WasmPlotScene {
+    pub fn width(&self) -> u32 {
+        self.inner.dimensions().0
+    }
+    pub fn height(&self) -> u32 {
+        self.inner.dimensions().1
+    }
+}
+
+/// Reusable asynchronous GPU renderer. This is opt-in through `vello-gpu`.
+///
+/// JavaScript: `const gpu = await WasmGpuRenderer.create();` then
+/// `await gpu.render_png(session.record_scene(code, 640, 480));`.
+/// Initialization rejects when WebGPU or the required adapter is unavailable;
+/// callers can explicitly choose the existing synchronous CPU `render_png`.
+#[cfg(feature = "vello-gpu")]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct WasmGpuRenderer {
+    // GPU work takes ownership before awaiting. A panic drops that renderer,
+    // leaving None; callers cannot reuse partially unwound GPU state.
+    inner: std::panic::AssertUnwindSafe<
+        std::rc::Rc<std::cell::RefCell<Option<r_device_vello_gpu::GpuRenderer>>>,
+    >,
+}
+
+#[cfg(all(feature = "vello-gpu", target_arch = "wasm32"))]
+#[wasm_bindgen]
+impl WasmGpuRenderer {
+    pub fn create() -> js_sys::Promise {
+        wasm_bindgen_futures::future_to_promise(std::panic::AssertUnwindSafe(async {
+            let renderer = r_device_vello_gpu::GpuRenderer::new()
+                .await
+                .map_err(|error| JsError::new(&error.to_string()))?;
+            Ok(Self {
+                inner: std::panic::AssertUnwindSafe(std::rc::Rc::new(std::cell::RefCell::new(
+                    Some(renderer),
+                ))),
+            }
+            .into())
+        }))
+    }
+    /// Start rendering an owned snapshot without retaining any JavaScript or
+    /// interpreter borrow. Concurrent requests reject explicitly. If a panic
+    /// unwinds this future, the removed renderer is dropped and stays closed.
+    pub fn render_png(&self, scene: &WasmPlotScene) -> js_sys::Promise {
+        let inner = self.inner.clone();
+        let scene = scene.inner.clone();
+        let renderer = inner.borrow_mut().take();
+        wasm_bindgen_futures::future_to_promise(std::panic::AssertUnwindSafe(async move {
+            let mut renderer =
+                renderer.ok_or_else(|| JsError::new("GPU renderer busy or closed"))?;
+            let result = renderer.render_png(&scene).await;
+            *inner.borrow_mut() = Some(renderer);
+            let bytes = result.map_err(|error| JsError::new(&error.to_string()))?;
+            Ok(wasm_bindgen::Clamped(bytes).into())
+        }))
+    }
+    pub fn adapter_name(&self) -> Result<String, JsError> {
+        self.inner
+            .borrow()
+            .as_ref()
+            .map(|renderer| renderer.adapter_info().name.clone())
+            .ok_or_else(|| JsError::new("GPU renderer busy or closed"))
+    }
+}
+
+#[cfg(all(feature = "vello-gpu", not(target_arch = "wasm32")))]
+impl WasmGpuRenderer {
+    pub async fn create() -> Result<Self, JsError> {
+        let renderer = r_device_vello_gpu::GpuRenderer::new()
+            .await
+            .map_err(|error| JsError::new(&error.to_string()))?;
+        Ok(Self {
+            inner: std::panic::AssertUnwindSafe(std::rc::Rc::new(std::cell::RefCell::new(Some(
+                renderer,
+            )))),
+        })
+    }
+    pub async fn render_png(&self, scene: &WasmPlotScene) -> Result<Vec<u8>, JsError> {
+        let mut renderer = self
+            .inner
+            .borrow_mut()
+            .take()
+            .ok_or_else(|| JsError::new("GPU renderer busy or closed"))?;
+        let result = renderer.render_png(&scene.inner).await;
+        *self.inner.borrow_mut() = Some(renderer);
+        result.map_err(|error| JsError::new(&error.to_string()))
+    }
+    pub fn adapter_name(&self) -> Result<String, JsError> {
+        self.inner
+            .borrow()
+            .as_ref()
+            .map(|renderer| renderer.adapter_info().name.clone())
+            .ok_or_else(|| JsError::new("GPU renderer busy or closed"))
     }
 }
 

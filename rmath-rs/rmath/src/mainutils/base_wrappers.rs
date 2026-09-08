@@ -16,7 +16,20 @@ pub(crate) unsafe fn apply(
     rho: SEXP,
     evaluated: bool,
 ) -> SEXP {
+    unsafe { apply_in_environment(name, source, args, rho, evaluated, R_BaseEnv()) }
+}
+
+/// Compile a wrapper in its owning namespace, preserving lexical helper lookup.
+pub(crate) unsafe fn apply_in_environment(
+    name: &'static str,
+    source: &str,
+    args: SEXP,
+    rho: SEXP,
+    evaluated: bool,
+    environment: SEXP,
+) -> SEXP {
     unsafe {
+        let _environment_guard = protect(environment);
         let cached = with_required_current_instance(|inst| {
             (*inst).base_wrappers.borrow().get(name).copied()
         });
@@ -25,7 +38,7 @@ pub(crate) unsafe fn apply(
                 crate::sexp::memory::with_arena(|arena| crate::eval::parser::parse(source, arena))
                     .expect("checked-in base wrapper must parse");
             let _parsed = protect(parsed);
-            let fun = crate::eval::eval::Rf_eval(parsed, R_BaseEnv());
+            let fun = crate::eval::eval::Rf_eval(parsed, environment);
             let _fun = protect(fun);
             crate::sexp::protect::R_PreserveObject(fun);
             with_required_current_instance(|inst| {
