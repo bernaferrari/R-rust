@@ -578,26 +578,7 @@ nav a:hover,
   max-width: 160px;
   color: #656e5d;
 }
-.code-editor .cm-editor {
-  font-size: 11px;
-  font-family: "SFMono-Regular", Consolas, monospace;
-}
-.code-editor .cm-scroller {
-  line-height: 1.85;
-  padding-block: 13px;
-}
-.code-editor .cm-gutters {
-  background: white;
-  border: 0;
-  color: #b6baae;
-  padding-left: 8px;
-}
-.code-editor .cm-content {
-  padding-left: 10px;
-}
-.code-editor .cm-focused {
-  outline: 0;
-}
+
 .editor-fallback {
   width: 100%;
   height: 390px;
@@ -1306,12 +1287,7 @@ footer > div a {
     border-right: 0;
     border-bottom: 1px solid #e0e5d7;
   }
-  .code-editor .cm-editor {
-    font-size: 12px;
-  }
-  .code-editor .cm-scroller {
-    max-height: 340px;
-  }
+
   .editor-fallback {
     height: 340px;
     font-size: 12px;
@@ -2568,9 +2544,7 @@ footer > div {
 .editor-copy:focus-visible {
   opacity: 1;
 }
-.editor-surface .cm-content {
-  padding-right: 52px;
-}
+
 .editor-surface .editor-fallback {
   padding-right: 52px;
 }
@@ -2963,3 +2937,60 @@ footer { flex-wrap: wrap; }
     padding-inline: 16px;
   }
 }
+.r-chat-starters > button { height: auto; max-width: 240px; padding: 14px; text-align: left; white-space: normal; align-items: flex-start; }
+.r-chat-starters strong { display: block; font-size: 13px; font-weight: 550; }
+.r-chat-starters small { display: block; margin-top: 5px; font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
+.r-chat-example-picker { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.r-chat-example-picker > span { color: var(--muted-foreground); font-size: 12px; }
+@media (max-width: 600px) { .r-chat-example-picker { flex-wrap: wrap; gap: 6px; } }
+.site-header { height: 56px; gap: 16px; }
+.site-header .page-switcher { display: flex; margin-right: auto; }
+.page-switcher [data-slot=select-trigger] { border: 0; background: transparent; color: var(--ink); font-size: 13px; }
+.site-header .github-link > span, .site-header .github-link > svg:last-child:not(:first-child) { display: none; }
+.r-chat-virtual-content { display: block; }
+.r-chat-virtual-content .r-chat-turn { margin-bottom: 0; padding-bottom: 32px; }
+@media (max-width: 600px) { .site-header { padding-inline: 16px; gap: 10px; } .site-header .wordmark { font-size: 22px; gap: 6px; } .site-header .header-actions { gap: 4px; } }
+.r-chat-composer { margin: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--background); }
+.r-chat-composer:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.r-chat-composer textarea { background: transparent; border: 0; border-radius: 0; padding: 4px; min-height: 76px; outline: none; box-shadow: none; resize: none; }
+.r-chat-composer textarea:focus-visible { outline: none; box-shadow: none; }
+.r-chat-compose-actions { margin-top: 8px; }
+.r-chat-compose-actions > button[aria-label="Run command"] { border-radius: 50%; }
+@media (max-width: 600px) { .r-chat-composer { margin: 12px; } }
+.editor-footer { gap: 8px; flex-wrap: wrap; min-height: 56px; }
+.editor-footer .toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.editor-footer .execution-select { min-height: 36px; font-size: 12px; }
+.editor-footer .run-button { min-height: 36px; padding: 6px 12px; }
+.editor-pane > .pane-topline { min-height: 52px; }
+
+.editor-pane > .pane-topline { height: auto; min-height: 52px; padding: 8px; padding-left: 16px; }
+.output-control-bar { height: auto; min-height: 52px; padding: 6px 10px; flex-wrap: wrap; gap: 6px; }
+.output-control-bar .toolbar-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.output-control-bar .execution-select { background: transparent; border-color: transparent; min-height: 36px; font-size: 12px; padding: 4px 8px; }
+.output-control-bar .run-button { min-height: 36px; padding: 6px 10px; }
+.output-control-bar .icon-control { width: 32px; min-width: 32px; height: 36px; }
+@media (max-width: 460px) { .output-control-bar .output-tabs button { padding-inline: 5px; gap: 4px; font-size: 12px; } .output-control-bar .execution-select { max-width: 140px; } }
+.recipe-label { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.recipe-thumbnail { width: 36px; height: 27px; flex-shrink: 0; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+.recipe-code { display: grid; place-items: center; background: var(--muted); font-family: var(--serif); }
+.editor-pane .recipe-select { width: auto; min-width: 210px; max-width: min(320px, 68vw); }
+.editor-pane .editor-header-actions { margin: 0; display: flex; align-items: center; gap: 4px; }
+.editor-filename { padding-right: 8px; }
+.output-control-bar .execution-select:hover, .output-control-bar .execution-select[data-popup-open] { background: var(--muted); color: var(--foreground); }
+.output-control-bar .execution-select:focus-visible { background: var(--muted); outline: 2px solid var(--ring); outline-offset: 1px; }
+@media (max-width: 460px) { .editor-filename { display: none !important; } }
+.playground-example-bar { display: flex; align-items: center; margin-bottom: 12px; }
+.playground-example-bar .editor-header-actions { display: flex; align-items: center; gap: 4px; margin: 0; }
+.playground-example-bar .recipe-select { width: auto; min-width: 210px; max-width: min(340px, 78vw); background: transparent; border-color: transparent; padding-left: 0; }
+.playground-example-bar .recipe-select:hover { background: var(--muted); }
+.output-control-bar .run-button { height: 32px; min-height: 32px; padding: 4px 10px; font-size: 12px; }
+.output-control-bar .output-tabs button:hover { background: var(--muted); color: var(--foreground); }
+.output-control-bar .output-tabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: -3px; }
+.result-area { position: relative; }
+.output-download { position: absolute; right: 10px; top: 8px; z-index: 2; background: var(--card); opacity: .85; }
+.output-download:hover, .output-download:focus-visible { opacity: 1; }
+.output-control-bar .output-tabs { gap: 4px; align-items: center; }
+.output-control-bar .output-tabs button { height: 32px; min-height: 32px; margin: 0; padding: 4px 10px; border-radius: 8px; border: 0; font-size: 12px; gap: 6px; }
+.output-control-bar .output-tabs button[aria-pressed=true] { background: var(--muted); color: var(--primary); box-shadow: inset 0 0 0 1px var(--border); }
+.output-control-bar .output-tabs button::after { display: none; }
+.output-control-bar { min-height: 46px; }

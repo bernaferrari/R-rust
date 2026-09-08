@@ -1,3 +1,4 @@
+import { useDarkTheme } from "@/theme"
 import {
   lazy,
   Suspense,
@@ -63,6 +64,10 @@ export function Playground({
   input: PlaygroundInput
   onSelect: (example: Example) => void
 }) {
+  const dark = useDarkTheme()
+  const selectedExample = examples.find(
+    (example) => example.id === input.exampleId
+  )
   const [code, setCode] = useState(input.code)
   const [mode, setMode] = useState<RuntimeMode>(input.mode)
   const [busy, setBusy] = useState(false)
@@ -72,6 +77,11 @@ export function Playground({
   const [duration, setDuration] = useState<number>()
   const [feedback, setFeedback] = useState("")
   const [copied, setCopied] = useState(false)
+  const [downloaded, setDownloaded] = useState(false)
+  const downloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  )
+  useEffect(() => () => clearTimeout(downloadTimer.current), [])
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const editorReady = useSyncExternalStore(
     subscribeClient,
@@ -195,111 +205,70 @@ export function Playground({
           </p>
         </div>
       )}
-      <div className="workbench">
-        <div className="workbench-toolbar">
-          <div className="workbench-label">
-            <span className="playground-mark" aria-hidden="true">
-              R
-            </span>
-            <div className="playground-title">
-              <strong>Playground</strong>
-            </div>
-          </div>
-          <div className="toolbar-actions">
-            <Select
-              value={automatic ? "auto" : "manual"}
-              onValueChange={(value) => {
-                if (value) {
-                  clearTimeout(autoTimer.current)
-                  onAutomaticChange(value === "auto")
-                }
-              }}
+      <div className="playground-example-bar">
+        <div className="editor-header-actions">
+          <Select
+            value={input.exampleId ?? "custom"}
+            onValueChange={(value) => {
+              const example = examples.find((x) => x.id === value)
+              if (example) onSelect(example)
+            }}
+          >
+            <SelectTrigger
+              className="recipe-select"
+              aria-label="Choose an R example"
             >
-              <SelectTrigger
-                className="execution-select"
-                aria-label="When to run code"
-              >
-                <SelectValue>
-                  {automatic ? "Run automatically" : "Run manually"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent
-                className="execution-options"
-                align="end"
-                alignItemWithTrigger={false}
-              >
-                <SelectItem value="auto">
-                  <span>
-                    <strong>Run automatically</strong>
-                    <small>Updates after you pause typing</small>
+              <SelectValue>
+                <span className="recipe-label">
+                  {selectedExample?.mode === "plot" && (
+                    <img
+                      className="recipe-thumbnail"
+                      src={`${import.meta.env.BASE_URL}examples/${selectedExample.id}${dark ? "-dark" : ""}.png`}
+                      alt=""
+                    />
+                  )}
+                  {selectedExample?.title ?? "Custom code"}
+                </span>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent
+              className="recipe-options"
+              align="end"
+              alignItemWithTrigger={false}
+            >
+              {examples.map((example) => (
+                <SelectItem key={example.id} value={example.id}>
+                  <span className="recipe-label">
+                    {example.mode === "plot" ? (
+                      <img
+                        className="recipe-thumbnail"
+                        src={`${import.meta.env.BASE_URL}examples/${example.id}${dark ? "-dark" : ""}.png`}
+                        alt=""
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="recipe-thumbnail recipe-code">R</span>
+                    )}
+                    {example.title}
                   </span>
                 </SelectItem>
-                <SelectItem value="manual">
-                  <span>
-                    <strong>Run manually</strong>
-                    <small>Only runs when you choose Run code</small>
-                  </span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button
-              variant="ghost"
-              className="icon-control"
-              aria-label="Reset R session"
-              onClick={reset}
-            >
-              <RotateCcw />
-            </Button>
-            {(!automatic || busy) && (
-              <Button
-                className="run-button"
-                onClick={busy ? reset : run}
-                disabled={!code.trim()}
-              >
-                {busy ? <Square /> : <Play fill="currentColor" />}
-                {busy ? "Stop" : "Run code"}
-              </Button>
-            )}
-          </div>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            className="icon-control"
+            aria-label="Reset R session"
+            onClick={reset}
+          >
+            <RotateCcw />
+          </Button>
         </div>
+      </div>
+
+      <div className="workbench">
         <div className="workbench-body">
           <div className="editor-pane">
-            <div className="pane-topline">
-              <span>
-                <span className="r-file">R</span> experiment.R
-              </span>
-              <div className="editor-header-actions">
-                <Select
-                  value={input.exampleId ?? "custom"}
-                  onValueChange={(value) => {
-                    const example = examples.find((x) => x.id === value)
-                    if (example) onSelect(example)
-                  }}
-                >
-                  <SelectTrigger
-                    className="recipe-select"
-                    aria-label="Choose an R example"
-                  >
-                    <SelectValue>
-                      {examples.find((x) => x.id === input.exampleId)?.title ??
-                        "Custom code"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent
-                    className="recipe-options"
-                    align="end"
-                    alignItemWithTrigger={false}
-                  >
-                    {examples.map((example) => (
-                      <SelectItem key={example.id} value={example.id}>
-                        {example.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
             <div className="editor-surface">
               <TooltipProvider>
                 <Tooltip>
@@ -347,13 +316,9 @@ export function Playground({
                 />
               )}
             </div>
-            <div className="editor-footer">
-              <span>R · UTF-8</span>
-              {!automatic && <span>⌘ / Ctrl + Enter to run</span>}
-            </div>
           </div>
           <div className="output-pane">
-            <div className="pane-topline">
+            <div className="pane-topline output-control-bar">
               <div
                 className="output-tabs"
                 role="group"
@@ -374,9 +339,61 @@ export function Playground({
                   Console
                 </button>
               </div>
+              <div className="toolbar-actions">
+                <Select
+                  value={automatic ? "auto" : "manual"}
+                  onValueChange={(value) => {
+                    if (value) {
+                      clearTimeout(autoTimer.current)
+                      onAutomaticChange(value === "auto")
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className="execution-select"
+                    aria-label="When to run code"
+                  >
+                    <SelectValue>
+                      {automatic ? "Run automatically" : "Run manually"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent
+                    className="execution-options"
+                    align="end"
+                    alignItemWithTrigger={false}
+                  >
+                    <SelectItem value="auto">
+                      <span>
+                        <strong>Run automatically</strong>
+                        <small>Updates after you pause typing</small>
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="manual">
+                      <span>
+                        <strong>Run manually</strong>
+                        <small>Only runs when you choose Run code</small>
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {(!automatic || busy) && (
+                  <Button
+                    className="run-button"
+                    size="sm"
+                    onClick={busy ? reset : run}
+                    disabled={!code.trim()}
+                  >
+                    {busy ? <Square /> : <Play fill="currentColor" />}
+                    {busy ? "Stop" : "Run code"}
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="result-area" aria-live="polite" aria-busy={busy}>
               <Button
-                variant="ghost"
-                className="icon-control"
+                variant="outline"
+                className="icon-control output-download"
                 aria-label={
                   mode === "plot" ? "Download plot" : "Download output"
                 }
@@ -388,12 +405,24 @@ export function Playground({
                     a.download = "plot.png"
                     a.click()
                   } else saveFile(output, "text/plain", "output.txt")
+                  setDownloaded(true)
+                  clearTimeout(downloadTimer.current)
+                  downloadTimer.current = setTimeout(
+                    () => setDownloaded(false),
+                    1000
+                  )
                 }}
               >
-                <Download />
+                <span
+                  className="copy-icon-swap"
+                  data-copied={downloaded}
+                  aria-hidden="true"
+                >
+                  <Check className="copy-check" />
+                  <Download className="copy-original" />
+                </span>
               </Button>
-            </div>
-            <div className="result-area" aria-live="polite" aria-busy={busy}>
+
               {error ? (
                 <div className="run-error" role="alert">
                   <strong>Something needs a tweak.</strong>
@@ -444,15 +473,19 @@ export function Playground({
       <details id="compatibility" className="compat-note">
         <summary>What can I run?</summary>
         <p>
-          The examples here run in the browser: data frames, linear algebra,
-          LOESS, common plots, and a subset of grid and mathematical labels.
+          Run R functions, vectors and data frames; seeded random numbers,
+          linear algebra and LOESS; base plots, grid layouts and grob trees; and
+          mathematical labels with fractions, Greek letters and radicals.
         </p>
         <p>
-          This is a partial R runtime. Arbitrary CRAN packages and native
-          extensions are not supported. Some browser functions, including FFT,
-          are still unavailable. Grid layouts and mathematical typography do not
-          yet fully match GNU R.
+          Still incomplete: arbitrary CRAN packages and native extensions,
+          advanced grid editing and grob measurement, exact device typography,
+          and parts of GNU R’s compiler and platform APIs. The examples are
+          tested working paths; they do not imply full GNU R compatibility.
         </p>
+        <a href={`${import.meta.env.BASE_URL}compatibility/`}>
+          Current support and limits ↗
+        </a>
       </details>
     </section>
   )

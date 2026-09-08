@@ -80,24 +80,79 @@ test("copy uses the reference icon animation and one-second feedback", async ({
     })
   )
   await page.getByRole("button", { name: "Copy R code", exact: true }).click()
-  await expect(page.locator(".copy-icon-swap")).toHaveAttribute(
-    "data-copied",
-    "true"
-  )
+  await expect(
+    page
+      .getByRole("button", { name: "Copy R code", exact: true })
+      .locator(".copy-icon-swap")
+  ).toHaveAttribute("data-copied", "true")
   expect(
     await page.evaluate(
       () => (window as Window & { copiedTestValue?: string }).copiedTestValue
     )
   ).toContain("loess")
-  await expect(page.locator(".copy-icon-swap")).toHaveAttribute(
-    "data-copied",
-    "false",
-    { timeout: 2000 }
-  )
+  await expect(
+    page
+      .getByRole("button", { name: "Copy R code", exact: true })
+      .locator(".copy-icon-swap")
+  ).toHaveAttribute("data-copied", "false", { timeout: 2000 })
   await expect(page.getByText("⌘ / Ctrl + Enter to run")).toHaveCount(0)
   await page.setViewportSize({ width: 690, height: 1050 })
   await page.locator("#examples").scrollIntoViewIfNeeded()
   const header = await page.locator(".site-header").boundingBox()
   expect(header?.height).toBe(56)
   expect(header?.y).toBe(0)
+})
+
+test("editor scrolls the final line into view and download feedback resets", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 690, height: 1050 })
+  await page.goto("/editor/?example=sunflower")
+  const scroller = page.locator(".cm-scroller")
+  await scroller.waitFor()
+  await scroller.evaluate((node) => {
+    node.scrollTop = node.scrollHeight
+  })
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const scroller = document.querySelector(".cm-scroller")!
+        const editor = document.querySelector(".cm-editor")!
+        return Math.abs(
+          scroller.getBoundingClientRect().bottom -
+            editor.getBoundingClientRect().bottom
+        )
+      })
+    )
+    .toBeLessThan(1)
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const last = document
+          .querySelector(".cm-line:last-child")!
+          .getBoundingClientRect()
+        return (
+          last.bottom <=
+          document.querySelector(".cm-scroller")!.getBoundingClientRect().bottom
+        )
+      })
+    )
+    .toBeTruthy()
+  const download = page.getByRole("button", {
+    name: "Download plot",
+    exact: true,
+  })
+  await expect(download).toBeEnabled({ timeout: 30000 })
+  const event = page.waitForEvent("download")
+  await download.click()
+  await event
+  await expect(download.locator(".copy-icon-swap")).toHaveAttribute(
+    "data-copied",
+    "true"
+  )
+  await expect(download.locator(".copy-icon-swap")).toHaveAttribute(
+    "data-copied",
+    "false",
+    { timeout: 2000 }
+  )
 })

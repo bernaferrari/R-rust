@@ -211,3 +211,13 @@ THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
 WARRANTY. IN PARTICULAR, NEITHER THE AUTHORS NOR AT&T MAKE ANY
 REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
 OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+
+## Interactive browser output
+
+The console evaluates each command once and returns captured text plus a PNG
+when actual drawing occurs. Assignment-only commands remain invisible, and a
+counter regression checks that requesting graphics does not evaluate twice.
+One-dimensional numeric arrays and tables are accepted by `barplot`, matching
+the pinned oracle's bar centers. Separate console commands still use separate
+render targets: persistent cross-command graphics and partial output on errors
+remain unfinished.

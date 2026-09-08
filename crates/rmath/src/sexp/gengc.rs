@@ -333,6 +333,11 @@ fn mark_instance_roots(instance: *mut instance::RInstance) {
         mark_reachable((*instance).error_state.handler_stack);
         mark_reachable((*instance).error_state.restart_stack);
         mark_reachable((*instance).error_state.warning_call);
+        mark_reachable((*instance).error_state.signalled_condition);
+        mark_reachable((*instance).error_state.mathlib_warning_call);
+        for &call in &(*instance).error_state.mathlib_warning_call_stack {
+            mark_reachable(call);
+        }
 
         mark_reachable((*instance).eval_state.current_expr);
         mark_reachable((*instance).eval_state.parse_error_file);
@@ -787,6 +792,14 @@ fn update_instance_roots_in(instance: *mut instance::RInstance, old_to_new: &Has
         update_field(&mut (*instance).error_state.handler_stack, old_to_new);
         update_field(&mut (*instance).error_state.restart_stack, old_to_new);
         update_field(&mut (*instance).error_state.warning_call, old_to_new);
+        update_field(&mut (*instance).error_state.signalled_condition, old_to_new);
+        update_field(
+            &mut (*instance).error_state.mathlib_warning_call,
+            old_to_new,
+        );
+        for call in &mut (*instance).error_state.mathlib_warning_call_stack {
+            update_field(call, old_to_new);
+        }
 
         update_field(&mut (*instance).eval_state.current_expr, old_to_new);
         update_field(&mut (*instance).eval_state.parse_error_file, old_to_new);
@@ -1671,6 +1684,9 @@ mod tests {
             (*instance).error_state.warnings = nil;
             (*instance).error_state.handler_stack = nil;
             (*instance).error_state.restart_stack = nil;
+            (*instance).error_state.signalled_condition = nil;
+            (*instance).error_state.mathlib_warning_call = nil;
+            (*instance).error_state.mathlib_warning_call_stack.clear();
             (*instance).eval_state.current_expr = nil;
             (*instance).eval_state.parse_error_file = nil;
             (*instance).eval_state.exec_token = nil;

@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select"
 import { RConsole } from "@/components/RConsole"
 import { useState, useSyncExternalStore } from "react"
 import {
@@ -322,11 +329,27 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
             rove<span className="wordmark-dot">.</span>
           </span>
         </a>
-        <nav aria-label="Main navigation">
-          <a href={home ? "#playground" : pageHref("editor")}>Playground</a>
-          <a href={home ? "#examples" : pageHref("examples")}>Examples</a>
-          <a href={home ? "#local-ai" : pageHref("ai")}>Local AI</a>
-          <a href={home ? "#embed" : pageHref("embed")}>For builders</a>
+        <nav aria-label="Main navigation" className="page-switcher">
+          <Select
+            value={page === "missing" ? null : page}
+            onValueChange={(value) => {
+              if (value && value in pages)
+                window.location.assign(pageHref(value as Page))
+            }}
+          >
+            <SelectTrigger aria-label="Choose a page">
+              <SelectValue>
+                {page === "missing" ? "Explore" : pages[page].label}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(pages) as Page[]).map((key) => (
+                <SelectItem key={key} value={key}>
+                  {pages[key].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </nav>
         <div className="header-actions">
           <ThemeToggle />

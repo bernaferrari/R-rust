@@ -57,6 +57,27 @@ pub struct WasmRSession {
     inner: std::panic::AssertUnwindSafe<Option<r_embed::RSession>>,
 }
 
+/// Owned result from one interactive evaluation.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct WasmInteractiveOutput {
+    output: String,
+    png: Option<Vec<u8>>,
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl WasmInteractiveOutput {
+    pub fn output(&self) -> String {
+        self.output.clone()
+    }
+    pub fn has_png(&self) -> bool {
+        self.png.is_some()
+    }
+    /// Return PNG bytes, or an empty byte array when this evaluation drew no plot.
+    pub fn png(&self) -> Vec<u8> {
+        self.png.clone().unwrap_or_default()
+    }
+}
+
 const WASM_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -132,6 +153,25 @@ impl WasmRSession {
         self.with_session(|session| {
             session
                 .render_with_dimensions(code, width, height)
+                .map_err(|e| JsError::new(&e.to_string()))
+        })
+    }
+
+    /// Evaluate once and return both console output and an optional PNG.
+    /// A PNG is present only when the evaluator issued drawing operations.
+    pub fn eval_interactive(
+        &mut self,
+        code: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<WasmInteractiveOutput, JsError> {
+        self.with_session(|session| {
+            session
+                .eval_interactive(code, width, height)
+                .map(|result| WasmInteractiveOutput {
+                    output: result.output,
+                    png: result.png,
+                })
                 .map_err(|e| JsError::new(&e.to_string()))
         })
     }

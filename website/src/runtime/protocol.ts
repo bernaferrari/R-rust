@@ -1,4 +1,4 @@
-export type RuntimeMode = "plot" | "console"
+export type RuntimeMode = "plot" | "console" | "interactive"
 
 export type RuntimeRequest = {
   id: number

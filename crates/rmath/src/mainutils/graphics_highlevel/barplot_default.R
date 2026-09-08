@@ -11,11 +11,11 @@ function(height, width = 1, space = NULL, names.arg = NULL, legend.text = NULL,
     if (!is.null(legend.text)) stop("barplot legends are not supported")
     if (!is.character(log) || length(log) != 1L) stop("'log' must be a character string")
     d <- dim(height)
-    vectorInput <- is.null(d)
+    vectorInput <- is.null(d) || length(d) == 1L
     if (vectorInput) {
         if (!is.numeric(height)) stop("'height' must be a vector or a matrix")
         original.names <- names(height)
-        height <- rbind(height)
+        height <- rbind(as.vector(height))
         beside <- TRUE
         if (is.null(col)) col <- "grey"
     } else if (length(d) == 2L && is.numeric(height)) {

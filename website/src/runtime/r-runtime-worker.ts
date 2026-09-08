@@ -36,7 +36,15 @@ self.onmessage = ({ data }: MessageEvent<RuntimeRequest>) => {
       const runtime = await getSession()
       let output = ""
       let png: Uint8Array | undefined
-      if (request.mode === "plot") {
+      if (request.mode === "interactive") {
+        const result = runtime.eval_interactive(request.code, WIDTH, HEIGHT)
+        try {
+          output = result.output()
+          if (result.has_png()) png = result.png()
+        } finally {
+          result.free()
+        }
+      } else if (request.mode === "plot") {
         // render_png evaluates and captures the script atomically. Do not eval first.
         png = runtime.render_png(request.code, WIDTH, HEIGHT)
       } else if (request.mode === "console") {

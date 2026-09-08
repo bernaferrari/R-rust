@@ -124,7 +124,7 @@ The most useful contributions close a real contract: a small R program, its GNU 
 | [`apps/workbench`](apps/workbench) | Full Android and Kotlin/Wasm workbench |
 | [`examples/android-compose`](examples/android-compose) | Minimal Android embedding example: sessions, plots and cancellation |
 | [`tests`](tests) | Differential, conformance and upstream test evidence |
-| [`docs`](docs/README.md) | Maintained contracts, verification and release guides; historical material in `archive/` |
+| [`docs`](docs/README.md) | Maintained contracts, verification and release guides |
 
 Root configuration files are used by Cargo, formatting, CI and agent tooling.
 `.cargo` must stay here for Cargo discovery. `LICENSE`, `COPYING` and `NOTICE.md`

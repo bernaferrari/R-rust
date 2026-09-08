@@ -4,17 +4,17 @@ const contracts = [
   [
     "Language & data",
     "Vectors, data frames, functions, control flow and supported base/statistics operations.",
-    "The full GNU R API, compiler behavior and locale support are still incomplete.",
+    "Bytecode/compiler execution and serialization, full S3/S4 dispatch, evaluator edge cases, and locale behavior remain incomplete.",
   ],
   [
     "Statistics",
     "Seeded random numbers, supported distributions, linear algebra with faer, and LOESS fitting and prediction.",
-    "Coverage is tested operation by operation. Passing examples does not establish every numerical or statistical contract.",
+    "FFT is still unavailable in the browser build. Coverage is tested operation by operation; passing examples does not establish every numerical or statistical contract.",
   ],
   [
     "Graphics",
     "Base plots, grid viewports and grobs, mathematical labels, and portable PNG output with Vello.",
-    "Advanced grid semantics and exact GNU R font typography remain incomplete. The website uses the CPU renderer; GPU integration is a separate API.",
+    "Advanced grid editing and units, device lifecycle, logarithmic axes, patterns/masks, and exact GNU R font typography remain incomplete. The website uses the CPU renderer; GPU integration is a separate API.",
   ],
   [
     "Packages",
@@ -66,16 +66,19 @@ export function CompatibilityPage() {
           stress tests do not prove the entire interpreter sound.
         </p>
         <p>
-          The browser runs R in a worker with a 20-second timeout, a 64 MiB
-          object arena budget, bounded result export, and a 256 MiB ceiling on
-          Wasm linear memory. Console capture is limited to 1 MiB. Browser
-          rendering and local AI models use separate memory; native applications
-          must configure their own resource limits.
+          The browser runs R in a worker with a 15-second console timeout (20
+          seconds in the playground), a 64 MiB object arena budget, bounded
+          result export, and a 256 MiB ceiling on Wasm linear memory. Console
+          capture is limited to 1 MiB. Browser rendering and local AI models use
+          separate memory; native applications must configure their own resource
+          limits.
         </p>
         <p>
-          Compatibility tests compare curated cases against an exact GNU R
-          source revision. Counts measure evidence, not a percentage of R
-          implemented.
+          The checked-in inventory contains 636 curated oracle comparisons, but
+          only 1 of 70 whole upstream files is marked passing; 9 are expected
+          failures and 60 are skipped. Seven packages have selected probes, not
+          complete compatibility. These are coverage declarations, not fresh
+          test results or a percentage of R implemented.
         </p>
         <a
           className="text-link"

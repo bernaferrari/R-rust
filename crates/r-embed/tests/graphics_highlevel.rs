@@ -222,3 +222,14 @@ fn complete_statistics_fixture_matches_pinned_oracle() {
         ))
     );
 }
+
+#[test]
+fn barplot_accepts_one_dimensional_tables_like_numeric_vectors() {
+    let mut session = RSession::new().unwrap();
+    let result = session.eval("counts <- table(c(1,1,2,3,3,3)); max(abs(as.vector(barplot(counts, plot=FALSE)) - c(.7,1.9,3.1))) < 1e-12").unwrap();
+    assert_eq!(result, "[1] TRUE");
+    let png = session
+        .render_with_dimensions("barplot(counts)", 320, 240)
+        .unwrap();
+    assert!(!png.is_empty());
+}

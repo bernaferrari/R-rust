@@ -1,3 +1,9 @@
+import { useVirtualizer } from "@tanstack/react-virtual"
+import {
+  consoleExamples,
+  type ConsoleCommand,
+  type ConsoleExample,
+} from "@/console-examples"
 import {
   MessageScroller,
   MessageScrollerProvider,
@@ -26,34 +32,15 @@ import {
   SelectItem,
 } from "@/components/ui/select"
 import { RRuntime } from "@/runtime/r-runtime"
-import type { RuntimeMode } from "@/runtime/protocol"
 
 type Entry = {
   id: number
   code: string
-  mode: RuntimeMode
   output?: string
   image?: string
   error?: string
   ms?: number
 }
-const starters = [
-  {
-    title: "Start with a little data",
-    code: "temperatures <- c(19, 22, 24, 21, 18)\nmean(temperatures)",
-    mode: "console" as const,
-  },
-  {
-    title: "Draw a curve",
-    code: 'x <- seq(0, 2 * pi, length.out = 120)\nplot(x, sin(x), type = "l", lwd = 3, col = "#16766c",\n     main = "A little rhythm", xlab = "Time", ylab = "Signal")',
-    mode: "plot" as const,
-  },
-  {
-    title: "Ask R a question",
-    code: "summary(cars)",
-    mode: "console" as const,
-  },
-]
 export function RConsole() {
   const runtime = useRef<RRuntime | null>(null)
   const urls = useRef(new Set<string>())
@@ -63,9 +50,27 @@ export function RConsole() {
   const input = useRef<HTMLTextAreaElement>(null)
   const [entries, setEntries] = useState<Entry[]>([])
   const [draft, setDraft] = useState("")
-  const [mode, setMode] = useState<RuntimeMode>("console")
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState("Ready when you are")
+  const [notice, setNotice] = useState("")
+  const viewport = useRef<HTMLDivElement>(null)
+  const followOutput = useRef(true)
+  // TanStack owns row measurement; Message Scroller owns the surrounding viewport controls.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => viewport.current,
+    estimateSize: () => 260,
+    overscan: 4,
+    getItemKey: (index) => entries[index].id,
+  })
+
+  useEffect(() => {
+    if (!entries.length || !followOutput.current) return
+    const frame = requestAnimationFrame(() =>
+      virtualizer.scrollToIndex(entries.length - 1, { align: "end" })
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [entries, virtualizer])
   useEffect(() => {
     runtime.current = new RRuntime()
     const ownedUrls = urls.current
@@ -77,9 +82,8 @@ export function RConsole() {
       ownedUrls.forEach(URL.revokeObjectURL)
     }
   }, [])
-  function restore(code: string, nextMode: RuntimeMode) {
+  function restore(code: string) {
     setDraft(code)
-    setMode(nextMode)
     input.current?.focus()
   }
   function reset() {
@@ -93,45 +97,56 @@ export function RConsole() {
     setNotice("Fresh session. Previous variables were cleared.")
     input.current?.focus()
   }
-  async function run() {
-    if (locked.current || !draft.trim() || !runtime.current) return
+  async function execute(commands: ConsoleCommand[], next?: ConsoleCommand) {
+    if (locked.current || !runtime.current) return
     locked.current = true
+    followOutput.current = true
     const epoch = generation.current
-    const item: Entry = { id: ++serial.current, code: draft, mode }
-    setEntries((previous) => {
-      const removed = previous.length >= 50 ? previous[0] : undefined
-      if (removed?.image) {
-        URL.revokeObjectURL(removed.image)
-        urls.current.delete(removed.image)
-      }
-      return [...previous.slice(-49), item]
-    })
     setDraft("")
     setBusy(true)
-    setNotice("R is working…")
+    let currentId: number | undefined
     try {
-      const result = await runtime.current.run(item.code, item.mode)
-      if (generation.current !== epoch) return
-      const image = result.png
-        ? URL.createObjectURL(
-            new Blob([new Uint8Array(result.png)], { type: "image/png" })
-          )
-        : undefined
-      if (image) urls.current.add(image)
-      setEntries((previous) =>
-        previous.map((entry) =>
-          entry.id === item.id
-            ? { ...entry, output: result.output, image, ms: result.durationMs }
-            : entry
+      for (const command of commands) {
+        if (generation.current !== epoch) return
+        const item: Entry = { id: ++serial.current, ...command }
+        currentId = item.id
+        setEntries((previous) => [...previous.slice(-499), item])
+        setNotice(
+          next ? "Running the example in your R session…" : "R is working…"
         )
+        const result = await runtime.current.run(item.code, "interactive")
+        if (generation.current !== epoch) return
+        const image = result.png
+          ? URL.createObjectURL(
+              new Blob([new Uint8Array(result.png)], { type: "image/png" })
+            )
+          : undefined
+        if (image) urls.current.add(image)
+        setEntries((previous) =>
+          previous.map((entry) =>
+            entry.id === item.id
+              ? {
+                  ...entry,
+                  output: result.output,
+                  image,
+                  ms: result.durationMs,
+                }
+              : entry
+          )
+        )
+      }
+      if (next) {
+        setDraft(next.code)
+      }
+      setNotice(
+        next ? "Your turn. The example’s variables are ready to use." : ""
       )
-      setNotice("Ready · variables retained in this session")
     } catch (error) {
       if (generation.current !== epoch) return
       const message = error instanceof Error ? error.message : String(error)
       setEntries((previous) =>
         previous.map((entry) =>
-          entry.id === item.id ? { ...entry, error: message } : entry
+          entry.id === currentId ? { ...entry, error: message } : entry
         )
       )
       setNotice(
@@ -147,6 +162,25 @@ export function RConsole() {
       }
     }
   }
+  function run() {
+    if (draft.trim()) return execute([{ code: draft }])
+  }
+  function openExample(example: ConsoleExample) {
+    if (locked.current) return
+    reset()
+    void execute(example.commands, example.next)
+  }
+  useEffect(() => {
+    const retained = new Set(
+      entries.flatMap((entry) => (entry.image ? [entry.image] : []))
+    )
+    for (const url of urls.current) {
+      if (!retained.has(url)) {
+        URL.revokeObjectURL(url)
+        urls.current.delete(url)
+      }
+    }
+  }, [entries])
   return (
     <section className="r-chat" aria-label="Interactive R console">
       <div className="r-chat-heading">
@@ -169,18 +203,59 @@ export function RConsole() {
           New session
         </Button>
       </div>
+      {entries.length > 0 && (
+        <div className="r-chat-example-picker">
+          <Select
+            value={null}
+            disabled={busy}
+            onValueChange={(value) => {
+              const example = consoleExamples.find(
+                (item) => item.title === value
+              )
+              if (example) openExample(example)
+            }}
+          >
+            <SelectTrigger aria-label="Open an example conversation">
+              <SelectValue placeholder="Open an example conversation" />
+            </SelectTrigger>
+            <SelectContent>
+              {consoleExamples.map((example) => (
+                <SelectItem value={example.title} key={example.title}>
+                  {example.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span>Starts a fresh session</span>
+        </div>
+      )}
       <div className="r-chat-workspace">
         <div className="r-chat-topline">
           <span>
             <Terminal size={16} /> R / WebAssembly
           </span>
-          <span>Session lasts until you leave this page</span>
+          <span aria-label="History count">
+            {entries.length ? `${entries.length} / 500 commands` : ""}
+          </span>
         </div>
         <div className="r-chat-history">
           <MessageScrollerProvider>
             <MessageScroller>
-              <MessageScrollerViewport aria-label="R command history">
-                <MessageScrollerContent aria-busy={busy}>
+              <MessageScrollerViewport
+                ref={viewport}
+                onScroll={(event) => {
+                  const node = event.currentTarget
+                  followOutput.current =
+                    node.scrollHeight - node.scrollTop - node.clientHeight < 80
+                }}
+                aria-label="R command history"
+              >
+                <MessageScrollerContent
+                  className={
+                    entries.length ? "r-chat-virtual-content" : undefined
+                  }
+                  aria-busy={busy}
+                >
                   {entries.length === 0 && (
                     <MessageScrollerItem
                       messageId="welcome"
@@ -189,92 +264,115 @@ export function RConsole() {
                       <span className="r-chat-mark">R</span>
                       <h2>What are you curious about?</h2>
                       <p>
-                        Write R below, or start with a small experiment.
+                        Write R below, or open a conversation already in motion.
                         <br />
-                        Your variables are available to the next command.
+                        Examples run real R, then leave the next move to you.
                       </p>
                       <div className="r-chat-starters">
-                        {starters.map((starter) => (
+                        {consoleExamples.map((example) => (
                           <Button
                             variant="outline"
-                            key={starter.title}
-                            onClick={() => restore(starter.code, starter.mode)}
+                            key={example.title}
+                            onClick={() => openExample(example)}
                           >
-                            {starter.title}
+                            <span>
+                              <strong>{example.title}</strong>
+                              <small>{example.description}</small>
+                            </span>
                             <CornerUpLeft size={14} />
                           </Button>
                         ))}
                       </div>
                     </MessageScrollerItem>
                   )}
-                  {entries.map((entry) => (
-                    <MessageScrollerItem
-                      messageId={String(entry.id)}
-                      scrollAnchor
-                      className="r-chat-turn"
-                      key={entry.id}
+                  {entries.length > 0 && (
+                    <div
+                      style={{
+                        height: virtualizer.getTotalSize(),
+                        position: "relative",
+                        width: "100%",
+                      }}
                     >
-                      <Message align="end">
-                        <MessageContent>
-                          <MessageHeader>
-                            You · {entry.mode === "plot" ? "plot" : "R command"}
-                          </MessageHeader>
-                          <Bubble variant="tinted">
-                            <BubbleContent>
-                              <pre>{entry.code}</pre>
-                            </BubbleContent>
-                          </Bubble>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Reuse command ${entry.id}`}
-                            onClick={() => restore(entry.code, entry.mode)}
+                      {virtualizer.getVirtualItems().map((virtualItem) => {
+                        const entry = entries[virtualItem.index]
+                        return (
+                          <div
+                            data-index={virtualItem.index}
+                            ref={virtualizer.measureElement}
+                            className="r-chat-turn"
+                            key={entry.id}
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              width: "100%",
+                              transform: `translateY(${virtualItem.start}px)`,
+                            }}
                           >
-                            <CornerUpLeft />
-                            Reuse
-                          </Button>
-                        </MessageContent>
-                      </Message>
-                      <Message>
-                        <MessageContent>
-                          <MessageHeader>
-                            R{" "}
-                            {entry.ms !== undefined && (
-                              <span> · {Math.round(entry.ms)} ms</span>
-                            )}
-                          </MessageHeader>
-                          <Bubble
-                            variant={entry.error ? "destructive" : "ghost"}
-                          >
-                            <BubbleContent>
-                              {entry.image && (
-                                <a
-                                  href={entry.image}
-                                  download={`r-plot-${entry.id}.png`}
-                                  title="Download plot"
+                            <Message align="end">
+                              <MessageContent>
+                                <MessageHeader>You · R command</MessageHeader>
+                                <Bubble variant="tinted">
+                                  <BubbleContent>
+                                    <pre>{entry.code}</pre>
+                                  </BubbleContent>
+                                </Bubble>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={`Reuse command ${entry.id}`}
+                                  onClick={() => restore(entry.code)}
                                 >
-                                  <img
-                                    src={entry.image}
-                                    alt={`Plot from command ${entry.id}`}
-                                  />
-                                </a>
-                              )}
-                              {entry.error ? (
-                                <pre>{entry.error}</pre>
-                              ) : entry.ms !== undefined ? (
-                                <pre>
-                                  {(entry.output ?? "").trim() ||
-                                    (entry.image ? "" : "Done.")}
-                                </pre>
-                              ) : (
-                                <span role="status">Running…</span>
-                              )}
-                            </BubbleContent>
-                          </Bubble>
-                        </MessageContent>
-                      </Message>
-                    </MessageScrollerItem>
-                  ))}
+                                  <CornerUpLeft />
+                                  Reuse
+                                </Button>
+                              </MessageContent>
+                            </Message>
+                            <Message>
+                              <MessageContent>
+                                <MessageHeader>
+                                  R{" "}
+                                  {entry.ms !== undefined && (
+                                    <span> · {Math.round(entry.ms)} ms</span>
+                                  )}
+                                </MessageHeader>
+                                <Bubble
+                                  variant={
+                                    entry.error ? "destructive" : "ghost"
+                                  }
+                                >
+                                  <BubbleContent>
+                                    {entry.image && (
+                                      <a
+                                        href={entry.image}
+                                        download={`r-plot-${entry.id}.png`}
+                                        title="Download plot"
+                                      >
+                                        <img
+                                          src={entry.image}
+                                          alt={`Plot from command ${entry.id}`}
+                                        />
+                                      </a>
+                                    )}
+                                    {entry.error ? (
+                                      <pre>{entry.error}</pre>
+                                    ) : entry.ms !== undefined ? (
+                                      <pre>
+                                        {(entry.output ?? "").trim() ||
+                                          (entry.image ? "" : "Done.")}
+                                      </pre>
+                                    ) : (
+                                      <span role="status">Running…</span>
+                                    )}
+                                  </BubbleContent>
+                                </Bubble>
+                              </MessageContent>
+                            </Message>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </MessageScrollerContent>
               </MessageScrollerViewport>
               <MessageScrollerButton />
@@ -310,22 +408,6 @@ export function RConsole() {
             }}
           />
           <div className="r-chat-compose-actions">
-            <Select
-              value={mode}
-              onValueChange={(value) => {
-                if (value === "console" || value === "plot") setMode(value)
-              }}
-            >
-              <SelectTrigger aria-label="Command output">
-                <SelectValue>
-                  {mode === "console" ? "Text output" : "Plot output"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="console">Text output</SelectItem>
-                <SelectItem value="plot">Plot output</SelectItem>
-              </SelectContent>
-            </Select>
             <span>Shift + Enter for a new line</span>
             {busy ? (
               <Button type="button" variant="destructive" onClick={reset}>
@@ -337,21 +419,22 @@ export function RConsole() {
                 type="submit"
                 disabled={!draft.trim()}
                 aria-label="Run command"
+                size="icon"
               >
                 <ArrowUp />
-                Run
               </Button>
             )}
           </div>
-          <div className="r-chat-status" role="status">
-            {notice}
-          </div>
+          {notice && (
+            <div className="r-chat-status" role="status">
+              {notice}
+            </div>
+          )}
         </form>
       </div>
       <p className="r-chat-footnote">
-        A browser R runtime, still evolving. Plot output creates a new image for
-        each command. History keeps the latest 50 commands.{" "}
-        <a href="../compatibility/">Compatibility & limits ↗</a>
+        A browser R runtime, still evolving. History keeps the latest 500
+        commands. <a href="../compatibility/">Compatibility & limits ↗</a>
       </p>
     </section>
   )

@@ -979,19 +979,28 @@ pub unsafe fn Rf_warning1(msg: *const c_char) {
     }
 }
 
-thread_local! {
-    static MATHLIB_WARNING_CALL: std::cell::Cell<SEXP> =
-        const { std::cell::Cell::new(std::ptr::null_mut()) };
-}
-
 /// Restore the previous mathlib warning call on drop.
+///
+/// Internal evaluator scope only: the creating instance must outlive the guard,
+/// and nested guards must unwind in reverse creation order. Session evaluation
+/// retains its instance across these scopes; this type never crosses the owned
+/// embedding API boundary.
 pub struct MathlibWarningCallGuard {
-    prev: SEXP,
+    owner: *mut crate::sexp::instance::RInstance,
 }
 
 impl Drop for MathlibWarningCallGuard {
     fn drop(&mut self) {
-        MATHLIB_WARNING_CALL.with(|slot| slot.set(self.prev));
+        // Restore the instance active at creation. Ambient lookup could
+        // target another session if an embedding operation switched it.
+        unsafe {
+            let previous = (*self.owner)
+                .error_state
+                .mathlib_warning_call_stack
+                .pop()
+                .unwrap_or(std::ptr::null_mut());
+            (*self.owner).error_state.mathlib_warning_call = previous;
+        }
     }
 }
 
@@ -1002,13 +1011,20 @@ impl Drop for MathlibWarningCallGuard {
 /// dpq builtins, so `dpq_evaluate` pushes the builtin's call here for the
 /// duration of the nmath invocation.
 pub fn mathlib_warning_call_guard(call: SEXP) -> MathlibWarningCallGuard {
-    let prev = MATHLIB_WARNING_CALL.with(|slot| slot.replace(call));
-    MathlibWarningCallGuard { prev }
+    let owner = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        let prev = (*inst).error_state.mathlib_warning_call;
+        (*inst).error_state.mathlib_warning_call_stack.push(prev);
+        (*inst).error_state.mathlib_warning_call = call;
+        inst
+    });
+    MathlibWarningCallGuard { owner }
 }
 
 /// The call mathlib warnings should attribute to, if one is in scope.
 pub fn mathlib_warning_call() -> SEXP {
-    MATHLIB_WARNING_CALL.with(|slot| slot.get())
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.mathlib_warning_call
+    })
 }
 
 // ---------------------------------------------------------------------------

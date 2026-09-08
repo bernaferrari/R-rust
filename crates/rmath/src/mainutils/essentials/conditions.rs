@@ -201,38 +201,19 @@ thread_local! {
         std::cell::RefCell::new(Vec::new());
 }
 
-thread_local! {
-    /// The condition object passed to the `stop(<condition>)` currently
-    /// being signaled (`R_PreserveObject`-protected), or null. `stop()`
-    /// records it before raising the string error; the `tryCatch` catch
-    /// site hands this ORIGINAL object to a matching handler instead of
-    /// rebuilding a simpleError, so class-selecting handlers,
-    /// `identical(c, e)`, and extra fields survive the unwind. The slot
-    /// is thread-confined raw state like the rest of the engine's
-    /// instance data and is cleared at each signaling start (nested or
-    /// foreign errors reset it).
-    static SIGNALLED_CONDITION: std::cell::Cell<SEXP> =
-        const { std::cell::Cell::new(std::ptr::null_mut()) };
-}
-
-/// Record the condition being signaled by `stop(<condition>)` (null
-/// clears the slot). The previous occupant is released; the new one is
-/// permanently protected until a catch site claims or replaces it.
+/// Record the condition being signaled by `stop(<condition>)` (null clears
+/// the slot). The object is a field of the active `RInstance`, so the normal
+/// session GC marks and rewrites it while an unwind is in flight.
 pub(crate) fn set_signalled_condition(cond: SEXP) {
-    SIGNALLED_CONDITION.with(|slot| unsafe {
-        let old = slot.get();
-        if !old.is_null() {
-            crate::sexp::protect::R_ReleaseObject(old);
-        }
-        if !cond.is_null() {
-            crate::sexp::protect::R_PreserveObject(cond);
-        }
-        slot.set(cond);
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.signalled_condition = cond;
     });
 }
 
 fn signalled_condition() -> SEXP {
-    SIGNALLED_CONDITION.with(|slot| slot.get())
+    crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).error_state.signalled_condition
+    })
 }
 
 /// Message text of a condition object (its `message` field), mirroring
@@ -1919,5 +1900,59 @@ mod tests {
             session.eval_script_with_output_capture("suppressWarnings(warning('quiet'))");
         assert!(result.is_ok());
         assert!(!output.stderr.contains("quiet"));
+    }
+
+    #[test]
+    fn signalled_condition_is_session_local_and_gc_rooted() {
+        let first = crate::sexp::session::RSession::new();
+        unsafe {
+            let condition = simple_error_condition("survives gc");
+            set_signalled_condition(condition);
+        }
+
+        first.gc();
+        let retained = signalled_condition();
+        assert!(!retained.is_null());
+        let message = unsafe { condition_message_of(retained) };
+        assert_eq!(message.as_deref(), Some("survives gc"));
+
+        // RSession::new installs a fresh instance on this same thread. A
+        // thread-local slot would incorrectly expose `retained` here.
+        let second = crate::sexp::session::RSession::new();
+        assert!(signalled_condition().is_null());
+        drop(second);
+        drop(first);
+    }
+
+    #[test]
+    fn mathlib_warning_guard_roots_nested_calls_and_restores_owner() {
+        let first = crate::sexp::session::RSession::new();
+        let outer_call = unsafe { crate::sexp::constructors::Rf_ScalarInteger(11) };
+        let outer = crate::mainutils::errors::mathlib_warning_call_guard(outer_call);
+        let nested_call = unsafe { crate::sexp::constructors::Rf_ScalarInteger(22) };
+        let nested = crate::mainutils::errors::mathlib_warning_call_guard(nested_call);
+
+        first.gc();
+        let current = crate::mainutils::errors::mathlib_warning_call();
+        assert_eq!(
+            unsafe { crate::sexp::accessors::INTEGER_ELT(current, 0) },
+            22
+        );
+        drop(nested);
+        let restored = crate::mainutils::errors::mathlib_warning_call();
+        assert_eq!(
+            unsafe { crate::sexp::accessors::INTEGER_ELT(restored, 0) },
+            11
+        );
+
+        // Dropping while another session is ambient must still restore the
+        // owner session, rather than writing the current session's slot.
+        let second = crate::sexp::session::RSession::new();
+        drop(outer);
+        first.with_active(|| {
+            assert!(crate::mainutils::errors::mathlib_warning_call().is_null());
+        });
+        drop(second);
+        drop(first);
     }
 }

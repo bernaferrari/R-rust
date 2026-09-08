@@ -33,6 +33,76 @@ pub struct EvalOutput {
     pub value: RValue,
 }
 
+/// The combined result of one interactive evaluation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InteractiveOutput {
+    pub output: String,
+    pub png: Option<Vec<u8>>,
+}
+
+/// DrawTarget adapter that distinguishes a cleared device from actual drawing.
+struct TrackingDrawTarget<'a> {
+    target: &'a mut dyn r_graphics_engine::DrawTarget,
+    drew: bool,
+}
+
+impl TrackingDrawTarget<'_> {
+    fn new(target: &mut dyn r_graphics_engine::DrawTarget) -> TrackingDrawTarget<'_> {
+        TrackingDrawTarget {
+            target,
+            drew: false,
+        }
+    }
+}
+
+impl r_graphics_engine::DrawTarget for TrackingDrawTarget<'_> {
+    fn dimensions(&self) -> (u32, u32) {
+        self.target.dimensions()
+    }
+    fn clear(&mut self, background: Color) {
+        self.target.clear(background);
+    }
+    fn set_clip(&mut self, rect: Option<[f32; 4]>) {
+        self.target.set_clip(rect);
+    }
+    fn draw_path(&mut self, path: &r_graphics_engine::Path) {
+        self.drew = true;
+        self.target.draw_path(path);
+    }
+    fn draw_text(
+        &mut self,
+        text: &str,
+        position: r_graphics_engine::Point,
+        params: &r_graphics_engine::PlotParameters,
+    ) {
+        self.drew = true;
+        self.target.draw_text(text, position, params);
+    }
+    fn measure_text(
+        &self,
+        text: &str,
+        params: &r_graphics_engine::PlotParameters,
+    ) -> r_graphics_engine::TextMetrics {
+        self.target.measure_text(text, params)
+    }
+    fn measure_math_text(
+        &self,
+        text: &str,
+        params: &r_graphics_engine::PlotParameters,
+    ) -> r_graphics_engine::TextMetrics {
+        self.target.measure_math_text(text, params)
+    }
+    fn draw_image(
+        &mut self,
+        image: &r_graphics_engine::RasterImage,
+        transform: [f64; 6],
+        interpolate: bool,
+    ) {
+        self.drew = true;
+        self.target.draw_image(image, transform, interpolate);
+    }
+}
+
 /// Derived Android runtime paths for app-private embedding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AndroidRuntimePaths {
@@ -389,6 +459,47 @@ impl RSession {
             .map_err(|e| RSessionError::RenderError(e.to_string()))
     }
 
+    /// Evaluate once, returning captured console output and a PNG only when
+    /// the evaluation issued at least one drawing operation.
+    pub fn eval_interactive(
+        &mut self,
+        code: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<InteractiveOutput, RSessionError> {
+        if !self.active {
+            return Err(RSessionError::EvalError("Session closed".into()));
+        }
+        if width < 32 || height < 32 {
+            return Err(RSessionError::RenderError(
+                "plot width and height must be at least 32 pixels".into(),
+            ));
+        }
+        let mut renderer =
+            AndroidHeadlessRenderer::try_new(width, height).map_err(RSessionError::RenderError)?;
+        let mut target = TrackingDrawTarget::new(&mut renderer);
+        let result = self
+            .inner
+            .eval_script_with_renderplot_backend(code, &mut target);
+        if let RValue::Error(message) = &result.typed {
+            return Err(RSessionError::EvalError(message.clone()));
+        }
+        let drew = target.drew;
+        let png = if drew {
+            Some(
+                renderer
+                    .try_finish()
+                    .map_err(|e| RSessionError::RenderError(e.to_string()))?,
+            )
+        } else {
+            None
+        };
+        Ok(InteractiveOutput {
+            output: result.output,
+            png,
+        })
+    }
+
     /// Evaluate into an owned scene that can be sent to another thread or GPU.
     pub fn record_scene(
         &mut self,
@@ -430,6 +541,15 @@ impl RSession {
             return Ok(());
         }
 
+        let _ = self.eval_with_render_target(code, target)?;
+        Ok(())
+    }
+
+    fn eval_with_render_target(
+        &mut self,
+        code: &str,
+        target: &mut dyn r_graphics_engine::DrawTarget,
+    ) -> Result<EvalOutput, RSessionError> {
         // Evaluate R code through the interpreter while the portable device is installed.
         let wrapped = format!(
             r#"
@@ -437,8 +557,7 @@ local({{
   old <- tryCatch(grDevices::dev.cur(), error = function(e) 1L)
   result <- tryCatch({{
     newd <- tryCatch(grDevices::dev.new(noRStudioGD = TRUE), error = function(e) old)
-    eval(quote({{ {} }}), envir = globalenv())
-    NULL
+    withVisible(eval(quote({{ {} }}), envir = globalenv()))
   }}, error = function(e) {{
     e
   }}, finally = {{
@@ -446,7 +565,8 @@ local({{
     try({{ if (old > 1) grDevices::dev.set(old) }}, silent = TRUE)
   }})
   if (inherits(result, "error")) stop(conditionMessage(result))
-  NULL
+  if (isTRUE(result$visible)) print(result$value)
+  invisible(NULL)
 }})
 "#,
             code
@@ -454,11 +574,13 @@ local({{
         let result = self
             .inner
             .eval_script_with_renderplot_backend(&wrapped, target);
-        if let RValue::Error(message) = result.typed {
-            return Err(RSessionError::RenderError(message));
+        if let RValue::Error(message) = &result.typed {
+            return Err(RSessionError::RenderError(message.clone()));
         }
-
-        Ok(())
+        Ok(EvalOutput {
+            output: result.output,
+            value: result.typed,
+        })
     }
 
     /// Evaluate `expr` and keep the resulting value rooted in the session's

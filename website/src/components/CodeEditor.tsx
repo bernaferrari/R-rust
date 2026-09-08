@@ -12,6 +12,20 @@ const darkComments = syntaxHighlighting(
 )
 const extensions = [
   StreamLanguage.define(r),
+  EditorView.theme({
+    "&": {
+      fontSize: "14px",
+      fontFamily: '"SFMono-Regular", Consolas, monospace',
+    },
+    ".cm-scroller": { overflow: "auto", lineHeight: "1.65" },
+    ".cm-content": { padding: "12px 52px 12px 8px" },
+    ".cm-gutters": { border: "none", paddingLeft: "8px" },
+    ".cm-lineNumbers .cm-gutterElement": {
+      padding: "0 8px 0 5px",
+      fontVariantNumeric: "tabular-nums",
+    },
+    "&.cm-focused": { outline: "none" },
+  }),
   EditorView.contentAttributes.of({
     "aria-label": "R code editor",
     tabindex: "0",
@@ -40,13 +54,14 @@ export default function CodeEditor({
       <CodeMirror
         value={code}
         theme={dark ? "dark" : "light"}
-        height="390px"
+        height="440px"
         extensions={dark ? [...extensions, darkComments] : extensions}
         onChange={onChange}
         aria-label="R code editor"
         basicSetup={{
           foldGutter: false,
           highlightActiveLine: false,
+          highlightActiveLineGutter: false,
           highlightSelectionMatches: false,
           autocompletion: false,
         }}

@@ -37,6 +37,13 @@ past a string buffer now reports a checked error instead.
 These changes reduce concrete aliasing hazards; they do not remove all raw core
 internals or establish whole-interpreter soundness.
 
+Pending signalled conditions and math-library warning calls now belong to each
+session's error state. The collector marks and updates these roots, including
+nested warning-call stacks. Scoped warning cleanup restores its creating
+session, even when another session is ambient. Two targeted tests force GC and
+switch sessions on the same thread. These changes do not cover all remaining
+thread-local handler bookkeeping or source-reference state.
+
 ## Faithfulness
 
 The public solve implementation uses the selected numerical backend, with

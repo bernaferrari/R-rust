@@ -1,7 +1,7 @@
 # Documentation
 
-Start with the contract you need. Historical reviews live in [archive](archive/)
-and describe earlier revisions; current work is tracked in beads.
+Start with the contract you need. Current work is tracked in beads; historical
+reviews remain available in Git history.
 
 ## Use and embed R
 

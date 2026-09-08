@@ -92,6 +92,14 @@ pub(crate) struct ErrorState {
     /// raised inside them has no closure context to attribute through;
     /// handlers install their own call here for the handler's duration.
     pub warning_call: SEXP,
+    /// Condition object currently being signaled by `stop(<condition>)`.
+    /// This is session state so a caught condition cannot leak across
+    /// sequential sessions sharing an OS thread.
+    pub signalled_condition: SEXP,
+    /// Call used to attribute warnings emitted by an nmath evaluation.
+    pub mathlib_warning_call: SEXP,
+    /// Previous mathlib warning calls held by nested attribution guards.
+    pub mathlib_warning_call_stack: Vec<SEXP>,
 }
 
 impl Default for ErrorState {
@@ -115,6 +123,9 @@ impl Default for ErrorState {
             nwarnings: 50,
             last_rendered_message: None,
             warning_call: std::ptr::null_mut(),
+            signalled_condition: std::ptr::null_mut(),
+            mathlib_warning_call: std::ptr::null_mut(),
+            mathlib_warning_call_stack: Vec::new(),
             warnings: std::ptr::null_mut(),
             handler_stack: std::ptr::null_mut(),
             restart_stack: std::ptr::null_mut(),
