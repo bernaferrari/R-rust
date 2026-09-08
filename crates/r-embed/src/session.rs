@@ -122,6 +122,12 @@ impl Default for CancellationToken {
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
 impl RSession {
+    /// Bound captured console output for this session. `None` keeps native
+    /// embedding behavior unchanged; Wasm hosts use a finite limit.
+    pub fn set_output_limit(&mut self, max_bytes: Option<usize>) {
+        self.inner.set_output_limit(max_bytes);
+    }
+
     /// Create a new R session.
     ///
     /// Initializes an isolated rmath session with its own arena, protection

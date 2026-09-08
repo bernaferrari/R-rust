@@ -362,6 +362,15 @@ pub struct RSession {
 }
 
 impl RSession {
+    /// Bound per-evaluation captured output. `None` preserves the native
+    /// unbounded behavior; embedders such as Wasm set a finite limit.
+    pub fn set_output_limit(&mut self, max_bytes: Option<usize>) {
+        self.inst()
+            .output_capture
+            .borrow_mut()
+            .set_max_bytes(max_bytes);
+    }
+
     /// Create a new R session with its own isolated instance.
     ///
     /// Initializes a fresh [`RInstance`] with its own arena and environment

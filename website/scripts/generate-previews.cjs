@@ -22,7 +22,7 @@ async function main() {
   try {
     await page.goto(serverUrl, { waitUntil: "networkidle" })
     const results = await page.evaluate(async () => {
-      const [{ RRuntime }, { examples }] = await Promise.all([
+      const [{ RRuntime }, { examples, getExampleCode }] = await Promise.all([
         import("/src/runtime/index.ts"),
         import("/src/data/examples.ts"),
       ])
@@ -30,21 +30,29 @@ async function main() {
       for (const example of examples) {
         const runtime = new RRuntime({ timeoutMs: 30_000 })
         try {
-          const result = await runtime.run(example.code, example.mode)
+          const result = await runtime.run(getExampleCode(example, false), example.mode)
+          const darkResult = await runtime.run(
+            getExampleCode(example, true),
+            example.mode
+          )
           if (
             example.mode === "plot" &&
-            (!result.png || result.png.length < 100)
+            (!result.png || result.png.length < 100 || !darkResult?.png || darkResult.png.length < 100)
           ) {
             throw new Error("plot returned no meaningful PNG")
           }
           if (example.mode === "console" && !result.output.trim()) {
             throw new Error("console example returned empty output")
           }
+          if (example.mode === "console" && !darkResult.output.trim()) {
+            throw new Error("dark console example returned empty output")
+          }
           outputs.push({
             id: example.id,
             mode: example.mode,
             output: result.output,
             png: result.png ? Array.from(result.png) : null,
+            darkPng: darkResult?.png ? Array.from(darkResult.png) : null,
             durationMs: result.durationMs,
           })
         } catch (error) {
@@ -69,6 +77,11 @@ async function main() {
         await fs.writeFile(
           path.join(outputDir, `${result.id}.png`),
           Buffer.from(result.png)
+        )
+      if (result.darkPng)
+        await fs.writeFile(
+          path.join(outputDir, `${result.id}-dark.png`),
+          Buffer.from(result.darkPng)
         )
       process.stdout.write(
         `${result.id}: ok (${result.durationMs}ms)${result.output ? ` — ${result.output.trim().split("\n")[0]}` : ""}\n`

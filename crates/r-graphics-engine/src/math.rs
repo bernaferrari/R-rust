@@ -481,33 +481,76 @@ impl MathExpr {
             }
             Self::Scripts { base, sub, sup } => {
                 let mut out = base.layout_inner(target, params, explicit_face);
-                let x = out.width + size * 0.05;
-                let mut extra: f32 = 0.;
-                if let Some(sup) = sup {
-                    let l = sup.layout_inner(
-                        target,
-                        &PlotParameters {
-                            font_size: size * 0.7,
-                            ..params.clone()
-                        },
-                        explicit_face,
-                    );
-                    extra = extra.max(l.width);
-                    let y = -(out.ascent * 0.65).max(size * 0.5) - l.descent;
-                    out.append(l, x, y);
+                // GNU R's plotmath applies an italic correction before a
+                // script.  Using the ink ascent keeps the correction tied to
+                // the actual glyph box instead of the font's line height.
+                // Variables are auto-italic in plotmath unless an explicit
+                // face was supplied.  The correction belongs to the base
+                // glyph, so looking only at params.font_face misses the
+                // normal `f[i]` case (where the caller leaves the face
+                // Plain).
+                let auto_italic_variable =
+                    matches!(base.as_ref(), MathExpr::Variable(_)) && !explicit_face;
+                let italic_correction = if params.font_face.is_italic() || auto_italic_variable {
+                    out.ascent * 0.15
+                } else {
+                    0.
+                };
+                let x = out.width + italic_correction + size * 0.05;
+                let script_params = PlotParameters {
+                    font_size: size * 0.7,
+                    ..params.clone()
+                };
+                let upper = sup
+                    .as_ref()
+                    .map(|value| value.layout_inner(target, &script_params, explicit_face));
+                let lower = sub
+                    .as_ref()
+                    .map(|value| value.layout_inner(target, &script_params, explicit_face));
+                // These are the GNU R TeX parameters (sigma5/13/16/17/18/19)
+                // expressed against the bundled font's measured x/X heights.
+                // The max terms retain R's protection against tall script ink.
+                let x_height = target.measure_math_text("x", params).ascent;
+                let cap_height = target.measure_math_text("X", params).ascent;
+                let mut upper_y = 0.;
+                let mut lower_y = 0.;
+                if let Some(ref value) = upper {
+                    upper_y = (out.ascent - 0.386_111 * x_height)
+                        .max(0.95 * x_height)
+                        .max(value.descent + 0.25 * x_height);
                 }
-                if let Some(sub) = sub {
-                    let l = sub.layout_inner(
-                        target,
-                        &PlotParameters {
-                            font_size: size * 0.7,
-                            ..params.clone()
-                        },
-                        explicit_face,
-                    );
-                    extra = extra.max(l.width);
-                    let y = (size * 0.25).max(l.ascent * 0.5);
-                    out.append(l, x, y);
+                if let Some(ref value) = lower {
+                    lower_y = (out.descent + 0.05 * x_height)
+                        .max(0.35 * x_height)
+                        .max(value.ascent - 0.8 * cap_height);
+                }
+                if let (Some(up), Some(down)) = (&upper, &lower) {
+                    let rule = (size * 0.015).max(0.5);
+                    // In our baseline coordinates the upper ink's bottom is
+                    // `-upper_y + descent`, while the lower ink's top is
+                    // `lower_y - ascent`.  Move the two scripts apart until
+                    // GNU R's four-rule minimum is met.  Adjusting one up
+                    // and the other down is important: changing the signs in
+                    // the old branch could leave this gap unchanged.
+                    let upper_bottom = -upper_y + up.descent;
+                    let lower_top = lower_y - down.ascent;
+                    let gap = lower_top - upper_bottom;
+                    let minimum_gap = 4. * rule;
+                    if gap < minimum_gap {
+                        let delta = (minimum_gap - gap) * 0.5;
+                        upper_y += delta;
+                        lower_y += delta;
+                    }
+                }
+                let extra = upper
+                    .as_ref()
+                    .map_or(0., |value| value.width)
+                    .max(lower.as_ref().map_or(0., |value| value.width));
+                if let Some(value) = upper {
+                    out.append(value, x, -upper_y);
+                }
+                if let Some(value) = lower {
+                    out.append(value, x, lower_y);
                 }
                 out.width = x + extra;
                 out
@@ -688,6 +731,41 @@ mod tests {
                 && scripts.ascent > plain.ascent
                 && scripts.descent > plain.descent
         );
+    }
+
+    #[test]
+    fn italic_scripts_receive_a_glyph_based_correction() {
+        let target = Scene::new(300, 200);
+        let params = PlotParameters {
+            font_size: 20.,
+            font_face: crate::FontFace::Italic,
+            ..Default::default()
+        };
+        let base = MathExpr::Variable("f".into()).layout(&target, &params);
+        let scripts = MathExpr::Scripts {
+            base: Box::new(MathExpr::Variable("f".into())),
+            sub: None,
+            sup: Some(Box::new(MathExpr::Text("x".into()))),
+        }
+        .layout(&target, &params);
+        assert!(scripts.width > base.width + params.font_size * 0.05);
+    }
+
+    #[test]
+    fn auto_italic_variables_receive_script_correction() {
+        let target = Scene::new(300, 200);
+        let params = PlotParameters {
+            font_size: 20.,
+            ..Default::default()
+        };
+        let base = MathExpr::Variable("f".into()).layout(&target, &params);
+        let scripts = MathExpr::Scripts {
+            base: Box::new(MathExpr::Variable("f".into())),
+            sub: None,
+            sup: Some(Box::new(MathExpr::Text("x".into()))),
+        }
+        .layout(&target, &params);
+        assert!(scripts.width > base.width + params.font_size * 0.05);
     }
     #[test]
     fn phantom_preserves_bounds_without_marks() {

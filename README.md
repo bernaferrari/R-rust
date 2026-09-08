@@ -21,7 +21,7 @@ can be diffed, ported, and verified hunk-by-hunk.
 - Embedding surfaces: `r-embed` (owned-value facade), `r-uniffi`
   (Kotlin/Swift bindings), an Android headless PNG device, and a desktop
   CLI/REPL host (`r-host-cli`).
-- A verification rig: a 632-case curated behavioral fixture corpus run
+- A verification rig: a 636-case curated behavioral fixture corpus run
   three-way (stock C output vs checked-in golden vs Rust output),
   a script-level differential harness, and stream-parity RNG goldens.
 
@@ -36,8 +36,10 @@ can be diffed, ported, and verified hunk-by-hunk.
   `.Call`/`.C`) exists for desktop hosts only, with no CRAN binary-compatibility
   claim. No `compiler`-package semantics; bytecode evaluation is a partial
   internal path (see [Known gaps](#known-gaps)).
-- **Not a full WASM R.** The WASM32 target covers the math and graphics
-  core only (nmath + plotting primitives), not the whole evaluator.
+- **A partial R evaluator on WebAssembly.** The browser runtime evaluates
+  R scripts in a worker and renders portable graphics. It does not yet
+  support the full GNU R API or arbitrary CRAN packages. Try the
+  [web showcase](website/README.md) for executable examples.
 - **Not a memory-safety-audited runtime, and not a sandbox.** The safe
   facade is experimental and not yet audited by Miri at scale — the
   Miri/GC-torture proof covers a bounded `sexp::` subset, not the whole
@@ -67,7 +69,7 @@ crates/
   r-uniffi/         Kotlin/Swift bindings surface
   r-graphics-engine/  portable plotting primitives
   r-device-android-headless/  PNG device backend
-tests/conformance/  632 curated fixtures + three-way differential runner
+tests/conformance/  636 curated fixtures + three-way differential runner
 tests/script-diff/  script-level differential vs stock R
 tests/differential/ standalone numeric d/p/q harness vs fixed R 4.x
                     reference values (own crate, excluded from the
@@ -106,9 +108,9 @@ module map with per-file sync mode lives in
 All parity claims are **against the exact oracle described below**, on a
 **curated subset** of R behavior — not against R's own test suites:
 
-- **632/632 curated behavioral fixtures pass, three-way** (stock C
+- **636/636 curated behavioral fixtures pass, three-way** (stock C
   output vs checked-in golden vs Rust output). The corpus is a curated
-  subset selected to pin ported upstream hunks; it is *not* "632 of R's
+  subset selected to pin ported upstream hunks; it is *not* "636 of R's
   tests", and passing it does not imply general conformance.
 - Script-level differential vs stock R: 10/10 curated scripts.
 - Workspace tests: 2357+ green. Clippy (`--workspace --all-targets`,
@@ -263,7 +265,7 @@ Direction, not promises — ordered by current work:
 1. **Object model rework**: Sexp copy/move semantics and the
    external-pointer redesign; re-enable ALTREP on the new
    representation.
-2. **Broaden the corpus** beyond the curated 632 fixtures toward
+2. **Broaden the corpus** beyond the curated 636 fixtures toward
    sampled real-world R scripts, keeping the three-way methodology.
 3. **Stream-parity for alternative RNG kinds** (Marsaglia-MultiCarry,
    Wichmann-Hill) or explicit stream-difference documentation per kind.

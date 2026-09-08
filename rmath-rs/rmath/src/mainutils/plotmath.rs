@@ -96,6 +96,53 @@ fn greek(name: &str) -> Option<&'static str> {
         "varsigma" => "ς",
         "aleph" => "ℵ",
         "emptyset" => "∅",
+        "exclam" => "!",
+        "universal" => "∀",
+        "existential" => "∃",
+        "suchthat" => "∋",
+        "congruent" => "≡",
+        "lessequal" => "≤",
+        "greaterequal" => "≥",
+        "plusminus" => "±",
+        "multiply" => "×",
+        "divide" => "÷",
+        "notequal" => "≠",
+        "equivalence" => "≡",
+        "approxequal" => "≈",
+        "proportional" => "∝",
+        "element" => "∈",
+        "notelement" => "∉",
+        "intersection" => "∩",
+        "union" => "∪",
+        "propersuperset" => "⊃",
+        "reflexsuperset" => "⊇",
+        "notsubset" => "⊄",
+        "propersubset" => "⊂",
+        "reflexsubset" => "⊆",
+        "angle" => "∠",
+        "logicaland" => "∧",
+        "logicalor" => "∨",
+        "therefore" => "∴",
+        "perpendicular" => "⊥",
+        "bullet" | "dotmath" => "⋅",
+        "lozenge" => "◊",
+        "diamond" => "⋄",
+        "club" => "♣",
+        "heart" => "♥",
+        "spade" => "♠",
+        "arrowleft" => "←",
+        "arrowright" => "→",
+        "arrowup" => "↑",
+        "arrowdown" => "↓",
+        "arrowboth" => "↔",
+        "arrowdblleft" => "⇐",
+        "arrowdblright" => "⇒",
+        "arrowdblup" => "⇑",
+        "arrowdbldown" => "⇓",
+        "arrowdblboth" => "⇔",
+        "ellipsis" => "…",
+        "minute" => "′",
+        "second" => "″",
         _ => return None,
     })
 }
@@ -189,7 +236,8 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                     sup: None,
                 }
             }
-            "sum" | "prod" | "integral" => {
+            "sum" | "prod" | "integral" | "union" | "intersect" | "lim" | "liminf" | "limsup"
+            | "inf" | "sup" | "min" | "max" => {
                 if args.is_empty() || args.len() > 3 {
                     base_error("plotmath sum/product/integral requires 1 to 3 arguments");
                 }
@@ -207,7 +255,10 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                 let symbol = match name.as_str() {
                     "sum" => "∑",
                     "prod" => "∏",
-                    _ => "∫",
+                    "integral" => "∫",
+                    "union" => "∪",
+                    "intersect" => "∩",
+                    other => other,
                 };
                 MathExpr::DisplayOperator {
                     symbol: symbol.into(),
@@ -280,7 +331,7 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                 need(1);
                 MathExpr::Phantom(Box::new(args.pop().unwrap()))
             }
-            "plain" | "bold" | "italic" | "bolditalic" => {
+            "plain" | "bold" | "italic" | "math" | "bolditalic" => {
                 need(1);
                 use r_graphics_engine::FontFace;
                 let face = match name.as_str() {
@@ -314,8 +365,11 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                     ])
                 }
             }
-            "+" | "-" | "/" | ":" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "%+-%" | "%*%"
-            | "%/%" | "%in%" | "%~~%" => {
+            "+" | "-" | "/" | ":" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "%=~%" | "%==%"
+            | "%~~%" | "%prop%" | "%~%" | "%<->%" | "%<-%" | "%up%" | "%->%" | "%down%"
+            | "%<=>%" | "%<=%" | "%dblup%" | "%=>%" | "%dbldown%" | "%supset%" | "%supseteq%"
+            | "%notsubset%" | "%subset%" | "%subseteq%" | "%in%" | "%notin%" | "%+-%" | "%*%"
+            | "%/%" | "%intersection%" | "%union%" | "%.%" => {
                 if args.is_empty() || args.len() > 2 {
                     base_error("invalid plotmath operator arity");
                 }
@@ -328,20 +382,85 @@ unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
                     "%*%" => "×",
                     "%/%" => "÷",
                     "%in%" => "∈",
+                    "%notin%" => "∉",
+                    "%=~%" => "≡",
+                    "%==%" => "≡",
                     "%~~%" => "≈",
+                    "%prop%" => "∝",
+                    "%~%" => "∼",
+                    "%<->%" => "↔",
+                    "%<-%" => "←",
+                    "%up%" => "↑",
+                    "%->%" => "→",
+                    "%down%" => "↓",
+                    "%<=>%" => "⇔",
+                    "%<=%" => "⇐",
+                    "%dblup%" => "⇑",
+                    "%=>%" => "⇒",
+                    "%dbldown%" => "⇓",
+                    "%supset%" => "⊃",
+                    "%supseteq%" => "⊇",
+                    "%notsubset%" => "⊄",
+                    "%subset%" => "⊂",
+                    "%subseteq%" => "⊆",
+                    "%intersection%" => "∩",
+                    "%union%" => "∪",
+                    "%.%" => "⋅",
                     _ => &name,
                 };
                 if args.len() == 1 {
-                    MathExpr::Row(vec![MathExpr::Text(symbol.into()), args.pop().unwrap()])
+                    MathExpr::Row(vec![
+                        MathExpr::Text(symbol.into()),
+                        MathExpr::Space(1. / 6.),
+                        args.pop().unwrap(),
+                    ])
                 } else {
+                    let gap = if name == "/" {
+                        0.
+                    } else if matches!(
+                        name.as_str(),
+                        "==" | "!="
+                            | "<"
+                            | ">"
+                            | "<="
+                            | ">="
+                            | "%=~%"
+                            | "%==%"
+                            | "%~~%"
+                            | "%prop%"
+                            | "%~%"
+                            | "%<->%"
+                            | "%<-%"
+                            | "%up%"
+                            | "%->%"
+                            | "%down%"
+                            | "%<=>%"
+                            | "%<=%"
+                            | "%dblup%"
+                            | "%=>%"
+                            | "%dbldown%"
+                            | "%supset%"
+                            | "%supseteq%"
+                            | "%notsubset%"
+                            | "%subset%"
+                            | "%subseteq%"
+                            | "%in%"
+                            | "%notin%"
+                    ) {
+                        5. / 18.
+                    } else {
+                        2. / 9.
+                    };
                     MathExpr::Row(vec![
                         args.remove(0),
-                        MathExpr::Text(format!(" {symbol} ")),
+                        MathExpr::Space(gap),
+                        MathExpr::Text(symbol.into()),
+                        MathExpr::Space(gap),
                         args.remove(0),
                     ])
                 }
             }
-            "sin" | "cos" | "tan" | "log" | "exp" | "lim" | "min" | "max" => {
+            "sin" | "cos" | "tan" | "log" | "exp" => {
                 let mut row = vec![MathExpr::Text(format!("{name}("))];
                 for (i, arg) in args.into_iter().enumerate() {
                     if i > 0 {

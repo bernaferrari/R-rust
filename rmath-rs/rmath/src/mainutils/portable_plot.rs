@@ -12,6 +12,7 @@ use crate::sexp::{
 use r_graphics_engine::{
     Color, DashPattern, DrawTarget, Path, PathCommand, PlotParameters, Point, Stroke, TextAnchor,
 };
+use std::ffi::CString;
 use std::os::raw::c_int;
 
 #[derive(Clone, Copy, Debug)]
@@ -73,6 +74,45 @@ fn transparent() -> Color {
         b: 0,
         a: 0,
     }
+}
+fn par_color(name: &str, default: Color) -> Color {
+    // Decode owned parameter values without allocating R objects while a device
+    // is borrowed. Numeric colors are palette indices, never packed RGBA.
+    let text = match parameter(name) {
+        ParValue::String(name) => name,
+        ParValue::Integer(v) | ParValue::Logical(v) => {
+            let value = v.first().copied().unwrap_or(i32::MIN);
+            if value == 0 || value == i32::MIN {
+                return transparent();
+            }
+            value.to_string()
+        }
+        ParValue::Real(v) => {
+            let value = v.first().copied().unwrap_or(f64::NAN);
+            if !value.is_finite() || value < i32::MIN as f64 || value > i32::MAX as f64 {
+                return transparent();
+            }
+            let value = value as i32;
+            if value == 0 || value == i32::MIN {
+                return transparent();
+            }
+            value.to_string()
+        }
+    };
+    let Ok(text) = CString::new(text) else {
+        return default;
+    };
+    let value = unsafe { crate::library::grdevices::colors::inR_GE_str2col(text.as_ptr()) };
+    Color {
+        r: value as u8,
+        g: (value >> 8) as u8,
+        b: (value >> 16) as u8,
+        a: (value >> 24) as u8,
+    }
+}
+fn page_background() -> Color {
+    let color = par_color("bg", Color::WHITE);
+    if color.a == 0 { Color::WHITE } else { color }
 }
 fn par_numbers(name: &str) -> Vec<f64> {
     match parameter(name) {
@@ -197,8 +237,8 @@ unsafe fn colors(x: SEXP, default: Color) -> Vec<Color> {
 }
 unsafe fn style(args: SEXP) -> Style {
     unsafe {
-        let foreground = colors(arg(args, "col"), Color::BLACK);
-        let background = colors(arg(args, "bg"), transparent());
+        let foreground = colors(arg(args, "col"), par_color("fg", Color::BLACK));
+        let background = colors(arg(args, "bg"), par_color("bg", transparent()));
         let pch = arg(args, "pch");
         let symbols: Vec<i32> = if pch == R_NilValue() {
             par_numbers("pch").iter().map(|v| *v as i32).collect()
@@ -1403,6 +1443,11 @@ fn titles(
     .enumerate()
     {
         if let Some(text) = &labels[i] {
+            let text_color = match i {
+                0 => par_color("col.main", par_color("fg", Color::BLACK)),
+                1 | 2 => par_color("col.lab", par_color("fg", Color::BLACK)),
+                _ => par_color("col.sub", par_color("fg", Color::BLACK)),
+            };
             // Stacked mathematical titles can exceed a one-line baseline.
             // Measure their full box and fit it inside the existing top margin.
             if i == 0
@@ -1410,7 +1455,7 @@ fn titles(
             {
                 let mut params = PlotParameters {
                     font_size: size,
-                    text_color: Color::BLACK,
+                    text_color,
                     text_anchor: TextAnchor::Middle,
                     ..Default::default()
                 };
@@ -1438,7 +1483,7 @@ fn titles(
                 position,
                 &PlotParameters {
                     font_size: size,
-                    text_color: Color::BLACK,
+                    text_color,
                     text_angle: angle,
                     text_anchor: TextAnchor::Middle,
                     ..Default::default()
@@ -1467,14 +1512,15 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
         let title_labels = title_labels(args);
         let target = &mut *renderer();
         if clear {
-            target.clear(Color::WHITE);
+            target.clear(page_background());
         }
         if axes {
-            axis(target, c, 1, &[], &[], Color::BLACK);
-            axis(target, c, 2, &[], &[], Color::BLACK);
+            let axis_color = par_color("col.axis", par_color("fg", Color::BLACK));
+            axis(target, c, 1, &[], &[], axis_color);
+            axis(target, c, 2, &[], &[], axis_color);
         }
         if frame {
-            box_path(target, c, Color::BLACK);
+            box_path(target, c, par_color("fg", Color::BLACK));
         }
         draw_xy(target, c, &x, &y, &kind, &style, clip_rect(c, args));
         titles(target, c, &title_labels);
@@ -1490,7 +1536,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
             let target = &mut *renderer();
             target.set_clip(None);
             if clear {
-                target.clear(Color::WHITE);
+                target.clear(page_background());
             }
             return invisible();
         }
@@ -1724,13 +1770,18 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 {
                     base_error("'at' and 'labels' lengths differ");
                 }
+                let axis_color = if arg(args, "col") == R_NilValue() {
+                    par_color("col.axis", par_color("fg", Color::BLACK))
+                } else {
+                    style.color(0)
+                };
                 axis(
                     &mut *renderer(),
                     c,
                     side[0] as usize,
                     &at,
                     &labels,
-                    style.color(0),
+                    axis_color,
                 );
             }
             _ => base_error(format!("graphics primitive '{name}' is not implemented")),

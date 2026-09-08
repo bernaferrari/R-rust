@@ -46,6 +46,51 @@ fn layout_positions_draw_in_top_right_cell() {
     assert_eq!(at(w, &p, 200, 50), [255, 0, 0, 255]);
     assert_eq!(at(w, &p, 200, 150), [255, 255, 255, 255]);
 }
+
+#[test]
+fn layout_respect_centers_square_cells_and_empty_coordinates_are_noop() {
+    let mut session = RSession::new().unwrap();
+    let png = session.render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(layout=grid.layout(1,2,widths=unit(c(1,1),'null'),heights=unit(1,'null'),respect=TRUE))); pushViewport(viewport(layout.pos.col=1)); grid.rect(gp=gpar(fill='red',col=NA)); popViewport(); pushViewport(viewport(layout.pos.col=2)); grid.rect(gp=gpar(fill='blue',col=NA)); popViewport(2)",400,200).unwrap();
+    let (w, p) = pixels(&png);
+    assert_eq!(at(w, &p, 50, 50), [255, 0, 0, 255]);
+    assert_eq!(at(w, &p, 100, 100), [255, 0, 0, 255]);
+    assert_eq!(at(w, &p, 300, 100), [0, 0, 255, 255]);
+    assert!(
+        session
+            .render_with_dimensions(
+                "library(grid); grid.newpage(); grid.segments(numeric(),0,1,1)",
+                100,
+                100
+            )
+            .is_ok()
+    );
+}
+
+#[test]
+fn layout_fixed_null_spans_and_invalid_respect_shapes_are_checked() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(session.eval("library(grid); z<-grid.layout(2,2,widths=unit(c(1,2),'null'),heights=unit(c(1,20),'points')); isTRUE(z$nrow==2 && z$ncol==2 && length(z$widths$value)==2L)").unwrap(), "[1] TRUE");
+    assert!(
+        session
+            .eval("library(grid); grid.layout(2,2,respect=matrix(c(TRUE,FALSE),1,2))")
+            .is_ok()
+    );
+    assert!(session.eval("library(grid); grid.layout(0,2)").is_err());
+    assert!(session.eval("library(grid); grid.layout(2,2,widths=unit(c(1,2),'null'),heights=unit(c(1,2),'null'))").is_ok());
+}
+
+#[test]
+fn respected_layout_uses_common_cell_scale_on_wide_device() {
+    let mut session = RSession::new().unwrap();
+    let png = session.render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(layout=grid.layout(1,2,respect=TRUE))); pushViewport(viewport(layout.pos.col=1)); grid.rect(gp=gpar(fill='red',col=NA)); popViewport(); pushViewport(viewport(layout.pos.col=2)); grid.rect(gp=gpar(fill='blue',col=NA)); popViewport(2)",600,200).unwrap();
+    let (w, p) = pixels(&png);
+    assert_eq!(at(w, &p, 50, 100), [255, 255, 255, 255]);
+    assert_eq!(at(w, &p, 200, 100), [255, 0, 0, 255]);
+    assert_eq!(at(w, &p, 400, 100), [0, 0, 255, 255]);
+    assert_eq!(at(w, &p, 550, 100), [255, 255, 255, 255]);
+    assert_eq!(at(w, &p, 200, 10), [255, 0, 0, 255]);
+    assert_eq!(at(w, &p, 200, 190), [255, 0, 0, 255]);
+}
 #[test]
 fn grob_trees_replay_with_inherited_styles_and_plotmath() {
     let mut session = RSession::new().unwrap();
@@ -234,4 +279,130 @@ fn grid_exports_require_attachment_but_namespace_calls_do_not() {
             .unwrap(),
         "[1] TRUE"
     );
+}
+
+/// Pinned GNU R deviceLoc/convertWidth/convertHeight measurements from
+/// tests/grid-layout-oracle.R. Our device uses 96 pixels/inch; oracle uses 100.
+#[test]
+fn layout_cell_bounds_match_gnu_r_oracle() {
+    let cases: &[(&str, &str, [f64; 4])] = &[
+        (
+            "grid.layout(1,2,widths=unit(c(1,2),'null'),respect=TRUE)",
+            "layout.pos.col=1",
+            [0., 1., 2., 2.],
+        ),
+        (
+            "grid.layout(1,2,widths=unit(c(1,2),'null'),respect=TRUE)",
+            "layout.pos.col=2",
+            [2., 1., 4., 2.],
+        ),
+        (
+            "grid.layout(2,1,heights=unit(c(1,2),'null'),respect=TRUE)",
+            "layout.pos.row=1",
+            [7. / 3., 8. / 3., 4. / 3., 4. / 3.],
+        ),
+        (
+            "grid.layout(2,1,heights=unit(c(1,2),'null'),respect=TRUE)",
+            "layout.pos.row=2",
+            [7. / 3., 0., 4. / 3., 8. / 3.],
+        ),
+        (
+            "grid.layout(2,3,widths=unit(c(1,2,3),'null'),heights=unit(c(1,1),'null'),respect=matrix(c(TRUE,FALSE,FALSE,FALSE,TRUE,FALSE),2,3))",
+            "layout.pos.row=1,layout.pos.col=1",
+            [0., 3., 1., 1.],
+        ),
+        (
+            "grid.layout(2,3,widths=unit(c(1,2,3),'null'),heights=unit(c(1,1),'null'),respect=matrix(c(TRUE,FALSE,FALSE,FALSE,TRUE,FALSE),2,3))",
+            "layout.pos.row=2,layout.pos.col=2",
+            [1., 0., 2., 3.],
+        ),
+        (
+            "grid.layout(1,3,widths=unit.c(unit(1,'inches'),unit(c(1,2),'null')))",
+            "layout.pos.col=1",
+            [0., 0., 1., 4.],
+        ),
+        (
+            "grid.layout(1,3,widths=unit.c(unit(1,'inches'),unit(c(1,2),'null')))",
+            "layout.pos.col=2",
+            [1., 0., 5. / 3., 4.],
+        ),
+        (
+            "grid.layout(1,3,widths=unit.c(unit(1,'inches'),unit(c(1,2),'null')))",
+            "layout.pos.col=3",
+            [8. / 3., 0., 10. / 3., 4.],
+        ),
+        (
+            "grid.layout(1,2,widths=unit(c(1,2),'null'))",
+            "layout.pos.col=2",
+            [2., 0., 4., 4.],
+        ),
+        (
+            "grid.layout(1,2,widths=unit(c(1,1),'inches'),just=c(.25,.75))",
+            "layout.pos.col=1",
+            [1., 0., 1., 4.],
+        ),
+        (
+            "grid.layout(2,3,widths=unit(c(1,2,1),'null'))",
+            "layout.pos.row=1:2,layout.pos.col=1:2",
+            [0., 0., 4.5, 4.],
+        ),
+        (
+            "grid.layout(1,2,widths=unit(c(1,1),'inches'))",
+            "layout.pos.col=1",
+            [2., 0., 1., 4.],
+        ),
+        (
+            "grid.layout(1,2,widths=unit(c(5,7),'inches'))",
+            "layout.pos.col=2",
+            [2., 0., 7., 4.],
+        ),
+        (
+            "grid.layout(1,2,widths=unit(c(1,1),'inches'),heights=unit(1,'inches'),just=c('right','top'))",
+            "layout.pos.col=1",
+            [4., 3., 1., 1.],
+        ),
+    ];
+    let mut session = RSession::new().unwrap();
+    for (layout, position, [left, bottom, width, height]) in cases {
+        let code = format!(
+            "library(grid); grid.newpage(); pushViewport(viewport(layout={layout})); pushViewport(viewport({position})); grid.rect(gp=gpar(fill='red',col=NA)); popViewport(2)"
+        );
+        let png = session
+            .render_with_dimensions(&code, 576, 384)
+            .unwrap_or_else(|e| panic!("{code}: {e}"));
+        let (w, p) = pixels(&png);
+        let mut bounds = [usize::MAX, usize::MAX, 0, 0];
+        for (i, pixel) in p.chunks_exact(4).enumerate() {
+            if pixel[0] > 240 && pixel[1] < 15 && pixel[2] < 15 {
+                let x = i % w;
+                let y = i / w;
+                bounds[0] = bounds[0].min(x);
+                bounds[1] = bounds[1].min(y);
+                bounds[2] = bounds[2].max(x + 1);
+                bounds[3] = bounds[3].max(y + 1);
+            }
+        }
+        let expected = [
+            left * 96.,
+            (4. - bottom - height) * 96.,
+            (left + width) * 96.,
+            (4. - bottom) * 96.,
+        ];
+        for i in 0..4 {
+            let maximum = if i % 2 == 0 { 576. } else { 384. };
+            assert!(
+                (bounds[i] as f64 - expected[i].clamp(0., maximum)).abs() <= 1.,
+                "{code}: edge {i}: {bounds:?} vs {expected:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn zero_and_negative_null_units_match_gnu_r_geometry() {
+    let mut session = RSession::new().unwrap();
+    for (weights, expected) in [("c(0,0)", "[1] 0"), ("c(-1,2)", "[1] -6")] {
+        session.render_with_dimensions(&format!("library(grid); grid.newpage(); pushViewport(viewport(layout=grid.layout(1,2,widths=unit({weights},'null')))); pushViewport(viewport(layout.pos.col=1)); measured<-convertWidth(unit(1,'npc'),'inches',valueOnly=TRUE); grid.rect(); popViewport(2)"),576,384).unwrap();
+        assert_eq!(session.eval("measured").unwrap(), expected);
+    }
 }

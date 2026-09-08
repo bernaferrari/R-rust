@@ -1,6 +1,8 @@
 # Rove website
 
-The site is a Vite React app with the R runtime running in a Web Worker through WebAssembly. Gallery previews are generated from the same runtime used by the playground.
+The site is a Vite React app with the R runtime running in a Web Worker through WebAssembly. The 16 gallery examples and their previews use the same runtime as the playground.
+
+Examples run automatically after a 650 ms typing pause. Choose **Run manually** to make edits without executing them; **Run code** (or Cmd/Ctrl+Enter) then runs the current code. Stop terminates the worker and stays stopped until another edit or explicit run. Theme follows the system on first visit and remembers an explicit light/dark choice.
 
 ## Local setup
 

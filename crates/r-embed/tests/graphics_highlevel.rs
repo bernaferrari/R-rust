@@ -1,6 +1,24 @@
 //! Contract checks for the public histogram, barplot, and boxplot methods.
 
+use std::io::Cursor;
+
 use r_embed::RSession;
+
+fn decode_rgba(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
+    let decoder = png::Decoder::new(Cursor::new(bytes));
+    let mut reader = decoder.read_info().expect("png reader");
+    let mut data = vec![0; reader.output_buffer_size().expect("png buffer")];
+    let info = reader.next_frame(&mut data).expect("png frame");
+    let pixels = match info.color_type {
+        png::ColorType::Rgba => data[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => data[..info.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        other => panic!("unexpected PNG color type: {other:?}"),
+    };
+    (info.width, info.height, pixels)
+}
 
 #[test]
 fn hist_returns_breaks_counts_density_and_mids() {
@@ -26,6 +44,83 @@ fn pretty_public_frontend_matches_r_pretty_contract() {
         .eval("identical(pretty(c(1,4)), c(1,1.5,2,2.5,3,3.5,4)) && identical(pretty(c(1,4), bounds=FALSE), c(1,1.5,2,2.5,3,3.5,4)) && length(pretty(NULL)) == 0L && identical(pretty(c(1,4), n=5.7), pretty(c(1,4))) && identical(pretty.default(x=c(1,4), 5L), pretty(c(1,4)))")
         .expect("pretty");
     assert_eq!(result, "[1] TRUE");
+}
+
+#[test]
+fn par_background_and_label_colors_reach_native_pixels() {
+    let mut session = RSession::new().expect("session");
+    let png = session
+        .render_with_dimensions(
+            "par(bg='black', fg='white', col.axis='white', col.lab='white', col.main='white'); plot(1:3, type='n', main='DARK', xlab='X', ylab='Y')",
+            320,
+            240,
+        )
+        .expect("dark plot render");
+    let (width, _height, pixels) = decode_rgba(&png);
+    let pixel = |x: u32, y: u32| {
+        let i = ((y * width + x) * 4) as usize;
+        &pixels[i..i + 4]
+    };
+    assert_eq!(pixel(0, 0), &[0, 0, 0, 255]);
+    let white_ink = pixels
+        .chunks_exact(4)
+        .filter(|p| p[0] > 220 && p[1] > 220 && p[2] > 220 && p[3] > 200)
+        .count();
+    assert!(
+        white_ink > 100,
+        "expected visible white axes/labels, found {white_ink}"
+    );
+
+    let red_png = session
+        .render_with_dimensions(
+            "palette(c('black','red')); par(bg='black', fg=2, col.axis=2, col.lab=2, col.main=2); plot(1:3, type='n', main='RED')",
+            320,
+            240,
+        )
+        .expect("palette foreground render");
+    let (_, _, red_pixels) = decode_rgba(&red_png);
+    let red_ink = red_pixels
+        .chunks_exact(4)
+        .filter(|p| p[0] > 180 && p[1] < 90 && p[2] < 90 && p[3] > 100)
+        .count();
+    assert!(
+        red_ink > 50,
+        "expected palette index 2 red ink, found {red_ink}"
+    );
+
+    let alpha_png = session
+        .render_with_dimensions(
+            "par(bg='black', fg='#ff000080', col.axis='#ff000080', col.lab='#ff000080', col.main='#ff000080'); plot(1:3, type='n', main='ALPHA')",
+            320,
+            240,
+        )
+        .expect("alpha foreground render");
+    let (_, _, alpha_pixels) = decode_rgba(&alpha_png);
+    let alpha_ink = alpha_pixels
+        .chunks_exact(4)
+        .filter(|p| p[0] > 60 && p[0] < 220 && p[1] < 80 && p[2] < 80)
+        .count();
+    assert!(
+        alpha_ink > 30,
+        "expected semi-transparent red ink, found {alpha_ink}"
+    );
+
+    let transparent_png = session
+        .render_with_dimensions(
+            "par(bg='black', fg='transparent', col.axis='transparent', col.lab='transparent', col.main='transparent'); plot(1:3, type='n', main='HIDDEN')",
+            320,
+            240,
+        )
+        .expect("transparent foreground render");
+    let (_, _, transparent_pixels) = decode_rgba(&transparent_png);
+    let visible_ink = transparent_pixels
+        .chunks_exact(4)
+        .filter(|p| p[0] > 8 || p[1] > 8 || p[2] > 8)
+        .count();
+    assert!(
+        visible_ink < 100,
+        "transparent foreground left {visible_ink} visible pixels"
+    );
 }
 
 #[test]

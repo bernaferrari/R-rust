@@ -57,6 +57,8 @@ pub struct WasmRSession {
     inner: std::panic::AssertUnwindSafe<Option<r_embed::RSession>>,
 }
 
+const WASM_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl WasmRSession {
     /// Create a session.
@@ -69,7 +71,8 @@ impl WasmRSession {
                 "R requires Wasm exception handling; build with scripts/build_wasm_runtime.sh",
             ));
         }
-        let inner = r_embed::RSession::new().map_err(|e| JsError::new(&e.to_string()))?;
+        let mut inner = r_embed::RSession::new().map_err(|e| JsError::new(&e.to_string()))?;
+        inner.set_output_limit(Some(WASM_OUTPUT_LIMIT_BYTES));
         Ok(WasmRSession {
             inner: std::panic::AssertUnwindSafe(Some(inner)),
         })
@@ -455,5 +458,16 @@ mod tests {
         assert!(pos_aaa.unwrap() < pos_zzz.unwrap(), "names are sorted");
         assert!(!names.iter().any(|n| n == "..rport_handles.."));
         session.close();
+    }
+
+    #[test]
+    fn bounded_console_output_keeps_session_usable() {
+        let mut session = WasmRSession::new().expect("session initializes");
+        let output = session
+            .eval_checked("cat(paste(rep('x', 2 * 1024 * 1024), collapse = ''))")
+            .expect("large output remains a successful evaluation");
+        assert!(output.contains("[captured console output truncated by runtime limit]"));
+        assert!(output.len() <= WASM_OUTPUT_LIMIT_BYTES + 64);
+        assert_eq!(session.eval_checked("1 + 1").unwrap(), "[1] 2");
     }
 }

@@ -76,7 +76,7 @@ constructors; `gList`, `gTree`, `grobTree` and `grid.draw`. Grob trees inherit
 `gpar` through their viewport, and viewport scopes unwind when child drawing
 fails. Text supports the shared plotmath decoder. Viewports compose translation,
 rotation, sizing and native axis scales, with push/pop stacks owned by the R
-session. Named navigation within the active viewport stack is available. Axis-aligned clipping and equal/weighted/absolute grid layouts work, including centered aspect-preserving `respect=TRUE` layouts. Line dashes and arrowheads are supported.
+session. Named navigation within the active viewport stack is available. Axis-aligned clipping and equal/weighted/absolute grid layouts work, including `respect=TRUE` and selective respect matrices. The owned allocator follows GNU R’s fixed-length, respected-null, then remaining-null allocation order. `unit.c` combines physical/null lengths; layouts support numeric and named justification, spans, zero/negative null lengths, and centered oversized fixed layouts. Device-space cell bounds are checked against the pinned GNU R oracle in `tests/grid-layout-oracle.R`. Line dashes and arrowheads are supported.
 Drawing commands feed the same owned scene used by CPU/GPU devices and
 `recordPlot`/`replayPlot`.
 
@@ -137,7 +137,7 @@ hydrates into a playground. No sharing feature is enabled.
 
 Browser testing exposed and fixed two runtime issues: random-seed bootstrapping
 now uses browser entropy instead of unsupported native time/process APIs, and
-`rnorm` uses the existing portable sampler rather than the Wasm unavailable stub.
+`rnorm` and `runif` use the shared portable samplers on Wasm. Seeded `runif`, recycled bounds, degenerate ranges, and RNG consumption are covered by native and actual browser tests. Wasm console capture has a combined 1 MiB stdout/stderr limit with an explicit truncation marker; this does not bound final value formatting or the evaluator’s total heap.
 Explicit `set.seed` remains reproducible across fresh browser sessions.
 
 ## Evidence and limits

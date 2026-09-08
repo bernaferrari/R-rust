@@ -15,6 +15,7 @@ use super::object::Sexp;
 pub struct RCapturedOutput {
     pub stdout: String,
     pub stderr: String,
+    pub truncated: bool,
 }
 
 /// Per-session output capture buffers.
@@ -22,27 +23,46 @@ pub struct RCapturedOutput {
 pub(crate) struct OutputCaptureState {
     stdout: Option<String>,
     stderr: Option<String>,
-    stack: Vec<(Option<String>, Option<String>)>,
+    stack: Vec<(Option<String>, Option<String>, bool, usize)>,
+    max_bytes: Option<usize>,
+    truncated: bool,
+    used_bytes: usize,
 }
 
 impl OutputCaptureState {
     pub(crate) fn start(&mut self) {
-        let outer = (self.stdout.take(), self.stderr.take());
+        let outer = (
+            self.stdout.take(),
+            self.stderr.take(),
+            self.truncated,
+            self.used_bytes,
+        );
         if outer.0.is_some() || outer.1.is_some() {
             self.stack.push(outer);
         }
         self.stdout = Some(String::new());
         self.stderr = Some(String::new());
+        self.truncated = false;
+        self.used_bytes = 0;
     }
 
     pub(crate) fn stop(&mut self) -> RCapturedOutput {
         let stdout = self.stdout.take().unwrap_or_default();
         let stderr = self.stderr.take().unwrap_or_default();
-        if let Some((outer_stdout, outer_stderr)) = self.stack.pop() {
+        let truncated = self.truncated;
+        if let Some((outer_stdout, outer_stderr, outer_truncated, outer_used_bytes)) =
+            self.stack.pop()
+        {
             self.stdout = outer_stdout;
             self.stderr = outer_stderr;
+            self.truncated = outer_truncated;
+            self.used_bytes = outer_used_bytes;
         }
-        RCapturedOutput { stdout, stderr }
+        RCapturedOutput {
+            stdout,
+            stderr,
+            truncated,
+        }
     }
 
     pub(crate) fn is_capturing(&self) -> bool {
@@ -51,13 +71,25 @@ impl OutputCaptureState {
 
     pub(crate) fn capture_stdout(&mut self, msg: &str) {
         if let Some(stdout) = self.stdout.as_mut() {
-            stdout.push_str(msg);
+            append_bounded(
+                stdout,
+                msg,
+                self.max_bytes,
+                &mut self.used_bytes,
+                &mut self.truncated,
+            );
         }
     }
 
     pub(crate) fn capture_stderr(&mut self, msg: &str) {
         if let Some(stderr) = self.stderr.as_mut() {
-            stderr.push_str(msg);
+            append_bounded(
+                stderr,
+                msg,
+                self.max_bytes,
+                &mut self.used_bytes,
+                &mut self.truncated,
+            );
         }
     }
 
@@ -67,9 +99,52 @@ impl OutputCaptureState {
     /// single interleaved output stream is the stdout buffer.
     pub(crate) fn capture_stdout_bypassing_sink(&mut self, msg: &str) {
         if let Some(stdout) = self.stdout.as_mut() {
-            stdout.push_str(msg);
+            append_bounded(
+                stdout,
+                msg,
+                self.max_bytes,
+                &mut self.used_bytes,
+                &mut self.truncated,
+            );
         }
     }
+
+    pub(crate) fn set_max_bytes(&mut self, max_bytes: Option<usize>) {
+        self.max_bytes = max_bytes;
+    }
+}
+
+fn append_bounded(
+    target: &mut String,
+    message: &str,
+    max_bytes: Option<usize>,
+    used_bytes: &mut usize,
+    truncated: &mut bool,
+) {
+    let Some(limit) = max_bytes else {
+        target.push_str(message);
+        return;
+    };
+    if message.is_empty() {
+        return;
+    }
+    if *used_bytes >= limit {
+        *truncated = true;
+        return;
+    }
+    let remaining = limit - *used_bytes;
+    if message.len() <= remaining {
+        target.push_str(message);
+        *used_bytes += message.len();
+        return;
+    }
+    let mut end = remaining;
+    while end > 0 && !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    target.push_str(&message[..end]);
+    *used_bytes += end;
+    *truncated = true;
 }
 
 /// Start capturing R output.
@@ -2205,6 +2280,66 @@ mod tests {
         assert_eq!(outer.stdout, "outer resumed");
         assert_eq!(outer.stderr, "outer err resumed err");
         assert!(!is_capturing());
+    }
+
+    #[test]
+    fn test_bounded_capture_respects_utf8_boundaries() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(5));
+        state.start();
+        state.capture_stdout("ééé");
+        let output = state.stop();
+
+        assert_eq!(output.stdout, "éé");
+        assert_eq!(output.stdout.len(), 4);
+        assert!(output.truncated);
+    }
+
+    #[test]
+    fn test_bounded_capture_exact_limit_and_empty_message_are_not_truncated() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(3));
+        state.start();
+        state.capture_stdout("abc");
+        state.capture_stderr("");
+        let output = state.stop();
+
+        assert_eq!(output.stdout, "abc");
+        assert!(!output.truncated);
+    }
+
+    #[test]
+    fn test_nested_bounded_capture_restores_outer_state() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(4));
+        state.start();
+        state.capture_stdout("ab");
+
+        state.start();
+        state.capture_stdout("12345");
+        let inner = state.stop();
+        assert_eq!(inner.stdout, "1234");
+        assert!(inner.truncated);
+
+        state.capture_stdout("cd");
+        let outer = state.stop();
+        assert_eq!(outer.stdout, "abcd");
+        assert!(!outer.truncated);
+    }
+
+    #[test]
+    fn test_bounded_capture_budget_is_shared_by_stdout_and_stderr() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(5));
+        state.start();
+        state.capture_stdout("abc");
+        state.capture_stderr("def");
+        let output = state.stop();
+
+        assert_eq!(output.stdout, "abc");
+        assert_eq!(output.stderr, "de");
+        assert!(output.truncated);
+        assert_eq!(output.stdout.len() + output.stderr.len(), 5);
     }
 
     #[test]

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react"
 import {
   Check,
   Cpu,
+  Code2,
+  Sparkles,
   Download,
   PlugZap,
   RotateCcw,
@@ -9,7 +11,15 @@ import {
   Square,
   Trash2,
 } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   DEFAULT_OLLAMA_URL,
   chatWithOllama,
@@ -24,13 +34,11 @@ type Source = "browser" | "ollama"
 export function LocalAI({ onUseCode }: Props) {
   const [source, setSource] = useState<Source>("browser")
   const [prompt, setPrompt] = useState(
-    "Create x <- seq(0, 1, length.out = 40), y <- sin(6 * x), fit a loess curve, and plot the points with the fitted line."
+    "Plot a gentle sine wave with 40 points and add a smooth LOESS curve."
   )
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState(
-    "Model stays unloaded until you choose Load model."
-  )
+  const [status, setStatus] = useState("")
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState("")
   const [url, setUrl] = useState(DEFAULT_OLLAMA_URL)
@@ -203,31 +211,33 @@ export function LocalAI({ onUseCode }: Props) {
         Describe an idea, review the R code, then open it in the playground.
       </p>
       <div className="ai-grid">
-        <div className="ai-panel">
-          <div className="ai-row mb-4" role="group" aria-label="Model source">
-            <Button
-              type="button"
-              variant={source === "browser" ? "default" : "outline"}
-              onClick={() => setSource("browser")}
-              disabled={busy}
-            >
-              <Cpu /> Browser model
-            </Button>
-            <Button
-              type="button"
-              variant={source === "ollama" ? "default" : "outline"}
-              onClick={() => setSource("ollama")}
-              disabled={busy}
-            >
-              <PlugZap /> Ollama
-            </Button>
-          </div>
-          {source === "browser" ? (
-            <>
-              <p className="ai-muted">
-                Qwen 2.5 Coder · 0.5B · WebGPU. Loading the model downloads
-                several hundred MB from Hugging Face. Inference then runs in
-                this browser.
+        <div className="ai-panel ai-compose">
+          <Tabs
+            className="ai-model-card"
+            value={source}
+            onValueChange={(value) => setSource(value as Source)}
+          >
+            <TabsList className="ai-source-tabs" aria-label="Model source">
+              <TabsTrigger value="browser" disabled={busy}>
+                <Cpu /> In this browser
+              </TabsTrigger>
+              <TabsTrigger value="ollama" disabled={busy}>
+                <PlugZap /> Ollama
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="browser">
+              <div className="ai-model-heading">
+                <span className="ai-model-icon">
+                  <Cpu size={20} />
+                </span>
+                <div>
+                  <strong>Qwen 2.5 Coder</strong>
+                  <span>0.5B parameters · WebGPU</span>
+                </div>
+              </div>
+              <p className="ai-muted ai-download-note">
+                One-time download of several hundred MB from Hugging Face. Runs
+                on your device.
               </p>
               {busy && (
                 <div className="mt-4" aria-live="polite">
@@ -257,9 +267,8 @@ export function LocalAI({ onUseCode }: Props) {
                   </Button>
                 )}
               </div>
-            </>
-          ) : (
-            <>
+            </TabsContent>
+            <TabsContent value="ollama">
               <label className="ai-label" htmlFor="ollama-url">
                 Ollama URL
               </label>
@@ -289,22 +298,32 @@ export function LocalAI({ onUseCode }: Props) {
               <label className="ai-label mt-4" htmlFor="ollama-model">
                 Model
               </label>
-              <select
-                id="ollama-model"
-                className="ai-select"
+              <Select
                 value={model}
-                onChange={(event) => setModel(event.target.value)}
+                onValueChange={(value) => setModel(value ?? "")}
                 disabled={busy || !models.length}
               >
-                <option value="">
-                  {models.length ? "Choose a model" : "Connect to list models"}
-                </option>
-                {models.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id="ollama-model"
+                  className="ai-select w-full min-w-0"
+                >
+                  <SelectValue
+                    className="min-w-0 truncate"
+                    placeholder={
+                      models.length
+                        ? "Choose a model"
+                        : "Connect to list models"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="ai-muted mt-3">
                 Ollama must allow requests from this site. Configure{" "}
                 <code>OLLAMA_ORIGINS</code> for this site if the browser blocks
@@ -317,69 +336,89 @@ export function LocalAI({ onUseCode }: Props) {
                   Setup guide ↗
                 </a>
               </p>
-            </>
-          )}
-          <div className="ai-divider" />
-          <label className="ai-label" htmlFor="r-prompt">
-            What should the R code do?
-          </label>
-          <textarea
-            id="r-prompt"
-            className="ai-input"
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value.slice(0, 12000))}
-            maxLength={12000}
-            spellCheck={false}
-          />
-          <div className="ai-row mt-3">
-            <Button
-              type="button"
-              onClick={() => void draft()}
-              disabled={busy || (source === "ollama" ? !model : !modelReady)}
-            >
-              <Send /> Draft code
-            </Button>
-            {busy && !loadingModel && (
+            </TabsContent>
+          </Tabs>
+          <div className="ai-prompt-area">
+            <label className="ai-label" htmlFor="r-prompt">
+              What would you like to explore?
+            </label>
+            <textarea
+              id="r-prompt"
+              className="ai-input"
+              value={prompt}
+              onChange={(event) =>
+                setPrompt(event.target.value.slice(0, 12000))
+              }
+              maxLength={12000}
+              spellCheck={false}
+            />
+            <div className="ai-row mt-3">
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => void stop()}
+                onClick={() => void draft()}
+                disabled={busy || (source === "ollama" ? !model : !modelReady)}
               >
-                <Square /> Stop
+                <Send /> Draft code
               </Button>
+              {busy && !loadingModel && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void stop()}
+                >
+                  <Square /> Stop
+                </Button>
+              )}
+            </div>
+            <p className="ai-muted ai-status" role="status">
+              {status}
+            </p>
+            {error && (
+              <p className="ai-error mt-3" role="alert">
+                {error}
+              </p>
             )}
           </div>
-          <p className="ai-muted mt-3" aria-live="polite">
-            {status}
-          </p>
-          {error && (
-            <p className="ai-error mt-3" role="alert">
-              {error}
-            </p>
-          )}
         </div>
-        <div className="ai-panel">
-          <div className="ai-row justify-between">
+        <div className={"ai-panel ai-draft " + (!code ? "is-empty" : "")}>
+          <div className="ai-row ai-draft-heading justify-between">
             <div>
-              <div className="ai-label mb-1">Review draft</div>
+              <div className="ai-label mb-1">
+                <Code2 size={16} /> Your R code
+              </div>
               <p className="ai-muted">Edit freely before use.</p>
             </div>
             {code && (
               <Check aria-label="Draft ready" className="draft-ready-icon" />
             )}
           </div>
-          <textarea
-            className="ai-code mt-4"
-            aria-label="Editable R code draft"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            placeholder="Your reviewed R code will appear here…"
-            spellCheck={false}
-          />
+          {!code && (
+            <div className="ai-draft-empty">
+              <span>
+                <Sparkles size={24} />
+              </span>
+              <strong>From an idea to a little R.</strong>
+              <p>
+                Load a model, describe your idea,
+                <br />
+                and your editable draft will appear here.
+              </p>
+            </div>
+          )}
+          {code && (
+            <textarea
+              className="ai-code mt-4"
+              aria-label="Editable R code draft"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              placeholder="Your R code"
+              spellCheck={false}
+            />
+          )}
           {code && (
             <div className="ai-row mt-3">
               <Button type="button" onClick={() => onUseCode(code)}>
-                <Check /> Use this code
+                <Check /> Run in playground
               </Button>
               <Button type="button" variant="ghost" onClick={() => setCode("")}>
                 <RotateCcw /> Clear

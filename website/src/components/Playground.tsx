@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   useSyncExternalStore,
@@ -13,12 +14,18 @@ import {
   Download,
   Copy,
   Check,
-  ArrowUpRight,
   Terminal,
   ChartNoAxesCombined,
 } from "lucide-react"
+import { toast } from "sonner"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
-import { RRuntime, type RuntimeMode, type RuntimeStatus } from "@/runtime"
+import { RRuntime, type RuntimeMode } from "@/runtime"
 import { examples, type Example } from "@/data/examples"
 const CodeEditor = lazy(() => import("./CodeEditor"))
 export type PlaygroundInput = {
@@ -35,22 +42,35 @@ function saveFile(contents: BlobPart, mime: string, name: string) {
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
 export function Playground({
   input,
   onSelect,
+  automatic,
+  onAutomaticChange,
 }: {
+  automatic: boolean
+  onAutomaticChange: (value: boolean) => void
   input: PlaygroundInput
   onSelect: (example: Example) => void
 }) {
   const [code, setCode] = useState(input.code)
   const [mode, setMode] = useState<RuntimeMode>(input.mode)
-  const [status, setStatus] = useState<RuntimeStatus>("reset")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [output, setOutput] = useState("")
   const [png, setPng] = useState("")
   const [duration, setDuration] = useState<number>()
   const [feedback, setFeedback] = useState("")
+  const [copied, setCopied] = useState(false)
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const editorReady = useSyncExternalStore(
     subscribeClient,
     () => true,
@@ -59,16 +79,23 @@ export function Playground({
   const runtime = useRef<RRuntime | null>(null)
   const imageUrl = useRef("")
   const runId = useRef(0)
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => {
-    runtime.current = new RRuntime({ onStatus: setStatus, timeoutMs: 20_000 })
+    const generation = runId
+    runtime.current = new RRuntime({ timeoutMs: 20_000 })
     return () => {
+      ++generation.current
+      clearTimeout(autoTimer.current)
+      clearTimeout(copyTimer.current)
       runtime.current?.dispose()
       URL.revokeObjectURL(imageUrl.current)
     }
   }, [])
 
   async function run() {
-    if (busy || !runtime.current) return
+    if (!runtime.current || !code.trim()) return
+    clearTimeout(autoTimer.current)
+    if (busy) runtime.current.reset()
     const id = ++runId.current
     setBusy(true)
     setError("")
@@ -92,7 +119,35 @@ export function Playground({
       if (id === runId.current) setBusy(false)
     }
   }
+  const autoRun = useEffectEvent(() => {
+    void run()
+  })
+  useEffect(() => {
+    if (!automatic || !code.trim()) return
+    autoTimer.current = setTimeout(() => autoRun(), 650)
+    return () => clearTimeout(autoTimer.current)
+  }, [code, mode, automatic])
+
+  function changeCode(next: string) {
+    ++runId.current
+    if (busy) runtime.current?.reset()
+    setBusy(false)
+    setCode(next)
+    if (!next.trim()) {
+      setPng("")
+      setOutput("")
+      setError("")
+      setDuration(undefined)
+    }
+  }
+  function changeMode(next: RuntimeMode) {
+    ++runId.current
+    if (busy) runtime.current?.reset()
+    setBusy(false)
+    setMode(next)
+  }
   function reset() {
+    clearTimeout(autoTimer.current)
     ++runId.current
     runtime.current?.reset()
     setBusy(false)
@@ -108,14 +163,17 @@ export function Playground({
     try {
       await navigator.clipboard.writeText(code)
       setFeedback("Code copied")
+      setCopied(true)
+      toast.success("Copied")
+      clearTimeout(copyTimer.current)
+      copyTimer.current = setTimeout(() => {
+        setCopied(false)
+        setFeedback((current) => (current === "Code copied" ? "" : current))
+      }, 1000)
     } catch {
       setFeedback("Clipboard unavailable. Select the code to copy it.")
     }
   }
-  const preview =
-    input.exampleId && input.mode === "plot"
-      ? `${import.meta.env.BASE_URL}examples/${input.exampleId}.png`
-      : ""
   return (
     <section id="playground" className="section playground-section">
       <div className="section-heading">
@@ -130,33 +188,57 @@ export function Playground({
         <p>
           Change a number. Break something. Try again.
           <br />
-          Run it, see what happens, and make it your own.
+          The output updates as you edit.
         </p>
       </div>
       <div className="workbench">
         <div className="workbench-toolbar">
           <div className="workbench-label">
-            <span
-              className={"status-dot " + (status === "ready" ? "ready" : "")}
-            />
-            <strong>R playground</strong>
-            <span className="runtime-label">
-              {busy
-                ? "R is working…"
-                : status === "ready"
-                  ? "Wasm ready"
-                  : "Ready when you are"}
+            <span className="playground-mark" aria-hidden="true">
+              R
             </span>
+            <div className="playground-title">
+              <strong>Playground</strong>
+            </div>
           </div>
           <div className="toolbar-actions">
-            <Button
-              variant="ghost"
-              className="icon-control"
-              aria-label="Copy R code"
-              onClick={copy}
+            <Select
+              value={automatic ? "auto" : "manual"}
+              onValueChange={(value) => {
+                if (value) {
+                  clearTimeout(autoTimer.current)
+                  onAutomaticChange(value === "auto")
+                }
+              }}
             >
-              {feedback === "Code copied" ? <Check /> : <Copy />}
-            </Button>
+              <SelectTrigger
+                className="execution-select"
+                aria-label="When to run code"
+              >
+                <SelectValue>
+                  {automatic ? "Run automatically" : "Run manually"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent
+                className="execution-options"
+                align="end"
+                alignItemWithTrigger={false}
+              >
+                <SelectItem value="auto">
+                  <span>
+                    <strong>Run automatically</strong>
+                    <small>Updates after you pause typing</small>
+                  </span>
+                </SelectItem>
+                <SelectItem value="manual">
+                  <span>
+                    <strong>Run manually</strong>
+                    <small>Only runs when you choose Run code</small>
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
             <Button
               variant="ghost"
               className="icon-control"
@@ -165,14 +247,16 @@ export function Playground({
             >
               <RotateCcw />
             </Button>
-            <Button
-              className="run-button"
-              onClick={busy ? reset : run}
-              disabled={!code.trim()}
-            >
-              {busy ? <Square /> : <Play fill="currentColor" />}
-              {busy ? "Stop & reset" : "Run code"}
-            </Button>
+            {(!automatic || busy) && (
+              <Button
+                className="run-button"
+                onClick={busy ? reset : run}
+                disabled={!code.trim()}
+              >
+                {busy ? <Square /> : <Play fill="currentColor" />}
+                {busy ? "Stop" : "Run code"}
+              </Button>
+            )}
           </div>
         </div>
         <div className="workbench-body">
@@ -181,53 +265,87 @@ export function Playground({
               <span>
                 <span className="r-file">R</span> experiment.R
               </span>
-              <label className="recipe-select">
-                Start with{" "}
-                <select
-                  aria-label="Choose an R example"
-                  value={input.exampleId ?? ""}
-                  onChange={(e) => {
-                    const example = examples.find(
-                      (x) => x.id === e.target.value
-                    )
+              <div className="editor-header-actions">
+                <Select
+                  value={input.exampleId ?? "custom"}
+                  onValueChange={(value) => {
+                    const example = examples.find((x) => x.id === value)
                     if (example) onSelect(example)
                   }}
                 >
-                  <option value="" disabled>
-                    Custom code
-                  </option>
-                  {examples.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <SelectTrigger
+                    className="recipe-select"
+                    aria-label="Choose an R example"
+                  >
+                    <SelectValue>
+                      {examples.find((x) => x.id === input.exampleId)?.title ??
+                        "Custom code"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent
+                    className="recipe-options"
+                    align="end"
+                    alignItemWithTrigger={false}
+                  >
+                    {examples.map((example) => (
+                      <SelectItem key={example.id} value={example.id}>
+                        {example.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            {editorReady ? (
-              <Suspense
-                fallback={
-                  <textarea
-                    aria-label="R code editor"
-                    className="editor-fallback"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
+            <div className="editor-surface">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        className="icon-control editor-copy"
+                        aria-label="Copy R code"
+                        onClick={copy}
+                      >
+                        <span
+                          className="copy-icon-swap"
+                          data-copied={copied}
+                          aria-hidden="true"
+                        >
+                          <Check className="copy-check" />
+                          <Copy className="copy-original" />
+                        </span>
+                      </Button>
+                    }
                   />
-                }
-              >
-                <CodeEditor code={code} onChange={setCode} onRun={run} />
-              </Suspense>
-            ) : (
-              <textarea
-                className="editor-fallback"
-                aria-label="R code editor"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-              />
-            )}
+                  <TooltipContent>Copy</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {editorReady ? (
+                <Suspense
+                  fallback={
+                    <textarea
+                      aria-label="R code editor"
+                      className="editor-fallback"
+                      value={code}
+                      onChange={(e) => changeCode(e.target.value)}
+                    />
+                  }
+                >
+                  <CodeEditor code={code} onChange={changeCode} onRun={run} />
+                </Suspense>
+              ) : (
+                <textarea
+                  className="editor-fallback"
+                  aria-label="R code editor"
+                  value={code}
+                  onChange={(e) => changeCode(e.target.value)}
+                />
+              )}
+            </div>
             <div className="editor-footer">
               <span>R · UTF-8</span>
-              <span>⌘ / Ctrl + Enter to run</span>
+              {!automatic && <span>⌘ / Ctrl + Enter to run</span>}
             </div>
           </div>
           <div className="output-pane">
@@ -239,14 +357,14 @@ export function Playground({
               >
                 <button
                   aria-pressed={mode === "plot"}
-                  onClick={() => setMode("plot")}
+                  onClick={() => changeMode("plot")}
                 >
                   <ChartNoAxesCombined size={14} />
                   Plot
                 </button>
                 <button
                   aria-pressed={mode === "console"}
-                  onClick={() => setMode("console")}
+                  onClick={() => changeMode("console")}
                 >
                   <Terminal size={14} />
                   Console
@@ -281,19 +399,15 @@ export function Playground({
               ) : mode === "plot" ? (
                 png ? (
                   <img src={png} alt="Plot generated by your R code" />
-                ) : preview ? (
-                  <div className="preview-result">
-                    <img
-                      src={preview}
-                      alt={`${examples.find((x) => x.id === input.exampleId)?.title} — R-generated preview`}
-                    />
-                    <span>Preview · run to update</span>
-                  </div>
                 ) : (
                   <div className="empty-result">
                     <ChartNoAxesCombined />
-                    <p>Your next plot goes here.</p>
-                    <span>Write some R and press Run code.</span>
+                    <p>Your plot will appear here.</p>
+                    <span>
+                      {automatic
+                        ? "Examples run automatically."
+                        : "Choose Run code to see the result."}
+                    </span>
                   </div>
                 )
               ) : (
@@ -319,20 +433,23 @@ export function Playground({
             </div>
           </div>
         </div>
-        <div className="workbench-bottom">
+        <div className="sr-only">
           <span role="status">{feedback}</span>
-          <button onClick={() => saveFile(code, "text/plain", "experiment.R")}>
-            Download .R <ArrowUpRight size={14} />
-          </button>
         </div>
       </div>
-      <p className="compat-note">
-        An evolving Rust port of R. These examples use the supported runtime;
-        arbitrary CRAN packages are not available.{" "}
-        <a href="https://github.com/bernaferrari/R-rust/blob/main/docs/loess-and-portable-graphics.md">
-          See compatibility notes ↗
-        </a>
-      </p>
+      <details id="compatibility" className="compat-note">
+        <summary>What can I run?</summary>
+        <p>
+          The examples here run in the browser: data frames, linear algebra,
+          LOESS, common plots, and a subset of grid and mathematical labels.
+        </p>
+        <p>
+          This is a partial R runtime. Arbitrary CRAN packages and native
+          extensions are not supported. Some browser functions, including FFT,
+          are still unavailable. Grid layouts and mathematical typography do not
+          yet fully match GNU R.
+        </p>
+      </details>
     </section>
   )
 }

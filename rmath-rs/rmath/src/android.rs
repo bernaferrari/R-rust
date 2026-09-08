@@ -60,6 +60,9 @@ fn result_from_eval(sexp: Sexp<'_>, captured: output::RCapturedOutput, visible: 
         }
         display.push_str(&output::format_sexp_direct(sexp.clone()));
     }
+    if captured.truncated {
+        display.push_str("\n[captured console output truncated by runtime limit]");
+    }
     // main.c REPL tail: after the auto-printed value of the final top-level
     // statement, upstream flushes warnings that statement deferred
     // (PrintWarnings runs post-PrintValueEnv in the REPL loop).
@@ -123,6 +126,9 @@ fn error_result_with_captured(
             text.push_str(&block);
         }
     }
+    if captured.truncated {
+        text.push_str("\n[captured console output truncated by runtime limit]");
+    }
     if text.contains("Error") {
         result.output = text;
     }
@@ -143,6 +149,10 @@ fn is_valid_package_name(package: &str) -> bool {
 }
 
 impl RSession {
+    pub fn set_output_limit(&mut self, max_bytes: Option<usize>) {
+        self.core.set_output_limit(max_bytes);
+    }
+
     pub fn new() -> Self {
         RSession {
             core: CoreRSession::new_detached(),
@@ -2789,6 +2799,28 @@ mod tests {
             left.eval(".Random.seed[3]").value,
             right.eval(".Random.seed[3]").value
         );
+    }
+
+    #[test]
+    fn test_runif_rlevel_contract_and_rng_consumption() {
+        let mut session = RSession::new();
+        let seeded = session.eval("set.seed(1); runif(3)");
+        assert_eq!(seeded.output, "[1] 0.2655087 0.3721239 0.5728534");
+
+        // Defaults, vector recycling, and a zero-length request match R's
+        // vectorized primitive and do not consume an extra draw for n = 0.
+        let recycled = session.eval("set.seed(1); runif(2, c(10, 20), 30)");
+        assert!(recycled.output.contains("15.31017"));
+        assert!(recycled.output.contains("23.721"));
+        let zero = session.eval("set.seed(1); runif(0); runif(1)");
+        assert!(zero.output.contains("0.2655087"));
+
+        // Equal bounds return the bound without consuming the RNG stream;
+        // reversed and non-finite bounds raise the standard R error.
+        let unchanged = session.eval("set.seed(1); runif(1, 4, 4); runif(1)");
+        assert!(unchanged.output.contains("4\n[1] 0.2655087"));
+        assert!(session.eval("runif(1, 2, 1)").value.is_nan());
+        assert!(session.eval("runif(1, NaN, 1)").value.is_nan());
     }
 
     #[test]

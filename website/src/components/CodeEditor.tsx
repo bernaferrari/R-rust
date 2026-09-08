@@ -1,6 +1,15 @@
 import CodeMirror, { EditorView } from "@uiw/react-codemirror"
-import { StreamLanguage } from "@codemirror/language"
+import { tags } from "@lezer/highlight"
+import {
+  HighlightStyle,
+  syntaxHighlighting,
+  StreamLanguage,
+} from "@codemirror/language"
 import { r } from "@codemirror/legacy-modes/mode/r"
+import { useDarkTheme } from "@/theme"
+const darkComments = syntaxHighlighting(
+  HighlightStyle.define([{ tag: tags.comment, class: "r-code-comment" }])
+)
 const extensions = [
   StreamLanguage.define(r),
   EditorView.contentAttributes.of({
@@ -17,6 +26,7 @@ export default function CodeEditor({
   onChange: (code: string) => void
   onRun: () => void
 }) {
+  const dark = useDarkTheme()
   return (
     <div
       className="code-editor"
@@ -29,8 +39,9 @@ export default function CodeEditor({
     >
       <CodeMirror
         value={code}
+        theme={dark ? "dark" : "light"}
         height="390px"
-        extensions={extensions}
+        extensions={dark ? [...extensions, darkComments] : extensions}
         onChange={onChange}
         aria-label="R code editor"
         basicSetup={{

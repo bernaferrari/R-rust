@@ -182,6 +182,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     },
     #[cfg(feature = "renderplot-device")]
     UnevaluatedBuiltin {
+        name: "unit.c",
+        handler: crate::mainutils::portable_grid::do_unit_c,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
         name: "Ops.unit",
         handler: crate::mainutils::portable_grid::do_ops_unit,
         restore_visibility_always: false,
@@ -647,8 +653,6 @@ macro_rules! wasm_unavailable_builtin {
     };
 }
 
-#[cfg(target_arch = "wasm32")]
-wasm_unavailable_builtin!(do_runif_wasm);
 #[cfg(target_arch = "wasm32")]
 wasm_unavailable_builtin!(do_fft_wasm);
 #[cfg(target_arch = "wasm32")]
@@ -1227,10 +1231,7 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     },
     EvaluatedBuiltin {
         name: "runif",
-        #[cfg(not(target_arch = "wasm32"))]
         handler: crate::library::stats::random::do_runif_r,
-        #[cfg(target_arch = "wasm32")]
-        handler: do_runif_wasm,
     },
     EvaluatedBuiltin {
         name: "rnorm",

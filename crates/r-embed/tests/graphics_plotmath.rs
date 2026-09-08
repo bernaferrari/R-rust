@@ -229,3 +229,67 @@ fn stretchy_groups_wide_accents_and_display_limits_emit_owned_geometry() {
             .any(|op| matches!(op, DrawOperation::Text { text, .. } if text == "∑"))
     );
 }
+
+#[test]
+fn standard_plotmath_symbol_and_relation_catalog_renders() {
+    use r_graphics_engine::{DrawOperation, Scene};
+    let mut session = rmath::android::RSession::new();
+    let mut scene = Scene::new(800, 320);
+    let result = session.eval_script_with_renderplot_backend(
+        "plot.new();text(.5,.5,expression(infinity + partialdiff + nabla + degree + arrowleft + arrowright + plusminus + notequal + lessequal + greaterequal + intersection + union + therefore + x %subset% y %notin% z %<->% w))",
+        &mut scene,
+    );
+    assert!(
+        !matches!(result.typed, rmath::android::RValue::Error(_)),
+        "{}",
+        result.output
+    );
+    for expected in [
+        "∞", "∂", "∇", "°", "←", "→", "±", "≠", "≤", "≥", "∩", "∪", "∴", "⊂", "∉", "↔",
+    ] {
+        assert!(
+            scene
+                .operations()
+                .iter()
+                .any(|op| matches!(op, DrawOperation::Text { text, .. } if text == expected)),
+            "missing plotmath symbol {expected}"
+        );
+    }
+}
+
+#[test]
+fn named_limit_operators_use_display_layout() {
+    use r_graphics_engine::{DrawOperation, Scene};
+    let mut session = rmath::android::RSession::new();
+    let mut scene = Scene::new(640, 320);
+    let result = session.eval_script_with_renderplot_backend(
+        "plot.new();text(.5,.5,expression(lim(x,x==0)+inf(x,i==1,n)+max(x,i==1,n)))",
+        &mut scene,
+    );
+    assert!(
+        !matches!(result.typed, rmath::android::RValue::Error(_)),
+        "{}",
+        result.output
+    );
+    for expected in ["lim", "inf", "max"] {
+        assert!(
+            scene
+                .operations()
+                .iter()
+                .any(|op| matches!(op, DrawOperation::Text { text, .. } if text == expected))
+        );
+    }
+    let ys: Vec<f32> = scene
+        .operations()
+        .iter()
+        .filter_map(|op| match op {
+            DrawOperation::Text { text, params, .. }
+                if ["0", "1", "n"].contains(&text.as_str()) =>
+            {
+                Some(params.font_size)
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(ys.iter().any(|size| *size < 12.), "limits use script size");
+}

@@ -7,6 +7,28 @@ export type Example = {
   code: string
   color: string
 }
+
+const darkPlotDefaults = `par(bg = "#171e1c", fg = "#d7e1db",
+     col.axis = "#b7c8bf", col.lab = "#b7c8bf", col.main = "#e2eee7")
+`
+
+/**
+ * Return the source used by the gallery preview and playground for a theme.
+ * Dark variants only adjust explicit gallery-owned colors; user code is never
+ * rewritten through this helper.
+ */
+export function getExampleCode(example: Example, dark = false): string {
+  if (!dark || example.mode !== "plot") return example.code
+  if (example.id === "grid") {
+    return example.code
+      .replaceAll("#f8f6ef", "#171e1c")
+      .replaceAll("#52695e", "#9fb4a8")
+      .replaceAll("#244e44", "#d7e8de")
+  }
+  const code = example.code.replaceAll('border = "white"', 'border = "#30403b"')
+  return `${darkPlotDefaults}${code}`
+}
+
 export const examples: Example[] = [
   {
     id: "loess",
@@ -31,17 +53,23 @@ lines(x, predict(fit), col = "#cc5636", lwd = 3)`,
     title: "Nature has a formula",
     category: "Creative",
     description:
-      "Grow a sunflower from the golden angle. Just seven lines of R.",
+      "Grow a sunflower from the golden angle, with a warm spiral of golden seeds.",
     mode: "plot",
     color: "#bf773b",
     code: `# Phyllotaxis: the geometry of a sunflower
-n <- 700
+n <- 1100
 i <- seq_len(n)
 angle <- i * pi * (3 - sqrt(5))
 radius <- sqrt(i)
-plot(radius * cos(angle), radius * sin(angle),
-     pch = 16, cex = 0.65, col = "#bf773b",
-     axes = FALSE, xlab = "", ylab = "")`,
+x <- radius * cos(angle)
+y <- radius * sin(angle)
+plot(x, y, pch = 16, cex = 1.15,
+     col = "#d9a441", axes = FALSE, xlab = "", ylab = "")
+core <- i <= 190
+ring <- i > 190 & i <= 500
+points(x[ring], y[ring], pch = 16, cex = 1.05, col = "#bf773b")
+points(x[core], y[core], pch = 16, cex = 0.9, col = "#8b4b3a")
+points(0, 0, pch = 16, cex = 3.2, col = "#4f3b2f")`,
   },
   {
     id: "distribution",
@@ -76,23 +104,35 @@ for (i in 1:6) {
   },
   {
     id: "grid",
-    title: "Think in layers",
+    title: "Find your rhythm",
     category: "Graphics",
     description:
-      "Compose a graphic with grid viewports, shapes, and typography.",
+      "Turn twelve weeks of small moments into a patterned calendar.",
     mode: "plot",
-    color: "#cb664c",
+    color: "#24776a",
     code: `library(grid)
 grid.newpage()
-pushViewport(viewport(width = 0.8, height = 0.8))
-grid.rect(gp = gpar(fill = "#f0e9dc", col = NA))
-grid.circle(x = .36, y = .52, r = .27,
-            gp = gpar(fill = "#cc5636", col = NA))
-grid.circle(x = .64, y = .52, r = .27,
-            gp = gpar(fill = "#2c625a", col = NA))
-grid.text("hello, grid.", y = .16,
-          gp = gpar(fontsize = 28, col = "#252a27"))
-popViewport()`,
+grid.rect(gp = gpar(fill = "#f8f6ef", col = NA))
+grid.text("SMALL MOMENTS, OVER TIME", x = .12, y = .86,
+          just = "left", gp = gpar(fontsize = 10, col = "#52695e"))
+grid.text("Find your rhythm", x = .12, y = .77,
+          just = "left", gp = gpar(fontsize = 28, col = "#244e44"))
+colors <- c("#e1e7da", "#b8cec0", "#80af9e", "#488c79", "#1e6657")
+for (week in 1:12) {
+  for (day in 1:7) {
+    level <- 1 + ((week * 3 + day * 7 + week * day) %% 5)
+    grid.rect(x = .15 + (week - 1) * .064,
+              y = .61 - (day - 1) * .054,
+              width = .053, height = .043,
+              gp = gpar(fill = colors[level], col = NA))
+  }
+}
+grid.text(c("WEEK 01", "04", "08", "12"),
+          x = c(.15, .342, .598, .854), y = .21,
+          gp = gpar(fontsize = 9, col = "#52695e"))
+grid.text("Twelve weeks. Eighty-four little possibilities.",
+          x = .12, y = .11, just = "left",
+          gp = gpar(fontsize = 11, col = "#52695e"))`,
   },
   {
     id: "plotmath",
@@ -194,6 +234,75 @@ rolls <- sample(1:6, size = 10000, replace = TRUE)
 cat("Observed probabilities:\\n")
 print(round(table(rolls) / length(rolls), 3))
 cat("Average roll:", round(mean(rolls), 3))`,
+  },
+  {
+    id: "random-walk",
+    title: "See a random walk",
+    category: "Statistics",
+    description:
+      "Let uniform steps wander, then watch chance leave a shape behind.",
+    mode: "plot",
+    color: "#4e7c78",
+    code: `set.seed(24)
+steps <- sample(c(-1, 1), 240, replace = TRUE)
+walk <- cumsum(steps)
+plot(seq_along(walk), walk, type = "l", lwd = 2,
+     col = "#3f766c", xlab = "Step", ylab = "Position",
+     main = "A path made by chance")
+abline(h = 0, col = "#c8d4cb", lty = 2)`,
+  },
+  {
+    id: "orbit-lines",
+    title: "Draw an orbit",
+    category: "Graphics",
+    description:
+      "Two quiet frequencies make a looping figure with a compass-like rhythm.",
+    mode: "plot",
+    color: "#586d92",
+    code: `t <- seq(0, 2 * pi, length.out = 500)
+x <- 1.2 * sin(3 * t + pi / 2)
+y <- 0.8 * sin(2 * t)
+plot(x, y, type = "l", lwd = 3, col = "#586d92",
+     axes = FALSE, xlab = "", ylab = "", asp = 1,
+     main = "An orbit in two frequencies")
+points(x[c(1, 126, 251, 376)], y[c(1, 126, 251, 376)],
+       pch = 16, cex = 1.2, col = "#d2874f")`,
+  },
+  {
+    id: "constellation",
+    title: "Map a constellation",
+    category: "Creative",
+    description:
+      "A handful of points becomes a little night sky when you connect the dots.",
+    mode: "plot",
+    color: "#4b5878",
+    code: `set.seed(18)
+stars <- matrix(runif(14, -1, 1), ncol = 2)
+plot(stars, pch = 16, cex = 1.4, col = "#d8ad58",
+     axes = FALSE, xlab = "", ylab = "", asp = 1,
+     xlim = c(-1.1, 1.1), ylim = c(-1.1, 1.1),
+     main = "A small constellation")
+for (i in 1:6) {
+  j <- i + 1
+  segments(stars[i, 1], stars[i, 2], stars[j, 1], stars[j, 2],
+           col = "#697995", lwd = 1.5)
+}`,
+  },
+  {
+    id: "dice-counts",
+    title: "Count the dice",
+    category: "Everyday R",
+    description:
+      "A compact simulation that turns ten thousand rolls into a readable check.",
+    mode: "console",
+    color: "#7d6a92",
+    code: `set.seed(31)
+rolls <- sample(1:6, 10000, replace = TRUE)
+counts <- tabulate(rolls, nbins = 6)
+cat("Roll counts:\n")
+print(counts)
+cat("Most common face:", which.max(counts), "\\n")
+cat("Mean roll:", round(mean(rolls), 3))`,
   },
 ]
 export const categories = [

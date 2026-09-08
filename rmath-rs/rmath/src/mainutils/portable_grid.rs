@@ -1,5 +1,7 @@
 //! Portable grid frontend. Runtime values are decoded before borrowing a device;
 //! viewport transforms and graphical parameters are owned session state.
+mod layout;
+
 use crate::eval::attrib_core::{R_NamesSymbol, getAttrib};
 use crate::mainutils::essentials::{arg_by_name_or_position, base_error, elt_to_string};
 use crate::sexp::{
@@ -221,7 +223,6 @@ struct Frame {
 struct Layout {
     widths: Vec<f64>,
     heights: Vec<f64>,
-    respect: bool,
     offset_x: f64,
     offset_y: f64,
 }
@@ -607,38 +608,33 @@ fn compose(a: [f64; 6], b: [f64; 6]) -> [f64; 6] {
         a[1] * b[4] + a[3] * b[5] + a[5],
     ]
 }
-unsafe fn layout_lengths(x: SEXP, n: usize, frame: &Frame, axis: usize) -> Vec<f64> {
+unsafe fn layout_axis(x: SEXP, n: usize, frame: &Frame, axis: usize) -> layout::Axis {
     unsafe {
         let values = numbers(field(x, "value"));
         let names = field(x, "units");
         if values.is_empty() || XLENGTH(names) == 0 {
             base_error("invalid layout units");
         }
-        let mut out = vec![0.; n];
-        let mut weights = vec![0.; n];
-        for i in 0..n {
-            let v = values[i % values.len()];
-            if v < 0. {
-                base_error("layout dimensions cannot be negative");
-            }
-            let name = elt_to_string(names, i as i64 % XLENGTH(names));
-            if name == "null" {
-                weights[i] = v;
-            } else {
-                out[i] = v * frame
-                    .unit_factor(&name, axis, true)
-                    .unwrap_or_else(|e| base_error(e))
-                    .0;
-            }
-        }
-        let available = (frame.extent(axis) - out.iter().sum::<f64>()).max(0.);
-        let weight: f64 = weights.iter().sum();
-        if weight > 0. {
-            for i in 0..n {
-                out[i] += weights[i] / weight * available;
-            }
-        }
-        out
+        let terms = (0..n)
+            .map(|i| {
+                let v = values[i % values.len()];
+                if !v.is_finite() {
+                    base_error("layout dimensions must be finite");
+                }
+                let name = elt_to_string(names, i as i64 % XLENGTH(names));
+                if name == "null" {
+                    layout::Length::Null(v)
+                } else {
+                    layout::Length::Fixed(
+                        v * frame
+                            .unit_factor(&name, axis, true)
+                            .unwrap_or_else(|e| base_error(e))
+                            .0,
+                    )
+                }
+            })
+            .collect();
+        layout::Axis::new(terms, frame.extent(axis))
     }
 }
 unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
@@ -680,8 +676,8 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
             height = layout.heights[r0..r1].iter().sum();
             just = [0., 0.];
         }
-        if width <= 0. || height <= 0. {
-            base_error("viewport dimensions must be positive");
+        if !width.is_finite() || !height.is_finite() {
+            base_error("viewport dimensions must be finite");
         }
         let angle = num(field(data, "angle"), 0.).to_radians();
         let (c, s) = (angle.cos(), angle.sin());
@@ -744,28 +740,36 @@ unsafe fn push(data: SEXP, parent: &Frame) -> Frame {
             if rows == 0 || cols == 0 || rows > 10000 || cols > 10000 {
                 base_error("invalid grid layout dimensions");
             }
-            let mut widths = layout_lengths(field(layout, "widths"), cols, &f, 0);
-            let mut heights = layout_lengths(field(layout, "heights"), rows, &f, 1);
-            let respect = num(field(layout, "respect"), 0.) != 0.;
-            let mut offset_x = 0.;
-            let mut offset_y = 0.;
-            if respect {
-                let sx = f.width / widths.iter().sum::<f64>().max(1e-12);
-                let sy = f.height / heights.iter().sum::<f64>().max(1e-12);
-                let scale = sx.min(sy);
-                for v in &mut widths {
-                    *v *= scale;
+            let x = layout_axis(field(layout, "widths"), cols, &f, 0);
+            let y = layout_axis(field(layout, "heights"), rows, &f, 1);
+            let respect = numbers(field(layout, "respect"));
+            let matrix = num(field(layout, "respect.matrix"), 0.) != 0.;
+            let mut respected_cols = vec![false; cols];
+            let mut respected_rows = vec![false; rows];
+            if matrix {
+                if respect.len() != rows * cols {
+                    base_error("respect matrix must match layout dimensions");
                 }
-                for v in &mut heights {
-                    *v *= scale;
+                for c in 0..cols {
+                    for r in 0..rows {
+                        if respect[c * rows + r] != 0. {
+                            respected_cols[c] = true;
+                            respected_rows[r] = true;
+                        }
+                    }
                 }
-                offset_x = (f.width - widths.iter().sum::<f64>()).max(0.) / 2.;
-                offset_y = (f.height - heights.iter().sum::<f64>()).max(0.) / 2.;
+            } else if respect.first().is_some_and(|v| *v != 0.) {
+                respected_cols.fill(true);
+                respected_rows.fill(true);
             }
+            let (widths, heights) = layout::allocate(x, y, &respected_cols, &respected_rows);
+            let just = justification(field(layout, "just"));
+            // The y offset is measured down from the top; R's justification is from the bottom.
+            let offset_x = (f.width - widths.iter().sum::<f64>()) * just[0];
+            let offset_y = (f.height - heights.iter().sum::<f64>()) * (1. - just[1]);
             f.layout = Some(Layout {
                 widths,
                 heights,
-                respect,
                 offset_x,
                 offset_y,
             });
@@ -1050,13 +1054,23 @@ unsafe fn arrow_heads(frame: &Frame, arrow: SEXP, a: Point, b: Point, i: usize) 
 unsafe fn draw_commands(kind: &str, data: SEXP, frame: &Frame) -> Vec<Drawing> {
     unsafe {
         let default = string(field(data, "default.units"), "npc");
+        let empty = |x: SEXP| x != R_NilValue() && XLENGTH(x) == 0;
         let coordinate = |name, axis, dim| units(field(data, name), &default, frame, axis, dim);
         let mut out = vec![];
         if kind == "segments" {
+            if ["x0", "y0", "x1", "y1"]
+                .iter()
+                .any(|name| empty(field(data, name)))
+            {
+                return out;
+            }
             let x0 = coordinate("x0", 0, false);
             let y0 = coordinate("y0", 1, false);
             let x1 = coordinate("x1", 0, false);
             let y1 = coordinate("y1", 1, false);
+            if x0.is_empty() || y0.is_empty() || x1.is_empty() || y1.is_empty() {
+                return out;
+            }
             for i in 0..x0.len().max(y0.len()).max(x1.len()).max(y1.len()) {
                 let a = frame.map(x0[i % x0.len()], y0[i % y0.len()]);
                 let b = frame.map(x1[i % x1.len()], y1[i % y1.len()]);
@@ -1065,8 +1079,14 @@ unsafe fn draw_commands(kind: &str, data: SEXP, frame: &Frame) -> Vec<Drawing> {
             }
             return out;
         }
+        if empty(field(data, "x")) || empty(field(data, "y")) {
+            return out;
+        }
         let x = coordinate("x", 0, false);
         let y = coordinate("y", 1, false);
+        if x.is_empty() || y.is_empty() {
+            return out;
+        }
         let n = x.len().max(y.len());
         match kind {
             "lines" | "polygon" => {
@@ -1251,6 +1271,7 @@ macro_rules! wrapper {
     };
 }
 wrapper!(do_unit, "unit", "portable_grid/unit.R");
+wrapper!(do_unit_c, "unit.c", "portable_grid/unit_c.R");
 wrapper!(do_ops_unit, "Ops.unit", "portable_grid/ops_unit.R");
 wrapper!(
     do_summary_unit,
@@ -1333,6 +1354,7 @@ wrapper!(do_grid_points, "grid.points", "portable_grid/grid_points.R");
 /// Exported portable grid surface; namespace lookup is restricted to these names.
 pub(crate) const EXPORTS: &[&str] = &[
     "unit",
+    "unit.c",
     "Ops.unit",
     "Summary.unit",
     "is.unit",
