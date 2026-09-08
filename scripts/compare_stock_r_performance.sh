@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/conformance_artifacts.sh"
 OUTPUT_DIR="$ROOT_DIR/target/stock-r-performance"
 ITERATIONS=5
 CHECK=0
@@ -75,20 +76,6 @@ if ! command -v Rscript >/dev/null 2>&1; then
     fi
 fi
 
-find_rust_rlib() {
-    local found=""
-    shopt -s nullglob
-    local rust_rlibs=(
-        "$ROOT_DIR"/target/debug/deps/librmath-*.rlib
-        "$ROOT_DIR"/target/debug/deps/librmath.rlib
-    )
-    shopt -u nullglob
-    if (( ${#rust_rlibs[@]} > 0 )); then
-        found="$(ls -t "${rust_rlibs[@]}" 2>/dev/null | head -n1)"
-    fi
-    printf '%s' "$found"
-}
-
 mkdir -p "$OUTPUT_DIR"
 
 RUSTFLAGS_FOR_BUILD="${RUSTFLAGS:-}"
@@ -99,7 +86,7 @@ fi
 echo "INFO: building Rust rmath artifact for benchmark runner." >&2
 (cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
 
-RUST_RLIB="$(find_rust_rlib)"
+RUST_RLIB="$(conformance_find_rmath_rlib)"
 if [[ -z "$RUST_RLIB" ]]; then
     echo "ERROR: Rust rmath artifact missing after build." >&2
     exit 1
@@ -112,7 +99,7 @@ cleanup_runner() {
 }
 trap cleanup_runner EXIT
 
-if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/debug/deps" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
+if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$(conformance_dependency_dir)" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
     echo "ERROR: failed to compile Rust benchmark runner"
     sed 's/^/  rustc | /' "$RUNNER_TMP_DIR/rustc.log"
     exit 1

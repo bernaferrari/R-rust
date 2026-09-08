@@ -8,82 +8,94 @@
 
 use std::ptr;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use super::ffi::{FALSE, SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo, TRUE};
 use super::instance::{RInstance, with_required_current_instance};
 
 // ---------------------------------------------------------------------------
-// Sentinel singletons (storing as usize to avoid Send requirement)
+// Sentinel singletons (published once, preserving pointer provenance)
+// OnceLock publishes each initialized allocation. AtomicPtr retains its
+// provenance without asserting Send/Sync for the mutable object type. Relaxed
+// loads are sufficient: these pointer slots are never changed after publication.
 // ---------------------------------------------------------------------------
 
 /// R_NilValue: the global nil/NULL object.
-static NIL_VALUE: OnceLock<usize> = OnceLock::new();
+static NIL_VALUE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
 
 /// R_UnboundValue: sentinel for unbound symbols in environments.
-static UNBOUND_VALUE: OnceLock<usize> = OnceLock::new();
+static UNBOUND_VALUE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
 
 /// R_MissingArg: sentinel for missing function arguments.
-static MISSING_ARG: OnceLock<usize> = OnceLock::new();
+static MISSING_ARG: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
 
 /// R_RestartToken: sentinel for restart tokens.
-static RESTART_TOKEN: OnceLock<usize> = OnceLock::new();
+static RESTART_TOKEN: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
 
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
 fn init_nil() -> SEXP {
-    *NIL_VALUE.get_or_init(|| {
-        Box::into_raw(Box::new(SexprecCore {
-            sxpinfo: SxpInfo::new(SEXPTYPE::NILSXP),
-            attrib: ptr::null_mut(),
-            gengc_next_node: ptr::null_mut(),
-            gengc_prev_node: ptr::null_mut(),
-            data: SexprecData::default(),
-        })) as usize
-    }) as SEXP
+    NIL_VALUE
+        .get_or_init(|| {
+            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
+                sxpinfo: SxpInfo::new(SEXPTYPE::NILSXP),
+                attrib: ptr::null_mut(),
+                gengc_next_node: ptr::null_mut(),
+                gengc_prev_node: ptr::null_mut(),
+                data: SexprecData::default(),
+            })))
+        })
+        .load(Ordering::Relaxed)
 }
 
 fn init_unbound() -> SEXP {
-    *UNBOUND_VALUE.get_or_init(|| {
-        let mut info = SxpInfo::new(SEXPTYPE::SYMSXP);
-        info.set_mark(true);
-        Box::into_raw(Box::new(SexprecCore {
-            sxpinfo: info,
-            attrib: ptr::null_mut(),
-            gengc_next_node: ptr::null_mut(),
-            gengc_prev_node: ptr::null_mut(),
-            data: SexprecData::default(),
-        })) as usize
-    }) as SEXP
+    UNBOUND_VALUE
+        .get_or_init(|| {
+            let mut info = SxpInfo::new(SEXPTYPE::SYMSXP);
+            info.set_mark(true);
+            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
+                sxpinfo: info,
+                attrib: ptr::null_mut(),
+                gengc_next_node: ptr::null_mut(),
+                gengc_prev_node: ptr::null_mut(),
+                data: SexprecData::default(),
+            })))
+        })
+        .load(Ordering::Relaxed)
 }
 
 fn init_missing() -> SEXP {
-    *MISSING_ARG.get_or_init(|| {
-        let mut info = SxpInfo::new(SEXPTYPE::SYMSXP);
-        info.set_mark(true);
-        Box::into_raw(Box::new(SexprecCore {
-            sxpinfo: info,
-            attrib: ptr::null_mut(),
-            gengc_next_node: ptr::null_mut(),
-            gengc_prev_node: ptr::null_mut(),
-            data: SexprecData::default(),
-        })) as usize
-    }) as SEXP
+    MISSING_ARG
+        .get_or_init(|| {
+            let mut info = SxpInfo::new(SEXPTYPE::SYMSXP);
+            info.set_mark(true);
+            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
+                sxpinfo: info,
+                attrib: ptr::null_mut(),
+                gengc_next_node: ptr::null_mut(),
+                gengc_prev_node: ptr::null_mut(),
+                data: SexprecData::default(),
+            })))
+        })
+        .load(Ordering::Relaxed)
 }
 
 fn init_restart() -> SEXP {
-    *RESTART_TOKEN.get_or_init(|| {
-        let mut info = SxpInfo::new(SEXPTYPE::SPECIALSXP);
-        info.set_mark(true);
-        Box::into_raw(Box::new(SexprecCore {
-            sxpinfo: info,
-            attrib: ptr::null_mut(),
-            gengc_next_node: ptr::null_mut(),
-            gengc_prev_node: ptr::null_mut(),
-            data: SexprecData::default(),
-        })) as usize
-    }) as SEXP
+    RESTART_TOKEN
+        .get_or_init(|| {
+            let mut info = SxpInfo::new(SEXPTYPE::SPECIALSXP);
+            info.set_mark(true);
+            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
+                sxpinfo: info,
+                attrib: ptr::null_mut(),
+                gengc_next_node: ptr::null_mut(),
+                gengc_prev_node: ptr::null_mut(),
+                data: SexprecData::default(),
+            })))
+        })
+        .load(Ordering::Relaxed)
 }
 
 // ---------------------------------------------------------------------------
@@ -290,10 +302,10 @@ pub unsafe fn R_BraceSymbol_fn() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R_True: the logical TRUE singleton (scalar LGLSXP with value 1).
-static R_TRUE: OnceLock<usize> = OnceLock::new();
+static R_TRUE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
 
 /// R_False: the logical FALSE singleton (scalar LGLSXP with value 0).
-static R_FALSE: OnceLock<usize> = OnceLock::new();
+static R_FALSE: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
 
 /// Build a persistent scalar LGLSXP singleton with a readable payload.
 ///
@@ -304,26 +316,26 @@ static R_FALSE: OnceLock<usize> = OnceLock::new();
 /// the node and the 1-element buffer are intentionally leaked, like every
 /// other process-global sentinel here (see `persistent_mkChar` for the same
 /// pattern for CHARSXP).
-fn init_persistent_logical(value: i32) -> usize {
-    use std::alloc::{Layout, alloc};
-    unsafe {
-        let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
-        node.sxpinfo.set_scalar(true);
-        let data = alloc(Layout::new::<i32>()) as *mut i32;
-        *data = value;
-        node.gengc_next_node = data as *mut SexprecCore;
-        Box::into_raw(Box::new(node)) as usize
-    }
+fn init_persistent_logical(value: i32) -> AtomicPtr<SexprecCore> {
+    let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
+    node.sxpinfo.set_scalar(true);
+    let data = Box::into_raw(Box::new(value));
+    node.gengc_next_node = data as *mut SexprecCore;
+    AtomicPtr::new(Box::into_raw(Box::new(node)))
 }
 
 /// Get a pointer to R_True (logical scalar TRUE).
 pub unsafe fn R_True() -> SEXP {
-    *R_TRUE.get_or_init(|| init_persistent_logical(TRUE)) as SEXP
+    R_TRUE
+        .get_or_init(|| init_persistent_logical(TRUE))
+        .load(Ordering::Relaxed)
 }
 
 /// Get a pointer to R_False (logical scalar FALSE).
 pub unsafe fn R_False() -> SEXP {
-    *R_FALSE.get_or_init(|| init_persistent_logical(FALSE)) as SEXP
+    R_FALSE
+        .get_or_init(|| init_persistent_logical(FALSE))
+        .load(Ordering::Relaxed)
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +343,7 @@ pub unsafe fn R_False() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R_NaString: the NA_STRING sentinel (a special CHARSXP with NA bit in gp).
-static NA_STRING_PTR: OnceLock<usize> = OnceLock::new();
+static NA_STRING_PTR: OnceLock<AtomicPtr<SexprecCore>> = OnceLock::new();
 
 /// Get a pointer to R's NA_STRING — a CHARSXP sentinel representing NA.
 ///
@@ -339,18 +351,20 @@ static NA_STRING_PTR: OnceLock<usize> = OnceLock::new();
 /// sentinel. The sentinel itself has type CHARSXP and the NA bit set in its
 /// gp field.
 pub unsafe fn R_NaString() -> SEXP {
-    *NA_STRING_PTR.get_or_init(|| {
-        let mut info = SxpInfo::new(SEXPTYPE::CHARSXP);
-        // Set gp=1 to mark as NA (R's convention for NA_STRING)
-        info.set_gp(1);
-        Box::into_raw(Box::new(SexprecCore {
-            sxpinfo: info,
-            attrib: ptr::null_mut(),
-            gengc_next_node: ptr::null_mut(),
-            gengc_prev_node: ptr::null_mut(),
-            data: SexprecData::default(),
-        })) as usize
-    }) as SEXP
+    NA_STRING_PTR
+        .get_or_init(|| {
+            let mut info = SxpInfo::new(SEXPTYPE::CHARSXP);
+            // Set gp=1 to mark as NA (R's convention for NA_STRING)
+            info.set_gp(1);
+            AtomicPtr::new(Box::into_raw(Box::new(SexprecCore {
+                sxpinfo: info,
+                attrib: ptr::null_mut(),
+                gengc_next_node: ptr::null_mut(),
+                gengc_prev_node: ptr::null_mut(),
+                data: SexprecData::default(),
+            })))
+        })
+        .load(Ordering::Relaxed)
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +376,29 @@ mod tests {
     use super::super::ffi::*;
     use super::super::instance::{RInstance, current_instance_ptr, replace_current_instance};
     use super::*;
+
+    #[test]
+    fn singleton_storage_preserves_provenance() {
+        // No session or arena is needed: exercise every process-global slot
+        // directly, including its logical payload, under strict-provenance Miri.
+        unsafe {
+            for (value, kind) in [
+                (R_NilValue(), SEXPTYPE::NILSXP),
+                (R_UnboundValue(), SEXPTYPE::SYMSXP),
+                (R_MissingArg(), SEXPTYPE::SYMSXP),
+                (R_RestartToken(), SEXPTYPE::SPECIALSXP),
+                (R_NaString(), SEXPTYPE::CHARSXP),
+                (R_True(), SEXPTYPE::LGLSXP),
+                (R_False(), SEXPTYPE::LGLSXP),
+            ] {
+                assert_eq!((*value).sxpinfo.type_of(), kind);
+            }
+            assert_eq!(*((*R_True()).gengc_next_node as *const i32), TRUE);
+            assert_eq!(*((*R_False()).gengc_next_node as *const i32), FALSE);
+            assert_eq!(R_True(), R_True());
+            assert_eq!(R_NaString(), R_NaString());
+        }
+    }
 
     #[test]
     fn test_r_nilvalue_type() {

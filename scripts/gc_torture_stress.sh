@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/conformance_artifacts.sh"
 
 # GC-torture stress (nightly): run a deterministic allocation-heavy R case
 # through the conformance runner with gctorture(TRUE) armed — every
@@ -28,20 +29,11 @@ fi
 echo "INFO: building Rust rmath artifact for the GC torture runner." >&2
 (cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
 
-rust_rlibs=()
-for candidate in \
-    "$ROOT_DIR"/target/debug/deps/librmath-*.rlib \
-    "$ROOT_DIR"/target/debug/deps/librmath.rlib \
-    "$ROOT_DIR"/target/debug/librmath.rlib; do
-    if [[ -f "$candidate" ]]; then
-        rust_rlibs+=("$candidate")
-    fi
-done
-if (( ${#rust_rlibs[@]} == 0 )); then
+RUST_RLIB="$(conformance_find_rmath_rlib)"
+if [[ -z "$RUST_RLIB" ]]; then
     echo "ERROR: Rust rmath artifact missing after build." >&2
     exit 1
 fi
-RUST_RLIB="$(ls -t "${rust_rlibs[@]}" | head -n1)"
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-gc-torture.XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -50,7 +42,7 @@ RUST_BIN="$WORK_DIR/rust_runner"
 cp "$RUST_RLIB" "$WORK_DIR/librmath.rlib"
 
 if ! rustc --edition=2024 "$ROOT_DIR/tests/conformance/src/main.rs" \
-    -L dependency="$ROOT_DIR/target/debug/deps" \
+    -L dependency="$(conformance_dependency_dir)" \
     --extern rmath="$WORK_DIR/librmath.rlib" \
     -o "$RUST_BIN" >"$WORK_DIR/rustc.log" 2>&1; then
     echo "ERROR: failed to compile Rust conformance runner"

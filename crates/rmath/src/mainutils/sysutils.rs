@@ -243,6 +243,14 @@ pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             });
         }
 
+        // Keep the legacy .Internal entry point behind the same host policy
+        // as the public Sys.setenv implementation.  Without this check a
+        // default session could mutate the process environment by bypassing
+        // the capability-gated builtin.
+        let allowed = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).eval_state.capabilities.allow_environment_mutation
+        });
+
         let n = LENGTH(val);
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t);
         let _ans_guard = protect(ans);
@@ -251,8 +259,12 @@ pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let val_c = CHAR(STRING_ELT(val, i));
             let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
             let val_str = std::ffi::CStr::from_ptr(val_c).to_str().unwrap_or("");
-            std::env::set_var(name_str, val_str);
-            *LOGICAL(ans).add(i as usize) = TRUE;
+            if allowed {
+                std::env::set_var(name_str, val_str);
+                *LOGICAL(ans).add(i as usize) = TRUE;
+            } else {
+                *LOGICAL(ans).add(i as usize) = FALSE;
+            }
         }
         ans
     }
@@ -274,13 +286,20 @@ pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         }
 
         let n = LENGTH(nm);
+        let allowed = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+            (*inst).eval_state.capabilities.allow_environment_mutation
+        });
         let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t);
         let _ans_guard = protect(ans);
         for i in 0..n as R_xlen_t {
             let name_c = CHAR(STRING_ELT(nm, i));
             let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
-            std::env::remove_var(name_str);
-            *LOGICAL(ans).add(i as usize) = TRUE;
+            if allowed {
+                std::env::remove_var(name_str);
+                *LOGICAL(ans).add(i as usize) = TRUE;
+            } else {
+                *LOGICAL(ans).add(i as usize) = FALSE;
+            }
         }
         ans
     }
@@ -481,6 +500,50 @@ fn get_hostname() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_internal_env_mutators_respect_default_host_policy() {
+        // Preserve the actual host value; this test never mutates process state.
+        let name = "RPORT_INTERNAL_SETENV_POLICY_TEST";
+        let before = std::env::var_os(name);
+        let session = crate::sexp::session::RSession::new();
+        session.with_active(|| unsafe {
+            let nm = crate::sexp::constructors::Rf_mkString(
+                c"RPORT_INTERNAL_SETENV_POLICY_TEST".as_ptr(),
+            );
+            let _nm = protect(nm);
+            let val = crate::sexp::constructors::Rf_mkString(c"leak".as_ptr());
+            let _val = protect(val);
+            let tail = crate::sexp::constructors::Rf_cons(val, crate::sexp::globals::R_NilValue());
+            let _tail = protect(tail);
+            let set_args = crate::sexp::constructors::Rf_cons(nm, tail);
+            let _set_args = protect(set_args);
+            let unset_args =
+                crate::sexp::constructors::Rf_cons(nm, crate::sexp::globals::R_NilValue());
+            let _unset_args = protect(unset_args);
+            let set_result = do_setenv(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                set_args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(crate::sexp::accessors::TYPEOF(set_result), SEXPTYPE::LGLSXP);
+            assert_eq!(crate::sexp::accessors::LOGICAL_ELT(set_result, 0), FALSE);
+            assert_eq!(std::env::var_os(name), before);
+            let unset_result = do_unsetenv(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                unset_args,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(
+                crate::sexp::accessors::TYPEOF(unset_result),
+                SEXPTYPE::LGLSXP
+            );
+            assert_eq!(crate::sexp::accessors::LOGICAL_ELT(unset_result, 0), FALSE);
+            assert_eq!(std::env::var_os(name), before);
+        });
+    }
 
     #[test]
     fn test_R_HiddenFile() {

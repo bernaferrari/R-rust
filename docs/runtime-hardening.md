@@ -41,8 +41,11 @@ Pending signalled conditions and math-library warning calls now belong to each
 session's error state. The collector marks and updates these roots, including
 nested warning-call stacks. Scoped warning cleanup restores its creating
 session, even when another session is ambient. Two targeted tests force GC and
-switch sessions on the same thread. These changes do not cover all remaining
-thread-local handler bookkeeping or source-reference state.
+switch sessions on the same thread. Calling-handler markers, tryCatch
+handler-class stacks and source-reference state are now session-owned as well. Process environment reads and timezone
+behavior still need an explicit isolation contract. Both public and legacy
+internal environment mutators enforce the default deny policy; a host that
+opts into process environment mutation still needs appropriate process isolation.
 
 ## Faithfulness
 
@@ -166,3 +169,30 @@ cases, persistent layers, S4 signature ordering, independent generic tables and
 nonmutating nested grob edits. The safe API audit, formatting, website lint and
 production build also passed. These results do not change the whole-upstream
 coverage ledger into a full compatibility claim.
+
+## September 8 safety checkpoint
+
+Immutable singleton slots now retain pointers in `OnceLock<AtomicPtr<_>>`
+instead of converting their addresses to integers and back. This preserves
+pointer provenance without asserting that mutable interpreter objects are
+`Send` or `Sync`. The singleton-only regression passes Miri with strict
+provenance; this is a narrow result, not a strict-provenance proof for the
+interpreter as a whole.
+
+PNG encoding now unpremultiplies its rendered pixmap in place and borrows the
+bytes for encoding. It avoids the previous duplicate RGBA canvas (up to 64 MiB
+at the 16,777,216-pixel limit). Rasterization, geometry, compression and other
+native workspaces still prevent this from being a total process-memory cap.
+
+Conformance helpers default to `target/conformance` and honor explicit Cargo
+target directories, so ordinary workspace artifacts cannot silently substitute
+for an isolated build. Concurrent conformance runs using different build flags
+must still use separate target directories.
+
+Full GNU R remains an open compatibility target. The current whole-file
+upstream ledger lists one passing driver, nine expected failures and sixty
+skips. Curated cases and narrow oracle comparisons establish useful contracts;
+they do not establish full language, package, graphics or I/O compatibility.
+Compiler/bytecode and lazy-load formats, broader methods behavior, advanced grid
+and device semantics, font/device typography, host-state isolation and total
+resource accounting remain substantial work alongside package support.

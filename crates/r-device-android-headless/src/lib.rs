@@ -63,7 +63,7 @@ impl VelloRenderer {
     }
     /// Encode the rendered image, reporting any PNG encoding failure.
     pub fn try_finish(mut self) -> Result<Vec<u8>, png::EncodingError> {
-        let rgba = self.pixels();
+        let rgba = self.straight_alpha_pixmap();
         let mut output = Vec::new();
         {
             let mut encoder =
@@ -71,7 +71,7 @@ impl VelloRenderer {
             encoder.set_color(png::ColorType::Rgba);
             encoder.set_depth(png::BitDepth::Eight);
             let mut writer = encoder.write_header()?;
-            writer.write_image_data(&rgba)?;
+            writer.write_image_data(rgba.data_as_u8_slice())?;
             writer.finish()?;
         }
         Ok(output)
@@ -80,12 +80,13 @@ impl VelloRenderer {
         self.font = Some(FontBook::from_bytes(bytes)?);
         Ok(())
     }
-    fn pixels(&mut self) -> Vec<u8> {
+    // Keep the canvas in one allocation through PNG encoding. This pixmap
+    // contains straight alpha and must not be passed back to Vello.
+    fn straight_alpha_pixmap(&mut self) -> Pixmap {
         let mut image = Pixmap::new(self.width, self.height);
         self.context.flush();
         self.context.render(&mut image, &mut self.resources);
-        let mut data = image.data_as_u8_slice().to_vec();
-        for p in data.chunks_exact_mut(4) {
+        for p in image.data_as_u8_slice_mut().chunks_exact_mut(4) {
             if p[3] > 0 && p[3] < 255 {
                 for j in 0..3 {
                     p[j] = ((u32::from(p[j]) * 255 + u32::from(p[3]) / 2) / u32::from(p[3]))
@@ -93,7 +94,12 @@ impl VelloRenderer {
                 }
             }
         }
-        data
+        image
+    }
+
+    #[cfg(test)]
+    fn pixels(&mut self) -> Vec<u8> {
+        self.straight_alpha_pixmap().data_as_u8_slice().to_vec()
     }
 }
 fn color(c: Color) -> vello_cpu::color::AlphaColor<vello_cpu::color::Srgb> {
@@ -298,6 +304,26 @@ impl RenderPlot for VelloRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn png_encoding_preserves_straight_alpha_pixels() {
+        let mut renderer = VelloRenderer::new(2, 1);
+        let image = RasterImage::new(2, 1, vec![200, 100, 50, 128, 0, 0, 0, 0]).unwrap();
+        renderer.draw_image(&image, [1., 0., 0., 1., 0., 0.], false);
+        let png = renderer.try_finish().unwrap();
+        let mut reader = png::Decoder::new(std::io::Cursor::new(png))
+            .read_info()
+            .unwrap();
+        let mut bytes = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut bytes).unwrap();
+        assert_eq!((info.width, info.height), (2, 1));
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        // Premultiplication is quantized to eight bits by the renderer.
+        assert_eq!(
+            &bytes[..info.buffer_size()],
+            &[199, 100, 50, 128, 0, 0, 0, 0]
+        );
+    }
 
     #[test]
     fn bold_and_italic_render_distinct_outlines() {

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/conformance_artifacts.sh"
 CASES_DIR="$ROOT_DIR/tests/conformance/cases"
 GOLDEN_DIR="$ROOT_DIR/tests/conformance/golden"
 ERROR_CASES_DIR="$ROOT_DIR/tests/conformance/error_cases"
@@ -136,21 +137,6 @@ check_unique_case_numbers() {
     fi
 }
 
-find_rust_rlib() {
-    local found=""
-    shopt -s nullglob
-    local rust_rlibs=(
-        "$ROOT_DIR"/target/debug/deps/librmath-*.rlib
-        "$ROOT_DIR"/target/debug/deps/librmath.rlib
-        "$ROOT_DIR"/target/debug/librmath.rlib
-    )
-    shopt -u nullglob
-    if (( ${#rust_rlibs[@]} > 0 )); then
-        found="$(ls -t "${rust_rlibs[@]}" 2>/dev/null | head -n1)"
-    fi
-    printf '%s' "$found"
-}
-
 RUSTFLAGS_FOR_BUILD="${RUSTFLAGS:-}"
 if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
     RUSTFLAGS_FOR_BUILD="${RUSTFLAGS_FOR_BUILD:+$RUSTFLAGS_FOR_BUILD }-Awarnings"
@@ -160,7 +146,7 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
     echo "INFO: building Rust rmath artifact for conformance runner." >&2
     (cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
 
-    RUST_RLIB="$(find_rust_rlib)"
+    RUST_RLIB="$(conformance_find_rmath_rlib)"
 
     if [[ -z "$RUST_RLIB" ]]; then
         echo "ERROR: Rust rmath artifact still missing after build." >&2
@@ -184,7 +170,7 @@ if [[ "$MODE" != "--regen-goldens" ]]; then
     touch "$RESULTS_TSV"
 
 
-    if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/debug/deps" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
+    if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$(conformance_dependency_dir)" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
         echo "ERROR: failed to compile Rust conformance runner"
         sed 's/^/  rustc | /' "$RUNNER_TMP_DIR/rustc.log"
         exit 1
