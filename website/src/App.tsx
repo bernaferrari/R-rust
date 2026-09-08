@@ -1,14 +1,9 @@
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select"
+import { Menu } from "@base-ui/react/menu"
 import { RConsole } from "@/components/RConsole"
 import { useState, useSyncExternalStore } from "react"
 import {
   ArrowDown,
+  ChevronDown,
   ArrowUpRight,
   ArrowRight,
   Check,
@@ -329,27 +324,32 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
             rove<span className="wordmark-dot">.</span>
           </span>
         </a>
-        <nav aria-label="Main navigation" className="page-switcher">
-          <Select
-            value={page === "missing" ? null : page}
-            onValueChange={(value) => {
-              if (value && value in pages)
-                window.location.assign(pageHref(value as Page))
-            }}
-          >
-            <SelectTrigger aria-label="Choose a page">
-              <SelectValue>
-                {page === "missing" ? "Explore" : pages[page].label}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(pages) as Page[]).map((key) => (
-                <SelectItem key={key} value={key}>
-                  {pages[key].label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <nav aria-label="Main navigation" className="site-navigation">
+          {(["editor", "console"] as const).map((key) => (
+            <a className="site-navigation-link" key={key} href={pageHref(key)}
+              aria-current={page === key ? "page" : undefined}>
+              {key === "editor" ? "Editor" : "Console"}
+            </a>
+          ))}
+          <Menu.Root>
+            <Menu.Trigger className="site-navigation-trigger">
+              Explore <ChevronDown size={14} aria-hidden="true" />
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Positioner sideOffset={8} align="start" className="site-navigation-positioner">
+                <Menu.Popup className="site-navigation-menu">
+                  {(Object.keys(pages) as Page[]).map((key) => (
+                    <Menu.LinkItem key={key} href={pageHref(key)}
+                      className="site-navigation-item"
+                      aria-current={page === key ? "page" : undefined}>
+                      <span>{pages[key].label}</span>
+                      {page === key && <Check size={14} aria-hidden="true" />}
+                    </Menu.LinkItem>
+                  ))}
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
         </nav>
         <div className="header-actions">
           <ThemeToggle />

@@ -2944,8 +2944,38 @@ footer { flex-wrap: wrap; }
 .r-chat-example-picker > span { color: var(--muted-foreground); font-size: 12px; }
 @media (max-width: 600px) { .r-chat-example-picker { flex-wrap: wrap; gap: 6px; } }
 .site-header { height: 56px; gap: 16px; }
-.site-header .page-switcher { display: flex; margin-right: auto; }
-.page-switcher [data-slot=select-trigger] { border: 0; background: transparent; color: var(--ink); font-size: 13px; }
+/* Navigation uses links and a menu, rather than a form-style page selector. */
+.site-header .site-navigation { display: flex; align-items: center; gap: 4px; margin-right: auto; }
+.site-header .site-navigation-link,
+.site-navigation-trigger {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted-foreground); font-size: 13px;
+  font-weight: 500; text-decoration: none; cursor: pointer;
+}
+.site-header .site-navigation-link[aria-current="page"] { color: var(--ink); background: var(--accent); }
+.site-header .site-navigation-link:hover,
+.site-navigation-trigger:hover,
+.site-navigation-trigger[data-popup-open] { color: var(--ink); background: var(--accent); }
+.site-navigation-link:focus-visible,
+.site-navigation-trigger:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.site-navigation-positioner { z-index: 50; }
+.site-navigation-menu {
+  width: 208px; padding: 6px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--popover); color: var(--popover-foreground);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%); outline: none;
+}
+.site-navigation-item {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 40px; padding: 0 12px; border-radius: 6px;
+  font-size: 13px; text-decoration: none; color: inherit; outline: none;
+}
+.site-navigation-item[data-highlighted] { background: var(--accent); color: var(--accent-foreground); }
+@media (max-width: 480px) {
+  .site-header .site-navigation .site-navigation-link { display: none; }
+  .site-navigation-trigger { min-height: 44px; padding-inline: 10px; }
+  .site-navigation-item { min-height: 44px; }
+}
 .site-header .github-link > span, .site-header .github-link > svg:last-child:not(:first-child) { display: none; }
 .r-chat-virtual-content { display: block; }
 .r-chat-virtual-content .r-chat-turn { margin-bottom: 0; padding-bottom: 32px; }
