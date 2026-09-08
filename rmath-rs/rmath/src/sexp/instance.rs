@@ -442,6 +442,8 @@ pub struct RInstance {
     #[cfg(feature = "renderplot-device")]
     pub(crate) current_renderplot_backend: Option<*mut dyn r_graphics_engine::DrawTarget>,
     #[cfg(feature = "renderplot-device")]
+    pub(crate) portable_grid: crate::mainutils::portable_grid::GridState,
+    #[cfg(feature = "renderplot-device")]
     pub(crate) portable_graphics: crate::mainutils::portable_plot::GraphicsState,
     #[cfg(feature = "renderplot-device")]
     pub(crate) graphics_recording:
@@ -567,6 +569,8 @@ impl RInstance {
             graphics_par_state: crate::library::graphics::par::GraphicsParState::default(),
             #[cfg(feature = "renderplot-device")]
             current_renderplot_backend: None,
+            #[cfg(feature = "renderplot-device")]
+            portable_grid: Default::default(),
             #[cfg(feature = "renderplot-device")]
             portable_graphics: crate::mainutils::portable_plot::GraphicsState::default(),
             #[cfg(feature = "renderplot-device")]

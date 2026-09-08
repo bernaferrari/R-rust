@@ -143,7 +143,8 @@ impl DisplayList {
         Self::decode(json.as_bytes())
     }
 
-    fn validate(&self) -> Result<(), &'static str> {
+    /// Check dimensions and all numeric drawing parameters before rendering.
+    pub fn validate(&self) -> Result<(), &'static str> {
         let (width, height) = self.dimensions;
         if width == 0 || height == 0 {
             return Err("scene dimensions must be nonzero");
@@ -527,6 +528,7 @@ mod tests {
             "owned",
             Point { x: 20.0, y: 21.0 },
             &PlotParameters {
+                font_face: Default::default(),
                 font_size: 10.0,
                 text_color: Color::BLACK,
                 dpi: 96.0,

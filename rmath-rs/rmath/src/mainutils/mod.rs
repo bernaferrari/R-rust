@@ -124,3 +124,8 @@ pub(crate) mod graphics_raster;
 pub(crate) mod graphics_highlevel;
 
 pub(crate) mod pretty;
+
+#[cfg(feature = "renderplot-device")]
+pub(crate) mod plotmath;
+#[cfg(feature = "renderplot-device")]
+pub(crate) mod portable_grid;

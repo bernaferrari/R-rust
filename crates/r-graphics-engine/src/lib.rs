@@ -5,6 +5,9 @@
 use serde::{Deserialize, Serialize};
 use std::vec::Vec;
 
+pub mod font;
+pub use font::FontBook;
+
 /// An owned straight-alpha RGBA8 image.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "RasterImageWire")]
@@ -271,9 +274,37 @@ pub enum TextAnchor {
     End,
 }
 
+/// Logical font styles. Renderers synthesize weight and slant consistently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FontFace {
+    #[default]
+    Plain,
+    Bold,
+    Italic,
+    BoldItalic,
+}
+impl FontFace {
+    pub fn is_bold(self) -> bool { matches!(self, Self::Bold | Self::BoldItalic) }
+    pub fn is_italic(self) -> bool { matches!(self, Self::Italic | Self::BoldItalic) }
+    pub fn italic_shear(self) -> f64 { if self.is_italic() { -0.2125565617 } else { 0.0 } }
+    pub fn bold_stroke_width(self, size: f32) -> f64 {
+        if self.is_bold() { f64::from(size) * 0.03 } else { 0.0 }
+    }
+}
+
+/// Logical text advance and positive distances above/below the baseline.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TextMetrics {
+    pub width: f32,
+    pub ascent: f32,
+    pub descent: f32,
+}
+
 /// Plot rendering parameters
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PlotParameters {
+    #[serde(default)]
+    pub font_face: FontFace,
     pub font_size: f32,
     pub text_color: Color,
     pub dpi: f32,
@@ -303,6 +334,11 @@ pub trait RenderPlot: Sized {
 
     /// Draw text at position
     fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters);
+    /// Measure logical text advances using the same font as rendering.
+    fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        font::default_font_book().measure_text(text, params.font_size, params.font_face)
+    }
+
 
     /// Draw an owned RGBA8 image through an affine device-space transform.
     ///
@@ -331,12 +367,21 @@ pub trait DrawTarget {
     fn set_clip(&mut self, _rect: Option<[f32; 4]>) {}
     fn draw_path(&mut self, path: &Path);
     fn draw_text(&mut self, text: &str, position: Point, params: &PlotParameters);
+    /// Measure logical text advances using the same font as rendering.
+    fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        font::default_font_book().measure_text(text, params.font_size, params.font_face)
+    }
+
     fn draw_image(&mut self, image: &RasterImage, transform: [f64; 6], interpolate: bool) {
         draw_raster_image_as_quads(image, transform, interpolate, |path| self.draw_path(path));
     }
 }
 
 impl<T: RenderPlot> DrawTarget for T {
+    fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        <Self as RenderPlot>::measure_text(self, text, params)
+    }
+
     fn dimensions(&self) -> (u32, u32) {
         <Self as RenderPlot>::dimensions(self)
     }
@@ -394,3 +439,5 @@ fn draw_raster_image_as_quads(
 mod scene;
 
 pub use scene::{DisplayList, DrawOperation, Scene};
+
+pub mod math;

@@ -1,0 +1,1 @@
+function(x=unit(.5,'npc'),y=unit(.5,'npc'),width=unit(1,'npc'),height=unit(1,'npc'),just='centre',hjust=NULL,vjust=NULL,default.units='npc',name=NULL,gp=gpar(),vp=NULL) { z<-rectGrob(x=x,y=y,width=width,height=height,just=just,hjust=hjust,vjust=vjust,default.units=default.units,name=name,gp=gp,vp=vp); grid.draw(z); invisible(z) }

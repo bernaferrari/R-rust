@@ -1,0 +1,85 @@
+//! Public grid contracts exercised through the interpreter and actual PNG device.
+use r_embed::RSession;
+use std::io::Cursor;
+
+fn pixels(bytes: &[u8]) -> (usize, Vec<u8>) {
+    let mut reader = png::Decoder::new(Cursor::new(bytes)).read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    let pixels = match info.color_type {
+        png::ColorType::Rgba => pixels[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => pixels[..info.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        other => panic!("unexpected PNG {other:?}"),
+    };
+    (info.width as usize, pixels)
+}
+fn at(width: usize, pixels: &[u8], x: usize, y: usize) -> &[u8] {
+    &pixels[(y * width + x) * 4..(y * width + x + 1) * 4]
+}
+#[test]
+fn nested_viewports_transform_clip_and_restore_parent() {
+    let mut session = RSession::new().unwrap();
+    let png=session.render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(x=.25,y=.5,width=.5,height=.5,clip='on')); grid.rect(width=2,height=2,gp=gpar(fill='red',col=NA)); popViewport(); grid.rect(x=.8,y=.8,width=.1,height=.1,gp=gpar(fill='blue',col=NA))", 400,200).unwrap();
+    let (w, p) = pixels(&png);
+    assert_eq!(at(w, &p, 50, 100), [255, 0, 0, 255]);
+    assert_eq!(at(w, &p, 250, 100), [255, 255, 255, 255]);
+    assert_eq!(at(w, &p, 50, 20), [255, 255, 255, 255]);
+    assert_eq!(at(w, &p, 320, 40), [0, 0, 255, 255]);
+}
+#[test]
+fn units_and_layout_match_pinned_r_oracle_values() {
+    // GNU R at png(width=384,height=192,res=96): 4 by 2 inches.
+    // Viewport xscale=c(10,30), width=0.5 npc: native x=15 is 0.5 in.
+    let mut session = RSession::new().unwrap();
+    session.render_with_dimensions("library(grid); grid.newpage(); a<-convertWidth(unit(c(1,2.54,25.4,72.27,72),c('inches','cm','mm','points','bigpts')),'inches',TRUE); pushViewport(viewport(width=.5,height=.5,xscale=c(10,30))); b<-c(convertX(unit(15,'native'),'inches',TRUE),convertWidth(unit(5,'native'),'inches',TRUE),convertY(unit(.5,'npc'),'inches',TRUE)); popViewport(); pushViewport(viewport(layout=grid.layout(2,2,widths=unit(c(1,3),'null'),heights=unit(c(1,1),'null')))); pushViewport(viewport(layout.pos.row=1,layout.pos.col=2)); c1<-c(convertWidth(unit(1,'npc'),'inches',TRUE),convertHeight(unit(1,'npc'),'inches',TRUE)); popViewport(2)",384,192).unwrap();
+    assert_eq!(session.eval("all(abs(a-rep(1,5))<1e-12) && all(abs(b-c(.5,.5,.5))<1e-12) && all(abs(c1-c(3,1))<1e-12)").unwrap(),"[1] TRUE");
+}
+#[test]
+fn layout_positions_draw_in_top_right_cell() {
+    let mut session = RSession::new().unwrap();
+    let png=session.render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(layout=grid.layout(2,2,widths=unit(c(1,3),'null')))); pushViewport(viewport(layout.pos.row=1,layout.pos.col=2)); grid.rect(gp=gpar(fill='red',col=NA)); popViewport(2)",400,200).unwrap();
+    let (w, p) = pixels(&png);
+    assert_eq!(at(w, &p, 50, 50), [255, 255, 255, 255]);
+    assert_eq!(at(w, &p, 200, 50), [255, 0, 0, 255]);
+    assert_eq!(at(w, &p, 200, 150), [255, 255, 255, 255]);
+}
+#[test]
+fn grob_trees_replay_with_inherited_styles_and_plotmath() {
+    let mut session = RSession::new().unwrap();
+    let png=session.render_with_dimensions("library(grid); grid.newpage(); g<-grobTree(rectGrob(width=.8,height=.8),textGrob(expression(frac(alpha[1],sqrt(x^2+1))),gp=gpar(col='black',fontsize=24)),gp=gpar(fill='red',col=NA),vp=viewport(width=.5,height=.5)); grid.draw(g); p<-recordPlot(); grid.newpage(); replayPlot(p)",400,200).unwrap();
+    let (w, p) = pixels(&png);
+    assert_eq!(at(w, &p, 150, 100), [255, 0, 0, 255]);
+    assert_eq!(at(w, &p, 50, 100), [255, 255, 255, 255]);
+    assert!(
+        p.chunks_exact(4)
+            .filter(|p| p[0] < 60 && p[1] < 60 && p[2] < 60)
+            .count()
+            > 20
+    );
+    assert_eq!(
+        session
+            .eval("is.grob(g) && inherits(g,'gTree') && length(g$children)==2L")
+            .unwrap(),
+        "[1] TRUE"
+    );
+}
+#[test]
+fn failed_grob_restores_viewport_and_session_remains_usable() {
+    let mut session = RSession::new().unwrap();
+    let png=session.render_with_dimensions("library(grid); grid.newpage(); tryCatch(grid.draw(linesGrob(arrow=1,vp=viewport(width=.25))),error=function(e) NULL); grid.rect(x=.75,width=.1,height=.1,gp=gpar(fill='blue',col=NA))",400,200).unwrap();
+    let (w, p) = pixels(&png);
+    assert_eq!(at(w, &p, 300, 100), [0, 0, 255, 255]);
+    assert!(
+        session
+            .render_with_dimensions("grid.newpage(); popViewport()", 400, 200)
+            .is_err()
+    );
+    assert!(
+        session
+            .render_with_dimensions("grid.newpage(); grid.circle(r=.2)", 400, 200)
+            .is_ok()
+    );
+}

@@ -1,0 +1,295 @@
+//! Bounded conversion of interpreter expression trees into owned mathematical labels.
+use crate::mainutils::essentials::{base_error, elt_to_string};
+use crate::sexp::{
+    accessors::*,
+    ffi::{SEXP, SEXPTYPE},
+    globals::R_NilValue,
+};
+use r_graphics_engine::{DrawTarget, PlotParameters, Point, math::MathExpr};
+
+#[derive(Clone)]
+pub(crate) enum Label {
+    Text(String),
+    Math(MathExpr),
+}
+impl Label {
+    pub(crate) fn draw(
+        &self,
+        target: &mut dyn DrawTarget,
+        position: Point,
+        params: &PlotParameters,
+    ) {
+        match self {
+            Self::Text(text) => target.draw_text(text, position, params),
+            Self::Math(expr) => expr.layout(target, params).draw(target, position, params),
+        }
+    }
+}
+pub(crate) unsafe fn labels(value: SEXP) -> Vec<Label> {
+    unsafe {
+        if value == R_NilValue() {
+            return vec![];
+        }
+        match SEXPTYPE(TYPEOF(value)) {
+            SEXPTYPE::EXPRSXP => (0..XLENGTH(value))
+                .map(|i| {
+                    let mut budget = 4096;
+                    Label::Math(decode(VECTOR_ELT(value, i), 0, &mut budget))
+                })
+                .collect(),
+            SEXPTYPE::LANGSXP | SEXPTYPE::SYMSXP => {
+                let mut budget = 4096;
+                vec![Label::Math(decode(value, 0, &mut budget))]
+            }
+            _ => (0..XLENGTH(value))
+                .map(|i| Label::Text(elt_to_string(value, i)))
+                .collect(),
+        }
+    }
+}
+fn greek(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "alpha" => "α",
+        "beta" => "β",
+        "gamma" => "γ",
+        "delta" => "δ",
+        "epsilon" => "ε",
+        "zeta" => "ζ",
+        "eta" => "η",
+        "theta" => "θ",
+        "iota" => "ι",
+        "kappa" => "κ",
+        "lambda" => "λ",
+        "mu" => "μ",
+        "nu" => "ν",
+        "xi" => "ξ",
+        "omicron" => "ο",
+        "pi" => "π",
+        "rho" => "ρ",
+        "sigma" => "σ",
+        "tau" => "τ",
+        "upsilon" => "υ",
+        "phi" => "φ",
+        "chi" => "χ",
+        "psi" => "ψ",
+        "omega" => "ω",
+        "Gamma" => "Γ",
+        "Delta" => "Δ",
+        "Theta" => "Θ",
+        "Lambda" => "Λ",
+        "Xi" => "Ξ",
+        "Pi" => "Π",
+        "Sigma" => "Σ",
+        "Upsilon" => "Υ",
+        "Phi" => "Φ",
+        "Psi" => "Ψ",
+        "Omega" => "Ω",
+        "infinity" => "∞",
+        "partialdiff" => "∂",
+        "nabla" => "∇",
+        "degree" => "°",
+        "cdot" => "·",
+        _ => return None,
+    })
+}
+unsafe fn decode(value: SEXP, depth: usize, budget: &mut usize) -> MathExpr {
+    unsafe {
+        if depth > 64 || *budget == 0 {
+            base_error("plotmath expression exceeds nesting or size limit");
+        }
+        *budget -= 1;
+        if TYPEOF(value) != SEXPTYPE::LANGSXP {
+            return match SEXPTYPE(TYPEOF(value)) {
+                SEXPTYPE::SYMSXP => {
+                    let name = elt_to_string(value, 0);
+                    MathExpr::Text(greek(&name).unwrap_or(&name).to_owned())
+                }
+                SEXPTYPE::STRSXP | SEXPTYPE::CHARSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP
+                    if XLENGTH(value) == 1 =>
+                {
+                    MathExpr::Text(elt_to_string(value, 0))
+                }
+                _ => base_error("invalid plotmath atom"),
+            };
+        }
+        let op = CAR(value);
+        if TYPEOF(op) != SEXPTYPE::SYMSXP {
+            base_error("invalid plotmath operator");
+        }
+        let name = elt_to_string(op, 0);
+        let mut args = vec![];
+        let mut tail = CDR(value);
+        while tail != R_NilValue() {
+            if args.len() > 4096 || TYPEOF(tail) != SEXPTYPE::LISTSXP {
+                base_error("invalid plotmath arguments");
+            }
+            args.push(decode(CAR(tail), depth + 1, budget));
+            tail = CDR(tail);
+        }
+        let need = |n| {
+            if args.len() != n {
+                base_error(format!("plotmath '{name}' requires {n} arguments"));
+            }
+        };
+        match name.as_str() {
+            "frac" | "over" | "atop" => {
+                need(2);
+                let b = args.pop().unwrap();
+                let a = args.pop().unwrap();
+                if name == "atop" {
+                    MathExpr::Atop(Box::new(a), Box::new(b))
+                } else {
+                    MathExpr::Fraction(Box::new(a), Box::new(b))
+                }
+            }
+            "^" => {
+                need(2);
+                let sup = Box::new(args.pop().unwrap());
+                let base = args.pop().unwrap();
+                match base {
+                    MathExpr::Scripts { base, sub, .. } => MathExpr::Scripts {
+                        base,
+                        sub,
+                        sup: Some(sup),
+                    },
+                    base => MathExpr::Scripts {
+                        base: Box::new(base),
+                        sub: None,
+                        sup: Some(sup),
+                    },
+                }
+            }
+            "[" => {
+                need(2);
+                let sub = Box::new(args.pop().unwrap());
+                let base = Box::new(args.pop().unwrap());
+                MathExpr::Scripts {
+                    base,
+                    sub: Some(sub),
+                    sup: None,
+                }
+            }
+            "sum" | "prod" | "integral" => {
+                if args.is_empty() || args.len() > 3 {
+                    base_error("plotmath sum/product/integral requires 1 to 3 arguments");
+                }
+                let body = args.remove(0);
+                let sub = if args.is_empty() {
+                    None
+                } else {
+                    Some(Box::new(args.remove(0)))
+                };
+                let sup = if args.is_empty() {
+                    None
+                } else {
+                    Some(Box::new(args.remove(0)))
+                };
+                let symbol = match name.as_str() {
+                    "sum" => "∑",
+                    "prod" => "∏",
+                    _ => "∫",
+                };
+                MathExpr::Row(vec![
+                    MathExpr::Scripts {
+                        base: Box::new(MathExpr::Text(symbol.into())),
+                        sub,
+                        sup,
+                    },
+                    MathExpr::Space(0.15),
+                    body,
+                ])
+            }
+            "group" => {
+                need(3);
+                let right = args.pop().unwrap();
+                let body = args.pop().unwrap();
+                let left = args.pop().unwrap();
+                if !matches!(left, MathExpr::Text(_)) || !matches!(right, MathExpr::Text(_)) {
+                    base_error("plotmath group delimiters must be strings or symbols");
+                }
+                MathExpr::Row(vec![left, body, right])
+            }
+            "sqrt" => {
+                need(1);
+                MathExpr::Radical(Box::new(args.pop().unwrap()))
+            }
+            "phantom" => {
+                need(1);
+                MathExpr::Phantom(Box::new(args.pop().unwrap()))
+            }
+            "plain" | "bold" | "italic" | "bolditalic" => {
+                need(1);
+                use r_graphics_engine::FontFace;
+                let face = match name.as_str() {
+                    "bold" => FontFace::Bold,
+                    "italic" => FontFace::Italic,
+                    "bolditalic" => FontFace::BoldItalic,
+                    _ => FontFace::Plain,
+                };
+                MathExpr::Style(Box::new(args.pop().unwrap()), face)
+            }
+            "*" | "paste" => MathExpr::Row(args),
+            "~" => {
+                let mut row = vec![];
+                for arg in args {
+                    if !row.is_empty() {
+                        row.push(MathExpr::Space(0.3));
+                    }
+                    row.push(arg);
+                }
+                MathExpr::Row(row)
+            }
+            "(" | "{" => {
+                need(1);
+                if name == "{" {
+                    args.pop().unwrap()
+                } else {
+                    MathExpr::Row(vec![
+                        MathExpr::Text("(".into()),
+                        args.pop().unwrap(),
+                        MathExpr::Text(")".into()),
+                    ])
+                }
+            }
+            "+" | "-" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "%+-%" | "%*%" | "%/%" | "%in%"
+            | "%~~%" => {
+                if args.is_empty() || args.len() > 2 {
+                    base_error("invalid plotmath operator arity");
+                }
+                let symbol = match name.as_str() {
+                    "==" => "=",
+                    "!=" => "≠",
+                    "<=" => "≤",
+                    ">=" => "≥",
+                    "%+-%" => "±",
+                    "%*%" => "×",
+                    "%/%" => "÷",
+                    "%in%" => "∈",
+                    "%~~%" => "≈",
+                    _ => &name,
+                };
+                if args.len() == 1 {
+                    MathExpr::Row(vec![MathExpr::Text(symbol.into()), args.pop().unwrap()])
+                } else {
+                    MathExpr::Row(vec![
+                        args.remove(0),
+                        MathExpr::Text(format!(" {symbol} ")),
+                        args.remove(0),
+                    ])
+                }
+            }
+            "sin" | "cos" | "tan" | "log" | "exp" | "lim" | "min" | "max" => {
+                let mut row = vec![MathExpr::Text(format!("{name}("))];
+                for (i, arg) in args.into_iter().enumerate() {
+                    if i > 0 {
+                        row.push(MathExpr::Text(", ".into()));
+                    }
+                    row.push(arg);
+                }
+                row.push(MathExpr::Text(")".into()));
+                MathExpr::Row(row)
+            }
+            _ => base_error(format!("unsupported plotmath operator '{name}'")),
+        }
+    }
+}

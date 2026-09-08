@@ -1,0 +1,16 @@
+[package]
+name = "r-device-vello-gpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Asynchronous Vello GPU renderer for owned R graphics scenes"
+
+[dependencies]
+r-graphics-engine = { path = "../r-graphics-engine" }
+vello = "0.10"
+futures-channel = "0.3"
+png = "0.18.1"
+thiserror.workspace = true
+
+[dev-dependencies]
+pollster = "0.4"

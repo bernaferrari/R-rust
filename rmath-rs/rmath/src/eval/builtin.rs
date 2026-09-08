@@ -165,6 +165,68 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: false,
     },
     #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "unit", handler: crate::mainutils::portable_grid::do_unit, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "is.unit", handler: crate::mainutils::portable_grid::do_is_unit, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "gpar", handler: crate::mainutils::portable_grid::do_gpar, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "viewport", handler: crate::mainutils::portable_grid::do_viewport, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.layout", handler: crate::mainutils::portable_grid::do_grid_layout, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "pushViewport", handler: crate::mainutils::portable_grid::do_push_viewport, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "popViewport", handler: crate::mainutils::portable_grid::do_pop_viewport, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.newpage", handler: crate::mainutils::portable_grid::do_grid_newpage, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "convertX", handler: crate::mainutils::portable_grid::do_convert_x, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "convertY", handler: crate::mainutils::portable_grid::do_convert_y, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "convertWidth", handler: crate::mainutils::portable_grid::do_convert_width, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "convertHeight", handler: crate::mainutils::portable_grid::do_convert_height, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.draw", handler: crate::mainutils::portable_grid::do_grid_draw, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "gList", handler: crate::mainutils::portable_grid::do_glist, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "gTree", handler: crate::mainutils::portable_grid::do_gtree, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grobTree", handler: crate::mainutils::portable_grid::do_grobtree, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "is.grob", handler: crate::mainutils::portable_grid::do_is_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "rectGrob", handler: crate::mainutils::portable_grid::do_rect_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.rect", handler: crate::mainutils::portable_grid::do_grid_rect, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "circleGrob", handler: crate::mainutils::portable_grid::do_circle_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.circle", handler: crate::mainutils::portable_grid::do_grid_circle, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "linesGrob", handler: crate::mainutils::portable_grid::do_lines_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.lines", handler: crate::mainutils::portable_grid::do_grid_lines, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "polygonGrob", handler: crate::mainutils::portable_grid::do_polygon_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.polygon", handler: crate::mainutils::portable_grid::do_grid_polygon, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "segmentsGrob", handler: crate::mainutils::portable_grid::do_segments_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.segments", handler: crate::mainutils::portable_grid::do_grid_segments, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "textGrob", handler: crate::mainutils::portable_grid::do_text_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.text", handler: crate::mainutils::portable_grid::do_grid_text, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "pointsGrob", handler: crate::mainutils::portable_grid::do_points_grob, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin { name: "grid.points", handler: crate::mainutils::portable_grid::do_grid_points, restore_visibility_always: false },
+    #[cfg(feature = "renderplot-device")]
     UnevaluatedBuiltin {
         name: "rasterImage",
         handler: crate::mainutils::graphics_raster::do_raster_image,
@@ -479,6 +541,8 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 }
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
+    #[cfg(feature = "renderplot-device")]
+    EvaluatedBuiltin { name: ".rport_grid", handler: crate::mainutils::portable_grid::dispatch },
     EvaluatedBuiltin {
         name: ".rport_pretty",
         handler: crate::mainutils::pretty::pretty_values,

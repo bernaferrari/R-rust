@@ -1,0 +1,1 @@
+function(x=stats::runif(10),y=stats::runif(10),pch=1,size=unit(1,'char'),default.units='native',name=NULL,gp=gpar(),vp=NULL) { structure(list(primitive='points',data=list(x=x,y=y,pch=pch,size=size,default.units=default.units),name=name,gp=gp,vp=vp),class=c('points','grob','gDesc')) }

@@ -1,0 +1,1 @@
+function(x0=unit(0,'npc'),y0=unit(0,'npc'),x1=unit(1,'npc'),y1=unit(1,'npc'),default.units='npc',arrow=NULL,name=NULL,gp=gpar(),vp=NULL) { structure(list(primitive='segments',data=list(x0=x0,y0=y0,x1=x1,y1=y1,arrow=arrow,default.units=default.units),name=name,gp=gp,vp=vp),class=c('segments','grob','gDesc')) }

@@ -1,0 +1,1 @@
+function(x, units, data=NULL) { if (!is.null(data)) stop('data-dependent grid units are not supported'); if (!is.numeric(x) || length(x)==0L || !is.character(units) || length(units)==0L) stop('invalid grid unit'); if (any(!is.finite(x))) stop('grid units must be finite'); structure(list(value=as.numeric(x), units=rep_len(units,length(x))), class='unit') }

@@ -8,7 +8,6 @@ description = "Pure Rust headless graphics backend (Vello CPU) for Android, WASM
 [dependencies]
 vello_cpu = { version = "0.2.0", default-features = false, features = ["std", "text", "u8_pipeline"] }
 png = "0.18.1"
-fontdue = "0.9"
 
 r-graphics-engine = { path = "../r-graphics-engine" }
 

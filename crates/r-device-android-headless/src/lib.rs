@@ -2,63 +2,14 @@
 //! No GPU initialization is required on native, mobile or Wasm targets.
 #![forbid(unsafe_code)]
 use r_graphics_engine::{
-    Color, LineCap, LineJoin, Path, PathCommand, PlotParameters, Point, RasterImage, RenderPlot,
-    Stroke, TextAnchor,
+    Color, FontBook, LineCap, LineJoin, Path, PathCommand, PlotParameters, Point, RasterImage,
+    RenderPlot, Stroke, TextAnchor, TextMetrics,
 };
-use std::sync::{Arc, OnceLock};
+
+use std::sync::Arc;
 use vello_cpu::kurbo::{self, Affine, BezPath, Rect, Shape};
 use vello_cpu::peniko::{Blob, FontData};
 use vello_cpu::{Glyph, Pixmap, RenderContext, Resources};
-
-const SYSTEM_FONT_PATHS: &[&str] = &[
-    // Linux
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    // macOS
-    "/System/Library/Fonts/Geneva.ttf",
-    "/System/Library/Fonts/SFNSDisplay.ttf",
-    "/Library/Fonts/Arial.ttf",
-    // Android
-    "/system/fonts/NotoSans-Regular.ttf",
-    "/system/fonts/DroidSans.ttf",
-    // Windows
-    "C:\\Windows\\Fonts\\arial.ttf",
-];
-
-#[derive(Clone)]
-struct TextFont {
-    metrics: fontdue::Font,
-    data: FontData,
-}
-impl std::fmt::Debug for TextFont {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TextFont").finish_non_exhaustive()
-    }
-}
-fn parse_font(bytes: Vec<u8>) -> Result<TextFont, String> {
-    let metrics = fontdue::Font::from_bytes(bytes.clone(), fontdue::FontSettings::default())
-        .map_err(|e| e.to_string())?;
-    Ok(TextFont {
-        metrics,
-        data: FontData::new(Blob::new(Arc::new(bytes)), 0),
-    })
-}
-static CACHED_FONT: OnceLock<Option<TextFont>> = OnceLock::new();
-fn load_system_font() -> Option<TextFont> {
-    CACHED_FONT
-        .get_or_init(|| {
-            for path in SYSTEM_FONT_PATHS {
-                if let Ok(bytes) = std::fs::read(path)
-                    && let Ok(font) = parse_font(bytes)
-                {
-                    return Some(font);
-                }
-            }
-            parse_font(include_bytes!("../assets/NotoSans.ttf").to_vec()).ok()
-        })
-        .clone()
-}
 
 /// Vello's CPU rasterizer behind the shared graphics device interface.
 /// Canvas sizes are limited to 16 million pixels and u16 dimensions.
@@ -67,7 +18,7 @@ pub struct VelloRenderer {
     height: u16,
     context: RenderContext,
     resources: Resources,
-    font: Option<TextFont>,
+    font: Option<FontBook>,
     clipped: bool,
 }
 /// Compatibility name for existing embedding and mobile callers.
@@ -106,7 +57,7 @@ impl VelloRenderer {
             height,
             context: RenderContext::new(width, height),
             resources: Resources::new(),
-            font: load_system_font(),
+            font: Some(FontBook::default()),
             clipped: false,
         })
     }
@@ -126,7 +77,7 @@ impl VelloRenderer {
         Ok(output)
     }
     pub fn set_font(&mut self, bytes: Vec<u8>) -> Result<(), String> {
-        self.font = Some(parse_font(bytes)?);
+        self.font = Some(FontBook::from_bytes(bytes)?);
         Ok(())
     }
     fn pixels(&mut self) -> Vec<u8> {
@@ -272,6 +223,13 @@ impl RenderPlot for VelloRenderer {
         ));
         self.context.reset_transform();
     }
+    fn measure_text(&self, text: &str, params: &PlotParameters) -> TextMetrics {
+        self.font
+            .as_ref()
+            .map_or_else(TextMetrics::default, |font| {
+                font.measure_text(text, params.font_size, params.font_face)
+            })
+    }
     fn draw_text(&mut self, text: &str, pos: Point, params: &PlotParameters) {
         self.context.set_aliasing_threshold(None);
         let Some(font) = &self.font else {
@@ -291,10 +249,7 @@ impl RenderPlot for VelloRenderer {
             return;
         }
         let chars: Vec<_> = text.chars().filter(|c| !c.is_control()).collect();
-        let width: f32 = chars
-            .iter()
-            .map(|c| font.metrics.metrics(*c, size).advance_width)
-            .sum();
+        let width: f32 = chars.iter().map(|c| font.advance_width(*c, size)).sum();
         let mut x = match params.text_anchor {
             TextAnchor::Start => 0.,
             TextAnchor::Middle => -width / 2.,
@@ -304,11 +259,11 @@ impl RenderPlot for VelloRenderer {
             .into_iter()
             .map(|c| {
                 let g = Glyph {
-                    id: u32::from(font.metrics.lookup_glyph_index(c)),
+                    id: u32::from(font.glyph_index(c)),
                     x,
                     y: 0.,
                 };
-                x += font.metrics.metrics(c, size).advance_width;
+                x += font.advance_width(c, size);
                 g
             })
             .collect();
@@ -317,10 +272,22 @@ impl RenderPlot for VelloRenderer {
             Affine::translate((f64::from(pos.x), f64::from(pos.y)))
                 * Affine::rotate(-f64::from(params.text_angle).to_radians()),
         );
+        let data = FontData::new(Blob::new(font.bytes()), 0);
+        let shear = Affine::new([1., 0., params.font_face.italic_shear(), 1., 0., 0.]);
         self.context
-            .glyph_run(&mut self.resources, &font.data)
+            .glyph_run(&mut self.resources, &data)
             .font_size(size)
-            .fill_glyphs(glyphs.into_iter());
+            .glyph_transform(shear)
+            .fill_glyphs(glyphs.iter().copied());
+        if params.font_face.is_bold() {
+            self.context
+                .set_stroke(kurbo::Stroke::new(params.font_face.bold_stroke_width(size)));
+            self.context
+                .glyph_run(&mut self.resources, &data)
+                .font_size(size)
+                .glyph_transform(shear)
+                .stroke_glyphs(glyphs.iter().copied());
+        }
         self.context.reset_transform();
     }
     fn finish(self) -> Vec<u8> {
@@ -332,6 +299,57 @@ impl RenderPlot for VelloRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bold_and_italic_render_distinct_outlines() {
+        use r_graphics_engine::FontFace;
+        let render = |face| {
+            let mut renderer = VelloRenderer::new(100, 70);
+            renderer.clear(Color::WHITE);
+            renderer.draw_text(
+                "Hello",
+                Point { x: 10., y: 50. },
+                &PlotParameters {
+                    font_size: 28.,
+                    text_color: Color::BLACK,
+                    font_face: face,
+                    ..Default::default()
+                },
+            );
+            renderer.pixels()
+        };
+        let plain = render(FontFace::Plain);
+        let bold = render(FontFace::Bold);
+        let italic = render(FontFace::Italic);
+        let both = render(FontFace::BoldItalic);
+        let ink = |pixels: &[u8]| {
+            pixels
+                .chunks_exact(4)
+                .map(|p| u64::from(255 - p[0]))
+                .sum::<u64>()
+        };
+        assert!(ink(&bold) > ink(&plain));
+        assert_ne!(plain, italic);
+        assert_ne!(bold, both);
+        assert_ne!(italic, both);
+    }
+
+    #[test]
+    fn custom_font_measurement_matches_draw_advances() {
+        let mut renderer = VelloRenderer::new(100, 70);
+        renderer
+            .set_font(include_bytes!("../../r-graphics-engine/assets/NotoSans.ttf").to_vec())
+            .unwrap();
+        let params = PlotParameters {
+            font_size: 20.,
+            ..Default::default()
+        };
+        let actual = RenderPlot::measure_text(&renderer, "Wii", &params);
+        let font = renderer.font.as_ref().unwrap();
+        let expected: f32 = "Wii".chars().map(|c| font.advance_width(c, 20.)).sum();
+        assert_eq!(actual.width, expected);
+        assert!(actual.ascent > 0. && actual.descent > 0.);
+    }
 
     #[test]
     fn rejects_invalid_or_excessive_canvas_sizes() {
@@ -436,7 +454,7 @@ mod tests {
     #[test]
     fn bundled_font_draws_rotated_clipped_unicode() {
         let mut r = AndroidHeadlessRenderer::new(100, 100);
-        r.set_font(include_bytes!("../assets/NotoSans.ttf").to_vec())
+        r.set_font(include_bytes!("../../r-graphics-engine/assets/NotoSans.ttf").to_vec())
             .unwrap();
         r.clear(Color::WHITE);
         r.set_clip(Some([20., 20., 80., 80.]));

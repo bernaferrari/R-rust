@@ -1064,7 +1064,7 @@ fn axis(
     c: Coordinates,
     side: usize,
     at: &[f64],
-    labels: &[String],
+    labels: &[crate::mainutils::plotmath::Label],
     color: Color,
 ) {
     let horizontal = side == 1 || side == 3;
@@ -1138,10 +1138,12 @@ fn axis(
         }
         line(target, start, tick, Stroke::new(1., color));
         let label = if labels.is_empty() {
-            format!("{v:.3}")
-                .trim_end_matches('0')
-                .trim_end_matches('.')
-                .to_owned()
+            crate::mainutils::plotmath::Label::Text(
+                format!("{v:.3}")
+                    .trim_end_matches('0')
+                    .trim_end_matches('.')
+                    .to_owned(),
+            )
         } else {
             labels[i % labels.len()].clone()
         };
@@ -1156,8 +1158,8 @@ fn axis(
                 y: p.y + 4.,
             }
         };
-        target.draw_text(
-            &label,
+        label.draw(
+            target,
             pos,
             &PlotParameters {
                 font_size: 11.,
@@ -1342,59 +1344,76 @@ fn box_path(target: &mut dyn DrawTarget, c: Coordinates, color: Color) {
     path.stroke = Stroke::new(1., color);
     target.draw_path(&path);
 }
-unsafe fn titles(target: &mut dyn DrawTarget, c: Coordinates, args: SEXP) {
+unsafe fn title_labels(args: SEXP) -> Vec<Option<crate::mainutils::plotmath::Label>> {
     unsafe {
-        for (name, position, angle, size) in [
-            (
-                "main",
-                Point {
-                    x: (c.rect[0] + c.rect[2]) / 2.,
-                    y: c.rect[1] - 18.,
+        ["main", "xlab", "ylab", "sub"]
+            .iter()
+            .map(|name| {
+                crate::mainutils::plotmath::labels(arg(args, name))
+                    .into_iter()
+                    .next()
+            })
+            .collect()
+    }
+}
+fn titles(
+    target: &mut dyn DrawTarget,
+    c: Coordinates,
+    labels: &[Option<crate::mainutils::plotmath::Label>],
+) {
+    for (i, (_name, position, angle, size)) in [
+        (
+            "main",
+            Point {
+                x: (c.rect[0] + c.rect[2]) / 2.,
+                y: c.rect[1] - 18.,
+            },
+            0.,
+            16.,
+        ),
+        (
+            "xlab",
+            Point {
+                x: (c.rect[0] + c.rect[2]) / 2.,
+                y: c.rect[3] + 45.,
+            },
+            0.,
+            12.,
+        ),
+        (
+            "ylab",
+            Point {
+                x: c.rect[0] - 44.,
+                y: (c.rect[1] + c.rect[3]) / 2.,
+            },
+            90.,
+            12.,
+        ),
+        (
+            "sub",
+            Point {
+                x: (c.rect[0] + c.rect[2]) / 2.,
+                y: c.rect[3] + 59.,
+            },
+            0.,
+            11.,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if let Some(text) = &labels[i] {
+            text.draw(
+                target,
+                position,
+                &PlotParameters {
+                    font_size: size,
+                    text_color: Color::BLACK,
+                    text_angle: angle,
+                    text_anchor: TextAnchor::Middle,
+                    ..Default::default()
                 },
-                0.,
-                16.,
-            ),
-            (
-                "xlab",
-                Point {
-                    x: (c.rect[0] + c.rect[2]) / 2.,
-                    y: c.rect[3] + 45.,
-                },
-                0.,
-                12.,
-            ),
-            (
-                "ylab",
-                Point {
-                    x: c.rect[0] - 44.,
-                    y: (c.rect[1] + c.rect[3]) / 2.,
-                },
-                90.,
-                12.,
-            ),
-            (
-                "sub",
-                Point {
-                    x: (c.rect[0] + c.rect[2]) / 2.,
-                    y: c.rect[3] + 59.,
-                },
-                0.,
-                11.,
-            ),
-        ] {
-            if let Some(text) = label(args, name) {
-                target.draw_text(
-                    &text,
-                    position,
-                    &PlotParameters {
-                        font_size: size,
-                        text_color: Color::BLACK,
-                        text_angle: angle,
-                        text_anchor: TextAnchor::Middle,
-                        ..Default::default()
-                    },
-                );
-            }
+            );
         }
     }
 }
@@ -1415,6 +1434,7 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
         install(c);
         let axes = scalar(args, "axes", 1.) != 0.;
         let frame = scalar(args, "frame.plot", if axes { 1. } else { 0. }) != 0.;
+        let title_labels = title_labels(args);
         let target = &mut *renderer();
         if clear {
             target.clear(Color::WHITE);
@@ -1427,7 +1447,7 @@ pub(crate) unsafe fn plot_default(_: SEXP, _: SEXP, args: SEXP, _: SEXP) -> SEXP
             box_path(target, c, Color::BLACK);
         }
         draw_xy(target, c, &x, &y, &kind, &style, clip_rect(c, args));
-        titles(target, c, args);
+        titles(target, c, &title_labels);
         invisible()
     }
 }
@@ -1624,9 +1644,7 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 if x.is_empty() || y.is_empty() || labels == R_NilValue() {
                     return invisible();
                 }
-                let text: Vec<_> = (0..XLENGTH(labels))
-                    .map(|i| elt_to_string(labels, i))
-                    .collect();
+                let text = crate::mainutils::plotmath::labels(labels);
                 if text.is_empty() {
                     return invisible();
                 }
@@ -1634,8 +1652,8 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let target = &mut *renderer();
                 target.set_clip(Some(clip_rect(c, args)));
                 for i in 0..x.len().max(y.len()) {
-                    target.draw_text(
-                        &text[i % text.len()],
+                    text[i % text.len()].draw(
+                        target,
                         c.map(x[i % x.len()], y[i % y.len()]),
                         &PlotParameters {
                             font_size: style.size * 4.,
@@ -1648,7 +1666,10 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 }
                 target.set_clip(None);
             }
-            "title" => titles(&mut *renderer(), c, args),
+            "title" => {
+                let labels = title_labels(args);
+                titles(&mut *renderer(), c, &labels)
+            }
             "box" => box_path(&mut *renderer(), c, style.color(0)),
             "axis" => {
                 let a = bindings(args, &["side", "at", "labels"]);
@@ -1657,11 +1678,22 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     base_error("invalid axis side");
                 }
                 let at = values(a[1]);
-                let labels = if a[2] != R_NilValue() && TYPEOF(a[2]) == SEXPTYPE::STRSXP {
-                    (0..XLENGTH(a[2])).map(|i| elt_to_string(a[2], i)).collect()
+                let labels = if TYPEOF(a[2]) == SEXPTYPE::LGLSXP && XLENGTH(a[2]) == 1 {
+                    if LOGICAL_ELT(a[2], 0) == 0 {
+                        vec![crate::mainutils::plotmath::Label::Text(String::new())]
+                    } else {
+                        vec![]
+                    }
                 } else {
-                    vec![]
+                    crate::mainutils::plotmath::labels(a[2])
                 };
+                if !at.is_empty()
+                    && !labels.is_empty()
+                    && !(TYPEOF(a[2]) == SEXPTYPE::LGLSXP)
+                    && labels.len() != at.len()
+                {
+                    base_error("'at' and 'labels' lengths differ");
+                }
                 axis(
                     &mut *renderer(),
                     c,

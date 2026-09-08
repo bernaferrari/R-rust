@@ -1,0 +1,178 @@
+//! Asynchronous Vello GPU rendering of owned R graphics scenes.
+//! No interpreter pointer or session guard crosses an asynchronous boundary.
+#![forbid(unsafe_code)]
+use r_graphics_engine::{Color, DrawTarget, FontBook, LineCap, LineJoin, Path, PathCommand,
+    PlotParameters, Point, RasterImage, Scene, Stroke, TextAnchor};
+use std::sync::Arc;
+use vello::{kurbo::{self, Affine, BezPath, Rect}, peniko::{self, Blob, Fill, FontData}, wgpu};
+
+#[derive(Debug, thiserror::Error)]
+pub enum GpuError {
+    #[error("GPU initialization failed: {0}")]
+    Initialization(String),
+    #[error("invalid graphics scene: {0}")]
+    InvalidScene(String),
+    #[error("GPU rendering failed: {0}")]
+    Render(String),
+    #[error("GPU readback failed: {0}")]
+    Readback(String),
+    #[error("PNG encoding failed: {0}")]
+    Png(#[from] png::EncodingError),
+}
+
+/// Reusable GPU device and Vello pipelines. Initialization never falls back to Vello CPU.
+pub struct GpuRenderer {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    renderer: vello::Renderer,
+    adapter_info: wgpu::AdapterInfo,
+}
+impl GpuRenderer {
+    pub async fn new() -> Result<Self, GpuError> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+        }).await.map_err(|e| GpuError::Initialization(e.to_string()))?;
+        let adapter_info = adapter.get_info();
+        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("R Vello GPU"),
+            required_limits: wgpu::Limits::default(),
+            ..Default::default()
+        }).await.map_err(|e| GpuError::Initialization(e.to_string()))?;
+        let renderer = vello::Renderer::new(&device, vello::RendererOptions {
+            use_cpu: false,
+            num_init_threads: std::num::NonZeroUsize::new(1),
+            ..Default::default()
+        }).map_err(|e| GpuError::Initialization(e.to_string()))?;
+        Ok(Self { device, queue, renderer, adapter_info })
+    }
+    pub fn adapter_info(&self) -> &wgpu::AdapterInfo { &self.adapter_info }
+
+    /// Render to straight-alpha RGBA8. Native readback waits for GPU completion;
+    /// browser readback yields to the browser event loop.
+    pub async fn render_rgba(&mut self, scene: &Scene) -> Result<Vec<u8>, GpuError> {
+        // Validate programmatically constructed scenes as well as decoded recordings.
+        scene.validate().map_err(|e| GpuError::InvalidScene(e.into()))?;
+        let (width, height) = scene.dimensions();
+        if width > self.device.limits().max_texture_dimension_2d
+            || height > self.device.limits().max_texture_dimension_2d
+            || u64::from(width) * u64::from(height) > 16_777_216 {
+            return Err(GpuError::InvalidScene("canvas exceeds GPU texture or 16M-pixel limit".into()));
+        }
+        let mut encoded = Encoder::new(width, height);
+        scene.replay(&mut encoded);
+        encoded.set_clip(None);
+        let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("R plot"), size, mip_level_count: 1, sample_count: 1,
+            dimension: wgpu::TextureDimension::D2, format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        self.renderer.render_to_texture(&self.device, &self.queue, &encoded.scene,
+            &texture.create_view(&Default::default()), &vello::RenderParams {
+                base_color: peniko::Color::TRANSPARENT, width, height,
+                antialiasing_method: vello::AaConfig::Msaa16,
+            }).map_err(|e| GpuError::Render(e.to_string()))?;
+        let stride = (width * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("R plot readback"), size: u64::from(stride) * u64::from(height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut commands = self.device.create_command_encoder(&Default::default());
+        commands.copy_texture_to_buffer(texture.as_image_copy(), wgpu::TexelCopyBufferInfo {
+            buffer: &buffer, layout: wgpu::TexelCopyBufferLayout {
+                offset: 0, bytes_per_row: Some(stride), rows_per_image: Some(height),
+            },
+        }, size);
+        self.queue.submit([commands.finish()]);
+        let (send, receive) = futures_channel::oneshot::channel();
+        buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| { let _ = send.send(result); });
+        #[cfg(not(target_arch = "wasm32"))]
+        self.device.poll(wgpu::PollType::wait_indefinitely())
+            .map_err(|e| GpuError::Readback(e.to_string()))?;
+        receive.await.map_err(|e| GpuError::Readback(e.to_string()))?
+            .map_err(|e| GpuError::Readback(e.to_string()))?;
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        {
+            let mapped = buffer.slice(..).get_mapped_range();
+            for row in mapped.chunks_exact(stride as usize) {
+                rgba.extend_from_slice(&row[..width as usize * 4]);
+            }
+        }
+        buffer.unmap();
+        for p in rgba.chunks_exact_mut(4) {
+            if p[3] > 0 && p[3] < 255 {
+                for j in 0..3 { p[j] = ((u32::from(p[j]) * 255 + u32::from(p[3])/2) / u32::from(p[3])).min(255) as u8; }
+            }
+        }
+        Ok(rgba)
+    }
+    pub async fn render_png(&mut self, scene: &Scene) -> Result<Vec<u8>, GpuError> {
+        let rgba = self.render_rgba(scene).await?;
+        let (width, height) = scene.dimensions();
+        let mut output = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut output, width, height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header()?;
+            writer.write_image_data(&rgba)?;
+            writer.finish()?;
+        }
+        Ok(output)
+    }
+}
+
+struct Encoder { scene: vello::Scene, width: u32, height: u32, clipped: bool, font: FontBook }
+impl Encoder {
+    fn new(width: u32, height: u32) -> Self {
+        Self { scene: vello::Scene::new(), width, height, clipped: false, font: FontBook::default() }
+    }
+}
+fn color(c: Color) -> peniko::Color { peniko::Color::from_rgba8(c.r,c.g,c.b,c.a) }
+fn geometry(path: &Path) -> BezPath {
+    let mut p = BezPath::new();
+    for command in &path.commands {
+        match *command {
+            PathCommand::MoveTo(x, y) => p.move_to((f64::from(x), f64::from(y))),
+            PathCommand::LineTo(x, y) => p.line_to((f64::from(x), f64::from(y))),
+            PathCommand::QuadTo(a, b, x, y) => {
+                p.quad_to((f64::from(a), f64::from(b)), (f64::from(x), f64::from(y)))
+            }
+            PathCommand::CubicTo(a, b, c, d, x, y) => p.curve_to(
+                (f64::from(a), f64::from(b)),
+                (f64::from(c), f64::from(d)),
+                (f64::from(x), f64::from(y)),
+            ),
+            // This legacy command has no arc flags/rotation; retain its documented endpoint fallback.
+            PathCommand::ArcTo { x, y, .. } => p.line_to((f64::from(x), f64::from(y))),
+            PathCommand::Close => p.close_path(),
+        }
+    }
+    p
+}
+fn stroke(s: &Stroke) -> kurbo::Stroke {
+    let mut result = kurbo::Stroke::new(f64::from(s.width));
+    result.start_cap = match s.cap {
+        LineCap::Butt => kurbo::Cap::Butt,
+        LineCap::Round => kurbo::Cap::Round,
+        LineCap::Square => kurbo::Cap::Square,
+    };
+    result.end_cap = result.start_cap;
+    result.join = match s.join {
+        LineJoin::Miter => kurbo::Join::Miter,
+        LineJoin::Round => kurbo::Join::Round,
+        LineJoin::Bevel => kurbo::Join::Bevel,
+    };
+    result.miter_limit = f64::from(s.miter_limit);
+    if let Some(dash) = &s.dash_pattern {
+        result.dash_pattern = dash.intervals.iter().map(|v| f64::from(*v)).collect();
+        result.dash_offset = f64::from(dash.offset);
+    }
+    result
+}

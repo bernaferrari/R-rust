@@ -1,0 +1,1 @@
+function(x=unit(c(0,1),'npc'),y=unit(c(0,1),'npc'),default.units='npc',arrow=NULL,name=NULL,gp=gpar(),vp=NULL) { z<-linesGrob(x=x,y=y,arrow=arrow,default.units=default.units,name=name,gp=gp,vp=vp); grid.draw(z); invisible(z) }

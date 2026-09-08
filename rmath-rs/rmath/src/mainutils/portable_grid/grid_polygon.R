@@ -1,0 +1,1 @@
+function(x=unit(c(0,.5,1),'npc'),y=unit(c(0,1,0),'npc'),id=NULL,id.lengths=NULL,default.units='npc',rule='winding',name=NULL,gp=gpar(),vp=NULL) { z<-polygonGrob(x=x,y=y,id=id,id.lengths=id.lengths,rule=rule,default.units=default.units,name=name,gp=gp,vp=vp); grid.draw(z); invisible(z) }

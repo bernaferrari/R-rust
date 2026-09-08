@@ -1,0 +1,1 @@
+function(label,x=unit(.5,'npc'),y=unit(.5,'npc'),just='centre',hjust=NULL,vjust=NULL,rot=0,check.overlap=FALSE,default.units='npc',name=NULL,gp=gpar(),vp=NULL) { z<-textGrob(label=label,x=x,y=y,just=just,hjust=hjust,vjust=vjust,rot=rot,check.overlap=check.overlap,default.units=default.units,name=name,gp=gp,vp=vp); grid.draw(z); invisible(z) }

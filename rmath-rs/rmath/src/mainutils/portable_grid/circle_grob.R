@@ -1,0 +1,1 @@
+function(x=unit(.5,'npc'),y=unit(.5,'npc'),r=unit(.5,'snpc'),default.units='npc',name=NULL,gp=gpar(),vp=NULL) { structure(list(primitive='circle',data=list(x=x,y=y,r=r,default.units=default.units),name=name,gp=gp,vp=vp),class=c('circle','grob','gDesc')) }
