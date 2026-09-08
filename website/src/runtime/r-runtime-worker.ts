@@ -26,7 +26,48 @@ self.onmessage = ({ data }: MessageEvent<RuntimeRequest>) => {
   queue = queue.then(async () => {
     const started = performance.now()
     try {
-      if (!request || typeof request.code !== "string")
+      if (!request) throw new Error("Missing runtime request")
+      if (request.action && request.action !== "run") {
+        if ("path" in request && typeof request.path !== "string")
+          throw new Error("File path must be a string")
+        const runtime = await getSession()
+        let file: Uint8Array | undefined
+        let files: string[] | undefined
+        switch (request.action) {
+          case "import-file":
+            if (
+              !(request.bytes instanceof Uint8Array) ||
+              request.bytes.byteLength > 1024 * 1024
+            )
+              throw new Error("Files are limited to 1 MiB each")
+            runtime.import_file(request.path, request.bytes)
+            break
+          case "export-file":
+            file = runtime.export_file(request.path)
+            break
+          case "remove-file":
+            runtime.remove_file(request.path)
+            break
+          case "list-files":
+            files = runtime.list_files()
+            break
+          default:
+            throw new Error("Unknown file operation")
+        }
+        post(
+          {
+            id: request.id,
+            ok: true,
+            output: "",
+            durationMs: performance.now() - started,
+            file,
+            files,
+          },
+          file ? [file.buffer] : undefined
+        )
+        return
+      }
+      if (typeof request.code !== "string")
         throw new Error("Runtime code must be a string")
       if (request.code.length > MAX_CODE_LENGTH) {
         throw new Error(

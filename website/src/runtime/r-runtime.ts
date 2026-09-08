@@ -1,8 +1,15 @@
-import type { RuntimeMode, RuntimeResponse, RuntimeStatus } from "./protocol"
+import type {
+  RuntimeMode,
+  RuntimeResponse,
+  RuntimeStatus,
+  RuntimeCommand,
+} from "./protocol"
 
 export type RuntimeResult = {
   output: string
   png?: Uint8Array
+  files?: string[]
+  file?: Uint8Array
   error?: string
   durationMs: number
 }
@@ -36,14 +43,33 @@ export class RRuntime {
   }
 
   run(code: string, mode: RuntimeMode): Promise<RuntimeResult> {
+    if (typeof code !== "string" || code.length === 0)
+      return Promise.reject(new Error("Runtime code cannot be empty"))
+    return this.request({ code, mode })
+  }
+  async importFile(path: string, bytes: Uint8Array): Promise<void> {
+    if (bytes.byteLength > 1024 * 1024)
+      throw new Error("Files are limited to 1 MiB each")
+    await this.request({ action: "import-file", path, bytes })
+  }
+  async exportFile(path: string): Promise<Uint8Array> {
+    const result = await this.request({ action: "export-file", path })
+    if (!result.file) throw new Error("No file returned by the R session")
+    return result.file
+  }
+  async listFiles(): Promise<string[]> {
+    return (await this.request({ action: "list-files" })).files ?? []
+  }
+  async removeFile(path: string): Promise<void> {
+    await this.request({ action: "remove-file", path })
+  }
+  private request(command: RuntimeCommand): Promise<RuntimeResult> {
     if (this.pending.size >= MAX_PENDING)
       return Promise.reject(
         new Error(
           "Too many runtime requests; wait for the current work to finish"
         )
       )
-    if (typeof code !== "string" || code.length === 0)
-      return Promise.reject(new Error("Runtime code cannot be empty"))
     this.ensureWorker()
     const id = ++this.nextId
     const generation = this.generation
@@ -56,7 +82,7 @@ export class RRuntime {
       }, this.timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
       if (generation !== this.generation) return
-      this.worker!.postMessage({ id, code, mode })
+      this.worker!.postMessage({ id, ...command })
     })
   }
 
@@ -100,6 +126,8 @@ export class RRuntime {
     request.resolve({
       output: data.output,
       png: data.png,
+      files: data.files,
+      file: data.file,
       error: data.error,
       durationMs: data.durationMs,
     })

@@ -73,7 +73,7 @@ export function Playground({
     input.mode === "console" ? "console" : "plot"
   )
   const [busy, setBusy] = useState(false)
-  const [slowRun, setSlowRun] = useState(0)
+  const [slowRun, setSlowRun] = useState(false)
   const stopTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [error, setError] = useState("")
   const [output, setOutput] = useState("")
@@ -115,9 +115,10 @@ export function Playground({
     if (busy) runtime.current.reset()
     const id = ++runId.current
     setBusy(true)
+    setSlowRun(false)
     clearTimeout(stopTimer.current)
     stopTimer.current = setTimeout(() => {
-      if (id === runId.current) setSlowRun(id)
+      if (id === runId.current) setSlowRun(true)
     }, 800)
     setError("")
     setFeedback("")
@@ -403,7 +404,7 @@ export function Playground({
                   </SelectContent>
                 </Select>
 
-                {(!automatic || (busy && slowRun === runId.current)) && (
+                {(!automatic || (busy && slowRun)) && (
                   <Button
                     className="run-button"
                     size="sm"

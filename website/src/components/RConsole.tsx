@@ -36,6 +36,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select"
+import { ConsoleFiles } from "@/components/ConsoleFiles"
 import { RRuntime } from "@/runtime/r-runtime"
 
 type Entry = {
@@ -237,6 +238,7 @@ export function RConsole() {
           </Button>
         </div>
       )}
+      <ConsoleFiles runtime={runtime} busy={busy} revision={entries.length} />
       <div className="r-chat-workspace">
         <div className="r-chat-topline">
           <span>

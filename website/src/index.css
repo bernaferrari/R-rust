@@ -3042,3 +3042,13 @@ footer { flex-wrap: wrap; }
 .ai-setup-note a:hover { text-decoration: underline; }
 
 @media (pointer: fine) { .r-chat-composer textarea { font-size: 14px; } }
+
+.r-chat-files { margin: 0 0 16px; font-size: 13px; }
+.r-chat-files summary { display: flex; align-items: center; gap: 8px; width: fit-content; padding: 6px 0; cursor: pointer; color: var(--ink); }
+.r-chat-files summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; border-radius: 4px; }
+.r-chat-files-panel { margin-top: 8px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.r-chat-files-panel p { max-width: 65ch; margin: 0 0 12px; line-height: 1.6; color: var(--muted-foreground); }
+.r-chat-files-panel ul { list-style: none; margin: 12px 0 0; padding: 0; }
+.r-chat-files-panel li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 4px; }
+.r-chat-files-panel li code { min-width: 0; overflow-wrap: anywhere; }
+.r-chat-files-panel [role="alert"] { margin-top: 12px; color: var(--destructive); }

@@ -1,10 +1,12 @@
 export type RuntimeMode = "plot" | "console" | "interactive"
 
-export type RuntimeRequest = {
-  id: number
-  code: string
-  mode: RuntimeMode
-}
+export type RuntimeCommand =
+  | { code: string; mode: RuntimeMode; action?: "run" }
+  | { action: "import-file"; path: string; bytes: Uint8Array }
+  | { action: "export-file" | "remove-file"; path: string }
+  | { action: "list-files" }
+
+export type RuntimeRequest = RuntimeCommand & { id: number }
 
 export type RuntimeResponse =
   | {
@@ -12,6 +14,8 @@ export type RuntimeResponse =
       ok: true
       output: string
       png?: Uint8Array
+      files?: string[]
+      file?: Uint8Array
       error?: string
       durationMs: number
     }
