@@ -7,6 +7,8 @@ import {
   ArrowRight,
   Check,
   Copy,
+  Code2,
+  Compass,
   Moon,
   Sun,
   Globe2,
@@ -329,12 +331,13 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
               <NavigationMenuItem className="site-navigation-direct" key={key}>
                 <NavigationMenuLink className="site-navigation-link" href={pageHref(key)}
                   active={page === key} aria-current={page === key ? "page" : undefined}>
+                  {key === "editor" ? <Code2 size={16} aria-hidden="true" /> : <Terminal size={16} aria-hidden="true" />}
                   {key === "editor" ? "Editor" : "Console"}
                 </NavigationMenuLink>
               </NavigationMenuItem>
             ))}
             <NavigationMenuItem>
-              <NavigationMenuTrigger className="site-navigation-trigger">Explore</NavigationMenuTrigger>
+              <NavigationMenuTrigger className="site-navigation-trigger"><Compass size={16} aria-hidden="true" />Explore</NavigationMenuTrigger>
               <NavigationMenuContent className="site-navigation-content">
                 {(Object.keys(pages) as Page[]).map((key) => (
                   <NavigationMenuLink key={key} href={pageHref(key)}

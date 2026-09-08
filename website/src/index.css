@@ -2731,7 +2731,7 @@ footer { flex-wrap: wrap; }
 .r-chat {
   max-width: 980px;
   margin: 0 auto;
-  padding: 32px 0 56px;
+  padding: 32px 44px 56px;
 }
 .r-chat-heading {
   display: flex;
@@ -2932,10 +2932,11 @@ footer { flex-wrap: wrap; }
     var(--background)
   );
 }
-@media (max-width: 600px) {
-  .page-console .r-chat {
-    padding-inline: 16px;
-  }
+@media (max-width: 1000px) {
+  .page-console .r-chat { padding-inline: 28px; }
+}
+@media (max-width: 720px) {
+  .page-console .r-chat { padding-inline: 20px; }
 }
 .r-chat-starters > button { height: auto; max-width: 240px; padding: 14px; text-align: left; white-space: normal; align-items: flex-start; }
 .r-chat-starters strong { display: block; font-size: 13px; font-weight: 550; }
@@ -2953,7 +2954,12 @@ footer { flex-wrap: wrap; }
   background: transparent; color: var(--muted-foreground); font-size: 13px;
   font-weight: 500; text-decoration: none; cursor: pointer;
 }
-.site-header .site-navigation-link[aria-current="page"] { color: var(--ink); background: var(--accent); }
+.site-header .site-navigation-link[aria-current="page"] {
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 10%, var(--background));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 22%, transparent);
+}
+.site-navigation-link > svg, .site-navigation-trigger > svg { flex-shrink: 0; }
 .site-header .site-navigation-link:hover,
 .site-navigation-trigger:hover,
 .site-navigation-trigger[data-popup-open] { color: var(--ink); background: var(--accent); }
@@ -3019,3 +3025,19 @@ footer { flex-wrap: wrap; }
 .output-control-bar .output-tabs button[aria-pressed=true] { background: var(--muted); color: var(--primary); box-shadow: inset 0 0 0 1px var(--border); }
 .output-control-bar .output-tabs button::after { display: none; }
 .output-control-bar { min-height: 46px; }
+
+.ai-model-card .ai-setup-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ai-setup-note code { font-size: .95em; color: var(--foreground); }
+.ai-setup-note a { color: var(--primary); text-underline-offset: 3px; }
+.ai-setup-note a:hover { text-decoration: underline; }

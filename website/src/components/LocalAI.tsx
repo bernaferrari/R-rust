@@ -324,10 +324,8 @@ export function LocalAI({ onUseCode }: Props) {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="ai-muted mt-3">
-                Ollama must allow requests from this site. Configure{" "}
-                <code>OLLAMA_ORIGINS</code> for this site if the browser blocks
-                localhost.{" "}
+              <p className="ai-setup-note">
+                <span>Connection blocked? Allow this site with <code>OLLAMA_ORIGINS</code>.</span>{" "}
                 <a
                   href="https://docs.ollama.com/faq"
                   target="_blank"
