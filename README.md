@@ -1,324 +1,132 @@
-# R-rust
+<div align="center">
 
-An experimental, from-scratch Rust translation of GNU R's core runtime —
-parser, evaluator, SEXP object model with arena GC, base/stat semantics
-slices, the `nmath` numerical library, and portable graphics — aimed at
-embeddable, session-isolated R execution (Android first, desktop hosts
-second). Repository: <https://github.com/bernaferrari/R-rust>.
+# Rove
 
-It is **not a C FFI wrapper**: every semantic surface is translated Rust,
-kept source-shaped against the vendored upstream C so upstream behavior
-can be diffed, ported, and verified hunk-by-hunk.
+### R belongs everywhere.
 
-## What it is
+**The joy of R. The portability of Rust.**
 
-- A Rust runtime library (`rmath`) implementing a curated subset of R:
-  the full parser grammar, a tree-walking evaluator with S3/S4 dispatch,
-  a SEXP object model with a generational arena GC, and translated
-  slices of base, stats, methods, graphics, grDevices, grid, and utils.
-- `rmath-nmath`, a standalone, SEXP-free crate for the numerical
-  distribution/special-function code (dist, dpq, special, RNG facade).
-- Embedding surfaces: `r-embed` (owned-value facade), `r-uniffi`
-  (Kotlin/Swift bindings), an Android headless PNG device, and a desktop
-  CLI/REPL host (`r-host-cli`).
-- A verification rig: a 636-case curated behavioral fixture corpus run
-  three-way (stock C output vs checked-in golden vs Rust output),
-  a script-level differential harness, and stream-parity RNG goldens.
+Explore data, make beautiful plots, and give local AI a statistical tool—
+in a browser, a desktop application, or a mobile app.
 
-## What it is NOT
+[Run the website](website/README.md) · [Embed R](crates/r-embed) · [Compatibility](docs/conformance.md) · [Contribute](#build-something-with-us)
 
-- **Not drop-in R.** It will not run arbitrary CRAN packages or
-  real-world R scripts unchanged. The `.Internal`/builtin surface is a
-  curated subset, not the full R API.
-- **Not a general native package runtime.** Native code loading stays
-  deny-by-default on Android/WASM; an experimental trusted-desktop ABI
-  (`RSession::enable_host_process_capabilities` gating `dyn.load`/`dyn.unload`/
-  `.Call`/`.C`) exists for desktop hosts only, with no CRAN binary-compatibility
-  claim. No `compiler`-package semantics; bytecode evaluation is a partial
-  internal path (see [Known gaps](#known-gaps)).
-- **A partial R evaluator on WebAssembly.** The browser runtime evaluates
-  R scripts in a worker and renders portable graphics. It does not yet
-  support the full GNU R API or arbitrary CRAN packages. Try the
-  [web showcase](website/README.md) for executable examples.
-- **Not a memory-safety-audited runtime, and not a sandbox.** The safe
-  facade is experimental and not yet audited by Miri at scale — the
-  Miri/GC-torture proof covers a bounded `sexp::` subset, not the whole
-  workspace — and nothing here is an isolation boundary for running
-  untrusted R code. See [Safety status](#safety-status).
-- **Not at 100% fidelity.** Compatibility is claimed only where the
-  curated corpus pins it; [Known gaps](#known-gaps) lists the rest.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="website/public/examples/loess-dark.png">
+  <img src="website/public/examples/loess.png" alt="A LOESS curve revealing the signal in noisy observations, rendered by Rove" width="760">
+</picture>
 
-## Architecture
+*80 observations. One good hunch. Real R code, running on a Rust runtime.*
 
-```
-rmath-rs/
-  nmath/            standalone libRmath.a-shaped crate (dist, special,
-                    dpq, rng facade, MathState) — no SEXP dependencies
-  rmath/            the runtime crate
-    src/eval/       parser, evaluator, bytecode surface, closure matching,
-                    dispatch
-    src/sexp/       object model, arena GC (persistent-root marks,
-                    remembered set, write barriers), protect
-    src/mainutils/  builtins: essentials/ (16 domain modules + name
-                    registry), subset/subassign, seq, errors, print,
-                    serialize, io, rstrptime, ...
-    src/library/    stats, methods, graphics, grDevices, grid, utils
-  rmath-test/       cross-crate numerical parity suites
-crates/
-  r-embed/          embedding facade (owned values; experimental)
-  r-uniffi/         Kotlin/Swift bindings surface
-  r-graphics-engine/  portable plotting primitives
-  r-device-android-headless/  PNG device backend
-tests/conformance/  636 curated fixtures + three-way differential runner
-tests/script-diff/  script-level differential vs stock R
-tests/differential/ standalone numeric d/p/q harness vs fixed R 4.x
-                    reference values (own crate, excluded from the
-                    workspace; `cargo run --manifest-path
-                    tests/differential/Cargo.toml`)
-scripts/            parity, slices, corpus, release gates
-r-source/           vendored upstream C reference (fetched, not built,
-                    not committed; see scripts/fetch-r-source.sh)
+</div>
+
+Rove is the showcase and embedding experience for **R-rust**, an experimental Rust port of GNU R. It implements the interpreter and numerical routines in Rust, rather than wrapping an installed R process. The default linear algebra backend uses **faer**; portable graphics use **Vello**.
+
+The ambition is a faithful, pleasant R runtime you can bring into your own software. It is already useful for the supported examples and embedding contracts. **It is not yet a drop-in replacement for GNU R.**
+
+## A little code. A lot of possibility.
+
+```r
+set.seed(42)
+x <- seq(0, 10, length.out = 80)
+y <- sin(x) + rnorm(80, sd = 0.22)
+fit <- loess(y ~ x, span = 0.3)
+
+plot(x, y, pch = 16, col = "#a8b6ae",
+     xlab = "Time", ylab = "Signal", main = "A little less noise")
+lines(x, predict(fit), col = "#cc5636", lwd = 3)
 ```
 
-Design details: `docs/rust-r-port-architecture.md`. The C-file ↔ Rust
-module map with per-file sync mode lives in
-`docs/upstream-port-map.tsv`.
+The website has **16 editable examples**: statistics, creative coding, grid layouts, mathematical labels, and everyday data work. Run them automatically as you edit, or switch to manual execution. Open the standalone editor when you want a quieter workspace.
 
-## Safety status
+<table>
+<tr>
+<td width="50%"><img src="website/public/examples/sunflower.png" alt="Golden-angle sunflower drawn with R"><br><strong>Nature has a formula.</strong> Explore a sunflower's spiral geometry.</td>
+<td width="50%"><img src="website/public/examples/grid.png" alt="A calendar composed with R grid viewports"><br><strong>Find your rhythm.</strong> Build a calendar from small moments.</td>
+</tr>
+</table>
 
-**Experimental. Do not rely on it for anything that matters yet.**
+## Take R with you
 
-- The object model is being reworked (copy semantics, external-pointer
-  representation). Interfaces and invariants are moving; treat every
-  release as disposable.
-- The `r-embed` safe facade is **experimental**: an API design goal
-  (owned values, no raw SEXP in user code) shipped with *verified GC
-  discipline* — the `sexp::` ownership layer is Miri-checked on a
-  bounded test subset and stressed by a nightly GC-torture differential
-  — but the facade as a whole is not an audited guarantee.
-- No memory-safety audit at scale, no fuzzing at the boundary, no
-  isolation claims: this is not a security boundary for running
-  untrusted R code. The ownership model is documented in
-  [Object ownership and GC safety](docs/rust-r-port-architecture.md#object-ownership-and-gc-safety);
-  the exact safety-test coverage and its bounds are in
-  [Safety testing](docs/conformance.md#safety-testing).
+| Where | What you can build | Start here |
+| --- | --- | --- |
+| **Browser** | A WebAssembly editor, local analysis and PNG plots, running in a worker | [Website setup](website/README.md) |
+| **Rust** | An embedded interpreter with owned values and session-scoped handles | [r-embed](crates/r-embed) |
+| **Mobile** | Kotlin and Swift integrations through UniFFI bindings | [r-uniffi](crates/r-uniffi) |
+| **Local AI** | A model drafts R; the runtime computes and plots the answer | [Runnable AI demo](website/README.md) |
+| **Graphics** | Portable CPU rendering and optional GPU canvas/window presentation APIs | [Vello GPU](crates/r-device-vello-gpu/README.md) |
+| **Numerics** | Distribution and special-function routines without the interpreter | [Standalone nmath](rmath-rs/nmath) |
 
-## Compatibility status
+The AI demo supports a WebGPU browser model and an optional Ollama endpoint. You review the generated code before opening it in the playground. Model weights download only when requested; they are separate from the R runtime.
 
-All parity claims are **against the exact oracle described below**, on a
-**curated subset** of R behavior — not against R's own test suites:
+## Try it locally
 
-- **636/636 curated behavioral fixtures pass, three-way** (stock C
-  output vs checked-in golden vs Rust output). The corpus is a curated
-  subset selected to pin ported upstream hunks; it is *not* "636 of R's
-  tests", and passing it does not imply general conformance.
-- Script-level differential vs stock R: 10/10 curated scripts.
-- Workspace tests: 2357+ green. Clippy (`--workspace --all-targets`,
-  warnings denied in CI): clean. WASM32 toolchain check: passes.
-- Default RNG: Mersenne-Twister with bit-identical streams to stock
-  (`set.seed(1); runif(3)` → `0.2655087 0.3721239 0.5728534`).
-
-Covered areas include: full parser grammar with upstream-shaped parse
-errors; closures with `matchArgs_NR` argument matching; `tryCatch`/
-`withRestarts`/`withCallingHandlers`; S3 `UseMethod`/`NextMethod` and
-S4 classes; Rscript auto-print/visibility semantics; MT-stream-parity
-RNG with stock `.Random.seed` layout; translated nmath distribution
-families with stream-parity goldens (TOMS 708, Bessel matrix ≤ 1e-15);
-`data.frame` subsetting; `strptime` ported from `Rstrptime.h`.
-
-## Supported platforms
-
-- **Android** (first-class): aarch64 / armv7 / i686 / x86_64 via
-  cargo-ndk; headless PNG rendering through the portable device
-  registry; UniFFI Kotlin bindings.
-- **Desktop hosts** (macOS arm64 is the development platform; Linux
-  supported): `r-host-cli` REPL, differential/conformance harnesses.
-- **WASM32**: math and graphics core only (see [What it is NOT](#what-it-is-not)).
-- Windows is not exercised by CI; no claims are made for it.
-
-## Exact R oracle
-
-The parity contract is anchored to **upstream development itself**, not
-a release snapshot:
-
-- **Oracle binary:** R trunk **r90451** ("Unsuffered Consequences",
-  2026-08-27), built locally, from wch/r-source commit
-  `bac583951b728e97b9786804d3b4081f0fe18df5`.
-- **Machine-readable pin:** `oracle/r-oracle.json` records that full commit,
-  the commit archive URL and SHA-256, and the expected runtime identity. CI
-  validates the manifest, hash-verifies and builds that exact source, then
-  rejects any `Rscript` without the matching provenance marker. Moving
-  `release`/`devel` comparisons run separately at night and are informational;
-  they can never satisfy the required exact-oracle gate.
-- **Pinned upstream tests:** the complete 245-file `r-source/tests` tree from
-  that same commit is imported unmodified under `tests/upstream-r`, with
-  per-file checksums and owned dispositions for all 70 top-level `.R`/`.Rin`
-  drivers. CI executes every runnable whole file plus the green curated slices.
-- **Vendored reference tree:** pinned at the last sync base,
-  `d4cc5d9e196a144bbb087a798bb945b37121383b` — exactly 273 commits
-  behind the oracle commit. Reproduce it with:
-
-  ```bash
-  ./scripts/fetch-r-source.sh   # clone + hash-verify the pinned commit
-  ```
-
-  The script refuses to continue from any other commit and prints the
-  R version of the checked-out tree. Goldens are regenerated only from
-  the oracle above (`scripts/conformance_parity.sh --regen-goldens`).
-
-## Upstream provenance and sync
-
-1. `git -C r-source fetch origin trunk` and count the delta.
-2. `git -C r-source diff HEAD origin/trunk -- src/main src/nmath` per
-   file → per-file patches under `plans/upstream-sync-<date>/`.
-3. Port each behavioral hunk into the Rust mirror (cosmetic C churn —
-   const-cleanup, Makefiles, copyright years — is dispositioned, not
-   ported).
-4. Regenerate goldens from the trunk oracle; the three-way parity run
-   proves Rust ≡ trunk on the curated corpus.
-
-The last sync landed **273 upstream commits** (warning-condition
-classes, `binom.kind`, `dim2total`, strptime fixes, deparse attribute
-forms, `fprec`/`R_pow` alignment — full disposition in
-`plans/upstream-sync-2026-08/`).
-
-## Build and verify
-
-The toolchain is pinned by `rust-toolchain.toml` (currently Rust
-1.96.0) and dependencies are locked in `Cargo.lock`.
+For the website, install the prerequisites listed in the [setup guide](website/README.md), then:
 
 ```bash
-cargo build --workspace
-cargo test --workspace                 # includes stream-parity goldens
-cargo clippy --workspace --all-targets # zero warnings expected
-
-# Conformance vs the trunk oracle (R binary on PATH):
-./scripts/install_r_oracle.sh             # prints the pinned R bin directory
-PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --check
-PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --regen-goldens
-./scripts/wasm_toolchain_check.sh
+git clone https://github.com/bernaferrari/R-rust.git
+cd R-rust/website
+pnpm install --frozen-lockfile
+pnpm build:runtime
+pnpm dev
 ```
 
-`r-embed` selects exactly one dense linear-algebra backend. Its default is the
-portable pure-Rust/faer implementation. Desktop hosts that provide compatible
-Fortran BLAS/LAPACK can select the system profile explicitly:
+Open the printed local URL. `/editor/` opens just the editor; `/examples/` opens the gallery.
+
+For a native interactive R session, from the repository root:
 
 ```bash
-cargo check -p r-embed --no-default-features --features fortran-backend
+cargo run -p r-host-cli
 ```
 
-The system profile links Accelerate on macOS and `lapack`/`blas` elsewhere.
-For another provider, set `RPORT_LAPACK_LIB_DIR` and `RPORT_LAPACK_LIB_NAME`
-(for example an installed OpenBLAS library). Verify numerical behavior with
-`cargo test -p rmath --no-default-features --features fortran-backend --lib modules::lapack::backend_tests`.
+Rust is pinned in `rust-toolchain.toml`; dependencies are locked. The default numerical backend is pure Rust/faer. A desktop-only Fortran BLAS/LAPACK profile is also available through the mutually exclusive `fortran-backend` feature; see [backend features](crates/r-embed/Cargo.toml).
 
-The `rust-backend` and `fortran-backend` features are mutually exclusive;
-building with both or neither is a compile-time error. The system profile is
-not supported on Android or WASM.
+## What works—and what is still growing
 
-Current inventory counts are generated in [Capability evidence](docs/capability-evidence.md);
-fixture counts are not implementation percentages.
+The implemented surface includes the parser and evaluator, functions and dispatch, vectors and data frames, supported base/statistics operations, seeded random numbers, LOESS, and portable plots. Grid and plotmath share the portable rendering engine.
 
-## Known gaps
+The important limits are concrete:
 
-LOESS fitting and prediction now use an owned Rust engine, with faer SVD by default. Portable plots support layered LOESS curves, grid viewports/grobs and mathematical expression labels with a shared bundled font. Vello CPU provides synchronous PNGs; optional Vello GPU provides async textures/PNGs on native and WebGPU. See the [GPU embedding API](crates/r-device-vello-gpu/README.md). See [supported contracts and remaining limits](docs/loess-and-portable-graphics.md); the legacy native LOESS helper ABI remains unsupported.
+- **Packages:** arbitrary CRAN packages, native extensions and serialized package data are not generally supported in the browser.
+- **Language fidelity:** compiler/bytecode behavior, namespaces, locales and parts of the GNU R API remain incomplete.
+- **Graphics:** advanced grid semantics and exact GNU R font typography still need work. The website uses Vello CPU; GPU presentation is a separate integration surface.
+- **Safety:** owned host APIs keep raw interpreter objects private, but unsafe internals still need wider auditing. The runtime is experimental and is not a security boundary for untrusted programs.
+- **Resource limits:** the browser has a worker timeout and a combined 1 MiB console capture limit. Total evaluator memory and final-value formatting are not fully bounded.
 
-Honest ledger, each scoped with a reproduction:
+See the [compatibility evidence](docs/conformance.md) and [graphics contracts](docs/loess-and-portable-graphics.md) for the exact scope. Android, browser and desktop support each have different host constraints; bindings alone do not establish a finished mobile integration.
 
-- **ALTREP disabled pending external-pointer redesign (unsound
-  representation)**; remaining wrapper-class work is tracked in
-  `docs/upstream-port-map.tsv`.
-- Rust roots use stable generational slots and can drop in any order. The
-  translated `PROTECT`/`UNPROTECT` stack is separate and retains R's LIFO
-  semantics. Scope restoration uses generation checkpoints, including slot
-  reuse; managed guards remain rooted until release.
-- Raw interpreter modules are crate-private. Host applications use owned
-  `r-embed` values and session-scoped handles. This is an intentional breaking
-  change from the experimental public `rmath::sexp` API.
-- **Miri coverage is bounded**, including serialization under GC torture and
-  context/root regressions. Passing these checks does not prove all translated
-  unsafe code sound; ambient instance access still needs a wider audit.
-- Mersenne-Twister is the only *stream-parity* engine; the alternative
-  kinds run but their streams are not bit-verified against stock.
-- A few samplers (`rbeta`, `rnorm` under some shapes) differ from stock
-  by ≤ 3 ulps from libm `exp`/`log` rounding — consumption order is
-  identical, verified against a standalone compiled C reference.
-- Trunk's own decimal parser (`R_strtod5`) is inexact; this port parses
-  decimals correctly-rounded instead (documented choice; identical for
-  ≤ 16 significant digits).
-- Source retention and error locations are implemented for the covered parse/eval
-  paths, including explicit `keep.source=TRUE`; broader tooling fidelity needs tests.
-- `serialize` format versions beyond the implemented surface and
-  `memory.profile` column fidelity are known-gap rows in
-  `docs/upstream-port-map.tsv`.
-- `sprintf` on language objects, `str()`/`format()` of calls, and
-  condition-object printing are implemented; exotic corner formats
-  (`%OS<n>` on some locales) may lag trunk.
-- Bytecode evaluation is a partial internal path (AST fallback remains; no
-  `compiler`-package semantics claimed); namespaces/imports beyond the
-  implemented surface; no locale-complete runtime.
+## Evidence over percentages
 
-## Roadmap
+At the latest verified checkpoint, **636 curated GNU R comparison cases** and **2,756 workspace tests** passed. The website also passed 12 browser tests, including actual Wasm execution, theme accessibility, and auto/manual behavior. These are bounded checks, not an implementation percentage or a claim that every R program works.
 
-Direction, not promises — ordered by current work:
+The compatibility oracle is pinned to GNU R source commit [`bac583951b`](oracle/r-oracle.json). Tests compare against that exact revision; the [test contract](docs/conformance.md) explains provenance, upstream tests, Miri and GC stress coverage.
 
-1. **Object model rework**: Sexp copy/move semantics and the
-   external-pointer redesign; re-enable ALTREP on the new
-   representation.
-2. **Broaden the corpus** beyond the curated 636 fixtures toward
-   sampled real-world R scripts, keeping the three-way methodology.
-3. **Stream-parity for alternative RNG kinds** (Marsaglia-MultiCarry,
-   Wichmann-Hill) or explicit stream-difference documentation per kind.
-4. **Compiler/bytecode evaluation path** study (upstream `compiler`
-   package semantics).
-5. **Audited safe embedding API v1** (`r-embed`), with fuzzing at the
-   boundary and a stated security policy for untrusted code.
-6. **Browser runtime refinement**: the Kotlin workbench now runs the Rust
-   interpreter in a worker by default. Expand filesystem, package and graphics
-   contracts; retain WebR as an explicitly labeled alternative.
+```bash
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 
-The session-scoped `ValueHandle`/`ReadGuard`/`WriteGuard` boundary in
-`r-embed` (host-facing layer of the roadmap item above) has shipped: see
-[Session-scoped value handles](#session-scoped-value-handles).
+# Install the exact GNU R oracle, then use its printed bin directory:
+./scripts/install_r_oracle.sh
+PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --strict
+```
 
-## Session-scoped value handles
+## Build something with us
 
-`r-embed` hosts that need to keep an R value live across evaluations use
-`RSession::define_handle`: the value is rooted in a reserved
-engine-internal environment and the host holds a `ValueHandle` — a `Copy`
-`(session, slot, generation)` id with **no reference into the R arena**.
-All access is use-time validated (foreign-session and stale-slot handles
-are errors, never UB) and mediated by guards:
+The most useful contributions close a real contract: a small R program, its GNU R result, and a focused implementation or regression test. Good next areas include package loading, grid units and viewport trees, typography, memory budgets, and embedding-boundary fuzzing.
 
-- `read_handle(&handle) -> ReadGuard` — owned `RValue` snapshot; the
-  guard exclusively borrows the session, so no evaluation can run while
-  it is alive;
-- `write_handle(&handle) -> WriteGuard` — `set(expr)` replaces the
-  binding (failed sets keep the previous value), `update(expr)` rebinds
-  with the current value in scope as `.`;
-- `remove_handle(&handle)` drops the binding and invalidates every
-  handle to that slot.
+| Inside the repository | Purpose |
+| --- | --- |
+| [`rmath-rs/rmath`](rmath-rs/rmath) | Parser, evaluator, object model, GC and translated library operations |
+| [`crates/r-embed`](crates/r-embed) | Owned host API and session handles |
+| [`crates/r-wasm`](crates/r-wasm) | Browser runtime boundary |
+| [`crates/r-graphics-engine`](crates/r-graphics-engine) | Portable graphics and mathematical layout |
+| [`website`](website) | React showcase, editor, examples and local AI |
+| [`tests`](tests) | Differential, conformance and upstream test evidence |
 
-The reserved `..rport_handles..` environment is filtered out of
-`global_binding_names()`; handles survive `gc()` and arbitrary later
-evaluations. Tests: `crates/r-embed/tests/value_handle.rs`.
+Read the [architecture](docs/rust-r-port-architecture.md), [upstream port map](docs/upstream-port-map.tsv), and [contribution instructions](AGENTS.md) before changing runtime invariants. Work is tracked with `bd`.
 
-**libc ratchet**: `scripts/libc_ratchet.sh` enforces the zero-libc
-engine budget (`scripts/libc-budget.txt`): printf/heap/env/time/type
-aliases are hard-zero; string-mem and stdio sit at 1 and 4 (one
-justified libcurl FFI cluster). **Boundary stress**:
-`crates/r-embed/tests/boundary_stress.rs` exercises the
-embedding invariant (arbitrary scripts never escape as Rust panics) —
-it found and fixed three real escaping-panic bugs (top-level
-`break`/`next`, top-level `return(v)`, empty-script rooting).
-`fuzz/` holds the coverage-guided libFuzzer harnesses for the same
-invariant (see `fuzz/README.md` for the sanitizer-budget runbook).
+## License & origins
 
-## License and provenance
+**GPL-2.0-or-later**, matching upstream R. See [COPYING](COPYING) and [LICENSE](LICENSE).
 
-GPL-2.0-or-later, matching upstream R. The full text is in
-[COPYING](COPYING); [LICENSE](LICENSE) summarizes licensing and
-provenance. The vendored `r-source/` tree retains the R Core Team /
-R Foundation copyright, is used solely as the diff-and-verify
-reference, is not part of the crate build, and is reproducible from the
-pinned commit via `scripts/fetch-r-source.sh`.
+This project builds on the work of the R Core Team, the R Foundation, and R's contributors. The GNU R source reference is reproducible from a pinned revision; it is used to guide and verify the port. Rust changes do not erase that provenance.

@@ -52,10 +52,12 @@ import {
 
 export function Playground({
   input,
+  compact = false,
   onSelect,
   automatic,
   onAutomaticChange,
 }: {
+  compact?: boolean
   automatic: boolean
   onAutomaticChange: (value: boolean) => void
   input: PlaygroundInput
@@ -176,21 +178,23 @@ export function Playground({
   }
   return (
     <section id="playground" className="section playground-section">
-      <div className="section-heading">
-        <div>
-          <span className="eyebrow">01 / THE PLAYGROUND</span>
-          <h2>
-            A little code.
+      {!compact && (
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">01 / THE PLAYGROUND</span>
+            <h2>
+              A little code.
+              <br />
+              <em>A lot of possibility.</em>
+            </h2>
+          </div>
+          <p>
+            Change a number. Break something. Try again.
             <br />
-            <em>A lot of possibility.</em>
-          </h2>
+            The output updates as you edit.
+          </p>
         </div>
-        <p>
-          Change a number. Break something. Try again.
-          <br />
-          The output updates as you edit.
-        </p>
-      </div>
+      )}
       <div className="workbench">
         <div className="workbench-toolbar">
           <div className="workbench-label">

@@ -28,7 +28,7 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-`pnpm build` prepares the runtime, builds the client, creates an SSR bundle, and prerenders the landing page so the same `App` markup is available before hydration. The code editor uses a stable server fallback before loading its interactive client bundle.
+`pnpm build` prepares the runtime, builds the client, creates an SSR bundle, and prerenders all six pages so the same `App` markup is available before hydration. The code editor uses a stable server fallback before loading its interactive client bundle.
 
 The gallery preview generator needs a running Vite server and Playwright:
 
@@ -56,3 +56,29 @@ files and gzip or Brotli enabled. No server-side compute or API key is required.
 The browser AI smoke was independently exercised with genuine model weights in
 Chrome, followed by execution and rendering of the generated R code. Ordinary
 CI tests mock Ollama's HTTP response to keep that contract deterministic.
+
+## Focused pages and search metadata
+
+The footer links to `/editor/`, `/examples/`, `/local-ai/`, `/embedding/`, and
+`/compatibility/`. Each is rendered to its own HTML file with a unique title,
+description, heading and Open Graph metadata. The editor is the same worker-backed
+playground without the marketing sections. Gallery cards open the selected recipe
+in that editor. No account or shared-script service is involved.
+
+Set the full public URL when building for deployment:
+
+```bash
+SITE_URL=https://your-domain.example/ pnpm build
+```
+
+Replace the example with the actual website URL. A subdirectory is supported:
+`SITE_URL=https://your-domain.example/rove/ pnpm build` sets asset and page paths
+accordingly. The build generates canonical URLs, Open Graph image/URL metadata,
+`sitemap.xml`, and `robots.txt` from that address. Without `SITE_URL`, local builds
+omit canonical URLs and the XML sitemap instead of publishing a guessed domain.
+
+Serve `dist/` with directory index support (`/editor/` → `/editor/index.html`).
+Use `404.html` as the host's custom **404 response**, rather than rewriting every
+unknown URL to the homepage with status 200. If hosted below a subdirectory,
+include the sitemap location in the domain's root robots.txt as appropriate.
+The additional pages are useful destinations, not a promise of search ranking.

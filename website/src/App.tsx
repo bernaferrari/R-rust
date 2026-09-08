@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useSyncExternalStore } from "react"
 import {
   ArrowDown,
   ArrowUpRight,
@@ -24,6 +24,8 @@ import {
   type Example,
 } from "@/data/examples"
 import { toggleTheme, useDarkTheme } from "@/theme"
+import { pages, pageHref, type Page } from "@/pages"
+import { CompatibilityPage } from "@/components/CompatibilityPage"
 
 function ThemeToggle() {
   const dark = useDarkTheme()
@@ -66,7 +68,14 @@ let png = r.render_with_dimensions(
 // r-uniffi exposes session APIs to Kotlin and Swift.
 // Your app owns the interface. R handles the analysis.`,
 }
-function Gallery({ onSelect }: { onSelect: (example: Example) => void }) {
+function Gallery({
+  onSelect,
+  standalone = false,
+}: {
+  onSelect: (example: Example) => void
+  standalone?: boolean
+}) {
+  const CardHeading = standalone ? "h2" : "h3"
   const dark = useDarkTheme()
   const [category, setCategory] = useState("All examples"),
     [query, setQuery] = useState("")
@@ -145,7 +154,7 @@ function Gallery({ onSelect }: { onSelect: (example: Example) => void }) {
             </div>
             <div className="example-info">
               <span className="example-category">{e.category}</span>
-              <h3>{e.title}</h3>
+              <CardHeading>{e.title}</CardHeading>
               <p>{e.description}</p>
               <button onClick={() => onSelect(e)} aria-label={`Try ${e.title}`}>
                 Try this example <ArrowUpRight size={17} />
@@ -157,7 +166,7 @@ function Gallery({ onSelect }: { onSelect: (example: Example) => void }) {
       {!visible.length ? (
         <div className="no-results">
           <Search />
-          <h3>No examples found.</h3>
+          <CardHeading>No examples found.</CardHeading>
           <p>Try “curve”, “data”, or a different category.</p>
           <Button
             variant="outline"
@@ -256,7 +265,8 @@ function EmbedSection() {
     </section>
   )
 }
-export default function App() {
+export default function App({ page = "home" }: { page?: Page | "missing" }) {
+  const home = page === "home"
   const dark = useDarkTheme()
   const [automatic, setAutomatic] = useState(true)
   const [input, setInput] = useState<PlaygroundInput>({
@@ -265,7 +275,28 @@ export default function App() {
     exampleId: "loess",
     key: 0,
   })
+  const exampleId = useSyncExternalStore(
+    subscribeLocation,
+    () => new URLSearchParams(window.location.search).get("example"),
+    () => null
+  )
+  const selected =
+    page === "editor" && input.key === 0
+      ? examples.find((item) => item.id === exampleId)
+      : undefined
+  const editorInput = selected
+    ? {
+        code: getExampleCode(selected, dark),
+        mode: selected.mode,
+        exampleId: selected.id,
+        key: selected.id,
+      }
+    : input
   function selectExample(example: Example) {
+    if (page === "examples") {
+      window.location.href = `${pageHref("editor")}?example=${encodeURIComponent(example.id)}`
+      return
+    }
     setInput({
       code: getExampleCode(example, dark),
       mode: example.mode,
@@ -278,11 +309,11 @@ export default function App() {
   }
   return (
     <>
-      <a className="skip-link" href="#playground">
-        Skip to playground
+      <a className="skip-link" href="#main-content">
+        Skip to content
       </a>
       <header className="site-header">
-        <a href="#" className="wordmark" aria-label="Rove home">
+        <a href={pageHref("home")} className="wordmark" aria-label="Rove home">
           <span className="brand-mark">
             R<span>↗</span>
           </span>
@@ -291,10 +322,10 @@ export default function App() {
           </span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="#playground">Playground</a>
-          <a href="#examples">Examples</a>
-          <a href="#local-ai">Local AI</a>
-          <a href="#embed">For builders</a>
+          <a href={home ? "#playground" : pageHref("editor")}>Playground</a>
+          <a href={home ? "#examples" : pageHref("examples")}>Examples</a>
+          <a href={home ? "#local-ai" : pageHref("ai")}>Local AI</a>
+          <a href={home ? "#embed" : pageHref("embed")}>For builders</a>
         </nav>
         <div className="header-actions">
           <ThemeToggle />
@@ -317,160 +348,225 @@ export default function App() {
           </a>
         </div>
       </header>
-      <main>
-        <section className="hero">
-          <div className="hero-copy">
-            <div className="hero-kicker">
-              <span className="tiny-orbit" />
-              R, REBUILT IN RUST. READY FOR ANYWHERE.
-            </div>
+      <main
+        id="main-content"
+        className={home ? undefined : `focused-page page-${page}`}
+      >
+        {!home && page !== "editor" && (
+          <div className="page-intro">
+            <a href={pageHref("home")}>Rove /</a>
             <h1>
-              R belongs
-              <br />
-              <em>everywhere.</em>
+              {page === "missing"
+                ? "A little off the path."
+                : pages[page].label}
             </h1>
             <p>
-              The joy of R, right in your browser. Explore data, make beautiful
-              plots, and give your local AI a statistical superpower.
-            </p>
-            <div className="hero-actions">
-              <a className="primary-link" href="#playground">
-                Make something <ArrowRight size={18} />
-              </a>
-              <a className="secondary-link" href="#examples">
-                Take a look around <ArrowDown size={16} />
-              </a>
-            </div>
-            <div className="hero-assurances">
-              <span>
-                <Check size={13} />
-                No installation
-              </span>
-              <span>
-                <Check size={13} />
-                Runs locally
-              </span>
-              <span>
-                <Check size={13} />
-                Open source
-              </span>
-            </div>
-          </div>
-          <div className="hero-visual">
-            <div className="plot-window">
-              <div className="plot-window-top">
-                <span className="window-dots">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <span>a_little_less_noise.R</span>
-                <span className="plot-window-badge">
-                  <span /> MADE WITH R
-                </span>
-              </div>
-              <img
-                src={`${import.meta.env.BASE_URL}examples/loess${dark ? "-dark" : ""}.png`}
-                width="800"
-                height="600"
-                alt="A LOESS curve following noisy observations, generated with R"
-                fetchPriority="high"
-              />
-              <div className="plot-window-bottom">
-                <span>80 observations. One good hunch.</span>
-                <span>loess(y ~ x)</span>
-              </div>
-            </div>
-            <div className="floating-note">
-              <span className="note-spark">✳</span>
-              <span>
-                Yes, this runs
-                <br />
-                <em>in your browser.</em>
-              </span>
-            </div>
-          </div>
-        </section>
-        <div className="runtime-destinations" aria-label="Runtime capabilities">
-          <div className="destination-heading">
-            <strong>Take R with you.</strong>
-            <span>Rust at the core · Vello graphics</span>
-          </div>
-          <div className="destination-list">
-            <a href="#playground">
-              <Globe2 size={22} />
-              <strong>Web</strong>
-              <span>WebAssembly</span>
-            </a>
-            <a href="#embed">
-              <Smartphone size={22} />
-              <strong>Mobile</strong>
-              <span>Swift & Kotlin</span>
-            </a>
-            <a href="#local-ai">
-              <Sparkles size={22} />
-              <strong>Local AI</strong>
-              <span>Your model, your device</span>
-            </a>
-          </div>
-        </div>
-        <Playground
-          key={input.key}
-          input={input}
-          onSelect={selectExample}
-          automatic={automatic}
-          onAutomaticChange={setAutomatic}
-        />
-        <Gallery onSelect={selectExample} />
-        <section id="local-ai" className="section local-ai-section">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">03 / A BETTER TOOL FOR YOUR AI</span>
-              <h2>
-                Let your AI think.
-                <br />
-                <em>Let R do the math.</em>
-              </h2>
-            </div>
-            <p>
-              A local language model drafts the code. R computes the answer. Try
-              a browser model or connect Ollama on your computer.
+              {page === "missing"
+                ? "This page doesn’t exist. Open the editor or explore the examples to find your next idea."
+                : pages[page].description}
             </p>
           </div>
-          <LocalAI
-            onUseCode={(code) => {
-              setInput({
-                code,
-                mode: /\b(plot|hist|barplot|boxplot|grid\.|text\(|lines\()/.test(
-                  code
-                )
-                  ? "plot"
-                  : "console",
-                key: Date.now(),
-              })
-              document
-                .getElementById("playground")
-                ?.scrollIntoView({ behavior: "smooth" })
-            }}
-          />
-        </section>
-        <EmbedSection />
-        <section className="closing-note">
-          <span className="eyebrow">A SMALL RUNTIME. AN OPEN INVITATION.</span>
-          <h2>
-            Go on. <em>Follow that hunch.</em>
-          </h2>
-          <p>
-            Make something useful. Make something strange. It all starts with a
-            little R.
-          </p>
-          <a className="primary-link" href="#playground">
-            Back to the playground <ArrowUpRight size={18} />
+        )}
+        {page === "missing" && (
+          <a className="primary-link" href={pageHref("editor")}>
+            Open the editor <ArrowRight size={18} />
           </a>
-        </section>
+        )}
+        {page === "compatibility" && <CompatibilityPage />}
+        {page === "editor" && (
+          <h1 className="editor-page-heading">Your space for a little R.</h1>
+        )}
+        {home && (
+          <>
+            <section className="hero">
+              <div className="hero-copy">
+                <div className="hero-kicker">
+                  <span className="tiny-orbit" />
+                  R, REBUILT IN RUST. READY FOR ANYWHERE.
+                </div>
+                <h1>
+                  R belongs
+                  <br />
+                  <em>everywhere.</em>
+                </h1>
+                <p>
+                  The joy of R, right in your browser. Explore data, make
+                  beautiful plots, and give your local AI a statistical
+                  superpower.
+                </p>
+                <div className="hero-actions">
+                  <a
+                    className="primary-link"
+                    href={home ? "#playground" : pageHref("editor")}
+                  >
+                    Make something <ArrowRight size={18} />
+                  </a>
+                  <a
+                    className="secondary-link"
+                    href={home ? "#examples" : pageHref("examples")}
+                  >
+                    Take a look around <ArrowDown size={16} />
+                  </a>
+                </div>
+                <div className="hero-assurances">
+                  <span>
+                    <Check size={13} />
+                    No installation
+                  </span>
+                  <span>
+                    <Check size={13} />
+                    Runs locally
+                  </span>
+                  <span>
+                    <Check size={13} />
+                    Open source
+                  </span>
+                </div>
+              </div>
+              <div className="hero-visual">
+                <div className="plot-window">
+                  <div className="plot-window-top">
+                    <span className="window-dots">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span>a_little_less_noise.R</span>
+                    <span className="plot-window-badge">
+                      <span /> MADE WITH R
+                    </span>
+                  </div>
+                  <img
+                    src={`${import.meta.env.BASE_URL}examples/loess${dark ? "-dark" : ""}.png`}
+                    width="800"
+                    height="600"
+                    alt="A LOESS curve following noisy observations, generated with R"
+                    fetchPriority="high"
+                  />
+                  <div className="plot-window-bottom">
+                    <span>80 observations. One good hunch.</span>
+                    <span>loess(y ~ x)</span>
+                  </div>
+                </div>
+                <div className="floating-note">
+                  <span className="note-spark">✳</span>
+                  <span>
+                    Yes, this runs
+                    <br />
+                    <em>in your browser.</em>
+                  </span>
+                </div>
+              </div>
+            </section>
+            <div
+              className="runtime-destinations"
+              aria-label="Runtime capabilities"
+            >
+              <div className="destination-heading">
+                <strong>Take R with you.</strong>
+                <span>Rust at the core · Vello graphics</span>
+              </div>
+              <div className="destination-list">
+                <a href={home ? "#playground" : pageHref("editor")}>
+                  <Globe2 size={22} />
+                  <strong>Web</strong>
+                  <span>WebAssembly</span>
+                </a>
+                <a href={home ? "#embed" : pageHref("embed")}>
+                  <Smartphone size={22} />
+                  <strong>Mobile</strong>
+                  <span>Swift & Kotlin</span>
+                </a>
+                <a href={home ? "#local-ai" : pageHref("ai")}>
+                  <Sparkles size={22} />
+                  <strong>Local AI</strong>
+                  <span>Your model, your device</span>
+                </a>
+              </div>
+            </div>
+          </>
+        )}
+        {(home || page === "editor") && (
+          <Playground
+            key={editorInput.key}
+            input={editorInput}
+            onSelect={selectExample}
+            automatic={automatic}
+            onAutomaticChange={setAutomatic}
+            compact={!home}
+          />
+        )}
+        {(home || page === "examples") && (
+          <Gallery onSelect={selectExample} standalone={!home} />
+        )}
+        {(home || page === "ai") && (
+          <section id="local-ai" className="section local-ai-section">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">03 / A BETTER TOOL FOR YOUR AI</span>
+                <h2>
+                  Let your AI think.
+                  <br />
+                  <em>Let R do the math.</em>
+                </h2>
+              </div>
+              <p>
+                A local language model drafts the code. R computes the answer.
+                Try a browser model or connect Ollama on your computer.
+              </p>
+            </div>
+            <LocalAI
+              onUseCode={(code) => {
+                setInput({
+                  code,
+                  mode: /\b(plot|hist|barplot|boxplot|grid\.|text\(|lines\()/.test(
+                    code
+                  )
+                    ? "plot"
+                    : "console",
+                  key: Date.now(),
+                })
+                document
+                  .getElementById("playground")
+                  ?.scrollIntoView({ behavior: "smooth" })
+              }}
+            />
+          </section>
+        )}
+        {page === "ai" && (
+          <Playground
+            key={editorInput.key}
+            input={editorInput}
+            onSelect={selectExample}
+            automatic={automatic}
+            onAutomaticChange={setAutomatic}
+            compact
+          />
+        )}
+        {(home || page === "embed") && <EmbedSection />}
+        {home && (
+          <section className="closing-note">
+            <span className="eyebrow">
+              A SMALL RUNTIME. AN OPEN INVITATION.
+            </span>
+            <h2>
+              Go on. <em>Follow that hunch.</em>
+            </h2>
+            <p>
+              Make something useful. Make something strange. It all starts with
+              a little R.
+            </p>
+            <a
+              className="primary-link"
+              href={home ? "#playground" : pageHref("editor")}
+            >
+              Back to the playground <ArrowUpRight size={18} />
+            </a>
+          </section>
+        )}
       </main>
       <footer>
-        <a className="wordmark" href="#">
+        <a className="wordmark" href={pageHref("home")}>
           rove.
         </a>
         <p>R at heart. Rust underneath. Yours to explore.</p>
@@ -478,11 +574,26 @@ export default function App() {
           <a href={github}>
             Source <ArrowUpRight size={12} />
           </a>
-          <a href="#compatibility">Compatibility</a>
+
           <a href={`${github}/blob/main/COPYING`}>GPL license</a>
         </div>
+        <nav className="footer-sitemap" aria-label="Site map">
+          {(Object.keys(pages) as Page[]).map((key) => (
+            <a
+              key={key}
+              href={pageHref(key)}
+              aria-current={page === key ? "page" : undefined}
+            >
+              {pages[key].label}
+            </a>
+          ))}
+        </nav>
       </footer>
       <Toaster />
     </>
   )
+}
+
+function subscribeLocation() {
+  return () => {}
 }
