@@ -50,26 +50,38 @@ lines(x, predict(fit), col = "#cc5636", lwd = 3)`,
   },
   {
     id: "sunflower",
-    title: "Nature has a formula",
+    title: "Grow a spiral garden",
     category: "Creative",
     description:
-      "Grow a sunflower from the golden angle, with a warm spiral of golden seeds.",
+      "Turn the golden angle into a garden of sculpted petals. Three blooms, one simple rule.",
     mode: "plot",
-    color: "#bf773b",
-    code: `# Phyllotaxis: the geometry of a sunflower
-n <- 1100
-i <- seq_len(n)
-angle <- i * pi * (3 - sqrt(5))
-radius <- sqrt(i)
-x <- radius * cos(angle)
-y <- radius * sin(angle)
-plot(x, y, pch = 16, cex = 1.15,
-     col = "#d9a441", axes = FALSE, xlab = "", ylab = "")
-core <- i <= 190
-ring <- i > 190 & i <= 500
-points(x[ring], y[ring], pch = 16, cex = 1.05, col = "#bf773b")
-points(x[core], y[core], pch = 16, cex = 0.9, col = "#8b4b3a")
-points(0, 0, pch = 16, cex = 3.2, col = "#4f3b2f")`,
+    color: "#43877b",
+    code: `# A spiral garden: every petal turns by the golden angle
+plot.new()
+plot.window(xlim = c(-1.4, 1.4), ylim = c(-1, 1), asp = 1)
+t <- seq(0, 2 * pi, length.out = 24)
+golden <- pi * (3 - sqrt(5))
+
+bloom <- function(cx, cy, size, colors) {
+  for (k in 150:1) {
+    angle <- k * golden
+    r <- size * sqrt(k / 150)
+    # Radial petals overlap like the scales of a pine cone
+    a <- size * (0.10 + 0.045 * sqrt(k / 150))
+    b <- a * 0.42
+    u <- r + a * cos(t)
+    v <- b * sin(t)
+    polygon(cx + u * cos(angle) - v * sin(angle),
+            cy + u * sin(angle) + v * cos(angle),
+            col = colors[1 + (k %% length(colors))], border = NA)
+  }
+}
+bloom(0.34, 0.12, 0.73,
+      c("#24594f", "#357466", "#4b907c", "#7fb69a", "#b3d4b4"))
+bloom(-0.80, 0.38, 0.32,
+      c("#9e4635", "#bb6549", "#d58e65", "#edbd91"))
+bloom(-0.66, -0.49, 0.24,
+      c("#ae813b", "#caa05a", "#dfbd7e", "#eed6a7"))`,
   },
   {
     id: "distribution",

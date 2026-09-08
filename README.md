@@ -41,7 +41,7 @@ The website has **16 editable examples**: statistics, creative coding, grid layo
 
 <table>
 <tr>
-<td width="50%"><img src="website/public/examples/sunflower.png" alt="Golden-angle sunflower drawn with R"><br><strong>Nature has a formula.</strong> Explore a sunflower's spiral geometry.</td>
+<td width="50%"><img src="website/public/examples/sunflower.png" alt="Three botanical blooms composed from golden-angle petals in R"><br><strong>Grow a spiral garden.</strong> Three sculpted blooms, one golden angle.</td>
 <td width="50%"><img src="website/public/examples/grid.png" alt="A calendar composed with R grid viewports"><br><strong>Find your rhythm.</strong> Build a calendar from small moments.</td>
 </tr>
 </table>
@@ -127,6 +127,6 @@ Read the [architecture](docs/rust-r-port-architecture.md), [upstream port map](d
 
 ## License & origins
 
-**GPL-2.0-or-later**, matching upstream R. See [COPYING](COPYING) and [LICENSE](LICENSE).
+**GPL-2.0-or-later**, matching upstream R. See [LICENSE](LICENSE), [COPYING](COPYING), and [license provenance](docs/license-provenance.md).
 
 This project builds on the work of the R Core Team, the R Foundation, and R's contributors. The GNU R source reference is reproducible from a pinned revision; it is used to guide and verify the port. Rust changes do not erase that provenance.
