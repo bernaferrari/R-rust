@@ -97,9 +97,9 @@ val buildRustRuntime by tasks.registering(Exec::class) {
     workingDir(repository)
     inputs.files(fileTree(repository.resolve("crates")) { include("**/*.rs", "**/Cargo.toml") })
     inputs.files(fileTree(repository.resolve("rmath-rs")) { include("**/*.rs", "**/*.R", "**/Cargo.toml"); exclude("**/target/**") })
-    inputs.files(repository.resolve("Cargo.lock"), repository.resolve("Cargo.toml"))
+    inputs.files(repository.resolve("Cargo.lock"), repository.resolve("Cargo.toml"), repository.resolve("scripts/build_wasm_runtime.sh"))
     outputs.dir(rustRuntimeResources)
-    commandLine("wasm-pack", "build", "crates/r-wasm", "--target", "web", "--release",
+    commandLine("bash", "scripts/build_wasm_runtime.sh", "--target", "web", "--release",
         "--out-dir", rustRuntimeResources.get().dir("rust-runtime").asFile.absolutePath)
 }
 kotlin.sourceSets.named("wasmJsMain") {

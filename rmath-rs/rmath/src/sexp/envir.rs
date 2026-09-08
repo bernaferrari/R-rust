@@ -298,6 +298,8 @@ impl<'a> Environment<'a> {
     }
 
     /// Return the underlying environment handle.
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_sexp(self) -> Sexp<'a> {
         self.env
     }

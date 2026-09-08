@@ -103,9 +103,36 @@ pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Solve through the selected LAPACK adapter using R's column-major layout.
 pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let a = arg_by_name_or_position(args, &["a"], 0);
-        let b = arg_by_name_or_position(args, &["b"], 1);
-        let tol_arg = arg_by_name_or_position(args, &["tol"], 2);
+        // Exact/partial names bind before positional arguments; NULL is an
+        // actual value, distinct from an omitted right-hand side.
+        let mut matched = [None; 3];
+        let formals = ["a", "b", "tol"];
+        let mut positional = Vec::new();
+        let mut cell = args;
+        while !cell.is_null() && cell != R_NilValue() {
+            if let Some(name) = crate::mainutils::essentials::tag_name(cell) {
+                if let Some(index) = formals.iter().position(|formal| formal.starts_with(&name)) {
+                    if matched[index].replace(CAR(cell)).is_some() {
+                        base_error(format!(
+                            "formal argument '{}' matched by multiple actual arguments",
+                            formals[index]
+                        ));
+                    }
+                }
+            } else {
+                positional.push(CAR(cell));
+            }
+            cell = CDR(cell);
+        }
+        for value in positional {
+            if let Some(slot) = matched.iter_mut().find(|slot| slot.is_none()) {
+                *slot = Some(value);
+            }
+        }
+        let a = matched[0]
+            .unwrap_or_else(|| base_error("argument 'a' is missing, with no default".to_owned()));
+        let b = matched[1].unwrap_or_else(|| R_NilValue());
+        let tol_arg = matched[2].unwrap_or_else(|| R_NilValue());
         let dim_sym = crate::sexp::attrib_core::R_DimSymbol();
         let dims = crate::sexp::attrib_core::getAttrib(a, dim_sym);
         if dims == R_NilValue() || XLENGTH(dims) != 2 {
@@ -124,7 +151,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         ) {
             base_error("'a' must be a numeric matrix".to_owned());
         }
-        let inverse = b == R_NilValue();
+        let inverse = matched[1].is_none() || b == crate::sexp::globals::R_MissingArg();
         let bdims = crate::sexp::attrib_core::getAttrib(b, dim_sym);
         let matrix_result = inverse || bdims != R_NilValue();
         let nrhs = if inverse {
@@ -166,10 +193,9 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             ) {
                 base_error("'b' must be numeric".to_owned());
             }
-            crate::mainutils::duplicate::duplicate(crate::mainutils::coerce::coerceVector(
-                b,
-                ty.as_c_int(),
-            ))
+            let converted = crate::mainutils::coerce::coerceVector(b, ty.as_c_int());
+            let _converted = protect(converted);
+            crate::mainutils::duplicate::duplicate(converted)
         };
         let _bb = protect(bb);
         let out_dims = Rf_allocVector3(SEXPTYPE::INTSXP, 2);

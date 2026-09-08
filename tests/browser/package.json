@@ -1,0 +1,6 @@
+{
+  "name": "rport-browser-contracts",
+  "private": true,
+  "scripts": { "test": "node rust-runtime.cjs" },
+  "devDependencies": { "playwright": "1.62.1" }
+}

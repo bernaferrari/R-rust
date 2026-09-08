@@ -42,10 +42,16 @@ jobs:
       - name: Clippy (workspace, deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Check system BLAS/LAPACK embedding profile
+      - name: Install system BLAS/LAPACK
+        run: sudo apt-get update && sudo apt-get install -y liblapack-dev libblas-dev
+
+      - name: Test linked system BLAS/LAPACK adapter contracts
         run: >-
-          cargo check -p r-embed --no-default-features
-          --features fortran-backend
+          cargo test -p rmath --no-default-features
+          --features fortran-backend --lib modules::lapack::backend_tests
+
+      - name: Check system BLAS/LAPACK embedding profile
+        run: cargo check -p r-embed --no-default-features --features fortran-backend
 
   test:
     name: Test
@@ -55,6 +61,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
+      - name: Check capability inventory
+        run: python3 scripts/capability_report.py --check
 
       - name: Test (workspace)
         run: cargo test --workspace
@@ -128,7 +137,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
+      - name: Install pinned Wasm unwind toolchain
+        run: rustup toolchain install nightly-2026-08-25 --profile minimal --component rust-src --target wasm32-unknown-unknown
       - name: Install pinned wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
       - name: WASM toolchain check
@@ -148,13 +159,15 @@ jobs:
           java-version: "17"
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
       - uses: gradle/actions/setup-gradle@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Install pinned Wasm unwind toolchain
+        run: rustup toolchain install nightly-2026-08-25 --profile minimal --component rust-src --target wasm32-unknown-unknown
       - name: Install pinned wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
 
@@ -164,3 +177,10 @@ jobs:
       - name: Build and budget the production bundle
         working-directory: rstudio-mobile
         run: ./gradlew --no-daemon :webApp:checkWasmProductionBundleSize
+
+      - name: Install browser test dependencies
+        run: |
+          npm ci --prefix tests/browser
+          npm exec --prefix tests/browser -- playwright install --with-deps chromium
+      - name: Exercise the Rust runtime through the browser workbench
+        run: node tests/browser/rust-runtime.cjs

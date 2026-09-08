@@ -22,7 +22,8 @@ self.onmessage = ({ data: { id, operation, code } }) => {
       }
       self.postMessage({ id, value });
     } catch (error) {
-      self.postMessage({ id, error: String(error) });
+      const fatal = error instanceof WebAssembly.RuntimeError || String(error).includes('Unexpected interpreter panic');
+      self.postMessage({ id, error: String(error), fatal });
     }
   });
 };

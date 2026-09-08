@@ -50,7 +50,9 @@ use native_shim::JsError;
 /// JS side with `new WasmRSession()`.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct WasmRSession {
-    inner: r_embed::RSession,
+    // Every access is exclusive and catches unexpected panics below. Such a
+    // panic closes the session before another JavaScript request can enter.
+    inner: std::panic::AssertUnwindSafe<Option<r_embed::RSession>>,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -60,8 +62,15 @@ impl WasmRSession {
     /// Throws a `JsError` when interpreter initialization fails.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new() -> Result<Self, JsError> {
+        if cfg!(all(target_arch = "wasm32", panic = "abort")) {
+            return Err(JsError::new(
+                "R requires Wasm exception handling; build with scripts/build_wasm_runtime.sh",
+            ));
+        }
         let inner = r_embed::RSession::new().map_err(|e| JsError::new(&e.to_string()))?;
-        Ok(WasmRSession { inner })
+        Ok(WasmRSession {
+            inner: std::panic::AssertUnwindSafe(Some(inner)),
+        })
     }
 
     /// Evaluate R code and return its display output.
@@ -70,25 +79,31 @@ impl WasmRSession {
     /// the auto-printed value of the final visible expression). A failed
     /// evaluation returns the rendered error text as the string.
     pub fn eval(&mut self, code: &str) -> String {
-        match self.inner.eval(code) {
-            Ok(output) => output,
-            Err(e) => render_error(e),
-        }
+        self.with_session(|session| {
+            Ok(match session.eval(code) {
+                Ok(output) => output,
+                Err(e) => render_error(e),
+            })
+        })
+        .unwrap_or_else(|_| "Error: session closed after an unexpected failure".to_owned())
     }
 
     /// Evaluate, rejecting the JavaScript promise when R reports an error.
     pub fn eval_checked(&mut self, code: &str) -> Result<String, JsError> {
-        self.inner
-            .eval(code)
-            .map_err(|e| JsError::new(&render_error(e)))
+        self.with_session(|session| {
+            session
+                .eval(code)
+                .map_err(|e| JsError::new(&render_error(e)))
+        })
     }
 
     /// Return an owned scalar character value without parsing console output.
     pub fn eval_string(&mut self, code: &str) -> Result<String, JsError> {
-        let result = self
-            .inner
-            .eval_result(code)
-            .map_err(|e| JsError::new(&render_error(e)))?;
+        let result = self.with_session(|session| {
+            session
+                .eval_result(code)
+                .map_err(|e| JsError::new(&render_error(e)))
+        })?;
         match result.value {
             r_embed::RValue::StringVector(mut values) if values.len() == 1 => values
                 .pop()
@@ -100,9 +115,11 @@ impl WasmRSession {
 
     /// Render ordinary R evaluation into an owned PNG.
     pub fn render_png(&mut self, code: &str, width: u32, height: u32) -> Result<Vec<u8>, JsError> {
-        self.inner
-            .render_with_dimensions(code, width, height)
-            .map_err(|e| JsError::new(&e.to_string()))
+        self.with_session(|session| {
+            session
+                .render_with_dimensions(code, width, height)
+                .map_err(|e| JsError::new(&e.to_string()))
+        })
     }
 
     /// Report whether `code` is syntactically complete R input.
@@ -112,7 +129,12 @@ impl WasmRSession {
     /// reports `true` and lets `eval` produce the upstream-shaped parse
     /// error. A closed or failed session reports `false`.
     pub fn is_input_complete(&mut self, code: &str) -> bool {
-        self.inner.is_input_complete(code).unwrap_or(false)
+        self.with_session(|session| {
+            session
+                .is_input_complete(code)
+                .map_err(|e| JsError::new(&e.to_string()))
+        })
+        .unwrap_or(false)
     }
 
     /// Snapshot the global environment's binding names.
@@ -120,12 +142,40 @@ impl WasmRSession {
     /// Owned strings, sorted, `ls(all.names = TRUE)` semantics minus the
     /// engine-internal handle environment.
     pub fn global_binding_names(&mut self) -> Vec<String> {
-        self.inner.global_binding_names().unwrap_or_default()
+        self.with_session(|session| {
+            session
+                .global_binding_names()
+                .map_err(|e| JsError::new(&e.to_string()))
+        })
+        .unwrap_or_default()
     }
 
     /// Close the session and release its interpreter resources.
     pub fn close(&mut self) {
-        self.inner.close();
+        if let Some(mut session) = self.inner.0.take() {
+            session.close();
+        }
+    }
+}
+
+impl WasmRSession {
+    fn with_session<T>(
+        &mut self,
+        f: impl FnOnce(&mut r_embed::RSession) -> Result<T, JsError>,
+    ) -> Result<T, JsError> {
+        let session = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| JsError::new("Session closed"))?;
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(session))) {
+            Ok(result) => result,
+            Err(_) => {
+                self.close();
+                Err(JsError::new(
+                    "Unexpected interpreter panic; session closed. Reset the worker before continuing.",
+                ))
+            }
+        }
     }
 }
 
@@ -141,6 +191,24 @@ fn render_error(e: r_embed::RSessionError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unexpected_panic_closes_session_before_reuse() {
+        let mut session = WasmRSession::new().unwrap();
+        session.eval("x <- 41");
+        let error = session
+            .with_session::<()>(|_| panic!("injected host failure"))
+            .unwrap_err();
+        assert!(error.to_string().contains("session closed"));
+        assert!(session.inner.0.is_none());
+        assert!(
+            session
+                .eval_checked("x + 1")
+                .unwrap_err()
+                .to_string()
+                .contains("Session closed")
+        );
+    }
 
     /// The native oracle the wasm boundary must satisfy (docs/web-architecture.md).
     #[test]

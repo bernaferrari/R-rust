@@ -1544,9 +1544,12 @@ pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
 mod tests {
     use super::*;
     use crate::sexp::session::RSession;
-    use std::sync::atomic::{AtomicI32, Ordering};
 
-    static FINALIZER_RUNS: AtomicI32 = AtomicI32::new(0);
+    // Finalizers run on the owning session's thread. Parallel tests must not
+    // reset or increment another session's assertion counter.
+    thread_local! {
+        static FINALIZER_RUNS: std::cell::Cell<i32> = const { std::cell::Cell::new(0) };
+    }
 
     #[test]
     fn test_sexptype2char_basic() {
@@ -1940,22 +1943,22 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| unsafe {
             with_memory_state(|state| state.pending_finalizers.clear());
-            FINALIZER_RUNS.store(0, Ordering::SeqCst);
+            FINALIZER_RUNS.set(0);
 
             let extptr = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
             R_RegisterCFinalizer(extptr, count_c_finalizer);
 
             R_RunPendingFinalizers();
-            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 0);
+            assert_eq!(FINALIZER_RUNS.get(), 0);
 
             R_gc();
-            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 1);
+            assert_eq!(FINALIZER_RUNS.get(), 1);
             assert!(with_memory_state(|state| state
                 .pending_finalizers
                 .is_empty()));
 
             R_gc();
-            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 1);
+            assert_eq!(FINALIZER_RUNS.get(), 1);
         });
     }
 
@@ -1965,16 +1968,16 @@ mod tests {
         let session = RSession::new();
         session.with_protected(|| unsafe {
             with_memory_state(|state| state.pending_finalizers.clear());
-            FINALIZER_RUNS.store(0, Ordering::SeqCst);
+            FINALIZER_RUNS.set(0);
 
             let extptr = R_MakeExternalPtr(ptr::null_mut(), R_NilValue(), R_NilValue());
             R_RegisterCFinalizerEx(extptr, count_c_finalizer, 1);
 
             R_RunPendingFinalizers();
-            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 0);
+            assert_eq!(FINALIZER_RUNS.get(), 0);
 
             R_RunExitFinalizers_memory();
-            assert_eq!(FINALIZER_RUNS.load(Ordering::SeqCst), 1);
+            assert_eq!(FINALIZER_RUNS.get(), 1);
             assert!(with_memory_state(|state| state
                 .pending_finalizers
                 .is_empty()));
@@ -2061,7 +2064,7 @@ mod tests {
     }
 
     unsafe extern "C" fn count_c_finalizer(_ptr: *mut c_void) {
-        FINALIZER_RUNS.fetch_add(1, Ordering::SeqCst);
+        FINALIZER_RUNS.set(FINALIZER_RUNS.get() + 1);
     }
 
     #[test]

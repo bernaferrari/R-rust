@@ -25,7 +25,7 @@ private fun rustCancel() { js("globalThis.rportRust.cancel()") }
 
 private class BrowserSessionBackend : RSessionBackend {
     private val useRust = window.location.search != "?runtime=webr"
-    private val webR = WebR(postMessageWebROptions())
+    private val webR by lazy { WebR(postMessageWebROptions()) }
     private var initialized = false
 
     override val capabilities = WorkbenchCapabilities(

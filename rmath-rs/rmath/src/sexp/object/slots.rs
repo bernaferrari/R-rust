@@ -267,6 +267,8 @@ impl<'a> Sexp<'a> {
         Ok(unsafe { (*self.ptr).data.charsxp_truelen })
     }
 
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_bytes(self) -> Option<&'a [u8]> {
         self.try_as_bytes().ok()
     }
@@ -287,6 +289,8 @@ impl<'a> Sexp<'a> {
         Ok(unsafe { std::slice::from_raw_parts(data, len) })
     }
 
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_str(self) -> Option<&'a str> {
         self.try_as_str().ok()
     }
@@ -321,6 +325,8 @@ impl<'a> Sexp<'a> {
         Ok(())
     }
 
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_complex_slice(self) -> Option<&'a [Rcomplex]> {
         self.try_as_complex_slice().ok()
     }

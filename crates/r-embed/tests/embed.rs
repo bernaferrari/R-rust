@@ -1,5 +1,7 @@
 //! Integration tests for the r-embed public API.
 
+mod support;
+
 use r_embed::{
     AndroidRuntimePaths, CancellationToken, RPackageInfo, RResourceLimits, RRuntimeInfo, RSession,
     RValue,
@@ -1935,60 +1937,11 @@ fn wasm_m3_oracle_shape() {
 /// Statuses mirror the manifest: pass/partial/blocked with exact blockers.
 #[test]
 fn real_package_corpus() {
-    // Headless corpus runs declare themselves color-less (CI convention):
-    // contract instead of probing tty/RStudio internals.
-    // SAFETY: test-process setup before any threads exist.
-    // Clean-checkout reproducibility: when the developer mirror is
-    // absent, unpack the vendored tarballs into a scratch directory so
-    // the corpus never depends on pre-existing local state (the parity
-    // CI runner has no /tmp/pkgprobe). Layout matches
-    // scripts/real_package_corpus.sh: one top-level dir per tarball.
-    fn ensure_bundled(bundled: &str) -> String {
-        if std::path::Path::new(bundled).join("whisker").is_dir() {
-            return bundled.to_string();
-        }
-        let scratch = std::env::temp_dir().join(format!("rport-corpus-{}", std::process::id()));
-        std::fs::create_dir_all(&scratch).expect("scratch corpus dir");
-        let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/real-packages/vendor");
-        let entries = std::fs::read_dir(&vendor)
-            .expect("vendored package tarballs must exist")
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|x| x == "gz")
-            })
-            .collect::<Vec<_>>();
-        assert!(!entries.is_empty(), "no vendored tarballs found");
-        for entry in &entries {
-            let status = std::process::Command::new("tar")
-                .arg("-xzf")
-                .arg(entry.path())
-                .arg("-C")
-                .arg(&scratch)
-                .status()
-                .expect("tar must be available to unpack the corpus");
-            assert!(
-                status.success(),
-                "unpacking {} failed",
-                entry.path().display()
-            );
-        }
-        scratch.to_string_lossy().into_owned()
-    }
-    let bundled = ensure_bundled(
-        &std::env::var("RPORT_REAL_PKG_BUNDLED")
-            .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string()),
-    );
-    let app =
-        std::env::var("RPORT_REAL_PKG_APP").unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
-    let cache =
-        std::env::var("RPORT_REAL_PKG_CACHE").unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
+    let corpus = support::PackageCorpus::new();
+    let (app, cache, bundled) = (&corpus.app, &corpus.cache, &corpus.bundled);
     let mut session = RSession::new().expect("session");
     session
-        .configure_android_paths(&app, &cache, Some(&bundled))
+        .configure_android_paths(app, cache, Some(bundled))
         .expect("paths");
 
     // whisker 0.4.1 — pass: all three manifest probes (interpolation,

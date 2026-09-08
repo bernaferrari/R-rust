@@ -82,85 +82,8 @@ unsafe fn loess_free() {
     with_loess_workspace_state(LoessWorkspaceState::clear);
 }
 
-#[cfg(feature = "fortran-backend")]
-unsafe extern "C" {
-    fn lowesd(
-        iv: *mut c_int,
-        liv: *mut c_int,
-        lv: *mut c_int,
-        v: *mut c_double,
-        d: *mut c_int,
-        n: *mut c_int,
-        f: *mut c_double,
-        ideg: *mut c_int,
-        nf: *mut c_int,
-        nvmax: *mut c_int,
-        setlf: *mut c_int,
-    );
-    fn lowesa(
-        trL: *mut c_double,
-        n: *mut c_int,
-        d: *mut c_int,
-        tau: *mut c_int,
-        nsing: *mut c_int,
-        one_delta: *mut c_double,
-        two_delta: *mut c_double,
-    );
-    fn lowesb(
-        x: *mut c_double,
-        y: *mut c_double,
-        robust: *mut c_double,
-        diagonal: *mut c_double,
-        i1: *mut c_int,
-        iv: *mut c_int,
-        v: *mut c_double,
-    );
-    fn lowese(
-        iv: *mut c_int,
-        v: *mut c_double,
-        n: *mut c_int,
-        x: *mut c_double,
-        surface: *mut c_double,
-    );
-    fn lowesf(
-        x: *mut c_double,
-        y: *mut c_double,
-        weights: *mut c_double,
-        iv: *mut c_int,
-        v: *mut c_double,
-        m: *mut c_int,
-        x_evaluate: *mut c_double,
-        diagonal: *mut c_double,
-        i2: *mut c_int,
-        surface: *mut c_double,
-    );
-    fn lowesl(iv: *mut c_int, v: *mut c_double, m: *mut c_int, x: *mut c_double, L: *mut c_double);
-    fn lowesc(
-        n: *mut c_int,
-        hat_matrix: *mut c_double,
-        LL: *mut c_double,
-        trL: *mut c_double,
-        one_delta: *mut c_double,
-        two_delta: *mut c_double,
-    );
-    fn ehg169(
-        d: *mut c_int,
-        vc: *mut c_int,
-        nc: *mut c_int,
-        nc2: *mut c_int,
-        nv: *mut c_int,
-        nv2: *mut c_int,
-        vert: *mut c_double,
-        a: *mut c_int,
-        xi: *mut c_double,
-        lv1: *mut c_int,
-        lv2: *mut c_int,
-        lv3: *mut c_int,
-    );
-    fn ehg196(tau: *mut c_int, d: *mut c_int, span: *mut c_double, trL: *mut c_double);
-}
-
-#[cfg(not(feature = "fortran-backend"))]
+// These are R's LOESS routines, not LAPACK symbols. Neither numerical
+// backend supplies them yet; fail explicitly instead of returning fake fits.
 mod loess_stubs {
     use std::os::raw::{c_double, c_int};
     pub unsafe fn lowesd(
@@ -176,6 +99,9 @@ mod loess_stubs {
         _nvmax: *mut c_int,
         _setlf: *mut c_int,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn lowesa(
         _trL: *mut c_double,
@@ -186,6 +112,9 @@ mod loess_stubs {
         _one_delta: *mut c_double,
         _two_delta: *mut c_double,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn lowesb(
         _x: *mut c_double,
@@ -196,6 +125,9 @@ mod loess_stubs {
         _iv: *mut c_int,
         _v: *mut c_double,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn lowese(
         _iv: *mut c_int,
@@ -204,6 +136,9 @@ mod loess_stubs {
         _x: *mut c_double,
         _surface: *mut c_double,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn lowesf(
         _x: *mut c_double,
@@ -217,6 +152,9 @@ mod loess_stubs {
         _i2: *mut c_int,
         _surface: *mut c_double,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn lowesl(
         _iv: *mut c_int,
@@ -225,6 +163,9 @@ mod loess_stubs {
         _x: *mut c_double,
         _L: *mut c_double,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn lowesc(
         _n: *mut c_int,
@@ -234,6 +175,9 @@ mod loess_stubs {
         _one_delta: *mut c_double,
         _two_delta: *mut c_double,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn ehg169(
         _d: *mut c_int,
@@ -249,6 +193,9 @@ mod loess_stubs {
         _lv2: *mut c_int,
         _lv3: *mut c_int,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
     pub unsafe fn ehg196(
         _tau: *mut c_int,
@@ -256,9 +203,11 @@ mod loess_stubs {
         _span: *mut c_double,
         _trL: *mut c_double,
     ) {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "LOESS native routines are not implemented".into(),
+        });
     }
 }
-#[cfg(not(feature = "fortran-backend"))]
 use loess_stubs::*;
 
 fn R_pow_di(x: c_double, n: c_int) -> c_double {
@@ -946,14 +895,44 @@ mod tests {
     use crate::sexp::instance::{RInstance, replace_current_instance};
 
     #[test]
+    fn unported_loess_fails_explicitly() {
+        let failure = std::panic::catch_unwind(|| unsafe {
+            let p = std::ptr::null_mut();
+            lowesd(
+                p,
+                p,
+                p,
+                std::ptr::null_mut(),
+                p,
+                p,
+                std::ptr::null_mut(),
+                p,
+                p,
+                p,
+                p,
+            );
+        })
+        .unwrap_err();
+        assert!(
+            failure
+                .downcast_ref::<crate::sexp::context::RError>()
+                .unwrap()
+                .message
+                .contains("not implemented")
+        );
+    }
+
+    #[test]
     fn loess_workspace_is_session_local_and_owned() {
         let mut first = RInstance::new();
         let mut second = RInstance::new();
-        let drop_square = [0, 0, 0];
 
         unsafe {
             let previous = replace_current_instance(Some(&mut first as *mut RInstance));
-            loess_workspace(2, 20, 0.75, 2, 0, drop_square.as_ptr(), 0, false);
+            with_loess_workspace_state(|state| {
+                state.allocate(100, 100);
+                state.tau = 6;
+            });
             assert!(!first.loess_workspace_state.iv.is_empty());
             assert!(!first.loess_workspace_state.v.is_empty());
             assert_eq!(first.loess_workspace_state.tau, 6);
@@ -962,7 +941,7 @@ mod tests {
             let previous = replace_current_instance(Some(&mut second as *mut RInstance));
             assert!(second.loess_workspace_state.iv.is_empty());
             assert!(second.loess_workspace_state.v.is_empty());
-            loess_workspace(1, 10, 0.5, 1, 0, drop_square.as_ptr(), 0, false);
+            with_loess_workspace_state(|state| state.allocate(50, 50));
             assert!(!second.loess_workspace_state.iv.is_empty());
             assert!(!second.loess_workspace_state.v.is_empty());
             loess_free();

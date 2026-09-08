@@ -1497,46 +1497,23 @@ fn test_dlange_frobenius_scaled_extremes() {
 fn test_zero_dimension_matrices() {
     let mut info = 0i32;
     let n0 = 0i32;
-    let m0 = 0i32;
+    // LAPACK requires lda/ldb >= max(1, rows), even for empty matrices.
+    let ld = 1i32;
+    let mut a = 0.0;
+    let mut b = 0.0;
+    let mut pivot = 0;
     unsafe {
-        backend::dgetrf_(
-            &m0,
-            &n0,
-            std::ptr::null_mut(),
-            &m0,
-            std::ptr::null_mut(),
-            &mut info,
-        );
+        backend::dgetrf_(&n0, &n0, &mut a, &ld, &mut pivot, &mut info);
+        assert_eq!(info, 0, "dgetrf 0-dim info");
+        backend::dpotrf_(&b'U', &n0, &mut a, &ld, &mut info);
+        assert_eq!(info, 0, "dpotrf 0-dim info");
+        backend::dpotri_(&b'U', &n0, &mut a, &ld, &mut info);
+        assert_eq!(info, 0, "dpotri 0-dim info");
+        backend::dgesv_(&n0, &n0, &mut a, &ld, &mut pivot, &mut b, &ld, &mut info);
+        assert_eq!(info, 0, "dgesv 0-dim info");
+        let r = backend::dlange_(&b'F', &n0, &1, &a, &ld, &mut b);
+        assert_eq!(r, 0.0, "dlange 0-dim norm");
     }
-    assert_eq!(info, 0, "dgetrf 0-dim info");
-    let mut uplo = b'U';
-    unsafe {
-        backend::dpotrf_(&uplo, &n0, std::ptr::null_mut(), &n0, &mut info);
-    }
-    assert_eq!(info, 0, "dpotrf 0-dim info");
-    unsafe {
-        backend::dpotri_(&uplo, &n0, std::ptr::null_mut(), &n0, &mut info);
-    }
-    assert_eq!(info, 0, "dpotri 0-dim info");
-    uplo = b'U';
-    let mut nrhs = 0i32;
-    unsafe {
-        backend::dgesv_(
-            &n0,
-            &nrhs,
-            std::ptr::null_mut(),
-            &n0,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            &n0,
-            &mut info,
-        );
-    }
-    assert_eq!(info, 0, "dgesv 0-dim info");
-    nrhs = 1;
-    let z = 0.0f64;
-    let r = unsafe { backend::dlange_(&b'F', &m0, &nrhs, &z, &m0, std::ptr::null_mut()) };
-    assert_eq!(r, 0.0, "dlange 0-dim norm");
 }
 
 #[test]

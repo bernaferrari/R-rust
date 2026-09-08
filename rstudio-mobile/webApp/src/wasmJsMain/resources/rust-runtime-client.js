@@ -15,6 +15,7 @@
         worker.onmessage = ({ data }) => {
           const request = pending.get(data.id);
           if (!request) return;
+          if (data.fatal) { reset(`${data.error}. Session reset; in-memory R objects were cleared.`); return; }
           pending.delete(data.id);
           if (data.error) request.reject(new Error(data.error));
           else request.resolve(data.value);

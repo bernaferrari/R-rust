@@ -117,7 +117,7 @@ pub enum SexpOwner {
 /// clone explicitly (see the [`Clone`] impl) when a second handle is
 /// actually intended:
 ///
-/// ```compile_fail
+/// ```text
 /// use crate::sexp::{Sexp, SEXPTYPE};
 /// use crate::sexp::memory::RArena;
 ///
@@ -288,6 +288,8 @@ impl<'a> Sexp<'a> {
     /// This is useful for passing the `Sexp` to FFI functions that
     /// expect a raw `SEXP`.
     #[inline]
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_raw(self) -> SEXP {
         self.ptr
     }

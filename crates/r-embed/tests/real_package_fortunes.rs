@@ -4,20 +4,17 @@
 //! collisions. Loading mirrors `real_package_corpus` in embed.rs: unpacked
 //! tarball under RPORT_REAL_PKG_BUNDLED, loaded through `library()`.
 
+mod support;
+
 use r_embed::RSession;
 
 #[test]
 fn real_package_corpus_fortunes() {
-    // SAFETY: test-process setup before any threads exist.
-    let bundled = std::env::var("RPORT_REAL_PKG_BUNDLED")
-        .unwrap_or_else(|_| "/tmp/pkgprobe/bundled".to_string());
-    let app =
-        std::env::var("RPORT_REAL_PKG_APP").unwrap_or_else(|_| "/tmp/pkgprobe/app".to_string());
-    let cache =
-        std::env::var("RPORT_REAL_PKG_CACHE").unwrap_or_else(|_| "/tmp/pkgprobe/cache".to_string());
+    let corpus = support::PackageCorpus::new();
+    let (app, cache, bundled) = (&corpus.app, &corpus.cache, &corpus.bundled);
     let mut session = RSession::new().expect("session");
     session
-        .configure_android_paths(&app, &cache, Some(&bundled))
+        .configure_android_paths(app, cache, Some(bundled))
         .expect("paths");
 
     // fortunes 1.5-5 — pass: loads and all five manifest probes hold:

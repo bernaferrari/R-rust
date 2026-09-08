@@ -497,7 +497,7 @@ impl RInstance {
             legacy_protect: super::protect::LegacyProtectionStack::new(),
             root_table: super::protect::RootTable::new(),
             preserve_stack: RefCell::new(Vec::new()),
-            base_wrappers: Default::default(),
+            base_wrappers: RefCell::default(),
             context_stack: Vec::new(),
             in_error: false,
             gc_state: super::gengc::GcState::default(),

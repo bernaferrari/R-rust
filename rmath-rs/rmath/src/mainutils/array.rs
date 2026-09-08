@@ -599,6 +599,35 @@ unsafe fn parse_positive_k(value: SEXP, default: usize, limit: usize) -> usize {
     }
 }
 
+// Vectors promoted to matrices contribute no names, as in GNU R.
+unsafe fn set_product_dimnames(result: SEXP, kind: MatProductKind, x: SEXP, y: SEXP) {
+    unsafe {
+        let (xa, ya) = match kind {
+            MatProductKind::Matrix => (0, 1),
+            MatProductKind::Cross => (1, 1),
+            MatProductKind::TransposedCross => (0, 0),
+        };
+        let xd = getAttrib(x, R_DimNamesSymbol());
+        let yd = getAttrib(y, R_DimNamesSymbol());
+        let axis = |dn: SEXP, i| {
+            if dn != R_NilValue() && !dn.is_null() && XLENGTH(dn) == 2 {
+                VECTOR_ELT(dn, i)
+            } else {
+                R_NilValue()
+            }
+        };
+        let row = axis(xd, xa);
+        let col = axis(yd, ya);
+        if row != R_NilValue() || col != R_NilValue() {
+            let names = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let _names = protect(names);
+            SET_VECTOR_ELT(names, 0, row);
+            SET_VECTOR_ELT(names, 1, col);
+            setAttrib(result, R_DimNamesSymbol(), names);
+        }
+    }
+}
+
 pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &str) -> SEXP {
     unsafe {
         let x = first_arg(args, name);
@@ -606,7 +635,10 @@ pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &st
         if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
             array_error(format!("{name} requires numeric arguments"));
         }
-        if !is_numeric_type(x) || !is_numeric_type(y) {
+        let complex = TYPEOF(x) == SEXPTYPE::CPLXSXP || TYPEOF(y) == SEXPTYPE::CPLXSXP;
+        if (!is_numeric_type(x) && TYPEOF(x) != SEXPTYPE::CPLXSXP)
+            || (!is_numeric_type(y) && TYPEOF(y) != SEXPTYPE::CPLXSXP)
+        {
             array_error(format!(
                 "{name} requires numeric/complex matrix/vector arguments"
             ));
@@ -637,10 +669,52 @@ pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &st
         let result_len = (out_rows as R_xlen_t)
             .checked_mul(out_cols as R_xlen_t)
             .unwrap_or_else(|| array_error("matrix product is too large"));
+        if complex {
+            let value = |v: SEXP, row: usize, col: usize, rows: usize| -> num::complex::Complex64 {
+                let index = row + col * rows;
+                if TYPEOF(v) == SEXPTYPE::CPLXSXP {
+                    let z = *COMPLEX(v).add(index);
+                    num::complex::Complex64::new(z.r, z.i)
+                } else {
+                    num::complex::Complex64::new(numeric_at(v, index), 0.0)
+                }
+            };
+            let left = |row, k| match kind {
+                MatProductKind::Cross => value(x, k, row, x_rows),
+                _ => value(x, row, k, x_rows),
+            };
+            let right = |k, col| match kind {
+                MatProductKind::TransposedCross => value(y, col, k, y_rows),
+                _ => value(y, k, col, y_rows),
+            };
+            let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, result_len);
+            let _result = protect(result);
+            #[cfg(feature = "rust-backend")]
+            let product = {
+                let a = faer::Mat::from_fn(out_rows, inner, left);
+                let b = faer::Mat::from_fn(inner, out_cols, right);
+                &a * &b
+            };
+            for col in 0..out_cols {
+                for row in 0..out_rows {
+                    #[cfg(feature = "rust-backend")]
+                    let z = product[(row, col)];
+                    #[cfg(not(feature = "rust-backend"))]
+                    let z: num::complex::Complex64 =
+                        (0..inner).map(|k| left(row, k) * right(k, col)).sum();
+                    *COMPLEX(result).add(row + col * out_rows) =
+                        crate::sexp::ffi::Rcomplex { r: z.re, i: z.im };
+                }
+            }
+            set_matrix_dim(result, out_rows, out_cols);
+            set_product_dimnames(result, kind, x, y);
+            return result;
+        }
         let result = Rf_allocVector3(SEXPTYPE::REALSXP, result_len);
         if result.is_null() {
             return R_NilValue();
         }
+        let _result = protect(result);
         let out = REAL(result);
 
         for col in 0..out_cols {
@@ -664,6 +738,7 @@ pub(crate) unsafe fn do_matprod_kind(kind: MatProductKind, args: SEXP, name: &st
         }
 
         set_matrix_dim(result, out_rows, out_cols);
+        set_product_dimnames(result, kind, x, y);
         result
     }
 }

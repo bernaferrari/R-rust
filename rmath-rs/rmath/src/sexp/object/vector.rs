@@ -329,6 +329,8 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `None` if this is not a logical vector or the data pointer is null.
     /// The slice is valid for the lifetime `'a` of the `Sexp`.
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_logical_slice(self) -> Option<&'a [c_int]> {
         self.try_as_logical_slice().ok()
     }
@@ -341,6 +343,8 @@ impl<'a> Sexp<'a> {
     /// Get a slice view of the integer data.
     ///
     /// Returns `None` if this is not an integer vector or the data pointer is null.
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_integer_slice(self) -> Option<&'a [c_int]> {
         self.try_as_integer_slice().ok()
     }
@@ -353,6 +357,8 @@ impl<'a> Sexp<'a> {
     /// Get a slice view of the real (double) data.
     ///
     /// Returns `None` if this is not a real vector or the data pointer is null.
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_real_slice(self) -> Option<&'a [c_double]> {
         self.try_as_real_slice().ok()
     }
@@ -365,6 +371,8 @@ impl<'a> Sexp<'a> {
     /// Get a slice view of the raw byte data.
     ///
     /// Returns `None` if this is not a raw vector or the data pointer is null.
+    // Internal SEXP views deliberately consume the non-Copy handle.
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_raw_slice(self) -> Option<&'a [Rbyte]> {
         self.try_as_raw_slice().ok()
     }

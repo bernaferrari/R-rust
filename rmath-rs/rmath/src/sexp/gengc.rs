@@ -196,81 +196,85 @@ fn mark_reachable(obj: SEXP) {
 
 #[inline(always)]
 fn mark_reachable_traced(obj: SEXP) {
-    if obj.is_null() {
-        return;
-    }
-    // A reachable SEXP is always pointer-aligned and lives far above the
-    // null page. This used to be a silent skip that masked real heap
-    // corruption: slots holding small integer sentinels or recycled native
-    // pointers after the collector wrongly swept live bindings. With
-    // persistent roots re-traced every cycle and raw stack references
-    // protected across allocating calls, every traced slot is a real SEXP,
-    // so keep only a debug tripwire that surfaces regressions loudly
-    // instead of dereferencing (or silently skipping) garbage.
-    debug_assert!(
-        (obj as usize) >= 0x1_0000 && (obj as usize).trailing_zeros() >= 3,
-        "mark_reachable_traced on implausible SEXP pointer {:#x}",
-        obj as usize
-    );
-
-    unsafe {
-        if (*obj).sxpinfo.mark() {
-            return;
+    // R object graph depth must not consume the Rust call stack.
+    let mut pending = vec![obj];
+    while let Some(obj) = pending.pop() {
+        if obj.is_null() {
+            continue;
         }
-        (*obj).sxpinfo.set_mark(true);
+        // A reachable SEXP is always pointer-aligned and lives far above the
+        // null page. This used to be a silent skip that masked real heap
+        // corruption: slots holding small integer sentinels or recycled native
+        // pointers after the collector wrongly swept live bindings. With
+        // persistent roots re-traced every cycle and raw stack references
+        // protected across allocating calls, every traced slot is a real SEXP,
+        // so keep only a debug tripwire that surfaces regressions loudly
+        // instead of dereferencing (or silently skipping) garbage.
+        debug_assert!(
+            (obj as usize) >= 0x1_0000 && (obj as usize).trailing_zeros() >= 3,
+            "mark_reachable_traced on implausible SEXP pointer {:#x}",
+            obj as usize
+        );
 
-        let t = (*obj).sxpinfo.type_of();
-        match t {
-            SEXPTYPE::SYMSXP => {
-                mark_reachable((*obj).data.symsxp.pname);
-                mark_reachable((*obj).data.symsxp.value);
-                mark_reachable((*obj).data.symsxp.internal);
+        unsafe {
+            if (*obj).sxpinfo.mark() {
+                continue;
             }
-            // DOTSXP (...) chains are cons cells with the same listsxp
-            // layout; skipping them left spliced `...` arguments untraced.
-            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
-                mark_reachable((*obj).data.listsxp.carval);
-                mark_reachable((*obj).data.listsxp.cdrval);
-                mark_reachable((*obj).data.listsxp.tagval);
-            }
-            SEXPTYPE::CLOSXP => {
-                mark_reachable((*obj).data.closxp.formals);
-                mark_reachable((*obj).data.closxp.body);
-                mark_reachable((*obj).data.closxp.env);
-            }
-            SEXPTYPE::ENVSXP => {
-                mark_reachable((*obj).data.envsxp.frame);
-                mark_reachable((*obj).data.envsxp.enclos);
-                mark_reachable((*obj).data.envsxp.hashtab);
-            }
-            SEXPTYPE::PROMSXP => {
-                mark_reachable((*obj).data.promsxp.value);
-                mark_reachable((*obj).data.promsxp.expr);
-                mark_reachable((*obj).data.promsxp.env);
-            }
-            SEXPTYPE::EXTPTRSXP => {
-                let extptr = (*obj).data.extptr;
-                mark_reachable(extptr[1] as SEXP);
-                mark_reachable(extptr[2] as SEXP);
-            }
-            SEXPTYPE::WEAKREFSXP => {
-                mark_reachable((*obj).data.listsxp.cdrval);
-                mark_reachable((*obj).data.listsxp.tagval);
-            }
-            _ => {}
-        }
+            (*obj).sxpinfo.set_mark(true);
 
-        if vector_payload_has_sexp_refs(t) {
-            let len = (*obj).vecsxp_length();
-            let data = (*obj).gengc_next_node as *mut SEXP;
-            if !data.is_null() && len > 0 {
-                for i in 0..len as usize {
-                    mark_reachable(*data.add(i));
+            let t = (*obj).sxpinfo.type_of();
+            match t {
+                SEXPTYPE::SYMSXP => {
+                    pending.push((*obj).data.symsxp.pname);
+                    pending.push((*obj).data.symsxp.value);
+                    pending.push((*obj).data.symsxp.internal);
+                }
+                // DOTSXP (...) chains are cons cells with the same listsxp
+                // layout; skipping them left spliced `...` arguments untraced.
+                SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP | SEXPTYPE::DOTSXP => {
+                    pending.push((*obj).data.listsxp.carval);
+                    pending.push((*obj).data.listsxp.cdrval);
+                    pending.push((*obj).data.listsxp.tagval);
+                }
+                SEXPTYPE::CLOSXP => {
+                    pending.push((*obj).data.closxp.formals);
+                    pending.push((*obj).data.closxp.body);
+                    pending.push((*obj).data.closxp.env);
+                }
+                SEXPTYPE::ENVSXP => {
+                    pending.push((*obj).data.envsxp.frame);
+                    pending.push((*obj).data.envsxp.enclos);
+                    pending.push((*obj).data.envsxp.hashtab);
+                }
+                SEXPTYPE::PROMSXP => {
+                    pending.push((*obj).data.promsxp.value);
+                    pending.push((*obj).data.promsxp.expr);
+                    pending.push((*obj).data.promsxp.env);
+                }
+                SEXPTYPE::EXTPTRSXP => {
+                    let extptr = (*obj).data.extptr;
+                    pending.push(extptr[1] as SEXP);
+                    pending.push(extptr[2] as SEXP);
+                }
+                SEXPTYPE::WEAKREFSXP => {
+                    pending.push((*obj).data.listsxp.cdrval);
+                    pending.push((*obj).data.listsxp.tagval);
+                }
+                _ => {}
+            }
+
+            if vector_payload_has_sexp_refs(t) {
+                let len = (*obj).vecsxp_length();
+                let data = (*obj).gengc_next_node as *mut SEXP;
+                if !data.is_null() && len > 0 {
+                    for i in 0..len as usize {
+                        pending.push(*data.add(i));
+                    }
                 }
             }
-        }
 
-        mark_reachable((*obj).attrib);
+            pending.push((*obj).attrib);
+        }
     }
 }
 
@@ -2487,6 +2491,39 @@ mod tests {
 
         let after_ptr = unsafe { *((*vec).gengc_next_node as *mut SEXP) };
         assert_eq!(after_ptr, replacement);
+    }
+
+    #[test]
+    fn deeply_nested_cyclic_graph_uses_bounded_call_stack() {
+        let _session = RSession::new();
+        let (head, tail) = with_arena(|arena| {
+            let mut head = unsafe { crate::sexp::globals::R_NilValue() };
+            let mut tail = head;
+            let depth = if cfg!(miri) { 256 } else { 30_000 };
+            for i in 0..depth {
+                let node = arena.alloc_node(SEXPTYPE::LISTSXP);
+                unsafe {
+                    (*node).data.listsxp.cdrval = head;
+                }
+                if i == 0 {
+                    tail = node;
+                }
+                head = node;
+            }
+            // A back-edge also verifies that marking terminates on cycles.
+            unsafe {
+                (*tail).data.listsxp.carval = head;
+            }
+            (head, tail)
+        });
+        let _root = crate::sexp::protect::protect(head);
+        full_gc();
+        with_arena(|arena| {
+            assert!(arena.active_nodes().any(|node| node == tail));
+        });
+        unsafe {
+            assert_eq!((*tail).data.listsxp.carval, head);
+        }
     }
 
     #[test]

@@ -26,7 +26,7 @@ with its own R engine, packages, SVG devices, and interrupt behavior.
 ## Build and verification
 
 Install the pinned Rust toolchain, wasm32-unknown-unknown, wasm-pack 0.15.0,
-Java 17, Node 22 and Yarn classic 1.22.22. Then:
+Java 17, Node 24.15 or later and Yarn classic 1.22.22. Then:
 
 ```bash
 scripts/wasm_m3_smoke.sh
@@ -35,11 +35,31 @@ cd rstudio-mobile
 ./gradlew :webApp:wasmJsBrowserDevelopmentRun
 ```
 
-Gradle builds `r-wasm` with wasm-pack's web target and includes the generated
+R nonlocal control flow uses `catch_unwind`, including errors and `return`.
+The default aborting wasm32 build cannot implement these semantics. The runtime
+build script pins `nightly-2026-08-25`, rebuilds std/panic_unwind, and enables
+`-Cpanic=unwind`. It skips wasm-opt to avoid optimizer/EH encoding mismatches.
+See the [Rust Wasm target documentation](https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html)
+and [wasm-bindgen unwinding requirements](https://wasm-bindgen.github.io/wasm-bindgen/reference/catch-unwind.html).
+Install the pinned toolchain with rust-src before building:
+
+```bash
+rustup toolchain install nightly-2026-08-25 --profile minimal --component rust-src --target wasm32-unknown-unknown
+```
+
+Recent browsers with Wasm exception handling are required. The constructor
+rejects aborting builds rather than allowing a superficially successful arithmetic
+smoke to disguise broken error/return handling. Unexpected Rust panics close
+the session; a fatal Wasm trap resets the worker. Ordinary R errors retain state.
+
+Gradle builds `r-wasm` through this script with wasm-pack's web target and includes the generated
 module and Wasm asset in the served `rust-runtime/` directory. The release gate
 checks both the Kotlin UI budget (450 KiB) and the Rust runtime asset budget
 (25 MiB). The latter is a ceiling, not a download-size claim. CI executes real
 Rust Wasm under Node and builds the production browser bundle.
+
+The Chromium test in `tests/browser/rust-runtime.cjs` exercises the real worker,
+UI, errors, nonlocal control flow, plotting, and cancellation/reset.
 
 The Node smoke exercises evaluation, errors, typed strings, continuation
 parsing, session isolation, solve/mapply contracts, and PNG rendering. It does

@@ -1,11 +1,21 @@
--1,2 
-double 
-TRUE 
-integer 
-TRUE 
-1,2,3 
-factor 
-1,2 
-TRUE 
-1 
-TRUE 
+-1,2
+double
+TRUE
+integer
+TRUE
+1,2,3
+factor
+1,2
+TRUE
+1
+TRUE
+c|b|d
+f|1 + 2|x
+TRUE
+TRUE
+odd name|`odd arg`
+[1] 3
+language
+TRUE
+TRUE
+TRUE

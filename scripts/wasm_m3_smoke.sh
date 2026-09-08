@@ -23,7 +23,7 @@ rustup target add wasm32-unknown-unknown >/dev/null 2>&1 || true
 
 cd "$ROOT_DIR"
 echo "Building r-wasm with wasm-pack (nodejs target)..."
-wasm-pack build "$CRATE_DIR" --target nodejs --dev
+bash scripts/build_wasm_runtime.sh --target nodejs --release
 
 echo "Running node smoke test..."
 cd "$CRATE_DIR"

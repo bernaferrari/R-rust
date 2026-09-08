@@ -1322,6 +1322,52 @@ pub unsafe fn do_as_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if t == SEXPTYPE::ENVSXP {
             return environment_as_list(x);
         }
+        if t == SEXPTYPE::SYMSXP {
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+            SET_VECTOR_ELT(result, 0, x);
+            return result;
+        }
+        if t == SEXPTYPE::CLOSXP {
+            let formals = crate::sexp::accessors::FORMALS(x);
+            let n = pairlist_len(formals) as R_xlen_t;
+            let result = Rf_allocVector3(SEXPTYPE::VECSXP, n + 1);
+            let _result = protect(result);
+            let mut current = formals;
+            let mut names = Vec::new();
+            while current != R_NilValue() && !current.is_null() {
+                SET_VECTOR_ELT(result, names.len() as R_xlen_t, CAR(current));
+                names.push(tag_name(TAG(current)).unwrap_or_default());
+                current = CDR(current);
+            }
+            SET_VECTOR_ELT(
+                result,
+                n,
+                crate::eval::jit::R_BytecodeExpr(crate::sexp::accessors::BODY(x)),
+            );
+            names.push(String::new());
+            if n > 0 {
+                let names = string_vector(&names);
+                crate::eval::attrib_core::setAttrib(
+                    result,
+                    crate::eval::attrib_core::R_NamesSymbol(),
+                    names,
+                );
+            }
+            return result;
+        }
+        if !matches!(
+            SEXPTYPE(t),
+            SEXPTYPE::LGLSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::CPLXSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::RAWSXP
+        ) {
+            crate::mainutils::essentials::base_error(
+                "cannot coerce this type to a list".to_owned(),
+            );
+        }
         // Convert atomic vector to list
         let n = XLENGTH(x);
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, n);

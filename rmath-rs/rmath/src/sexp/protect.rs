@@ -233,7 +233,7 @@ impl RootTable {
             generations: RefCell::new(Vec::new()),
             next_generation: Cell::new(0),
             free_list: RefCell::new(Vec::new()),
-            managed: RefCell::new(Default::default()),
+            managed: RefCell::default(),
         }
     }
 

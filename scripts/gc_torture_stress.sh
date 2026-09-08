@@ -109,6 +109,8 @@ for (i in 1:60) {
 }
 cat("count ", count, "\n", sep = "")
 
+cat(paste(as.character(quote(f(1 + 2, x))), collapse = "|"), "\n")
+cat(identical(as.list(c("a", "b")), list("a", "b")), "\n")
 gctorture(FALSE)
 set.seed(13)
 print(rnorm(2))

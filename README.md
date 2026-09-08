@@ -205,11 +205,21 @@ Fortran BLAS/LAPACK can select the system profile explicitly:
 cargo check -p r-embed --no-default-features --features fortran-backend
 ```
 
+The system profile links Accelerate on macOS and `lapack`/`blas` elsewhere.
+For another provider, set `RPORT_LAPACK_LIB_DIR` and `RPORT_LAPACK_LIB_NAME`
+(for example an installed OpenBLAS library). Verify numerical behavior with
+`cargo test -p rmath --no-default-features --features fortran-backend --lib modules::lapack::backend_tests`.
+
 The `rust-backend` and `fortran-backend` features are mutually exclusive;
 building with both or neither is a compile-time error. The system profile is
 not supported on Android or WASM.
 
+Current inventory counts are generated in [Capability evidence](docs/capability-evidence.md);
+fixture counts are not implementation percentages.
+
 ## Known gaps
+
+The optional system LAPACK backend does not supply GNU R’s LOESS helpers. Those unported routines fail explicitly; LOESS support remains tracked separately.
 
 Honest ledger, each scoped with a reproduction:
 
@@ -295,7 +305,7 @@ evaluations. Tests: `crates/r-embed/tests/value_handle.rs`.
 engine budget (`scripts/libc-budget.txt`): printf/heap/env/time/type
 aliases are hard-zero; string-mem and stdio sit at 1 and 4 (one
 justified libcurl FFI cluster). **Boundary stress**:
-`crates/r-embed/tests/boundary_stress.rs` deterministically proves the
+`crates/r-embed/tests/boundary_stress.rs` exercises the
 embedding invariant (arbitrary scripts never escape as Rust panics) —
 it found and fixed three real escaping-panic bugs (top-level
 `break`/`next`, top-level `return(v)`, empty-script rooting).

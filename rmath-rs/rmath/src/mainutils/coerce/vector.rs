@@ -814,27 +814,14 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
                     coercePairList(v, target)
                 }
             }
+            // Calls have linked cells, never an atomic vector length field.
+            // Reuse the counted pairlist path, including element deparsing.
             t if t == SEXPTYPE::LANGSXP => {
-                if type_ != SEXPTYPE::STRSXP {
-                    coercePairList(v, target)
-                } else {
-                    // LANGSXP -> STRSXP: special handling for operator names
-                    let n = LENGTH(v);
-                    let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
-                    let mut vp = v;
-                    for i in 0..n as R_xlen_t {
-                        let car = CAR(vp);
-                        if isString(car) && LENGTH(car) == 1 {
-                            SET_STRING_ELT(ans, i, STRING_ELT(car, 0));
-                        } else if isSymbol(car) {
-                            SET_STRING_ELT(ans, i, PRINTNAME(car));
-                        } else {
-                            SET_STRING_ELT(ans, i, StringFromLogical(0));
-                        }
-                        vp = CDR(vp);
-                    }
-                    ans
+                let result = coercePairList(v, target);
+                if target == SEXPTYPE::STRSXP && TYPEOF(CAR(v)) == SEXPTYPE::SYMSXP {
+                    SET_STRING_ELT(result, 0, PRINTNAME(CAR(v)));
                 }
+                result
             }
             t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => coerceVectorList(v, target),
             t if t == SEXPTYPE::ENVSXP => {
