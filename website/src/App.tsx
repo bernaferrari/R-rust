@@ -1,9 +1,8 @@
-import { Menu } from "@base-ui/react/menu"
+import { NavigationMenu, NavigationMenuList, NavigationMenuItem, NavigationMenuLink, NavigationMenuTrigger, NavigationMenuContent } from "@/components/ui/navigation-menu"
 import { RConsole } from "@/components/RConsole"
 import { useState, useSyncExternalStore } from "react"
 import {
   ArrowDown,
-  ChevronDown,
   ArrowUpRight,
   ArrowRight,
   Check,
@@ -324,33 +323,31 @@ export default function App({ page = "home" }: { page?: Page | "missing" }) {
             rove<span className="wordmark-dot">.</span>
           </span>
         </a>
-        <nav aria-label="Main navigation" className="site-navigation">
-          {(["editor", "console"] as const).map((key) => (
-            <a className="site-navigation-link" key={key} href={pageHref(key)}
-              aria-current={page === key ? "page" : undefined}>
-              {key === "editor" ? "Editor" : "Console"}
-            </a>
-          ))}
-          <Menu.Root>
-            <Menu.Trigger className="site-navigation-trigger">
-              Explore <ChevronDown size={14} aria-hidden="true" />
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Positioner sideOffset={8} align="start" className="site-navigation-positioner">
-                <Menu.Popup className="site-navigation-menu">
-                  {(Object.keys(pages) as Page[]).map((key) => (
-                    <Menu.LinkItem key={key} href={pageHref(key)}
-                      className="site-navigation-item"
-                      aria-current={page === key ? "page" : undefined}>
-                      <span>{pages[key].label}</span>
-                      {page === key && <Check size={14} aria-hidden="true" />}
-                    </Menu.LinkItem>
-                  ))}
-                </Menu.Popup>
-              </Menu.Positioner>
-            </Menu.Portal>
-          </Menu.Root>
-        </nav>
+        <NavigationMenu aria-label="Main navigation" className="site-navigation">
+          <NavigationMenuList>
+            {(["editor", "console"] as const).map((key) => (
+              <NavigationMenuItem className="site-navigation-direct" key={key}>
+                <NavigationMenuLink className="site-navigation-link" href={pageHref(key)}
+                  active={page === key} aria-current={page === key ? "page" : undefined}>
+                  {key === "editor" ? "Editor" : "Console"}
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+            ))}
+            <NavigationMenuItem>
+              <NavigationMenuTrigger className="site-navigation-trigger">Explore</NavigationMenuTrigger>
+              <NavigationMenuContent className="site-navigation-content">
+                {(Object.keys(pages) as Page[]).map((key) => (
+                  <NavigationMenuLink key={key} href={pageHref(key)}
+                    className="site-navigation-item" active={page === key}
+                    aria-current={page === key ? "page" : undefined}>
+                    <span>{pages[key].label}</span>
+                    {page === key && <Check size={14} aria-hidden="true" />}
+                  </NavigationMenuLink>
+                ))}
+              </NavigationMenuContent>
+            </NavigationMenuItem>
+          </NavigationMenuList>
+        </NavigationMenu>
         <div className="header-actions">
           <ThemeToggle />
           <a
