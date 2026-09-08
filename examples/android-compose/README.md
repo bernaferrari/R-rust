@@ -4,6 +4,11 @@ Minimal Jetpack Compose sample for the real UniFFI embedding API. The app keeps
 two independent `RSession` instances alive, evaluates code, renders PNG plots,
 lists and loads a bundled pure-R package, and cancels a long-running eval.
 
+Use this example to learn how to embed R in your own Android app. For a complete
+editor, console, project browser and plot history, use the
+[R Workbench](../../apps/workbench/). These are independent Gradle projects;
+the example uses the Rust/UniFFI API directly, without workbench code.
+
 ## What It Demonstrates
 
 - Two Android tabs backed by separate Rust R sessions.
@@ -47,11 +52,17 @@ Android shared library at `android/jniLibs/arm64-v8a/libr_uniffi.so`.
 
 ## Build And Run
 
+From the repository root, after preparing bindings and the native library:
+
 ```bash
-apps/workbench/gradlew -p examples/android-compose :app:assembleDebug
+examples/android-compose/gradlew -p examples/android-compose :app:assembleDebug
 adb install -r examples/android-compose/app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -W -n com.rport.sample/.MainActivity
 ```
+
+The example has its own checksum-pinned Gradle wrapper. Use JDK 17 and an Android
+SDK with API 35 installed. You can also open this directory directly in Android
+Studio.
 
 Use the `Showcase` action first. It loads `androiddemo`, runs an S3 method in
 Session A, proves Session B has separate state, and renders labeled line/point

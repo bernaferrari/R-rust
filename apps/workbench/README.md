@@ -3,6 +3,11 @@
 Project-first mobile R workbench built with Jetpack Compose Material 3 and the
 Rust/UniFFI R runtime.
 
+This is the full application. For a small example of embedding the runtime in
+your own Android app, start with [the Compose embedding example](../../examples/android-compose/).
+It is an independent Gradle project demonstrating sessions, plots, packages and
+cancellation without the workbench UI or shared modules.
+
 The workbench contract and report renderer are shared through the KMP `shared`
 module. Android keeps the native Rust/UniFFI session; `webApp` is a Kotlin/Wasm
 browser target behind the same `RSessionBackend` boundary.
