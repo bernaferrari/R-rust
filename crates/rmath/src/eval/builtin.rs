@@ -709,6 +709,14 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
+        name: "qr.qy",
+        handler: crate::mainutils::qr_apply::do_qr_qy,
+    },
+    EvaluatedBuiltin {
+        name: "qr.qty",
+        handler: crate::mainutils::qr_apply::do_qr_qty,
+    },
+    EvaluatedBuiltin {
         name: "qr.Q",
         handler: crate::mainutils::qr_q::do_qr_Q,
     },
