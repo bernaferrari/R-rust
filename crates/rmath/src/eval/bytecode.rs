@@ -111,6 +111,15 @@ pub enum GnuConstantReturn {
     False,
 }
 
+pub const GNU_OP_RETURN: c_int = 1;
+pub const GNU_OP_BRIFNOT: c_int = 3;
+pub const GNU_OP_INVISIBLE: c_int = 15;
+pub const GNU_OP_LDCONST: c_int = 16;
+pub const GNU_OP_LDNULL: c_int = 17;
+pub const GNU_OP_LDTRUE: c_int = 18;
+pub const GNU_OP_LDFALSE: c_int = 19;
+pub const GNU_OP_GETVAR: c_int = 20;
+
 const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
     0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2,
@@ -204,6 +213,130 @@ pub fn validate_gnu_return_stream(
         };
     }
     validate_gnu_constant_return_stream(code, constant_count).map(GnuConstantReturn::Pool)
+}
+
+/// Validate the deliberately bounded GNU execution adapter.
+///
+/// `Ok(false)` means the stream is well-framed but uses an opcode outside the
+/// adapter, so deserialization may retain the source expression. `Err` means
+/// an operand in an otherwise supported stream is malformed and must not be
+/// hidden by source fallback.
+pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Result<bool, String> {
+    validate_gnu_bytecode_stream(code)?;
+
+    let mut pc = 1usize;
+    let mut boundaries = vec![false; code.len()];
+    let mut branches = Vec::new();
+    let mut supported = true;
+    while pc < code.len() {
+        let opcode_pc = pc;
+        boundaries[opcode_pc] = true;
+        let opcode = code[pc];
+        pc += 1;
+        match opcode {
+            GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {}
+            GNU_OP_LDCONST | GNU_OP_GETVAR => {
+                let index = code[pc];
+                if index < 0 {
+                    return Err(format!(
+                        "GNU opcode {opcode} constant pool index {index} is negative"
+                    ));
+                }
+                if index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU opcode {opcode} constant pool index {index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_BRIFNOT => {
+                let call_index = code[pc];
+                let target = code[pc + 1];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU BRIFNOT expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU BRIFNOT jump target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+            }
+            _ => supported = false,
+        }
+        pc += GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
+    }
+
+    if !supported {
+        return Ok(false);
+    }
+    for (branch_pc, target) in branches {
+        if !boundaries[target] {
+            return Err(format!(
+                "GNU BRIFNOT jump target {target} is not an instruction boundary"
+            ));
+        }
+        if target <= branch_pc {
+            return Err(format!(
+                "GNU BRIFNOT backward jump from {branch_pc} to {target} is outside the bounded adapter"
+            ));
+        }
+    }
+
+    let mut depths = vec![None; code.len()];
+    let mut pending = vec![(1usize, 0usize)];
+    let mut saw_return = false;
+    while let Some((instruction_pc, depth)) = pending.pop() {
+        if instruction_pc >= code.len() || !boundaries[instruction_pc] {
+            return Err(format!(
+                "GNU bytecode control flow reaches invalid instruction {instruction_pc}"
+            ));
+        }
+        if let Some(previous) = depths[instruction_pc] {
+            if previous != depth {
+                return Err(format!(
+                    "GNU bytecode stack depth disagrees at instruction {instruction_pc}: {previous} versus {depth}"
+                ));
+            }
+            continue;
+        }
+        depths[instruction_pc] = Some(depth);
+        let opcode = code[instruction_pc];
+        let next = instruction_pc + 1 + GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
+        match opcode {
+            GNU_OP_RETURN => {
+                if depth != 1 {
+                    return Err(format!(
+                        "GNU RETURN at instruction {instruction_pc} requires stack depth 1, found {depth}"
+                    ));
+                }
+                saw_return = true;
+            }
+            GNU_OP_BRIFNOT => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU BRIFNOT at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                pending.push((next, depth - 1));
+                pending.push((code[instruction_pc + 2] as usize, depth - 1));
+            }
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
+                if depth >= 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                pending.push((next, depth + 1));
+            }
+            GNU_OP_INVISIBLE => pending.push((next, depth)),
+            _ => unreachable!(),
+        }
+    }
+    if !saw_return {
+        return Err("GNU bytecode has no reachable RETURN".into());
+    }
+    Ok(true)
 }
 
 fn read_operand(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<c_int, String> {
@@ -1062,6 +1195,40 @@ mod tests {
         // A private-dialect opcode with the same length is not accepted as a
         // scalar form merely because it happens to fit the shape.
         assert!(validate_gnu_return_stream(&[GNU_BC_MAX_VERSION, 20, 1], 2).is_err());
+    }
+
+    #[test]
+    fn bounded_gnu_adapter_proves_branch_targets_and_stack_shape() {
+        assert!(validate_gnu_adapter_stream(&[12], 0).is_err());
+        let branch = [12, 20, 1, 3, 0, 9, 16, 2, 1, 16, 3, 1];
+        assert_eq!(validate_gnu_adapter_stream(&branch, 4), Ok(true));
+
+        let mut non_boundary = branch;
+        non_boundary[5] = 7;
+        assert!(
+            validate_gnu_adapter_stream(&non_boundary, 4)
+                .unwrap_err()
+                .contains("instruction boundary")
+        );
+
+        assert!(
+            validate_gnu_adapter_stream(&[12, 1], 0)
+                .unwrap_err()
+                .contains("stack depth 1")
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 18, 19, 1], 0)
+                .unwrap_err()
+                .contains("stack depth 1")
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 18], 0)
+                .unwrap_err()
+                .contains("invalid instruction")
+        );
+
+        // ADD is well-framed, but remains source-fallback territory.
+        assert_eq!(validate_gnu_adapter_stream(&[12, 44, 0, 1], 1), Ok(false));
     }
 
     #[test]

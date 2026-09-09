@@ -683,6 +683,41 @@ pub unsafe fn SaveSpecialHook(item: SEXP) -> c_int {
 // Internal WriteItem (recursive, writes to BinaryWriter)
 // ---------------------------------------------------------------------------
 
+unsafe fn write_bc_language(
+    value: SEXP,
+    ref_table: &mut WriteHashTable,
+    writer: &mut BinaryWriter,
+    depth: usize,
+) {
+    unsafe {
+        if depth >= 128 {
+            error("GNU bytecode language nesting exceeds 128 levels");
+        }
+        let kind = TYPEOF(value);
+        if kind != SEXPTYPE::LANGSXP && kind != SEXPTYPE::LISTSXP {
+            writer.write_i32(kind);
+            WriteItemInternal(value, ref_table, writer);
+            return;
+        }
+
+        let attributes = ATTRIB(value);
+        let plain = attributes.is_null() || attributes == R_NilValue();
+        writer.write_i32(if kind == SEXPTYPE::LANGSXP {
+            if plain { 6 } else { 240 }
+        } else if plain {
+            2
+        } else {
+            239
+        });
+        if !attributes.is_null() && attributes != R_NilValue() {
+            WriteItemInternal(attributes, ref_table, writer);
+        }
+        WriteItemInternal(TAG(value), ref_table, writer);
+        write_bc_language(CAR(value), ref_table, writer, depth + 1);
+        write_bc_language(CDR(value), ref_table, writer, depth + 1);
+    }
+}
+
 pub unsafe fn WriteItemInternal(
     s: SEXP,
     ref_table: &mut WriteHashTable,
@@ -815,30 +850,10 @@ pub unsafe fn WriteItemInternal(
                 if constant_count > i32::MAX as usize {
                     error("GNU bytecode constant pool is too large to serialize");
                 }
-                if let Err(message) =
-                    crate::eval::bytecode::validate_gnu_return_stream(words, constant_count)
-                {
-                    error(&message);
-                }
-                // This bounded writer supports the atomic pools produced by
-                // GNU's constant-return compiler. Private opcodes and complex
-                // language/repetition graphs must never be written as GNU BC.
-                for i in 0..XLENGTH(constants) {
-                    let value = VECTOR_ELT(constants, i);
-                    if ![
-                        SEXPTYPE::NILSXP,
-                        SEXPTYPE::LGLSXP,
-                        SEXPTYPE::INTSXP,
-                        SEXPTYPE::REALSXP,
-                        SEXPTYPE::CPLXSXP,
-                        SEXPTYPE::STRSXP,
-                        SEXPTYPE::RAWSXP,
-                    ]
-                    .iter()
-                    .any(|kind| TYPEOF(value) == *kind)
-                    {
-                        error("GNU bytecode serialization requires an atomic constant pool");
-                    }
+                match crate::eval::bytecode::validate_gnu_adapter_stream(words, constant_count) {
+                    Ok(true) => {}
+                    Ok(false) => error("unsupported GNU bytecode stream cannot be serialized"),
+                    Err(message) => error(&message),
                 }
                 writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
                 writer.write_i32(1); // GNU WriteBC's unused repetition counter slot.
@@ -846,8 +861,7 @@ pub unsafe fn WriteItemInternal(
                 writer.write_i32(constant_count as i32);
                 for i in 0..XLENGTH(constants) {
                     let value = VECTOR_ELT(constants, i);
-                    writer.write_i32(TYPEOF(value));
-                    WriteItemInternal(value, ref_table, writer);
+                    write_bc_language(value, ref_table, writer, 0);
                 }
                 return;
             }
@@ -997,12 +1011,10 @@ unsafe fn read_bc_source(
         // Keep source fallback for every validated GNU stream outside the
         // bounded adapter. This avoids treating a private opcode collision as
         // GNU execution and preserves the existing interpreted behavior.
-        if !matches!(words, [_, 16, _, 1] | [_, 17..=19, 1]) {
-            return Ok(VECTOR_ELT(constants, 0));
+        match crate::eval::bytecode::validate_gnu_adapter_stream(words, count as usize)? {
+            false => return Ok(VECTOR_ELT(constants, 0)),
+            true => {}
         }
-        // A recognized adapter shape with an invalid operand must fail, not
-        // silently execute source metadata instead of its instruction stream.
-        crate::eval::bytecode::validate_gnu_return_stream(words, count as usize)?;
 
         // Keep source deparsing independent from the executable constants.
         // The source is an owned copy because callers may edit it while the

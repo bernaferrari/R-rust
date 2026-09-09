@@ -382,7 +382,7 @@ pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
     }
 }
 
-unsafe fn eval_gnu_constant_return(body: SEXP) -> SEXP {
+unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let code_vec = VECTOR_ELT(body, 0);
         let consts = BCODE_CONSTS(body);
@@ -398,15 +398,90 @@ unsafe fn eval_gnu_constant_return(body: SEXP) -> SEXP {
             bc_error("GNU bytecode instruction stream has a null data pointer");
         }
         let words = std::slice::from_raw_parts(code, n);
-        let returned = super::bytecode::validate_gnu_return_stream(words, LENGTH(consts) as usize)
-            .unwrap_or_else(|message| bc_error(message));
-        super::runtime::set_visible(TRUE);
-        match returned {
-            super::bytecode::GnuConstantReturn::Pool(index) => VECTOR_ELT(consts, index as i64),
-            super::bytecode::GnuConstantReturn::Null => R_NilValue(),
-            super::bytecode::GnuConstantReturn::True => Rf_ScalarLogical(TRUE),
-            super::bytecode::GnuConstantReturn::False => Rf_ScalarLogical(FALSE),
+        if !super::bytecode::validate_gnu_adapter_stream(words, LENGTH(consts) as usize)
+            .unwrap_or_else(|message| bc_error(message))
+        {
+            bc_error("unsupported tagged GNU bytecode stream");
         }
+
+        let mut pc = 1usize;
+        let mut stack = R_bcstack_t::new(4);
+        while pc < words.len() {
+            let opcode = words[pc];
+            pc += 1;
+            match opcode {
+                super::bytecode::GNU_OP_RETURN => {
+                    return stack_pop_checked(&mut stack, "GNU RETURN");
+                }
+                super::bytecode::GNU_OP_BRIFNOT => {
+                    let _call_index = words[pc];
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let condition = stack_pop_checked(&mut stack, "GNU BRIFNOT");
+                    let branch =
+                        with_stack_rooted(&stack, condition, || eval_bc_condition(condition));
+                    if !branch {
+                        pc = target;
+                    }
+                }
+                super::bytecode::GNU_OP_INVISIBLE => {
+                    super::runtime::set_visible(FALSE);
+                }
+                super::bytecode::GNU_OP_LDCONST => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    super::runtime::set_visible(TRUE);
+                    stack.push(VECTOR_ELT(consts, index as i64));
+                }
+                super::bytecode::GNU_OP_LDNULL => {
+                    super::runtime::set_visible(TRUE);
+                    stack.push(R_NilValue());
+                }
+                super::bytecode::GNU_OP_LDTRUE => {
+                    super::runtime::set_visible(TRUE);
+                    let value = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(TRUE));
+                    stack.push(value);
+                }
+                super::bytecode::GNU_OP_LDFALSE => {
+                    super::runtime::set_visible(TRUE);
+                    let value = with_stack_rooted(&stack, R_NilValue(), || Rf_ScalarLogical(FALSE));
+                    stack.push(value);
+                }
+                super::bytecode::GNU_OP_GETVAR => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU GETVAR constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    super::runtime::set_visible(TRUE);
+                    let value = with_stack_rooted(&stack, symbol, || R_findVar(symbol, rho));
+                    if value == R_UnboundValue() {
+                        bc_error("object not found");
+                    }
+                    if value == R_MissingArg() {
+                        bc_missing_arg_error(symbol);
+                    }
+                    if TYPEOF(value) == SEXPTYPE::DOTSXP {
+                        bc_error("'...' used in an invalid context");
+                    }
+                    let value = if TYPEOF(value) == SEXPTYPE::PROMSXP {
+                        let forced = with_stack_rooted(&stack, value, || forcePromise(value));
+                        if forced == R_MissingArg() {
+                            bc_missing_arg_error(symbol);
+                        }
+                        forced
+                    } else {
+                        value
+                    };
+                    stack.push(value);
+                }
+                _ => bc_error(format!("unsupported tagged GNU bytecode opcode {opcode}")),
+            }
+        }
+        bc_error("GNU bytecode ended without RETURN")
     }
 }
 
@@ -595,7 +670,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
         }
 
         if BCODE_IS_GNU(body) {
-            return eval_gnu_constant_return(body);
+            return eval_gnu_adapter(body, rho);
         }
 
         let code_ptr = BCODE_CODE(body);
