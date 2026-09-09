@@ -26,7 +26,7 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_double, c_int, c_long};
+use std::os::raw::{c_double, c_int, c_long};
 
 // Timezone/datetime go through the ported tzone layer (R's own
 // extra/tzone) instead of libc: one implementation on every host.
@@ -36,24 +36,6 @@ use crate::tzone_strftime::R_strftime;
 use crate::tzone_strftime::stm as sf_tm;
 
 type time_t = i64;
-
-// FFI for tzname global variable
-#[cfg(not(target_arch = "wasm32"))]
-unsafe extern "C" {
-    static tzname: [*mut c_char; 2];
-    fn tzset();
-}
-
-// wasm32: no timezone database — UTC only. tzname reads as empty and
-// tzset is a no-op, matching the libc facade (localtime == gmtime == UTC).
-#[cfg(target_arch = "wasm32")]
-struct WasmTzname([*mut c_char; 2]);
-#[cfg(target_arch = "wasm32")]
-unsafe impl Sync for WasmTzname {}
-#[cfg(target_arch = "wasm32")]
-static tzname: WasmTzname = WasmTzname([std::ptr::null_mut(); 2]);
-#[cfg(target_arch = "wasm32")]
-unsafe fn tzset() {}
 
 use crate::mainutils::rstrptime::R_strptime;
 use crate::sexp::accessors::*;
@@ -620,6 +602,8 @@ fn mktime0(tm: &mut stm, local: bool) -> c_double {
     tm.tm_mon = ctm.tm_mon;
     tm.tm_year = ctm.tm_year;
     tm.tm_isdst = ctm.tm_isdst;
+    tm.tm_wday = ctm.tm_wday;
+    tm.tm_yday = ctm.tm_yday;
 
     if result == -1 {
         return -1.0;
@@ -1150,36 +1134,35 @@ fn glibc_fix(tm: &mut stm, invalid: &mut bool) {
 // TZ switch setup -- set_tz / reset_tz / prepare_reset_tz in datetime.c
 // ---------------------------------------------------------------------------
 
-/// Save and restore the process `TZ` around a section that needs a specific
-/// time zone. On Unix, trunk's `set_tz()` sets the `TZ` environment variable
-/// and calls `tzset()`; `reset_tz()` restores the previous setting.
+/// Temporarily select a timezone in the owning session's ported timezone engine.
+/// This guard never changes the host process environment or libc timezone.
 struct TzSetup {
-    old: Option<std::ffi::OsString>,
+    old: Option<String>,
+    owner: *mut crate::sexp::instance::RInstance,
 }
 
 impl TzSetup {
     /// Port of `prepare_reset_tz()`: snapshot the current TZ.
     fn prepare() -> Self {
+        let owner = crate::sexp::instance::with_required_current_instance(|inst| inst);
         TzSetup {
-            old: std::env::var_os("TZ"),
+            old: crate::tzone::timezone_override(),
+            owner,
         }
     }
 
     /// Port of `set_tz()`.
     fn set(&self, tz: &str) {
-        unsafe { std::env::set_var("TZ", tz) };
-        unsafe { tzset() };
+        crate::tzone::set_timezone_override(Some(tz.to_owned()));
     }
+}
 
-    /// Port of `reset_tz()`.
-    fn reset(&self) {
-        unsafe {
-            match &self.old {
-                Some(v) => std::env::set_var("TZ", v),
-                None => std::env::remove_var("TZ"),
-            }
-        }
-        unsafe { tzset() };
+impl Drop for TzSetup {
+    fn drop(&mut self) {
+        // The guard is private to a synchronous evaluation and cannot outlive
+        // its session. Restore that owner even if a nested session is active;
+        // accessing ambient state here could restore the wrong timezone.
+        unsafe { (*self.owner).tzone_state.set_override(self.old.take()) };
     }
 }
 
@@ -1407,7 +1390,6 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         if TYPEOF(tzone) == SEXPTYPE::STRSXP {
             setAttrib(ans, Rf_install(c"tzone".as_ptr()), tzone);
         }
-        tzsi.reset();
 
         // The base closure post-processes non-finite inputs: elements of
         // 'x' equal to "Inf" / "-Inf" are replaced by
@@ -1463,10 +1445,7 @@ fn mk_char_str(s: &str) -> CString {
 /// Read `tzname[idx]` as an owned string.
 fn tzname_str(idx: usize) -> String {
     unsafe {
-        #[cfg(target_arch = "wasm32")]
-        let p = tzname.0[idx];
-        #[cfg(not(target_arch = "wasm32"))]
-        let p = tzname[idx];
+        let p = *R_tzname().add(idx);
         if p.is_null() {
             String::new()
         } else {
@@ -1972,6 +1951,40 @@ pub unsafe fn R_R_ISLeapYear(year: c_int) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timezone_guard_restores_its_owner_when_another_session_is_active() {
+        let _first = crate::sexp::session::RSession::new();
+        crate::tzone::set_timezone_override(Some("UTC".to_owned()));
+        let setup = TzSetup::prepare();
+        setup.set("America/New_York");
+        let owner = setup.owner;
+        let _second = crate::sexp::session::RSession::new();
+        crate::tzone::set_timezone_override(Some("Asia/Tokyo".to_owned()));
+        drop(setup);
+        assert_eq!(
+            crate::tzone::timezone_override().as_deref(),
+            Some("Asia/Tokyo")
+        );
+        let previous = unsafe { crate::sexp::instance::replace_current_instance(Some(owner)) };
+        assert_eq!(crate::tzone::timezone_override().as_deref(), Some("UTC"));
+        unsafe { crate::sexp::instance::replace_current_instance(previous) };
+    }
+
+    #[test]
+    fn timezone_setup_restores_session_override_when_unwinding() {
+        let _session = crate::sexp::session::RSession::new();
+        crate::tzone::set_timezone_override(Some("UTC".to_owned()));
+        let host_tz = std::env::var_os("TZ");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let setup = TzSetup::prepare();
+            setup.set("America/New_York");
+            panic!("exercise timezone guard unwind");
+        }));
+        assert!(result.is_err());
+        assert_eq!(crate::tzone::timezone_override().as_deref(), Some("UTC"));
+        assert_eq!(std::env::var_os("TZ"), host_tz);
+    }
 
     #[test]
     fn test_isleap() {

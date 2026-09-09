@@ -244,6 +244,7 @@ struct TzGlobals {
     tm: stm,
     tzname_bufs: [Box<[u8; TZ_MAX_CHARS + 1]>; 2],
     tzname_ptrs: Box<[*mut core::ffi::c_char; 2]>,
+    override_name: Option<String>,
 }
 
 impl Default for TzGlobals {
@@ -260,6 +261,7 @@ impl Default for TzGlobals {
                 Box::new([0u8; TZ_MAX_CHARS + 1]),
             ],
             tzname_ptrs: Box::new([std::ptr::null_mut(); 2]),
+            override_name: None,
         };
         // Initialize gmtmem with "GMT"
         let gmt_bytes = b"GMT";
@@ -286,6 +288,11 @@ impl TzRuntimeState {
     fn globals_mut(&mut self) -> &mut TzGlobals {
         &mut self.globals
     }
+
+    pub(crate) fn set_override(&mut self, name: Option<String>) {
+        self.globals.override_name = name;
+        self.globals.lcl_is_set = 0;
+    }
 }
 
 impl Default for TzRuntimeState {
@@ -294,6 +301,16 @@ impl Default for TzRuntimeState {
             globals: TzGlobals::default(),
         }
     }
+}
+
+pub fn timezone_override() -> Option<String> {
+    with_tz_globals(|g| g.override_name.clone())
+}
+
+pub fn set_timezone_override(name: Option<String>) {
+    with_required_current_instance(|inst| unsafe {
+        (*inst).tzone_state.set_override(name);
+    });
 }
 
 fn with_tz_globals<R>(f: impl FnOnce(&mut TzGlobals) -> R) -> R {
@@ -345,32 +362,13 @@ static YEAR_LENGTHS: [i32; 2] = [DAYSPERNYEAR, DAYSPERLYEAR];
 // ---------------------------------------------------------------------------
 
 fn detzcode(codep: &[u8]) -> i32 {
-    let mut result: i32 = (codep[0] & 0x7f) as i32;
-    #[allow(clippy::identity_op)]
-    for i in 1..4 {
-        result = (result << 8) | (codep[i] & 0xff) as i32;
-    }
-    if (codep[0] & 0x80) != 0 {
-        // Two's complement negation
-        let minval: i32 = i32::MIN;
-        result = if result != 0 { result - 1 } else { result };
-        result = result.wrapping_add(minval);
-    }
-    result
+    i32::from_be_bytes([codep[0], codep[1], codep[2], codep[3]])
 }
 
 fn detzcode64(codep: &[u8]) -> i64 {
-    let mut result: i64 = (codep[0] & 0x7f) as i64;
-    #[allow(clippy::identity_op)]
-    for i in 1..8 {
-        result = (result << 8) | (codep[i] & 0xff) as i64;
-    }
-    if (codep[0] & 0x80) != 0 {
-        let minval: i64 = i64::MIN;
-        result = if result != 0 { result - 1 } else { result };
-        result = result.wrapping_add(minval);
-    }
-    result
+    i64::from_be_bytes([
+        codep[0], codep[1], codep[2], codep[3], codep[4], codep[5], codep[6], codep[7],
+    ])
 }
 
 // ---------------------------------------------------------------------------
@@ -2135,9 +2133,9 @@ fn r_tzsetwall(g: &mut TzGlobals) {
 // ---------------------------------------------------------------------------
 
 fn r_tzset_impl(g: &mut TzGlobals) {
-    let name = match env::var("TZ") {
-        Ok(n) => n,
-        Err(_) => {
+    let name = match g.override_name.clone().or_else(|| env::var("TZ").ok()) {
+        Some(n) => n,
+        None => {
             r_tzsetwall(g);
             return;
         }
@@ -2145,7 +2143,12 @@ fn r_tzset_impl(g: &mut TzGlobals) {
 
     // Check if already set
     if g.lcl_is_set > 0 {
-        let current = std::str::from_utf8(&g.lcl_TZname[..]).unwrap_or("");
+        let end = g
+            .lcl_TZname
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(g.lcl_TZname.len());
+        let current = std::str::from_utf8(&g.lcl_TZname[..end]).unwrap_or("");
         if current == name {
             return;
         }
@@ -2254,6 +2257,7 @@ pub unsafe fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
             return std::ptr::null_mut();
         }
         with_tz_globals(|g| {
+            r_tzset_impl(g);
             let t = *timep;
             let mut result = stm::default();
             match localsub(g, &t, 0, &mut result) {
@@ -2276,7 +2280,9 @@ pub unsafe fn R_mktime(tmp: *mut stm) -> i64 {
         with_tz_globals(|g| {
             r_tzset_impl(g);
             let mut t = std::ptr::read(tmp);
-            time1(g, &mut t, localsub, 0)
+            let result = time1(g, &mut t, localsub, 0);
+            std::ptr::write(tmp, t);
+            result
         })
     }
 }
@@ -2290,7 +2296,9 @@ pub unsafe fn R_timegm(tmp: *mut stm) -> i64 {
         with_tz_globals(|g| {
             let mut t = std::ptr::read(tmp);
             t.tm_isdst = 0;
-            time1(g, &mut t, gmtsub, 0)
+            let result = time1(g, &mut t, gmtsub, 0);
+            std::ptr::write(tmp, t);
+            result
         })
     }
 }
@@ -2340,6 +2348,9 @@ mod tests {
 
     #[test]
     fn test_detzcode() {
+        for n in [-1i32, -18000, -14400, i32::MIN + 1] {
+            assert_eq!(detzcode(&n.to_be_bytes()), n);
+        }
         // 0x00000000 = 0
         assert_eq!(detzcode(&[0, 0, 0, 0]), 0);
         // 0x00000001 = 1
@@ -2352,6 +2363,9 @@ mod tests {
 
     #[test]
     fn test_detzcode64() {
+        for n in [-1i64, -18000, -2147483649, i64::MIN + 1] {
+            assert_eq!(detzcode64(&n.to_be_bytes()), n);
+        }
         assert_eq!(detzcode64(&[0, 0, 0, 0, 0, 0, 0, 0]), 0);
         assert_eq!(detzcode64(&[0, 0, 0, 0, 0, 0, 0, 1]), 1);
     }
@@ -2402,6 +2416,38 @@ mod tests {
             assert_eq!(tm.tm_sec, 0);
             assert_eq!(tm.tm_wday, 4); // Thursday
         }
+    }
+
+    #[test]
+    fn timezone_override_is_session_local_and_restorable() {
+        let host_tz = std::env::var_os("TZ");
+        let _session = activate_test_session();
+        unsafe {
+            let timestamp = 0_i64;
+            let mut tm = stm::default();
+            set_timezone_override(Some("UTC".to_owned()));
+            assert!(!R_localtime_r(&timestamp, &mut tm).is_null());
+            assert_eq!(tm.tm_hour, 0);
+            set_timezone_override(Some("America/New_York".to_owned()));
+            assert!(!R_localtime_r(&timestamp, &mut tm).is_null());
+            assert_eq!(
+                (tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_gmtoff),
+                (19, 0, 0, -18000)
+            );
+            set_timezone_override(Some("UTC".to_owned()));
+            assert!(!R_localtime_r(&timestamp, &mut tm).is_null());
+            assert_eq!(tm.tm_hour, 0);
+        }
+        drop(_session);
+        let _second = activate_test_session();
+        set_timezone_override(Some("UTC".to_owned()));
+        unsafe {
+            let timestamp = 0_i64;
+            let mut tm = stm::default();
+            assert!(!R_localtime_r(&timestamp, &mut tm).is_null());
+            assert_eq!(tm.tm_hour, 0);
+        }
+        assert_eq!(std::env::var_os("TZ"), host_tz);
     }
 
     #[test]
