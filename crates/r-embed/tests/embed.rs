@@ -2078,8 +2078,8 @@ fn evaluated_builtin_arguments_survive_gc() {
 #[test]
 fn bytecode_lookup_roots_earlier_operands_while_forcing_promises() {
     let mut session = RSession::new().unwrap();
-    assert_eq!(session.eval("f<-function(x)c(list(a=1),x); value<-f({invisible(gc());list(b=2)}); identical(value,list(a=1,b=2))").unwrap(),"[1] TRUE");
-    assert_eq!(session.eval("e<-new.env(); makeActiveBinding('x',function(){invisible(gc());list(b=2)},e); f<-function()c(list(a=1),x); environment(f)<-e; identical(f(),list(a=1,b=2))").unwrap(),"[1] TRUE");
+    assert_eq!(session.eval("f<-compiler::cmpfun(function(x)c(list(a=1),x)); value<-f({invisible(gc());list(b=2)}); identical(value,list(a=1,b=2))").unwrap(),"[1] TRUE");
+    assert_eq!(session.eval("e<-new.env(); makeActiveBinding('x',function(){invisible(gc());list(b=2)},e); f<-compiler::cmpfun(function()c(list(a=1),x)); environment(f)<-e; identical(f(),list(a=1,b=2))").unwrap(),"[1] TRUE");
 }
 
 #[test]

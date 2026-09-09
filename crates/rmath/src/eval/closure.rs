@@ -46,6 +46,8 @@ pub fn apply_closure_safe<'a>(
     if !closure.clone().is_closure() {
         return Err("not a closure".to_string());
     }
+    let _closure_guard = unsafe { protect(closure.clone().as_raw()) };
+    unsafe { super::jit::R_CheckJIT(closure.clone().as_raw()) };
 
     let formals = closure
         .clone()
@@ -94,8 +96,8 @@ pub fn apply_closure_safe<'a>(
     }
 
     // Evaluate body in new environment.
-    // If the body was compiled to BCODESXP (via auto in do_function or compile_closure),
-    // the top-level eval_safe dispatch (EvalKind::Bytecode) will call bcEval for the fast VM path.
+    // If the body was compiled to BCODESXP by cmpfun or the invocation JIT,
+    // the top-level eval_safe dispatch (EvalKind::Bytecode) calls bcEval.
     crate::eval::eval::eval_safe(body, new_env)
 }
 
@@ -170,6 +172,12 @@ pub(crate) unsafe fn applyClosureWithFrameVars(
         if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
             return R_NilValue();
         }
+
+        // Keep the closure rooted while the JIT compiler allocates its code
+        // and constant pool. Compilation installs BODY(op) only after the
+        // complete bytecode object exists; an unsupported body stays source.
+        let _op_guard = protect(op);
+        super::jit::R_CheckJIT(op);
 
         // Upstream applyClosure_core passes the *promised* arguments
         // (`actuals = promiseArgs(arglist, rho)`) to begincontext as the

@@ -6,8 +6,9 @@
 
 use std::ffi::CStr;
 
-use crate::eval::jit::compiler_cmpfun;
+use crate::eval::jit::{compiler_cmpfun, compiler_enable_jit};
 use crate::sexp::accessors::{CAR, CDR, CHAR, PRINTNAME, TAG, TYPEOF};
+use crate::sexp::constructors::Rf_ScalarInteger;
 use crate::sexp::context::RError;
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -17,7 +18,7 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 /// Public names implemented by the portable compiler namespace.
-pub(crate) const EXPORTS: &[&str] = &["cmpfun"];
+pub(crate) const EXPORTS: &[&str] = &["cmpfun", "enableJIT"];
 
 fn compiler_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
@@ -105,6 +106,29 @@ pub unsafe fn do_cmpfun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+/// `compiler::enableJIT(level)`, backed by the session-local JIT state used
+/// on every closure invocation.
+pub unsafe fn do_enable_jit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        if args.is_null()
+            || args == R_NilValue()
+            || CAR(args) == crate::sexp::globals::R_MissingArg()
+        {
+            compiler_error("argument 'level' is missing, with no default");
+        }
+        let rest = CDR(args);
+        if !rest.is_null() && rest != R_NilValue() {
+            compiler_error("unused argument (...)");
+        }
+        if let Some(name) = tag_name(args)
+            && (name.is_empty() || !"level".starts_with(&name))
+        {
+            compiler_error(format!("unused argument ({name} = ... )"));
+        }
+        Rf_ScalarInteger(compiler_enable_jit(CAR(args)))
+    }
+}
+
 unsafe fn new_compiler_environment() -> SEXP {
     unsafe {
         let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), R_BaseEnv(), R_NilValue());
@@ -148,11 +172,11 @@ mod tests {
     use crate::sexp::session::RSession;
 
     #[test]
-    fn compiler_namespace_exposes_only_supported_cmpfun() {
+    fn compiler_namespace_exposes_supported_compiler_controls() {
         let _session = RSession::new();
         let namespace = unsafe { namespace() };
         assert_ne!(namespace, unsafe { R_NilValue() });
-        assert_eq!(EXPORTS, &["cmpfun"]);
+        assert_eq!(EXPORTS, &["cmpfun", "enableJIT"]);
     }
 
     #[test]

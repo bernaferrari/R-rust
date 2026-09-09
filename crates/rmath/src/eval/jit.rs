@@ -490,6 +490,21 @@ unsafe fn checkCompilerOptions(jitEnabled: c_int) {
     });
 }
 
+/// Apply `compiler::enableJIT` semantics and return the previous level.
+/// Negative and NA-coerced values are queries, matching GNU R's internal
+/// `do_enablejit`; nonnegative values are stored without clamping.
+pub unsafe fn compiler_enable_jit(level: SEXP) -> c_int {
+    unsafe {
+        let old = get_R_jit_enabled();
+        let new = crate::mainutils::coerce::asInteger(level);
+        if new >= 0 {
+            checkCompilerOptions(new);
+            set_R_jit_enabled(new);
+        }
+        old
+    }
+}
+
 /// Initialize JIT from environment variables.
 ///
 /// Ported from R's `R_init_jit_enabled()` in eval.c. Reads:

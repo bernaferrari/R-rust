@@ -694,6 +694,10 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
+        name: "enableJIT",
+        handler: crate::eval::compiler::do_enable_jit,
+    },
+    EvaluatedBuiltin {
         name: "cmpfun",
         handler: crate::eval::compiler::do_cmpfun,
     },
