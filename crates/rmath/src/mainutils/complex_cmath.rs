@@ -632,10 +632,23 @@ pub unsafe fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 /// Re, Im, Mod, Arg, Conj functions.
 ///
 /// Ported from lines 245-356 of complex.c.
-pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cmathfuns(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
+        }
+
+        let mut ans: SEXP = R_NilValue();
+        if crate::eval::dispatch::DispatchGroup(
+            b"Complex\0".as_ptr() as *const std::os::raw::c_char,
+            call,
+            op,
+            args,
+            env,
+            &mut ans,
+        ) != 0
+        {
+            return ans;
         }
 
         let x = CAR(args);

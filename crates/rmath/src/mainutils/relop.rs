@@ -593,23 +593,24 @@ where
 /// `do_relop_dflt` for the default implementation.
 pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let ans: SEXP = ptr::null_mut();
         let arg1 = CAR(args);
         let arg2 = CADR(args);
 
-        if !has_class(arg1, "ordered")
-            && !has_class(arg2, "ordered")
-            && (ATTRIB(arg1) != R_NilValue() || ATTRIB(arg2) != R_NilValue())
-            && crate::mainutils::objects::DispatchGroup(
-                arg1,
+        // Prefer the evaluator DispatchGroup that actually applies methods.
+        // Skip ordered factors so the dedicated Ops.ordered path keeps stock warnings.
+        if !has_class(arg1, "ordered") && !has_class(arg2, "ordered") {
+            let mut ans: SEXP = R_NilValue();
+            if crate::eval::dispatch::DispatchGroup(
                 b"Ops\0".as_ptr() as *const c_char,
                 call,
-                ptr::null(),
+                op,
                 args,
                 env,
+                &mut ans,
             ) != 0
-        {
-            // DispatchGroup would have set the result via the evaluator
+            {
+                return ans;
+            }
         }
 
         let argc = Rf_length(args);

@@ -169,7 +169,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             *dst.add(i as usize) = val;
         }
 
-        super::arithmetic::propagate_binary_vector_attributes(result, sa, sb, n);
+        super::arithmetic::propagate_arithmetic_attributes(result, sa, sb, n);
         result
     }
 }

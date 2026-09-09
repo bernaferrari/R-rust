@@ -438,6 +438,15 @@ pub enum RSignal {
         target_env: SEXP,
         result: SEXP,
     },
+    /// Generic non-local jump from `R_jumpctxt` when the mask is not a plain
+    /// break/next/return. Catchers that do not recognise the mask re-panic.
+    Jump {
+        /// The exact RCNTXT selected by `findcontext`; this prevents an
+        /// unrelated catch frame from consuming an intermediate jump.
+        target: *mut RCNTXT,
+        mask: i32,
+        value: SEXP,
+    },
 }
 
 unsafe impl Send for RSignal {}
@@ -545,6 +554,51 @@ pub fn context_env_exists(target_env: SEXP) -> bool {
             .any(|ctx| (*ctx.get()).cloenv == target_env)
     })
     .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod jump_signal_tests {
+    use super::{RSignal, handle_closure_signal, handle_loop_signal};
+
+    #[test]
+    fn generic_jump_is_not_consumed_by_closure_handler() {
+        let target = std::ptr::NonNull::<super::RCNTXT>::dangling().as_ptr();
+        let payload = Box::new(RSignal::Jump {
+            target,
+            mask: 0x4000,
+            value: std::ptr::null_mut(),
+        });
+        let unwind = std::panic::catch_unwind(|| handle_closure_signal(payload));
+        let payload = unwind.expect_err("generic jump must propagate");
+        let signal = payload
+            .downcast::<RSignal>()
+            .expect("propagated payload must remain RSignal");
+        match *signal {
+            RSignal::Jump {
+                target: actual,
+                mask,
+                ..
+            } => {
+                assert_eq!(actual, target);
+                assert_eq!(mask, 0x4000);
+            }
+            other => panic!("unexpected signal: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generic_jump_is_not_consumed_by_loop_handler() {
+        let payload = Box::new(RSignal::Jump {
+            target: std::ptr::null_mut(),
+            mask: 2,
+            value: std::ptr::null_mut(),
+        });
+        let unwind = std::panic::catch_unwind(|| handle_loop_signal(payload));
+        assert!(
+            unwind.is_err(),
+            "generic jump must not become loop control flow"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

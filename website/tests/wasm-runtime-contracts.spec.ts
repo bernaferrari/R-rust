@@ -302,7 +302,9 @@ test("GNU bytecode instructions take precedence over retained source in Wasm", a
   expect(output.trim()).toBe("[1] FALSE")
 })
 
-test("interpreted active bindings and caller-scoped grid methods work in Wasm", async ({ page }) => {
+test("interpreted active bindings and caller-scoped grid methods work in Wasm", async ({
+  page,
+}) => {
   await page.goto("/console/")
   const output = await page.evaluate(async () => {
     const { RRuntime } = await import("/src/runtime/r-runtime.ts")
@@ -330,4 +332,39 @@ test("interpreted active bindings and caller-scoped grid methods work in Wasm", 
     }
   })
   expect(output.trim()).toBe("TRUE 6 TRUE")
+})
+
+test("S3 group methods and serialized call tails work in the Wasm worker", async ({
+  page,
+}) => {
+  await page.goto("/console/")
+  const result = await page.evaluate(async () => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      return await runtime.run(
+        `
+        Math.foo <- function(x, ...) structure(NextMethod(), class = class(x))
+        Ops.foo <- function(e1, e2) structure(NextMethod(), class = "foo")
+        Summary.foo <- function(..., na.rm = FALSE) NextMethod()
+        Complex.foo <- function(z) structure(NextMethod(), class = class(z))
+        x <- structure(c(-1, 2), class = "foo")
+        z <- structure(1 + 2i, class = "foo")
+        expr <- quote(f(1L, b = 2L))
+        stopifnot(identical(class(abs(x)), "foo"), identical(class(x + 1), "foo"),
+                  sum(x) == 1, identical(class(Re(z)), "foo"),
+                  identical(expr, unserialize(serialize(expr, NULL))))
+        inherited <- structure(c(1, 2), class="unhandled") + 1
+        stopifnot(identical(class(inherited), "unhandled"))
+        f <- function() { on.exit(gc()); return(c(4L, 5L)) }
+        stopifnot(identical(f(), c(4L, 5L)))
+        cat("group and serialization contracts passed")
+      `,
+        "console"
+      )
+    } finally {
+      runtime.dispose()
+    }
+  })
+  expect(result.output.trim()).toBe("group and serialization contracts passed")
 })

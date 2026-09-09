@@ -138,7 +138,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             warn_simple("NAs produced by integer overflow");
         }
         let _ = result_mut.freeze();
-        propagate_binary_vector_attributes(result_raw, sa, sb, n);
+        propagate_arithmetic_attributes(result_raw, sa, sb, n);
         result_raw
     }
 }
@@ -300,6 +300,21 @@ unsafe fn copy_dims_if_present(result: SEXP, source: SEXP, result_len: R_xlen_t)
 ///   the result inherits that operand's dims/dimnames.
 /// - Otherwise (plain vectors) only `names` are propagated, from whichever
 ///   operand matches the result length (`x` wins).
+/// Arithmetic preserves non-shape attributes from a full-length operand;
+/// when lengths tie, the left operand overwrites matching right attributes.
+/// Comparisons use the separate shape-only path below (GNU arithmetic.c).
+pub(super) unsafe fn propagate_arithmetic_attributes(result: SEXP, a: SEXP, b: SEXP, n: R_xlen_t) {
+    unsafe {
+        if XLENGTH(b) == n {
+            crate::mainutils::array::copyMostAttrib(b, result);
+        }
+        if XLENGTH(a) == n {
+            crate::mainutils::array::copyMostAttrib(a, result);
+        }
+        propagate_binary_vector_attributes(result, a, b, n);
+    }
+}
+
 pub(super) unsafe fn propagate_binary_vector_attributes(
     result: SEXP,
     a: SEXP,
@@ -1120,13 +1135,42 @@ unsafe fn complex_relop(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     }
 }
 
+/// Attempt S3 group-generic dispatch (Ops / Math / Summary / Complex).
+/// Returns Some(result) when a method was found and applied.
+unsafe fn try_group_dispatch(
+    group: &[u8],
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        if args.is_null() || args == R_NilValue() || op.is_null() || op == R_NilValue() {
+            return None;
+        }
+        let mut ans: SEXP = R_NilValue();
+        let dispatched = crate::eval::dispatch::DispatchGroup(
+            group.as_ptr() as *const std::os::raw::c_char,
+            call,
+            op,
+            args,
+            rho,
+            &mut ans,
+        );
+        if dispatched != 0 { Some(ans) } else { None }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Top-level dispatch functions (called by the evaluator)
 // ---------------------------------------------------------------------------
 /// Handle binary arithmetic: +, -, *, /, ^, %%, %/%
-pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let op_name = get_op_name(call);
+        if let Some(result) = try_group_dispatch(b"Ops\0", call, op, args, rho) {
+            return result;
+        }
+        let op_name = get_op_name(op, call);
         #[cfg(feature = "renderplot-device")]
         if let Some(result) = crate::mainutils::portable_grid::unit_binary(
             op_name,
@@ -1198,9 +1242,9 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// Handle comparison operators: <, >, <=, >=, ==, !=
-pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let op_name = get_op_name(call);
+        let op_name = get_op_name(op, call);
         match op_name {
             "<" | ">" | "<=" | ">=" | "==" | "!=" => {
                 let a = CAR(args);
@@ -1766,9 +1810,12 @@ unsafe fn copy_all_attrib(dst: SEXP, src: SEXP) {
 
 /// Handle unary math functions: abs, sqrt, log, log2, log10, exp,
 /// ceiling, floor, trunc, round, sign.
-pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let op_name = get_op_name(call);
+        if let Some(result) = try_group_dispatch(b"Math\0", call, op, args, rho) {
+            return result;
+        }
+        let op_name = get_op_name(op, call);
         let x = CAR(args);
         if x.is_null() {
             return R_NilValue();
@@ -1974,18 +2021,22 @@ pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 /// Handle summary functions: sum, min, max, prod, range.
 /// These accept multiple arguments and aggregate across all elements.
-pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let op = SummaryOp::from_name(get_op_name(call));
+        if let Some(result) = try_group_dispatch(b"Summary\0", call, op, args, rho) {
+            return result;
+        }
+        let summary_op = SummaryOp::from_name(get_op_name(op, call));
         #[cfg(feature = "renderplot-device")]
-        if let Some(result) = crate::mainutils::portable_grid::unit_summary(get_op_name(call), args)
+        if let Some(result) =
+            crate::mainutils::portable_grid::unit_summary(get_op_name(op, call), args)
         {
             return result;
         }
         let na_rm = parse_summary_na_rm(args);
-        let shape = scan_summary_shape(args, op);
+        let shape = scan_summary_shape(args, summary_op);
 
-        match op {
+        match summary_op {
             SummaryOp::Sum => eval_sum(args, shape, na_rm),
             SummaryOp::Prod => eval_prod(args, shape, na_rm),
             SummaryOp::Min => eval_minmax(args, shape, na_rm, SummaryOp::Min),
@@ -2558,9 +2609,9 @@ pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// Handle type-checking functions: is.numeric, is.integer, is.double,
 /// is.complex, is.logical, is.character, is.null, is.raw.
-pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_is_type(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let op_name = get_op_name(call);
+        let op_name = get_op_name(op, call);
         let x = CAR(args);
         if x.is_null() || x == R_NilValue() {
             if op_name == "is.null" {
@@ -2591,72 +2642,72 @@ pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 // Operator name extraction
 // ---------------------------------------------------------------------------
 
-unsafe fn get_op_name(call: SEXP) -> &'static str {
+unsafe fn get_op_name(op: SEXP, call: SEXP) -> &'static str {
     unsafe {
-        if call.is_null() {
-            return "";
+        // Use descriptor identity, including session-local portable bindings,
+        // so aliases and NextMethod's synthetic calls keep the same operation.
+        if let Some(descriptor) = crate::eval::primitive::PrimitiveDescriptor::from_raw(op) {
+            return descriptor.name;
         }
-        let fun_sym = CAR(call);
-        if TYPEOF(fun_sym) != SEXPTYPE::SYMSXP {
-            return "";
-        }
-        let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
-        if pname.is_null() {
-            return "";
-        }
-        let s = crate::sexp::accessors::CHAR(pname);
-        if s.is_null() {
-            return "";
-        }
-        match std::ffi::CStr::from_ptr(s).to_str() {
-            Ok(name) => match name {
-                "+" => "+",
-                "-" => "-",
-                "*" => "*",
-                "/" => "/",
-                "^" => "^",
-                "%%" => "%%",
-                "%/%" => "%/%",
-                ":" => ":",
-                "<" => "<",
-                ">" => ">",
-                "<=" => "<=",
-                ">=" => ">=",
-                "==" => "==",
-                "!=" => "!=",
-                "!" => "!",
-                "abs" => "abs",
-                "sqrt" => "sqrt",
-                "log" => "log",
-                "log2" => "log2",
-                "log10" => "log10",
-                "exp" => "exp",
-                "sinh" => "sinh",
-                "cosh" => "cosh",
-                "tanh" => "tanh",
-                "ceiling" => "ceiling",
-                "floor" => "floor",
-                "trunc" => "trunc",
-                "round" => "round",
-                "sign" => "sign",
-                "length" => "length",
-                "sum" => "sum",
-                "mean" => "mean",
-                "min" => "min",
-                "max" => "max",
-                "prod" => "prod",
-                "range" => "range",
-                "is.numeric" => "is.numeric",
-                "is.integer" => "is.integer",
-                "is.double" => "is.double",
-                "is.complex" => "is.complex",
-                "is.logical" => "is.logical",
-                "is.character" => "is.character",
-                "is.null" => "is.null",
-                "is.raw" => "is.raw",
-                _ => "",
-            },
-            Err(_) => "",
+        let portable = Sexp::from_raw(op).and_then(crate::eval::primitive::portable_primitive_name);
+        let name = if let Some(ref name) = portable {
+            name.as_str()
+        } else {
+            if call.is_null() || TYPEOF(CAR(call)) != SEXPTYPE::SYMSXP {
+                return "";
+            }
+            let s = CHAR(crate::sexp::accessors::PRINTNAME(CAR(call)));
+            if s.is_null() {
+                return "";
+            }
+            std::ffi::CStr::from_ptr(s).to_str().unwrap_or("")
+        };
+        match name {
+            "+" => "+",
+            "-" => "-",
+            "*" => "*",
+            "/" => "/",
+            "^" => "^",
+            "%%" => "%%",
+            "%/%" => "%/%",
+            ":" => ":",
+            "<" => "<",
+            ">" => ">",
+            "<=" => "<=",
+            ">=" => ">=",
+            "==" => "==",
+            "!=" => "!=",
+            "!" => "!",
+            "abs" => "abs",
+            "sqrt" => "sqrt",
+            "log" => "log",
+            "log2" => "log2",
+            "log10" => "log10",
+            "exp" => "exp",
+            "sinh" => "sinh",
+            "cosh" => "cosh",
+            "tanh" => "tanh",
+            "ceiling" => "ceiling",
+            "floor" => "floor",
+            "trunc" => "trunc",
+            "round" => "round",
+            "sign" => "sign",
+            "length" => "length",
+            "sum" => "sum",
+            "mean" => "mean",
+            "min" => "min",
+            "max" => "max",
+            "prod" => "prod",
+            "range" => "range",
+            "is.numeric" => "is.numeric",
+            "is.integer" => "is.integer",
+            "is.double" => "is.double",
+            "is.complex" => "is.complex",
+            "is.logical" => "is.logical",
+            "is.character" => "is.character",
+            "is.null" => "is.null",
+            "is.raw" => "is.raw",
+            _ => "",
         }
     }
 }

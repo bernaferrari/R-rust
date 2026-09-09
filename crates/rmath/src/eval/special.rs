@@ -71,8 +71,8 @@ unsafe fn dispatch_special_by_name(
             "while" => do_while(CDR(call), rho),
             "for" => do_for(CDR(call), rho),
             "repeat" => do_repeat(CDR(call), rho),
-            "break" => do_break(),
-            "next" => do_next(),
+            "break" => do_break(rho),
+            "next" => do_next(rho),
             "function" => do_function(CDR(call), rho),
             "return" => do_return(CDR(call), rho),
             "switch" => crate::mainutils::builtin::do_switch(call, op, args, rho),
@@ -427,6 +427,16 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
         let _cond_guard = protect(cond);
         let _body_guard = protect(body);
 
+        let _loop_ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_LOOP,
+            R_NilValue(),
+            rho,
+            crate::sexp::globals::R_BaseEnv(),
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        );
+
         crate::sexp::context::run_hoisted_loop(|| {
             loop {
                 crate::sexp::instance::check_cancellation();
@@ -513,6 +523,16 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
         let list_cell_addr = std::cell::Cell::new(seq_val as usize);
         let mut gc_counter = 0u32;
 
+        let _loop_ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_LOOP,
+            R_NilValue(),
+            rho,
+            crate::sexp::globals::R_BaseEnv(),
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        );
+
         crate::sexp::context::run_hoisted_loop_with_continue(
             || {
                 while i.get() < n {
@@ -592,6 +612,15 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
         // share the single-setjmp structure used by `for`/`while`. A nested
         // `loop {}` inside `run_hoisted_loop` would never return on success and
         // would allocate until OOM.
+        let _loop_ctx = crate::sexp::context::begin_context_guard(
+            crate::sexp::context::ctxt_flags::CTXT_LOOP,
+            R_NilValue(),
+            rho,
+            crate::sexp::globals::R_BaseEnv(),
+            None,
+            R_NilValue(),
+            R_NilValue(),
+        );
         let mut gc_counter = 0u32;
         loop {
             crate::sexp::instance::check_cancellation();
@@ -623,22 +652,22 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
 // do_break — the break statement
 // ---------------------------------------------------------------------------
 
-/// Implement the `break` statement.
-///
-/// In C, this uses longjmp. In Rust, we panic with a Break signal.
-pub unsafe fn do_break() -> SEXP {
-    std::panic::panic_any(crate::sexp::context::RSignal::Break);
+/// Implement the `break` statement via findcontext + R_jumpctxt.
+pub unsafe fn do_break(rho: SEXP) -> SEXP {
+    unsafe {
+        super::context::findcontext_jump(super::context::JUMP_BREAK, rho, R_NilValue());
+    }
 }
 
 // ---------------------------------------------------------------------------
 // do_next — the next statement
 // ---------------------------------------------------------------------------
 
-/// Implement the `next` statement.
-///
-/// In C, this uses longjmp. In Rust, we panic with a Next signal.
-pub unsafe fn do_next() -> SEXP {
-    std::panic::panic_any(crate::sexp::context::RSignal::Next);
+/// Implement the `next` statement via findcontext + R_jumpctxt.
+pub unsafe fn do_next(rho: SEXP) -> SEXP {
+    unsafe {
+        super::context::findcontext_jump(super::context::JUMP_NEXT, rho, R_NilValue());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -735,7 +764,7 @@ unsafe fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
 // do_return — the return statement
 // ---------------------------------------------------------------------------
 
-/// Implement the `return` special form.
+/// Implement the `return` special form via findcontext + R_jumpctxt.
 unsafe fn do_return(args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let val = if args.is_null() || args == R_NilValue() {
@@ -743,6 +772,12 @@ unsafe fn do_return(args: SEXP, rho: SEXP) -> SEXP {
         } else {
             Rf_eval(CAR(args), rho)
         };
-        std::panic::panic_any(crate::sexp::context::RSignal::Return(val));
+        let _val_guard = protect(val);
+        super::context::findcontext_jump(
+            crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+                | crate::sexp::context::ctxt_flags::CTXT_BROWSER,
+            rho,
+            val,
+        );
     }
 }

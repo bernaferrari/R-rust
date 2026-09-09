@@ -140,7 +140,7 @@ pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
     };
     if !(GNU_BC_MIN_VERSION..=GNU_BC_MAX_VERSION).contains(&version) {
         return Err(format!(
-            "unsupported GNU R bytecode version {version} (supported {GNU_BC_MIN_VERSION}..={GNU_BC_MAX_VERSION})"
+            "BCMISMATCH: unsupported GNU R bytecode version {version} (supported {GNU_BC_MIN_VERSION}..={GNU_BC_MAX_VERSION})"
         ));
     }
 
@@ -151,7 +151,7 @@ pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
         pc += 1;
         let Some(&width) = GNU_BC_OPERAND_WIDTHS.get(opcode as usize) else {
             return Err(format!(
-                "unknown GNU R bytecode opcode {opcode} at stream offset {opcode_position}"
+                "BCMISMATCH: unknown GNU R bytecode opcode {opcode} at stream offset {opcode_position}"
             ));
         };
         let width = width as usize;
@@ -1145,12 +1145,16 @@ mod tests {
     #[test]
     fn rejects_gnu_bytecode_version_opcode_and_truncation() {
         assert!(validate_gnu_bytecode_stream(&[]).is_err());
-        assert!(validate_gnu_bytecode_stream(&[GNU_BC_MIN_VERSION - 1]).is_err());
-        assert!(validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION + 1]).is_err());
-        assert!(
+        let bad_ver = validate_gnu_bytecode_stream(&[GNU_BC_MIN_VERSION - 1]).unwrap_err();
+        assert!(bad_ver.contains("BCMISMATCH"));
+        assert!(bad_ver.contains("unsupported GNU R bytecode version"));
+        let bad_ver_hi = validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION + 1]).unwrap_err();
+        assert!(bad_ver_hi.contains("BCMISMATCH"));
+        let bad_op =
             validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION, GNU_BC_OPCODE_COUNT as c_int])
-                .is_err()
-        );
+                .unwrap_err();
+        assert!(bad_op.contains("BCMISMATCH"));
+        assert!(bad_op.contains("unknown GNU R bytecode opcode"));
         // GNU GOTO (opcode 2) has one operand.
         let err = validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION, 2]).unwrap_err();
         assert!(err.contains("truncated GNU R bytecode opcode 2"));

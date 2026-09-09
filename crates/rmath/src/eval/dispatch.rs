@@ -31,7 +31,6 @@ use crate::sexp::protect::{ProtectGuard, protect};
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::builtin::PRIMNAME;
-use super::closure::applyClosure;
 use super::eval::Rf_eval;
 
 /// Push one evaluated argument cell onto `builder`, keeping every cell built
@@ -680,6 +679,18 @@ unsafe fn findmethod(
                 crate::mainutils::objects::R_LookupMethod(mg, rho, rho, super::runtime::base_env());
             *sxp = valg;
             if isFunction(valg) != FALSE {
+                // Keep portable unit arithmetic and summaries on their Rust
+                // evaluator path. User supplied closures with the same S3
+                // name still dispatch normally.
+                let class_name = std::ffi::CStr::from_ptr(ss).to_bytes();
+                let group_name = std::ffi::CStr::from_ptr(group).to_bytes();
+                if class_name == b"unit"
+                    && (group_name == b"Ops" || group_name == b"Summary")
+                    && TYPEOF(valg) != SEXPTYPE::CLOSXP
+                {
+                    *sxp = R_NilValue();
+                    continue;
+                }
                 *gr = R_mkString(group);
                 break;
             }
@@ -712,9 +723,10 @@ pub unsafe fn DispatchGroup(
         }
 
         // Pre-test: skip if first arg isn't an object and there's no second arg
-        // that's an object either
-        if !isObject(CAR(args)) != FALSE
-            && (CDR(args).is_null() || CDR(args) == R_NilValue() || !isObject(CADR(args)) != FALSE)
+        // that's an object either.  NOTE: isObject returns c_int; do not use
+        // Rust `!` (bitwise not) — that made this pre-test always true.
+        if isObject(CAR(args)) == FALSE
+            && (CDR(args).is_null() || CDR(args) == R_NilValue() || isObject(CADR(args)) == FALSE)
         {
             return 0;
         }
@@ -743,14 +755,21 @@ pub unsafe fn DispatchGroup(
         // For Ops group, check both args; for others, only the first
         let is_ops = streql(group, b"Ops\x00".as_ptr() as *const c_char) != FALSE
             || streql(group, b"matrixOps\x00".as_ptr() as *const c_char) != FALSE;
-        let nargs: c_int = if is_ops { LENGTH(args) } else { 1 };
+        let nargs: c_int = if is_ops {
+            crate::sexp::constructors::Rf_length(args)
+        } else {
+            1
+        };
 
-        if nargs == 1 && !isObject(CAR(args)) != FALSE {
+        if nargs == 1 && isObject(CAR(args)) == FALSE {
             return 0;
         }
 
         // Get generic name from op
-        let generic = PRIMNAME(op);
+        let generic_name = Sexp::from_raw(op)
+            .and_then(crate::eval::primitive::portable_primitive_name)
+            .unwrap_or_else(|| PRIMNAME(op).to_owned());
+        let generic = std::ffi::CString::new(generic_name).expect("primitive name contains NUL");
 
         // Get class of first arg
         let mut guards = Vec::new();
@@ -807,11 +826,22 @@ pub unsafe fn DispatchGroup(
             return 0;
         }
 
-        // For Ops with two different methods, prefer the left one
+        // Distinct methods must not silently select the left operand.
         if lsxp != rsxp {
             if isFunction(lsxp) != FALSE && isFunction(rsxp) != FALSE {
-                // Both have methods — for now prefer left (simplified;
-                // full R would call R_chooseOpsMethod)
+                if crate::mainutils::identical::R_compute_identical(lsxp, rsxp, 23) == 0 {
+                    let left_name =
+                        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(lmeth))).to_string_lossy();
+                    let right_name =
+                        std::ffi::CStr::from_ptr(CHAR(PRINTNAME(rmeth))).to_string_lossy();
+                    let warning = std::ffi::CString::new(format!(
+                        "Incompatible methods (\"{left_name}\", \"{right_name}\") for \"{}\"",
+                        generic.to_string_lossy()
+                    ))
+                    .expect("method names contain NUL");
+                    crate::mainutils::errors::warningcall(call, warning.as_ptr());
+                    return 0;
+                }
             }
             // If left side has no method, use right
             if isFunction(lsxp) == FALSE {
@@ -839,7 +869,7 @@ pub unsafe fn DispatchGroup(
             {
                 SET_STRING_ELT(m, i as R_xlen_t, PRINTNAME(lmeth));
             } else {
-                SET_STRING_ELT(m, i as R_xlen_t, R_BlankScalarString_val());
+                SET_STRING_ELT(m, i as R_xlen_t, STRING_ELT(R_BlankScalarString_val(), 0));
             }
             s = CDR(s);
         }
@@ -863,7 +893,8 @@ pub unsafe fn DispatchGroup(
         guards.push(protect(newvars));
 
         // Build the new call: (method . rest-of-call)
-        let newcall = Rf_cons(lmeth, CDR(call));
+        let newcall = Rf_lang2(lmeth, R_NilValue());
+        SETCDR(newcall, CDR(call));
         guards.push(protect(newcall));
 
         // Create promises for the arguments
@@ -884,8 +915,12 @@ pub unsafe fn DispatchGroup(
             ai = CDR(ai);
         }
 
-        // Dispatch via applyClosure
-        *ans = applyClosure(newcall, lsxp, pargs, rho, newvars, TRUE);
+        // Dispatch through the common method application path so closure
+        // methods receive the S3 frame variables (.Generic, .Group,
+        // .Class, and .Method).  NextMethod discovers those bindings in the
+        // active method frame; calling applyClosure directly would silently
+        // drop them and make group methods unable to continue dispatch.
+        *ans = crate::mainutils::objects::applyMethod(newcall, lsxp, pargs, rho, newvars);
 
         1
     }

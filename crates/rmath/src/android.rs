@@ -2605,6 +2605,61 @@ mod tests {
     }
 
     #[test]
+    fn test_nested_on_exit_runs_before_return() {
+        let mut session = RSession::new();
+        let result = session.eval(
+            "x <- c(); outer <- function() { on.exit({ x <<- c(x, \"o\") }); inner <- function() { on.exit({ x <<- c(x, \"i\") }); return(7) }; inner() }; y <- outer(); all(c(y == 7, identical(x, c(\"i\", \"o\"))))",
+        );
+        assert_eq!(result.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
+    fn test_return_value_survives_gc_in_on_exit() {
+        let mut session = RSession::new();
+        let result = session.eval(
+            "f <- function() { value <- seq_len(2000); on.exit(gc()); value }; y <- f(); identical(y, seq_len(2000))",
+        );
+        assert_eq!(result.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
+    fn test_on_exit_with_break_next_same_frame() {
+        let mut session = RSession::new();
+        // break/next must share the loop's cloenv (GNU findcontext); nested
+        // function break is a top-level error. Exercise same-frame control
+        // flow plus the enclosing function's on.exit.
+        let brk = session.eval(
+            "x <- c(); f <- function() { on.exit({ x <<- c(x, \"e\") }); for (i in 1:3) { if (i == 2) break; x <<- c(x, i) }; x <<- c(x, \"d\") }; f(); all(identical(x, c(1, \"d\", \"e\")))",
+        );
+        assert_eq!(brk.typed, RValue::Logical(Some(true)));
+
+        let nxt = session.eval(
+            "x <- c(); f <- function() { on.exit({ x <<- c(x, \"e\") }); for (i in 1:3) { if (i == 2) next; x <<- c(x, i) } }; f(); all(identical(x, c(1, 3, \"e\")))",
+        );
+        assert_eq!(nxt.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
+    fn test_on_exit_and_tryCatch_with_return_and_error() {
+        let mut session = RSession::new();
+        let returned = session.eval(
+            "x <- 0; f <- function() { on.exit({ x <<- x + 1 }); tryCatch(return(5), error = function(e) 0) }; y <- f(); all(c(y == 5, x == 1))",
+        );
+        assert_eq!(returned.typed, RValue::Logical(Some(true)));
+
+        let caught = session.eval(
+            "x <- 0; f <- function() { on.exit({ x <<- x + 10 }); tryCatch(stop(\"boom\"), error = function(e) 42) }; y <- f(); all(c(y == 42, x == 10))",
+        );
+        assert_eq!(caught.typed, RValue::Logical(Some(true)));
+
+        // tryCatch does not change rho, so break targets the enclosing loop.
+        let break_through = session.eval(
+            "x <- c(); for (i in 1:3) { tryCatch({ x <<- c(x, \"t\"); break }, error = function(e) NULL); x <<- c(x, \"L\") }; all(identical(x, c(\"t\")))",
+        );
+        assert_eq!(break_through.typed, RValue::Logical(Some(true)));
+    }
+
+    #[test]
     fn test_s4_registry_constructs_slot_objects() {
         let mut session = RSession::new();
 

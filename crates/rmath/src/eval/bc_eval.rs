@@ -18,12 +18,12 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
-    VECTOR_ELT,
+    CAR, CDR, CHAR, COMPLEX, ENCLOS, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, STRING_ELT,
+    TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
+use crate::sexp::envir::{R_findVar, defineVar, forcePromise, setVar};
 use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 
@@ -33,6 +33,12 @@ fn bc_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
         message: message.into(),
     });
+}
+
+/// Loud refusal for bytecode ABI / opcode gaps — prefer hard failure over a
+/// silent wrong answer. Message shape mirrors GNU R's `BCMISMATCH` signal.
+fn bc_mismatch(detail: impl Into<String>) -> ! {
+    bc_error(format!("BCMISMATCH: {}", detail.into()));
 }
 
 fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
@@ -401,7 +407,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
         if !super::bytecode::validate_gnu_adapter_stream(words, LENGTH(consts) as usize)
             .unwrap_or_else(|message| bc_error(message))
         {
-            bc_error("unsupported tagged GNU bytecode stream");
+            bc_mismatch("unsupported tagged GNU bytecode stream (outside bounded adapter)");
         }
 
         let mut pc = 1usize;
@@ -478,7 +484,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     };
                     stack.push(value);
                 }
-                _ => bc_error(format!("unsupported tagged GNU bytecode opcode {opcode}")),
+                _ => bc_mismatch(format!("unsupported tagged GNU bytecode opcode {opcode}")),
             }
         }
         bc_error("GNU bytecode ended without RETURN")
@@ -756,6 +762,22 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     // loops decide separately whether to discard that value.
                     let val = stack_top_checked(&stack, "SETVAR");
                     with_stack_rooted(&stack, val, || defineVar(sym, val, rho));
+                    super::runtime::set_visible(FALSE);
+                }
+
+                opcodes::OP_SETVAR2 => {
+                    // GNU R SETVAR2_OP: `<<-` — setVar starting at ENCLOS(rho).
+                    // Declared previously without a match arm; falling through
+                    // to unknown would refuse loudly, but implementing the
+                    // enclosing-frame store closes the declared-but-missing gap.
+                    let idx = read_operand(code_ptr, &mut pc, code_len, "SETVAR2");
+                    let sym = constant_at(consts, idx, "SETVAR2");
+                    if TYPEOF(sym) != SEXPTYPE::SYMSXP {
+                        bc_error("SETVAR2 constant must be a symbol");
+                    }
+                    let val = stack_top_checked(&stack, "SETVAR2");
+                    let parent = ENCLOS(rho);
+                    with_stack_rooted(&stack, val, || setVar(sym, val, parent));
                     super::runtime::set_visible(FALSE);
                 }
 
@@ -1319,7 +1341,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 _ => {
-                    bc_error(format!("unknown bytecode opcode {} at pc {}", op, pc - 1));
+                    bc_mismatch(format!(
+                        "unknown private-dialect bytecode opcode {} at pc {} (OP_LAST={})",
+                        op,
+                        pc - 1,
+                        opcodes::OP_LAST
+                    ));
                 }
             }
         }
@@ -1577,7 +1604,58 @@ mod tests {
         let err = assert_r_error(|| unsafe {
             bcEval(bcode, env);
         });
-        assert!(err.message.contains("unknown bytecode opcode"));
+        assert!(err.message.contains("BCMISMATCH"));
+        assert!(
+            err.message
+                .contains("unknown private-dialect bytecode opcode")
+        );
+    }
+
+    #[test]
+    fn test_bc_eval_setvar2_writes_enclosing_frame() {
+        let _session = crate::sexp::session::RSession::new();
+        use crate::sexp::memory::RArena;
+        let mut arena = RArena::new();
+
+        let parent = empty_env(&mut arena);
+        let child = empty_env(&mut arena);
+        unsafe {
+            (*child).data.envsxp.enclos = parent;
+        }
+
+        let sym = unsafe { crate::sexp::symbol::Rf_install(c"x".as_ptr()) };
+        // Pre-bind in the parent so SETVAR2's setVar updates that frame
+        // (mirrors <<- when the symbol already exists in an enclosing env).
+        unsafe {
+            defineVar(sym, Rf_ScalarInteger(7), parent);
+        }
+        let value = unsafe { Rf_ScalarInteger(42) };
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+        unsafe {
+            SET_VECTOR_ELT(consts, 0, sym);
+            SET_VECTOR_ELT(consts, 1, value);
+        }
+        let bcode = bcode_with(
+            &mut arena,
+            &[
+                opcodes::OP_PUSHCONST,
+                1,
+                opcodes::OP_SETVAR2,
+                0,
+                opcodes::OP_RETURN,
+            ],
+            consts,
+        );
+
+        let result = unsafe { bcEval(bcode, child) };
+        unsafe {
+            assert_eq!(*INTEGER(result), 42);
+            let found_parent = crate::sexp::envir::R_findVarInFrame(parent, sym);
+            assert_ne!(found_parent, R_UnboundValue());
+            assert_eq!(*INTEGER(found_parent), 42);
+            let found_child = crate::sexp::envir::R_findVarInFrame(child, sym);
+            assert_eq!(found_child, R_UnboundValue());
+        }
     }
 
     #[test]

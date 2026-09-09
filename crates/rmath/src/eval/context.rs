@@ -21,7 +21,7 @@ use crate::sexp::instance::{RInstance, with_required_current_instance};
 // Local error helper
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) {
+unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
@@ -91,7 +91,6 @@ pub unsafe fn R_sysframe_in(instance: *mut RInstance, n: c_int, cptr: *mut RCNTX
             c = (*c).nextcontext;
         }
         error("not that many frames on the stack");
-        R_NilValue()
     }
 }
 
@@ -121,7 +120,6 @@ pub unsafe fn R_syscall(n: c_int, cptr: *mut RCNTXT) -> SEXP {
             c = (*c).nextcontext;
         }
         error("not that many frames on the stack");
-        R_NilValue()
     }
 }
 
@@ -151,7 +149,6 @@ pub unsafe fn R_sysfunction(n: c_int, cptr: *mut RCNTXT) -> SEXP {
             c = (*c).nextcontext;
         }
         error("not that many frames on the stack");
-        R_NilValue()
     }
 }
 
@@ -419,7 +416,6 @@ pub unsafe fn do_sys_in(
             }
             _ => {
                 error("internal error in 'do_sys'");
-                R_NilValue()
             }
         }
     }
@@ -507,13 +503,23 @@ pub unsafe fn do_sysbrowser_in(
 }
 
 // ---------------------------------------------------------------------------
-// R_run_onexits — run on.exit handlers
+// R_run_onexits — run on.exit / cend handlers
 // ---------------------------------------------------------------------------
 
+/// Run the interpreted `on.exit` chain (and optional `cend` thunk) on one context.
+///
+/// Upstream `context.c` PROTECTs the chain head and keeps `conexit` pointing at
+/// the not-yet-run remainder while each handler evaluates. Cleared before the
+/// loop to prevent recursion if a handler itself jumps.
 pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
     unsafe {
         if cptr.is_null() {
             return;
+        }
+        if let Some(cend) = (*cptr).cend {
+            (*cptr).cend = None;
+            let data = (*cptr).cenddata;
+            cend(data);
         }
         let conexit = (*cptr).conexit;
         if isNull(conexit) {
@@ -522,13 +528,6 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
         (*cptr).conexit = R_NilValue();
 
         let rho = (*cptr).cloenv;
-        // Upstream context.c R_run_onexits PROTECTs the chain head and keeps
-        // the context's conexit pointing at the not-yet-run remainder while
-        // each handler is evaluated: an on.exit expression may allocate, run
-        // gc(), or register further on.exit expressions. Protect the head for
-        // the whole loop and route the remainder through (*cptr).conexit so
-        // the context keeps it rooted — the collector rewrites the field when
-        // nodes move, hence the re-read after every evaluation.
         let chain_guard = crate::sexp::protect::protect(conexit);
         let mut current = conexit;
         while !isNull(current) {
@@ -543,13 +542,38 @@ pub(crate) unsafe fn R_run_onexits_for_context(cptr: *mut RCNTXT) {
     }
 }
 
+/// Run `cend` + `conexit` for every context from the stack top down to, but not
+/// including, `target` (GNU `R_run_onexits`). Null `target` drains the whole stack.
+///
+/// Handlers run *before* any Rust unwind so interpreter callbacks never execute
+/// from a Drop/catch_unwind frame that still owns live context mutability.
+pub unsafe fn R_run_onexits_until(target: *mut RCNTXT) {
+    with_required_current_instance(|instance| unsafe {
+        R_run_onexits_until_in(instance, target);
+    });
+}
+
+pub unsafe fn R_run_onexits_until_in(instance: *mut RInstance, target: *mut RCNTXT) {
+    unsafe {
+        let mut c = R_GlobalContext_in(instance);
+        while !c.is_null() && c != target {
+            R_run_onexits_for_context(c);
+            c = (*c).nextcontext;
+        }
+        if !target.is_null() && c.is_null() {
+            error("bad target context--should NEVER happen if R was called correctly");
+        }
+    }
+}
+
+/// GNU `R_run_onexits(NULL)` — drain the entire context stack.
 pub fn R_run_onexits() {
     with_required_current_instance(|instance| unsafe { R_run_onexits_in(instance) });
 }
 
 pub unsafe fn R_run_onexits_in(instance: *mut RInstance) {
     unsafe {
-        R_run_onexits_for_context(R_GlobalContext_in(instance));
+        R_run_onexits_until_in(instance, ptr::null_mut());
     }
 }
 
@@ -562,13 +586,94 @@ pub fn eval_CleanUp(_sa: c_int, _status: c_int, _RunLast: c_int) {
 }
 
 // ---------------------------------------------------------------------------
-// R_jumpctxt — jump to a specific context (panic-based)
+// R_jumpctxt — jump to a specific context
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_jumpctxt(_ctxt: *mut RCNTXT, _retval: c_int) {
-    std::panic::panic_any(crate::sexp::context::RError {
-        message: "jump_to_context".to_string(),
+/// GNU `CTXT_NEXT` / `CTXT_BREAK` jump-return codes (Defn.h). Distinct from
+/// this port's `ctxt_flags` context-type encoding.
+pub const JUMP_NEXT: c_int = 1;
+pub const JUMP_BREAK: c_int = 2;
+
+/// Jump to `target`, running intervening on.exit/cend handlers first.
+///
+/// Mirrors GNU `R_jumpctxt(target, mask, val)`. Raises a typed `RSignal`
+/// (`Break`/`Next`/`Return`/`Jump`) instead of `RError("jump_to_context")`.
+pub unsafe fn R_jumpctxt(target: *mut RCNTXT, mask: c_int, val: SEXP) -> ! {
+    unsafe {
+        // The value must remain rooted while on.exit/cend handlers allocate or
+        // collect. Store it in the destination context before running cleanup
+        // so the context itself is also a GC root, matching eval.c.
+        let _val_guard = crate::sexp::protect::protect(val);
+        if !target.is_null() {
+            (*target).returnValue = val;
+            (*target).jumped = 1;
+        }
+        let savevis = super::runtime::visible();
+        R_run_onexits_until(target);
+        super::runtime::set_visible(savevis);
+
+        if mask == JUMP_BREAK {
+            std::panic::panic_any(crate::sexp::context::RSignal::Break);
+        }
+        if mask == JUMP_NEXT {
+            std::panic::panic_any(crate::sexp::context::RSignal::Next);
+        }
+        if (mask & ctxt_flags::CTXT_FUNCTION) != 0
+            || (mask & ctxt_flags::CTXT_RETURN) != 0
+            || (mask & ctxt_flags::CTXT_BROWSER) != 0
+        {
+            std::panic::panic_any(crate::sexp::context::RSignal::Return(val));
+        }
+        std::panic::panic_any(crate::sexp::context::RSignal::Jump {
+            target,
+            mask,
+            value: val,
+        });
+    }
+}
+
+/// Locate a matching context and [`R_jumpctxt`] into it (GNU `findcontext`).
+pub unsafe fn findcontext_jump(mask: c_int, env: SEXP, val: SEXP) -> ! {
+    with_required_current_instance(|instance| unsafe {
+        findcontext_jump_in(instance, mask, env, val);
     });
+    unreachable!("findcontext_jump_in always diverges")
+}
+
+pub unsafe fn findcontext_jump_in(
+    instance: *mut RInstance,
+    mask: c_int,
+    env: SEXP,
+    val: SEXP,
+) -> ! {
+    unsafe {
+        let loop_jump = mask == JUMP_BREAK || mask == JUMP_NEXT;
+        let mut c = R_GlobalContext_in(instance);
+        while !c.is_null() {
+            let flag = (*c).callflag;
+            if flag == ctxt_flags::CTXT_TOPLEVEL {
+                break;
+            }
+            let env_ok = env.is_null() || (*c).cloenv == env;
+            if loop_jump {
+                if (flag & ctxt_flags::CTXT_LOOP) != 0 && env_ok {
+                    R_jumpctxt(c, mask, val);
+                }
+            } else if env_ok
+                && ((flag & ctxt_flags::CTXT_FUNCTION) != 0
+                    || (flag & ctxt_flags::CTXT_RETURN) != 0
+                    || (flag & ctxt_flags::CTXT_BROWSER) != 0)
+            {
+                R_jumpctxt(c, mask, val);
+            }
+            c = (*c).nextcontext;
+        }
+        if loop_jump {
+            error("no loop for break/next, jumping to top level");
+        } else {
+            error("no function to return from, jumping to top level");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -576,8 +681,13 @@ pub unsafe fn R_jumpctxt(_ctxt: *mut RCNTXT, _retval: c_int) {
 // ---------------------------------------------------------------------------
 
 pub fn R_jump_to_top() {
-    std::panic::panic_any(crate::sexp::context::RError {
-        message: "jump_to_top".to_string(),
+    unsafe {
+        R_run_onexits_until(ptr::null_mut());
+    }
+    std::panic::panic_any(crate::sexp::context::RSignal::Jump {
+        target: ptr::null_mut(),
+        mask: ctxt_flags::CTXT_TOPLEVEL,
+        value: unsafe { R_NilValue() },
     });
 }
 
@@ -585,6 +695,8 @@ pub fn R_jump_to_top() {
 // R_InsertRestartHandlers — manage restart handlers
 // ---------------------------------------------------------------------------
 
+/// Known gap: no-op stub. Full interactive `abort`/`browser`/`tryRestart`
+/// defaults remain incomplete versus GNU `R_InsertRestartHandlers`.
 pub unsafe fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {}
 
 // ---------------------------------------------------------------------------
