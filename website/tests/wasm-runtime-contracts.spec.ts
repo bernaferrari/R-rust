@@ -188,3 +188,68 @@ test("simulation drawing is silent while explicit NULL and custom method results
   expect(result.explicit.trim()).toBe("NULL")
   expect(result.custom).toContain("42")
 })
+
+test("GNU literal-return bytecode keeps exact values through browser round trips", async ({
+  page,
+}) => {
+  const cases = [
+    ["null", "NULL"],
+    ["true", "TRUE"],
+    ["false", "FALSE"],
+  ]
+  const programs = cases.map(([name, value]) => {
+    const bytes = readFileSync(
+      new URL(
+        `../../crates/r-embed/tests/fixtures/gnu-${name}-closure.rds`,
+        import.meta.url
+      )
+    )
+    return `f <- unserialize(as.raw(c(${Array.from(bytes).join(",")}))); g <- unserialize(serialize(f,NULL)); cat(identical(f(),${value}),identical(g(),${value}),withVisible(g())$visible)`
+  })
+  await page.goto("/console/")
+  const output = await page.evaluate(async (programs) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const outputs = []
+      for (const code of programs)
+        outputs.push((await runtime.run(code, "console")).output)
+      return outputs
+    } finally {
+      runtime.dispose()
+    }
+  }, programs)
+  expect(output).toEqual(["TRUE TRUE TRUE", "TRUE TRUE TRUE", "TRUE TRUE TRUE"])
+})
+
+test("GNU bytecode instructions take precedence over retained source in Wasm", async ({
+  page,
+}) => {
+  const bytes = readFileSync(
+    new URL(
+      "../../crates/r-embed/tests/fixtures/gnu-true-closure.rds",
+      import.meta.url
+    )
+  )
+  const offset = bytes.indexOf(
+    Buffer.from([0, 0, 0, 12, 0, 0, 0, 18, 0, 0, 0, 1])
+  )
+  expect(offset).toBeGreaterThanOrEqual(0)
+  bytes[offset + 7] = 19
+  await page.goto("/console/")
+  const output = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      return (
+        await runtime.run(
+          `f <- unserialize(as.raw(c(${values}))); f()`,
+          "console"
+        )
+      ).output
+    } finally {
+      runtime.dispose()
+    }
+  }, Array.from(bytes).join(","))
+  expect(output.trim()).toBe("[1] FALSE")
+})

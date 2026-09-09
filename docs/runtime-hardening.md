@@ -201,10 +201,11 @@ resource accounting remain substantial work alongside package support.
 
 GNU R bytecode version 12 instruction framing is checked against all 129 pinned
 opcode widths. A bounded adapter now executes imported version-12 closure bodies
-whose instruction stream is exactly `LDCONST` followed by `RETURN`. It validates
+whose instruction stream is one constant load (`LDCONST`, `LDNULL`, `LDTRUE`,
+or `LDFALSE`) followed by `RETURN`. It validates
 the constant index and uses an explicit dialect marker, keeping GNU instructions
-separate from the private VM. The returned value comes from the executable pool,
-even if the separately retained source is changed. Atomic constant pools can be
+separate from the private VM. Returned values come from the instruction or
+executable pool, even if the separately retained source is changed. Atomic constant pools can be
 serialized back to GNU R; other pool shapes fail explicitly at this boundary.
 
 Other validated compiled closure bodies still use their retained source. This

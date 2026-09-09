@@ -103,6 +103,14 @@ pub const GNU_BC_OPCODE_COUNT: usize = 129;
 /// so the private opcode dialect can never be inferred from an opcode value.
 pub const GNU_BC_DIALECT_MARKER: c_int = 0x4752_4e55;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GnuConstantReturn {
+    Pool(usize),
+    Null,
+    True,
+    False,
+}
+
 const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
     0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2,
@@ -151,7 +159,7 @@ pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate the only GNU bytecode program this runtime executes directly.
+/// Validate the pooled constant-return form of the bounded GNU adapter.
 ///
 /// Keeping this check shared by deserialization, evaluation, and serialization
 /// prevents a tagged but subsequently mutated object from escaping the narrow
@@ -175,6 +183,27 @@ pub fn validate_gnu_constant_return_stream(
         ));
     }
     Ok(index)
+}
+
+/// Validate the compiler's scalar-return forms which do not use the constant
+/// pool.  GNU R emits these as LDNULL/LDTRUE/LDFALSE followed by RETURN.
+pub fn validate_gnu_return_stream(
+    code: &[c_int],
+    constant_count: usize,
+) -> Result<GnuConstantReturn, String> {
+    validate_gnu_bytecode_stream(code)?;
+    if code.len() == 3 && code[2] == 1 {
+        return match code[1] {
+            17 => Ok(GnuConstantReturn::Null),
+            18 => Ok(GnuConstantReturn::True),
+            19 => Ok(GnuConstantReturn::False),
+            _ => Err(
+                "unsupported GNU bytecode stream; only constant-return forms are implemented"
+                    .into(),
+            ),
+        };
+    }
+    validate_gnu_constant_return_stream(code, constant_count).map(GnuConstantReturn::Pool)
 }
 
 fn read_operand(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<c_int, String> {
@@ -1013,6 +1042,26 @@ mod tests {
                 .unwrap_err()
                 .contains("only LDCONST+RETURN")
         );
+    }
+
+    #[test]
+    fn scalar_return_adapter_accepts_only_pinned_gnu_shapes() {
+        assert_eq!(
+            validate_gnu_return_stream(&[GNU_BC_MAX_VERSION, 17, 1], 2),
+            Ok(GnuConstantReturn::Null)
+        );
+        assert_eq!(
+            validate_gnu_return_stream(&[GNU_BC_MAX_VERSION, 18, 1], 2),
+            Ok(GnuConstantReturn::True)
+        );
+        assert_eq!(
+            validate_gnu_return_stream(&[GNU_BC_MAX_VERSION, 19, 1], 2),
+            Ok(GnuConstantReturn::False)
+        );
+        assert!(validate_gnu_return_stream(&[GNU_BC_MAX_VERSION, 17, 0], 2).is_err());
+        // A private-dialect opcode with the same length is not accepted as a
+        // scalar form merely because it happens to fit the shape.
+        assert!(validate_gnu_return_stream(&[GNU_BC_MAX_VERSION, 20, 1], 2).is_err());
     }
 
     #[test]

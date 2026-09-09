@@ -398,11 +398,15 @@ unsafe fn eval_gnu_constant_return(body: SEXP) -> SEXP {
             bc_error("GNU bytecode instruction stream has a null data pointer");
         }
         let words = std::slice::from_raw_parts(code, n);
-        let index =
-            super::bytecode::validate_gnu_constant_return_stream(words, LENGTH(consts) as usize)
-                .unwrap_or_else(|message| bc_error(message));
+        let returned = super::bytecode::validate_gnu_return_stream(words, LENGTH(consts) as usize)
+            .unwrap_or_else(|message| bc_error(message));
         super::runtime::set_visible(TRUE);
-        VECTOR_ELT(consts, index as i64)
+        match returned {
+            super::bytecode::GnuConstantReturn::Pool(index) => VECTOR_ELT(consts, index as i64),
+            super::bytecode::GnuConstantReturn::Null => R_NilValue(),
+            super::bytecode::GnuConstantReturn::True => Rf_ScalarLogical(TRUE),
+            super::bytecode::GnuConstantReturn::False => Rf_ScalarLogical(FALSE),
+        }
     }
 }
 

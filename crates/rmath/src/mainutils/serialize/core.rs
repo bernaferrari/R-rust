@@ -815,10 +815,9 @@ pub unsafe fn WriteItemInternal(
                 if constant_count > i32::MAX as usize {
                     error("GNU bytecode constant pool is too large to serialize");
                 }
-                if let Err(message) = crate::eval::bytecode::validate_gnu_constant_return_stream(
-                    words,
-                    constant_count,
-                ) {
+                if let Err(message) =
+                    crate::eval::bytecode::validate_gnu_return_stream(words, constant_count)
+                {
                     error(&message);
                 }
                 // This bounded writer supports the atomic pools produced by
@@ -998,10 +997,12 @@ unsafe fn read_bc_source(
         // Keep source fallback for every validated GNU stream outside the
         // bounded adapter. This avoids treating a private opcode collision as
         // GNU execution and preserves the existing interpreted behavior.
-        if words.len() != 4 || words[1] != 16 || words[3] != 1 {
+        if !matches!(words, [_, 16, _, 1] | [_, 17..=19, 1]) {
             return Ok(VECTOR_ELT(constants, 0));
         }
-        crate::eval::bytecode::validate_gnu_constant_return_stream(words, count as usize)?;
+        // A recognized adapter shape with an invalid operand must fail, not
+        // silently execute source metadata instead of its instruction stream.
+        crate::eval::bytecode::validate_gnu_return_stream(words, count as usize)?;
 
         // Keep source deparsing independent from the executable constants.
         // The source is an owned copy because callers may edit it while the
