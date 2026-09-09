@@ -320,3 +320,35 @@ Conformance fixtures avoid asserting exact random streams unless the result is
 deterministic by construction, such as zero-weight sampling. This keeps the
 parity gate focused on stock-R behavior contracts: shape, type, replacement
 rules, probability validation, tail/log flags, and numeric edge handling.
+
+## Test-first GNU regressions (September 9, 2026)
+
+The public `RSession` probes in `crates/r-embed/tests/gnu_red_methods.rs`,
+`gnu_red_restarts.rs`, and `gnu_red_compiler.rs` were added as deliberately failing
+regressions, at the user's request. They use ordinary test assertions, with no
+`ignore` or `should_panic` attributes; they make the default workspace test run
+fail until the underlying behavior is implemented. No production behavior was
+changed when these tests were introduced.
+
+Run all three targets, including failures in later targets:
+
+```bash
+scripts/cargo_dev.sh test -p r-embed \
+  --test gnu_red_methods --test gnu_red_restarts --test gnu_red_compiler \
+  --no-fail-fast
+```
+
+At introduction, all nine exact expectations passed against pinned GNU R
+`bac583951b728e97b9786804d3b4081f0fe18df5`; the port had eight failures and one
+passing control. The failures cover S4 `callNextMethod` (`rport-sewq`), S3
+`Recall` (`rport-m4w9`), implicit abort and explicit restart metadata
+(`rport-rm1k`), and imported bytecode following retained source instead of
+instructions (`rport-uewq`). These implementation issues remain tracked in
+Beads; adding tests does not close them.
+
+The compiler fixture generator is
+`crates/r-embed/tests/fixtures/gnu-red-compiler/generate.R`. Two probes mutate
+valid GNU instruction streams without changing their retained source: SQRT to
+EXP, and a loop's LT to GT. Both mutated closures were also executed in GNU R,
+returning `54.59815` (rounded to six decimal places) and `-1`, respectively.
+The unmodified compiled `abs` fixture passes in both runtimes as a control.
