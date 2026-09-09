@@ -2083,6 +2083,22 @@ fn bytecode_lookup_roots_earlier_operands_while_forcing_promises() {
 }
 
 #[test]
+fn interpreted_lookup_preserves_earlier_arguments_across_forced_gc() {
+    let mut session = RSession::new().unwrap();
+    session.eval("compiler::enableJIT(0)").unwrap();
+    assert_eq!(session.eval("compiler::enableJIT(-1)").unwrap(), "[1] 0");
+
+    let promised = session.eval("f<-function(x)c(list(a=1L),x); value<-f({invisible(gc());list(b=2L)}); paste(names(value),unlist(value),collapse='|')").unwrap();
+    assert_eq!(promised, "[1] \"a 1|b 2\"");
+
+    let promised_real = session.eval("f<-function(x)c(list(a=1),x); value<-f({invisible(gc());list(b=2)}); paste(names(value),unlist(value),collapse='|')").unwrap();
+    assert_eq!(promised_real, "[1] \"a 1|b 2\"");
+
+    let active = session.eval("e<-new.env(); makeActiveBinding('x',function(){invisible(gc());list(b=2L)},e); f<-function()c(list(a=1L),x); environment(f)<-e; value<-f(); paste(names(value),unlist(value),collapse='|')").unwrap();
+    assert_eq!(active, "[1] \"a 1|b 2\"");
+}
+
+#[test]
 fn render_plot_window_preserves_the_last_panel_after_layout_wrap() {
     let mut session = RSession::new().unwrap();
     let png=session.render_with_dimensions("par(mfrow=c(1,2));plot.new();plot.new();plot.window(xlim=c(0,1),ylim=c(0,1));lines(c(0,1),c(0,1),col='red',lwd=3)",640,480).unwrap();

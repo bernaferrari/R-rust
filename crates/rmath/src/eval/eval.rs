@@ -25,8 +25,8 @@ use crate::sexp::accessors::{CHAR, PRINTNAME, TYPEOF};
 use crate::sexp::envir::{find_fun_result, forcePromise};
 use crate::sexp::ffi::{SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
-use crate::sexp::object::{PairlistIter, Sexp, SexpError};
-use crate::sexp::symbol::{R_DotsSymbol, symbol_name_bytes_equal, symbol_name_from_ptr};
+use crate::sexp::object::{Sexp, SexpError};
+use crate::sexp::symbol::{R_DotsSymbol, symbol_name_from_ptr};
 
 use super::apply::{apply_builtin_safe, apply_closure_safe, apply_special_safe};
 #[allow(unused_imports)]
@@ -370,48 +370,17 @@ pub(crate) fn find_var_result<'a>(
         return Ok(None);
     }
 
-    // Walk environment chain
-    let mut current = rho;
-    loop {
-        if !current.clone().is_environment() {
-            return Ok(None);
-        }
-        let frame = current
-            .clone()
-            .try_frame()
-            .clone()
-            .map_err(|err| sexp_err("environment frame lookup", err))?;
-        for cell in PairlistIter::new(frame) {
-            let tag = cell
-                .clone()
-                .try_tag()
-                .clone()
-                .map_err(|err| sexp_err("binding tag lookup", err))?;
-            if symbol_name_bytes_equal(tag.as_raw(), symbol.clone().as_raw()) {
-                let val = cell
-                    .try_car()
-                    .map_err(|err| sexp_err("binding value lookup", err))?;
-                if val.clone().as_raw() == unsafe { R_MissingArg() } {
-                    let name = unsafe { get_symbol_name(symbol.as_raw()) };
-                    missing_arg_error(&name);
-                }
-                if val.clone().typeof_() == SEXPTYPE::PROMSXP {
-                    let forced = unsafe { forcePromise(val.as_raw()) };
-                    if forced == unsafe { R_MissingArg() } {
-                        let name = unsafe { get_symbol_name(symbol.as_raw()) };
-                        missing_arg_error(&name);
-                    }
-                    return Sexp::try_from_raw(forced)
-                        .map(Some)
-                        .map_err(|err| sexp_err("forced promise value", err));
-                }
-                return Ok(Some(val));
-            }
-        }
-        current = current
-            .try_enclos()
-            .map_err(|err| sexp_err("enclosing environment lookup", err))?;
+    // Keep evaluator lookup aligned with envir.c semantics. In particular,
+    // frame lookup must invoke active bindings rather than returning the
+    // closure stored in the frame, and inherited lookup must force promises.
+    let value = crate::sexp::envir::find_var_result(symbol.clone(), rho)?;
+    if let Some(value) = &value
+        && value.clone().as_raw() == unsafe { R_MissingArg() }
+    {
+        let name = unsafe { get_symbol_name(symbol.as_raw()) };
+        missing_arg_error(&name);
     }
+    Ok(value)
 }
 
 /// Safe promise evaluation.
