@@ -510,7 +510,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     };
                     stack.push(value);
                 }
-                super::bytecode::GNU_OP_GETFUN => {
+                super::bytecode::GNU_OP_GETFUN | super::bytecode::GNU_OP_GETBUILTIN => {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
@@ -519,8 +519,13 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             "GNU GETFUN constant pool entry {index} is not a symbol"
                         ));
                     }
+                    let lookup_env = if opcode == super::bytecode::GNU_OP_GETBUILTIN {
+                        super::runtime::base_env()
+                    } else {
+                        rho
+                    };
                     let fun = with_stack_rooted(&stack, symbol, || {
-                        crate::sexp::envir::findFun(symbol, rho)
+                        crate::sexp::envir::findFun(symbol, lookup_env)
                     });
                     if fun == R_UnboundValue() {
                         bc_error("could not find function for GNU GETFUN");
@@ -531,6 +536,11 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         && fun_type != SEXPTYPE::SPECIALSXP
                     {
                         bc_error("GNU GETFUN did not resolve to a function");
+                    }
+                    if opcode == super::bytecode::GNU_OP_GETBUILTIN
+                        && fun_type != SEXPTYPE::BUILTINSXP
+                    {
+                        bc_error("GNU GETBUILTIN did not resolve to a builtin");
                     }
                     gnu_call_frames.push(GnuCallFrame {
                         marker: stack.depth(),
@@ -584,6 +594,22 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(promise);
                 }
+                super::bytecode::GNU_OP_PUSHARG => {
+                    if gnu_call_frames.is_empty() {
+                        bc_error("GNU PUSHARG has no active GETFUN call");
+                    }
+                    let frame = gnu_call_frames.last().unwrap();
+                    if stack.depth() <= frame.marker + 1 {
+                        bc_error("GNU PUSHARG has no preceding argument");
+                    }
+                    let value = stack_pop_checked(&mut stack, "GNU PUSHARG");
+                    let promise = with_stack_rooted(&stack, value, || {
+                        let promise = crate::sexp::memory_ext::mkPROMSXP(value, R_NilValue());
+                        crate::sexp::accessors::SET_PRVALUE(promise, value);
+                        promise
+                    });
+                    stack.push(promise);
+                }
                 super::bytecode::GNU_OP_SETTAG => {
                     let index = words[pc] as usize;
                     pc += 1;
@@ -606,7 +632,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         frame.tags.push((slot, tag));
                     }
                 }
-                super::bytecode::GNU_OP_CALL => {
+                super::bytecode::GNU_OP_CALL | super::bytecode::GNU_OP_CALLBUILTIN => {
+                    let builtin_only = opcode == super::bytecode::GNU_OP_CALLBUILTIN;
                     let call_index = words[pc] as usize;
                     pc += 1;
                     let frame = gnu_call_frames
@@ -645,6 +672,9 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         let call = Sexp::from_raw_unchecked(call_expr);
                         let env = Sexp::from_raw_unchecked(rho);
                         let function = Sexp::from_raw_unchecked(fun);
+                        if builtin_only && TYPEOF(fun) != SEXPTYPE::BUILTINSXP {
+                            bc_error("GNU CALLBUILTIN frame does not contain a builtin");
+                        }
                         let result = match TYPEOF(fun) {
                             kind if kind == SEXPTYPE::CLOSXP => super::apply::apply_closure_safe(
                                 function,
@@ -662,8 +692,8 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             }
                             kind if kind == SEXPTYPE::BUILTINSXP => {
                                 let name = super::primitive::PRIMNAME(fun);
-                                let raw_args = if super::builtin::unevaluated_builtin_handler(name)
-                                    .is_some()
+                                let raw_args = if !builtin_only
+                                    && super::builtin::unevaluated_builtin_handler(name).is_some()
                                 {
                                     CDR(call_expr)
                                 } else {

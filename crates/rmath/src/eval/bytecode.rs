@@ -120,6 +120,7 @@ pub const GNU_OP_LDTRUE: c_int = 18;
 pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
 pub const GNU_OP_GETFUN: c_int = 23;
+pub const GNU_OP_GETBUILTIN: c_int = 26;
 pub const GNU_OP_MAKEPROM: c_int = 29;
 pub const GNU_OP_PUSHCONSTARG: c_int = 34;
 pub const GNU_OP_PUSHNULLARG: c_int = 35;
@@ -127,6 +128,8 @@ pub const GNU_OP_PUSHTRUEARG: c_int = 36;
 pub const GNU_OP_PUSHFALSEARG: c_int = 37;
 pub const GNU_OP_SETTAG: c_int = 31;
 pub const GNU_OP_CALL: c_int = 38;
+pub const GNU_OP_PUSHARG: c_int = 33;
+pub const GNU_OP_CALLBUILTIN: c_int = 39;
 pub const GNU_OP_POP: c_int = 4;
 pub const GNU_OP_GOTO: c_int = 2;
 pub const GNU_OP_STARTFOR: c_int = 11;
@@ -269,12 +272,12 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
             | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
-            | GNU_OP_PUSHFALSEARG => {}
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_MAKEPROM
-            | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD | GNU_OP_SUB
-            | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE | GNU_OP_LT
-            | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_SETVAR
-            | GNU_OP_SETVAR2 => {
+            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG => {}
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
+            | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
+            | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
+            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_SQRT | GNU_OP_EXP
+            | GNU_OP_SETVAR | GNU_OP_SETVAR2 => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -308,6 +311,14 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 if call_index < 0 || call_index as usize >= constant_count {
                     return Err(format!(
                         "GNU CALL expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_CALLBUILTIN => {
+                let call_index = code[pc];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU CALLBUILTIN expression index {call_index} is out of range for pool length {constant_count}"
                     ));
                 }
             }
@@ -572,12 +583,12 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 }
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
-            GNU_OP_GETFUN | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_PUSHNULLARG
-            | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
+            GNU_OP_GETFUN | GNU_OP_GETBUILTIN | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG
+            | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds bounded stack limit".into());
                 }
-                if opcode == GNU_OP_GETFUN {
+                if opcode == GNU_OP_GETFUN || opcode == GNU_OP_GETBUILTIN {
                     call_stack.push(depth);
                 } else if call_stack.is_empty() {
                     return Err(format!(
@@ -585,6 +596,15 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                     ));
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack));
+            }
+            GNU_OP_PUSHARG => {
+                let Some(marker) = call_stack.last() else {
+                    return Err("GNU PUSHARG has no active call argument".into());
+                };
+                if depth <= *marker + 1 {
+                    return Err("GNU PUSHARG has no preceding argument".into());
+                }
+                pending.push((next, depth, loop_stack, call_stack));
             }
             GNU_OP_SETTAG => {
                 let Some(marker) = call_stack.last() else {
@@ -595,7 +615,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 }
                 pending.push((next, depth, loop_stack, call_stack));
             }
-            GNU_OP_CALL => {
+            GNU_OP_CALL | GNU_OP_CALLBUILTIN => {
                 let Some(marker) = call_stack.pop() else {
                     return Err("GNU CALL has no active GETFUN call".into());
                 };
@@ -1610,6 +1630,23 @@ mod tests {
                 .unwrap_err()
                 .contains("SETTAG constant pool index 3")
         );
+    }
+
+    #[test]
+    fn bounded_gnu_adapter_validates_builtin_call_frames() {
+        let valid = [12, 123, 0, 11, 26, 1, 20, 2, 33, 39, 0, 1];
+        assert_eq!(validate_gnu_adapter_stream(&valid, 3), Ok(true));
+        assert!(
+            validate_gnu_adapter_stream(&[12, 33, 39, 0, 1], 1)
+                .unwrap_err()
+                .contains("PUSHARG has no active call")
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 39, 0, 1], 1)
+                .unwrap_err()
+                .contains("CALL has no active GETFUN call")
+        );
+        assert!(validate_gnu_adapter_stream(&[12, 26, 2, 1], 2).is_err());
     }
 
     #[test]
