@@ -1,8 +1,9 @@
 //! Small built-in surface for the portable `compiler` namespace.
 //!
 //! The full GNU R compiler package is not sourced by this runtime.  This
-//! namespace therefore exposes only `cmpfun`, backed by the private compiler
-//! and with strict failure for syntax/options outside the supported subset.
+//! namespace exposes `cmpfun` backed by the private compiler, session JIT
+//! controls, and disassembly of imported GNU bytecode. Unsupported syntax,
+//! compiler options and private-dialect disassembly fail explicitly.
 
 use std::ffi::CStr;
 
@@ -18,9 +19,9 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 /// Public names implemented by the portable compiler namespace.
-pub(crate) const EXPORTS: &[&str] = &["cmpfun", "enableJIT"];
+pub(crate) const EXPORTS: &[&str] = &["cmpfun", "enableJIT", "disassemble"];
 
-fn compiler_error(message: impl Into<String>) -> ! {
+pub(super) fn compiler_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(RError {
         message: message.into(),
     });
@@ -176,7 +177,7 @@ mod tests {
         let _session = RSession::new();
         let namespace = unsafe { namespace() };
         assert_ne!(namespace, unsafe { R_NilValue() });
-        assert_eq!(EXPORTS, &["cmpfun", "enableJIT"]);
+        assert_eq!(EXPORTS, &["cmpfun", "enableJIT", "disassemble"]);
     }
 
     #[test]

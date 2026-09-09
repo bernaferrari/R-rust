@@ -145,7 +145,7 @@ pub const GNU_OP_LE: c_int = 54;
 pub const GNU_OP_GE: c_int = 55;
 pub const GNU_OP_GT: c_int = 56;
 
-const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
+pub(super) const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
     0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2,
     0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 0, 1,

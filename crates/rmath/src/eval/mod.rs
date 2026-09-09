@@ -21,6 +21,7 @@ pub(crate) mod builtin;
 pub(crate) mod bytecode;
 pub(crate) mod closure;
 pub(crate) mod compiler;
+pub(crate) mod compiler_disassemble;
 pub(crate) mod complex_arith;
 pub(crate) mod context;
 pub(crate) mod defaults;

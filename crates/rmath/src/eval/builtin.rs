@@ -704,6 +704,10 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
+        name: "disassemble",
+        handler: crate::eval::compiler_disassemble::do_disassemble,
+    },
+    EvaluatedBuiltin {
         name: "enableJIT",
         handler: crate::eval::compiler::do_enable_jit,
     },
