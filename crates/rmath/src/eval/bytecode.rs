@@ -121,6 +121,10 @@ pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
 pub const GNU_OP_GETFUN: c_int = 23;
 pub const GNU_OP_MAKEPROM: c_int = 29;
+pub const GNU_OP_PUSHCONSTARG: c_int = 34;
+pub const GNU_OP_PUSHNULLARG: c_int = 35;
+pub const GNU_OP_PUSHTRUEARG: c_int = 36;
+pub const GNU_OP_PUSHFALSEARG: c_int = 37;
 pub const GNU_OP_SETTAG: c_int = 31;
 pub const GNU_OP_CALL: c_int = 38;
 pub const GNU_OP_POP: c_int = 4;
@@ -264,11 +268,13 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         pc += 1;
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
-            | GNU_OP_POP | GNU_OP_ENDFOR => {}
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_MAKEPROM | GNU_OP_UMINUS
-            | GNU_OP_UPLUS | GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT
-            | GNU_OP_EQ | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT
-            | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_SETVAR | GNU_OP_SETVAR2 => {
+            | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
+            | GNU_OP_PUSHFALSEARG => {}
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_MAKEPROM
+            | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD | GNU_OP_SUB
+            | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE | GNU_OP_LT
+            | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_SETVAR
+            | GNU_OP_SETVAR2 => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -566,14 +572,17 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 }
                 pending.push((next, depth, loop_stack, call_stack.clone()));
             }
-            GNU_OP_GETFUN | GNU_OP_MAKEPROM => {
+            GNU_OP_GETFUN | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_PUSHNULLARG
+            | GNU_OP_PUSHTRUEARG | GNU_OP_PUSHFALSEARG => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds bounded stack limit".into());
                 }
                 if opcode == GNU_OP_GETFUN {
                     call_stack.push(depth);
                 } else if call_stack.is_empty() {
-                    return Err("GNU MAKEPROM has no active GETFUN call".into());
+                    return Err(format!(
+                        "GNU argument opcode {opcode} has no active GETFUN call"
+                    ));
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack));
             }
@@ -1650,6 +1659,30 @@ mod tests {
         // An argument call in the right operand of ADD must retain the left.
         assert_eq!(
             validate_gnu_adapter_stream(&[12, 16, 0, 23, 1, 29, 2, 38, 3, 44, 4, 1], 5),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn gnu_constant_arguments_validate_pool_indices_and_call_frames() {
+        for words in [
+            vec![12, 34, 0, 1],
+            vec![12, 35, 1],
+            vec![12, 36, 1],
+            vec![12, 37, 1],
+            vec![12, 23, 0, 34, -1, 38, 0, 1],
+            vec![12, 23, 0, 34, 1, 38, 0, 1],
+        ] {
+            assert!(validate_gnu_adapter_stream(&words, 1).is_err(), "{words:?}");
+        }
+        for opcode in [35, 36, 37] {
+            assert_eq!(
+                validate_gnu_adapter_stream(&[12, 23, 0, opcode, 38, 0, 1], 1),
+                Ok(true)
+            );
+        }
+        assert_eq!(
+            validate_gnu_adapter_stream(&[12, 23, 0, 34, 0, 38, 0, 1], 1),
             Ok(true)
         );
     }

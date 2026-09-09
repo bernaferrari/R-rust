@@ -550,6 +550,40 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(promise);
                 }
+                super::bytecode::GNU_OP_PUSHCONSTARG
+                | super::bytecode::GNU_OP_PUSHNULLARG
+                | super::bytecode::GNU_OP_PUSHTRUEARG
+                | super::bytecode::GNU_OP_PUSHFALSEARG => {
+                    if gnu_call_frames.is_empty() {
+                        bc_error("GNU constant argument has no active GETFUN call");
+                    }
+                    let value = match opcode {
+                        super::bytecode::GNU_OP_PUSHCONSTARG => {
+                            let index = words[pc] as usize;
+                            pc += 1;
+                            VECTOR_ELT(consts, index as i64)
+                        }
+                        super::bytecode::GNU_OP_PUSHNULLARG => R_NilValue(),
+                        super::bytecode::GNU_OP_PUSHTRUEARG => {
+                            with_stack_rooted(&stack, R_NilValue(), || {
+                                crate::sexp::constructors::Rf_ScalarLogical(1)
+                            })
+                        }
+                        _ => with_stack_rooted(&stack, R_NilValue(), || {
+                            crate::sexp::constructors::Rf_ScalarLogical(0)
+                        }),
+                    };
+                    // GNU passes this pool entry as a value, even for symbols.
+                    // Our closure caller accepts promises; an already forced
+                    // promise preserves the literal and prevents reevaluation.
+                    crate::sexp::accessors::SET_NAMED(value, 2);
+                    let promise = with_stack_rooted(&stack, value, || {
+                        let promise = crate::sexp::memory_ext::mkPROMSXP(value, R_NilValue());
+                        crate::sexp::accessors::SET_PRVALUE(promise, value);
+                        promise
+                    });
+                    stack.push(promise);
+                }
                 super::bytecode::GNU_OP_SETTAG => {
                     let index = words[pc] as usize;
                     pc += 1;
