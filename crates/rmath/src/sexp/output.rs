@@ -18,97 +18,117 @@ pub struct RCapturedOutput {
     pub truncated: bool,
 }
 
+/// One capture layer owns its budget, including traffic forwarded to it.
+#[derive(Debug, Default)]
+struct CaptureFrame {
+    stdout: Option<String>,
+    stderr: Option<String>,
+    truncated: bool,
+    used_bytes: usize,
+    split_stdout: bool,
+}
+
+#[derive(Clone, Copy)]
+enum OutputStream {
+    Stdout,
+    Stderr,
+    Message,
+}
+
+impl CaptureFrame {
+    /// Return true when this layer consumes the stream completely.
+    fn write(&mut self, stream: OutputStream, msg: &str, limit: Option<usize>) -> bool {
+        let (target, split) = match stream {
+            OutputStream::Stdout => (&mut self.stdout, self.split_stdout),
+            OutputStream::Stderr => (&mut self.stderr, false),
+            // Embedding captures both streams and keeps messages interleaved
+            // with printed values. An explicit message capture owns stderr;
+            // an output-only capture must let messages continue outward.
+            OutputStream::Message if self.stderr.is_some() => {
+                if self.stdout.is_some() {
+                    (&mut self.stdout, false)
+                } else {
+                    (&mut self.stderr, false)
+                }
+            }
+            OutputStream::Message => return false,
+        };
+        if let Some(buffer) = target {
+            append_bounded(
+                buffer,
+                msg,
+                limit,
+                &mut self.used_bytes,
+                &mut self.truncated,
+            );
+            return !split;
+        }
+        false
+    }
+    fn active(&self) -> bool {
+        self.stdout.is_some() || self.stderr.is_some()
+    }
+}
+
 /// Per-session output capture buffers.
 #[derive(Debug, Default)]
 pub(crate) struct OutputCaptureState {
-    stdout: Option<String>,
-    stderr: Option<String>,
-    stack: Vec<(Option<String>, Option<String>, bool, usize)>,
+    current: CaptureFrame,
+    stack: Vec<CaptureFrame>,
     max_bytes: Option<usize>,
-    truncated: bool,
-    used_bytes: usize,
 }
 
 impl OutputCaptureState {
     pub(crate) fn start(&mut self) {
-        let outer = (
-            self.stdout.take(),
-            self.stderr.take(),
-            self.truncated,
-            self.used_bytes,
-        );
-        if outer.0.is_some() || outer.1.is_some() {
+        self.start_with_options(true, true, false);
+    }
+
+    pub(crate) fn start_with_options(&mut self, stdout: bool, stderr: bool, split: bool) {
+        let frame = CaptureFrame {
+            stdout: stdout.then(String::new),
+            stderr: stderr.then(String::new),
+            split_stdout: split,
+            ..CaptureFrame::default()
+        };
+        let outer = std::mem::replace(&mut self.current, frame);
+        if outer.active() {
             self.stack.push(outer);
         }
-        self.stdout = Some(String::new());
-        self.stderr = Some(String::new());
-        self.truncated = false;
-        self.used_bytes = 0;
     }
 
     pub(crate) fn stop(&mut self) -> RCapturedOutput {
-        let stdout = self.stdout.take().unwrap_or_default();
-        let stderr = self.stderr.take().unwrap_or_default();
-        let truncated = self.truncated;
-        if let Some((outer_stdout, outer_stderr, outer_truncated, outer_used_bytes)) =
-            self.stack.pop()
-        {
-            self.stdout = outer_stdout;
-            self.stderr = outer_stderr;
-            self.truncated = outer_truncated;
-            self.used_bytes = outer_used_bytes;
-        }
+        let frame = std::mem::replace(&mut self.current, self.stack.pop().unwrap_or_default());
         RCapturedOutput {
-            stdout,
-            stderr,
-            truncated,
+            stdout: frame.stdout.unwrap_or_default(),
+            stderr: frame.stderr.unwrap_or_default(),
+            truncated: frame.truncated,
         }
     }
 
     pub(crate) fn is_capturing(&self) -> bool {
-        self.stdout.is_some() || self.stderr.is_some()
+        self.current.active()
     }
 
-    pub(crate) fn capture_stdout(&mut self, msg: &str) {
-        if let Some(stdout) = self.stdout.as_mut() {
-            append_bounded(
-                stdout,
-                msg,
-                self.max_bytes,
-                &mut self.used_bytes,
-                &mut self.truncated,
-            );
+    fn route(&mut self, stream: OutputStream, msg: &str) -> bool {
+        if self.current.write(stream, msg, self.max_bytes) {
+            return true;
         }
-    }
-
-    pub(crate) fn capture_stderr(&mut self, msg: &str) {
-        if let Some(stderr) = self.stderr.as_mut() {
-            append_bounded(
-                stderr,
-                msg,
-                self.max_bytes,
-                &mut self.used_bytes,
-                &mut self.truncated,
-            );
+        for outer in self.stack.iter_mut().rev() {
+            if outer.write(stream, msg, self.max_bytes) {
+                return true;
+            }
         }
+        false
     }
-
-    /// Append to the captured stdout buffer, bypassing any active output
-    /// sink. The deferred-warning flush uses this: upstream warnings are
-    /// stderr traffic and are not diverted by `sink()`, but the session's
-    /// single interleaved output stream is the stdout buffer.
+    pub(crate) fn capture_stdout(&mut self, msg: &str) -> bool {
+        self.route(OutputStream::Stdout, msg)
+    }
+    pub(crate) fn capture_stderr(&mut self, msg: &str) -> bool {
+        self.route(OutputStream::Stderr, msg)
+    }
     pub(crate) fn capture_stdout_bypassing_sink(&mut self, msg: &str) {
-        if let Some(stdout) = self.stdout.as_mut() {
-            append_bounded(
-                stdout,
-                msg,
-                self.max_bytes,
-                &mut self.used_bytes,
-                &mut self.truncated,
-            );
-        }
+        self.route(OutputStream::Message, msg);
     }
-
     pub(crate) fn set_max_bytes(&mut self, max_bytes: Option<usize>) {
         self.max_bytes = max_bytes;
     }
@@ -184,6 +204,19 @@ impl OutputCaptureGuard {
             active: true,
         }
     }
+    pub(crate) fn start_with_options(stdout: bool, stderr: bool, split: bool) -> Self {
+        let instance = super::instance::with_required_current_instance(|instance| instance);
+        unsafe {
+            (*instance)
+                .output_capture
+                .borrow_mut()
+                .start_with_options(stdout, stderr, split);
+        }
+        Self {
+            instance,
+            active: true,
+        }
+    }
     pub(crate) fn finish(mut self) -> RCapturedOutput {
         let output = stop_capture_in(self.instance);
         self.active = false;
@@ -221,8 +254,7 @@ pub(crate) fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
     // P2: the RefCell borrow below is dropped before the print!, and no
     // ambient write occurs while it is held.
     let mut capture = unsafe { (*inst).output_capture.borrow_mut() };
-    if capture.stdout.is_some() {
-        capture.capture_stdout(msg);
+    if capture.capture_stdout(msg) {
         return;
     }
     drop(capture);
@@ -238,13 +270,11 @@ pub(crate) fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
 /// deferred warnings, and auto-printed values.
 pub(crate) fn capture_interleaved(msg: &str) {
     super::instance::with_current_instance(|inst| unsafe {
-        // P2: strictly-local RefCell access; no ambient write intervenes.
-        if (*inst).output_capture.borrow().stdout.is_some() {
-            (*inst)
-                .output_capture
-                .borrow_mut()
-                .capture_stdout_bypassing_sink(msg);
-        } else {
+        let captured = (*inst)
+            .output_capture
+            .borrow_mut()
+            .route(OutputStream::Message, msg);
+        if !captured {
             eprint!("{msg}");
         }
     });
@@ -257,7 +287,11 @@ pub fn capture_stderr(msg: &str) {
 pub(crate) fn capture_stderr_in(inst: *mut RInstance, msg: &str) {
     // P2: strictly-local RefCell write; no ambient write intervenes.
     unsafe {
-        (*inst).output_capture.borrow_mut().capture_stderr(msg);
+        let mut capture = (*inst).output_capture.borrow_mut();
+        if !capture.capture_stderr(msg) {
+            drop(capture);
+            eprint!("{msg}");
+        }
     }
 }
 
@@ -2333,6 +2367,44 @@ mod tests {
         assert_eq!(outer.stdout, "outer resumed");
         assert_eq!(outer.stderr, "outer err resumed err");
         assert!(!is_capturing());
+    }
+
+    #[test]
+    fn selective_capture_crosses_layers_and_charges_receiving_budget() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(4));
+        state.start();
+        state.capture_stdout("ab");
+        state.start_with_options(false, true, false);
+        state.start_with_options(false, true, false);
+        state.capture_stdout("cde");
+        state.capture_stderr("x");
+        let inner = state.stop();
+        assert_eq!(inner.stderr, "x");
+        assert!(!inner.truncated);
+        assert_eq!(state.stop().stderr, "");
+        let outer = state.stop();
+        assert_eq!(outer.stdout, "abcd");
+        assert!(outer.truncated);
+    }
+
+    #[test]
+    fn nested_split_captures_tee_once_and_keep_separate_budgets() {
+        let mut state = OutputCaptureState::default();
+        state.set_max_bytes(Some(4));
+        state.start();
+        state.capture_stdout("ab");
+        state.start_with_options(true, false, true);
+        state.start_with_options(true, false, true);
+        state.capture_stdout("cde");
+        for _ in 0..2 {
+            let inner = state.stop();
+            assert_eq!(inner.stdout, "cde");
+            assert!(!inner.truncated);
+        }
+        let outer = state.stop();
+        assert_eq!(outer.stdout, "abcd");
+        assert!(outer.truncated);
     }
 
     #[test]

@@ -1003,6 +1003,8 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
             let name = CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
             matches!(name.as_ref(), "file" | "append" | "type" | "split").then(|| name.into_owned())
         };
+        let mut capture_type = "output".to_string();
+        let mut split = false;
         let mut control = args;
         let mut seen = std::collections::HashSet::new();
         while control != R_NilValue() && !control.is_null() {
@@ -1020,9 +1022,13 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                             base_error("invalid 'type' argument");
                         }
                         let kind = CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_string_lossy();
-                        if kind.is_empty() || !"output".starts_with(kind.as_ref()) {
-                            base_error("capture.output currently supports type='output'");
-                        }
+                        capture_type = ["output", "message"]
+                            .into_iter()
+                            .find(|candidate| {
+                                !kind.is_empty() && candidate.starts_with(kind.as_ref())
+                            })
+                            .unwrap_or_else(|| base_error("invalid 'type' argument"))
+                            .into();
                     }
                     "split" | "append" => {
                         let enabled = crate::main::coerce::asLogical(value);
@@ -1030,7 +1036,7 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                             base_error(format!("invalid '{name}' argument"));
                         }
                         if name == "split" && enabled != FALSE {
-                            base_error("capture.output split sinks are not supported yet");
+                            split = true;
                         }
                     }
                     _ => {}
@@ -1038,7 +1044,14 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
             }
             control = CDR(control);
         }
-        let capture = crate::sexp::output::OutputCaptureGuard::start();
+        if capture_type == "message" && split {
+            base_error("cannot split the message connection");
+        }
+        let capture = crate::sexp::output::OutputCaptureGuard::start_with_options(
+            capture_type == "output",
+            capture_type == "message",
+            split,
+        );
         let mut argument = args;
         while argument != R_NilValue() && !argument.is_null() {
             if control_name(argument).is_some() {
@@ -1056,8 +1069,15 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         }
         let captured = capture.finish();
 
-        let stdout = captured.stdout.trim_end_matches('\n');
-        let lines: Vec<&str> = if stdout.is_empty() {
+        let captured_stream = if capture_type == "message" {
+            captured.stderr
+        } else {
+            captured.stdout
+        };
+        let stdout = captured_stream
+            .strip_suffix('\n')
+            .unwrap_or(&captured_stream);
+        let lines: Vec<&str> = if captured_stream.is_empty() {
             Vec::new()
         } else {
             stdout.split('\n').collect()
