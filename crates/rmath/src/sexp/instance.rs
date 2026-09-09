@@ -105,6 +105,8 @@ pub(crate) struct ErrorState {
     pub calling_handlers_signaled: bool,
     pub try_catch_handler_classes: Vec<Vec<String>>,
     pub current_srcref_location: Option<(String, i32)>,
+    /// `sequence()` announces the upcoming recycling default once per session.
+    pub sequence_recycling_warned: bool,
 }
 
 impl Default for ErrorState {
@@ -134,6 +136,7 @@ impl Default for ErrorState {
             calling_handlers_signaled: false,
             try_catch_handler_classes: Vec::new(),
             current_srcref_location: None,
+            sequence_recycling_warned: false,
             warnings: std::ptr::null_mut(),
             handler_stack: std::ptr::null_mut(),
             restart_stack: std::ptr::null_mut(),

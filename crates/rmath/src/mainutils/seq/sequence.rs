@@ -3,7 +3,6 @@ use super::*;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::sexp::accessors::{
     CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME,
@@ -108,8 +107,11 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // C's maybe_warn: the R-level wrapper passes 0L when `recycle`
             // is missing; the port sees R_MissingArg directly.
             let maybe_warn = recycle_1st_arg == R_MissingArg();
-            static WARN_1ST: AtomicBool = AtomicBool::new(true);
-            if maybe_warn && WARN_1ST.swap(false, Ordering::Relaxed) {
+            let first_warning = maybe_warn
+                && crate::sexp::instance::with_required_current_instance(|inst| {
+                    !std::mem::replace(&mut (*inst).error_state.sequence_recycling_warned, true)
+                });
+            if first_warning {
                 let msg = format!(
                     "length(nvec) = {} < {} = max(length(from), length(by))",
                     lengths_len, max_len
