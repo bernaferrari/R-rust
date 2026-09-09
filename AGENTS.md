@@ -2,6 +2,18 @@
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
+## Build artifacts and checkpoints
+
+Use `scripts/cargo_dev.sh` in place of `cargo` for local builds, checks and tests;
+it preserves Cargo options and prunes obsolete executable variants afterward.
+Reuse each agent's existing target directory. After an agent finishes, clean its
+temporary target directory once its validation evidence has been recorded.
+Leave the user's compilation settings unchanged unless explicitly requested.
+
+Commit and push small verified milestones throughout long tasks. Concurrent
+agents edit only assigned files; repository-wide restores and formatting can
+erase another agent's unfinished work.
+
 ## Quick Reference
 
 ```bash

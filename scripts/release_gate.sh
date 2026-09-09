@@ -123,7 +123,7 @@ run() {
 }
 
 run_cargo() {
-    run env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo "$@"
+    run env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" "$ROOT_DIR/scripts/cargo_dev.sh" "$@"
 }
 
 check_conformance_artifacts() {

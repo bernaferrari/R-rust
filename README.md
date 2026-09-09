@@ -102,13 +102,22 @@ At the latest verified checkpoint, **636 curated GNU R comparison cases** and **
 The compatibility oracle is pinned to GNU R source commit [`bac583951b`](oracle/r-oracle.json). Tests compare against that exact revision; the [test contract](docs/conformance.md) explains provenance, upstream tests, Miri and GC stress coverage.
 
 ```bash
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+scripts/cargo_dev.sh test --workspace
+scripts/cargo_dev.sh clippy --workspace --all-targets -- -D warnings
 
 # Install the exact GNU R oracle, then use its printed bin directory:
 ./scripts/install_r_oracle.sh
 PATH="/path/to/R/bin:$PATH" ./scripts/conformance_parity.sh --strict
 ```
+
+The local Cargo wrapper runs Cargo with unchanged compilation settings, then
+keeps the two newest executable variants per target name. It also clears cached
+compiler-warning logs larger than 10 MiB after seven days. Libraries, object
+files and incremental caches are retained; an older executable may need relinking
+if its configuration is used again. The release gate uses this wrapper too.
+Direct `cargo` commands remain available and do not trigger cleanup. Preview
+manual cleanup with `python3 scripts/prune_build_binaries.py` before adding
+`--apply`. Use `CARGO_TARGET_DIR` or `--target-dir` for an isolated cache.
 
 ## Build something with us
 
