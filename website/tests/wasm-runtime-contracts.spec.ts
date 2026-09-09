@@ -1,6 +1,26 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("named GNU calls, real QR and method existence work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-named-calls/nested-reversed-tags.rds", import.meta.url))
+  await page.goto("/console/")
+  const results = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const output = []
+      for (const code of [
+        `target<-function(a,b)paste(a,b,sep='/');f<-unserialize(as.raw(c(${values})));g<-unserialize(serialize(f,NULL));identical(g('left','right'),'left/right')`,
+        "q<-qr(cbind(c(1,2,3),c(2,4,6)));identical(q$rank,1L)&&identical(dim(qr.R(q)),c(2L,2L))",
+        "q<-qr(matrix(1:6,3,2),LAPACK=TRUE);identical(q$pivot,c(2L,1L))&&identical(q$rank,2L)",
+        "local({setClass('ExistA');setClass('ExistB',contains='ExistA');setGeneric('existProbe',function(x)standardGeneric('existProbe'));setMethod('existProbe','ExistA',function(x)1);existsMethod(as.name('existProbe'),'ExistA')&&!existsMethod('existProbe','ExistB')&&hasMethod('existProbe','ExistB')})",
+      ]) output.push((await runtime.run(code,"console")).output.trim())
+      return output
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(results).toEqual(Array(4).fill("[1] TRUE"))
+})
+
 test("compiled lazy calls and inherited method specificity work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-calls/identity-promise.rds", import.meta.url))
   const stream = Buffer.alloc(16)

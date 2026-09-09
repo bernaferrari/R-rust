@@ -3,12 +3,12 @@ import { pageHref } from "@/pages"
 const contracts = [
   [
     "Language & data",
-    "Vectors, data frames, functions, control flow, and a tested subset of imported GNU bytecode: constants, argument lookup, conditional branches, arithmetic and comparisons, guarded math operations, bounded for loops, and calls with lazy arguments.",
+    "Vectors, data frames, functions, control flow, and a tested subset of imported GNU bytecode: constants, argument lookup, conditional branches, arithmetic and comparisons, guarded math operations, bounded for loops, and calls with named, lazy arguments.",
     "Bytecode/compiler execution and serialization, full S3/S4 dispatch, evaluator edge cases, and locale behavior remain incomplete.",
   ],
   [
     "Statistics",
-    "Seeded random distributions, FFT and column-wise mvfft, linear algebra with faer, LOESS fitting and prediction, and vector Pearson/Spearman correlation.",
+    "Seeded random distributions, FFT and column-wise mvfft, real QR decomposition with rank detection and triangular-factor extraction, linear algebra with faer, LOESS fitting and prediction, and vector Pearson/Spearman correlation.",
     "Coverage is tested operation by operation; passing examples does not establish every numerical or statistical contract.",
   ],
   [
