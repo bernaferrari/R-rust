@@ -389,7 +389,9 @@ mod tests {
             Some("__rport_helper__")
         );
         let attributes = unsafe { crate::sexp::accessors::ATTRIB(first) };
-        assert!(attributes.is_null() || attributes == unsafe { crate::sexp::globals::R_NilValue() });
+        assert!(
+            attributes.is_null() || attributes == unsafe { crate::sexp::globals::R_NilValue() }
+        );
     }
 
     #[test]

@@ -578,21 +578,20 @@ impl RSession {
         let scene = self
             .interactive_scene
             .get_or_insert_with(|| r_graphics_engine::Scene::new(width, height));
-        let mut target = TrackingDrawTarget::new(scene);
-        let result = self
-            .inner
-            .eval_script_with_renderplot_backend(code, &mut target);
-        let budget_exceeded = target.budget_exceeded;
+        let (result, budget_exceeded, drew) = {
+            let mut target = TrackingDrawTarget::new(scene);
+            let result = self
+                .inner
+                .eval_script_with_renderplot_backend(code, &mut target);
+            (result, target.budget_exceeded, target.drew)
+        };
         if budget_exceeded {
-            drop(target);
             return Err(RSessionError::RenderError(
                 "interactive graphics scene exceeds the 16 MiB memory budget".into(),
             ));
         }
         if let RValue::Error(message) = &result.typed {
-            let drew = target.drew;
             let output = result.output.clone();
-            drop(target);
             let png = if drew {
                 scene.replay_scaled(&mut renderer);
                 Some(
@@ -609,8 +608,6 @@ impl RSession {
                 png,
             });
         }
-        let drew = target.drew;
-        drop(target);
         let png = if drew {
             scene.replay_scaled(&mut renderer);
             Some(

@@ -100,8 +100,22 @@ fn cor_vector_rejects_recycling_and_propagates_missing_by_default() {
 #[test]
 fn cor_complete_pairs_distinguish_zero_one_and_empty() {
     let mut s = RSession::new().unwrap();
-    assert_eq!(s.eval("is.na(cor(c(1,NA), c(1,NA), use='complete.obs'))").unwrap(), "[1] TRUE");
-    assert!(s.eval("cor(numeric(), numeric(), use='complete.obs')").is_err());
-    assert!(s.eval("cor(numeric(), numeric(), use='pairwise.complete.obs')").is_err());
-    assert_eq!(s.eval("is.na(cor(numeric(), numeric(), use='na.or.complete'))").unwrap(), "[1] TRUE");
+    assert_eq!(
+        s.eval("is.na(cor(c(1,NA), c(1,NA), use='complete.obs'))")
+            .unwrap(),
+        "[1] TRUE"
+    );
+    assert!(
+        s.eval("cor(numeric(), numeric(), use='complete.obs')")
+            .is_err()
+    );
+    assert!(
+        s.eval("cor(numeric(), numeric(), use='pairwise.complete.obs')")
+            .is_err()
+    );
+    assert_eq!(
+        s.eval("is.na(cor(numeric(), numeric(), use='na.or.complete'))")
+            .unwrap(),
+        "[1] TRUE"
+    );
 }

@@ -144,10 +144,9 @@ fn open_browser_file(conn: &mut RConn, mode: &str) {
     conn.canwrite = !conn.canread;
 }
 
-pub fn open_file_conn(
-    path: &str,
-    mode: &str,
-) -> io::Result<(File, Option<BufReader<File>>, Option<BufWriter<File>>)> {
+type OpenFileHandles = (File, Option<BufReader<File>>, Option<BufWriter<File>>);
+
+pub fn open_file_conn(path: &str, mode: &str) -> io::Result<OpenFileHandles> {
     let mut opts = OpenOptions::new();
     if mode.contains('r') {
         opts.read(true);
@@ -568,7 +567,11 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         args = CDR(args);
         let sopen = CAR(args);
         args = CDR(args);
-        let _block = if args.is_null() || args == R_NilValue() { 1 } else { check_logical_arg(CAR(args), "blocking") };
+        let _block = if args.is_null() || args == R_NilValue() {
+            1
+        } else {
+            check_logical_arg(CAR(args), "blocking")
+        };
 
         if !inherits_class(scon, "connection") {
             r_error("'con' is not a connection");

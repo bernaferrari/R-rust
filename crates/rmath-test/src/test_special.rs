@@ -46,13 +46,13 @@ pub fn run_tests() -> Result<(), String> {
     // digamma(1) = -Euler's constant
     let d1 = digamma(1.0);
     let expected_d1 = -0.5772156649015329_f64;
-    if !((d1 - expected_d1).abs() < 1e-14) {
+    if (d1 - expected_d1).abs().partial_cmp(&1e-14) != Some(std::cmp::Ordering::Less) {
         return Err(format!("digamma(1) = {}, expected ~{}", d1, expected_d1));
     }
     // digamma(0.5) = -gamma - 2*ln(2)
     let d05 = digamma(0.5);
     let expected_d05 = -1.9635100260214235_f64;
-    if !((d05 - expected_d05).abs() < 1e-14) {
+    if (d05 - expected_d05).abs().partial_cmp(&1e-14) != Some(std::cmp::Ordering::Less) {
         return Err(format!(
             "digamma(0.5) = {}, expected ~{}",
             d05, expected_d05
@@ -61,19 +61,19 @@ pub fn run_tests() -> Result<(), String> {
     // digamma(2) = -gamma + 1
     let d2 = digamma(2.0);
     let expected_d2 = 0.42278433509846713_f64;
-    if !((d2 - expected_d2).abs() < 1e-14) {
+    if (d2 - expected_d2).abs().partial_cmp(&1e-14) != Some(std::cmp::Ordering::Less) {
         return Err(format!("digamma(2) = {}, expected ~{}", d2, expected_d2));
     }
     // trigamma(1) = pi^2 / 6
     let t1 = trigamma(1.0);
     let expected_t1 = 1.6449340668482264_f64;
-    if !((t1 - expected_t1).abs() < 1e-14) {
+    if (t1 - expected_t1).abs().partial_cmp(&1e-14) != Some(std::cmp::Ordering::Less) {
         return Err(format!("trigamma(1) = {}, expected ~{}", t1, expected_t1));
     }
     // trigamma(0.5) = pi^2 / 2
     let t05 = trigamma(0.5);
     let expected_t05 = 4.934802200544679_f64;
-    if !((t05 - expected_t05).abs() < 1e-14) {
+    if (t05 - expected_t05).abs().partial_cmp(&1e-14) != Some(std::cmp::Ordering::Less) {
         return Err(format!(
             "trigamma(0.5) = {}, expected ~{}",
             t05, expected_t05
@@ -81,11 +81,11 @@ pub fn run_tests() -> Result<(), String> {
     }
     // psigamma(x, 0) == digamma(x); psigamma(x, 1) == trigamma(x)
     let p0 = psigamma(1.0, 0.0);
-    if !((p0 - d1).abs() < 1e-15) {
+    if (p0 - d1).abs().partial_cmp(&1e-15) != Some(std::cmp::Ordering::Less) {
         return Err(format!("psigamma(1,0) = {}, digamma(1) = {}", p0, d1));
     }
     let p1 = psigamma(1.0, 1.0);
-    if !((p1 - t1).abs() < 1e-15) {
+    if (p1 - t1).abs().partial_cmp(&1e-15) != Some(std::cmp::Ordering::Less) {
         return Err(format!("psigamma(1,1) = {}, trigamma(1) = {}", p1, t1));
     }
 

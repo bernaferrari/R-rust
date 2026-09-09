@@ -578,7 +578,10 @@ pub fn write_bytes_to_conn(conn: &mut RConn, bytes: &[u8]) {
             }
         }
         ConnKind::BrowserFile => {
-            if bytes.len() > crate::mainutils::browser_files::MAX_FILE_BYTES.saturating_sub(conn.raw_data.len()) {
+            if bytes.len()
+                > crate::mainutils::browser_files::MAX_FILE_BYTES
+                    .saturating_sub(conn.raw_data.len())
+            {
                 r_error("browser file exceeds 1048576 byte limit");
             }
             let mut candidate = conn.raw_data.clone();

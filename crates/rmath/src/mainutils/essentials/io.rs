@@ -118,7 +118,9 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 bytes.extend_from_slice(elt_to_string(text, i).as_bytes());
                 bytes.extend_from_slice(sep.as_bytes());
             }
-            if let Err(error) = crate::mainutils::browser_files::write_text_or_host(&path, &bytes) { base_error(error.to_string()); }
+            if let Err(error) = crate::mainutils::browser_files::write_text_or_host(&path, &bytes) {
+                base_error(error.to_string());
+            }
         }
         crate::sexp::globals::set_R_Visible(FALSE);
         R_NilValue()
@@ -134,7 +136,8 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
         let path = elt_to_string(con, 0);
 
-        let lines = crate::mainutils::browser_files::read_text_or_host(&path).unwrap_or_else(|error| base_error(error.to_string()));
+        let lines = crate::mainutils::browser_files::read_text_or_host(&path)
+            .unwrap_or_else(|error| base_error(error.to_string()));
         let line_vec: Vec<&str> = lines.lines().collect();
         let n = line_vec.len();
 
@@ -821,7 +824,11 @@ pub unsafe fn do_write_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             }
         }
 
-        if let Err(error) = crate::mainutils::browser_files::write_text_or_host(&filename, output.as_bytes()) { base_error(error.to_string()); }
+        if let Err(error) =
+            crate::mainutils::browser_files::write_text_or_host(&filename, output.as_bytes())
+        {
+            base_error(error.to_string());
+        }
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         R_NilValue()
     }
@@ -1369,7 +1376,9 @@ pub unsafe fn do_write_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         }
 
         let content = lines.join("\n") + "\n";
-        if let Err(e) = crate::mainutils::browser_files::write_text_or_host(&file_path, content.as_bytes()) {
+        if let Err(e) =
+            crate::mainutils::browser_files::write_text_or_host(&file_path, content.as_bytes())
+        {
             base_error(format!("cannot write file '{}': {}", file_path, e));
         }
 
@@ -2390,9 +2399,10 @@ pub unsafe fn do_readChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         let path = elt_to_string(con_arg, 0);
-        let bytes = crate::mainutils::browser_files::read_bytes_or_host(&path).unwrap_or_else(|e| {
-            base_error(format!("cannot read file '{}': {}", path, e));
-        });
+        let bytes =
+            crate::mainutils::browser_files::read_bytes_or_host(&path).unwrap_or_else(|e| {
+                base_error(format!("cannot read file '{}': {}", path, e));
+            });
         let take = if nchars >= 0 {
             (nchars as usize).min(bytes.len())
         } else {

@@ -1635,8 +1635,10 @@ mod tests {
     fn string_buffer_small_growth_preserves_contents_and_capacity() {
         // No interpreter needed: exercise the raw allocation boundary under Miri.
         unsafe {
-            let mut buf = R_StringBuffer::default();
-            buf.defaultSize = 16;
+            let mut buf = R_StringBuffer {
+                defaultSize: 16,
+                ..Default::default()
+            };
             R_AllocStringBuffer(15, &mut buf);
             for i in 0..15 {
                 *buf.data.add(i) = b'a' as c_char;

@@ -19,8 +19,15 @@ pub fn enabled() -> bool {
 }
 
 pub fn read_bytes_or_host(path: &str) -> io::Result<Vec<u8>> {
-    if let Some(bytes) = read_current(path) { return Ok(bytes); }
-    if enabled() { return Err(io::Error::new(io::ErrorKind::NotFound, "browser file not found")); }
+    if let Some(bytes) = read_current(path) {
+        return Ok(bytes);
+    }
+    if enabled() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "browser file not found",
+        ));
+    }
     std::fs::read(path)
 }
 

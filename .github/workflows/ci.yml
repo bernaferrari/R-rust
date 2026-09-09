@@ -68,6 +68,9 @@ jobs:
       - name: Check capability inventory
         run: python3 scripts/capability_report.py --check
 
+      - name: Assert ALTREP stays off by default
+        run: bash scripts/check_altrep_disabled.sh
+
       - name: Test (workspace)
         run: cargo test --workspace
 

@@ -1031,9 +1031,8 @@ unsafe fn read_bc_source(
         // Keep source fallback for every validated GNU stream outside the
         // bounded adapter. This avoids treating a private opcode collision as
         // GNU execution and preserves the existing interpreted behavior.
-        match crate::eval::bytecode::validate_gnu_adapter_stream(words, count as usize)? {
-            false => return Ok(VECTOR_ELT(constants, 0)),
-            true => {}
+        if !crate::eval::bytecode::validate_gnu_adapter_stream(words, count as usize)? {
+            return Ok(VECTOR_ELT(constants, 0));
         }
 
         // Keep source deparsing independent from the executable constants.
