@@ -299,72 +299,44 @@ pub unsafe fn textRect(
 
         if w >= 0.0 {
             if h >= 0.0 {
-                location(0.0, 0.0, bl.as_mut_ptr() as *mut _);
-                location(w, 0.0, br.as_mut_ptr() as *mut _);
-                location(w, h, tr.as_mut_ptr() as *mut _);
-                location(0.0, h, tl.as_mut_ptr() as *mut _);
+                location(0.0, 0.0, &mut bl);
+                location(w, 0.0, &mut br);
+                location(w, h, &mut tr);
+                location(0.0, h, &mut tl);
             } else {
-                location(0.0, h, bl.as_mut_ptr() as *mut _);
-                location(w, h, br.as_mut_ptr() as *mut _);
-                location(w, 0.0, tr.as_mut_ptr() as *mut _);
-                location(0.0, 0.0, tl.as_mut_ptr() as *mut _);
+                location(0.0, h, &mut bl);
+                location(w, h, &mut br);
+                location(w, 0.0, &mut tr);
+                location(0.0, 0.0, &mut tl);
             }
         } else if h >= 0.0 {
-            location(w, 0.0, bl.as_mut_ptr() as *mut _);
-            location(0.0, 0.0, br.as_mut_ptr() as *mut _);
-            location(0.0, h, tr.as_mut_ptr() as *mut _);
-            location(w, h, tl.as_mut_ptr() as *mut _);
+            location(w, 0.0, &mut bl);
+            location(0.0, 0.0, &mut br);
+            location(0.0, h, &mut tr);
+            location(w, h, &mut tl);
         } else {
-            location(w, h, bl.as_mut_ptr() as *mut _);
-            location(0.0, h, br.as_mut_ptr() as *mut _);
-            location(0.0, 0.0, tr.as_mut_ptr() as *mut _);
-            location(w, 0.0, tl.as_mut_ptr() as *mut _);
+            location(w, h, &mut bl);
+            location(0.0, h, &mut br);
+            location(0.0, 0.0, &mut tr);
+            location(w, 0.0, &mut tl);
         }
 
-        translation(
-            -xadj * w,
-            -yadj * h,
-            thisJustification.as_mut_ptr() as *mut _,
-        );
-        translation(x, y, thisLocation.as_mut_ptr() as *mut _);
+        translation(-xadj * w, -yadj * h, &mut thisJustification);
+        translation(x, y, &mut thisLocation);
 
         if rot != 0.0 {
-            rotation(rot, thisRotation.as_mut_ptr() as *mut _);
+            rotation(rot, &mut thisRotation);
         } else {
-            identity(thisRotation.as_mut_ptr() as *mut _);
+            identity(&mut thisRotation);
         }
 
-        multiply(
-            thisJustification.as_ptr() as *const _,
-            thisRotation.as_ptr() as *const _,
-            tempTransform.as_mut_ptr() as *mut _,
-        );
-        multiply(
-            tempTransform.as_ptr() as *const _,
-            thisLocation.as_ptr() as *const _,
-            transform.as_mut_ptr() as *mut _,
-        );
+        multiply(&thisJustification, &thisRotation, &mut tempTransform);
+        multiply(&tempTransform, &thisLocation, &mut transform);
 
-        trans(
-            bl.as_ptr() as *const _,
-            transform.as_ptr() as *const _,
-            tbl.as_mut_ptr() as *mut _,
-        );
-        trans(
-            br.as_ptr() as *const _,
-            transform.as_ptr() as *const _,
-            tbr.as_mut_ptr() as *mut _,
-        );
-        trans(
-            tr.as_ptr() as *const _,
-            transform.as_ptr() as *const _,
-            ttr.as_mut_ptr() as *mut _,
-        );
-        trans(
-            tl.as_ptr() as *const _,
-            transform.as_ptr() as *const _,
-            ttl.as_mut_ptr() as *mut _,
-        );
+        trans(&bl, &transform, &mut tbl);
+        trans(&br, &transform, &mut tbr);
+        trans(&tr, &transform, &mut ttr);
+        trans(&tl, &transform, &mut ttl);
 
         rect(
             tbl[0], tbr[0], ttr[0], ttl[0], tbl[1], tbr[1], ttr[1], ttl[1], r,

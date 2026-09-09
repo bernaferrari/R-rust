@@ -19,18 +19,22 @@
 
 //! Kernel smoothing
 //! Port of r-source/src/library/stats/src/ksmooth.c
+//!
+//! Core smoother uses borrowed slices; SEXP / Fortran entry points remain
+//! `unsafe` and are locked with `deny(unsafe_op_in_unsafe_fn)`.
+
+#![deny(unsafe_op_in_unsafe_fn)]
 
 use std::ffi::CString;
-use std::os::raw::{c_char, c_double, c_int};
-use std::ptr;
+use std::os::raw::{c_double, c_int};
+use std::slice;
 
 use crate::attrib_core::{R_NamesSymbol, setAttrib};
 use crate::main::coerce::{asInteger, asReal, coerceVector};
 use crate::main::errors::Rf_error;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::ffi::{NA_REAL, SEXP, SEXPTYPE};
 use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
@@ -44,12 +48,6 @@ unsafe fn error(msg: &str) {
     }
 }
 
-unsafe fn Rprintf(fmt: &str) {
-    unsafe {
-        print!("{}", fmt);
-    }
-}
-
 unsafe fn mkChar(s: &str) -> SEXP {
     unsafe {
         let c_str = CString::new(s).unwrap_or_default();
@@ -58,78 +56,83 @@ unsafe fn mkChar(s: &str) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// dokern: kernel function
+// dokern: kernel function (pure; no unsafe)
 // ---------------------------------------------------------------------------
 
-unsafe fn dokern(x: c_double, kern: c_int) -> c_double {
-    unsafe {
-        if kern == 1 {
-            return 1.0;
-        }
-        if kern == 2 {
-            return (-0.5 * x * x).exp();
-        }
-        0.0
+fn dokern(x: c_double, kern: c_int) -> c_double {
+    if kern == 1 {
+        return 1.0;
     }
+    if kern == 2 {
+        return (-0.5 * x * x).exp();
+    }
+    0.0
 }
 
 // ---------------------------------------------------------------------------
-// BDRksmooth: BDR kernel smoothing
+// BDRksmooth: BDR kernel smoothing (safe slice facade)
 // ---------------------------------------------------------------------------
 
-unsafe fn BDRksmooth(
-    x: *const c_double,
-    y: *const c_double,
-    n: R_xlen_t,
-    xp: *const c_double,
-    yp: *mut c_double,
-    np: R_xlen_t,
+fn BDRksmooth(
+    x: &[c_double],
+    y: &[c_double],
+    xp: &[c_double],
+    yp: &mut [c_double],
     kern: c_int,
     mut bw: c_double,
 ) {
-    unsafe {
-        let mut imin: R_xlen_t = 0;
-        let mut cutoff: c_double = 0.0;
+    debug_assert_eq!(x.len(), y.len());
+    debug_assert_eq!(xp.len(), yp.len());
 
-        // bandwidth is in units of half inter-quartile range.
-        if kern == 1 {
-            bw *= 0.5;
-            cutoff = bw;
-        }
-        if kern == 2 {
-            bw *= 0.3706506;
-            cutoff = 4.0 * bw;
-        }
+    yp.fill(NA_REAL);
 
-        while *x.add(imin as usize) < *xp.add(0) - cutoff && imin < n {
-            imin += 1;
-        }
+    let n = x.len();
+    let np = xp.len();
+    let mut imin: usize = 0;
+    let mut cutoff: c_double = 0.0;
 
-        for j in 0..np as usize {
-            let mut num: c_double = 0.0;
-            let mut den: c_double = 0.0;
-            let x0 = *xp.add(j);
+    // bandwidth is in units of half inter-quartile range.
+    if kern == 1 {
+        bw *= 0.5;
+        cutoff = bw;
+    }
+    if kern == 2 {
+        bw *= 0.3706506;
+        cutoff = 4.0 * bw;
+    }
 
-            let mut i = imin;
-            while i < n {
-                if *x.add(i as usize) < x0 - cutoff {
-                    imin = i;
-                } else {
-                    if *x.add(i as usize) > x0 + cutoff {
-                        break;
-                    }
-                    let w = dokern((*x.add(i as usize) - x0).abs() / bw, kern);
-                    num += w * *y.add(i as usize);
-                    den += w;
-                }
-                i += 1;
-            }
+    if np == 0 || n == 0 {
+        return;
+    }
 
-            if den > 0.0 {
-                *yp.add(j) = num / den;
+    while imin < n && x[imin] < xp[0] - cutoff {
+        imin += 1;
+    }
+
+    for j in 0..np {
+        let mut num: c_double = 0.0;
+        let mut den: c_double = 0.0;
+        let x0 = xp[j];
+
+        let mut i = imin;
+        while i < n {
+            if x[i] < x0 - cutoff {
+                imin = i;
             } else {
-                *yp.add(j) = NA_REAL;
+                if x[i] > x0 + cutoff {
+                    break;
+                }
+                let w = dokern((x[i] - x0).abs() / bw, kern);
+                num += w * y[i];
+                den += w;
             }
+            i += 1;
+        }
+
+        if den > 0.0 {
+            yp[j] = num / den;
+        } else {
+            yp[j] = NA_REAL;
         }
     }
 }
@@ -191,12 +194,36 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
         let xp = coerceVector(xp, SEXPTYPE::REALSXP.as_c_int());
         let _xp_guard = protect(xp);
 
-        let nx = XLENGTH(x);
-        let np = XLENGTH(xp);
-        let yp = Rf_allocVector(SEXPTYPE::REALSXP, np as c_int);
+        let nx = XLENGTH(x) as usize;
+        if XLENGTH(y) != nx as crate::sexp::ffi::R_xlen_t {
+            Rf_error(b"'x' and 'y' lengths differ\0".as_ptr() as *const std::os::raw::c_char);
+        }
+        let np = XLENGTH(xp) as usize;
+        let yp = Rf_allocVector3(SEXPTYPE::REALSXP, np as crate::sexp::ffi::R_xlen_t);
         let _yp_guard = protect(yp);
 
-        BDRksmooth(REAL(x), REAL(y), nx, REAL(xp), REAL(yp), np, krn, bw);
+        let x_slice = if nx == 0 {
+            &[][..]
+        } else {
+            slice::from_raw_parts(REAL(x), nx)
+        };
+        let y_slice = if nx == 0 {
+            &[][..]
+        } else {
+            slice::from_raw_parts(REAL(y), nx)
+        };
+        let xp_slice = if np == 0 {
+            &[][..]
+        } else {
+            slice::from_raw_parts(REAL(xp), np)
+        };
+        let yp_slice = if np == 0 {
+            &mut [][..]
+        } else {
+            slice::from_raw_parts_mut(REAL(yp), np)
+        };
+
+        BDRksmooth(x_slice, y_slice, xp_slice, yp_slice, krn, bw);
 
         let ans = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         let _ans_guard = protect(ans);
@@ -209,5 +236,17 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
         SET_STRING_ELT(nm, 1, mkChar("y"));
 
         ans
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BDRksmooth;
+
+    #[test]
+    fn empty_input_initializes_predictions_to_na() {
+        let mut yp = [0.0, 0.0];
+        BDRksmooth(&[], &[], &[1.0, 2.0], &mut yp, 1, 1.0);
+        assert!(yp.iter().all(|value| value.is_nan()));
     }
 }

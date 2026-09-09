@@ -18,23 +18,27 @@
  *  https://www.R-project.org/Licenses/
  */
 
-/* Code for matrices, matrix multiplication, etc for performing
- *  2D affine transformations:  translations, scaling, and rotations.
- */
+//! 2D affine transforms for grid (translate / scale / rotate).
+//!
+//! Safe reference-based API. The historical C port used raw pointers; those
+//! wrappers are gone now that all in-crate callers pass borrowed locations /
+//! transforms.
+
+#![deny(unsafe_op_in_unsafe_fn)]
 
 use std::f64::consts::PI;
 
 use super::types::{LLocation, LTransform};
 
-fn location_x(l: &LLocation) -> f64 {
+pub fn locationX(l: &LLocation) -> f64 {
     l[0]
 }
 
-fn location_y(l: &LLocation) -> f64 {
+pub fn locationY(l: &LLocation) -> f64 {
     l[1]
 }
 
-fn copy_transform(t1: &LTransform, t2: &mut LTransform) {
+pub fn copyTransform(t1: &LTransform, t2: &mut LTransform) {
     for i in 0..3 {
         for j in 0..3 {
             t2[i][j] = t1[i][j];
@@ -42,7 +46,7 @@ fn copy_transform(t1: &LTransform, t2: &mut LTransform) {
     }
 }
 
-fn inv_transform(t: &LTransform, invt: &mut LTransform) {
+pub fn invTransform(t: &LTransform, invt: &mut LTransform) {
     let det = t[0][0] * (t[2][2] * t[1][1] - t[2][1] * t[1][2])
         - t[1][0] * (t[2][2] * t[0][1] - t[2][1] * t[0][2])
         + t[2][0] * (t[1][2] * t[0][1] - t[1][1] * t[0][2]);
@@ -61,7 +65,7 @@ fn inv_transform(t: &LTransform, invt: &mut LTransform) {
     invt[2][2] = inv_det * (t[1][1] * t[0][0] - t[1][0] * t[0][1]);
 }
 
-fn identity_matrix(m: &mut LTransform) {
+pub fn identity(m: &mut LTransform) {
     for i in 0..3 {
         for j in 0..3 {
             m[i][j] = if i == j { 1.0 } else { 0.0 };
@@ -69,30 +73,30 @@ fn identity_matrix(m: &mut LTransform) {
     }
 }
 
-fn translation_matrix(tx: f64, ty: f64, m: &mut LTransform) {
-    identity_matrix(m);
+pub fn translation(tx: f64, ty: f64, m: &mut LTransform) {
+    identity(m);
     m[2][0] = tx;
     m[2][1] = ty;
 }
 
-fn scaling_matrix(sx: f64, sy: f64, m: &mut LTransform) {
-    identity_matrix(m);
+pub fn scaling(sx: f64, sy: f64, m: &mut LTransform) {
+    identity(m);
     m[0][0] = sx;
     m[1][1] = sy;
 }
 
-fn rotation_matrix(theta: f64, m: &mut LTransform) {
+pub fn rotation(theta: f64, m: &mut LTransform) {
     let thetarad = theta / 180.0 * PI;
     let costheta = thetarad.cos();
     let sintheta = thetarad.sin();
-    identity_matrix(m);
+    identity(m);
     m[0][0] = costheta;
     m[0][1] = sintheta;
     m[1][0] = -sintheta;
     m[1][1] = costheta;
 }
 
-fn multiply_matrix(m1: &LTransform, m2: &LTransform, m: &mut LTransform) {
+pub fn multiply(m1: &LTransform, m2: &LTransform, m: &mut LTransform) {
     m[0][0] = m1[0][0] * m2[0][0] + m1[0][1] * m2[1][0] + m1[0][2] * m2[2][0];
     m[0][1] = m1[0][0] * m2[0][1] + m1[0][1] * m2[1][1] + m1[0][2] * m2[2][1];
     m[0][2] = m1[0][0] * m2[0][2] + m1[0][1] * m2[1][2] + m1[0][2] * m2[2][2];
@@ -104,58 +108,14 @@ fn multiply_matrix(m1: &LTransform, m2: &LTransform, m: &mut LTransform) {
     m[2][2] = m1[2][0] * m2[0][2] + m1[2][1] * m2[1][2] + m1[2][2] * m2[2][2];
 }
 
-fn location_xy(x: f64, y: f64, v: &mut LLocation) {
+pub fn location(x: f64, y: f64, v: &mut LLocation) {
     v[0] = x;
     v[1] = y;
     v[2] = 1.0;
 }
 
-fn trans_location(vin: &LLocation, m: &LTransform, vout: &mut LLocation) {
+pub fn trans(vin: &LLocation, m: &LTransform, vout: &mut LLocation) {
     vout[0] = vin[0] * m[0][0] + vin[1] * m[1][0] + vin[2] * m[2][0];
     vout[1] = vin[0] * m[0][1] + vin[1] * m[1][1] + vin[2] * m[2][1];
     vout[2] = vin[0] * m[0][2] + vin[1] * m[1][2] + vin[2] * m[2][2];
-}
-
-pub unsafe fn locationX(l: *const LLocation) -> f64 {
-    unsafe { location_x(&*l) }
-}
-
-pub unsafe fn locationY(l: *const LLocation) -> f64 {
-    unsafe { location_y(&*l) }
-}
-
-pub unsafe fn copyTransform(t1: *const LTransform, t2: *mut LTransform) {
-    unsafe { copy_transform(&*t1, &mut *t2) }
-}
-
-pub unsafe fn invTransform(t: *const LTransform, invt: *mut LTransform) {
-    unsafe { inv_transform(&*t, &mut *invt) }
-}
-
-pub unsafe fn identity(m: *mut LTransform) {
-    unsafe { identity_matrix(&mut *m) }
-}
-
-pub unsafe fn translation(tx: f64, ty: f64, m: *mut LTransform) {
-    unsafe { translation_matrix(tx, ty, &mut *m) }
-}
-
-pub unsafe fn scaling(sx: f64, sy: f64, m: *mut LTransform) {
-    unsafe { scaling_matrix(sx, sy, &mut *m) }
-}
-
-pub unsafe fn rotation(theta: f64, m: *mut LTransform) {
-    unsafe { rotation_matrix(theta, &mut *m) }
-}
-
-pub unsafe fn multiply(m1: *const LTransform, m2: *const LTransform, m: *mut LTransform) {
-    unsafe { multiply_matrix(&*m1, &*m2, &mut *m) }
-}
-
-pub unsafe fn location(x: f64, y: f64, v: *mut LLocation) {
-    unsafe { location_xy(x, y, &mut *v) }
-}
-
-pub unsafe fn trans(vin: *const LLocation, m: *const LTransform, vout: *mut LLocation) {
-    unsafe { trans_location(&*vin, &*m, &mut *vout) }
 }

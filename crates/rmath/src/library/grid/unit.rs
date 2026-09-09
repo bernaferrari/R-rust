@@ -1042,7 +1042,7 @@ pub unsafe fn transformLocn(
         *xx = transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd);
         *yy = transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd);
         location(*xx, *yy, &mut lin);
-        trans(&lin, t, &mut lout);
+        trans(&lin, &*t, &mut lout);
         *xx = locationX(&lout);
         *yy = locationY(&lout);
     }
