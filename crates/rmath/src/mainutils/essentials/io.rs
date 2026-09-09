@@ -992,7 +992,7 @@ pub unsafe fn do_package_startup_message(_call: SEXP, _op: SEXP, args: SEXP, _rh
 // Complete I/O — capture.output, withVisible, invisible, suppress*,
 // ---------------------------------------------------------------------------
 
-/// Only filename destinations are owned by capture.output. Always close them
+/// Filename destinations and connections opened by capture.output are owned. Close them
 /// against their originating session, including when evaluation unwinds.
 struct CaptureFileGuard {
     instance: *mut crate::sexp::instance::RInstance,
@@ -1088,7 +1088,27 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
             None
         } else {
             let connection = if inherits_class(file_value, "connection") {
-                connection_index(file_value)
+                let index = connection_index(file_value);
+                let slot = crate::mainutils::connections::checked_connection_index(index);
+                let is_open = {
+                    let table = crate::mainutils::connections::connection_table();
+                    table[slot].as_ref().expect("validated connection").isopen
+                };
+                if !is_open {
+                    let mode = Rf_mkString(if append_file {
+                        c"a".as_ptr()
+                    } else {
+                        c"w".as_ptr()
+                    });
+                    let _mode = protect(mode);
+                    let tail = Rf_cons(mode, R_NilValue());
+                    let _tail = protect(tail);
+                    let open_args = Rf_cons(file_value, tail);
+                    let _open_args = protect(open_args);
+                    crate::mainutils::connections::do_open(_call, _op, open_args, rho);
+                    file_guard.connection = Some(slot);
+                }
+                index
             } else if TYPEOF(file_value) == SEXPTYPE::STRSXP && LENGTH(file_value) == 1 {
                 let mode = Rf_mkString(if append_file {
                     c"a".as_ptr()

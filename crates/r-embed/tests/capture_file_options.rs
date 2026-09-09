@@ -66,3 +66,15 @@ fn capture_file_overrides_existing_output_sink() {
     let mut s = RSession::new().unwrap();
     assert_eq!(s.eval("local({outer<-tempfile();inner<-tempfile();sink(outer);tryCatch(capture.output(cat('inner'),file=inner),finally=sink());identical(readLines(outer),character())&&identical(readLines(inner,warn=FALSE),'inner')})").unwrap().trim(), "[1] TRUE");
 }
+
+#[test]
+fn capture_opens_and_closes_deferred_destination() {
+    let mut s = RSession::new().unwrap();
+    assert_eq!(s.eval("local({f<-tempfile();con<-file(f);before<-isOpen(con);v<-withVisible(capture.output(cat('hello'),file=con));closed<-tryCatch({isOpen(con);FALSE},error=function(e)TRUE);!before&&!v$visible&&is.null(v$value)&&closed&&identical(readLines(f,warn=FALSE),'hello')})").unwrap().trim(), "[1] TRUE");
+}
+
+#[test]
+fn capture_closes_deferred_destination_after_error() {
+    let mut s = RSession::new().unwrap();
+    assert_eq!(s.eval("local({f<-tempfile();con<-file(f);tryCatch(capture.output({cat('before');stop('boom')},file=con),error=function(e)NULL);closed<-tryCatch({isOpen(con);FALSE},error=function(e)TRUE);closed&&identical(readLines(f,warn=FALSE),'before')})").unwrap().trim(), "[1] TRUE");
+}

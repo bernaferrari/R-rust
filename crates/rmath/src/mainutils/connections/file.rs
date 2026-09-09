@@ -69,7 +69,7 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         conn.text = !open_mode.contains('b');
 
         // Open immediately if open mode is non-empty
-        if !deferred || !matches!(conn.kind, ConnKind::BrowserFile) {
+        if !deferred {
             let file_result = if matches!(&conn.kind, ConnKind::BrowserFile) {
                 open_browser_file(&mut conn, &open_mode);
                 Ok(None)
