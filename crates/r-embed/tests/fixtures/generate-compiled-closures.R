@@ -12,4 +12,6 @@ g <- local({
     })
 })
 saveRDS(g, 'crates/r-embed/tests/fixtures/gnu-compiled-captured.rds', version=3, compress=FALSE)
-cat(f(3), f(-5), g(), g(4), '\n')
+constant <- compiler::cmpfun(function() 42L)
+saveRDS(constant, 'crates/r-embed/tests/fixtures/gnu-constant-closure.rds', version=2, compress=FALSE)
+cat(f(3), f(-5), g(), g(4), constant(), '\n')

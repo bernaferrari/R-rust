@@ -98,6 +98,11 @@ pub const GNU_BC_MIN_VERSION: c_int = 12;
 pub const GNU_BC_MAX_VERSION: c_int = 12;
 pub const GNU_BC_OPCODE_COUNT: usize = 129;
 
+/// Marker stored in the owned BCODESXP payload for a GNU instruction stream.
+/// GNU R does not serialize this slot; it is added only after deserialization
+/// so the private opcode dialect can never be inferred from an opcode value.
+pub const GNU_BC_DIALECT_MARKER: c_int = 0x4752_4e55;
+
 const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
     0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 2,
@@ -144,6 +149,32 @@ pub fn validate_gnu_bytecode_stream(code: &[c_int]) -> Result<(), String> {
         pc = end;
     }
     Ok(())
+}
+
+/// Validate the only GNU bytecode program this runtime executes directly.
+///
+/// Keeping this check shared by deserialization, evaluation, and serialization
+/// prevents a tagged but subsequently mutated object from escaping the narrow
+/// `LDCONST; RETURN` adapter.
+pub fn validate_gnu_constant_return_stream(
+    code: &[c_int],
+    constant_count: usize,
+) -> Result<usize, String> {
+    validate_gnu_bytecode_stream(code)?;
+    if code.len() != 4 || code[1] != 16 || code[3] != 1 {
+        return Err("unsupported GNU bytecode stream; only LDCONST+RETURN is implemented".into());
+    }
+    let index = code[2];
+    if index < 0 {
+        return Err("GNU LDCONST constant pool index is negative".into());
+    }
+    let index = index as usize;
+    if index >= constant_count {
+        return Err(format!(
+            "GNU LDCONST constant pool index {index} is out of range for pool length {constant_count}"
+        ));
+    }
+    Ok(index)
 }
 
 fn read_operand(bytecode: &[c_int], pc: &mut usize, opname: &str) -> Result<c_int, String> {
@@ -961,6 +992,27 @@ mod tests {
         // GNU GOTO (opcode 2) has one operand.
         let err = validate_gnu_bytecode_stream(&[GNU_BC_MAX_VERSION, 2]).unwrap_err();
         assert!(err.contains("truncated GNU R bytecode opcode 2"));
+    }
+
+    #[test]
+    fn constant_return_adapter_rejects_shape_and_pool_index_mutations() {
+        let valid = [GNU_BC_MAX_VERSION, 16, 1, 1];
+        assert_eq!(validate_gnu_constant_return_stream(&valid, 2), Ok(1));
+        assert!(
+            validate_gnu_constant_return_stream(&valid, 1)
+                .unwrap_err()
+                .contains("out of range")
+        );
+        assert!(
+            validate_gnu_constant_return_stream(&[GNU_BC_MAX_VERSION, 16, -1, 1], 2)
+                .unwrap_err()
+                .contains("negative")
+        );
+        assert!(
+            validate_gnu_constant_return_stream(&[GNU_BC_MAX_VERSION, 16, 0, 0], 2)
+                .unwrap_err()
+                .contains("only LDCONST+RETURN")
+        );
     }
 
     #[test]

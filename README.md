@@ -97,7 +97,7 @@ See the [compatibility evidence](docs/conformance.md) and [graphics contracts](d
 
 ## Evidence over percentages
 
-At the latest verified checkpoint, **636 curated GNU R comparison cases** and **2,783 workspace tests** passed. Browser tests also exercise actual Wasm execution, memory limits, theme accessibility, and auto/manual behavior. These are bounded checks, not an implementation percentage or a claim that every R program works.
+At the latest verified checkpoint, **636 curated GNU R comparison cases** and **2,852 workspace tests** passed (5 tests were ignored). Browser tests also exercise actual Wasm execution, memory limits, theme accessibility, and auto/manual behavior. These are bounded checks, not an implementation percentage or a claim that every R program works.
 
 The compatibility oracle is pinned to GNU R source commit [`bac583951b`](oracle/r-oracle.json). Tests compare against that exact revision; the [test contract](docs/conformance.md) explains provenance, upstream tests, Miri and GC stress coverage.
 

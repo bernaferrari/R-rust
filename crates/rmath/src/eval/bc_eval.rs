@@ -347,17 +347,62 @@ pub unsafe fn BCODE_CONSTS(x: SEXP) -> SEXP {
     }
 }
 
+/// Whether this BCODESXP was built by the GNU R deserialization adapter.
+/// The marker is an owned internal payload slot, never a guessed opcode.
+pub unsafe fn BCODE_IS_GNU(x: SEXP) -> bool {
+    unsafe {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP || (*x).data.vecsxp.length < 4 {
+            return false;
+        }
+        let marker = VECTOR_ELT(x, 3);
+        !marker.is_null()
+            && TYPEOF(marker) == SEXPTYPE::INTSXP
+            && LENGTH(marker) == 1
+            && *INTEGER(marker) == super::bytecode::GNU_BC_DIALECT_MARKER
+    }
+}
+
 /// Get the source expression stored in bytecode constant slot 0.
 pub unsafe fn BCODE_EXPR(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || TYPEOF(x) != SEXPTYPE::BCODESXP {
             return R_NilValue();
         }
+        if BCODE_IS_GNU(x) && (*x).data.vecsxp.length >= 5 {
+            let source = VECTOR_ELT(x, 4);
+            if !source.is_null() {
+                return source;
+            }
+        }
         let consts = BCODE_CONSTS(x);
         if consts.is_null() || TYPEOF(consts) != SEXPTYPE::VECSXP || LENGTH(consts) == 0 {
             return R_NilValue();
         }
         VECTOR_ELT(consts, 0)
+    }
+}
+
+unsafe fn eval_gnu_constant_return(body: SEXP) -> SEXP {
+    unsafe {
+        let code_vec = VECTOR_ELT(body, 0);
+        let consts = BCODE_CONSTS(body);
+        if code_vec.is_null() || TYPEOF(code_vec) != SEXPTYPE::INTSXP {
+            bc_error("GNU bytecode object has no instruction stream");
+        }
+        if consts.is_null() || TYPEOF(consts) != SEXPTYPE::VECSXP {
+            bc_error("GNU bytecode object has no constant pool");
+        }
+        let n = LENGTH(code_vec) as usize;
+        let code = INTEGER(code_vec);
+        if code.is_null() {
+            bc_error("GNU bytecode instruction stream has a null data pointer");
+        }
+        let words = std::slice::from_raw_parts(code, n);
+        let index =
+            super::bytecode::validate_gnu_constant_return_stream(words, LENGTH(consts) as usize)
+                .unwrap_or_else(|message| bc_error(message));
+        super::runtime::set_visible(TRUE);
+        VECTOR_ELT(consts, index as i64)
     }
 }
 
@@ -543,6 +588,10 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if body.is_null() || TYPEOF(body) != SEXPTYPE::BCODESXP {
             bc_error("bcEval requires a bytecode object");
+        }
+
+        if BCODE_IS_GNU(body) {
+            return eval_gnu_constant_return(body);
         }
 
         let code_ptr = BCODE_CODE(body);
@@ -1217,6 +1266,8 @@ pub unsafe fn R_initialize_bcode() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::accessors::SET_VECTOR_ELT;
+    use crate::sexp::globals::R_BaseEnv;
 
     fn assert_r_error(action: impl FnOnce()) -> RError {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(action))
@@ -1288,6 +1339,37 @@ mod tests {
         assert!(opcodes::OP_CALL > 0);
         assert!(opcodes::OP_STEPFOR > 0);
         assert!(opcodes::OP_BREAK > 0);
+    }
+
+    #[test]
+    fn gnu_constant_return_uses_code_pool_after_source_edit() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let code = Rf_allocVector(SEXPTYPE::INTSXP, 4);
+            let code_data = INTEGER(code);
+            *code_data = super::super::bytecode::GNU_BC_MAX_VERSION;
+            *code_data.add(1) = 16; // LDCONST
+            *code_data.add(2) = 0;
+            *code_data.add(3) = 1; // RETURN
+
+            let consts = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            SET_VECTOR_ELT(consts, 0, Rf_ScalarInteger(42));
+            let stack_hint = Rf_ScalarInteger(4);
+            let marker = Rf_ScalarInteger(super::super::bytecode::GNU_BC_DIALECT_MARKER);
+            let source = Rf_ScalarInteger(7);
+            let bcode = Rf_allocVector(SEXPTYPE::BCODESXP, 5);
+            SET_VECTOR_ELT(bcode, 0, code);
+            SET_VECTOR_ELT(bcode, 1, consts);
+            SET_VECTOR_ELT(bcode, 2, stack_hint);
+            SET_VECTOR_ELT(bcode, 3, marker);
+            SET_VECTOR_ELT(bcode, 4, source);
+
+            // The retained source is editable metadata; execution must use
+            // the tagged GNU instruction stream and its constant pool.
+            SET_VECTOR_ELT(bcode, 4, Rf_ScalarInteger(99));
+            let result = bcEval(bcode, R_BaseEnv());
+            assert_eq!(*INTEGER(result), 42);
+        }
     }
 
     #[test]

@@ -793,6 +793,65 @@ pub unsafe fn WriteItemInternal(
         // but dispatch incorrectly.  Reject it at the boundary until the
         // adapter is complete.
         if stype == SEXPTYPE::BCODESXP {
+            if crate::eval::bc_eval::BCODE_IS_GNU(s) {
+                let code = VECTOR_ELT(s, 0);
+                let constants = crate::eval::bc_eval::BCODE_CONSTS(s);
+                if (*s).data.vecsxp.length != 5
+                    || (!ATTRIB(s).is_null() && ATTRIB(s) != R_NilValue())
+                    || code.is_null()
+                    || TYPEOF(code) != SEXPTYPE::INTSXP
+                    || constants.is_null()
+                    || TYPEOF(constants) != SEXPTYPE::VECSXP
+                {
+                    error("invalid GNU constant bytecode payload");
+                }
+                let code_len = XLENGTH(code) as usize;
+                let code_ptr = INTEGER(code);
+                if code_ptr.is_null() {
+                    error("GNU bytecode instruction stream has a null data pointer");
+                }
+                let words = std::slice::from_raw_parts(code_ptr, code_len);
+                let constant_count = XLENGTH(constants) as usize;
+                if constant_count > i32::MAX as usize {
+                    error("GNU bytecode constant pool is too large to serialize");
+                }
+                if let Err(message) = crate::eval::bytecode::validate_gnu_constant_return_stream(
+                    words,
+                    constant_count,
+                ) {
+                    error(&message);
+                }
+                // This bounded writer supports the atomic pools produced by
+                // GNU's constant-return compiler. Private opcodes and complex
+                // language/repetition graphs must never be written as GNU BC.
+                for i in 0..XLENGTH(constants) {
+                    let value = VECTOR_ELT(constants, i);
+                    if ![
+                        SEXPTYPE::NILSXP,
+                        SEXPTYPE::LGLSXP,
+                        SEXPTYPE::INTSXP,
+                        SEXPTYPE::REALSXP,
+                        SEXPTYPE::CPLXSXP,
+                        SEXPTYPE::STRSXP,
+                        SEXPTYPE::RAWSXP,
+                    ]
+                    .iter()
+                    .any(|kind| TYPEOF(value) == *kind)
+                    {
+                        error("GNU bytecode serialization requires an atomic constant pool");
+                    }
+                }
+                writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
+                writer.write_i32(1); // GNU WriteBC's unused repetition counter slot.
+                WriteItemInternal(VECTOR_ELT(s, 0), ref_table, writer);
+                writer.write_i32(constant_count as i32);
+                for i in 0..XLENGTH(constants) {
+                    let value = VECTOR_ELT(constants, i);
+                    writer.write_i32(TYPEOF(value));
+                    WriteItemInternal(value, ref_table, writer);
+                }
+                return;
+            }
             error("cannot serialize private bytecode dialect as GNU R BCODESXP");
         }
 
@@ -895,8 +954,9 @@ pub unsafe fn ReadItemInternal(
     result
 }
 
-// Read GNU compiler constants completely, retaining only the source expression
-// for an interpreted closure body. Never feed GNU opcodes to the private VM.
+// Read GNU compiler constants completely and retain the instruction stream in
+// an explicitly tagged internal BCODESXP. Standalone GNU bytecode remains
+// rejected below; this path is reached only for a serialized closure body.
 unsafe fn read_bc_source(
     reader: &mut BinaryReader,
     refs: &mut ReadRefTable,
@@ -935,7 +995,31 @@ unsafe fn read_bc_source(
             };
             SET_VECTOR_ELT(constants, i as R_xlen_t, value);
         }
-        Ok(VECTOR_ELT(constants, 0))
+        // Keep source fallback for every validated GNU stream outside the
+        // bounded adapter. This avoids treating a private opcode collision as
+        // GNU execution and preserves the existing interpreted behavior.
+        if words.len() != 4 || words[1] != 16 || words[3] != 1 {
+            return Ok(VECTOR_ELT(constants, 0));
+        }
+        crate::eval::bytecode::validate_gnu_constant_return_stream(words, count as usize)?;
+
+        // Keep source deparsing independent from the executable constants.
+        // The source is an owned copy because callers may edit it while the
+        // bytecode must continue to read its own constant pool.
+        let source = crate::mainutils::duplicate::Rf_duplicate(VECTOR_ELT(constants, 0));
+        let _source = protect(source);
+        let marker = Rf_ScalarInteger(crate::eval::bytecode::GNU_BC_DIALECT_MARKER);
+        let _marker = protect(marker);
+        let stack_hint = Rf_ScalarInteger(4);
+        let _stack_hint = protect(stack_hint);
+        let bcode = Rf_allocVector(SEXPTYPE::BCODESXP, 5);
+        let _bcode = protect(bcode);
+        SET_VECTOR_ELT(bcode, 0, code);
+        SET_VECTOR_ELT(bcode, 1, constants);
+        SET_VECTOR_ELT(bcode, 2, stack_hint);
+        SET_VECTOR_ELT(bcode, 3, marker);
+        SET_VECTOR_ELT(bcode, 4, source);
+        Ok(bcode)
     })();
     reader.item_depth -= 1;
     reader.bc_source_depth -= 1;

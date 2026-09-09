@@ -200,15 +200,19 @@ resource accounting remain substantial work alongside package support.
 ## Compiled-closure import and dispatch follow-up
 
 GNU R bytecode version 12 instruction framing is checked against all 129 pinned
-opcode widths. Imported compiled closure bodies are decoded with bounded
-language/repetition records and evaluated from their retained source expression.
-This supports interpreted execution of the tested compiler-produced closures,
-including defaults, branches, captured environments, nested functions and loops.
-It does **not** implement the GNU bytecode VM or preserve compiled-body identity.
-If bytecode is independently modified to disagree with its retained source, this
-fallback follows the source and cannot reproduce the modified bytecode behavior.
-Standalone GNU bytecode objects and serialization of the private VM dialect
-still fail explicitly. Compiler package APIs, older bytecode versions, namespace
+opcode widths. A bounded adapter now executes imported version-12 closure bodies
+whose instruction stream is exactly `LDCONST` followed by `RETURN`. It validates
+the constant index and uses an explicit dialect marker, keeping GNU instructions
+separate from the private VM. The returned value comes from the executable pool,
+even if the separately retained source is changed. Atomic constant pools can be
+serialized back to GNU R; other pool shapes fail explicitly at this boundary.
+
+Other validated compiled closure bodies still use their retained source. This
+supports interpreted execution of the tested compiler-produced closures,
+including defaults, branches, captured environments, nested functions and loops,
+but does not preserve their compiled-body identity or independently modified
+bytecode behavior. This is **not** a complete GNU bytecode VM. Standalone GNU
+bytecode objects and serialization of the private VM dialect still fail explicitly. Compiler package APIs, older bytecode versions, namespace
 restoration, package lazy-load databases and full wire-format parity remain open.
 The reproducible fixtures and their GNU R generator live in
 `crates/r-embed/tests/fixtures/generate-compiled-closures.R`.
