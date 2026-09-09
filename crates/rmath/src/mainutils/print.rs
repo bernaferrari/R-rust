@@ -43,6 +43,7 @@ const USESOURCE: c_int = 8;
 pub(crate) struct PrintRuntimeState {
     pub data: R_PrintData,
     tagbuf: [u8; TAGBUFLEN0 * 2],
+    active_values: Vec<SEXP>,
 }
 
 impl Default for PrintRuntimeState {
@@ -50,6 +51,43 @@ impl Default for PrintRuntimeState {
         PrintRuntimeState {
             data: R_PRINT_INIT.clone(),
             tagbuf: [0; TAGBUFLEN0 * 2],
+            active_values: Vec::new(),
+        }
+    }
+}
+
+struct PrintRecursionGuard {
+    value: SEXP,
+    instance: *mut crate::sexp::instance::RInstance,
+}
+
+impl Drop for PrintRecursionGuard {
+    fn drop(&mut self) {
+        if self.instance.is_null() {
+            return;
+        }
+        unsafe {
+            let state = &mut (*self.instance).eval_state.print;
+            if let Some(index) = state
+                .active_values
+                .iter()
+                .rposition(|&value| value == self.value)
+            {
+                state.active_values.remove(index);
+            }
+        }
+    }
+}
+
+fn enter_print_value(value: SEXP) -> Option<PrintRecursionGuard> {
+    let instance = crate::sexp::instance::with_required_current_instance(|instance| instance);
+    unsafe {
+        let state = &mut (*instance).eval_state.print;
+        if state.active_values.contains(&value) {
+            None
+        } else {
+            state.active_values.push(value);
+            Some(PrintRecursionGuard { value, instance })
         }
     }
 }
@@ -1436,6 +1474,15 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             return;
         }
 
+        let _recursion_guard = match enter_print_value(s) {
+            Some(guard) => guard,
+            None => {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "cyclic object encountered while printing".into(),
+                });
+            }
+        };
+
         if isMethodsDispatchOn() == 0 && (IS_S4_OBJECT(s) != 0 || TYPEOF(s) == SEXPTYPE(25).0) {
             println!("<S4 object>");
             return;
@@ -2206,6 +2253,56 @@ mod tests {
                 child.kill().unwrap();
                 let _ = child.wait();
                 panic!("cyclic legacy printing did not terminate within five seconds");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn legacy_print_cyclic_nested_vectors_terminate() {
+        const CHILD: &str = "RPORT_LEGACY_PRINT_NESTED_CYCLE_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let session = RSession::new();
+            session.with_active(|| unsafe {
+                let value = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::VECSXP, 1);
+                let _root = protect(value);
+                crate::sexp::accessors::SET_VECTOR_ELT(value, 0, value);
+                let cycle = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    PrintValueEnv(value, R_GlobalEnv());
+                }));
+                let error = cycle.expect_err("cycle should return a recoverable error");
+                assert!(
+                    error
+                        .downcast_ref::<crate::sexp::context::RError>()
+                        .is_some_and(|error| error.message.contains("cyclic object"))
+                );
+                let ordinary = crate::sexp::constructors::Rf_ScalarInteger(2);
+                let _ordinary_root = protect(ordinary);
+                PrintValueEnv(ordinary, R_GlobalEnv());
+            });
+            return;
+        }
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "mainutils::print::tests::legacy_print_cyclic_nested_vectors_terminate",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(status.success(), "nested cycle child failed: {status}");
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                child.kill().unwrap();
+                let _ = child.wait();
+                panic!("nested cyclic printing did not terminate within five seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }

@@ -1,6 +1,24 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU computed calls and deferred capture connections work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-checkfun/callable-argument.rds", import.meta.url))
+  await page.goto("/console/")
+  const output = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const result = []
+      for (const code of [
+        `f<-unserialize(as.raw(c(${values})));identical(f(abs,-4L),4L)`,
+        "con<-file('deferred.txt');before<-isOpen(con);invisible(capture.output(cat('hello'),file=con));closed<-tryCatch({isOpen(con);FALSE},error=function(e)TRUE);!before&&closed&&identical(readLines('deferred.txt',warn=FALSE),'hello')",
+      ]) result.push((await runtime.run(code,"console")).output.trim())
+      return result
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(output).toEqual(Array(2).fill("[1] TRUE"))
+})
+
 test("GNU primitive calls and streaming file capture work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-builtin-calls/nested.rds", import.meta.url))
   await page.goto("/console/")
