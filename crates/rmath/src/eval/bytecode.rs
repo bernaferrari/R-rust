@@ -119,6 +119,9 @@ pub const GNU_OP_LDNULL: c_int = 17;
 pub const GNU_OP_LDTRUE: c_int = 18;
 pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
+pub const GNU_OP_GETFUN: c_int = 23;
+pub const GNU_OP_MAKEPROM: c_int = 29;
+pub const GNU_OP_CALL: c_int = 38;
 pub const GNU_OP_POP: c_int = 4;
 pub const GNU_OP_GOTO: c_int = 2;
 pub const GNU_OP_STARTFOR: c_int = 11;
@@ -260,10 +263,10 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
             | GNU_OP_POP | GNU_OP_ENDFOR => {}
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
-            | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
-            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_SQRT | GNU_OP_EXP
-            | GNU_OP_SETVAR => {
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_MAKEPROM | GNU_OP_UMINUS
+            | GNU_OP_UPLUS | GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT
+            | GNU_OP_EQ | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT
+            | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_SETVAR => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -291,6 +294,14 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                     ));
                 }
                 branches.push((opcode_pc, target as usize));
+            }
+            GNU_OP_CALL => {
+                let call_index = code[pc];
+                if call_index < 0 || call_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU CALL expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
             }
             GNU_OP_GOTO => {
                 let target = code[pc];
@@ -395,28 +406,39 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
 
     let mut depths = vec![None; code.len()];
     let mut loop_stacks: Vec<Option<Vec<usize>>> = vec![None; code.len()];
-    let mut pending = vec![(1usize, 0usize, Vec::new())];
+    let mut pending = vec![(1usize, 0usize, Vec::new(), Vec::new())];
+    let mut call_stacks: Vec<Option<Vec<usize>>> = vec![None; code.len()];
     let mut saw_return = false;
-    while let Some((instruction_pc, depth, loop_stack)) = pending.pop() {
+    while let Some((instruction_pc, depth, loop_stack, mut call_stack)) = pending.pop() {
         if instruction_pc >= code.len() || !boundaries[instruction_pc] {
             return Err(format!(
                 "GNU bytecode control flow reaches invalid instruction {instruction_pc}"
             ));
         }
         if let Some(previous) = depths[instruction_pc] {
-            if previous != depth || loop_stacks[instruction_pc].as_ref() != Some(&loop_stack) {
+            if previous != depth
+                || loop_stacks[instruction_pc].as_ref() != Some(&loop_stack)
+                || call_stacks[instruction_pc].as_ref() != Some(&call_stack)
+            {
                 return Err(format!(
                     "GNU bytecode state disagrees at instruction {instruction_pc}"
                 ));
             }
             continue;
         }
+        if call_stack.last().is_some_and(|marker| *marker >= depth) {
+            return Err("GNU bytecode consumed an active call frame".into());
+        }
+        call_stacks[instruction_pc] = Some(call_stack.clone());
         depths[instruction_pc] = Some(depth);
         loop_stacks[instruction_pc] = Some(loop_stack.clone());
         let opcode = code[instruction_pc];
         let next = instruction_pc + 1 + GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
         match opcode {
             GNU_OP_RETURN => {
+                if !call_stack.is_empty() {
+                    return Err("GNU RETURN exits an unfinished call".into());
+                }
                 let required_depth = loop_stack.len() + 1;
                 if depth != required_depth {
                     return Err(format!(
@@ -431,17 +453,27 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU BRIFNOT at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack.clone()));
-                pending.push((code[instruction_pc + 2] as usize, depth - 1, loop_stack));
+                pending.push((next, depth - 1, loop_stack.clone(), call_stack.clone()));
+                pending.push((
+                    code[instruction_pc + 2] as usize,
+                    depth - 1,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
             }
-            GNU_OP_GOTO => pending.push((code[instruction_pc + 1] as usize, depth, loop_stack)),
+            GNU_OP_GOTO => pending.push((
+                code[instruction_pc + 1] as usize,
+                depth,
+                loop_stack,
+                call_stack.clone(),
+            )),
             GNU_OP_POP => {
                 if depth == 0 {
                     return Err(format!(
                         "GNU POP at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack));
+                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_SETVAR => {
                 if depth == 0 {
@@ -449,7 +481,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU SETVAR at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth, loop_stack));
+                pending.push((next, depth, loop_stack, call_stack.clone()));
             }
             GNU_OP_STARTFOR => {
                 if depth == 0 {
@@ -459,7 +491,12 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 }
                 let mut entered = loop_stack;
                 entered.push(code[instruction_pc + 3] as usize);
-                pending.push((code[instruction_pc + 3] as usize, depth, entered));
+                pending.push((
+                    code[instruction_pc + 3] as usize,
+                    depth,
+                    entered,
+                    call_stack.clone(),
+                ));
             }
             GNU_OP_STEPFOR => {
                 if loop_stack.last() != Some(&instruction_pc) {
@@ -467,8 +504,13 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU STEPFOR at instruction {instruction_pc} is not the active for loop"
                     ));
                 }
-                pending.push((next, depth, loop_stack.clone()));
-                pending.push((code[instruction_pc + 1] as usize, depth, loop_stack));
+                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
+                pending.push((
+                    code[instruction_pc + 1] as usize,
+                    depth,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
             }
             GNU_OP_ENDFOR => {
                 let mut exited = loop_stack;
@@ -477,20 +519,25 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU ENDFOR at instruction {instruction_pc} has no active for loop"
                     ));
                 }
-                pending.push((next, depth, exited));
+                pending.push((next, depth, exited, call_stack.clone()));
             }
             GNU_OP_BASEGUARD => {
-                pending.push((next, depth, loop_stack.clone()));
+                pending.push((next, depth, loop_stack.clone(), call_stack.clone()));
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
                 }
-                pending.push((code[instruction_pc + 2] as usize, depth + 1, loop_stack));
+                pending.push((
+                    code[instruction_pc + 2] as usize,
+                    depth + 1,
+                    loop_stack,
+                    call_stack.clone(),
+                ));
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
                 }
-                pending.push((next, depth + 1, loop_stack));
+                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
             | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
@@ -499,7 +546,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth - 1, loop_stack));
+                pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
             GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP => {
                 if depth < 1 {
@@ -507,9 +554,26 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
                     ));
                 }
-                pending.push((next, depth, loop_stack));
+                pending.push((next, depth, loop_stack, call_stack.clone()));
             }
-            GNU_OP_INVISIBLE => pending.push((next, depth, loop_stack)),
+            GNU_OP_GETFUN | GNU_OP_MAKEPROM => {
+                if depth >= 64 {
+                    return Err("GNU bytecode exceeds bounded stack limit".into());
+                }
+                if opcode == GNU_OP_GETFUN {
+                    call_stack.push(depth);
+                } else if call_stack.is_empty() {
+                    return Err("GNU MAKEPROM has no active GETFUN call".into());
+                }
+                pending.push((next, depth + 1, loop_stack, call_stack));
+            }
+            GNU_OP_CALL => {
+                let Some(marker) = call_stack.pop() else {
+                    return Err("GNU CALL has no active GETFUN call".into());
+                };
+                pending.push((next, marker + 1, loop_stack, call_stack));
+            }
+            GNU_OP_INVISIBLE => pending.push((next, depth, loop_stack, call_stack.clone())),
             _ => unreachable!(),
         }
     }
@@ -1515,6 +1579,23 @@ mod tests {
 
         let early_return = [12, 16, 0, 11, 1, 2, 11, 16, 0, 1, 4, 12, 7, 13, 1];
         assert_eq!(validate_gnu_adapter_stream(&early_return, 3), Ok(true));
+    }
+
+    #[test]
+    fn bounded_gnu_calls_validate_frame_lifetime_and_preserve_outer_operands() {
+        for words in [
+            vec![12, 38, 0, 1],        // CALL without GETFUN
+            vec![12, 29, 0, 1],        // MAKEPROM without GETFUN
+            vec![12, 23, 0, 4, 17, 1], // POP destroys the active function
+            vec![12, 23, 0, 1],        // unfinished call at RETURN
+        ] {
+            assert!(validate_gnu_adapter_stream(&words, 1).is_err(), "{words:?}");
+        }
+        // An argument call in the right operand of ADD must retain the left.
+        assert_eq!(
+            validate_gnu_adapter_stream(&[12, 16, 0, 23, 1, 29, 2, 38, 3, 44, 4, 1], 5),
+            Ok(true)
+        );
     }
 
     #[test]

@@ -419,6 +419,11 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
         let mut pc = 1usize;
         let mut stack = R_bcstack_t::new(4);
         let mut for_loops: Vec<GnuForLoopState> = Vec::new();
+        // GNU GETFUN starts a call frame.  MAKEPROM appends lazy arguments
+        // until CALL consumes that frame.  Keeping the marker separate from
+        // the operand stack lets the validator and runtime reject malformed
+        // streams without guessing an argument count from the call object.
+        let mut gnu_call_frames: Vec<usize> = Vec::new();
         while pc < words.len() {
             let opcode = words[pc];
             pc += 1;
@@ -497,6 +502,109 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         value
                     };
                     stack.push(value);
+                }
+                super::bytecode::GNU_OP_GETFUN => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU GETFUN constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    let fun = with_stack_rooted(&stack, symbol, || {
+                        crate::sexp::envir::findFun(symbol, rho)
+                    });
+                    if fun == R_UnboundValue() {
+                        bc_error("could not find function for GNU GETFUN");
+                    }
+                    let fun_type = TYPEOF(fun);
+                    if fun_type != SEXPTYPE::CLOSXP
+                        && fun_type != SEXPTYPE::BUILTINSXP
+                        && fun_type != SEXPTYPE::SPECIALSXP
+                    {
+                        bc_error("GNU GETFUN did not resolve to a function");
+                    }
+                    gnu_call_frames.push(stack.depth());
+                    stack.push(fun);
+                }
+                super::bytecode::GNU_OP_MAKEPROM => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let expression = VECTOR_ELT(consts, index as i64);
+                    if gnu_call_frames.is_empty() {
+                        bc_error("GNU MAKEPROM has no active GETFUN call");
+                    }
+                    let promise = with_stack_rooted(&stack, expression, || {
+                        crate::sexp::memory_ext::mkPROMSXP(expression, rho)
+                    });
+                    stack.push(promise);
+                }
+                super::bytecode::GNU_OP_CALL => {
+                    let call_index = words[pc] as usize;
+                    pc += 1;
+                    let marker = gnu_call_frames
+                        .pop()
+                        .unwrap_or_else(|| bc_error("GNU CALL has no active GETFUN call"));
+                    let depth = stack.depth();
+                    if depth <= marker {
+                        bc_error("GNU CALL has no function");
+                    }
+                    let call_expr = VECTOR_ELT(consts, call_index as i64);
+                    if TYPEOF(call_expr) != SEXPTYPE::LANGSXP {
+                        bc_error(format!(
+                            "GNU CALL expression constant {call_index} is not a language object"
+                        ));
+                    }
+                    let result = with_stack_rooted(&stack, call_expr, || {
+                        let fun = stack.at(marker);
+                        let mut args = R_NilValue();
+                        let mut argument_roots = Vec::new();
+                        for index in (marker + 1..depth).rev() {
+                            args = Rf_cons(stack.at(index), args);
+                            argument_roots.push(crate::sexp::protect::protect(args));
+                        }
+                        use crate::sexp::object::Sexp;
+                        let call = Sexp::from_raw_unchecked(call_expr);
+                        let env = Sexp::from_raw_unchecked(rho);
+                        let function = Sexp::from_raw_unchecked(fun);
+                        let result = match TYPEOF(fun) {
+                            kind if kind == SEXPTYPE::CLOSXP => super::apply::apply_closure_safe(
+                                function,
+                                call,
+                                Sexp::from_raw_unchecked(args),
+                                env,
+                            ),
+                            kind if kind == SEXPTYPE::SPECIALSXP => {
+                                super::apply::apply_special_safe(
+                                    function,
+                                    call,
+                                    Sexp::from_raw_unchecked(CDR(call_expr)),
+                                    env,
+                                )
+                            }
+                            kind if kind == SEXPTYPE::BUILTINSXP => {
+                                let name = super::primitive::PRIMNAME(fun);
+                                let raw_args = if super::builtin::unevaluated_builtin_handler(name)
+                                    .is_some()
+                                {
+                                    CDR(call_expr)
+                                } else {
+                                    args
+                                };
+                                super::apply::apply_builtin_safe(
+                                    function,
+                                    call,
+                                    Sexp::from_raw_unchecked(raw_args),
+                                    env,
+                                )
+                            }
+                            _ => unreachable!(),
+                        };
+                        result.unwrap_or_else(|error| bc_error(error)).as_raw()
+                    });
+                    stack.set_depth(marker);
+                    stack.push(result);
                 }
                 super::bytecode::GNU_OP_BASEGUARD => {
                     let expression_index = words[pc] as usize;

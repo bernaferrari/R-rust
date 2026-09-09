@@ -703,6 +703,56 @@ pub unsafe fn SaveSpecialHook(item: SEXP) -> c_int {
 // Internal WriteItem (recursive, writes to BinaryWriter)
 // ---------------------------------------------------------------------------
 
+// Nested GNU bytecode constants use WriteBC1, without an extra object tag or
+// repetition-table header. A single outer WriteBC owns the repetition table.
+unsafe fn write_gnu_bc_payload(
+    s: SEXP,
+    ref_table: &mut WriteHashTable,
+    writer: &mut BinaryWriter,
+    depth: usize,
+) {
+    unsafe {
+        if depth >= 128 {
+            error("GNU bytecode nesting exceeds 128 levels");
+        }
+        if !crate::eval::bc_eval::BCODE_IS_GNU(s) {
+            error("cannot serialize private bytecode as a GNU constant");
+        }
+        let code = VECTOR_ELT(s, 0);
+        let constants = crate::eval::bc_eval::BCODE_CONSTS(s);
+        if (*s).data.vecsxp.length != 5
+            || (!ATTRIB(s).is_null() && ATTRIB(s) != R_NilValue())
+            || code.is_null()
+            || TYPEOF(code) != SEXPTYPE::INTSXP
+            || constants.is_null()
+            || TYPEOF(constants) != SEXPTYPE::VECSXP
+        {
+            error("invalid GNU constant bytecode payload");
+        }
+        let code_len = XLENGTH(code) as usize;
+        let code_ptr = INTEGER(code);
+        if code_ptr.is_null() {
+            error("GNU bytecode instruction stream has a null data pointer");
+        }
+        let words = std::slice::from_raw_parts(code_ptr, code_len);
+        let constant_count = XLENGTH(constants) as usize;
+        if constant_count > i32::MAX as usize {
+            error("GNU bytecode constant pool is too large to serialize");
+        }
+        match crate::eval::bytecode::validate_gnu_adapter_stream(words, constant_count) {
+            Ok(true) => {}
+            Ok(false) => error("unsupported GNU bytecode stream cannot be serialized"),
+            Err(message) => error(&message),
+        }
+        WriteItemInternal(VECTOR_ELT(s, 0), ref_table, writer);
+        writer.write_i32(constant_count as i32);
+        for i in 0..XLENGTH(constants) {
+            let value = VECTOR_ELT(constants, i);
+            write_bc_language(value, ref_table, writer, depth + 1);
+        }
+    }
+}
+
 unsafe fn write_bc_language(
     value: SEXP,
     ref_table: &mut WriteHashTable,
@@ -714,6 +764,11 @@ unsafe fn write_bc_language(
             error("GNU bytecode language nesting exceeds 128 levels");
         }
         let kind = TYPEOF(value);
+        if kind == SEXPTYPE::BCODESXP {
+            writer.write_i32(kind);
+            write_gnu_bc_payload(value, ref_table, writer, depth + 1);
+            return;
+        }
         if kind != SEXPTYPE::LANGSXP && kind != SEXPTYPE::LISTSXP {
             writer.write_i32(kind);
             WriteItemInternal(value, ref_table, writer);
@@ -849,40 +904,9 @@ pub unsafe fn WriteItemInternal(
         // adapter is complete.
         if stype == SEXPTYPE::BCODESXP {
             if crate::eval::bc_eval::BCODE_IS_GNU(s) {
-                let code = VECTOR_ELT(s, 0);
-                let constants = crate::eval::bc_eval::BCODE_CONSTS(s);
-                if (*s).data.vecsxp.length != 5
-                    || (!ATTRIB(s).is_null() && ATTRIB(s) != R_NilValue())
-                    || code.is_null()
-                    || TYPEOF(code) != SEXPTYPE::INTSXP
-                    || constants.is_null()
-                    || TYPEOF(constants) != SEXPTYPE::VECSXP
-                {
-                    error("invalid GNU constant bytecode payload");
-                }
-                let code_len = XLENGTH(code) as usize;
-                let code_ptr = INTEGER(code);
-                if code_ptr.is_null() {
-                    error("GNU bytecode instruction stream has a null data pointer");
-                }
-                let words = std::slice::from_raw_parts(code_ptr, code_len);
-                let constant_count = XLENGTH(constants) as usize;
-                if constant_count > i32::MAX as usize {
-                    error("GNU bytecode constant pool is too large to serialize");
-                }
-                match crate::eval::bytecode::validate_gnu_adapter_stream(words, constant_count) {
-                    Ok(true) => {}
-                    Ok(false) => error("unsupported GNU bytecode stream cannot be serialized"),
-                    Err(message) => error(&message),
-                }
                 writer.write_i32(SEXPTYPE::BCODESXP.as_c_int());
-                writer.write_i32(1); // GNU WriteBC's unused repetition counter slot.
-                WriteItemInternal(VECTOR_ELT(s, 0), ref_table, writer);
-                writer.write_i32(constant_count as i32);
-                for i in 0..XLENGTH(constants) {
-                    let value = VECTOR_ELT(constants, i);
-                    write_bc_language(value, ref_table, writer, 0);
-                }
+                writer.write_i32(1); // GNU WriteBC repetition table length.
+                write_gnu_bc_payload(s, ref_table, writer, 0);
                 return;
             }
             error("cannot serialize private bytecode dialect as GNU R BCODESXP");
