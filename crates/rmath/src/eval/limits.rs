@@ -180,6 +180,26 @@ pub fn check_eval_depth() -> Result<DepthGuard, String> {
     Ok(DepthGuard { instance, depth })
 }
 
+/// Cooperative checkpoint for long-running native computations. This checks
+/// elapsed time without creating an evaluator frame; standalone kernels with
+/// no active session retain their ordinary unrestricted behavior.
+pub(crate) fn poll_computation() {
+    crate::sexp::instance::check_cancellation();
+    let expired = crate::sexp::instance::with_current_instance(|instance| unsafe {
+        let state = &(*instance).eval_state;
+        state.limits.max_execution_time_ms > 0
+            && state.start_time.is_some_and(|start| {
+                start.elapsed() > Duration::from_millis(state.limits.max_execution_time_ms)
+            })
+    })
+    .unwrap_or(false);
+    if expired {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: EvalError::TimeLimitExceeded.to_string(),
+        });
+    }
+}
+
 /// Evaluate an R expression with custom limits.
 ///
 /// Sets the thread-local evaluation limits for the duration of this call, then

@@ -1093,6 +1093,7 @@ pub unsafe fn dgeqp3_(
 
         // Householder QR with column pivoting
         for jj in 0..k {
+            crate::eval::limits::poll_computation();
             // Find pivot column (largest remaining norm)
             let mut max_norm = 0.0f64;
             let mut pivot = jj;

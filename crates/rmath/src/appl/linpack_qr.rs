@@ -167,9 +167,11 @@ pub unsafe fn dqrdc2(
 
         let mut l: usize = 0;
         while l < lup {
+            crate::eval::limits::poll_computation();
             // Cycle columns from l to p-1 to find one with non-negligible norm
             loop {
-                if l >= k_val || *qraux.add(l) >= *work.add(p + l) * tol {
+                crate::eval::limits::poll_computation();
+                if l + 1 >= k_val || *qraux.add(l) >= *work.add(p + l) * tol {
                     break;
                 }
                 // Shift columns left
@@ -198,16 +200,16 @@ pub unsafe fn dqrdc2(
                 k_val -= 1;
             }
 
-            if l != n {
+            if l + 1 != n {
                 // Compute Householder transformation for column l
                 let nrmxl = dnrm2((n - l) as c_int, x.add(l + l * ldx), 1);
                 if nrmxl != 0.0 {
-                    let sign = if *x.add(l + l * ldx) != 0.0 {
+                    let signed_norm = if *x.add(l + l * ldx) != 0.0 {
                         nrmxl.copysign(*x.add(l + l * ldx))
                     } else {
                         nrmxl
                     };
-                    dscal((n - l) as c_int, 1.0 / nrmxl, x.add(l + l * ldx), 1);
+                    dscal((n - l) as c_int, 1.0 / signed_norm, x.add(l + l * ldx), 1);
                     *x.add(l + l * ldx) = 1.0 + *x.add(l + l * ldx);
 
                     // Apply transformation to remaining columns
@@ -245,7 +247,7 @@ pub unsafe fn dqrdc2(
 
                     // Save transformation
                     *qraux.add(l) = *x.add(l + l * ldx);
-                    *x.add(l + l * ldx) = -nrmxl;
+                    *x.add(l + l * ldx) = -signed_norm;
                 }
             }
             l += 1;
