@@ -1,6 +1,33 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU math bytecode, method continuation and abort discovery work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL(
+    "../../crates/r-embed/tests/fixtures/gnu-red-compiler/sqrt.rds", import.meta.url
+  ))
+  const stream = Buffer.alloc(36)
+  ;[12, 123, 0, 8, 20, 1, 49, 0, 1].forEach((word, i) => stream.writeInt32BE(word, i * 4))
+  const offset = bytes.indexOf(stream)
+  expect(offset).toBeGreaterThan(-1)
+  bytes.writeInt32BE(50, offset + 6 * 4)
+  await page.goto("/console/")
+  const results = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const output = []
+      for (const code of [
+        `f<-unserialize(as.raw(c(${values})));identical(round(f(4),6),54.59815)`,
+        "local({setGeneric('nextprobe',function(x)standardGeneric('nextprobe'));setMethod('nextprobe','ANY',function(x)'any');setMethod('nextprobe','numeric',function(x)paste('num',callNextMethod()));identical(nextprobe(1),'num any')})",
+        "local({g<-function(n)if(n>0)Recall(n-1)else 42L;identical(g(3),42L)})",
+        "withRestarts(identical(length(computeRestarts()),2L)&&is.environment(findRestart('probe')$exit),probe=function()1)",
+      ]) output.push((await runtime.run(code,"console")).output.trim())
+      return output
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(results).toEqual(Array(4).fill("[1] TRUE"))
+})
+
 test("unary GNU bytecode, primitive methods and restart unwinding work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL(
     "../../crates/r-embed/tests/fixtures/gnu-bytecode-unary/negative.rds", import.meta.url

@@ -460,6 +460,8 @@ pub enum RSignal {
     },
     /// Non-local return from `invokeRestart()` to the matching `withRestarts()`.
     Restart(RestartJump),
+    /// Abort to the embedding boundary without entering R error handlers.
+    Abort,
     /// Targeted context jump for exiting handlers (tryCatch/withCallingHandlers).
     /// Carries the target environment to match against context stack entries,
     /// and the result vector containing [cond, call, handler].

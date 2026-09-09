@@ -326,9 +326,9 @@ rules, probability validation, tail/log flags, and numeric edge handling.
 The public `RSession` probes in `crates/r-embed/tests/gnu_red_methods.rs`,
 `gnu_red_restarts.rs`, and `gnu_red_compiler.rs` were added as deliberately failing
 regressions, at the user's request. They use ordinary test assertions, with no
-`ignore` or `should_panic` attributes; they make the default workspace test run
-fail until the underlying behavior is implemented. No production behavior was
-changed when these tests were introduced.
+`ignore` or `should_panic` attributes. No production behavior was changed when
+these tests were introduced. A subsequent implementation now passes the eight
+original failures; broader regression checks remain necessary for each change.
 
 Run all three targets, including failures in later targets:
 
@@ -343,8 +343,14 @@ At introduction, all nine exact expectations passed against pinned GNU R
 passing control. The failures cover S4 `callNextMethod` (`rport-sewq`), S3
 `Recall` (`rport-m4w9`), implicit abort and explicit restart metadata
 (`rport-rm1k`), and imported bytecode following retained source instead of
-instructions (`rport-uewq`). These implementation issues remain tracked in
-Beads; adding tests does not close them.
+instructions (`rport-uewq`). The implementation work is tracked in Beads; adding
+tests alone did not close those issues. Further tests cover repeated continuation
+calls, argument overrides, method cleanup, Recall visibility and closure identity,
+implicit-abort recovery, guarded math rebinding, factor iteration, and compiled-loop
+cancellation and time limits. Restart and S4 metadata are also exercised with
+collection forced at every allocation. Malformed loop control flow is rejected
+before execution. These are bounded checks, not a claim of complete compiler,
+methods, or memory safety parity.
 
 The compiler fixture generator is
 `crates/r-embed/tests/fixtures/gnu-red-compiler/generate.R`. Two probes mutate

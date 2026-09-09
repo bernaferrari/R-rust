@@ -733,6 +733,29 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_dataentry_does_not_poison_followup_session() {
+        let mut session = crate::sexp::session::RSession::new();
+        let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            in_RX11_dataentry(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+        }))
+        .expect_err("unsupported X11 dataentry must raise a recoverable RError");
+        assert_eq!(
+            err.downcast_ref::<crate::sexp::context::RError>()
+                .expect("unsupported X11 dataentry must raise RError")
+                .message,
+            "function 'X11 dataentry' is not yet implemented"
+        );
+
+        let (result, _output, _visible) = session.eval_code_with_output_capture("1 + 1");
+        assert!(result.is_ok(), "session must remain usable after X11 error");
+    }
+
+    #[test]
     fn dataviewer_reports_unsupported() {
         let _session = crate::sexp::session::RSession::new();
         let err = std::panic::catch_unwind(|| unsafe {

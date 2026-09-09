@@ -232,6 +232,39 @@ pub(crate) fn s4_class_extends(class1: &str, class2: &str) -> bool {
     })
 }
 
+/// Number of declared `contains=` edges from `class1` to `class2`.
+///
+/// Method selection needs the distance, rather than just the boolean relation,
+/// so that the nearest inherited method wins and `callNextMethod()` can resume
+/// immediately after the method recorded in `.defined`.
+pub(crate) fn s4_class_distance(class1: &str, class2: &str) -> Option<usize> {
+    with_objects_state(|state| {
+        fn distance(
+            classes: &HashMap<String, S4ClassDef>,
+            from: &str,
+            to: &str,
+            visited: &mut HashSet<String>,
+        ) -> Option<usize> {
+            if from == to {
+                return Some(0);
+            }
+            if !visited.insert(from.to_string()) {
+                return None;
+            }
+            classes
+                .get(from)?
+                .contains
+                .iter()
+                .filter_map(|parent| {
+                    let mut branch_visited = visited.clone();
+                    distance(classes, parent, to, &mut branch_visited).map(|n| n + 1)
+                })
+                .min()
+        }
+        distance(&state.s4_classes, class1, class2, &mut HashSet::new())
+    })
+}
+
 fn s4_extends_registered(
     classes: &HashMap<String, S4ClassDef>,
     class1: &str,

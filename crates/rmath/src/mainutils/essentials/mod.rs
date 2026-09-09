@@ -148,5 +148,15 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         (*cell).data.listsxp.tagval = sym;
         chain = cell;
         SET_FRAME(env, chain);
+        // GNU base defines Recall as a closure. Its wrapper frame carries
+        // the new promises to .Internal(Recall) while retaining caller identity.
+        let parsed = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse("function(...) .Internal(Recall(...))", arena)
+        })
+        .expect("base Recall wrapper parses");
+        let _parsed = protect(parsed);
+        let recall = crate::eval::eval::Rf_eval(parsed, env);
+        let _recall = protect(recall);
+        crate::sexp::envir::defineVar(Rf_install(c"Recall".as_ptr()), recall, env);
     }
 }

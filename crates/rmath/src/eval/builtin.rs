@@ -125,6 +125,11 @@ pub(crate) fn is_hidden_builtin_name(name: &str) -> bool {
 
 pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
+        name: "callNextMethod",
+        handler: crate::library::methods::methods_list_dispatch::do_callNextMethod,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "rep",
         handler: crate::mainutils::seq::do_rep,
         restore_visibility_always: false,

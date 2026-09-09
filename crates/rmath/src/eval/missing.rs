@@ -23,17 +23,18 @@
 //! - R_initEvalSymbols: initialize eval symbols
 //! - Various helper functions
 
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
-    BODY, CADDR, CADR, CAR, CDDR, CDR, CHAR, CLOENV, FORMALS, LENGTH, NAMED, PRINTNAME, SET_FRAME,
-    SET_NAMED, SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    CADDR, CADR, CAR, CDDR, CDR, CHAR, FORMALS, LENGTH, NAMED, PRINTNAME, SET_NAMED,
+    SET_STRING_ELT, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::envir::{R_findVar, R_findVarInFrame, defineVar};
+use crate::sexp::envir::{R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::instance::{RInstance, with_required_current_instance};
@@ -42,7 +43,7 @@ use crate::sexp::protect::protect;
 use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
 
 use super::builtin::PRIMNAME;
-use super::closure::applyClosure;
+use super::closure::{applyClosure, applyClosureWithFrameVars};
 use super::dispatch::{DispatchOrEval, promiseArgs};
 use super::eval::Rf_eval;
 
@@ -563,48 +564,59 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        // Create new environment enclosed by the method's lexical environment
-        let newrho = NewEnvironment(R_NilValue(), R_NilValue(), CLOENV(op));
-        let _newrho_guard = protect(newrho);
-
-        // Copy formal bindings from the generic call
-        let mut next = FORMALS(op);
-        while !next.is_null() && next != R_NilValue() {
-            let symbol = TAG(next);
-            if !symbol.is_null() {
-                let val = R_findVarInFrame(rho, symbol);
-                if val != R_UnboundValue() {
-                    let cell = Rf_cons(val, crate::sexp::accessors::FRAME(newrho));
-                    SETTAG(cell, symbol);
-                    SET_FRAME(newrho, cell);
-                }
+        let mut actuals = R_NilValue();
+        let mut actual_guards = Vec::new();
+        let mut formal = FORMALS(op);
+        let mut symbols = Vec::new();
+        while !formal.is_null() && formal != R_NilValue() {
+            let symbol = TAG(formal);
+            if !symbol.is_null() && symbol != R_NilValue() {
+                symbols.push(symbol);
             }
-            next = CDR(next);
+            formal = CDR(formal);
+        }
+        for symbol in symbols.into_iter().rev() {
+            let value = R_findVarInFrame(rho, symbol);
+            let cell = Rf_cons(
+                if value == R_UnboundValue() {
+                    R_MissingArg()
+                } else {
+                    value
+                },
+                actuals,
+            );
+            let guard = protect(cell);
+            SETTAG(cell, symbol);
+            actuals = cell;
+            actual_guards.push(guard);
+        }
+        let _actuals_guard = protect(actuals);
+
+        let mut frame_vars = R_NilValue();
+        let mut frame_guards = Vec::new();
+        for name in [
+            ".defined",
+            ".Method",
+            ".target",
+            ".Generic",
+            ".Methods",
+            ".nextMethod",
+        ] {
+            let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let value = R_findVarInFrame(rho, symbol);
+            if value != R_UnboundValue() {
+                let cell = Rf_cons(value, frame_vars);
+                let guard = protect(cell);
+                SETTAG(cell, symbol);
+                frame_vars = cell;
+                frame_guards.push(guard);
+            }
         }
 
-        // Copy S4 dispatch variables
-        let dot_defined = Rf_install(b".defined\x00".as_ptr() as *const c_char);
-        let dot_Method = Rf_install(b".Method\x00".as_ptr() as *const c_char);
-        let dot_target = Rf_install(b".target\x00".as_ptr() as *const c_char);
-        let dot_Generic = Rf_install(b".Generic\x00".as_ptr() as *const c_char);
-        let dot_Methods = Rf_install(b".Methods\x00".as_ptr() as *const c_char);
-
-        let dd = R_findVarInFrame(rho, dot_defined);
-        defineVar(dot_defined, dd, newrho);
-        let dm = R_findVarInFrame(rho, dot_Method);
-        defineVar(dot_Method, dm, newrho);
-        let dt = R_findVarInFrame(rho, dot_target);
-        defineVar(dot_target, dt, newrho);
-        let dg = R_findVar(dot_Generic, rho);
-        defineVar(dot_Generic, dg, newrho);
-        let dms = R_findVar(dot_Methods, rho);
-        defineVar(dot_Methods, dms, newrho);
-
-        // Execute the method body
-        let body = BODY(op);
-        let val = Rf_eval(body, newrho);
-
-        val
+        let call = allocLang(1);
+        SETCAR(call, op);
+        let _call_guard = protect(call);
+        applyClosureWithFrameVars(call, op, actuals, rho, R_NilValue(), frame_vars, TRUE)
     }
 }
 

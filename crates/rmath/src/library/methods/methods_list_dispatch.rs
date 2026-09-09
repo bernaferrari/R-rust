@@ -17,6 +17,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::*;
 
 fn nil_value() -> SEXP {
@@ -344,6 +345,151 @@ unsafe fn wildcard_table_method(table: SEXP, classes: &[String]) -> SEXP {
     }
 }
 
+#[derive(Clone)]
+struct TableMethod {
+    signature: Vec<String>,
+    method: SEXP,
+    distances: Vec<usize>,
+}
+
+unsafe fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
+    unsafe {
+        let mut out = Vec::new();
+        let mut binding = FRAME(table);
+        while !binding.is_null() && binding != R_NilValue() {
+            let symbol = TAG(binding);
+            if !symbol.is_null() && TYPEOF(symbol) == SEXPTYPE::SYMSXP {
+                let label = CStr::from_ptr(CHAR(PRINTNAME(symbol))).to_string_lossy();
+                let signature: Vec<String> = label.split('#').map(str::to_owned).collect();
+                if signature.len() == targets.len() {
+                    let distances: Option<Vec<usize>> = signature
+                        .iter()
+                        .zip(targets)
+                        .map(|(defined, target)| {
+                            if defined == target {
+                                Some(0)
+                            } else if defined == "ANY" {
+                                Some(usize::MAX / 4)
+                            } else {
+                                crate::mainutils::objects::s4_class_distance(target, defined)
+                            }
+                        })
+                        .collect();
+                    let method = CAR(binding);
+                    if let Some(distances) = distances
+                        && method != R_UnboundValue()
+                        && method != R_NilValue()
+                        && Rf_isFunction(method) != 0
+                    {
+                        out.push(TableMethod {
+                            signature,
+                            method,
+                            distances,
+                        });
+                    }
+                }
+            }
+            binding = CDR(binding);
+        }
+        out
+    }
+}
+
+fn nearest_method(mut methods: Vec<TableMethod>) -> Option<TableMethod> {
+    methods.sort_by(|a, b| {
+        let a_sum = a
+            .distances
+            .iter()
+            .copied()
+            .fold(0usize, usize::saturating_add);
+        let b_sum = b
+            .distances
+            .iter()
+            .copied()
+            .fold(0usize, usize::saturating_add);
+        a_sum
+            .cmp(&b_sum)
+            .then_with(|| a.distances.cmp(&b.distances))
+    });
+    methods.into_iter().next()
+}
+
+unsafe fn string_vector(values: &[String]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+        let _guard = protect(result);
+        for (i, value) in values.iter().enumerate() {
+            let c = CString::new(value.as_str()).unwrap_or_default();
+            SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+        }
+        result
+    }
+}
+
+unsafe fn install_method_context(
+    ev: SEXP,
+    generic_name: &str,
+    table: SEXP,
+    targets: &[String],
+    selected: &TableMethod,
+) {
+    unsafe {
+        let generic = CString::new(generic_name).unwrap_or_default();
+        let generic_value = Rf_mkString(generic.as_ptr());
+        let _generic_guard = protect(generic_value);
+        let target_value = string_vector(targets);
+        let _target_guard = protect(target_value);
+        let defined_value = string_vector(&selected.signature);
+        let _defined_guard = protect(defined_value);
+        let candidates = table_methods(table, targets);
+        let next = nearest_method(
+            candidates
+                .into_iter()
+                .filter(|candidate| {
+                    candidate.signature != selected.signature
+                        && candidate.distances.iter().zip(&selected.distances).all(
+                            |(candidate_distance, selected_distance)| {
+                                candidate_distance >= selected_distance
+                            },
+                        )
+                })
+                .collect(),
+        )
+        .map_or(R_NilValue(), |candidate| candidate.method);
+
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".Generic".as_ptr()),
+            generic_value,
+            ev,
+        );
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".Methods".as_ptr()),
+            table,
+            ev,
+        );
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".target".as_ptr()),
+            target_value,
+            ev,
+        );
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".defined".as_ptr()),
+            defined_value,
+            ev,
+        );
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".Method".as_ptr()),
+            selected.method,
+            ev,
+        );
+        crate::sexp::envir::defineVar(
+            crate::sexp::symbol::Rf_install(c".nextMethod".as_ptr()),
+            next,
+            ev,
+        );
+    }
+}
+
 /// R_dispatchGeneric - table-based method dispatch.
 pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
     unsafe {
@@ -417,20 +563,15 @@ pub unsafe fn R_dispatchGeneric(fname: SEXP, ev: SEXP, fdef: SEXP) -> SEXP {
                 classes.push(class);
             }
         }
-        let label = CString::new(classes.join("#")).unwrap_or_default();
-        let method_sym = crate::sexp::symbol::Rf_install(label.as_ptr());
-        let exact = crate::sexp::envir::R_findVarInFrame(mtable, method_sym);
-        let method = if exact == R_UnboundValue() || exact == R_NilValue() {
-            wildcard_table_method(mtable, &classes)
-        } else {
-            exact
-        };
-        if method == R_UnboundValue() || method == R_NilValue() {
+        let selected = nearest_method(table_methods(mtable, &classes));
+        let Some(selected) = selected else {
             r_error(format!(
                 "no direct or inherited method for function '{}' for this call",
                 name
             ));
-        }
+        };
+        let method = selected.method;
+        install_method_context(ev, &name, mtable, &classes, &selected);
         match TYPEOF(method) {
             kind if kind == SEXPTYPE::CLOSXP.as_c_int() => {
                 crate::eval::missing::R_execMethod(method, ev)
@@ -716,20 +857,196 @@ pub unsafe fn R_M_setPrimitiveMethods(
 pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
     unsafe {
         let dot_next_method = crate::sexp::symbol::Rf_install(c".nextMethod".as_ptr());
-        let mut op = crate::sexp::envir::R_findVarInFrame(ev, dot_next_method);
+        let mut method_ev = ev;
+        let mut op = crate::sexp::envir::R_findVarInFrame(method_ev, dot_next_method);
+        if op == R_UnboundValue() {
+            let mut context = crate::sexp::context::R_GlobalContext();
+            while !context.is_null() {
+                let candidate = (*context).cloenv;
+                if !candidate.is_null()
+                    && candidate != R_NilValue()
+                    && TYPEOF(candidate) == SEXPTYPE::ENVSXP
+                {
+                    let value = crate::sexp::envir::R_findVarInFrame(candidate, dot_next_method);
+                    if value != R_UnboundValue() {
+                        method_ev = candidate;
+                        op = value;
+                        break;
+                    }
+                }
+                context = (*context).nextcontext;
+            }
+        }
         if op == R_UnboundValue() {
             r_error(
                 "internal error in 'callNextMethod': '.nextMethod' was not assigned in the frame of the method call",
             );
         }
+        if op.is_null() || op == R_NilValue() {
+            r_error("no next method available for 'callNextMethod'");
+        }
         let _op_guard = protect(op);
+
+        // Closure continuations are invoked with the promises already matched
+        // in the active method frame.  R_execMethod copies those bindings and
+        // the updated dispatch metadata into the next method's frame.
+        if TYPEOF(op) == SEXPTYPE::CLOSXP {
+            let dot_defined = crate::sexp::symbol::Rf_install(c".defined".as_ptr());
+            let dot_target = crate::sexp::symbol::Rf_install(c".target".as_ptr());
+            let dot_methods = crate::sexp::symbol::Rf_install(c".Methods".as_ptr());
+            let defined = crate::sexp::envir::R_findVarInFrame(method_ev, dot_defined);
+            let targets = crate::sexp::envir::R_findVarInFrame(method_ev, dot_target);
+            let table = crate::sexp::envir::R_findVarInFrame(method_ev, dot_methods);
+            let continuation_ev = NewEnvironment(R_NilValue(), method_ev, R_NilValue());
+            let _continuation_guard = protect(continuation_ev);
+            let mut formal = FORMALS(op);
+            while !formal.is_null() && formal != R_NilValue() {
+                let symbol = TAG(formal);
+                if !symbol.is_null() && symbol != R_NilValue() {
+                    let value = crate::sexp::envir::R_findVarInFrame(method_ev, symbol);
+                    if value != R_UnboundValue() {
+                        crate::sexp::envir::defineVar(symbol, value, continuation_ev);
+                    }
+                }
+                formal = CDR(formal);
+            }
+            for name in [
+                ".defined",
+                ".Method",
+                ".target",
+                ".Generic",
+                ".Methods",
+                ".nextMethod",
+            ] {
+                let symbol = crate::sexp::symbol::Rf_install(
+                    CString::new(name).unwrap_or_default().as_ptr(),
+                );
+                let value = crate::sexp::envir::R_findVarInFrame(method_ev, symbol);
+                if value != R_UnboundValue() {
+                    crate::sexp::envir::defineVar(symbol, value, continuation_ev);
+                }
+            }
+            if TYPEOF(defined) == SEXPTYPE::STRSXP
+                && TYPEOF(targets) == SEXPTYPE::STRSXP
+                && TYPEOF(table) == SEXPTYPE::ENVSXP
+            {
+                let target_names: Vec<String> = (0..LENGTH(targets))
+                    .filter_map(|i| sexp_to_string(STRING_ELT(targets, i as R_xlen_t)))
+                    .collect();
+                let defined_names: Vec<String> = (0..LENGTH(defined))
+                    .filter_map(|i| sexp_to_string(STRING_ELT(defined, i as R_xlen_t)))
+                    .collect();
+                if let Some(current) = table_methods(table, &target_names)
+                    .into_iter()
+                    .find(|candidate| candidate.signature == defined_names)
+                {
+                    if let Some(next) = nearest_method(
+                        table_methods(table, &target_names)
+                            .into_iter()
+                            .filter(|candidate| {
+                                candidate.signature != current.signature
+                                    && candidate
+                                        .distances
+                                        .iter()
+                                        .zip(&current.distances)
+                                        .all(|(a, b)| a >= b)
+                            })
+                            .collect(),
+                    ) {
+                        let next_defined = string_vector(&next.signature);
+                        let following = nearest_method(
+                            table_methods(table, &target_names)
+                                .into_iter()
+                                .filter(|candidate| {
+                                    candidate.signature != next.signature
+                                        && candidate
+                                            .distances
+                                            .iter()
+                                            .zip(&next.distances)
+                                            .all(|(a, b)| a >= b)
+                                })
+                                .collect(),
+                        )
+                        .map_or(R_NilValue(), |candidate| candidate.method);
+                        let _next_defined_guard = protect(next_defined);
+                        crate::sexp::envir::defineVar(dot_defined, next_defined, continuation_ev);
+                        crate::sexp::envir::defineVar(
+                            crate::sexp::symbol::Rf_install(c".Method".as_ptr()),
+                            next.method,
+                            continuation_ev,
+                        );
+                        crate::sexp::envir::defineVar(dot_next_method, following, continuation_ev);
+                    }
+                }
+            }
+            let r_level_call =
+                sexp_to_string(CAR(matched_call)).as_deref() == Some("callNextMethod");
+            if !r_level_call {
+                // The native methods-package entry point supplies a matched
+                // call whose tagged actuals name bindings in the method
+                // frame. Preserve that ABI: values in the synthetic call are
+                // placeholders and each named actual becomes its symbol.
+                let call = crate::mainutils::duplicate::shallow_duplicate(matched_call);
+                let _call_guard = protect(call);
+                SETCAR(call, dot_next_method);
+                let mut args = CDR(call);
+                while !args.is_null() && args != R_NilValue() {
+                    let symbol = TAG(args);
+                    if symbol != R_NilValue() && CAR(args) != R_MissingArg() {
+                        SETCAR(args, symbol);
+                    }
+                    args = CDR(args);
+                }
+                return crate::eval::eval::Rf_eval(call, continuation_ev);
+            }
+            if !CDR(matched_call).is_null() && CDR(matched_call) != R_NilValue() {
+                // GNU R treats an explicit argument list as the complete call
+                // to the next method: omitted formals are missing (or take
+                // their defaults).  applyClosure performs ordinary argument
+                // matching while promises keep expressions in this method's
+                // frame, so `callNextMethod(x, y = expr)` has normal lazy R
+                // semantics.
+                let mut frame_vars = R_NilValue();
+                let mut guards = Vec::new();
+                for name in [
+                    ".defined",
+                    ".Method",
+                    ".target",
+                    ".Generic",
+                    ".Methods",
+                    ".nextMethod",
+                ] {
+                    let symbol = crate::sexp::symbol::Rf_install(
+                        CString::new(name).unwrap_or_default().as_ptr(),
+                    );
+                    let value = crate::sexp::envir::R_findVar(symbol, continuation_ev);
+                    if value != R_UnboundValue() {
+                        let cell = Rf_cons(value, frame_vars);
+                        let guard = protect(cell);
+                        SETTAG(cell, symbol);
+                        frame_vars = cell;
+                        guards.push(guard);
+                    }
+                }
+                return crate::eval::closure::applyClosureWithFrameVars(
+                    matched_call,
+                    op,
+                    CDR(matched_call),
+                    ev,
+                    R_NilValue(),
+                    frame_vars,
+                    TRUE,
+                );
+            }
+            return crate::eval::missing::R_execMethod(op, continuation_ev);
+        }
 
         let call = crate::mainutils::duplicate::shallow_duplicate(matched_call);
         let _call_guard = protect(call);
 
         let mut prim_case = is_primitive_function(op);
         if !prim_case && inherits_internal_dispatch_method(op) {
-            if let Some(primitive) = primitive_from_generic_frame(ev) {
+            if let Some(primitive) = primitive_from_generic_frame(method_ev) {
                 op = primitive;
                 prim_case = true;
             }
@@ -773,6 +1090,11 @@ pub unsafe fn R_nextMethodCall(matched_call: SEXP, ev: SEXP) -> SEXP {
             crate::eval::eval::Rf_eval(call, ev)
         }
     }
+}
+
+/// Evaluator entry point for the R-level `callNextMethod` special form.
+pub unsafe fn do_callNextMethod(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { R_nextMethodCall(call, rho) }
 }
 
 pub(crate) struct MethodsDispatchState {

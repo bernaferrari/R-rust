@@ -149,6 +149,14 @@ struct ForLoopState {
     length: c_int,
 }
 
+#[derive(Clone, Copy)]
+struct GnuForLoopState {
+    sequence_slot: usize,
+    symbol: SEXP,
+    index: c_int,
+    length: c_int,
+}
+
 /// Runtime loop context for compiled `while`/`for` loops — the port of
 /// eval.c's STARTLOOPCNTXT/ENDLOOPCNTXT pair.
 ///
@@ -410,6 +418,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
 
         let mut pc = 1usize;
         let mut stack = R_bcstack_t::new(4);
+        let mut for_loops: Vec<GnuForLoopState> = Vec::new();
         while pc < words.len() {
             let opcode = words[pc];
             pc += 1;
@@ -430,6 +439,13 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 }
                 super::bytecode::GNU_OP_INVISIBLE => {
                     super::runtime::set_visible(FALSE);
+                }
+                super::bytecode::GNU_OP_POP => {
+                    stack_pop_checked(&mut stack, "GNU POP");
+                }
+                super::bytecode::GNU_OP_GOTO => {
+                    let target = words[pc] as usize;
+                    pc = target;
                 }
                 super::bytecode::GNU_OP_LDCONST => {
                     let index = words[pc] as usize;
@@ -482,6 +498,104 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     };
                     stack.push(value);
                 }
+                super::bytecode::GNU_OP_BASEGUARD => {
+                    let expression_index = words[pc] as usize;
+                    let target = words[pc + 1] as usize;
+                    pc += 2;
+                    let expression = VECTOR_ELT(consts, expression_index as i64);
+                    if expression.is_null() || TYPEOF(expression) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU BASEGUARD requires a call in the constant pool");
+                    }
+                    let symbol = CAR(expression);
+                    if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error("GNU BASEGUARD call does not have a symbol operator");
+                    }
+                    let current = with_stack_rooted(&stack, expression, || {
+                        crate::sexp::envir::findFun(symbol, rho)
+                    });
+                    let base = with_stack_rooted(&stack, expression, || {
+                        crate::sexp::envir::findFun(symbol, super::runtime::base_env())
+                    });
+                    if current != base {
+                        let value = with_stack_rooted(&stack, expression, || {
+                            crate::eval::eval::Rf_eval(expression, rho)
+                        });
+                        stack.push(value);
+                        pc = target;
+                    }
+                }
+                super::bytecode::GNU_OP_SETVAR => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let symbol = VECTOR_ELT(consts, index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error(format!(
+                            "GNU SETVAR constant pool entry {index} is not a symbol"
+                        ));
+                    }
+                    let value = stack_top_checked(&stack, "GNU SETVAR");
+                    with_stack_rooted(&stack, value, || defineVar(symbol, value, rho));
+                    super::runtime::set_visible(FALSE);
+                }
+                super::bytecode::GNU_OP_STARTFOR => {
+                    let _expr_index = words[pc] as usize;
+                    let symbol_index = words[pc + 1] as usize;
+                    let end = words[pc + 2] as usize;
+                    let symbol = VECTOR_ELT(consts, symbol_index as i64);
+                    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
+                        bc_error("GNU STARTFOR requires a symbol constant");
+                    }
+                    let mut sequence = stack_top_checked(&stack, "GNU STARTFOR sequence");
+                    if crate::mainutils::essentials::sexp_has_class(sequence, "factor") {
+                        sequence = with_stack_rooted(&stack, symbol, || {
+                            crate::mainutils::coerce::asCharacterFactor(sequence)
+                        });
+                        stack.set(stack.depth() - 1, sequence);
+                    }
+                    let Some(length) = for_sequence_length(sequence) else {
+                        bc_error("GNU STARTFOR requires a vector sequence");
+                    };
+                    with_stack_rooted(&stack, sequence, || defineVar(symbol, R_NilValue(), rho));
+                    let sequence_slot = stack.depth() - 1;
+                    for_loops.push(GnuForLoopState {
+                        sequence_slot,
+                        symbol,
+                        index: -1,
+                        length,
+                    });
+                    pc = end;
+                }
+                super::bytecode::GNU_OP_STEPFOR => {
+                    crate::sexp::instance::check_cancellation();
+                    let _limit_check = super::limits::check_eval_depth()
+                        .unwrap_or_else(|message| bc_error(message));
+                    let body_start = words[pc] as usize;
+                    pc += 1;
+                    let Some(state) = for_loops.last_mut() else {
+                        bc_error("GNU STEPFOR has no active loop");
+                    };
+                    state.index += 1;
+                    if state.index < state.length {
+                        let sequence =
+                            stack_at_checked(&stack, state.sequence_slot, "GNU STEPFOR sequence");
+                        bind_for_element(&stack, sequence, state.symbol, state.index, rho);
+                        pc = body_start;
+                    } else {
+                        // Fall through to ENDFOR, which removes the loop's
+                        // rooted sequence and leaves the loop expression's nil.
+                    }
+                }
+                super::bytecode::GNU_OP_ENDFOR => {
+                    let Some(completed) = for_loops.pop() else {
+                        bc_error("GNU ENDFOR has no active loop");
+                    };
+                    if stack.depth() != completed.sequence_slot + 1 {
+                        bc_error("GNU ENDFOR bytecode stack is unbalanced");
+                    }
+                    stack_pop_checked(&mut stack, "GNU ENDFOR sequence");
+                    stack.push(R_NilValue());
+                    super::runtime::set_visible(FALSE);
+                }
                 super::bytecode::GNU_OP_UMINUS | super::bytecode::GNU_OP_UPLUS => {
                     let call = VECTOR_ELT(consts, words[pc] as i64);
                     if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
@@ -502,6 +616,30 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         let args = Rf_cons(value, R_NilValue());
                         let _args = crate::sexp::protect::protect(args);
                         super::arithmetic::do_arith(call, op, args, rho)
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
+                super::bytecode::GNU_OP_SQRT | super::bytecode::GNU_OP_EXP => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU math opcode requires a call in the constant pool");
+                    }
+                    pc += 1;
+                    let value = stack_pop_checked(&mut stack, "GNU math opcode");
+                    let symbol = if opcode == super::bytecode::GNU_OP_SQRT {
+                        c"sqrt"
+                    } else {
+                        c"exp"
+                    };
+                    let result = with_stack_rooted(&stack, value, || {
+                        let fun = crate::sexp::envir::findFun(
+                            crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                            super::runtime::base_env(),
+                        );
+                        let expression = Rf_lang2(fun, value);
+                        let _expression = crate::sexp::protect::protect(expression);
+                        crate::eval::eval::Rf_eval(expression, rho)
                     });
                     super::runtime::set_visible(TRUE);
                     stack.push(result);

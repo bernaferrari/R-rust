@@ -7,6 +7,7 @@
 - `findcontext_jump` wires `break` / `next` / `return` through loop/function contexts.
 - `for` / `while` / `repeat` push `CTXT_LOOP` so break/next can target them.
 - Unit tests cover nested on.exit + return/break/next and tryCatch interactions.
+- Implicit `abort` is discoverable and unwinds past R error handlers to the embedding boundary, where it returns an evaluation error without terminating the host. Explicit restart exit environments are distinct and rooted.
 - Targeted restart transfers unwind intervening functions before the matching handler runs, root arguments across cleanup/GC, and preserve quoted argument data. Nine embedding regressions cover visibility, sibling ordering, nested transfers, warning interception and error recovery; a browser contract exercises cleanup ordering.
 
 ## Remaining known gaps

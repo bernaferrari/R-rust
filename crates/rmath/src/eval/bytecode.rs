@@ -119,6 +119,15 @@ pub const GNU_OP_LDNULL: c_int = 17;
 pub const GNU_OP_LDTRUE: c_int = 18;
 pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
+pub const GNU_OP_POP: c_int = 4;
+pub const GNU_OP_GOTO: c_int = 2;
+pub const GNU_OP_STARTFOR: c_int = 11;
+pub const GNU_OP_STEPFOR: c_int = 12;
+pub const GNU_OP_ENDFOR: c_int = 13;
+pub const GNU_OP_SETVAR: c_int = 22;
+pub const GNU_OP_SQRT: c_int = 49;
+pub const GNU_OP_EXP: c_int = 50;
+pub const GNU_OP_BASEGUARD: c_int = 123;
 pub const GNU_OP_UMINUS: c_int = 42;
 pub const GNU_OP_UPLUS: c_int = 43;
 pub const GNU_OP_ADD: c_int = 44;
@@ -240,6 +249,8 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
     let mut pc = 1usize;
     let mut boundaries = vec![false; code.len()];
     let mut branches = Vec::new();
+    let mut for_entry_targets = Vec::new();
+    let mut for_steps = Vec::new();
     let mut supported = true;
     while pc < code.len() {
         let opcode_pc = pc;
@@ -247,10 +258,12 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         let opcode = code[pc];
         pc += 1;
         match opcode {
-            GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {}
+            GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
+            | GNU_OP_POP | GNU_OP_ENDFOR => {}
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
-            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
+            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT | GNU_OP_SQRT | GNU_OP_EXP
+            | GNU_OP_SETVAR => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -279,6 +292,66 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 }
                 branches.push((opcode_pc, target as usize));
             }
+            GNU_OP_GOTO => {
+                let target = code[pc];
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU GOTO jump target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+            }
+            GNU_OP_STARTFOR => {
+                let expression = code[pc];
+                let symbol = code[pc + 1];
+                let target = code[pc + 2];
+                if expression < 0 || expression as usize >= constant_count {
+                    return Err(format!(
+                        "GNU STARTFOR expression index {expression} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if symbol < 0 || symbol as usize >= constant_count {
+                    return Err(format!(
+                        "GNU STARTFOR symbol index {symbol} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU STARTFOR end target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+                for_entry_targets.push(target as usize);
+            }
+            GNU_OP_STEPFOR => {
+                let target = code[pc];
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU STEPFOR body target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+                for_steps.push(opcode_pc);
+            }
+            GNU_OP_BASEGUARD => {
+                let expression = code[pc];
+                let target = code[pc + 1];
+                if expression < 0 || expression as usize >= constant_count {
+                    return Err(format!(
+                        "GNU BASEGUARD expression index {expression} is out of range for pool length {constant_count}"
+                    ));
+                }
+                if target < 0 || target as usize >= code.len() {
+                    return Err(format!(
+                        "GNU BASEGUARD jump target {target} is outside instruction stream length {}",
+                        code.len()
+                    ));
+                }
+                branches.push((opcode_pc, target as usize));
+            }
             _ => supported = false,
         }
         pc += GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
@@ -290,9 +363,29 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 "GNU BRIFNOT jump target {target} is not an instruction boundary"
             ));
         }
-        if supported && target <= branch_pc {
+        if supported && target <= branch_pc && code[branch_pc] != GNU_OP_STEPFOR {
             return Err(format!(
                 "GNU BRIFNOT backward jump from {branch_pc} to {target} is outside the bounded adapter"
+            ));
+        }
+    }
+    for step_pc in for_steps {
+        if !for_entry_targets.contains(&step_pc) {
+            return Err(format!(
+                "GNU STEPFOR at instruction {step_pc} is not the entry target of STARTFOR"
+            ));
+        }
+        let next = step_pc + 1 + GNU_BC_OPERAND_WIDTHS[GNU_OP_STEPFOR as usize] as usize;
+        if code.get(next) != Some(&GNU_OP_ENDFOR) {
+            return Err(format!(
+                "GNU STEPFOR at instruction {step_pc} is not followed by ENDFOR"
+            ));
+        }
+    }
+    for entry_pc in for_entry_targets {
+        if code[entry_pc] != GNU_OP_STEPFOR {
+            return Err(format!(
+                "GNU STARTFOR entry target {entry_pc} is not a STEPFOR instruction"
             ));
         }
     }
@@ -301,30 +394,33 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
     }
 
     let mut depths = vec![None; code.len()];
-    let mut pending = vec![(1usize, 0usize)];
+    let mut loop_stacks: Vec<Option<Vec<usize>>> = vec![None; code.len()];
+    let mut pending = vec![(1usize, 0usize, Vec::new())];
     let mut saw_return = false;
-    while let Some((instruction_pc, depth)) = pending.pop() {
+    while let Some((instruction_pc, depth, loop_stack)) = pending.pop() {
         if instruction_pc >= code.len() || !boundaries[instruction_pc] {
             return Err(format!(
                 "GNU bytecode control flow reaches invalid instruction {instruction_pc}"
             ));
         }
         if let Some(previous) = depths[instruction_pc] {
-            if previous != depth {
+            if previous != depth || loop_stacks[instruction_pc].as_ref() != Some(&loop_stack) {
                 return Err(format!(
-                    "GNU bytecode stack depth disagrees at instruction {instruction_pc}: {previous} versus {depth}"
+                    "GNU bytecode state disagrees at instruction {instruction_pc}"
                 ));
             }
             continue;
         }
         depths[instruction_pc] = Some(depth);
+        loop_stacks[instruction_pc] = Some(loop_stack.clone());
         let opcode = code[instruction_pc];
         let next = instruction_pc + 1 + GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
         match opcode {
             GNU_OP_RETURN => {
-                if depth != 1 {
+                let required_depth = loop_stack.len() + 1;
+                if depth != required_depth {
                     return Err(format!(
-                        "GNU RETURN at instruction {instruction_pc} requires stack depth 1, found {depth}"
+                        "GNU RETURN at instruction {instruction_pc} requires stack depth {required_depth}, found {depth}"
                     ));
                 }
                 saw_return = true;
@@ -335,14 +431,66 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU BRIFNOT at instruction {instruction_pc} has an empty stack"
                     ));
                 }
-                pending.push((next, depth - 1));
-                pending.push((code[instruction_pc + 2] as usize, depth - 1));
+                pending.push((next, depth - 1, loop_stack.clone()));
+                pending.push((code[instruction_pc + 2] as usize, depth - 1, loop_stack));
+            }
+            GNU_OP_GOTO => pending.push((code[instruction_pc + 1] as usize, depth, loop_stack)),
+            GNU_OP_POP => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU POP at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                pending.push((next, depth - 1, loop_stack));
+            }
+            GNU_OP_SETVAR => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU SETVAR at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                pending.push((next, depth, loop_stack));
+            }
+            GNU_OP_STARTFOR => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU STARTFOR at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                let mut entered = loop_stack;
+                entered.push(code[instruction_pc + 3] as usize);
+                pending.push((code[instruction_pc + 3] as usize, depth, entered));
+            }
+            GNU_OP_STEPFOR => {
+                if loop_stack.last() != Some(&instruction_pc) {
+                    return Err(format!(
+                        "GNU STEPFOR at instruction {instruction_pc} is not the active for loop"
+                    ));
+                }
+                pending.push((next, depth, loop_stack.clone()));
+                pending.push((code[instruction_pc + 1] as usize, depth, loop_stack));
+            }
+            GNU_OP_ENDFOR => {
+                let mut exited = loop_stack;
+                if exited.pop().is_none() {
+                    return Err(format!(
+                        "GNU ENDFOR at instruction {instruction_pc} has no active for loop"
+                    ));
+                }
+                pending.push((next, depth, exited));
+            }
+            GNU_OP_BASEGUARD => {
+                pending.push((next, depth, loop_stack.clone()));
+                if depth >= 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                pending.push((code[instruction_pc + 2] as usize, depth + 1, loop_stack));
             }
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {
                 if depth >= 64 {
                     return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
                 }
-                pending.push((next, depth + 1));
+                pending.push((next, depth + 1, loop_stack));
             }
             GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
             | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
@@ -351,17 +499,17 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                         "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
-                pending.push((next, depth - 1));
+                pending.push((next, depth - 1, loop_stack));
             }
-            GNU_OP_UMINUS | GNU_OP_UPLUS => {
+            GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_SQRT | GNU_OP_EXP => {
                 if depth < 1 {
                     return Err(format!(
                         "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
                     ));
                 }
-                pending.push((next, depth));
+                pending.push((next, depth, loop_stack));
             }
-            GNU_OP_INVISIBLE => pending.push((next, depth)),
+            GNU_OP_INVISIBLE => pending.push((next, depth, loop_stack)),
             _ => unreachable!(),
         }
     }
@@ -1333,6 +1481,40 @@ mod tests {
 
         // ADD is well-framed, but remains source-fallback territory.
         assert_eq!(validate_gnu_adapter_stream(&[12, 66, 0, 1], 1), Ok(false));
+    }
+
+    #[test]
+    fn bounded_gnu_adapter_rejects_malformed_for_control_flow() {
+        // LDCONST; STARTFOR -> STEPFOR; LDNULL/POP body; STEPFOR -> body;
+        // ENDFOR; RETURN.
+        let valid = [12, 16, 0, 11, 1, 2, 9, 17, 4, 12, 7, 13, 1];
+        assert_eq!(validate_gnu_adapter_stream(&valid, 3), Ok(true));
+
+        let mut start_to_body = valid;
+        start_to_body[6] = 7;
+        assert!(validate_gnu_adapter_stream(&start_to_body, 3).is_err());
+
+        let mut stray_step = valid;
+        stray_step[6] = 12;
+        assert!(validate_gnu_adapter_stream(&stray_step, 3).is_err());
+
+        let stray_end = [12, 17, 13, 1];
+        assert!(
+            validate_gnu_adapter_stream(&stray_end, 0)
+                .unwrap_err()
+                .contains("no active for loop")
+        );
+
+        let mut non_boundary = valid;
+        non_boundary[10] = 10;
+        assert!(
+            validate_gnu_adapter_stream(&non_boundary, 3)
+                .unwrap_err()
+                .contains("instruction boundary")
+        );
+
+        let early_return = [12, 16, 0, 11, 1, 2, 11, 16, 0, 1, 4, 12, 7, 13, 1];
+        assert_eq!(validate_gnu_adapter_stream(&early_return, 3), Ok(true));
     }
 
     #[test]

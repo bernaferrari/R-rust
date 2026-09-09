@@ -249,6 +249,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "nargs",
     "UseMethod",
     "NextMethod",
+    "callNextMethod",
     "missing",
     "parent.frame",
     "sys.call",

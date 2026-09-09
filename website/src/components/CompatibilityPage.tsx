@@ -3,7 +3,7 @@ import { pageHref } from "@/pages"
 const contracts = [
   [
     "Language & data",
-    "Vectors, data frames, functions, control flow, and a tested subset of imported GNU bytecode: constants, argument lookup, conditional branches, basic arithmetic and comparisons.",
+    "Vectors, data frames, functions, control flow, and a tested subset of imported GNU bytecode: constants, argument lookup, conditional branches, arithmetic and comparisons, guarded math operations and bounded for loops.",
     "Bytecode/compiler execution and serialization, full S3/S4 dispatch, evaluator edge cases, and locale behavior remain incomplete.",
   ],
   [

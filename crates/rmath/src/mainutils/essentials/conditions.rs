@@ -333,7 +333,7 @@ unsafe fn signal_calling_handlers(condition: SEXP, rho: SEXP) {
 pub(crate) unsafe fn signal_calling_warning_condition(condition: SEXP, rho: SEXP) -> bool {
     unsafe {
         let old_stack = restart_stack();
-        let restart = restart_entry("muffleWarning", R_NilValue());
+        let restart = restart_entry("muffleWarning", R_NilValue(), R_NilValue());
         let _restart_guard = protect(restart);
         let new_stack = Rf_cons(restart, old_stack);
         let _stack_guard = protect(new_stack);
@@ -466,6 +466,12 @@ unsafe fn resolve_restart_arg(restart_arg: SEXP, require_active_object: bool) ->
             return None;
         }
         if TYPEOF(restart_arg) == SEXPTYPE::VECSXP {
+            if is_restart_object(restart_arg)
+                && restart_name(restart_arg).as_deref() == Some("abort")
+                && restart_field(restart_arg, "exit", 1) == R_NilValue()
+            {
+                return Some(restart_arg);
+            }
             if require_active_object {
                 return find_restart_by_object(restart_arg)
                     .or_else(|| base_error("restart not on stack"));
@@ -497,6 +503,13 @@ unsafe fn restart_arg_name(restart_arg: SEXP) -> String {
 }
 
 unsafe fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        if restart_name(restart).as_deref() == Some("abort")
+            && restart_field(restart, "exit", 1) == R_NilValue()
+        {
+            std::panic::panic_any(crate::sexp::context::RSignal::Abort);
+        }
+    }
     std::panic::panic_any(crate::sexp::context::RSignal::Restart(
         crate::sexp::context::RestartJump::new(restart, args),
     ));
@@ -558,6 +571,10 @@ unsafe fn restart_stack_as_list() -> SEXP {
             current = CDR(current);
         }
 
+        let abort = abort_restart_entry();
+        let _abort_guard = protect(abort);
+        restarts.push(abort);
+
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, restarts.len() as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
@@ -580,7 +597,11 @@ unsafe fn find_restart_by_name(name: &str) -> Option<SEXP> {
             }
             current = CDR(current);
         }
-        None
+        if name == "abort" {
+            Some(abort_restart_entry())
+        } else {
+            None
+        }
     }
 }
 
@@ -637,7 +658,7 @@ unsafe fn restart_field(restart: SEXP, field_name: &str, fallback_index: R_xlen_
     }
 }
 
-unsafe fn restart_entry(name: &str, handler: SEXP) -> SEXP {
+unsafe fn restart_entry(name: &str, handler: SEXP, exit: SEXP) -> SEXP {
     unsafe {
         let restart = Rf_allocVector3(SEXPTYPE::VECSXP, 6);
         if restart.is_null() {
@@ -649,7 +670,7 @@ unsafe fn restart_entry(name: &str, handler: SEXP) -> SEXP {
             0,
             Rf_mkString(CString::new(name).unwrap_or_default().as_ptr()),
         );
-        SET_VECTOR_ELT(restart, 1, R_NilValue());
+        SET_VECTOR_ELT(restart, 1, exit);
         SET_VECTOR_ELT(restart, 2, handler);
         SET_VECTOR_ELT(restart, 3, Rf_mkString(c"".as_ptr()));
         SET_VECTOR_ELT(restart, 4, R_NilValue());
@@ -664,6 +685,28 @@ unsafe fn restart_entry(name: &str, handler: SEXP) -> SEXP {
             "interactive".to_string(),
         ]);
         crate::sexp::attrib_core::setAttrib(restart, Rf_install(c"names".as_ptr()), names);
+        crate::sexp::attrib_core::setAttrib(
+            restart,
+            Rf_install(c"class".as_ptr()),
+            Rf_mkString(c"restart".as_ptr()),
+        );
+        restart
+    }
+}
+
+unsafe fn abort_restart_entry() -> SEXP {
+    unsafe {
+        let restart = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if restart.is_null() {
+            return R_NilValue();
+        }
+        let _restart_guard = protect(restart);
+        SET_VECTOR_ELT(
+            restart,
+            0,
+            Rf_mkString(CString::new("abort").unwrap_or_default().as_ptr()),
+        );
+        SET_VECTOR_ELT(restart, 1, R_NilValue());
         crate::sexp::attrib_core::setAttrib(
             restart,
             Rf_install(c"class".as_ptr()),
@@ -1874,7 +1917,9 @@ unsafe fn restart_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) ->
             };
             let handler = crate::eval::eval::Rf_eval(CAR(args), rho);
             let _handler_guard = protect(handler);
-            let entry = restart_entry(&name, handler);
+            let exit = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), rho, R_NilValue());
+            let _exit_guard = protect(exit);
+            let entry = restart_entry(&name, handler, exit);
             guards.push(protect(entry));
             entries.push(entry);
             args = CDR(args);

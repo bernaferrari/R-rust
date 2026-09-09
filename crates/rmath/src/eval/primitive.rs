@@ -218,6 +218,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "withRestarts"
             | "UseMethod"
             | "NextMethod"
+            | "callNextMethod"
             // Preserve drawing handlers and S3 methods' own visibility.
             // Custom plotting methods may return visible values.
             | "plot"

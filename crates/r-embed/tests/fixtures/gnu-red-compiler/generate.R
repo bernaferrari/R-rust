@@ -19,3 +19,12 @@ f <- compiler::cmpfun(function(x) {
     s
 })
 saveRDS(f, file.path(out, "loop.rds"), version = 2, compress = FALSE)
+
+f <- compiler::cmpfun(function(x) { for (i in x) {}; i })
+saveRDS(f, file.path(out, "last.rds"), version = 2, compress = FALSE)
+
+f <- compiler::cmpfun(function(x) {
+    for (i in x) if (i > 0L) return(i)
+    0L
+})
+saveRDS(f, file.path(out, "early-return.rds"), version = 2, compress = FALSE)

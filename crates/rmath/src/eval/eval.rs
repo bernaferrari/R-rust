@@ -645,7 +645,7 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         // Walk context stack to find the closure context for this environment
         while !cptr.is_null() {
             let ctx = &*cptr;
-            if ctx.callflag == CTXT_RETURN && ctx.cloenv == rho {
+            if (ctx.callflag & CTXT_RETURN) != 0 && ctx.cloenv == rho {
                 break;
             }
             cptr = ctx.nextcontext;
@@ -668,7 +668,7 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         let mut cptr2 = top;
         while !cptr2.is_null() {
             let ctx = &*cptr2;
-            if ctx.callflag == CTXT_RETURN && ctx.cloenv == s {
+            if (ctx.callflag & CTXT_RETURN) != 0 && ctx.cloenv == s {
                 break;
             }
             cptr2 = ctx.nextcontext;
