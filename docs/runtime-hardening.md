@@ -201,12 +201,14 @@ resource accounting remain substantial work alongside package support.
 
 GNU R bytecode version 12 instruction framing is checked against all 129 pinned
 opcode widths. A bounded adapter now executes imported version-12 closure bodies
-whose instruction stream is one constant load (`LDCONST`, `LDNULL`, `LDTRUE`,
-or `LDFALSE`) followed by `RETURN`. It validates
-the constant index and uses an explicit dialect marker, keeping GNU instructions
-separate from the private VM. Returned values come from the instruction or
-executable pool, even if the separately retained source is changed. Atomic constant pools can be
-serialized back to GNU R; other pool shapes fail explicitly at this boundary.
+using literal/constant loads, argument lookup (`GETVAR`), forward conditional
+branches (`BRIFNOT`), `INVISIBLE`, and `RETURN`. It checks pool indices,
+instruction boundaries, stack underflow, merge depths and reachable returns,
+with a 64-slot operand-stack bound. The explicit dialect marker keeps GNU
+instructions separate from the private VM. Values come from instructions and
+constants even when the separately retained source disagrees. The necessary
+symbol and language constants serialize back to GNU R, checked by executing
+emitted bytes in the pinned oracle.
 
 Other validated compiled closure bodies still use their retained source. This
 supports interpreted execution of the tested compiler-produced closures,
@@ -299,3 +301,51 @@ not include connection buffers, temporary copies, interpreter allocations or all
 host allocations, and therefore do not establish a total-memory guarantee.
 A fresh session has no imported files. Native embedding keeps its existing host
 file behavior unless the embedder enables virtual files or imports a file.
+
+## September 9: additional verified contracts
+
+Vector Spearman correlation now uses average ranks for ties and respects the
+supported missing-observation policies. Infinite values rank normally, signed
+zeros tie, and constant vectors signal GNU R's zero-variance warning. Pearson
+retains its existing calculation path. Matrix rank correlation, Kendall and the
+full statistical surface still require more work.
+
+Primitive grid geometry can be edited without changing the original grob,
+including nested path edits. Numeric constructor coordinates become units;
+coordinate lengths, non-unit edits, polygon ID conflicts and invalid text
+rotation are checked. Portable unit lengths count coordinates instead of internal
+list fields. Mixed-unit vectors now resolve deferred arithmetic per coordinate,
+including recycling, nested addition, multiplication and scalar summaries.
+Custom `editDetails` methods now dispatch through the grob class chain,
+including caller-local methods and nested paths. GNU comparisons cover field
+updates before dispatch, unknown-slot warnings, original preservation and
+custom return/error propagation. Display-list editing remains incomplete.
+
+The sequence recycling warning is now once per session, rather than once per
+process. The GraphApp directory chooser now checks the host-mutation capability.
+Timezone parsing now uses a session-owned override with unwind-safe restoration,
+instead of changing the process TZ environment or libc state. Signed TZif offsets
+and normalized calendar-field writeback were corrected, with New York winter and
+summer results checked against GNU R. Named zones still require an available
+timezone database; this does not bundle one for the browser. Process environment
+reads and opt-in process mutations remain outside complete host-state isolation.
+
+`compiler::enableJIT` now controls the invocation compiler and maintains a
+session-local level. Level zero leaves new functions uncompiled; supported bodies
+can compile when invoked at an enabled level. Unsupported bodies retain their
+source. This is the existing private compiler, not complete GNU compiler API or
+bytecode compatibility. Private bytecode serialization still rejects unsupported
+wire representations explicitly.
+
+Interpreted symbol lookup now uses the shared environment implementation so
+active bindings execute instead of returning their stored function. Both private
+bytecode and interpreted execution have explicit collection regressions.
+`do.call` now honors its environment and quote controls, evaluates callable
+expressions, and roots its constructed argument list. Portable helper function
+values retain a session-local dispatch identity without adding user-visible R
+attributes. These changes do not establish all evaluator or serialization
+semantics.
+
+The native perspective helper rejects facet counts exceeding its signed-index
+range before allocating work arrays. That overflow check is one bounded repair;
+it does not account for every native allocation or complete perspective drawing.

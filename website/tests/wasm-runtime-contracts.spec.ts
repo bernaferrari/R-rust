@@ -1,6 +1,54 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU branches and edited grid geometry work in the Wasm runtime", async ({
+  page,
+}) => {
+  const bytes = readFileSync(
+    new URL(
+      "../../crates/r-embed/tests/fixtures/gnu-bytecode-branches/branch.rds",
+      import.meta.url
+    )
+  )
+  await page.goto("/console/")
+  const result = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const branch = await runtime.run(
+        `f <- unserialize(as.raw(c(${values}))); g <- unserialize(serialize(f,NULL)); cat(g(TRUE),g(FALSE))`,
+        "console"
+      )
+      const grid = await runtime.run(
+        "library(grid); grid.newpage(); g <- rectGrob(x=.2,width=.2,name='r'); h <- editGrob(g,x=unit(.75,'npc')); grid.draw(h); cat(identical(g$data$x,unit(.2,'npc')),length(h$data$x))",
+        "interactive"
+      )
+      const ranks = await runtime.run(
+        "cor(c(1,1,3),c(2,4,4),method='spearman')",
+        "console"
+      )
+      const jit = await runtime.run(
+        "old <- compiler::enableJIT(0); a <- compiler::enableJIT(2); b <- compiler::enableJIT(-1); restored <- compiler::enableJIT(old); cat(a,b)",
+        "console"
+      )
+      return {
+        branch: branch.output,
+        grid: grid.output,
+        image: !!grid.png,
+        ranks: ranks.output,
+        jit: jit.output,
+      }
+    } finally {
+      runtime.dispose()
+    }
+  }, Array.from(bytes).join(","))
+  expect(result.branch.trim()).toBe("1 2")
+  expect(result.grid.trim()).toBe("TRUE 1")
+  expect(result.image).toBe(true)
+  expect(result.ranks.trim()).toBe("[1] 0.5")
+  expect(result.jit.trim()).toBe("0 2")
+})
+
 test("interactive plots retain layers across commands in the actual Wasm worker", async ({
   page,
 }) => {
@@ -252,4 +300,34 @@ test("GNU bytecode instructions take precedence over retained source in Wasm", a
     }
   }, Array.from(bytes).join(","))
   expect(output.trim()).toBe("[1] FALSE")
+})
+
+test("interpreted active bindings and caller-scoped grid methods work in Wasm", async ({ page }) => {
+  await page.goto("/console/")
+  const output = await page.evaluate(async () => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const result = await runtime.run(
+        `old <- compiler::enableJIT(0)
+         e <- new.env()
+         makeActiveBinding('x', function() { gc(); list(b=2) }, e)
+         f <- function() c(list(a=1),x)
+         environment(f) <- e
+         active <- identical(f(),list(a=1,b=2))
+         library(grid)
+         editDetails.custom <- function(x,specs) x$foo + specs$foo
+         g <- structure(list(foo=1,name='g',gp=gpar(),vp=NULL),class=c('custom','grob','gDesc'))
+         edited <- editGrob(g,foo=3)
+         alias <- identity
+         called <- do.call(alias,list(quote(x)),quote=TRUE,envir=e)
+         cat(active,edited,identical(called,quote(x)))`,
+        "console"
+      )
+      return result.output
+    } finally {
+      runtime.dispose()
+    }
+  })
+  expect(output.trim()).toBe("TRUE 6 TRUE")
 })

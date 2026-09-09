@@ -3,17 +3,17 @@ import { pageHref } from "@/pages"
 const contracts = [
   [
     "Language & data",
-    "Vectors, data frames, functions, control flow and supported base/statistics operations.",
+    "Vectors, data frames, functions, control flow, and a tested subset of imported GNU bytecode: constants, argument lookup and conditional branches.",
     "Bytecode/compiler execution and serialization, full S3/S4 dispatch, evaluator edge cases, and locale behavior remain incomplete.",
   ],
   [
     "Statistics",
-    "Seeded random distributions, FFT and column-wise mvfft, linear algebra with faer, and LOESS fitting and prediction.",
+    "Seeded random distributions, FFT and column-wise mvfft, linear algebra with faer, LOESS fitting and prediction, and vector Pearson/Spearman correlation.",
     "Coverage is tested operation by operation; passing examples does not establish every numerical or statistical contract.",
   ],
   [
     "Graphics",
-    "Base plots, grid viewports and grobs, mathematical labels, portable PNG output with Vello, and plot layers retained between console commands.",
+    "Base plots, grid viewports, primitive grob geometry edits, mathematical labels, portable PNG output with Vello, and plot layers retained between console commands.",
     "Advanced grid editing and units, device lifecycle, logarithmic axes, patterns/masks, and exact GNU R font typography remain incomplete. The website uses the CPU renderer; GPU integration is a separate API.",
   ],
   [
