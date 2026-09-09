@@ -1,6 +1,37 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU arithmetic bytecode and Ops conflict hooks run in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL(
+    "../../crates/r-embed/tests/fixtures/gnu-bytecode-arithmetic/add.rds",
+    import.meta.url
+  ))
+  const stream = Buffer.alloc(32)
+  ;[12, 20, 1, 20, 2, 44, 0, 1].forEach((word, i) => stream.writeInt32BE(word, i * 4))
+  const offset = bytes.indexOf(stream)
+  expect(offset).toBeGreaterThan(-1)
+  bytes.writeInt32BE(45, offset + 5 * 4) // SUB, retaining source x + y
+  await page.goto("/console/")
+  const result = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const arithmetic = await runtime.run(
+        `f<-unserialize(as.raw(c(${values})));g<-unserialize(serialize(f,NULL));identical(g(c(8L,NA_integer_,10L),3L),c(5L,NA_integer_,7L))`,
+        "console"
+      )
+      const dispatch = await runtime.run(
+        "`+.foo`<-function(e1,e2)10L;`+.bar`<-function(e1,e2)20L;chooseOpsMethod.bar<-function(x,y,mx,my,cl,reverse){gc();TRUE};identical(structure(1,class='foo')+structure(2,class='bar'),20L)",
+        "console"
+      )
+      return [arithmetic.output.trim(), dispatch.output.trim()]
+    } finally {
+      runtime.dispose()
+    }
+  }, Array.from(bytes).join(","))
+  expect(result).toEqual(["[1] TRUE", "[1] TRUE"])
+})
+
 test("GNU branches and edited grid geometry work in the Wasm runtime", async ({
   page,
 }) => {

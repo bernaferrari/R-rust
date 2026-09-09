@@ -119,6 +119,16 @@ pub const GNU_OP_LDNULL: c_int = 17;
 pub const GNU_OP_LDTRUE: c_int = 18;
 pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
+pub const GNU_OP_ADD: c_int = 44;
+pub const GNU_OP_SUB: c_int = 45;
+pub const GNU_OP_MUL: c_int = 46;
+pub const GNU_OP_DIV: c_int = 47;
+pub const GNU_OP_EQ: c_int = 51;
+pub const GNU_OP_NE: c_int = 52;
+pub const GNU_OP_LT: c_int = 53;
+pub const GNU_OP_LE: c_int = 54;
+pub const GNU_OP_GE: c_int = 55;
+pub const GNU_OP_GT: c_int = 56;
 
 const GNU_BC_OPERAND_WIDTHS: [u8; GNU_BC_OPCODE_COUNT] = [
     0, 0, 1, 2, 0, 0, 0, 2, 1, 0, 0, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1,
@@ -235,7 +245,8 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         pc += 1;
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {}
-            GNU_OP_LDCONST | GNU_OP_GETVAR => {
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV
+            | GNU_OP_EQ | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -269,20 +280,20 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         pc += GNU_BC_OPERAND_WIDTHS[opcode as usize] as usize;
     }
 
-    if !supported {
-        return Ok(false);
-    }
     for (branch_pc, target) in branches {
         if !boundaries[target] {
             return Err(format!(
                 "GNU BRIFNOT jump target {target} is not an instruction boundary"
             ));
         }
-        if target <= branch_pc {
+        if supported && target <= branch_pc {
             return Err(format!(
                 "GNU BRIFNOT backward jump from {branch_pc} to {target} is outside the bounded adapter"
             ));
         }
+    }
+    if !supported {
+        return Ok(false);
     }
 
     let mut depths = vec![None; code.len()];
@@ -328,6 +339,15 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                     return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
                 }
                 pending.push((next, depth + 1));
+            }
+            GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EQ | GNU_OP_NE
+            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
+                if depth < 2 {
+                    return Err(format!(
+                        "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
+                    ));
+                }
+                pending.push((next, depth - 1));
             }
             GNU_OP_INVISIBLE => pending.push((next, depth)),
             _ => unreachable!(),
@@ -1202,6 +1222,52 @@ mod tests {
     }
 
     #[test]
+    fn gnu_arithmetic_and_comparison_streams_have_binary_stack_effects() {
+        let add = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            0,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_ADD,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert!(validate_gnu_adapter_stream(&add, 2).unwrap());
+        let cmp = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            0,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_LT,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert!(validate_gnu_adapter_stream(&cmp, 2).unwrap());
+        let underflow = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            0,
+            GNU_OP_ADD,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert!(validate_gnu_adapter_stream(&underflow, 1).is_err());
+        let bad_operand = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            0,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_ADD,
+            2,
+            GNU_OP_RETURN,
+        ];
+        assert!(validate_gnu_adapter_stream(&bad_operand, 2).is_err());
+    }
+
+    #[test]
     fn bounded_gnu_adapter_proves_branch_targets_and_stack_shape() {
         assert!(validate_gnu_adapter_stream(&[12], 0).is_err());
         let branch = [12, 20, 1, 3, 0, 9, 16, 2, 1, 16, 3, 1];
@@ -1232,7 +1298,7 @@ mod tests {
         );
 
         // ADD is well-framed, but remains source-fallback territory.
-        assert_eq!(validate_gnu_adapter_stream(&[12, 44, 0, 1], 1), Ok(false));
+        assert_eq!(validate_gnu_adapter_stream(&[12, 66, 0, 1], 1), Ok(false));
     }
 
     #[test]

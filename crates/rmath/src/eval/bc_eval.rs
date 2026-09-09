@@ -76,9 +76,7 @@ fn bc_missing_arg_error(arg_sym: SEXP) -> ! {
 // Bytecode opcodes
 // ---------------------------------------------------------------------------
 
-/// Bytecode instruction opcodes.
-///
-/// These match R's OPC_* defines from Defn.h.
+/// Bytecode instruction opcodes for the private runtime dialect.
 pub mod opcodes {
     pub const OP_PUSHCONSTARG: i32 = 1;
     pub const OP_PUSHCONST: i32 = 2;
@@ -483,6 +481,72 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         value
                     };
                     stack.push(value);
+                }
+                super::bytecode::GNU_OP_ADD
+                | super::bytecode::GNU_OP_SUB
+                | super::bytecode::GNU_OP_MUL
+                | super::bytecode::GNU_OP_DIV
+                | super::bytecode::GNU_OP_EQ
+                | super::bytecode::GNU_OP_NE
+                | super::bytecode::GNU_OP_LT
+                | super::bytecode::GNU_OP_LE
+                | super::bytecode::GNU_OP_GE
+                | super::bytecode::GNU_OP_GT => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU binary operator requires a call in the constant pool");
+                    }
+                    pc += 1;
+                    let b = stack_pop_checked(&mut stack, "GNU binary operator");
+                    let a = stack_pop_checked(&mut stack, "GNU binary operator");
+                    let symbol = match opcode {
+                        super::bytecode::GNU_OP_ADD => c"+",
+                        super::bytecode::GNU_OP_SUB => c"-",
+                        super::bytecode::GNU_OP_MUL => c"*",
+                        super::bytecode::GNU_OP_DIV => c"/",
+                        super::bytecode::GNU_OP_EQ => c"==",
+                        super::bytecode::GNU_OP_NE => c"!=",
+                        super::bytecode::GNU_OP_LT => c"<",
+                        super::bytecode::GNU_OP_LE => c"<=",
+                        super::bytecode::GNU_OP_GE => c">=",
+                        super::bytecode::GNU_OP_GT => c">",
+                        _ => unreachable!(),
+                    };
+                    // Share the vector, missing-value, overflow and S3
+                    // semantics of the evaluator. Scalar-only VM helpers
+                    // would silently truncate vectors and drop attributes.
+                    let result = with_stack_rooted(&stack, a, || {
+                        with_stack_rooted(&stack, b, || {
+                            let op = R_findVar(
+                                crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                                super::runtime::base_env(),
+                            );
+                            let tail = Rf_cons(b, R_NilValue());
+                            let _tail = crate::sexp::protect::protect(tail);
+                            let args = Rf_cons(a, tail);
+                            let _args = crate::sexp::protect::protect(args);
+                            if opcode <= super::bytecode::GNU_OP_DIV {
+                                super::arithmetic::do_arith(call, op, args, rho)
+                            } else {
+                                let mut result = R_NilValue();
+                                if super::dispatch::DispatchGroup(
+                                    c"Ops".as_ptr(),
+                                    call,
+                                    op,
+                                    args,
+                                    rho,
+                                    &mut result,
+                                ) != 0
+                                {
+                                    result
+                                } else {
+                                    super::arithmetic::do_relop(call, op, args, rho)
+                                }
+                            }
+                        })
+                    });
+                    crate::sexp::globals::set_R_Visible(TRUE);
+                    stack.push(result);
                 }
                 _ => bc_mismatch(format!("unsupported tagged GNU bytecode opcode {opcode}")),
             }
