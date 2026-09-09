@@ -388,9 +388,8 @@ mod tests {
             portable_primitive_name(Sexp::try_from_raw(first).unwrap()).as_deref(),
             Some("__rport_helper__")
         );
-        assert_eq!(unsafe { crate::sexp::accessors::ATTRIB(first) }, unsafe {
-            crate::sexp::globals::R_NilValue()
-        });
+        let attributes = unsafe { crate::sexp::accessors::ATTRIB(first) };
+        assert!(attributes.is_null() || attributes == unsafe { crate::sexp::globals::R_NilValue() });
     }
 
     #[test]

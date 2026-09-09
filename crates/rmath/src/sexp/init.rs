@@ -886,7 +886,8 @@ mod tests {
                 crate::eval::primitive::PrimitiveDescriptor::from_raw(log_val).is_none(),
                 "direct log binding is an evaluator helper, not a canonical R primitive"
             );
-            assert_eq!(crate::sexp::accessors::PRIMOFFSET(log_val), -1);
+            assert!(crate::sexp::accessors::PRIMOFFSET(log_val) <= -2);
+            assert_eq!(crate::eval::primitive::portable_primitive_name(crate::sexp::object::Sexp::try_from_raw(log_val).unwrap()).as_deref(), Some("log"));
 
             shutdown_r();
         }
