@@ -110,7 +110,7 @@ unsafe fn method_name_is(method: SEXP, name: &[u8]) -> bool {
         }
         let printed = PRINTNAME(method);
         !printed.is_null()
-            && CHAR(printed) != ptr::null()
+            && !CHAR(printed).is_null()
             && std::ffi::CStr::from_ptr(CHAR(printed)).to_bytes() == name
     }
 }
