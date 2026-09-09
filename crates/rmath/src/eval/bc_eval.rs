@@ -157,6 +157,13 @@ struct GnuForLoopState {
     length: c_int,
 }
 
+struct GnuCallFrame {
+    marker: usize,
+    // Stack slot and tag symbol for each SETTAG-ed promise. The slot is
+    // resolved against the argument pairlist only when CALL rebuilds it.
+    tags: Vec<(usize, SEXP)>,
+}
+
 /// Runtime loop context for compiled `while`/`for` loops — the port of
 /// eval.c's STARTLOOPCNTXT/ENDLOOPCNTXT pair.
 ///
@@ -423,7 +430,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
         // until CALL consumes that frame.  Keeping the marker separate from
         // the operand stack lets the validator and runtime reject malformed
         // streams without guessing an argument count from the call object.
-        let mut gnu_call_frames: Vec<usize> = Vec::new();
+        let mut gnu_call_frames: Vec<GnuCallFrame> = Vec::new();
         while pc < words.len() {
             let opcode = words[pc];
             pc += 1;
@@ -525,7 +532,10 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     {
                         bc_error("GNU GETFUN did not resolve to a function");
                     }
-                    gnu_call_frames.push(stack.depth());
+                    gnu_call_frames.push(GnuCallFrame {
+                        marker: stack.depth(),
+                        tags: Vec::new(),
+                    });
                     stack.push(fun);
                 }
                 super::bytecode::GNU_OP_MAKEPROM => {
@@ -540,12 +550,35 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(promise);
                 }
+                super::bytecode::GNU_OP_SETTAG => {
+                    let index = words[pc] as usize;
+                    pc += 1;
+                    let tag = VECTOR_ELT(consts, index as i64);
+                    if !tag.is_null() && tag != R_NilValue() && TYPEOF(tag) != SEXPTYPE::SYMSXP {
+                        bc_error("GNU SETTAG requires a symbol or NULL tag");
+                    }
+                    let frame = gnu_call_frames
+                        .last_mut()
+                        .unwrap_or_else(|| bc_error("GNU SETTAG has no active GETFUN call"));
+                    if stack.depth() <= frame.marker + 1 {
+                        bc_error("GNU SETTAG has no preceding call argument");
+                    }
+                    let slot = stack.depth() - 1;
+                    if let Some((_, previous)) =
+                        frame.tags.iter_mut().find(|(index, _)| *index == slot)
+                    {
+                        *previous = tag;
+                    } else {
+                        frame.tags.push((slot, tag));
+                    }
+                }
                 super::bytecode::GNU_OP_CALL => {
                     let call_index = words[pc] as usize;
                     pc += 1;
-                    let marker = gnu_call_frames
+                    let frame = gnu_call_frames
                         .pop()
                         .unwrap_or_else(|| bc_error("GNU CALL has no active GETFUN call"));
+                    let marker = frame.marker;
                     let depth = stack.depth();
                     if depth <= marker {
                         bc_error("GNU CALL has no function");
@@ -560,9 +593,19 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         let fun = stack.at(marker);
                         let mut args = R_NilValue();
                         let mut argument_roots = Vec::new();
+                        let _tag_roots = frame
+                            .tags
+                            .iter()
+                            .map(|(_, tag)| crate::sexp::protect::protect(*tag))
+                            .collect::<Vec<_>>();
                         for index in (marker + 1..depth).rev() {
                             args = Rf_cons(stack.at(index), args);
                             argument_roots.push(crate::sexp::protect::protect(args));
+                            if let Some((_, tag)) =
+                                frame.tags.iter().find(|(slot, _)| *slot == index)
+                            {
+                                crate::sexp::accessors::SETTAG(args, *tag);
+                            }
                         }
                         use crate::sexp::object::Sexp;
                         let call = Sexp::from_raw_unchecked(call_expr);

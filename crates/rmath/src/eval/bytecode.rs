@@ -121,6 +121,7 @@ pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
 pub const GNU_OP_GETFUN: c_int = 23;
 pub const GNU_OP_MAKEPROM: c_int = 29;
+pub const GNU_OP_SETTAG: c_int = 31;
 pub const GNU_OP_CALL: c_int = 38;
 pub const GNU_OP_POP: c_int = 4;
 pub const GNU_OP_GOTO: c_int = 2;
@@ -300,6 +301,14 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 if call_index < 0 || call_index as usize >= constant_count {
                     return Err(format!(
                         "GNU CALL expression index {call_index} is out of range for pool length {constant_count}"
+                    ));
+                }
+            }
+            GNU_OP_SETTAG => {
+                let tag_index = code[pc];
+                if tag_index < 0 || tag_index as usize >= constant_count {
+                    return Err(format!(
+                        "GNU SETTAG constant pool index {tag_index} is out of range for pool length {constant_count}"
                     ));
                 }
             }
@@ -566,6 +575,15 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                     return Err("GNU MAKEPROM has no active GETFUN call".into());
                 }
                 pending.push((next, depth + 1, loop_stack, call_stack));
+            }
+            GNU_OP_SETTAG => {
+                let Some(marker) = call_stack.last() else {
+                    return Err("GNU SETTAG has no active GETFUN call".into());
+                };
+                if depth <= *marker + 1 {
+                    return Err("GNU SETTAG has no preceding call argument".into());
+                }
+                pending.push((next, depth, loop_stack, call_stack));
             }
             GNU_OP_CALL => {
                 let Some(marker) = call_stack.pop() else {
@@ -1545,6 +1563,33 @@ mod tests {
 
         // ADD is well-framed, but remains source-fallback territory.
         assert_eq!(validate_gnu_adapter_stream(&[12, 66, 0, 1], 1), Ok(false));
+    }
+
+    #[test]
+    fn bounded_gnu_adapter_validates_settag_call_frames() {
+        let valid = [12, 23, 0, 29, 1, 31, 2, 38, 3, 1];
+        assert_eq!(validate_gnu_adapter_stream(&valid, 4), Ok(true));
+
+        let no_frame = [12, 31, 0, 1];
+        assert!(
+            validate_gnu_adapter_stream(&no_frame, 1)
+                .unwrap_err()
+                .contains("SETTAG has no active GETFUN call")
+        );
+
+        let no_argument = [12, 23, 0, 31, 1, 38, 2, 1];
+        assert!(
+            validate_gnu_adapter_stream(&no_argument, 3)
+                .unwrap_err()
+                .contains("SETTAG has no preceding call argument")
+        );
+
+        let bad_tag = [12, 23, 0, 29, 1, 31, 3, 38, 2, 1];
+        assert!(
+            validate_gnu_adapter_stream(&bad_tag, 3)
+                .unwrap_err()
+                .contains("SETTAG constant pool index 3")
+        );
     }
 
     #[test]
