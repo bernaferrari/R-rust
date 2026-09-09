@@ -674,6 +674,7 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
 
 unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
     unsafe {
+        validate_print_chain(ATTRIB(s));
         if isObject_fn(s) != 0 {
             PrintObject(s, data);
         } else {
@@ -1106,8 +1107,37 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
 // Internal: printList
 // ---------------------------------------------------------------------------
 
+// Detect malformed CDR cycles without allocating or truncating valid long lists.
+unsafe fn validate_print_chain(head: SEXP) {
+    unsafe {
+        let next = |cell: SEXP| {
+            if cell.is_null() || cell == R_NilValue() || TYPEOF(cell) != SEXPTYPE::LISTSXP {
+                R_NilValue()
+            } else {
+                CDR(cell)
+            }
+        };
+        let mut slow = head;
+        let mut fast = head;
+        loop {
+            crate::eval::limits::poll_computation();
+            slow = next(slow);
+            fast = next(next(fast));
+            if fast.is_null() || fast == R_NilValue() {
+                return;
+            }
+            if slow == fast {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "cyclic pairlist in legacy printing".into(),
+                });
+            }
+        }
+    }
+}
+
 unsafe fn printList(s: SEXP, data: &R_PrintData) {
     unsafe {
+        validate_print_chain(s);
         let dims = getAttrib(s, R_DimSymbol());
 
         if dims != R_NilValue() && LENGTH(dims) > 1 {
@@ -1306,7 +1336,6 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
         let srcref_sym = Rf_install(b"srcref\0".as_ptr() as *const c_char);
         let whole_srcref_sym = Rf_install(b"wholeSrcref\0".as_ptr() as *const c_char);
         let srcfile_sym = Rf_install(b"srcfile\0".as_ptr() as *const c_char);
-
         while !a.is_null() && a != R_NilValue() {
             let tag = TAG(a);
 
@@ -1587,6 +1616,7 @@ pub unsafe fn PrintValueEnv(s: SEXP, env: SEXP) {
             return;
         }
 
+        validate_print_chain(ATTRIB(s));
         PrintDefaults();
         tagbuf_clear();
 
@@ -2125,6 +2155,57 @@ mod tests {
                 child.kill().unwrap();
                 let _ = child.wait();
                 panic!("legacy scalar printing did not terminate within five seconds");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn legacy_print_cyclic_pairlists_terminate() {
+        const CHILD: &str = "RPORT_LEGACY_PRINT_CYCLE_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let session = RSession::new();
+            session.with_active(|| unsafe {
+                let cell = Rf_cons(crate::sexp::constructors::Rf_ScalarInteger(1), R_NilValue());
+                let _root = protect(cell);
+                SETCDR(cell, cell);
+                let cycle = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    PrintValueEnv(cell, R_GlobalEnv())
+                }));
+                assert!(cycle.is_err());
+                let value = crate::sexp::constructors::Rf_ScalarInteger(1);
+                let _value_root = protect(value);
+                crate::sexp::accessors::SET_ATTRIB(value, cell);
+                let cycle = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    PrintValueEnv(value, R_GlobalEnv())
+                }));
+                assert!(cycle.is_err());
+                crate::sexp::accessors::SET_ATTRIB(value, R_NilValue());
+                PrintValueEnv(value, R_GlobalEnv());
+            });
+            return;
+        }
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "mainutils::print::tests::legacy_print_cyclic_pairlists_terminate",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(status.success(), "cyclic printing child failed: {status}");
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                child.kill().unwrap();
+                let _ = child.wait();
+                panic!("cyclic legacy printing did not terminate within five seconds");
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }

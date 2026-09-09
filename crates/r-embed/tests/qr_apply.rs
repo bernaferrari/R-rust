@@ -47,3 +47,39 @@ fn qr_apply_rejects_short_qraux_and_bad_rhs_dimensions_recoverably() {
     assert!(error.to_string().contains("rows"));
     assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
 }
+
+#[test]
+fn qr_apply_preserves_coerced_arguments_during_collection() {
+    let mut s = RSession::new().unwrap();
+    let result = s.eval("local({q<-qr(matrix(1:6,3,2),LAPACK=TRUE);gctorture(TRUE);on.exit(gctorture(FALSE)); y<-c('1','2','3');z<-qr.qty(y=qr.qy(y=y,qr=q),qr=q);identical(dim(z),c(3L,1L)) && max(abs(z-1:3))<1e-10})").unwrap();
+    assert_eq!(result.trim(), "[1] TRUE");
+}
+
+#[test]
+fn qr_apply_rejects_nonfinite_linpack_inputs_and_recovers() {
+    let mut s = RSession::new().unwrap();
+    for code in [
+        "qr.qy(qr(matrix(1:6,3,2)),c(1,NaN,3))",
+        "q<-qr(matrix(1:6,3,2));q$qraux[1]<-Inf;qr.qty(q,1:3)",
+        "q<-qr(matrix(1:6,3,2));q$qr[1,1]<-NA_real_;qr.qy(q,1:3)",
+    ] {
+        let error = s.eval(code).expect_err("nonfinite LINPACK input");
+        assert!(error.to_string().contains("NA/NaN/Inf"), "{error}");
+        assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+    }
+}
+
+#[test]
+fn qr_apply_allocation_limit_is_recoverable() {
+    let mut s = RSession::new().unwrap();
+    s.eval("q<-qr(matrix(1:6,3,2));y<-matrix(1,3,1000)")
+        .unwrap();
+    let mut limits = s.resource_limits();
+    limits.max_alloc_bytes = 1;
+    s.set_resource_limits(limits).unwrap();
+    let error = s.eval("qr.qy(q,y)").expect_err("bounded output allocation");
+    assert!(error.to_string().contains("allocation"), "{error}");
+    limits.max_alloc_bytes = 0;
+    s.set_resource_limits(limits).unwrap();
+    assert_eq!(s.eval("1+1").unwrap(), "[1] 2");
+}
