@@ -1276,7 +1276,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
 unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
     unsafe {
         let mut a = ATTRIB(s);
-        if a == R_NilValue() {
+        if a.is_null() || a == R_NilValue() {
             return;
         }
 
@@ -1301,7 +1301,7 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
         let whole_srcref_sym = Rf_install(b"wholeSrcref\0".as_ptr() as *const c_char);
         let srcfile_sym = Rf_install(b"srcfile\0".as_ptr() as *const c_char);
 
-        while a != R_NilValue() {
+        while !a.is_null() && a != R_NilValue() {
             let tag = TAG(a);
 
             // Skip certain attributes
@@ -2054,6 +2054,40 @@ mod tests {
                 ptr::null_mut(),
                 &mut data as *mut R_PrintData as *mut std::ffi::c_void,
             );
+        }
+    }
+
+    #[test]
+    fn legacy_print_scalar_without_attributes_terminates() {
+        const CHILD: &str = "RPORT_LEGACY_PRINT_PROBE_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let session = RSession::new();
+            session.with_active(|| unsafe {
+                let value = crate::sexp::constructors::Rf_ScalarReal(1.0);
+                let _value_root = protect(value);
+                assert!(ATTRIB(value).is_null());
+                PrintValueEnv(value, R_GlobalEnv());
+            });
+            return;
+        }
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "mainutils::print::tests::legacy_print_scalar_without_attributes_terminates", "--test-threads=1"])
+            .env(CHILD,"1")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(status.success(), "legacy printing child failed: {status}");
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                child.kill().unwrap();
+                let _ = child.wait();
+                panic!("legacy scalar printing did not terminate within five seconds");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
 
