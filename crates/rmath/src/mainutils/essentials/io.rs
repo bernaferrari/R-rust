@@ -992,6 +992,32 @@ pub unsafe fn do_package_startup_message(_call: SEXP, _op: SEXP, args: SEXP, _rh
 // Complete I/O — capture.output, withVisible, invisible, suppress*,
 // ---------------------------------------------------------------------------
 
+/// Only filename destinations are owned by capture.output. Always close them
+/// against their originating session, including when evaluation unwinds.
+struct CaptureFileGuard {
+    instance: *mut crate::sexp::instance::RInstance,
+    connection: Option<usize>,
+}
+impl CaptureFileGuard {
+    fn close(&mut self) {
+        if let Some(index) = self.connection.take() {
+            unsafe {
+                if let Some(mut connection) = (&mut (*self.instance).connections_state.table)
+                    .get_mut(index)
+                    .and_then(Option::take)
+                {
+                    crate::mainutils::connections::close_connection_inner(&mut connection);
+                }
+            }
+        }
+    }
+}
+impl Drop for CaptureFileGuard {
+    fn drop(&mut self) {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.close()));
+    }
+}
+
 /// R's `capture.output(expr)` — capture printed stdout as a character vector.
 pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -1005,6 +1031,9 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         };
         let mut capture_type = "output".to_string();
         let mut split = false;
+        let mut file_value = R_NilValue();
+        let mut _file_root = None;
+        let mut append_file = false;
         let mut control = args;
         let mut seen = std::collections::HashSet::new();
         while control != R_NilValue() && !control.is_null() {
@@ -1015,7 +1044,8 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                 let value = crate::eval::eval::Rf_eval(CAR(control), rho);
                 match name.as_str() {
                     "file" if value != R_NilValue() => {
-                        base_error("capture.output file destinations are not supported yet")
+                        file_value = value;
+                        _file_root = Some(protect(value));
                     }
                     "type" => {
                         if TYPEOF(value) != SEXPTYPE::STRSXP || LENGTH(value) != 1 {
@@ -1038,6 +1068,9 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
                         if name == "split" && enabled != FALSE {
                             split = true;
                         }
+                        if name == "append" {
+                            append_file = enabled != FALSE;
+                        }
                     }
                     _ => {}
                 }
@@ -1047,11 +1080,45 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         if capture_type == "message" && split {
             base_error("cannot split the message connection");
         }
-        let capture = crate::sexp::output::OutputCaptureGuard::start_with_options(
+        let mut file_guard = CaptureFileGuard {
+            instance: crate::sexp::instance::with_required_current_instance(|instance| instance),
+            connection: None,
+        };
+        let destination = if file_value == R_NilValue() {
+            None
+        } else {
+            let connection = if inherits_class(file_value, "connection") {
+                connection_index(file_value)
+            } else if TYPEOF(file_value) == SEXPTYPE::STRSXP && LENGTH(file_value) == 1 {
+                let mode = Rf_mkString(if append_file {
+                    c"a".as_ptr()
+                } else {
+                    c"w".as_ptr()
+                });
+                let _mode = protect(mode);
+                let tail = Rf_cons(mode, R_NilValue());
+                let _tail = protect(tail);
+                let file_args = Rf_cons(file_value, tail);
+                let _file_args = protect(file_args);
+                let connection = crate::mainutils::connections::do_file(_call, _op, file_args, rho);
+                let index = connection_index(connection);
+                file_guard.connection = Some(index as usize);
+                index
+            } else {
+                base_error("'file' must be NULL, a connection or a character string");
+            };
+            // Validate before evaluating the expression, even if it prints nothing.
+            crate::mainutils::connections::connection_write_bytes(connection, b"");
+            Some(connection)
+        };
+        let mut capture = crate::sexp::output::OutputCaptureGuard::start_with_options(
             capture_type == "output",
             capture_type == "message",
             split,
         );
+        if let Some(index) = destination {
+            capture.set_connection(index);
+        }
         let mut argument = args;
         while argument != R_NilValue() && !argument.is_null() {
             if control_name(argument).is_some() {
@@ -1074,6 +1141,11 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         } else {
             captured.stdout
         };
+        if destination.is_some() {
+            file_guard.close();
+            crate::sexp::globals::set_R_Visible(FALSE);
+            return R_NilValue();
+        }
         let stdout = captured_stream
             .strip_suffix('\n')
             .unwrap_or(&captured_stream);

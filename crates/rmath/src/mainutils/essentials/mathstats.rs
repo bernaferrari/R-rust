@@ -1255,30 +1255,10 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             (*inst).path_policy.temp_dir().to_path_buf()
         });
         let tmp = tmpdir.unwrap_or(default_tmp);
-        // Upstream tempfile(): pattern + random hex + ext appended
-        // AFTER the random part ("file1a2b3c.R"), never a leading dot
-        // from the extension. 15 hex chars of entropy like glibc temp
-        // naming; existence-checked like R_tmpnam2.
-        let mut path = tmp.join(format!("{}{:x}{}", pattern, std::process::id(), fileext));
-        for _ in 0..1024 {
-            let counter = crate::sexp::instance::with_required_current_instance(|inst| {
-                (*inst).tempfile_counter = (*inst).tempfile_counter.saturating_add(1);
-                (*inst).tempfile_counter
-            });
-            let entropy = (std::process::id() as u64)
-                .wrapping_mul(0x9E3779B97F4A7C15)
-                .wrapping_add((counter as u64).wrapping_mul(0xBF58476D1CE4E5B9));
-            let candidate = tmp.join(format!("{}{:015x}{}", pattern, entropy, fileext));
-            if !candidate.exists() {
-                path = candidate;
-                break;
-            }
-        }
-        Rf_mkString(
-            CString::new(path.to_string_lossy().as_ref())
-                .unwrap_or_default()
-                .as_ptr(),
-        )
+        let path =
+            crate::mainutils::sysutils::R_tmpnam2(&pattern, &tmp.to_string_lossy(), &fileext)
+                .unwrap_or_else(|| base_error("cannot find an unused temporary filename"));
+        Rf_mkString(CString::new(path.as_str()).unwrap_or_default().as_ptr())
     }
 }
 

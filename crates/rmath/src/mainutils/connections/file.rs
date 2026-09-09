@@ -690,6 +690,16 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             r_error("cannot close standard connections");
         }
 
+        let captured = crate::sexp::instance::with_required_current_instance(|instance| {
+            (*instance)
+                .output_capture
+                .borrow()
+                .uses_connection(i as c_int)
+        });
+        if captured {
+            r_error("cannot close an active capture connection");
+        }
+
         // Check if it's a sink connection
         {
             let sink = sink_state();

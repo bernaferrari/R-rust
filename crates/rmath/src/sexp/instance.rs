@@ -447,8 +447,6 @@ pub struct RInstance {
     pub(crate) browser_files_enabled: bool,
     /// Per-instance library, cache, and temporary-directory policy.
     pub(crate) path_policy: crate::mainutils::paths::RuntimePathPolicy,
-    /// Per-instance counter for unique `tempfile()` names.
-    pub(crate) tempfile_counter: u64,
     /// Per-instance file creation mask used by `Sys.umask()`.
     pub(crate) file_creation_umask: u32,
     /// Per-instance cache of pure-R package namespaces keyed by package name.
@@ -593,7 +591,6 @@ impl RInstance {
             browser_files: crate::mainutils::browser_files::BrowserFileStore::default(),
             browser_files_enabled: false,
             path_policy: crate::mainutils::paths::RuntimePathPolicy::default(),
-            tempfile_counter: 0,
             file_creation_umask: 0o022,
             graphics_device_registry:
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),

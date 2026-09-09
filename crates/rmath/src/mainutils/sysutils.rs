@@ -91,8 +91,8 @@ pub fn R_tmpnam2(prefix: &str, tempdir: &str, fileext: &str) -> Option<String> {
     let pid = std::process::id();
 
     for _ in 0..100 {
-        let r1 = rand_u32();
-        let name = format!("{}/{}{:x}{:x}{}", tempdir, prefix, pid, r1, fileext);
+        let r1 = next_tempfile_serial()?;
+        let name = format!("{}/{}{:08x}{:016x}{}", tempdir, prefix, pid, r1, fileext);
 
         if !R_FileExists(&name) {
             return Some(name);
@@ -102,21 +102,15 @@ pub fn R_tmpnam2(prefix: &str, tempdir: &str, fileext: &str) -> Option<String> {
     None
 }
 
-/// Simple pseudo-random number generator for temp file names.
-fn rand_u32() -> u32 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    // Simple mixing: use lower and upper 32 bits
-    let lo = nanos as u32;
-    let hi = (nanos >> 32) as u32;
-    let mut x = lo ^ hi;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    x
+/// Process-wide name allocation is independent of every session's R RNG.
+/// A per-session counter collides before either session creates its file.
+fn next_tempfile_serial() -> Option<usize> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        value.checked_add(1)
+    })
+    .ok()
 }
 
 // ---------------------------------------------------------------------------

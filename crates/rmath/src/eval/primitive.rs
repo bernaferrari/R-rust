@@ -194,6 +194,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "invisible"
             | "on.exit"
             | "withVisible"
+            | "capture.output"
             | "cat"
             | "print"
             | "warning"

@@ -26,6 +26,7 @@ struct CaptureFrame {
     truncated: bool,
     used_bytes: usize,
     split_stdout: bool,
+    connection: Option<(*mut RInstance, i32)>,
 }
 
 #[derive(Clone, Copy)]
@@ -54,6 +55,15 @@ impl CaptureFrame {
             OutputStream::Message => return false,
         };
         if let Some(buffer) = target {
+            if let Some((owner, connection)) = self.connection {
+                if super::instance::current_instance_ptr() != Some(owner) {
+                    std::panic::panic_any(super::context::RError {
+                        message: "capture destination belongs to another session".into(),
+                    });
+                }
+                crate::mainutils::connections::connection_write_bytes(connection, msg.as_bytes());
+                return !split;
+            }
             append_bounded(
                 buffer,
                 msg,
@@ -96,6 +106,17 @@ impl OutputCaptureState {
         }
     }
 
+    pub(crate) fn uses_connection(&self, index: i32) -> bool {
+        self.current
+            .connection
+            .is_some_and(|(_, connection)| connection == index)
+            || self.stack.iter().any(|frame| {
+                frame
+                    .connection
+                    .is_some_and(|(_, connection)| connection == index)
+            })
+    }
+
     pub(crate) fn stop(&mut self) -> RCapturedOutput {
         let frame = std::mem::replace(&mut self.current, self.stack.pop().unwrap_or_default());
         RCapturedOutput {
@@ -110,11 +131,27 @@ impl OutputCaptureState {
     }
 
     fn route(&mut self, stream: OutputStream, msg: &str) -> bool {
-        if self.current.write(stream, msg, self.max_bytes) {
-            return true;
-        }
-        for outer in self.stack.iter_mut().rev() {
-            if outer.write(stream, msg, self.max_bytes) {
+        self.route_with_sink(stream, msg, None)
+    }
+    fn route_with_sink(
+        &mut self,
+        stream: OutputStream,
+        msg: &str,
+        instance: Option<*mut RInstance>,
+    ) -> bool {
+        for frame in std::iter::once(&mut self.current).chain(self.stack.iter_mut().rev()) {
+            // Explicit capture layers override older sinks. At the embedding
+            // layer, forward to this exact session's sink (never an ambient one).
+            if matches!(stream, OutputStream::Stdout)
+                && frame.stdout.is_some()
+                && frame.stderr.is_some()
+                && instance.is_some_and(|instance| {
+                    crate::mainutils::connections::write_output_sink_in(instance, msg.as_bytes())
+                })
+            {
+                return true;
+            }
+            if frame.write(stream, msg, self.max_bytes) {
                 return true;
             }
         }
@@ -217,6 +254,15 @@ impl OutputCaptureGuard {
             active: true,
         }
     }
+    pub(crate) fn set_connection(&mut self, index: i32) {
+        unsafe {
+            (*self.instance)
+                .output_capture
+                .borrow_mut()
+                .current
+                .connection = Some((self.instance, index));
+        }
+    }
     pub(crate) fn finish(mut self) -> RCapturedOutput {
         let output = stop_capture_in(self.instance);
         self.active = false;
@@ -248,17 +294,16 @@ pub fn capture_stdout(msg: &str) {
 }
 
 pub(crate) fn capture_stdout_in(inst: *mut RInstance, msg: &str) {
-    if crate::mainutils::connections::write_output_sink_in(inst, msg.as_bytes()) {
-        return;
-    }
     // P2: the RefCell borrow below is dropped before the print!, and no
     // ambient write occurs while it is held.
     let mut capture = unsafe { (*inst).output_capture.borrow_mut() };
-    if capture.capture_stdout(msg) {
+    if capture.route_with_sink(OutputStream::Stdout, msg, Some(inst)) {
         return;
     }
     drop(capture);
-    print!("{msg}");
+    if !crate::mainutils::connections::write_output_sink_in(inst, msg.as_bytes()) {
+        print!("{msg}");
+    }
 }
 
 /// Append to the session's single interleaved output stream — the stdout
