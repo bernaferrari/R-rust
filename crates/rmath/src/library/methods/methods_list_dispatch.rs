@@ -395,23 +395,43 @@ unsafe fn table_methods(table: SEXP, targets: &[String]) -> Vec<TableMethod> {
     }
 }
 
-fn nearest_method(mut methods: Vec<TableMethod>) -> Option<TableMethod> {
-    methods.sort_by(|a, b| {
-        let a_sum = a
-            .distances
+fn nearest_method(methods: Vec<TableMethod>) -> Option<TableMethod> {
+    // GNU .getBestMethods compares the defined classes by inheritance,
+    // not only their distances from the target (multiple inheritance can
+    // provide shortcuts). .disambiguateMethods then minimizes total distance.
+    let mut frontier: Vec<TableMethod> =
+        methods
             .iter()
-            .copied()
-            .fold(0usize, usize::saturating_add);
-        let b_sum = b
-            .distances
-            .iter()
-            .copied()
-            .fold(0usize, usize::saturating_add);
-        a_sum
-            .cmp(&b_sum)
+            .filter(|candidate| {
+                !methods.iter().any(|other| {
+                    other.signature != candidate.signature
+                        && other.signature.iter().zip(&candidate.signature).all(
+                            |(derived, base)| {
+                                derived == base
+                                    || base == "ANY"
+                                    || unsafe {
+                                        crate::mainutils::objects::s4_class_distance(derived, base)
+                                            .is_some()
+                                    }
+                            },
+                        )
+                })
+            })
+            .cloned()
+            .collect();
+    frontier.sort_by(|a, b| {
+        let distance = |m: &TableMethod| {
+            m.distances
+                .iter()
+                .copied()
+                .fold(0usize, usize::saturating_add)
+        };
+        distance(a)
+            .cmp(&distance(b))
+            .then_with(|| b.distances.contains(&0).cmp(&a.distances.contains(&0)))
             .then_with(|| a.distances.cmp(&b.distances))
     });
-    methods.into_iter().next()
+    frontier.into_iter().next()
 }
 
 unsafe fn string_vector(values: &[String]) -> SEXP {
