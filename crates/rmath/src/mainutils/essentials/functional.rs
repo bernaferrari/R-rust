@@ -589,49 +589,120 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// R's `do.call(what, args)` — call function with list of args.
+fn do_call_arguments(args: SEXP) -> [Option<SEXP>; 4] {
+    unsafe {
+        let formals = ["what", "args", "quote", "envir"];
+        let mut matched = [None; 4];
+        let mut positional = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if let Some(name) = tag_name(current) {
+                let index = formals
+                    .iter()
+                    .position(|formal| *formal == name)
+                    .or_else(|| {
+                        formals
+                            .iter()
+                            .position(|formal| !name.is_empty() && formal.starts_with(&name))
+                    })
+                    .unwrap_or_else(|| base_error(format!("unused argument ({name} = ...)")));
+                if matched[index].is_some() {
+                    base_error(format!(
+                        "formal argument '{}' matched by multiple actual arguments",
+                        formals[index]
+                    ));
+                }
+                matched[index] = Some(CAR(current));
+            } else {
+                positional.push(CAR(current));
+            }
+            current = CDR(current);
+        }
+        for value in positional {
+            let index = matched
+                .iter()
+                .position(Option::is_none)
+                .unwrap_or_else(|| base_error("unused argument (...)"));
+            matched[index] = Some(value);
+        }
+        for index in 0..2 {
+            if matched[index].is_none() || matched[index] == Some(R_MissingArg()) {
+                base_error(format!(
+                    "argument '{}' is missing, with no default",
+                    formals[index]
+                ));
+            }
+        }
+        matched
+    }
+}
+
 pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let fun = callable_arg_by_name_or_position(args, &["what"], 0);
-        let arg_list = eval_arg_by_name_or_position(args, &["args"], 1, rho);
-        if fun.is_null() || arg_list.is_null() {
-            return R_NilValue();
+        let matched = do_call_arguments(args);
+        let what = crate::eval::eval::Rf_eval(matched[0].unwrap(), rho);
+        let _what = protect(what);
+        if !(TYPEOF(what) == SEXPTYPE::CLOSXP
+            || TYPEOF(what) == SEXPTYPE::BUILTINSXP
+            || TYPEOF(what) == SEXPTYPE::SPECIALSXP)
+            && !(TYPEOF(what) == SEXPTYPE::STRSXP
+                && XLENGTH(what) == 1
+                && STRING_ELT(what, 0) != crate::sexp::globals::R_NaString())
+        {
+            base_error("'what' must be a function or character string");
         }
-        let n = if TYPEOF(arg_list) == SEXPTYPE::VECSXP {
-            XLENGTH(arg_list)
+        let fun = callable_expr(what);
+        let _fun = protect(fun);
+        let arg_list = crate::eval::eval::Rf_eval(matched[1].unwrap(), rho);
+        let _arg_list = protect(arg_list);
+        if arg_list != R_NilValue() && TYPEOF(arg_list) != SEXPTYPE::VECSXP {
+            base_error("second argument must be a list");
+        }
+        let env = matched[3].map_or(rho, |expr| crate::eval::eval::Rf_eval(expr, rho));
+        let _env = protect(env);
+        if TYPEOF(env) != SEXPTYPE::ENVSXP {
+            base_error("'envir' must be an environment");
+        }
+        let quoted = if let Some(expr) = matched[2] {
+            let value = crate::eval::eval::Rf_eval(expr, rho);
+            let flag = crate::mainutils::coerce::asLogical(value);
+            if flag == NA_LOGICAL {
+                base_error("invalid 'quote' argument");
+            }
+            flag != FALSE
         } else {
-            0
+            false
         };
-        let names = if TYPEOF(arg_list) == SEXPTYPE::VECSXP {
-            crate::sexp::attrib_core::getAttrib(arg_list, crate::sexp::attrib_core::R_NamesSymbol())
-        } else {
-            R_NilValue()
-        };
+        let names = crate::sexp::attrib_core::getAttrib(
+            arg_list,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
         let mut call_args = R_NilValue();
-        for i in (0..n).rev() {
-            let cell = Rf_cons(
-                crate::sexp::accessors::VECTOR_ELT(arg_list, i as i64),
-                call_args,
-            );
-            if !names.is_null()
-                && names != R_NilValue()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && i < XLENGTH(names)
-            {
-                let name = STRING_ELT(names, i);
-                if !name.is_null() {
-                    let chars = CHAR(name);
-                    if !chars.is_null() && *chars != 0 {
-                        SETTAG(cell, Rf_install(chars));
-                    }
+        let mut guards = Vec::new();
+        for i in (0..XLENGTH(arg_list)).rev() {
+            let value = VECTOR_ELT(arg_list, i);
+            let value = if quoted {
+                let wrapped =
+                    crate::sexp::constructors::Rf_lang2(Rf_install(c"quote".as_ptr()), value);
+                guards.push(protect(wrapped));
+                wrapped
+            } else {
+                value
+            };
+            let cell = Rf_cons(value, call_args);
+            guards.push(protect(cell));
+            if TYPEOF(names) == SEXPTYPE::STRSXP && i < XLENGTH(names) {
+                let chars = CHAR(STRING_ELT(names, i));
+                if !chars.is_null() && *chars != 0 {
+                    SETTAG(cell, Rf_install(chars));
                 }
             }
             call_args = cell;
         }
         let call_sexp = Rf_cons(fun, call_args);
-        if !call_sexp.is_null() {
-            (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
-        }
-        crate::eval::eval::Rf_eval(call_sexp, rho)
+        let _call = protect(call_sexp);
+        (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        crate::eval::eval::Rf_eval(call_sexp, env)
     }
 }
 

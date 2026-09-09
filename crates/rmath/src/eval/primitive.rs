@@ -102,7 +102,7 @@ pub fn fun_tab_index_by_name(name: &str) -> Option<c_int> {
 /// that are `.Internal` closures in GNU R: while the port exposes those
 /// implementations directly as primitives, they still need stable identity
 /// when passed as values to higher-order functions. Kind mismatches and
-/// Rust-only helper names receive `PRIMOFFSET = -1` so descriptor-driven
+/// Rust-only helper names receive a session-local negative `PRIMOFFSET` so descriptor-driven
 /// dispatch can recognize them as noncanonical.
 pub unsafe fn make_primitive_binding(name: &str, fallback_kind: SEXPTYPE) -> SEXP {
     unsafe {
@@ -120,10 +120,38 @@ pub unsafe fn make_primitive_binding(name: &str, fallback_kind: SEXPTYPE) -> SEX
         let prim = allocSExp(fallback_kind);
         if !prim.is_null() {
             (*prim).sxpinfo.set_gp(1);
-            SET_PRIMOFFSET(prim, -1);
+            let index = crate::sexp::instance::with_required_current_instance(|instance| {
+                let names = &mut (*instance).eval_state.portable_primitive_names;
+                if let Some(index) = names.iter().position(|existing| existing == name) {
+                    index
+                } else {
+                    names.push(name.to_owned());
+                    names.len() - 1
+                }
+            });
+            let offset = i32::try_from(index)
+                .ok()
+                .and_then(|n| n.checked_add(2))
+                .and_then(i32::checked_neg)
+                .expect("portable primitive index exceeds interpreter range");
+            SET_PRIMOFFSET(prim, offset);
         }
         prim
     }
+}
+
+/// Dispatch identity for helpers without an upstream function-table slot.
+pub(crate) fn portable_primitive_name(op: Sexp<'_>) -> Option<String> {
+    if !op.clone().is_primitive() {
+        return None;
+    }
+    let offset = op.try_primoffset().ok()?;
+    let index = offset.checked_neg()?.checked_sub(2)?;
+    let index = usize::try_from(index).ok()?;
+    crate::sexp::instance::with_required_current_instance(|instance| unsafe {
+        let names = &(*instance).eval_state.portable_primitive_names;
+        names.get(index).cloned()
+    })
 }
 
 fn primitive_print_flag(entry: &FunTabEntry) -> c_int {
@@ -343,7 +371,26 @@ mod tests {
         let primitive = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
 
         assert!(unsafe { PrimitiveDescriptor::from_raw(primitive) }.is_none());
-        assert_eq!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) }, -1);
+        assert!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) } <= -2);
+    }
+
+    #[test]
+    fn portable_identity_is_reused_without_adding_r_attributes() {
+        let _session = RSession::new();
+        let first = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
+        let _first = crate::sexp::protect::protect(first);
+        let second = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
+        assert_eq!(
+            unsafe { crate::sexp::accessors::PRIMOFFSET(first) },
+            unsafe { crate::sexp::accessors::PRIMOFFSET(second) }
+        );
+        assert_eq!(
+            portable_primitive_name(Sexp::try_from_raw(first).unwrap()).as_deref(),
+            Some("__rport_helper__")
+        );
+        assert_eq!(unsafe { crate::sexp::accessors::ATTRIB(first) }, unsafe {
+            crate::sexp::globals::R_NilValue()
+        });
     }
 
     #[test]
@@ -367,6 +414,6 @@ mod tests {
             Sexp::try_from_raw(primitive).unwrap().typeof_(),
             SEXPTYPE::BUILTINSXP
         );
-        assert_eq!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) }, -1);
+        assert!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) } <= -2);
     }
 }

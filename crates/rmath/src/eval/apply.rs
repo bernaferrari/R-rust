@@ -54,16 +54,20 @@ fn call_head_name(call: Sexp<'_>) -> String {
     }
 }
 
-fn primitive_call_name(primitive: Option<PrimitiveDescriptor<'_>>, call: Sexp<'_>) -> String {
-    // A `pkg::name` head evaluates to a fallback primitive minted without
-    // funtab identity (PRIMOFFSET -1, display name "unknown"): the evaluated
-    // value carries no name, so recover it from the call spelling. The
-    // `::` call's second argument is the name symbol (`utils::head` ->
-    // "head"); a plain symbol head falls back to the head print-name.
+fn primitive_call_name(
+    primitive: Option<PrimitiveDescriptor<'_>>,
+    fun: Sexp<'_>,
+    call: Sexp<'_>,
+) -> String {
+    // Prefer identity carried by the value, including portable helpers with
+    // session-local negative offsets. Call spelling is only a legacy fallback.
     if let Some(primitive) = primitive {
         if !primitive.name.is_empty() && primitive.name != "unknown" {
             return primitive.name.to_string();
         }
+    }
+    if let Some(name) = super::primitive::portable_primitive_name(fun) {
+        return name;
     }
     if let Some(name) = namespace_lookup_name(call.clone()) {
         return name;
@@ -127,7 +131,7 @@ pub(crate) fn apply_special_safe<'a>(
         .clone()
         .map(|primitive| primitive.print_flag)
         .unwrap_or(0);
-    let op_name = primitive_call_name(primitive.clone(), call.clone());
+    let op_name = primitive_call_name(primitive.clone(), fun.clone(), call.clone());
     set_visibility_for_print_flag(flag);
 
     let tmp = if let Some(primfun) = primitive.and_then(|primitive| primitive.fun) {
@@ -225,7 +229,7 @@ pub(crate) fn apply_builtin_safe<'a>(
         args,
         rho,
     };
-    let op_name = primitive_call_name(primitive, call);
+    let op_name = primitive_call_name(primitive, frame.fun.clone(), call);
 
     if let Some((result, restore)) = apply_unevaluated_builtin(frame.clone(), &op_name) {
         return finish_application(result, flag, &op_name, restore);
