@@ -1023,16 +1023,101 @@ pub unsafe fn do_getMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
 /// R's `existsMethod(f, signature)` — check if method exists.
 pub unsafe fn do_existsMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let _f = CAR(args);
-        let _sig = CAR(CDR(args));
-        Rf_ScalarLogical(FALSE)
-    }
+    unsafe { s4_method_exists(args, _rho, false) }
 }
 
-/// R's `hasMethod(f, signature)` — alias for existsMethod.
+/// R's `hasMethod(f, signature)` — check exact or inherited methods.
 pub unsafe fn do_hasMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { do_existsMethod(_call, _op, args, _rho) }
+    unsafe { s4_method_exists(args, _rho, true) }
+}
+
+unsafe fn s4_method_exists(args: SEXP, rho: SEXP, inherit: bool) -> SEXP {
+    unsafe {
+        let fail = |message: &str| -> ! {
+            std::panic::panic_any(RError {
+                message: message.into(),
+            })
+        };
+        let f = arg_by_name_or_position(args, &["f"], 0);
+        let signature = arg_by_name_or_position(args, &["signature"], 1);
+        let where_arg = arg_by_name_or_position(args, &["where"], 2);
+        let env = if where_arg.is_null() || where_arg == R_NilValue() {
+            rho
+        } else {
+            where_arg
+        };
+        if TYPEOF(env) != SEXPTYPE::ENVSXP {
+            fail("'where' must be an environment")
+        }
+        let mut generic = if TYPEOF(f) == SEXPTYPE::CLOSXP {
+            f
+        } else if !inherit && TYPEOF(f) == SEXPTYPE::SYMSXP {
+            crate::sexp::envir::R_findVar(f, env)
+        } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
+            crate::sexp::envir::R_findVar(Rf_install(CHAR(STRING_ELT(f, 0))), env)
+        } else {
+            fail("invalid generic function specification")
+        };
+        if generic == crate::sexp::globals::R_UnboundValue() || generic == R_NilValue() {
+            return Rf_ScalarLogical(FALSE);
+        }
+        if TYPEOF(generic) == SEXPTYPE::PROMSXP {
+            generic = crate::sexp::envir::forcePromise(generic);
+        }
+        if TYPEOF(generic) != SEXPTYPE::CLOSXP {
+            return Rf_ScalarLogical(FALSE);
+        }
+        let _generic_root = protect(generic);
+        let generic_env = crate::sexp::accessors::CLOENV(generic);
+        let table =
+            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".AllMTable".as_ptr()));
+        let sigargs =
+            crate::sexp::envir::R_findVarInFrame(generic_env, Rf_install(c".SigArgs".as_ptr()));
+        if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+            return Rf_ScalarLogical(FALSE);
+        }
+        if signature != R_NilValue()
+            && !signature.is_null()
+            && TYPEOF(signature) != SEXPTYPE::STRSXP
+        {
+            fail("invalid signature argument")
+        }
+        let mut targets = string_vector_values(signature);
+        let n = LENGTH(sigargs) as usize;
+        if targets.len() > n {
+            fail("more elements in the method signature than in the generic signature")
+        }
+        if !inherit && signature != R_NilValue() {
+            let names =
+                crate::sexp::attrib_core::getAttrib(signature, Rf_install(c"names".as_ptr()));
+            if TYPEOF(names) == SEXPTYPE::STRSXP && LENGTH(names) == targets.len() as i32 {
+                let mut reordered = vec!["ANY".to_string(); n];
+                let mut seen = vec![false; n];
+                for (i, value) in targets.into_iter().enumerate() {
+                    let name = elt_to_string(names, i as R_xlen_t);
+                    let index = (0..n)
+                        .find(|j| elt_to_string(VECTOR_ELT(sigargs, *j as R_xlen_t), 0) == name)
+                        .unwrap_or_else(|| {
+                            fail("named signature does not match generic arguments")
+                        });
+                    if seen[index] {
+                        fail("duplicate names in signature")
+                    }
+                    seen[index] = true;
+                    reordered[index] = value;
+                }
+                targets = reordered;
+            }
+        }
+        targets.resize(n, "ANY".to_string());
+        let exists = crate::library::methods::methods_list_dispatch::select_method_by_signature(
+            table,
+            &targets,
+            &vec![inherit; n],
+        )
+        .is_some();
+        Rf_ScalarLogical(i32::from(exists))
+    }
 }
 
 /// R's `selectMethod(f, signature)` — select method for generic.
