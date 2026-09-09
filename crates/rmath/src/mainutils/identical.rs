@@ -429,46 +429,34 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 }
             }
             return 1;
-        } else if t == SEXPTYPE::LISTSXP {
-            // LISTSXP: recursive on CAR, CDR, TAG
+        } else if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+            // LISTSXP/LANGSXP: recursive on CAR, CDR, TAG.
+            // Normalize null CDR/TAG to R_NilValue so legacy null-terminated
+            // chains compare equal to GNU-style Nil-terminated ones.
+            let normalize =
+                |node: SEXP| -> SEXP { if node.is_null() { R_NilValue() } else { node } };
             let mut lx = x;
             let mut ly = y;
             loop {
                 if R_compute_identical(CAR(lx), CAR(ly), flags) == 0 {
                     return 0;
                 }
-                if R_compute_identical(TAG(lx), TAG(ly), flags) == 0 {
+                if R_compute_identical(normalize(TAG(lx)), normalize(TAG(ly)), flags) == 0 {
                     return 0;
                 }
-                let nx = CDR(lx);
-                let ny = CDR(ly);
+                let nx = normalize(CDR(lx));
+                let ny = normalize(CDR(ly));
                 if nx == ny {
                     return 1;
                 }
-                if nx.is_null() || ny.is_null() {
+                if nx == R_NilValue() || ny == R_NilValue() {
                     return 0;
                 }
-                lx = nx;
-                ly = ny;
-            }
-        } else if t == SEXPTYPE::LANGSXP {
-            // LANGSXP: recursive on CAR, CDR, TAG
-            let mut lx = x;
-            let mut ly = y;
-            loop {
-                if R_compute_identical(CAR(lx), CAR(ly), flags) == 0 {
+                if TYPEOF(nx) != TYPEOF(ny) {
                     return 0;
                 }
-                if R_compute_identical(TAG(lx), TAG(ly), flags) == 0 {
-                    return 0;
-                }
-                let nx = CDR(lx);
-                let ny = CDR(ly);
-                if nx == ny {
-                    return 1;
-                }
-                if nx.is_null() || ny.is_null() {
-                    return 0;
+                if TYPEOF(nx) != SEXPTYPE::LISTSXP && TYPEOF(nx) != SEXPTYPE::LANGSXP {
+                    return R_compute_identical(nx, ny, flags);
                 }
                 lx = nx;
                 ly = ny;

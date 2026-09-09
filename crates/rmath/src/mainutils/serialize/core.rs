@@ -649,6 +649,26 @@ pub unsafe fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut
 }
 
 // ---------------------------------------------------------------------------
+// Attribute / tag presence helpers
+// ---------------------------------------------------------------------------
+
+#[inline]
+unsafe fn sexp_has_attributes(s: SEXP) -> bool {
+    unsafe {
+        let attrib = ATTRIB(s);
+        !attrib.is_null() && attrib != R_NilValue()
+    }
+}
+
+#[inline]
+unsafe fn sexp_has_tag(s: SEXP) -> bool {
+    unsafe {
+        let tag = TAG(s);
+        !tag.is_null() && tag != R_NilValue()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SaveSpecialHook -- detect special singleton values
 // ---------------------------------------------------------------------------
 
@@ -775,8 +795,8 @@ pub unsafe fn WriteItemInternal(
 
         // Handle LISTSXP
         if stype == SEXPTYPE::LISTSXP {
-            let hastag = if TAG(s).is_null() { 0 } else { 1 };
-            let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
+            let hastag = if sexp_has_tag(s) { 1 } else { 0 };
+            let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
             writer.write_i32(flags);
             if hasattr != 0 {
@@ -792,8 +812,8 @@ pub unsafe fn WriteItemInternal(
 
         // Handle LANGSXP
         if stype == SEXPTYPE::LANGSXP {
-            let hastag = if TAG(s).is_null() { 0 } else { 1 };
-            let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
+            let hastag = if sexp_has_tag(s) { 1 } else { 0 };
+            let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
             writer.write_i32(flags);
             if hasattr != 0 {
@@ -809,7 +829,7 @@ pub unsafe fn WriteItemInternal(
 
         // Handle CLOSXP
         if stype == SEXPTYPE::CLOSXP {
-            let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
+            let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, 1); // hastag=1 for closures
             writer.write_i32(flags);
             if hasattr != 0 {
@@ -883,7 +903,7 @@ pub unsafe fn WriteItemInternal(
         }
 
         // For atomic/vector types, compute flags with attributes
-        let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
+        let hasattr = if sexp_has_attributes(s) { 1 } else { 0 };
         let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, 0);
 
         if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {

@@ -1457,3 +1457,65 @@ fn truncated_vector_lengths_fail_before_payload_allocation() {
         }
     }
 }
+
+#[test]
+fn test_roundtrip_named_pairlist_identical() {
+    use crate::mainutils::identical::R_compute_identical;
+    use crate::sexp::accessors::*;
+    use crate::sexp::constructors::*;
+    use crate::sexp::globals::*;
+    use crate::sexp::protect::protect;
+    use crate::sexp::session::RSession;
+    use crate::sexp::symbol::Rf_install;
+
+    let _session = RSession::new();
+    unsafe {
+        let list = Rf_allocList(2);
+        let _g = protect(list);
+        let a = Rf_ScalarInteger(1);
+        let b = Rf_ScalarString(Rf_mkChar(c"x".as_ptr()));
+        let _ga = protect(a);
+        let _gb = protect(b);
+        SETCAR(list, a);
+        SETTAG(list, Rf_install(c"a".as_ptr()));
+        let second = CDR(list);
+        SETCAR(second, b);
+        SETTAG(second, Rf_install(c"b".as_ptr()));
+        assert_eq!(CDR(second), R_NilValue());
+
+        let raw = R_serialize(list, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
+        let _gr = protect(raw);
+        let restored = R_unserialize(raw, R_NilValue());
+        let _g2 = protect(restored);
+        assert_eq!(TYPEOF(restored), SEXPTYPE::LISTSXP);
+        assert_eq!(R_compute_identical(list, restored, 0), 1);
+    }
+}
+
+#[test]
+fn test_roundtrip_pairlist_with_attributes() {
+    use crate::mainutils::identical::R_compute_identical;
+    use crate::sexp::accessors::*;
+    use crate::sexp::constructors::*;
+    use crate::sexp::globals::*;
+    use crate::sexp::protect::protect;
+    use crate::sexp::session::RSession;
+    use crate::sexp::symbol::Rf_install;
+
+    let _session = RSession::new();
+    unsafe {
+        let list = Rf_allocList(1);
+        let _g = protect(list);
+        SETCAR(list, Rf_ScalarInteger(7));
+        SETTAG(list, Rf_install(c"a".as_ptr()));
+        let label = Rf_mkString(c"meta".as_ptr());
+        let _gl = protect(label);
+        crate::eval::attrib_core::setAttrib(list, Rf_install(c"label".as_ptr()), label);
+
+        let raw = R_serialize(list, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
+        let _gr = protect(raw);
+        let restored = R_unserialize(raw, R_NilValue());
+        let _g2 = protect(restored);
+        assert_eq!(R_compute_identical(list, restored, 4), 1);
+    }
+}

@@ -2,10 +2,22 @@
 
 //! Memory allocation for R objects.
 //!
-//! Uses arena allocation without garbage collection. All R objects are
-//! allocated from an arena that is freed as a unit. This matches R's
-//! allocation patterns where most objects are short-lived within a
-//! single R expression evaluation.
+//! # Arena + generational GC
+//!
+//! Objects are allocated from a slab arena ([`RArena`]) that owns node pages
+//! and vector payloads. That arena is **not** a "no-GC forever" pool: unreachable
+//! objects are reclaimed by the generational mark-sweep collector in
+//! [`super::gengc`]. Allocation may trigger collection when node/byte
+//! thresholds trip; survivors promote young→old under write-barrier tracking.
+//!
+//! # Mandatory rooting
+//!
+//! Raw `SEXP` values held only in Rust locals are invisible to the collector.
+//! Any pointer that must survive an allocating call (or an explicit `gc()`)
+//! has to be rooted via [`super::protect`] (legacy PROTECT stack or the Rust
+//! root table) or another traced root (environments, the bytecode operand
+//! stack, remembered-set edges). Dropping roots because "there is no GC" is
+//! use-after-free — do not treat this module as GC-free.
 
 use std::alloc::{Layout, alloc, dealloc};
 use std::collections::{HashMap, HashSet};
@@ -612,11 +624,16 @@ impl RArena {
     }
 
     /// Allocate a nil-terminated pairlist chain of n elements.
+    ///
+    /// Matches GNU `allocList`: `n <= 0` yields `R_NilValue`, and the final
+    /// CDR is `R_NilValue` (not a null pointer). `serialize` already maps a
+    /// null CDR to `NILVALUE_SXP`, but `identical()` and most list walks treat
+    /// null and Nil as distinct without this terminator.
     pub(crate) fn alloc_list_chain(&mut self, n: i32) -> SEXP {
         if n <= 0 {
-            return ptr::null_mut();
+            return unsafe { crate::sexp::globals::R_NilValue() };
         }
-        let mut result: SEXP = ptr::null_mut();
+        let mut result: SEXP = unsafe { crate::sexp::globals::R_NilValue() };
         for _ in 0..n {
             result = self.cons(ptr::null_mut(), result, ptr::null_mut());
             if result.is_null() {
@@ -1039,7 +1056,10 @@ mod tests {
             assert!(!cdr1.is_null());
             let cdr2 = (*cdr1).data.listsxp.cdrval;
             assert!(!cdr2.is_null());
-            assert!((*cdr2).data.listsxp.cdrval.is_null());
+            assert_eq!(
+                (*cdr2).data.listsxp.cdrval,
+                crate::sexp::globals::R_NilValue()
+            );
         }
     }
 
@@ -1047,14 +1067,14 @@ mod tests {
     fn test_arena_alloc_list_chain_zero() {
         let mut arena = RArena::new();
         let list = arena.alloc_list_chain(0);
-        assert!(list.is_null());
+        assert_eq!(list, unsafe { crate::sexp::globals::R_NilValue() });
     }
 
     #[test]
     fn test_arena_alloc_list_chain_negative() {
         let mut arena = RArena::new();
         let list = arena.alloc_list_chain(-1);
-        assert!(list.is_null());
+        assert_eq!(list, unsafe { crate::sexp::globals::R_NilValue() });
     }
 
     #[test]

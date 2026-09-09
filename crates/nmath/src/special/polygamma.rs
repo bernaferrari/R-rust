@@ -147,7 +147,10 @@ fn dpsifn(x: f64, n: i32, kode: i32, m: i32) -> (Vec<f64>, i32, i32) {
         }
     }
 
-    let nx_val = imin2(-1021, 1024);
+    // Rf_i1mach(15) = min exponent for double (-1021 on IEEE 754)
+    // Rf_i1mach(16) = max exponent for double (1024 on IEEE 754)
+    // GNU R: nx = imin2(-Rf_i1mach(15), Rf_i1mach(16)); /* = 1021 */
+    let nx_val = imin2(-(-1021), 1024);
     let r1m5: f64 = std::f64::consts::LOG10_2;
     let r1m4: f64 = f64::EPSILON * 0.5;
     let wdtol = fmax2(r1m4, 0.5e-18);
@@ -479,33 +482,8 @@ pub fn psigamma(x: f64, deriv: f64) -> f64 {
 }
 
 /// The digamma function: psi(x) = d/dx ln(gamma(x)).
-/// Uses the asymptotic expansion for large x, and the recurrence
-/// relation psi(x) = psi(x+1) - 1/x for small x.
 pub fn digamma(x: f64) -> f64 {
-    if isnan(x) {
-        return x;
-    }
-    if x <= 0.0 && x == libm::floor(x) {
-        return ML_POSINF; // poles at non-positive integers
-    }
-
-    let mut result = 0.0;
-    let mut x = x;
-
-    // Use recurrence to shift x to a large value
-    while x < 6.0 {
-        result -= 1.0 / x;
-        x += 1.0;
-    }
-
-    // Asymptotic expansion: psi(x) ~ ln(x) - 1/(2x) - sum B_{2k}/(2k * x^{2k})
-    result += log(x) - 0.5 / x;
-    let x2 = x * x;
-    let s = 1.0 / x2;
-    result -= s
-        * (1.0 / 12.0
-            - s * (1.0 / 120.0 - s * (1.0 / 252.0 - s * (1.0 / 240.0 - s * (1.0 / 132.0)))));
-    result
+    imp::digamma(x)
 }
 
 /// The trigamma function: psi'(x) = d^2/dx^2 ln(gamma(x)).
