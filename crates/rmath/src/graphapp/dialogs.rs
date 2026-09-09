@@ -96,6 +96,13 @@ fn remember_message(kind: c_int, text: &str) {
     with_graphapp_runtime(|runtime| runtime.dialogs.last_message = Some((kind, text.to_owned())));
 }
 
+fn change_dir_if_allowed(path: &Path) -> bool {
+    let allowed = crate::sexp::instance::with_required_current_instance(|inst| unsafe {
+        (*inst).eval_state.capabilities.allow_environment_mutation
+    });
+    allowed && env::set_current_dir(path).is_ok()
+}
+
 fn write_status(obj: object, text: &str) {
     if obj.is_null() {
         return;
@@ -188,7 +195,7 @@ pub unsafe fn setuserfilter(filter: *const c_char) {
 
 pub fn askchangedir() {
     if let Some(path) = env_dialog_input() {
-        let _ = env::set_current_dir(path);
+        let _ = change_dir_if_allowed(Path::new(&path));
     }
 }
 
@@ -255,6 +262,19 @@ pub unsafe fn myMessageBox(obj: object, text: *const c_char, typ: c_int) {
 mod tests {
     use super::*;
     use std::ffi::{CStr, CString};
+
+    #[test]
+    fn ask_change_directory_is_denied_without_host_mutation_capability() {
+        let _session = crate::sexp::session::RSession::new();
+        let before = env::current_dir().expect("current directory");
+        let changed = change_dir_if_allowed(Path::new("/"));
+        let after = env::current_dir().expect("current directory");
+        if before != after {
+            env::set_current_dir(&before).expect("restore directory after regression");
+        }
+        assert!(!changed);
+        assert_eq!(after, before);
+    }
 
     #[test]
     fn filename_helpers_join_directory_without_prompting() {
