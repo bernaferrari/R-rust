@@ -292,38 +292,18 @@ unsafe fn evalArgs(
     rho: SEXP,
     dropmissing: c_int,
     _call: SEXP,
-    argsevald: c_int,
+    _argument_offset: c_int,
 ) -> SEXP {
     unsafe {
-        if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+        // GNU selects the normal or missing-preserving list evaluator here.
+        // Reuse those paths so ... is expanded and omitted subscripts survive.
+        // This port's evalList final argument is a count limit, not GNU's
+        // diagnostic offset, so -1 requests the entire list.
+        if dropmissing != 0 {
+            evalList(args, rho, _call, -1)
+        } else {
+            evalListKeepMissing(args, rho)
         }
-
-        let mut result = PairlistBuilder::new();
-        let mut cell_guards: Vec<ProtectGuard> = Vec::new();
-        let mut current = args;
-
-        while !current.is_null() && current != R_NilValue() {
-            let arg = CAR(current);
-            let mut val = R_NilValue();
-
-            if argsevald == 0 {
-                val = Rf_eval(arg, rho);
-            } else {
-                val = arg;
-            }
-
-            // Skip missing arguments if dropmissing is set
-            if dropmissing != 0 && val == R_MissingArg() {
-                current = CDR(current);
-                continue;
-            }
-
-            push_pairlist_cell(&mut result, &mut cell_guards, val, TAG(current));
-            current = CDR(current);
-        }
-
-        finish_pairlist(result)
     }
 }
 
@@ -650,7 +630,7 @@ pub unsafe fn DispatchOrEval(
                 guards.push(protect(pargs));
 
                 // Create a new environment for dispatch context
-                let rho1 = NewEnvironment(R_NilValue(), R_NilValue(), rho);
+                let rho1 = NewEnvironment(R_NilValue(), rho, R_NilValue());
                 guards.push(protect(rho1));
 
                 // Set the evaluated value as the first promise's value
@@ -660,10 +640,20 @@ pub unsafe fn DispatchOrEval(
                     && TYPEOF(CAR(pargs)) == SEXPTYPE::PROMSXP
                 {
                     // Force the first promise to be x
-                    SETCAR(pargs, x);
+                    crate::sexp::accessors::SET_PRVALUE(CAR(pargs), x);
                 }
 
-                // Try to dispatch via usemethod
+                // usemethod reads its call and promises from the active
+                // context, including when a primitive is invoked at top level.
+                let _context_guard = crate::sexp::context::begin_context_guard(
+                    crate::sexp::context::ctxt_flags::CTXT_RETURN,
+                    call,
+                    rho1,
+                    rho,
+                    None,
+                    op,
+                    pargs,
+                );
                 let dispatched = crate::mainutils::objects::usemethod(
                     generic,
                     x,

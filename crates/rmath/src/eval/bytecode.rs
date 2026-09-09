@@ -119,10 +119,13 @@ pub const GNU_OP_LDNULL: c_int = 17;
 pub const GNU_OP_LDTRUE: c_int = 18;
 pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
+pub const GNU_OP_UMINUS: c_int = 42;
+pub const GNU_OP_UPLUS: c_int = 43;
 pub const GNU_OP_ADD: c_int = 44;
 pub const GNU_OP_SUB: c_int = 45;
 pub const GNU_OP_MUL: c_int = 46;
 pub const GNU_OP_DIV: c_int = 47;
+pub const GNU_OP_EXPT: c_int = 48;
 pub const GNU_OP_EQ: c_int = 51;
 pub const GNU_OP_NE: c_int = 52;
 pub const GNU_OP_LT: c_int = 53;
@@ -245,8 +248,9 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         pc += 1;
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE => {}
-            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV
-            | GNU_OP_EQ | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
+            GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
+            | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
+            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -340,14 +344,22 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 }
                 pending.push((next, depth + 1));
             }
-            GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EQ | GNU_OP_NE
-            | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
+            GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ
+            | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT => {
                 if depth < 2 {
                     return Err(format!(
                         "GNU binary opcode {opcode} at instruction {instruction_pc} has stack depth {depth}, requires 2"
                     ));
                 }
                 pending.push((next, depth - 1));
+            }
+            GNU_OP_UMINUS | GNU_OP_UPLUS => {
+                if depth < 1 {
+                    return Err(format!(
+                        "GNU unary opcode {opcode} at instruction {instruction_pc} has empty stack"
+                    ));
+                }
+                pending.push((next, depth));
             }
             GNU_OP_INVISIBLE => pending.push((next, depth)),
             _ => unreachable!(),
@@ -1265,6 +1277,28 @@ mod tests {
             GNU_OP_RETURN,
         ];
         assert!(validate_gnu_adapter_stream(&bad_operand, 2).is_err());
+        let unary = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            0,
+            GNU_OP_UMINUS,
+            1,
+            GNU_OP_RETURN,
+        ];
+        assert!(validate_gnu_adapter_stream(&unary, 2).unwrap());
+        let unary_underflow = [GNU_BC_MAX_VERSION, GNU_OP_UMINUS, 0, GNU_OP_RETURN];
+        assert!(validate_gnu_adapter_stream(&unary_underflow, 1).is_err());
+        let power = [
+            GNU_BC_MAX_VERSION,
+            GNU_OP_LDCONST,
+            0,
+            GNU_OP_LDCONST,
+            1,
+            GNU_OP_EXPT,
+            0,
+            GNU_OP_RETURN,
+        ];
+        assert!(validate_gnu_adapter_stream(&power, 2).unwrap());
     }
 
     #[test]

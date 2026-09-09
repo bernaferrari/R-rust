@@ -145,6 +145,12 @@ where
                 RSignal::Return(_) => Err(REvalError {
                     message: "no function to return from, jumping to top level".to_string(),
                 }),
+                // Restart requests own thread-confined GC guards. Even an
+                // invalid transfer must be consumed while this session is active,
+                // never exposed as a movable panic payload to safe host code.
+                RSignal::Restart(_) => Err(REvalError {
+                    message: "restart not on stack".to_string(),
+                }),
                 other => std::panic::panic_any(other),
             },
             Err(payload) => match payload.downcast::<RError>() {

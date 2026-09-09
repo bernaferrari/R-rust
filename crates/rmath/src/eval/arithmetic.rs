@@ -1242,8 +1242,13 @@ pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Handle comparison operators: <, >, <=, >=, ==, !=
-pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
+        // Relational primitives are members of the Ops group too. GNU R
+        // performs S3 group dispatch before the ordinary comparison ladder.
+        if let Some(result) = try_group_dispatch(b"Ops\0", call, op, args, rho) {
+            return result;
+        }
         let op_name = get_op_name(op, call);
         match op_name {
             "<" | ">" | "<=" | ">=" | "==" | "!=" => {

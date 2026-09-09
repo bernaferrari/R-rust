@@ -12,8 +12,8 @@ use crate::sexp::accessors::{
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
-    Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_lang2,
+    Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
@@ -348,7 +348,7 @@ pub(crate) unsafe fn signal_calling_warning_condition(condition: SEXP, rho: SEXP
             Ok(()) => false,
             Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
                 Ok(signal) => match *signal {
-                    crate::sexp::context::RSignal::Restart(_) => true,
+                    crate::sexp::context::RSignal::Restart(jump) if jump.target == restart => true,
                     other => std::panic::panic_any(other),
                 },
                 Err(payload) => std::panic::resume_unwind(payload),
@@ -496,26 +496,41 @@ unsafe fn restart_arg_name(restart_arg: SEXP) -> String {
     }
 }
 
-unsafe fn invoke_restart(restart: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let handler = restart_handler(restart);
-        let value = if is_function_value(handler) {
-            call_function_with_args(handler, args, rho)
-        } else {
-            R_NilValue()
-        };
-        std::panic::panic_any(crate::sexp::context::RSignal::Restart(value));
-    }
+unsafe fn invoke_restart(restart: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    std::panic::panic_any(crate::sexp::context::RSignal::Restart(
+        crate::sexp::context::RestartJump::new(restart, args),
+    ));
 }
 
 unsafe fn call_function_with_args(handler: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let call = Rf_cons(handler, args);
-        if !call.is_null() {
-            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        let _handler_guard = protect(handler);
+        let _args_guard = protect(args);
+        // GNU withRestarts uses do.call with enquoted argument values.
+        // Symbols and language objects must remain data, not execute again.
+        let mut entries = Vec::new();
+        let mut entry = args;
+        while !entry.is_null() && entry != R_NilValue() {
+            entries.push(entry);
+            entry = CDR(entry);
         }
+        let mut quoted = R_NilValue();
+        let mut guards = Vec::new();
+        for entry in entries.into_iter().rev() {
+            let value = Rf_lang2(
+                crate::sexp::symbol::Rf_install(c"quote".as_ptr()),
+                CAR(entry),
+            );
+            guards.push(protect(value));
+            quoted = Rf_cons(value, quoted);
+            guards.push(protect(quoted));
+            SETTAG(quoted, TAG(entry));
+        }
+        let call = Rf_lang2(handler, R_NilValue());
+        SETCDR(call, quoted);
+        let _call_guard = protect(call);
         if TYPEOF(handler) == SEXPTYPE::CLOSXP {
-            crate::eval::closure::applyClosure(call, handler, args, rho, R_NilValue(), TRUE)
+            crate::eval::closure::applyClosure(call, handler, quoted, rho, R_NilValue(), TRUE)
         } else {
             crate::eval::eval::Rf_eval(call, rho)
         }
@@ -1799,23 +1814,51 @@ pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
         }
 
         let old_stack = restart_stack();
+        let _old_stack_guard = protect(old_stack);
         let new_stack = restart_stack_from_args(CDR(args), rho, old_stack);
+        let _stack_guard = protect(new_stack);
         set_restart_stack(new_stack);
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut active_stack = new_stack;
+        let mut result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             crate::eval::eval::Rf_eval(expr, rho)
         }));
-        set_restart_stack(old_stack);
-
-        match result {
-            Ok(value) => value,
-            Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
-                Ok(signal) => match *signal {
-                    crate::sexp::context::RSignal::Restart(value) => value,
-                    other => std::panic::panic_any(other),
+        loop {
+            set_restart_stack(old_stack);
+            match result {
+                Ok(value) => return value,
+                Err(payload) => match payload.downcast::<crate::sexp::context::RSignal>() {
+                    Ok(signal) => match *signal {
+                        crate::sexp::context::RSignal::Restart(jump) => {
+                            let mut entry = active_stack;
+                            while entry != old_stack && !entry.is_null() && entry != R_NilValue() {
+                                if CAR(entry) == jump.target {
+                                    break;
+                                }
+                                entry = CDR(entry);
+                            }
+                            if entry == old_stack || entry.is_null() || entry == R_NilValue() {
+                                std::panic::panic_any(crate::sexp::context::RSignal::Restart(jump));
+                            }
+                            // Multiple specs have nested dynamic extents in GNU:
+                            // earlier specs disappear; later specs remain available
+                            // and can themselves be invoked by this handler.
+                            active_stack = CDR(entry);
+                            set_restart_stack(active_stack);
+                            result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                let handler = restart_handler(jump.target);
+                                if is_function_value(handler) {
+                                    call_function_with_args(handler, jump.args, rho)
+                                } else {
+                                    R_NilValue()
+                                }
+                            }));
+                        }
+                        other => std::panic::panic_any(other),
+                    },
+                    Err(payload) => std::panic::resume_unwind(payload),
                 },
-                Err(payload) => std::panic::resume_unwind(payload),
-            },
+            }
         }
     }
 }
@@ -1823,19 +1866,24 @@ pub unsafe fn do_withRestarts(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
 unsafe fn restart_stack_from_args(mut args: SEXP, rho: SEXP, old_stack: SEXP) -> SEXP {
     unsafe {
         let mut entries = Vec::new();
+        let mut guards = Vec::new();
         while !args.is_null() && args != R_NilValue() {
             let Some(name) = tag_name(args) else {
                 args = CDR(args);
                 continue;
             };
             let handler = crate::eval::eval::Rf_eval(CAR(args), rho);
-            entries.push(restart_entry(&name, handler));
+            let _handler_guard = protect(handler);
+            let entry = restart_entry(&name, handler);
+            guards.push(protect(entry));
+            entries.push(entry);
             args = CDR(args);
         }
 
         let mut stack = old_stack;
         for entry in entries.into_iter().rev() {
             stack = Rf_cons(entry, stack);
+            guards.push(protect(stack));
         }
         stack
     }

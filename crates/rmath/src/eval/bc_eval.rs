@@ -482,10 +482,35 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     };
                     stack.push(value);
                 }
+                super::bytecode::GNU_OP_UMINUS | super::bytecode::GNU_OP_UPLUS => {
+                    let call = VECTOR_ELT(consts, words[pc] as i64);
+                    if call.is_null() || TYPEOF(call) != SEXPTYPE::LANGSXP {
+                        bc_error("GNU unary operator requires a call in the constant pool");
+                    }
+                    pc += 1;
+                    let value = stack_pop_checked(&mut stack, "GNU unary operator");
+                    let symbol = if opcode == super::bytecode::GNU_OP_UMINUS {
+                        c"-"
+                    } else {
+                        c"+"
+                    };
+                    let result = with_stack_rooted(&stack, value, || {
+                        let op = R_findVar(
+                            crate::sexp::symbol::Rf_install(symbol.as_ptr()),
+                            super::runtime::base_env(),
+                        );
+                        let args = Rf_cons(value, R_NilValue());
+                        let _args = crate::sexp::protect::protect(args);
+                        super::arithmetic::do_arith(call, op, args, rho)
+                    });
+                    super::runtime::set_visible(TRUE);
+                    stack.push(result);
+                }
                 super::bytecode::GNU_OP_ADD
                 | super::bytecode::GNU_OP_SUB
                 | super::bytecode::GNU_OP_MUL
                 | super::bytecode::GNU_OP_DIV
+                | super::bytecode::GNU_OP_EXPT
                 | super::bytecode::GNU_OP_EQ
                 | super::bytecode::GNU_OP_NE
                 | super::bytecode::GNU_OP_LT
@@ -504,6 +529,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         super::bytecode::GNU_OP_SUB => c"-",
                         super::bytecode::GNU_OP_MUL => c"*",
                         super::bytecode::GNU_OP_DIV => c"/",
+                        super::bytecode::GNU_OP_EXPT => c"^",
                         super::bytecode::GNU_OP_EQ => c"==",
                         super::bytecode::GNU_OP_NE => c"!=",
                         super::bytecode::GNU_OP_LT => c"<",
@@ -525,23 +551,10 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                             let _tail = crate::sexp::protect::protect(tail);
                             let args = Rf_cons(a, tail);
                             let _args = crate::sexp::protect::protect(args);
-                            if opcode <= super::bytecode::GNU_OP_DIV {
+                            if opcode <= super::bytecode::GNU_OP_EXPT {
                                 super::arithmetic::do_arith(call, op, args, rho)
                             } else {
-                                let mut result = R_NilValue();
-                                if super::dispatch::DispatchGroup(
-                                    c"Ops".as_ptr(),
-                                    call,
-                                    op,
-                                    args,
-                                    rho,
-                                    &mut result,
-                                ) != 0
-                                {
-                                    result
-                                } else {
-                                    super::arithmetic::do_relop(call, op, args, rho)
-                                }
+                                super::arithmetic::do_relop(call, op, args, rho)
                             }
                         })
                     });

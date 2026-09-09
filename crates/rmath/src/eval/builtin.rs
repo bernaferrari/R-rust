@@ -125,6 +125,11 @@ pub(crate) fn is_hidden_builtin_name(name: &str) -> bool {
 
 pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     UnevaluatedBuiltin {
+        name: "rep",
+        handler: crate::mainutils::seq::do_rep,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "library",
         handler: crate::mainutils::essentials::do_library_frontend,
         restore_visibility_always: false,
@@ -1052,10 +1057,6 @@ pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
     EvaluatedBuiltin {
         name: "sequence",
         handler: crate::mainutils::seq::do_sequence,
-    },
-    EvaluatedBuiltin {
-        name: "rep",
-        handler: crate::mainutils::seq::do_rep,
     },
     EvaluatedBuiltin {
         name: "rep.int",

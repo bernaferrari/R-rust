@@ -412,6 +412,35 @@ pub fn r_error(msg: impl Into<String>) -> ! {
 
 /// Discriminated R evaluation signal.
 ///
+/// A restart transfer owns GC roots until its matching dynamic frame catches it.
+/// Handler evaluation happens there, after intervening cleanup has unwound.
+pub struct RestartJump {
+    pub target: SEXP,
+    pub args: SEXP,
+    _roots: [super::protect::ProtectGuard<'static>; 2],
+}
+
+impl RestartJump {
+    pub(crate) fn new(target: SEXP, args: SEXP) -> Self {
+        Self {
+            target,
+            args,
+            _roots: [
+                super::protect::protect(target),
+                super::protect::protect(args),
+            ],
+        }
+    }
+}
+
+impl std::fmt::Debug for RestartJump {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RestartJump")
+            .field("target", &self.target)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Replaces the undifferentiated `RError` panic payload for control flow.
 /// Each variant represents a distinct R control flow mechanism.
 #[derive(Debug)]
@@ -430,7 +459,7 @@ pub enum RSignal {
         message: String,
     },
     /// Non-local return from `invokeRestart()` to the matching `withRestarts()`.
-    Restart(SEXP),
+    Restart(RestartJump),
     /// Targeted context jump for exiting handlers (tryCatch/withCallingHandlers).
     /// Carries the target environment to match against context stack entries,
     /// and the result vector containing [cond, call, handler].
@@ -449,6 +478,10 @@ pub enum RSignal {
     },
 }
 
+// Required by Rust's panic transport, not permission to move interpreter
+// objects between threads. Signals are caught inside the active session;
+// safe evaluation also consumes unmatched restart requests before returning
+// to the host, so their owned GC guards cannot escape the owning instance.
 unsafe impl Send for RSignal {}
 
 static R_PANIC_HOOK: OnceLock<()> = OnceLock::new();
@@ -568,7 +601,9 @@ mod jump_signal_tests {
             mask: 0x4000,
             value: std::ptr::null_mut(),
         });
-        let unwind = std::panic::catch_unwind(|| handle_closure_signal(payload));
+        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            handle_closure_signal(payload)
+        }));
         let payload = unwind.expect_err("generic jump must propagate");
         let signal = payload
             .downcast::<RSignal>()
@@ -593,7 +628,8 @@ mod jump_signal_tests {
             mask: 2,
             value: std::ptr::null_mut(),
         });
-        let unwind = std::panic::catch_unwind(|| handle_loop_signal(payload));
+        let unwind =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handle_loop_signal(payload)));
         assert!(
             unwind.is_err(),
             "generic jump must not become loop control flow"

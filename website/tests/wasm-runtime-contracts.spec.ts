@@ -1,6 +1,36 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("unary GNU bytecode, primitive methods and restart unwinding work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL(
+    "../../crates/r-embed/tests/fixtures/gnu-bytecode-unary/negative.rds", import.meta.url
+  ))
+  const stream = Buffer.alloc(24)
+  ;[12, 20, 1, 42, 0, 1].forEach((word, i) => stream.writeInt32BE(word, i * 4))
+  const offset = bytes.indexOf(stream)
+  expect(offset).toBeGreaterThan(-1)
+  bytes.writeInt32BE(43, offset + 3 * 4)
+  await page.goto("/console/")
+  const result = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const code = `f<-unserialize(as.raw(c(${values})));identical(f(c(1L,NA_integer_)),c(1L,NA_integer_))`
+      const results = []
+      for (const expression of [code,
+        "rep.foo<-function(x,...)deparse(substitute(x));x<-structure(1,class='foo');identical(rep(x,stop('unused')),'x')",
+        "`<.foo`<-function(e1,e2)TRUE;isTRUE(structure(9,class='foo')<1)",
+        "h<-function(...)rep(1L,...);identical(h(,length.out=3L),c(1L,1L,1L))",
+        "trace<-character();g<-function(){on.exit({gc();trace<<-c(trace,'cleanup')});invokeRestart('outer',42L)};value<-withRestarts({withRestarts(g(),inner=function()0);99L},outer=function(x){trace<<-c(trace,'handler');x});identical(value,42L)&&identical(trace,c('cleanup','handler'))",
+      ]) {
+        results.push((await runtime.run(expression,"console")).output.trim())
+      }
+      return results
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(result).toEqual(Array(5).fill("[1] TRUE"))
+})
+
 test("GNU arithmetic bytecode and Ops conflict hooks run in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL(
     "../../crates/r-embed/tests/fixtures/gnu-bytecode-arithmetic/add.rds",
