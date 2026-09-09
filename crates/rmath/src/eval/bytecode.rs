@@ -121,6 +121,7 @@ pub const GNU_OP_LDFALSE: c_int = 19;
 pub const GNU_OP_GETVAR: c_int = 20;
 pub const GNU_OP_GETFUN: c_int = 23;
 pub const GNU_OP_GETBUILTIN: c_int = 26;
+pub const GNU_OP_CHECKFUN: c_int = 28;
 pub const GNU_OP_MAKEPROM: c_int = 29;
 pub const GNU_OP_PUSHCONSTARG: c_int = 34;
 pub const GNU_OP_PUSHNULLARG: c_int = 35;
@@ -272,7 +273,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
             | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
-            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG => {}
+            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN => {}
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
@@ -605,6 +606,14 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                     return Err("GNU PUSHARG has no preceding argument".into());
                 }
                 pending.push((next, depth, loop_stack, call_stack));
+            }
+            GNU_OP_CHECKFUN => {
+                if depth == 0 {
+                    return Err("GNU CHECKFUN has an empty stack".into());
+                }
+                let mut entered = call_stack;
+                entered.push(depth - 1);
+                pending.push((next, depth, loop_stack, entered));
             }
             GNU_OP_SETTAG => {
                 let Some(marker) = call_stack.last() else {
@@ -1647,6 +1656,19 @@ mod tests {
                 .contains("CALL has no active GETFUN call")
         );
         assert!(validate_gnu_adapter_stream(&[12, 26, 2, 1], 2).is_err());
+    }
+
+    #[test]
+    fn bounded_gnu_adapter_validates_checkfun_stack() {
+        assert_eq!(
+            validate_gnu_adapter_stream(&[12, 16, 0, 28, 29, 0, 38, 1, 1], 2),
+            Ok(true)
+        );
+        assert!(
+            validate_gnu_adapter_stream(&[12, 28, 1], 1)
+                .unwrap_err()
+                .contains("CHECKFUN has an empty stack")
+        );
     }
 
     #[test]

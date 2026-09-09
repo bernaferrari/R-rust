@@ -610,6 +610,20 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                     });
                     stack.push(promise);
                 }
+                super::bytecode::GNU_OP_CHECKFUN => {
+                    let fun = stack_top_checked(&stack, "GNU CHECKFUN");
+                    let kind = TYPEOF(fun);
+                    if kind != SEXPTYPE::CLOSXP
+                        && kind != SEXPTYPE::BUILTINSXP
+                        && kind != SEXPTYPE::SPECIALSXP
+                    {
+                        bc_error("GNU CHECKFUN found a non-function");
+                    }
+                    gnu_call_frames.push(GnuCallFrame {
+                        marker: stack.depth() - 1,
+                        tags: Vec::new(),
+                    });
+                }
                 super::bytecode::GNU_OP_SETTAG => {
                     let index = words[pc] as usize;
                     pc += 1;
