@@ -1,6 +1,31 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("compiled lazy calls and inherited method specificity work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-calls/identity-promise.rds", import.meta.url))
+  const stream = Buffer.alloc(16)
+  ;[12,20,0,1].forEach((word,i) => stream.writeInt32BE(word,i*4))
+  const offset=bytes.indexOf(stream)
+  expect(offset).toBeGreaterThan(-1)
+  bytes.writeInt32BE(16,offset+4)
+  await page.goto("/console/")
+  const output=await page.evaluate(async (values) => {
+    const { RRuntime }=await import("/src/runtime/r-runtime.ts")
+    const runtime=new RRuntime()
+    try {
+      const results=[]
+      for (const code of [
+        `f<-unserialize(as.raw(c(${values})));identical(f(41L),quote(x))`,
+        "g<-unserialize(serialize(f,NULL));identical(g(99L),quote(x))",
+        "local({setClass('A');setClass('B',contains='A');setClass('C',contains='B');setClass('D',contains=c('A','C'));setGeneric('f',function(x)standardGeneric('f'));setMethod('f','C',function(x)'C');setMethod('f','A',function(x)'A');identical(f(new('D')),'C')})",
+        "identical(Re(fft(c(1,0,0,0))),rep(1,4))",
+      ]) results.push((await runtime.run(code,"console")).output.trim())
+      return results
+    } finally { runtime.dispose() }
+  },Array.from(bytes).join(","))
+  expect(output).toEqual(Array(4).fill("[1] TRUE"))
+})
+
 test("GNU math bytecode, method continuation and abort discovery work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL(
     "../../crates/r-embed/tests/fixtures/gnu-red-compiler/sqrt.rds", import.meta.url

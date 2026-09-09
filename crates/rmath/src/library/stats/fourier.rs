@@ -31,6 +31,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
+use crate::sexp::memory::with_arena;
 use crate::sexp::protect::protect;
 
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
@@ -48,6 +49,7 @@ unsafe fn duplicate(x: SEXP) -> SEXP {
 /// BLAS/Fortran dependency (notably on WASM and Android), while avoiding the
 /// quadratic path for the overwhelmingly common composite sizes.
 fn transform(values: &[Complex64], inverse: bool) -> Vec<Complex64> {
+    transform_checkpoint();
     let n = values.len();
     if n <= 1 {
         return values.to_vec();
@@ -71,7 +73,10 @@ fn transform(values: &[Complex64], inverse: bool) -> Vec<Complex64> {
                     Complex64::from_polar(1.0, sign * std::f64::consts::TAU * k as f64 / n as f64);
                 let mut twiddle = Complex64::new(1.0, 0.0);
                 let mut sum = Complex64::new(0.0, 0.0);
-                for &value in values {
+                for (index, &value) in values.iter().enumerate() {
+                    if index.is_multiple_of(1024) {
+                        transform_checkpoint();
+                    }
                     sum += value * twiddle;
                     twiddle *= step;
                 }
@@ -92,6 +97,9 @@ fn transform(values: &[Complex64], inverse: bool) -> Vec<Complex64> {
 
     let mut output = vec![Complex64::new(0.0, 0.0); n];
     for k in 0..n {
+        if k.is_multiple_of(1024) {
+            transform_checkpoint();
+        }
         let inner_k = k % inner_len;
         let step = Complex64::from_polar(1.0, sign * std::f64::consts::TAU * k as f64 / n as f64);
         let mut twiddle = Complex64::new(1.0, 0.0);
@@ -101,6 +109,15 @@ fn transform(values: &[Complex64], inverse: bool) -> Vec<Complex64> {
         }
     }
     output
+}
+
+fn transform_checkpoint() {
+    crate::sexp::instance::check_cancellation();
+    if crate::sexp::instance::with_current_instance(|_| ()).is_some() {
+        let _guard = crate::eval::limits::check_eval_depth().unwrap_or_else(|message| {
+            std::panic::panic_any(crate::sexp::context::RError { message });
+        });
+    }
 }
 
 #[cfg(test)]
@@ -177,7 +194,44 @@ mod transform_tests {
     }
 
     #[test]
+    fn fft_workspace_budget_error_releases_reservation_and_recovers() {
+        let mut session = crate::sexp::session::RSession::new();
+        unsafe {
+            let input = Rf_allocVector(SEXPTYPE::CPLXSXP.0, 4);
+            let _input_guard = protect(input);
+            for (index, value) in [1.0, 2.0, 3.0, 4.0].into_iter().enumerate() {
+                (*COMPLEX(input).add(index)).r = value;
+                (*COMPLEX(input).add(index)).i = 0.0;
+            }
+            let inverse = Rf_ScalarLogical(0);
+            let _inverse_guard = protect(inverse);
+            let retained_bytes = session
+                .with_arena(|arena| arena.total_bytes_allocated())
+                .unwrap();
+            let workspace = fft_workspace_bytes(4).expect("small FFT workspace");
+            session.set_arena_budget(crate::sexp::memory::ArenaBudget::new(
+                retained_bytes + workspace - 1,
+                0,
+            ));
+            let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                fft(input, inverse);
+            }))
+            .expect_err("FFT workspace limit must be recoverable");
+            assert!(
+                failure
+                    .downcast_ref::<crate::sexp::context::RError>()
+                    .is_some_and(|error| error.message.contains("FFT workspace"))
+            );
+
+            session.set_arena_budget(crate::sexp::memory::ArenaBudget::unlimited());
+            let result = fft(input, inverse);
+            assert_eq!(LENGTH(result), 4);
+        }
+    }
+
+    #[test]
     fn strided_transform_matches_gnu_r_matrix_oracle() {
+        let _session = crate::sexp::session::RSession::new();
         let mut values: Vec<_> = (1..=4)
             .map(|value| Rcomplex {
                 r: value as f64,
@@ -199,8 +253,24 @@ mod transform_tests {
     }
 }
 
-unsafe fn transform_line(base: *mut Rcomplex, len: usize, stride: usize, inverse: bool) {
+fn fft_workspace_bytes(len: usize) -> Option<usize> {
+    // A transform can retain the input lane, recursive inner results, and
+    // the output simultaneously. Four complex buffers is conservative for
+    // the recursive mixed-radix implementation and catches size overflow
+    // before any Vec allocation.
+    len.checked_mul(std::mem::size_of::<Complex64>())?
+        .checked_mul(4)
+}
+
+unsafe fn transform_line(base: *mut Rcomplex, len: usize, stride: usize, inverse: bool) -> bool {
     unsafe {
+        let Some(workspace_bytes) = fft_workspace_bytes(len) else {
+            return false;
+        };
+        let Some(_reservation) = with_arena(|arena| arena.try_reserve_transient(workspace_bytes))
+        else {
+            return false;
+        };
         let input: Vec<_> = (0..len)
             .map(|index| {
                 let value = *base.add(index * stride);
@@ -213,6 +283,7 @@ unsafe fn transform_line(base: *mut Rcomplex, len: usize, stride: usize, inverse
                 i: value.im,
             };
         }
+        true
     }
 }
 
@@ -292,7 +363,10 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
             let d = getAttrib(z, R_DimSymbol());
             if d.is_null() || d == R_NilValue() {
                 /* temporal transform */
-                transform_line(COMPLEX(z), LENGTH(z) as usize, 1, inverse);
+                if !transform_line(COMPLEX(z), LENGTH(z) as usize, 1, inverse) {
+                    Rf_error(b"FFT workspace exceeds session allocation limit\0".as_ptr()
+                        as *const core::ffi::c_char);
+                }
             } else {
                 /* spatial transform */
                 let ndims = LENGTH(d);
@@ -304,12 +378,17 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                         let block_len = stride * len;
                         for block in 0..(total / block_len) {
                             for lane in 0..stride {
-                                transform_line(
+                                if !transform_line(
                                     COMPLEX(z).add(block * block_len + lane),
                                     len,
                                     stride,
                                     inverse,
-                                );
+                                ) {
+                                    Rf_error(
+                                        b"FFT workspace exceeds session allocation limit\0".as_ptr()
+                                            as *const core::ffi::c_char,
+                                    );
+                                }
                             }
                         }
                     }
@@ -379,7 +458,10 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
         if n > 1 {
             for i in 0..(p as usize) {
                 let base = COMPLEX(z).add(i * n as usize);
-                transform_line(base, n as usize, 1, inverse);
+                if !transform_line(base, n as usize, 1, inverse) {
+                    Rf_error(b"FFT workspace exceeds session allocation limit\0".as_ptr()
+                        as *const core::ffi::c_char);
+                }
             }
         }
     }

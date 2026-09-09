@@ -20,8 +20,10 @@
 //! use-after-free — do not treat this module as GC-free.
 
 use std::alloc::{Layout, alloc, dealloc};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::ptr::{self};
+use std::rc::Rc;
 
 /// Size of each slab page for SexprecCore nodes. Larger pages reduce allocator overhead
 /// and improve cache locality vs one Box per node. Chose 4096 as balance ( ~256KB per page
@@ -98,7 +100,8 @@ impl std::error::Error for ArenaError {}
 /// A budget of `0` means unlimited for that dimension.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ArenaBudget {
-    /// Maximum total bytes allowed in this arena (0 = unlimited).
+    /// Maximum accounted bytes allowed, including arena data and
+    /// reservations for temporary native workspaces (0 = unlimited).
     pub max_bytes: usize,
     /// Maximum number of active nodes allowed in this arena (0 = unlimited).
     pub max_nodes: usize,
@@ -178,6 +181,9 @@ pub struct RArena {
     free_addrs: HashSet<usize>,
     /// Total bytes allocated for tracking.
     total_bytes_allocated: usize,
+    /// Bytes reserved by temporary native workspaces which live outside the
+    /// arena (for example, a numerical transform's scratch Vecs).
+    transient_bytes: Rc<Cell<usize>>,
     /// Deferred alloc-time GC hook state (see `with_arena_in`): arena
     /// methods cannot touch instance state without aliasing the live
     /// borrow, so hooks record their firings here instead.
@@ -236,6 +242,7 @@ impl RArena {
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
+            transient_bytes: Rc::new(Cell::new(0)),
             alloc_gc_torture_ticks: 0,
             alloc_gc_collect_requested: false,
             budget: ArenaBudget::unlimited(),
@@ -255,6 +262,7 @@ impl RArena {
             active_addrs: HashSet::new(),
             free_addrs: HashSet::new(),
             total_bytes_allocated: 0,
+            transient_bytes: Rc::new(Cell::new(0)),
             alloc_gc_torture_ticks: 0,
             alloc_gc_collect_requested: false,
             budget,
@@ -302,6 +310,27 @@ impl RArena {
         self.budget = budget;
     }
 
+    /// Reserve native scratch space against this session's byte budget.
+    ///
+    /// The returned guard releases the reservation on every exit path,
+    /// including an R error or cancellation unwind. The allocation itself is
+    /// owned by the caller; this only accounts for its peak workspace.
+    pub(crate) fn try_reserve_transient(&mut self, bytes: usize) -> Option<TransientReservation> {
+        let total = self
+            .total_bytes_allocated
+            .checked_add(self.transient_bytes.get())?
+            .checked_add(bytes)?;
+        if self.budget.max_bytes != 0 && total > self.budget.max_bytes {
+            return None;
+        }
+        self.transient_bytes
+            .set(self.transient_bytes.get().checked_add(bytes)?);
+        Some(TransientReservation {
+            counter: Rc::clone(&self.transient_bytes),
+            bytes,
+        })
+    }
+
     fn register_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
         self.total_bytes_allocated += layout.size();
         self.data_bufs.insert(ptr, layout);
@@ -324,7 +353,8 @@ impl RArena {
         self.budget.max_bytes == 0
             || self
                 .total_bytes_allocated
-                .checked_add(bytes)
+                .checked_add(self.transient_bytes.get())
+                .and_then(|total| total.checked_add(bytes))
                 .is_some_and(|total| total <= self.budget.max_bytes)
     }
 
@@ -479,7 +509,8 @@ impl RArena {
         if self.budget.max_bytes > 0 {
             let new_total = self
                 .total_bytes_allocated
-                .checked_add(total_increase)
+                .checked_add(self.transient_bytes.get())
+                .and_then(|total| total.checked_add(total_increase))
                 .ok_or(ArenaError::ByteBudgetExceeded {
                     limit: self.budget.max_bytes,
                     requested: usize::MAX,
@@ -792,6 +823,20 @@ impl RArena {
     }
 }
 
+/// RAII release token for a native workspace reservation.
+pub(crate) struct TransientReservation {
+    counter: Rc<Cell<usize>>,
+    bytes: usize,
+}
+
+impl Drop for TransientReservation {
+    fn drop(&mut self) {
+        // The shared counter can outlive or move independently of the arena.
+        // Rc also confines this token to its creating thread.
+        self.counter.set(self.counter.get() - self.bytes);
+    }
+}
+
 impl Default for RArena {
     fn default() -> Self {
         Self::new()
@@ -902,6 +947,31 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn transient_reservations_share_limits_and_release_without_arena_borrows() {
+        let mut arena = super::RArena::with_budget(super::ArenaBudget::new(1024, 0));
+        let reservation = arena.try_reserve_transient(1024).unwrap();
+        assert!(arena.try_reserve_transient(1).is_none());
+        assert!(!arena.can_grow_bytes_by(1));
+        assert!(
+            arena
+                .alloc_vector_checked(super::SEXPTYPE::REALSXP, 1)
+                .is_err()
+        );
+        drop(reservation);
+        assert!(arena.can_grow_bytes_by(1024));
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _reservation = arena.try_reserve_transient(1024).unwrap();
+            panic!("workspace failure");
+        }));
+        assert!(unwound.is_err());
+        assert!(arena.try_reserve_transient(1024).is_some());
+        // Safe guards must remain safe if their arena moves or is destroyed.
+        let reservation = arena.try_reserve_transient(128).unwrap();
+        let moved = Box::new(arena);
+        drop(moved);
+        drop(reservation);
+    }
     use crate::sexp::ffi::*;
 
     use super::*;
