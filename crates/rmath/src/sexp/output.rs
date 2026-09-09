@@ -169,6 +169,35 @@ pub(crate) fn stop_capture_in(inst: *mut RInstance) -> RCapturedOutput {
     unsafe { (*inst).output_capture.borrow_mut().stop() }
 }
 
+/// A nested capture owned by its starting session, restored even on errors.
+/// Discarding an unfinished capture mirrors capture.output(file=NULL) on error.
+pub(crate) struct OutputCaptureGuard {
+    instance: *mut RInstance,
+    active: bool,
+}
+impl OutputCaptureGuard {
+    pub(crate) fn start() -> Self {
+        let instance = super::instance::with_required_current_instance(|instance| instance);
+        start_capture_in(instance);
+        Self {
+            instance,
+            active: true,
+        }
+    }
+    pub(crate) fn finish(mut self) -> RCapturedOutput {
+        let output = stop_capture_in(self.instance);
+        self.active = false;
+        output
+    }
+}
+impl Drop for OutputCaptureGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = stop_capture_in(self.instance);
+        }
+    }
+}
+
 /// Check if output capture is active.
 pub fn is_capturing() -> bool {
     super::instance::with_current_instance(is_capturing_in).unwrap_or(false)

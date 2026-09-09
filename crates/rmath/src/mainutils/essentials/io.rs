@@ -995,14 +995,66 @@ pub unsafe fn do_package_startup_message(_call: SEXP, _op: SEXP, args: SEXP, _rh
 /// R's `capture.output(expr)` — capture printed stdout as a character vector.
 pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let expr = CAR(args);
-        if expr.is_null() || expr == R_NilValue() {
-            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        let control_name = |cell: SEXP| -> Option<String> {
+            let tag = TAG(cell);
+            if tag.is_null() || tag == R_NilValue() {
+                return None;
+            }
+            let name = CStr::from_ptr(CHAR(PRINTNAME(tag))).to_string_lossy();
+            matches!(name.as_ref(), "file" | "append" | "type" | "split").then(|| name.into_owned())
+        };
+        let mut control = args;
+        let mut seen = std::collections::HashSet::new();
+        while control != R_NilValue() && !control.is_null() {
+            if let Some(name) = control_name(control) {
+                if !seen.insert(name.clone()) {
+                    base_error("formal argument matched by multiple actual arguments");
+                }
+                let value = crate::eval::eval::Rf_eval(CAR(control), rho);
+                match name.as_str() {
+                    "file" if value != R_NilValue() => {
+                        base_error("capture.output file destinations are not supported yet")
+                    }
+                    "type" => {
+                        if TYPEOF(value) != SEXPTYPE::STRSXP || LENGTH(value) != 1 {
+                            base_error("invalid 'type' argument");
+                        }
+                        let kind = CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_string_lossy();
+                        if kind.is_empty() || !"output".starts_with(kind.as_ref()) {
+                            base_error("capture.output currently supports type='output'");
+                        }
+                    }
+                    "split" | "append" => {
+                        let enabled = crate::main::coerce::asLogical(value);
+                        if enabled == NA_LOGICAL {
+                            base_error(format!("invalid '{name}' argument"));
+                        }
+                        if name == "split" && enabled != FALSE {
+                            base_error("capture.output split sinks are not supported yet");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            control = CDR(control);
         }
-
-        crate::sexp::output::start_capture();
-        let _ = crate::eval::eval::Rf_eval(expr, rho);
-        let captured = crate::sexp::output::stop_capture();
+        let capture = crate::sexp::output::OutputCaptureGuard::start();
+        let mut argument = args;
+        while argument != R_NilValue() && !argument.is_null() {
+            if control_name(argument).is_some() {
+                argument = CDR(argument);
+                continue;
+            }
+            let value = crate::eval::eval::Rf_eval(CAR(argument), rho);
+            let _value_root = protect(value);
+            if crate::sexp::globals::R_Visible() != FALSE {
+                let print_args = Rf_cons(value, R_NilValue());
+                let _print_args_root = protect(print_args);
+                crate::mainutils::essentials_basic::do_print(_call, _op, print_args, rho);
+            }
+            argument = CDR(argument);
+        }
+        let captured = capture.finish();
 
         let stdout = captured.stdout.trim_end_matches('\n');
         let lines: Vec<&str> = if stdout.is_empty() {
