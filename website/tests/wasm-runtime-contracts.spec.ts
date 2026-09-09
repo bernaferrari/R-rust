@@ -1,6 +1,31 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("literal GNU call arguments, QR transforms and selective capture work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-constant-args/pushconstarg.rds", import.meta.url))
+  const stream = Buffer.alloc(40)
+  ;[12,23,1,34,2,29,3,38,0,1].forEach((word,index) => stream.writeInt32BE(word,index*4))
+  const offset = bytes.indexOf(stream)
+  expect(offset).toBeGreaterThan(-1)
+  bytes.writeInt32BE(1,offset+16)
+  await page.goto("/console/")
+  const results = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const output = []
+      for (const code of [
+        `target<-function(a,b)identical(a,1L);f<-unserialize(as.raw(c(${values})));identical(f('value'),FALSE)`,
+        "q<-qr(matrix(1:6,3,2));max(abs(qr.qty(q,qr.qy(q,1:3))-1:3))<1e-10",
+        "identical(capture.output(message('hello'),type='message'),'hello')",
+        "identical(capture.output(capture.output(cat('tee\\n'),split=TRUE)),c('tee','[1] \"tee\"'))",
+      ]) output.push((await runtime.run(code,"console")).output.trim())
+      return output
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(results).toEqual(Array(4).fill("[1] TRUE"))
+})
+
 test("GNU superassignment, evalq, Q factors and output capture work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-assignment/setvar2.rds", import.meta.url))
   await page.goto("/console/")
