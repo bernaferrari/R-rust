@@ -178,3 +178,17 @@ fn arithmetic_preserves_longer_operand_attributes_with_left_precedence() {
         "[1] \"left|kept|foo|numeric|foo\"",
     );
 }
+
+#[test]
+fn group_method_promises_keep_the_callers_expressions() {
+    let mut session = RSession::new().unwrap();
+    eval_eq(
+        &mut session,
+        r#"
+        Ops.foo <- function(e1,e2) paste(deparse(substitute(e1)),deparse(substitute(e2)),sep="|")
+        x <- structure(1,class="foo")
+        x + 2
+    "#,
+        "[1] \"x|2\"",
+    );
+}

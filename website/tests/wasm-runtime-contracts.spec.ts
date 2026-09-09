@@ -354,6 +354,9 @@ test("S3 group methods and serialized call tails work in the Wasm worker", async
         stopifnot(identical(class(abs(x)), "foo"), identical(class(x + 1), "foo"),
                   sum(x) == 1, identical(class(Re(z)), "foo"),
                   identical(expr, unserialize(serialize(expr, NULL))))
+        Ops.expr <- function(e1,e2) deparse(substitute(e1))
+        w <- structure(1,class="expr")
+        stopifnot(identical(w + 1,"w"))
         inherited <- structure(c(1, 2), class="unhandled") + 1
         stopifnot(identical(class(inherited), "unhandled"))
         f <- function() { on.exit(gc()); return(c(4L, 5L)) }

@@ -60,7 +60,8 @@ fn serialize_pairlist_bytes_stable_across_roundtrip() {
         pl <- pairlist(a=1L, b="x", c=TRUE)
         pl2 <- unserialize(serialize(pl, NULL))
         identical(pl, pl2) && identical(as.list(pl), as.list(pl2)) &&
-          identical(names(pl), names(pl2))
+          identical(names(pl), names(pl2)) &&
+          identical(serialize(pl, NULL), serialize(pl2, NULL))
         "#,
     );
 }

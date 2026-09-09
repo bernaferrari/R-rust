@@ -906,7 +906,9 @@ pub unsafe fn DispatchGroup(
         let mut ai = args;
         while !pi.is_null() && pi != R_NilValue() && !ai.is_null() && ai != R_NilValue() {
             if TYPEOF(CAR(pi)) == SEXPTYPE::PROMSXP {
-                SETCAR(pi, CAR(ai));
+                // Cache the value without discarding PRCODE: substitute()
+                // in a method must still see the caller's expression.
+                crate::sexp::accessors::SET_PRVALUE(CAR(pi), CAR(ai));
             }
             if is_ops {
                 SETTAG(pi, R_NilValue());
