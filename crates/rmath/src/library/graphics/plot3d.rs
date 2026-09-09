@@ -95,6 +95,19 @@ const LTY_DOTTED: c_int = 3;
 /// max_contour_segments: safety limit for contour tracing loops.
 const max_contour_segments: c_int = 25000;
 
+/// Return the number of facets in a persp surface while preserving the
+/// c_int indexing contract used by `DepthOrder`.
+fn persp_facet_count(nr: c_int, nc: c_int) -> Result<c_int, &'static str> {
+    if nr < 2 || nc < 2 {
+        return Err("persp requires at least two rows and columns");
+    }
+    let facets = i64::from(nr - 1) * i64::from(nc - 1);
+    if facets > i64::from(c_int::MAX) {
+        return Err("persp surface has too many facets");
+    }
+    Ok(facets as c_int)
+}
+
 // NA_STRING sentinel (non-null pointer for NA character).
 // This is a stub; the real value comes from R internals.
 // Not used directly in our stubs; defined only to prevent linker errors.
@@ -1153,9 +1166,13 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
         /* Compute depth order (real algorithm) */
         let nr = nrows(z);
         let nc = ncols(z);
-        let depth = Rf_allocVector(SEXPTYPE::REALSXP, (nr - 1) * (nc - 1));
+        let facet_count = match persp_facet_count(nr, nc) {
+            Ok(count) => count,
+            Err(message) => plot3d_error(message),
+        };
+        let depth = Rf_allocVector(SEXPTYPE::REALSXP, facet_count);
         let _depth_guard = protect(depth);
-        let indx = Rf_allocVector(SEXPTYPE::INTSXP, (nr - 1) * (nc - 1));
+        let indx = Rf_allocVector(SEXPTYPE::INTSXP, facet_count);
         let _indx_guard = protect(indx);
 
         DepthOrder(
@@ -1427,5 +1444,22 @@ mod tests {
                 assert!(state.do_lighting);
             });
         });
+    }
+
+    #[test]
+    fn persp_facet_count_rejects_invalid_and_overflowing_dimensions() {
+        assert_eq!(persp_facet_count(2, 2), Ok(1));
+        assert_eq!(
+            persp_facet_count(0, 2),
+            Err("persp requires at least two rows and columns")
+        );
+        assert_eq!(
+            persp_facet_count(-1, 2),
+            Err("persp requires at least two rows and columns")
+        );
+
+        let side = 46_342;
+        assert!(persp_facet_count(side, side).is_err());
+        assert_eq!(persp_facet_count(c_int::MAX, 2), Ok(c_int::MAX - 1));
     }
 }
