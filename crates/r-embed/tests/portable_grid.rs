@@ -289,8 +289,8 @@ fn unit_arithmetic_matches_gnu_r_contract_and_survives_gc() {
 #[test]
 fn mixed_and_string_units_defer_to_conversion() {
     let mut session = RSession::new().unwrap();
-    assert_eq!(session.eval("library(grid); x<-unit(c(1,2),c('npc','cm'))+unit(3,'npc'); length(x$value)==2L && x$units[1]=='npc' && x$units[2]=='sum'").unwrap(), "[1] TRUE");
-    assert_eq!(session.eval("library(grid); x<-unit(1,'strwidth',data='abc')+unit(2,'strwidth',data='de'); is.unit(x) && x$units=='sum'").unwrap(), "[1] TRUE");
+    assert_eq!(session.eval("library(grid); x<-unit(c(1,2),c('npc','cm'))+unit(3,'npc'); length(x$value)==2L && x$units[1]=='npc' && x$units[2]=='.rport-expression'").unwrap(), "[1] TRUE");
+    assert_eq!(session.eval("library(grid); x<-unit(1,'strwidth',data='abc')+unit(2,'strwidth',data='de'); is.unit(x) && x$units=='.rport-expression'").unwrap(), "[1] TRUE");
     assert!(session.render_with_dimensions("library(grid); grid.newpage(); x<-unit(1,'strwidth',data='abc')+unit(2,'strwidth',data='de'); convertWidth(x,'inches',TRUE)", 240, 160).is_ok());
     assert!(
         session

@@ -100,7 +100,13 @@ unsafe fn scalar_unit(value: f64, name: &str, data: SEXP) -> SEXP {
             Rf_mkCharLen(name.as_ptr() as *const _, name.len() as i32),
         );
         SET_VECTOR_ELT(out, 1, unit_name);
-        SET_VECTOR_ELT(out, 2, data);
+        if name == ".rport-expression" {
+            let elements = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+            SET_VECTOR_ELT(elements, 0, data);
+            SET_VECTOR_ELT(out, 2, elements);
+        } else {
+            SET_VECTOR_ELT(out, 2, data);
+        }
         let class = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         let _class = crate::sexp::protect::protect(class);
         SET_STRING_ELT(class, 0, Rf_mkChar(c"unit".as_ptr()));
@@ -128,7 +134,9 @@ unsafe fn unit_element(x: SEXP, i: usize) -> SEXP {
         } else {
             elt_to_string(names, (i as i64) % XLENGTH(names))
         };
-        let datum = if data == R_NilValue() || XLENGTH(data) == 0 {
+        let datum = if matches!(name.as_str(), "sum" | "min" | "max") {
+            data
+        } else if data == R_NilValue() || XLENGTH(data) == 0 {
             R_NilValue()
         } else if TYPEOF(data) == SEXPTYPE::STRSXP {
             let d = Rf_allocVector(SEXPTYPE::STRSXP, 1);
@@ -152,6 +160,9 @@ unsafe fn unit_name_at(x: SEXP, i: usize) -> String {
 }
 unsafe fn unit_data_at(x: SEXP, i: usize) -> SEXP {
     unsafe {
+        if matches!(unit_name_at(x, i).as_str(), "sum" | "min" | "max") {
+            return x;
+        }
         let data = field(x, "data");
         if data == R_NilValue() || XLENGTH(data) == 0 {
             return R_NilValue();
@@ -200,8 +211,11 @@ unsafe fn unit_terms_result(template: SEXP, terms: &[UnitTerm]) -> SEXP {
         let mut any_data = false;
         for (i, term) in terms.iter().enumerate() {
             let (v, n, d) = match term {
+                UnitTerm::Scalar(v, n, d) if matches!(n.as_str(), "sum" | "min" | "max") => {
+                    (*v, ".rport-expression", *d)
+                }
                 UnitTerm::Scalar(v, n, d) => (*v, n.as_str(), *d),
-                UnitTerm::Expr(e) => (1., "sum", *e),
+                UnitTerm::Expr(e) => (1., ".rport-expression", *e),
             };
             *REAL(values).add(i) = v;
             SET_STRING_ELT(
@@ -844,18 +858,30 @@ unsafe fn units(x: SEXP, default: &str, frame: &Frame, axis: usize, dimension: b
                     }
                     elt_to_string(names, (i as i64) % XLENGTH(names))
                 };
+                if name == ".rport-expression" {
+                    if TYPEOF(data) != SEXPTYPE::VECSXP || XLENGTH(data) == 0 {
+                        base_error("invalid grid expression data");
+                    }
+                    let child = VECTOR_ELT(data, (i as i64) % XLENGTH(data));
+                    let resolved = units(child, default, frame, axis, dimension);
+                    if resolved.len() != 1 {
+                        base_error("grid coordinate expression must resolve to one value");
+                    }
+                    return v * resolved[0];
+                }
                 if matches!(name.as_str(), "sum" | "min" | "max")
                     && TYPEOF(data) == SEXPTYPE::VECSXP
                     && XLENGTH(data) > 0
                 {
                     let mut parts = Vec::new();
                     for j in 0..XLENGTH(data) {
-                        parts.extend(units(VECTOR_ELT(data, j), default, frame, axis, dimension));
+                        parts.push(units(VECTOR_ELT(data, j), default, frame, axis, dimension));
                     }
-                    return match name.as_str() {
-                        "sum" => parts.iter().sum(),
-                        "min" => parts.into_iter().fold(f64::INFINITY, f64::min),
-                        _ => parts.into_iter().fold(f64::NEG_INFINITY, f64::max),
+                    let terms = parts.into_iter().flatten();
+                    return v * match name.as_str() {
+                        "sum" => terms.sum(),
+                        "min" => terms.fold(f64::INFINITY, f64::min),
+                        _ => terms.fold(f64::NEG_INFINITY, f64::max),
                     };
                 }
                 if name == "grobwidth" || name == "grobheight" {
