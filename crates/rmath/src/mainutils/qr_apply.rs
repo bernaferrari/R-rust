@@ -89,21 +89,21 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
         let (f, a, r) = fields(q);
         if TYPEOF(f) != REALSXP_C || TYPEOF(a) != REALSXP_C {
             err("invalid QR decomposition")
-        };
+        }
         let d = getAttrib(f, R_DimSymbol());
         if TYPEOF(d) != INTSXP_C || XLENGTH(d) != 2 {
             err("invalid QR dimensions")
-        };
+        }
         let m = *INTEGER(d) as isize;
         let n = *INTEGER(d).add(1) as isize;
         if m < 0 || n < 0 {
             err("invalid QR dimensions")
-        };
+        }
         let m = m as usize;
         let n = n as usize;
         if m.checked_mul(n) != Some(XLENGTH(f) as usize) {
             err("invalid QR matrix length")
-        };
+        }
         let k = m.min(n);
         if XLENGTH(a) < k as R_xlen_t {
             err("invalid QR decomposition fields");
@@ -157,7 +157,7 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
             .unwrap_or_else(|| err("result too large"));
         if XLENGTH(yy) as usize != count {
             err("invalid 'y' dimensions")
-        };
+        }
         // GNU's LINPACK .Fortran path rejects nonfinite input before arithmetic.
         if !lap {
             for field in [f, a, yy] {
@@ -185,7 +185,7 @@ unsafe fn apply(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, transpose: bool) ->
             let tau = *REAL(a).add(j);
             if !lap && !tau.is_finite() {
                 err("invalid QR decomposition")
-            };
+            }
             if tau == 0.0 {
                 continue;
             }
