@@ -510,7 +510,7 @@ pub unsafe fn do_cov(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 }
 
 /// R's `cor(x, y)` — Pearson correlation between two numeric vectors.
-pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_cor(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let y_cdr = CDR(args);
@@ -531,6 +531,7 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         };
         let mut position = 2;
         let mut use_mode = "everything".to_string();
+        let mut method_mode = "pearson".to_string();
         while !extra.is_null() && extra != R_NilValue() {
             let name = tag_name(extra).unwrap_or_else(|| {
                 if position == 2 {
@@ -544,12 +545,18 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let value = CAR(extra);
             if name == "method" {
                 if value != R_MissingArg()
-                    && (TYPEOF(value) != SEXPTYPE::STRSXP
-                        || XLENGTH(value) != 1
-                        || std::ffi::CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_bytes()
-                            != b"pearson")
+                    && (TYPEOF(value) != SEXPTYPE::STRSXP || XLENGTH(value) != 1 || {
+                        let method =
+                            std::ffi::CStr::from_ptr(CHAR(STRING_ELT(value, 0))).to_bytes();
+                        method != b"pearson" && method != b"spearman"
+                    })
                 {
-                    base_error("cor currently supports only method='pearson'");
+                    base_error("unsupported cor method");
+                }
+                if value != R_MissingArg() {
+                    method_mode = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(value, 0)))
+                        .to_string_lossy()
+                        .into_owned();
                 }
             } else if name == "use" {
                 if value != R_MissingArg() {
@@ -597,8 +604,8 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             dims(y)
         };
         if x_dims.is_some() || y_dims.is_some() {
-            if use_mode != "everything" {
-                base_error("matrix cor currently supports only use='everything'");
+            if use_mode != "everything" || method_mode != "pearson" {
+                base_error("matrix cor currently supports only use='everything', method='pearson'");
             }
             let (x_rows, nx) = x_dims.unwrap_or((XLENGTH(x) as usize, 1));
             let (y_rows, ny) = match y_dims {
@@ -760,16 +767,56 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             _ => {}
         }
 
+        let ranked: Option<(Vec<f64>, Vec<f64>)> = if method_mode == "spearman" {
+            let active: Vec<usize> = (0..n)
+                .filter(|&i| {
+                    use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i]))
+                })
+                .collect();
+            let rank = |values: &[f64]| -> Vec<f64> {
+                let mut order: Vec<usize> = (0..values.len()).collect();
+                order.sort_by(|&a, &b| values[a].total_cmp(&values[b]));
+                let mut ranks = vec![0.0; values.len()];
+                let mut start = 0;
+                while start < order.len() {
+                    let mut end = start + 1;
+                    while end < order.len() && values[order[end]] == values[order[start]] {
+                        end += 1;
+                    }
+                    let average = (start + end + 1) as f64 / 2.0;
+                    for &index in &order[start..end] {
+                        ranks[index] = average;
+                    }
+                    start = end;
+                }
+                ranks
+            };
+            let xv: Vec<f64> = active.iter().map(|&i| x_data[i]).collect();
+            let yv: Vec<f64> = active.iter().map(|&i| y_data[i]).collect();
+            Some((rank(&xv), rank(&yv)))
+        } else {
+            None
+        };
+
         let mut sum_x = 0.0_f64;
         let mut sum_y = 0.0_f64;
-        let mut count = 0_i64;
-        for i in 0..n {
-            if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
-                sum_x += x_data[i];
-                sum_y += y_data[i];
-                count += 1;
+        let count = if let Some((calc_x, calc_y)) = ranked.as_ref() {
+            for i in 0..calc_x.len() {
+                sum_x += calc_x[i];
+                sum_y += calc_y[i];
             }
-        }
+            calc_x.len() as i64
+        } else {
+            let mut count = 0_i64;
+            for i in 0..n {
+                if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
+                    sum_x += x_data[i];
+                    sum_y += y_data[i];
+                    count += 1;
+                }
+            }
+            count
+        };
         if count < 2 {
             if count == 0 && use_mode == "complete.obs" {
                 base_error("no complete element pairs");
@@ -782,17 +829,31 @@ pub unsafe fn do_cor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let mut cov = 0.0_f64;
         let mut var_x = 0.0_f64;
         let mut var_y = 0.0_f64;
-        for i in 0..n {
-            if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
-                let dx = x_data[i] - mean_x;
-                let dy = y_data[i] - mean_y;
+        if let Some((calc_x, calc_y)) = ranked.as_ref() {
+            for i in 0..calc_x.len() {
+                let dx = calc_x[i] - mean_x;
+                let dy = calc_y[i] - mean_y;
                 cov += dx * dy;
                 var_x += dx * dx;
                 var_y += dy * dy;
             }
+        } else {
+            for i in 0..n {
+                if use_mode == "everything" || (!missing(x_data[i]) && !missing(y_data[i])) {
+                    let dx = x_data[i] - mean_x;
+                    let dy = y_data[i] - mean_y;
+                    cov += dx * dy;
+                    var_x += dx * dx;
+                    var_y += dy * dy;
+                }
+            }
         }
         let denom = (var_x * var_y).sqrt();
         if denom == 0.0 {
+            crate::mainutils::errors::Rf_warningcall1(
+                call,
+                c"the standard deviation is zero".as_ptr(),
+            );
             return Rf_ScalarReal(NA_REAL);
         }
         Rf_ScalarReal(cov / denom)
