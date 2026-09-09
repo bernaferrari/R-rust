@@ -699,8 +699,14 @@ unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
             );
             return;
         }
-        println!("<S3 object>");
-        let _ = data;
+        // Reuse the public print dispatcher so registered print.<class>
+        // closures run with the same environment and capture semantics as
+        // ordinary `print()`.  The protected one-element call is acyclic;
+        // custom methods may return a value, which is intentionally ignored
+        // by this value-printing entry point.
+        let args = Rf_cons(s, R_NilValue());
+        let _args_guard = protect(args);
+        crate::mainutils::essentials::do_print(R_NilValue(), R_NilValue(), args, data.env);
     }
 }
 
@@ -2058,6 +2064,34 @@ mod tests {
     }
 
     #[test]
+    fn legacy_s3_print_dispatches_and_recovers_after_method_error() {
+        let mut session = RSession::new();
+        let (result, _, _) = session.eval_code_with_output_capture(
+            "print.foo <- function(x, ...) cat('custom', x$value, '\n'); x <- structure(list(value=7), class='foo'); x"
+        );
+        let value = result.unwrap().as_raw();
+        session.with_active(|| unsafe {
+            let capture = crate::sexp::output::OutputCaptureGuard::start();
+            PrintValueEnv(value, R_GlobalEnv());
+            assert_eq!(capture.finish().stdout.trim(), "custom 7");
+        });
+        let (result, _, _) = session
+            .eval_code_with_output_capture("print.foo <- function(x, ...) stop('method failed')");
+        result.unwrap();
+        session.with_active(|| {
+            let capture = crate::sexp::output::OutputCaptureGuard::start();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                PrintValueEnv(value, R_GlobalEnv());
+            }));
+            assert!(result.is_err());
+            drop(capture);
+            assert!(!crate::sexp::output::is_capturing());
+        });
+        let (result, _, _) = session.eval_code_with_output_capture("1+1");
+        assert_eq!(result.unwrap().real_elt(0), Some(2.0));
+    }
+
+    #[test]
     fn legacy_print_scalar_without_attributes_terminates() {
         const CHILD: &str = "RPORT_LEGACY_PRINT_PROBE_CHILD";
         if std::env::var_os(CHILD).is_some() {
@@ -2071,11 +2105,16 @@ mod tests {
             return;
         }
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "mainutils::print::tests::legacy_print_scalar_without_attributes_terminates", "--test-threads=1"])
-            .env(CHILD,"1")
+            .args([
+                "--exact",
+                "mainutils::print::tests::legacy_print_scalar_without_attributes_terminates",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .spawn().unwrap();
+            .spawn()
+            .unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             if let Some(status) = child.try_wait().unwrap() {
