@@ -503,7 +503,6 @@ unsafe fn R_data_part(obj: SEXP) -> SEXP {
             if let Some(value) = s4_named_slot(obj, ".Data") {
                 return value;
             }
-            return R_NilValue();
         }
         let data_sym = Rf_install(c".Data".as_ptr());
         crate::sexp::attrib_core::getAttrib(obj, data_sym)
@@ -1037,12 +1036,88 @@ pub unsafe fn do_hasMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 }
 
 /// R's `selectMethod(f, signature)` — select method for generic.
-pub unsafe fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let f_arg = CAR(args);
-        if f_arg.is_null() || f_arg == R_NilValue() {
-            return R_NilValue();
+        let fail = |message: &str| -> ! {
+            std::panic::panic_any(RError {
+                message: message.into(),
+            })
+        };
+        let f = arg_by_name_or_position(args, &["f"], 0);
+        let signature = arg_by_name_or_position(args, &["signature"], 1);
+        let optional = arg_by_name_or_position(args, &["optional"], 2);
+        let inherited = arg_by_name_or_position(args, &["useInherited"], 3);
+        let fdef = arg_by_name_or_position(args, &["fdef"], 5);
+        let generic = if fdef != R_NilValue() && !fdef.is_null() {
+            fdef
+        } else if TYPEOF(f) == SEXPTYPE::CLOSXP {
+            f
+        } else if TYPEOF(f) == SEXPTYPE::STRSXP && LENGTH(f) == 1 {
+            crate::sexp::envir::findFun(Rf_install(CHAR(STRING_ELT(f, 0))), rho)
+        } else {
+            fail("invalid generic function specification")
+        };
+        if TYPEOF(generic) != SEXPTYPE::CLOSXP {
+            fail("no generic function found")
         }
-        f_arg
+        let _generic_root = protect(generic);
+        let env = crate::sexp::accessors::CLOENV(generic);
+        let table = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c".AllMTable".as_ptr()));
+        let sigargs = crate::sexp::envir::R_findVarInFrame(env, Rf_install(c".SigArgs".as_ptr()));
+        if TYPEOF(table) != SEXPTYPE::ENVSXP || TYPEOF(sigargs) != SEXPTYPE::VECSXP {
+            fail("no generic function found")
+        }
+        if TYPEOF(signature) != SEXPTYPE::STRSXP {
+            fail("invalid signature argument")
+        }
+        let n = LENGTH(sigargs) as usize;
+        let supplied = string_vector_values(signature);
+        if supplied.len() > n {
+            fail("more elements in the method signature than in the generic signature")
+        }
+        // GNU selectMethod consumes signatures in generic order, even if named.
+        let mut targets = supplied;
+        targets.resize(n, "ANY".to_string());
+        let mut inherit = vec![true; n];
+        if inherited != R_NilValue() && !inherited.is_null() {
+            if TYPEOF(inherited) != SEXPTYPE::LGLSXP
+                || ![1, n].contains(&(LENGTH(inherited) as usize))
+            {
+                fail("invalid useInherited argument")
+            }
+            for (i, value) in inherit.iter_mut().enumerate() {
+                let logical = LOGICAL_ELT(inherited, (i % LENGTH(inherited) as usize) as i32);
+                if logical == i32::MIN {
+                    fail("invalid useInherited argument")
+                }
+                *value = logical != 0;
+            }
+        }
+        let selected = crate::library::methods::methods_list_dispatch::select_method_by_signature(
+            table, &targets, &inherit,
+        );
+        let Some((method, defined)) = selected else {
+            if optional != R_NilValue() && crate::mainutils::coerce::asLogical(optional) == TRUE {
+                return R_NilValue();
+            }
+            fail("no method found for this signature")
+        };
+        let result = crate::mainutils::duplicate::Rf_duplicate(method);
+        let _result_root = protect(result);
+        for (name, values) in [("target", targets), ("defined", defined)] {
+            let value = string_vector_from_values(&values);
+            let _value_root = protect(value);
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new(name).unwrap().as_ptr()),
+                value,
+            );
+        }
+        let class = Rf_mkString(c"MethodDefinition".as_ptr());
+        let _class_root = protect(class);
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c"class".as_ptr()), class);
+        crate::sexp::attrib_core::setAttrib(result, Rf_install(c".Data".as_ptr()), method);
+        crate::sexp::accessors::SET_S4_OBJECT(result);
+        result
     }
 }

@@ -793,6 +793,30 @@ pub unsafe fn R_selectMethod(fname: SEXP, _ev: SEXP, mlist: SEXP, _evalArgs: SEX
     }
 }
 
+/// Look up explicit target classes without evaluating or manufacturing arguments.
+pub(crate) unsafe fn select_method_by_signature(
+    table: SEXP,
+    targets: &[String],
+    inherit: &[bool],
+) -> Option<(SEXP, Vec<String>)> {
+    unsafe {
+        nearest_method(
+            table_methods(table, targets)
+                .into_iter()
+                .filter(|candidate| {
+                    candidate
+                        .signature
+                        .iter()
+                        .zip(targets)
+                        .zip(inherit)
+                        .all(|((defined, target), allow)| *allow || defined == target)
+                })
+                .collect(),
+        )
+        .map(|candidate| (candidate.method, candidate.signature))
+    }
+}
+
 unsafe fn select_method_from_list(
     fname: SEXP,
     ev: SEXP,
