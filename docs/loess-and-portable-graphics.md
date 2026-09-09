@@ -178,8 +178,10 @@ establish complete base/grid/ggplot rendering or the GNU R device lifecycle,
 complete plotmath typography, patterns/masks/groups, or every graphical parameter. Automatic linear
 ticks follow GNU R's GEPretty spacing and `par("lab")`,
 including reversed axes; automatic axes reject requests above 10,000 intervals.
-Logarithmic tick selection, margins and logarithmic ablines
-still differ from GNU R. High-level plotting functions require separate
+Logarithmic `abline` now distinguishes transformed-space straight lines from
+the original-coordinate curve requested by `untf=TRUE`, using GNU's 100-interval
+sampling contract. Nonfinite coefficients fail recoverably. Logarithmic tick
+selection and margins still differ from GNU R. High-level plotting functions require separate
 contract coverage. The legacy ArcTo scene command still uses an endpoint line
 fallback; general elliptical arcs need an explicit rotation/sweep contract.
 

@@ -34,6 +34,9 @@ impl Coordinates {
     fn map(self, x: f64, y: f64) -> Point {
         let x = if self.log[0] { x.log10() } else { x };
         let y = if self.log[1] { y.log10() } else { y };
+        self.map_transformed(x, y)
+    }
+    fn map_transformed(self, x: f64, y: f64) -> Point {
         Point {
             x: (self.rect[0] as f64
                 + (x - self.limits[0]) / (self.limits[1] - self.limits[0])
@@ -566,6 +569,42 @@ fn line(target: &mut dyn DrawTarget, a: Point, b: Point, stroke: Stroke) {
         stroke,
         anti_alias: true,
     });
+}
+
+fn abline_path(c: Coordinates, a: f64, b: f64, untf: bool, stroke: Stroke) -> Path {
+    // GNU graphics/src/plot.c C_abline samples original-coordinate lines in
+    // 100 intervals when a log axis is active. Otherwise it draws a straight
+    // line in transformed coordinates, without exponentiating its endpoints.
+    let curved = untf && c.log.iter().any(|value| *value);
+    let intervals = if curved { 100 } else { 1 };
+    let mut commands = Vec::with_capacity(intervals + 1);
+    let mut connected = false;
+    for i in 0..=intervals {
+        let t = i as f64 / intervals as f64;
+        let x = (1. - t) * c.limits[0] + t * c.limits[1];
+        let p = if curved {
+            let raw_x = c.raw(0, x);
+            c.map(raw_x, a + b * raw_x)
+        } else {
+            c.map_transformed(x, a + b * x)
+        };
+        if p.x.is_finite() && p.y.is_finite() {
+            commands.push(if connected {
+                PathCommand::LineTo(p.x, p.y)
+            } else {
+                PathCommand::MoveTo(p.x, p.y)
+            });
+            connected = true;
+        } else {
+            connected = false;
+        }
+    }
+    Path {
+        commands,
+        fill: transparent(),
+        stroke,
+        anti_alias: true,
+    }
 }
 
 fn symbol_path(
@@ -1222,6 +1261,25 @@ mod tests {
     use super::{Coordinates, Style, clip_for_xpd, point, pretty_linear_ticks};
     use r_graphics_engine::{Color, DrawTarget, Path, PlotParameters, Point};
 
+    #[test]
+    fn log_abline_original_curve_matches_gnu_coordinate_contract() {
+        let c = Coordinates {
+            limits: [0., 2., 0., 2.],
+            rect: [0., 0., 100., 100.],
+            figure: [0., 0., 100., 100.],
+            device: [0., 0., 100., 100.],
+            log: [true, true],
+        };
+        let path = super::abline_path(c, 1., 1., true, style(1).stroke(0));
+        // GNU samples 101 points; midpoint is x=10, y=11 in original units.
+        assert_eq!(path.commands.len(), 101);
+        let r_graphics_engine::PathCommand::LineTo(x, y) = path.commands[50] else {
+            panic!("connected curve")
+        };
+        assert!((x - 50.).abs() < 1e-5);
+        assert!((y - (100. - 50. * 11f32.log10())).abs() < 1e-5);
+    }
+
     #[derive(Default)]
     struct RecordingTarget {
         paths: Vec<Path>,
@@ -1619,9 +1677,8 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                 let bv = values(a[1]);
                 let h = values(arg(args, "h"));
                 let v = values(arg(args, "v"));
-                let target = &mut *renderer();
-                target.set_clip(Some(clip_rect(c, args)));
-                if !av.is_empty() {
+                let untf = values(arg(args, "untf")).first().copied().unwrap_or(0.) != 0.;
+                let coefficients = if !av.is_empty() {
                     let b = if !bv.is_empty() {
                         bv[0]
                     } else if av.len() >= 2 {
@@ -1629,14 +1686,17 @@ pub(crate) unsafe fn draw_builtin(name: &str, args: SEXP) -> SEXP {
                     } else {
                         base_error("'a' and 'b' must be specified");
                     };
-                    let x0 = c.raw(0, c.limits[0]);
-                    let x1 = c.raw(0, c.limits[1]);
-                    line(
-                        target,
-                        c.map(x0, av[0] + b * x0),
-                        c.map(x1, av[0] + b * x1),
-                        style.stroke(0),
-                    );
+                    if !av[0].is_finite() || !b.is_finite() {
+                        base_error("'a' and 'b' must be finite");
+                    }
+                    Some((av[0], b))
+                } else {
+                    None
+                };
+                let target = &mut *renderer();
+                target.set_clip(Some(clip_rect(c, args)));
+                if let Some((a, b)) = coefficients {
+                    target.draw_path(&abline_path(c, a, b, untf, style.stroke(0)));
                 }
                 for (i, y) in h.iter().enumerate() {
                     line(
