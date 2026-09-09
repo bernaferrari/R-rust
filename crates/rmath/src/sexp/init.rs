@@ -204,6 +204,58 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         let _as_is_closure_guard = super::protect::protect(as_is_closure);
 
         defineVar(Rf_install_in_current("I"), as_is_closure, base_env);
+
+        // `chooseOpsMethod` is the base S3 generic consulted by
+        // DispatchGroup when two distinct Ops methods are found.  The full
+        // base package supplies this closure; install its small generic
+        // definition here so embedded sessions get the same hook.
+        let choose_formals = formals_from_specs(&[
+            arg("x"),
+            arg("y"),
+            arg("mx"),
+            arg("my"),
+            arg("cl"),
+            arg("reverse"),
+        ]);
+        let _choose_formals_guard = super::protect::protect(choose_formals);
+        let choose_generic = Rf_mkString(c"chooseOpsMethod".as_ptr());
+        let _choose_generic_guard = super::protect::protect(choose_generic);
+        let choose_body = Rf_lang2(Rf_install_in_current("UseMethod"), choose_generic);
+        let _choose_body_guard = super::protect::protect(choose_body);
+        let choose_closure =
+            crate::mainutils::dstruct::mkCLOSXP(choose_formals, choose_body, base_env);
+        let _choose_closure_guard = super::protect::protect(choose_closure);
+        defineVar(
+            Rf_install_in_current("chooseOpsMethod"),
+            choose_closure,
+            base_env,
+        );
+
+        // The base default declines the conflict, allowing DispatchGroup to
+        // issue its standard incompatible-method warning and use the default
+        // arithmetic implementation.
+        let choose_default_formals = formals_from_specs(&[
+            arg("x"),
+            arg("y"),
+            arg("mx"),
+            arg("my"),
+            arg("cl"),
+            arg("reverse"),
+        ]);
+        let _choose_default_formals_guard = super::protect::protect(choose_default_formals);
+        let choose_default_body = Rf_ScalarLogical(FALSE);
+        let _choose_default_body_guard = super::protect::protect(choose_default_body);
+        let choose_default_closure = crate::mainutils::dstruct::mkCLOSXP(
+            choose_default_formals,
+            choose_default_body,
+            base_env,
+        );
+        let _choose_default_closure_guard = super::protect::protect(choose_default_closure);
+        defineVar(
+            Rf_install_in_current("chooseOpsMethod.default"),
+            choose_default_closure,
+            base_env,
+        );
     }
 }
 

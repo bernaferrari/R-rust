@@ -15,7 +15,7 @@ pub unsafe fn asLogical(x: SEXP) -> c_int {
 /// Convert the first element of a vector to a logical value, with length checking.
 ///
 /// This is R's `asLogical2()` from coerce.c.
-pub unsafe fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
+pub unsafe fn asLogical2(x: SEXP, checking: c_int, call: SEXP) -> c_int {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -24,7 +24,10 @@ pub unsafe fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
                 return NA_LOGICAL;
             }
             if checking != 0 && xlength(x) > 1 {
-                // In R this calls errorcall; we just proceed
+                errorcall(
+                    call,
+                    &format!("'length = {}' in coercion to 'logical(1)'", xlength(x)),
+                );
             }
             match TYPEOF(x) {
                 t if t == SEXPTYPE::LGLSXP => LOGICAL_ELT(x, 0),

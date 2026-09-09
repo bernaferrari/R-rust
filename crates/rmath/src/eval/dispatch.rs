@@ -28,10 +28,92 @@ use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::object::{PairlistBuilder, Sexp};
 use crate::sexp::protect::{ProtectGuard, protect};
-use crate::sexp::symbol::R_DotsSymbol;
+use crate::sexp::symbol::{R_DotsSymbol, Rf_install};
 
 use super::builtin::PRIMNAME;
 use super::eval::Rf_eval;
+
+/// Resolve an Ops conflict in a temporary frame, as GNU R does. Passing
+/// symbols bound to the evaluated values preserves the hook's promise
+/// expressions (`x`, `y`, ..., `rev`) and its caller environment.
+unsafe fn choose_ops_method(
+    x: SEXP,
+    y: SEXP,
+    mx: SEXP,
+    my: SEXP,
+    call: SEXP,
+    reverse: bool,
+    rho: SEXP,
+) -> bool {
+    unsafe {
+        let newrho = NewEnvironment(R_NilValue(), rho, R_NilValue());
+        let _rho_guard = protect(newrho);
+        let reverse_value = Rf_ScalarLogical(if reverse { TRUE } else { FALSE });
+        let _reverse_guard = protect(reverse_value);
+        let mut guards = Vec::new();
+        let mut actuals = PairlistBuilder::new();
+        for (name, value) in [
+            (c"x", x),
+            (c"y", y),
+            (c"mx", mx),
+            (c"my", my),
+            (c"cl", call),
+            (c"rev", reverse_value),
+        ] {
+            let symbol = Rf_install(name.as_ptr());
+            crate::sexp::envir::defineVar(symbol, value, newrho);
+            let named = crate::sexp::accessors::NAMED(value);
+            if named < 2 {
+                crate::sexp::accessors::SET_NAMED(value, named + 1);
+            }
+            let cell = actuals
+                .push_cell(Sexp::from_raw_unchecked(symbol), None)
+                .unwrap_or_else(|_| {
+                    crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
+                });
+            guards.push(protect(cell));
+        }
+        let actuals = actuals.finish().unwrap_or_else(|_| {
+            crate::sexp::context::r_error("failed to allocate chooseOpsMethod arguments")
+        });
+        let actuals = actuals.as_raw();
+        let head = Rf_lang3(
+            Rf_install(c"::".as_ptr()),
+            Rf_install(c"base".as_ptr()),
+            Rf_install(c"chooseOpsMethod".as_ptr()),
+        );
+        let _head_guard = protect(head);
+        let expression = Rf_lang2(head, R_NilValue());
+        SETCDR(expression, actuals);
+        let _expression_guard = protect(expression);
+        let fun = R_findVar(
+            Rf_install(c"chooseOpsMethod".as_ptr()),
+            super::runtime::base_env(),
+        );
+        let result = crate::eval::closure::applyClosure(
+            expression,
+            fun,
+            actuals,
+            newrho,
+            R_NilValue(),
+            TRUE,
+        );
+        let _result_guard = protect(result);
+        result != R_NilValue() && crate::mainutils::coerce::asRbool(result, call) != FALSE
+    }
+}
+
+unsafe fn method_name_is(method: SEXP, name: &[u8]) -> bool {
+    unsafe {
+        if method.is_null() || TYPEOF(method) != SEXPTYPE::SYMSXP {
+            return false;
+        }
+        let printed = PRINTNAME(method);
+        !printed.is_null()
+            && CHAR(printed) != ptr::null()
+            && std::ffi::CStr::from_ptr(CHAR(printed)).to_bytes() == name
+    }
+}
 
 /// Push one evaluated argument cell onto `builder`, keeping every cell built
 /// so far protected until the caller finishes the list.
@@ -829,7 +911,21 @@ pub unsafe fn DispatchGroup(
         // Distinct methods must not silently select the left operand.
         if lsxp != rsxp {
             if isFunction(lsxp) != FALSE && isFunction(rsxp) != FALSE {
-                if crate::mainutils::identical::R_compute_identical(lsxp, rsxp, 23) == 0 {
+                // GNU R gives the date/time methods a deliberate precedence:
+                // Ops.difftime yields to +/- .Date/.POSIXt, and yields to a
+                // right-hand +.Date/.POSIXt in the reverse arrangement.
+                if method_name_is(rmeth, b"Ops.difftime")
+                    && (method_name_is(lmeth, b"+.POSIXt")
+                        || method_name_is(lmeth, b"-.POSIXt")
+                        || method_name_is(lmeth, b"+.Date")
+                        || method_name_is(lmeth, b"-.Date"))
+                {
+                    rsxp = R_NilValue();
+                } else if method_name_is(lmeth, b"Ops.difftime")
+                    && (method_name_is(rmeth, b"+.POSIXt") || method_name_is(rmeth, b"+.Date"))
+                {
+                    lsxp = R_NilValue();
+                } else if crate::mainutils::identical::R_compute_identical(lsxp, rsxp, 23) == 0 {
                     let left_name =
                         std::ffi::CStr::from_ptr(CHAR(PRINTNAME(lmeth))).to_string_lossy();
                     let right_name =
@@ -839,8 +935,15 @@ pub unsafe fn DispatchGroup(
                         generic.to_string_lossy()
                     ))
                     .expect("method names contain NUL");
-                    crate::mainutils::errors::warningcall(call, warning.as_ptr());
-                    return 0;
+                    if choose_ops_method(CAR(args), CADR(args), lsxp, rsxp, call, false, rho) {
+                        rsxp = R_NilValue();
+                    } else if choose_ops_method(CADR(args), CAR(args), rsxp, lsxp, call, true, rho)
+                    {
+                        lsxp = R_NilValue();
+                    } else {
+                        crate::mainutils::errors::warningcall(call, warning.as_ptr());
+                        return 0;
+                    }
                 }
             }
             // If left side has no method, use right
