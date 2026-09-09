@@ -176,9 +176,22 @@ pub unsafe fn fft_work(
             return 0;
         }
 
+        // The kernel uses signed integer indices, including stride-scaled
+        // offsets. Reject an unrepresentable layout before any raw-pointer
+        // arithmetic, even when the caller's buffers would otherwise be valid.
+        let Some(nspan) = n.checked_mul(nspn) else {
+            return 0;
+        };
+        let Some(ntot) = nspan.checked_mul(nseg) else {
+            return 0;
+        };
+        let Some(stride) = isn.checked_abs() else {
+            return 0;
+        };
+        if ntot.checked_mul(stride).is_none() {
+            return 0;
+        }
         let mf = state.maxf as usize;
-        let nspan = n * nspn;
-        let ntot = nspan * nseg;
 
         fftmx(
             a,
@@ -1186,6 +1199,58 @@ unsafe fn fftmx(
 mod tests {
     use super::*;
     use crate::sexp::instance::{RInstance, replace_current_instance};
+
+    #[test]
+    fn fft_rejects_overflowing_layout_before_accessing_buffers() {
+        let mut instance = RInstance::new();
+        unsafe {
+            let previous = replace_current_instance(Some(&mut instance));
+            let mut maxf = 0;
+            let mut maxp = 0;
+            fft_factor(4, &mut maxf, &mut maxp);
+            for (segments, spacing, stride) in [
+                (1, c_int::MAX, 1),
+                (c_int::MAX, 1, 1),
+                (1, 1, c_int::MIN),
+                (1, 1, c_int::MAX),
+            ] {
+                assert_eq!(
+                    fft_work(
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        segments,
+                        4,
+                        spacing,
+                        stride,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                    ),
+                    0,
+                );
+            }
+            // A rejected layout must not corrupt the cached factorization.
+            let mut real = [1.0, 0.0, 0.0, 0.0];
+            let mut imaginary = [0.0; 4];
+            let mut work = vec![0.0; 4 * maxf as usize];
+            let mut iwork = vec![0; maxp as usize];
+            assert_eq!(
+                fft_work(
+                    real.as_mut_ptr(),
+                    imaginary.as_mut_ptr(),
+                    1,
+                    4,
+                    1,
+                    -1,
+                    work.as_mut_ptr(),
+                    iwork.as_mut_ptr()
+                ),
+                1
+            );
+            assert_eq!(real, [1.0; 4]);
+            assert_eq!(imaginary, [0.0; 4]);
+            replace_current_instance(previous);
+        }
+    }
 
     #[test]
     fn fft_factorization_state_is_session_local() {
