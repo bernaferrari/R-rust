@@ -17,13 +17,15 @@ test("compiled lazy calls and inherited method specificity work in Wasm", async 
       for (const code of [
         `f<-unserialize(as.raw(c(${values})));identical(f(41L),quote(x))`,
         "g<-unserialize(serialize(f,NULL));identical(g(99L),quote(x))",
+        "invisible(capture.output(d<-compiler::disassemble(f)));identical(d[[2]][[2]],as.name('GETFUN.OP'))&&identical(d[[3]][[3]][[2]][[2]],as.name('LDCONST.OP'))",
+        "local({setClass('SelectA');setClass('SelectB',contains='SelectA');setGeneric('selectprobe',function(x)standardGeneric('selectprobe'));setMethod('selectprobe','SelectA',function(x)42L);m<-selectMethod('selectprobe','SelectB');identical(m(new('SelectB')),42L)&&identical(as.character(m@defined),'SelectA')})",
         "local({setClass('A');setClass('B',contains='A');setClass('C',contains='B');setClass('D',contains=c('A','C'));setGeneric('f',function(x)standardGeneric('f'));setMethod('f','C',function(x)'C');setMethod('f','A',function(x)'A');identical(f(new('D')),'C')})",
         "identical(Re(fft(c(1,0,0,0))),rep(1,4))",
       ]) results.push((await runtime.run(code,"console")).output.trim())
       return results
     } finally { runtime.dispose() }
   },Array.from(bytes).join(","))
-  expect(output).toEqual(Array(4).fill("[1] TRUE"))
+  expect(output).toEqual(Array(6).fill("[1] TRUE"))
 })
 
 test("GNU math bytecode, method continuation and abort discovery work in Wasm", async ({ page }) => {

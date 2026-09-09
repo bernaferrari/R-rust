@@ -7,11 +7,27 @@
  */
 
 use crate::modules::lapack::lapack::Rcomplex;
+use crate::sexp::instance::with_current_instance;
+use crate::sexp::memory::{TransientReservation, with_arena_in};
 use faer::linalg::solvers::{DenseSolveCore, Solve};
 use faer::{Mat, MatRef, Side, c64};
 // ============================================================
 // Helper functions
 // ============================================================
+
+/// Reserve the temporary buffers used by a numerical kernel when an R
+/// session is active. Standalone low-level LAPACK tests intentionally run
+/// without an ambient session and therefore retain the historical unlimited
+/// behavior.
+fn reserve_native_workspace(bytes: usize) -> Result<Option<TransientReservation>, ()> {
+    match with_current_instance(|instance| {
+        with_arena_in(instance, |arena| arena.try_reserve_transient(bytes))
+    }) {
+        None => Ok(None),
+        Some(Some(reservation)) => Ok(Some(reservation)),
+        Some(None) => Err(()),
+    }
+}
 
 /// Read a column-major matrix (with optional lda stride) into a faer Mat.
 unsafe fn read_mat_f64(ptr: *const f64, m: usize, n: usize, lda: usize) -> Mat<f64> {
@@ -974,27 +990,83 @@ pub unsafe fn dgeqp3_(
     info: *mut core::ffi::c_int,
 ) {
     unsafe {
+        *info = 0;
+        if *m < 0 {
+            *info = -1;
+            return;
+        }
+        if *n < 0 {
+            *info = -2;
+            return;
+        }
+        if *lda < (*m).max(1) {
+            *info = -4;
+            return;
+        }
+        let lwork_val = *lwork;
+        if lwork_val < -1 {
+            *info = -8;
+            return;
+        }
         let m_val = *m as usize;
         let n_val = *n as usize;
         let lda_val = *lda as usize;
-        let lwork_val = *lwork;
 
-        if m_val == 0 || n_val == 0 {
-            *info = 0;
+        let minimum_work = 3i64 * i64::from(*n) + 1;
+        if lwork_val != -1 && i64::from(lwork_val) < minimum_work {
+            *info = -8;
             return;
         }
 
         // Workspace query
         if lwork_val == -1 {
-            *work = (3 * n_val + 1).max(m_val * n_val) as f64;
+            let Some(matrix_elems) = m_val.checked_mul(n_val) else {
+                *info = -1;
+                return;
+            };
+            let Some(query) = (3usize)
+                .checked_mul(n_val)
+                .and_then(|value| value.checked_add(1))
+                .map(|value| value.max(matrix_elems))
+            else {
+                *info = -2;
+                return;
+            };
+            *work = query as f64;
             *info = 0;
             return;
         }
 
+        if m_val == 0 || n_val == 0 {
+            *work = 1.0;
+            return;
+        }
+        let Some(matrix_elems) = m_val.checked_mul(n_val) else {
+            *info = -1;
+            return;
+        };
+        let Some(workspace_elems) = matrix_elems
+            .checked_add(n_val)
+            .and_then(|value| value.checked_add(m_val))
+        else {
+            *info = -1;
+            return;
+        };
+        let Some(workspace_bytes) = workspace_elems.checked_mul(std::mem::size_of::<f64>()) else {
+            *info = -1;
+            return;
+        };
+        let Ok(_workspace_reservation) = reserve_native_workspace(workspace_bytes) else {
+            // The high-level LAPACK adapter maps any nonzero INFO to the
+            // standard recoverable R error. Keep this distinct from success.
+            *info = -100;
+            return;
+        };
+
         let k = m_val.min(n_val);
 
         // Read matrix into a flat column-major buffer we can modify
-        let mut buf = vec![0.0f64; m_val * n_val];
+        let mut buf = vec![0.0f64; matrix_elems];
         for j in 0..n_val {
             for i in 0..m_val {
                 buf[i + j * m_val] = *a.add(i + j * lda_val);
@@ -1142,6 +1214,98 @@ pub unsafe fn dgeqp3_(
             *tau.add(j) = 0.0;
         }
         *info = 0;
+    }
+}
+
+#[cfg(test)]
+mod dgeqp3_safety_tests {
+    use super::*;
+    use crate::sexp::memory::ArenaBudget;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn rejects_negative_dimensions_before_pointer_access() {
+        let m = -1;
+        let n = 2;
+        let lda = 1;
+        let lwork = -1;
+        let mut work = [0.0];
+        let mut info = 0;
+        unsafe {
+            dgeqp3_(
+                &m,
+                &n,
+                std::ptr::null_mut(),
+                &lda,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                work.as_mut_ptr(),
+                &lwork,
+                &mut info,
+            );
+        }
+        assert_eq!(info, -1);
+    }
+
+    #[test]
+    fn budget_denial_returns_lapack_error_and_keeps_query_available() {
+        let session = RSession::new();
+        session.with_active(|| unsafe {
+            crate::sexp::memory::with_arena(|arena| {
+                arena.set_budget(ArenaBudget::new(1, 0));
+            });
+            let m = 2;
+            let n = 2;
+            let lda = 2;
+            let mut info = 0;
+            let mut query = [0.0];
+            let query_lwork = -1;
+            dgeqp3_(
+                &m,
+                &n,
+                std::ptr::null_mut(),
+                &lda,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                query.as_mut_ptr(),
+                &query_lwork,
+                &mut info,
+            );
+            assert_eq!(info, 0);
+            assert!(query[0] >= 4.0);
+
+            let mut work = [0.0; 16];
+            let lwork = 16;
+            dgeqp3_(
+                &m,
+                &n,
+                std::ptr::null_mut(),
+                &lda,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                work.as_mut_ptr(),
+                &lwork,
+                &mut info,
+            );
+            assert_eq!(info, -100);
+            crate::sexp::memory::with_arena(|arena| arena.set_budget(ArenaBudget::new(0, 0)));
+            let mut matrix = [1.0, 0.0, 0.0, 2.0];
+            let mut pivots = [0, 0];
+            let mut tau = [0.0, 0.0];
+            dgeqp3_(
+                &m,
+                &n,
+                matrix.as_mut_ptr(),
+                &lda,
+                pivots.as_mut_ptr(),
+                tau.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &lwork,
+                &mut info,
+            );
+            assert_eq!(info, 0);
+            assert_eq!(pivots, [2, 1]);
+        });
     }
 }
 
