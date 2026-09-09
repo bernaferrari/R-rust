@@ -206,6 +206,12 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
     },
     #[cfg(feature = "renderplot-device")]
     UnevaluatedBuiltin {
+        name: "length.unit",
+        handler: crate::mainutils::portable_grid::do_length_unit,
+        restore_visibility_always: false,
+    },
+    #[cfg(feature = "renderplot-device")]
+    UnevaluatedBuiltin {
         name: "gpar",
         handler: crate::mainutils::portable_grid::do_gpar,
         restore_visibility_always: false,

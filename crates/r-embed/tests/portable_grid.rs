@@ -60,7 +60,7 @@ fn layout_positions_draw_in_top_right_cell() {
 }
 
 #[test]
-fn layout_respect_centers_square_cells_and_empty_coordinates_are_noop() {
+fn layout_respect_centers_square_cells_and_rejects_empty_coordinates() {
     let mut session = RSession::new().unwrap();
     let png = session.render_with_dimensions("library(grid); grid.newpage(); pushViewport(viewport(layout=grid.layout(1,2,widths=unit(c(1,1),'null'),heights=unit(1,'null'),respect=TRUE))); pushViewport(viewport(layout.pos.col=1)); grid.rect(gp=gpar(fill='red',col=NA)); popViewport(); pushViewport(viewport(layout.pos.col=2)); grid.rect(gp=gpar(fill='blue',col=NA)); popViewport(2)",400,200).unwrap();
     let (w, p) = pixels(&png);
@@ -74,7 +74,7 @@ fn layout_respect_centers_square_cells_and_empty_coordinates_are_noop() {
                 100,
                 100
             )
-            .is_ok()
+            .is_err()
     );
 }
 
@@ -211,7 +211,7 @@ fn grouped_polygons_dash_styles_symbols_and_arrows_are_drawn() {
     let mut session = RSession::new().unwrap();
     let png = session
         .render_with_dimensions(
-            "library(grid); grid.newpage(); grid.polygon(x=unit(c(.1,.4,.4,.1,.6,.9,.9,.6),'npc'), y=unit(c(.1,.1,.4,.4,.6,.6,.9,.9),'npc'), id.lengths=c(4,4), gp=gpar(fill=c('red','blue'),lty='dashed')); grid.points(x=seq(.15,.85,length.out=6),y=.5,pch=0:5,size=unit(.2,'npc'),gp=gpar(col='black')); grid.segments(.1,.05,.9,.05,arrow=list(ends='both',type='closed',angle=30,length=unit(.2,'npc')),gp=gpar(col='black'))",
+            "library(grid); grid.newpage(); grid.polygon(x=unit(c(.1,.4,.4,.1,.6,.9,.9,.6),'npc'), y=unit(c(.1,.1,.4,.4,.6,.6,.9,.9),'npc'), id.lengths=c(4,4), gp=gpar(fill=c('red','blue'),lty='dashed')); grid.points(x=seq(.15,.85,length.out=6),y=rep(.5,6),pch=0:5,size=unit(.2,'npc'),gp=gpar(col='black')); grid.segments(.1,.05,.9,.05,arrow=list(ends='both',type='closed',angle=30,length=unit(.2,'npc')),gp=gpar(col='black'))",
             320,
             240,
         )
@@ -496,5 +496,57 @@ fn named_gpath_searches_descendants_unless_strict() {
 fn edit_grob_merges_graphical_parameters_without_mutating_original() {
     let mut session = RSession::new().unwrap();
     let value = session.eval("library(grid); g <- rectGrob(gp=gpar(fill='red',col='black')); h <- editGrob(g,gp=gpar(col='blue')); identical(g$gp$col,'black') && identical(h$gp$col,'blue') && identical(h$gp$fill,'red')").unwrap();
+    assert_eq!(value, "[1] TRUE");
+}
+
+#[test]
+fn edit_grob_updates_primitive_geometry_and_preserves_original() {
+    let mut session = RSession::new().unwrap();
+    let value = session.eval("library(grid); g <- grobTree(rectGrob(name='r'), circleGrob(name='c'), segmentsGrob(name='s')); h <- editGrob(g, gPath('r'), x=unit(.2,'npc'), width=unit(.4,'npc')); h <- editGrob(h, gPath('c'), r=unit(.1,'npc')); h <- editGrob(h, gPath('s'), x0=unit(.1,'npc'), y1=unit(.9,'npc')); identical(getGrob(g,'r')$data$x,unit(.5,'npc')) && identical(getGrob(h,'r')$data$x,unit(.2,'npc')) && identical(getGrob(h,'r')$data$width,unit(.4,'npc')) && identical(getGrob(h,'c')$data$r,unit(.1,'npc')) && identical(getGrob(h,'s')$data$x0,unit(.1,'npc')) && identical(getGrob(h,'s')$data$y1,unit(.9,'npc'))").unwrap();
+    assert_eq!(value, "[1] TRUE");
+    let png = session.render_with_dimensions("library(grid); grid.newpage(); g <- grobTree(rectGrob(x=.2, width=.2, gp=gpar(fill='red', col=NA), name='r')); grid.draw(editGrob(g, gPath('r'), x=unit(.75,'npc')))", 400, 200).unwrap();
+    let (w, pixels) = pixels(&png);
+    assert_eq!(at(w, &pixels, 300, 100), [255, 0, 0, 255]);
+}
+
+#[test]
+fn edit_grob_rejects_non_unit_primitive_geometry() {
+    let mut session = RSession::new().unwrap();
+    assert!(
+        session
+            .eval("library(grid); editGrob(grobTree(rectGrob(name='r')), gPath('r'), width=1)")
+            .is_err()
+    );
+}
+
+#[test]
+fn primitive_edits_and_points_reject_invalid_geometry_like_gnu() {
+    let mut session = RSession::new().unwrap();
+    session.eval("library(grid)").unwrap();
+    assert!(session.eval("pointsGrob(x=c(.1,.2),y=.3)").is_err());
+    assert!(session.eval("pointsGrob(size=1)").is_err());
+    assert!(
+        session
+            .eval("editGrob(textGrob('test'),rot=NA_real_)")
+            .is_err()
+    );
+    assert!(
+        session
+            .eval("editGrob(polygonGrob(),id=1:3,id.lengths=3)")
+            .is_err()
+    );
+}
+
+#[test]
+fn numeric_constructor_geometry_is_normalized_before_gp_edits() {
+    let mut session = RSession::new().unwrap();
+    let value = session.eval("library(grid); g <- rectGrob(x=.2,y=.3,width=.4,height=.5,gp=gpar(fill='red')); h <- editGrob(g,gp=gpar(col='blue')); is.unit(g$data$x) && is.unit(g$data$width) && identical(g$gp$col, NULL) && identical(h$gp$fill,'red') && identical(h$gp$col,'blue')").unwrap();
+    assert_eq!(value, "[1] TRUE");
+}
+
+#[test]
+fn edit_grob_rejects_inconsistent_point_lengths_without_mutating_original() {
+    let mut session = RSession::new().unwrap();
+    let value = session.eval("library(grid); g <- grobTree(pointsGrob(x=unit(c(.1,.2),'npc'),y=unit(c(.3,.4),'npc'),name='p')); failed <- tryCatch({editGrob(g,gPath('p'),x=unit(.5,'npc')); FALSE}, error=function(e) TRUE); failed && length(getGrob(g,'p')$data$x)==2L").unwrap();
     assert_eq!(value, "[1] TRUE");
 }

@@ -1892,6 +1892,11 @@ wrapper!(
     "portable_grid/summary_unit.R"
 );
 wrapper!(do_is_unit, "is.unit", "portable_grid/is_unit.R");
+/// Number of coordinates in the portable unit representation, not list slots.
+pub(crate) unsafe fn unit_value_length(x: SEXP) -> SEXP {
+    unsafe { crate::sexp::constructors::Rf_ScalarInteger(XLENGTH(field(x, "value")) as i32) }
+}
+wrapper!(do_length_unit, "length.unit", "portable_grid/length_unit.R");
 wrapper!(do_gpar, "gpar", "portable_grid/gpar.R");
 wrapper!(do_viewport, "viewport", "portable_grid/viewport.R");
 wrapper!(do_vp_path, "vpPath", "portable_grid/vp_path.R");
@@ -1982,6 +1987,7 @@ pub(crate) const EXPORTS: &[&str] = &[
     "Ops.unit",
     "Summary.unit",
     "is.unit",
+    "length.unit",
     "gpar",
     "viewport",
     "vpPath",

@@ -1964,6 +1964,10 @@ pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if x.is_null() || x == R_NilValue() {
             return Rf_ScalarInteger(0);
         }
+        #[cfg(feature = "renderplot-device")]
+        if crate::mainutils::essentials::sexp_has_class(x, "unit") {
+            return crate::mainutils::portable_grid::unit_value_length(x);
+        }
         Rf_ScalarInteger(crate::sexp::constructors::Rf_length(x))
     }
 }

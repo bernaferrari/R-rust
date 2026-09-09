@@ -14,6 +14,21 @@ function(grob, gPath = NULL, ..., strict = FALSE, grep = FALSE,
         stop("all grob edits must be named")
     edit_one <- function(value) {
         value <- structure(lapply(value, identity), names = names(value), class = class(value))
+        # Primitive grobs keep their drawing arguments in `data`.  GNU grid's
+        # editDetails methods validate the complete geometry after applying an
+        # edit, so validate the candidate values before returning the copy.
+        primitive <- if (!is.null(value$primitive)) value$primitive else NULL
+        geometry <- if (is.null(primitive)) character() else switch(primitive,
+            rect = c("x", "y", "width", "height", "just", "hjust", "vjust"),
+            circle = c("x", "y", "r"),
+            lines = c("x", "y"),
+            segments = c("x0", "y0", "x1", "y1"),
+            polygon = c("x", "y", "id", "id.lengths"),
+            points = c("x", "y", "size", "pch"),
+            text = c("label", "x", "y", "just", "hjust", "vjust", "rot", "check.overlap"),
+            character())
+        data <- if (is.null(value$data)) list() else
+            structure(lapply(value$data, identity), names = names(value$data), class = class(value$data))
         for (field in names(specs)) {
             if (field %in% c("gp", "vp", "name")) {
                 if (field == "gp" && !is.null(specs[[field]]) && !inherits(specs[[field]], "gpar"))
@@ -23,10 +38,47 @@ function(grob, gPath = NULL, ..., strict = FALSE, grep = FALSE,
                     for (parameter in names(specs$gp)) gp[[parameter]] <- specs$gp[[parameter]]
                     value$gp <- gp
                 } else value[[field]] <- specs[[field]]
-            } else if (!is.null(value$data) && field %in% names(value$data)) {
-                stop("editing grob geometry is not supported yet")
+            } else if (field %in% geometry && field %in% names(data)) {
+                data[[field]] <- specs[[field]]
             } else if (isTRUE(warn)) warning(sprintf("slot '%s' not found", field))
         }
+        if (length(geometry)) {
+            unit_fields <- if (is.null(primitive)) character() else switch(primitive,
+                rect = c("x", "y", "width", "height"),
+                circle = c("x", "y", "r"),
+                lines = c("x", "y"),
+                segments = c("x0", "y0", "x1", "y1"),
+                polygon = c("x", "y"),
+                points = c("x", "y", "size"),
+                text = c("x", "y"),
+                character())
+            if (length(unit_fields) && any(!vapply(unit_fields,
+                    function(field) is.unit(data[[field]]), logical(1)))) {
+                stop(sprintf("'%s' must be units", paste(unit_fields, collapse = "', '")))
+            }
+            if (primitive == "polygon") {
+                n <- length(data$x)
+                if (!is.null(data$id) && !is.null(data$id.lengths))
+                    stop("it is invalid to specify both 'id' and 'id.lengths'")
+                if (length(data$y) != n)
+                    stop("'x' and 'y' must be units and have the same length")
+                if (!is.null(data$id) && length(data$id) != n)
+                    stop("'x' and 'y' and 'id' must all be same length")
+                if (!is.null(data$id.lengths) && sum(data$id.lengths) != n)
+                    stop("'x' and 'y' and 'id.lengths' must specify same overall length")
+                if (!is.null(data$id)) data$id <- as.integer(data$id)
+                if (!is.null(data$id.lengths)) data$id.lengths <- as.integer(data$id.lengths)
+            }
+            if (primitive == "points" && length(data$x) != length(data$y))
+                stop("'x' and 'y' must be units and have the same length")
+            if (primitive == "text") {
+                if (!is.language(data$label)) data$label <- as.character(data$label)
+                data$rot <- as.numeric(data$rot)
+                if (!length(data$rot) || !all(is.finite(data$rot))) stop("invalid 'rot' value")
+                data$check.overlap <- as.logical(data$check.overlap)
+            }
+        }
+        if (length(geometry) && !is.null(value$data)) value$data <- data
         value
     }
     if (is.null(gPath))
