@@ -2013,6 +2013,7 @@ pub(crate) const EXPORTS: &[&str] = &[
     "Ops.unit",
     "Summary.unit",
     "is.unit",
+    "editDetails",
     "length.unit",
     "gpar",
     "viewport",
@@ -2065,7 +2066,16 @@ unsafe fn new_grid_environment() -> SEXP {
         for name in EXPORTS {
             let symbol_name = std::ffi::CString::new(*name).expect("static grid export");
             let symbol = Rf_install(symbol_name.as_ptr());
-            let value = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
+            let value = if *name == "editDetails" {
+                let parsed = crate::sexp::memory::with_arena(|arena| {
+                    crate::eval::parser::parse(include_str!("portable_grid/edit_details.R"), arena)
+                })
+                .expect("checked-in grid generic must parse");
+                let _parsed = protect(parsed);
+                crate::eval::eval::Rf_eval(parsed, env)
+            } else {
+                crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP)
+            };
             let _value_guard = protect(value);
             defineVar(symbol, value, env);
         }

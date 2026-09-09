@@ -1,5 +1,6 @@
 function(grob, gPath = NULL, ..., strict = FALSE, grep = FALSE,
          global = FALSE, warn = TRUE) {
+    caller <- parent.frame()
     specs <- list(...)
     if (!is.logical(strict) || length(strict) != 1L ||
         !is.logical(grep) || length(grep) != 1L ||
@@ -14,6 +15,15 @@ function(grob, gPath = NULL, ..., strict = FALSE, grep = FALSE,
         stop("all grob edits must be named")
     edit_one <- function(value) {
         value <- structure(lapply(value, identity), names = names(value), class = class(value))
+        edit_method <- NULL
+        for (class_name in class(value)) {
+            candidate <- do.call("getS3method",
+                list("editDetails", class_name, optional = TRUE), envir = caller)
+            if (is.function(candidate)) {
+                edit_method <- candidate
+                break
+            }
+        }
         # Primitive grobs keep their drawing arguments in `data`.  GNU grid's
         # editDetails methods validate the complete geometry after applying an
         # edit, so validate the candidate values before returning the copy.
@@ -40,7 +50,13 @@ function(grob, gPath = NULL, ..., strict = FALSE, grep = FALSE,
                 } else value[[field]] <- specs[[field]]
             } else if (field %in% geometry && field %in% names(data)) {
                 data[[field]] <- specs[[field]]
+            } else if (field %in% names(value)) {
+                value[[field]] <- specs[[field]]
             } else if (isTRUE(warn)) warning(sprintf("slot '%s' not found", field))
+        }
+        if (!is.null(edit_method)) {
+            if (!is.null(primitive)) value$data <- data
+            return(do.call(editDetails, list(value, specs), envir = caller))
         }
         if (length(geometry)) {
             unit_fields <- if (is.null(primitive)) character() else switch(primitive,
