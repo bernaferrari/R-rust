@@ -129,6 +129,7 @@ pub const GNU_OP_STARTFOR: c_int = 11;
 pub const GNU_OP_STEPFOR: c_int = 12;
 pub const GNU_OP_ENDFOR: c_int = 13;
 pub const GNU_OP_SETVAR: c_int = 22;
+pub const GNU_OP_SETVAR2: c_int = 95;
 pub const GNU_OP_SQRT: c_int = 49;
 pub const GNU_OP_EXP: c_int = 50;
 pub const GNU_OP_BASEGUARD: c_int = 123;
@@ -267,7 +268,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_MAKEPROM | GNU_OP_UMINUS
             | GNU_OP_UPLUS | GNU_OP_ADD | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT
             | GNU_OP_EQ | GNU_OP_NE | GNU_OP_LT | GNU_OP_LE | GNU_OP_GE | GNU_OP_GT
-            | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_SETVAR => {
+            | GNU_OP_SQRT | GNU_OP_EXP | GNU_OP_SETVAR | GNU_OP_SETVAR2 => {
                 let index = code[pc];
                 if index < 0 {
                     return Err(format!(
@@ -484,7 +485,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 }
                 pending.push((next, depth - 1, loop_stack, call_stack.clone()));
             }
-            GNU_OP_SETVAR => {
+            GNU_OP_SETVAR | GNU_OP_SETVAR2 => {
                 if depth == 0 {
                     return Err(format!(
                         "GNU SETVAR at instruction {instruction_pc} has an empty stack"
@@ -1563,6 +1564,16 @@ mod tests {
 
         // ADD is well-framed, but remains source-fallback territory.
         assert_eq!(validate_gnu_adapter_stream(&[12, 66, 0, 1], 1), Ok(false));
+    }
+
+    #[test]
+    fn bounded_gnu_adapter_validates_superassignment_stack_and_pool() {
+        assert_eq!(
+            validate_gnu_adapter_stream(&[12, 20, 0, 95, 1, 1], 2),
+            Ok(true)
+        );
+        assert!(validate_gnu_adapter_stream(&[12, 95, 0, 1], 1).is_err());
+        assert!(validate_gnu_adapter_stream(&[12, 20, 0, 95, 2, 1], 2).is_err());
     }
 
     #[test]

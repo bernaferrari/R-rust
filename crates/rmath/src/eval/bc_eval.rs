@@ -675,7 +675,7 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         pc = target;
                     }
                 }
-                super::bytecode::GNU_OP_SETVAR => {
+                super::bytecode::GNU_OP_SETVAR | super::bytecode::GNU_OP_SETVAR2 => {
                     let index = words[pc] as usize;
                     pc += 1;
                     let symbol = VECTOR_ELT(consts, index as i64);
@@ -685,7 +685,13 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                         ));
                     }
                     let value = stack_top_checked(&stack, "GNU SETVAR");
-                    with_stack_rooted(&stack, value, || defineVar(symbol, value, rho));
+                    with_stack_rooted(&stack, value, || {
+                        if opcode == super::bytecode::GNU_OP_SETVAR2 {
+                            setVar(symbol, value, ENCLOS(rho));
+                        } else {
+                            defineVar(symbol, value, rho);
+                        }
+                    });
                     super::runtime::set_visible(FALSE);
                 }
                 super::bytecode::GNU_OP_STARTFOR => {
