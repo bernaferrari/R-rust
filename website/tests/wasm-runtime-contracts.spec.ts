@@ -1,6 +1,25 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU primitive calls and streaming file capture work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-builtin-calls/nested.rds", import.meta.url))
+  await page.goto("/console/")
+  const output = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const result = []
+      for (const code of [
+        `f<-unserialize(as.raw(c(${values})));identical(f(-4L),4L)`,
+        "v<-withVisible(capture.output(cat('hello'),file='capture.txt'));!v$visible&&is.null(v$value)&&identical(readLines('capture.txt',warn=FALSE),'hello')",
+        "invisible(tryCatch(capture.output({cat('partial');stop('boom')},file='partial.txt'),error=function(e)NULL));identical(readLines('partial.txt',warn=FALSE),'partial')",
+      ]) result.push((await runtime.run(code,"console")).output.trim())
+      return result
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(output).toEqual(Array(3).fill("[1] TRUE"))
+})
+
 test("literal GNU call arguments, QR transforms and selective capture work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-constant-args/pushconstarg.rds", import.meta.url))
   const stream = Buffer.alloc(40)
