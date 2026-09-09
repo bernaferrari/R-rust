@@ -212,6 +212,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             // Flow-through evaluation: the result's visibility is whatever
             // the wrapped expression / handler evaluation left behind.
             | "eval"
+            | "evalq"
             | "try"
             | "tryCatch"
             | "withCallingHandlers"

@@ -1162,10 +1162,11 @@ pub unsafe fn dgeqp3_(
             }
 
             // Normalize: v = x / u1, v[0] = 1
-            let mut v = vec![0.0f64; remaining];
+            // Reuse x: the reservation includes one Householder vector, not two.
+            let mut v = x;
             v[0] = 1.0;
             for i in 1..remaining {
-                v[i] = x[i] / u1;
+                v[i] /= u1;
             }
 
             // tau = -u1 / beta

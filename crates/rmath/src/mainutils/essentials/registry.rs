@@ -450,6 +450,7 @@ pub(super) const ALL_FNS: &[&str] = &[
     "upper.tri",
     "signif",
     "eval",
+    "evalq",
     "substitute",
     "quote",
     "parse",

@@ -647,6 +647,11 @@ pub(super) const UNEVALUATED_BUILTINS: &[UnevaluatedBuiltin] = &[
         restore_visibility_always: true,
     },
     UnevaluatedBuiltin {
+        name: "evalq",
+        handler: crate::eval::evalq::do_evalq,
+        restore_visibility_always: false,
+    },
+    UnevaluatedBuiltin {
         name: "quote",
         handler: crate::mainutils::essentials::do_quote,
         restore_visibility_always: true,
@@ -703,6 +708,10 @@ pub(crate) fn evaluated_builtin_handler(name: &str) -> Option<EvaluatedBuiltinHa
 }
 
 pub(super) const EVALUATED_BUILTINS: &[EvaluatedBuiltin] = &[
+    EvaluatedBuiltin {
+        name: "qr.Q",
+        handler: crate::mainutils::qr_q::do_qr_Q,
+    },
     EvaluatedBuiltin {
         name: "qr.R",
         handler: crate::mainutils::qr_extract::do_qr_R,

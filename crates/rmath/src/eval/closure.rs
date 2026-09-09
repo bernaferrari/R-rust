@@ -381,7 +381,7 @@ unsafe fn formal_tag_name(formal_tag: SEXP) -> Option<String> {
 /// a DOTSXP; with no `...` formal present, an "unused arguments" error is
 /// raised. The returned pairlist has one element per formal, in formal order,
 /// each holding the matched value or `R_MissingArg`.
-unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, String> {
+pub(super) unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, String> {
     unsafe {
         // Snapshot the supplied cells so we can index them alongside a
         // parallel `used` flag vector (upstream uses ARGUSED on the cells).

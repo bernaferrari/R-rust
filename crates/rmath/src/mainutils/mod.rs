@@ -72,6 +72,7 @@ pub mod printutils;
 pub mod printvector;
 pub mod qr;
 pub mod qr_extract;
+pub mod qr_q;
 pub mod qsort;
 pub mod r_format;
 pub mod radixsort;
