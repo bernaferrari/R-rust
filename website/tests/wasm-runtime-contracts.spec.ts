@@ -1,6 +1,27 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU superassignment, evalq, Q factors and output capture work in Wasm", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-assignment/setvar2.rds", import.meta.url))
+  await page.goto("/console/")
+  const results = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const output = []
+      for (const code of [
+        `f<-unserialize(as.raw(c(${values})));g<-unserialize(serialize(f,NULL));identical(g(41L),41L)&&identical(y,41L)`,
+        "local({y<-3;identical(evalq(x+y,list(x=2)),5)&&!withVisible(evalq(invisible(1)))$visible})",
+        "q<-qr(matrix(1:6,3,2));Q<-qr.Q(q,complete=TRUE);max(abs(crossprod(Q)-diag(3)))<1e-10&&max(abs(Q%*%qr.R(q,complete=TRUE)-matrix(1:6,3,2)))<1e-10",
+        "identical(capture.output(1,invisible(2),3),c('[1] 1','[1] 3'))",
+        "identical(capture.output({tryCatch(capture.output(stop('boom')),error=function(e)NULL);cat('after')}),'after')",
+      ]) output.push((await runtime.run(code,"console")).output.trim())
+      return output
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(results).toEqual(Array(5).fill("[1] TRUE"))
+})
+
 test("named GNU calls, real QR and method existence work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-named-calls/nested-reversed-tags.rds", import.meta.url))
   await page.goto("/console/")
