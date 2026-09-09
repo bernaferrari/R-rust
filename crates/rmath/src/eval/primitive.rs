@@ -210,6 +210,22 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "axis"
             | "plot.new"
             | "plot.window"
+            // Portable grid wrappers return invisible grobs or NULL just as
+            // their GNU closures do. Do not overwrite their result flag.
+            | "grid.newpage"
+            | "grid.draw"
+            | "grid.rect"
+            | "grid.circle"
+            | "grid.lines"
+            | "grid.segments"
+            | "grid.polygon"
+            | "grid.points"
+            | "grid.text"
+            | "pushViewport"
+            | "popViewport"
+            | "upViewport"
+            | "downViewport"
+            | "seekViewport"
     )
 }
 
