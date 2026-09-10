@@ -1,6 +1,26 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("match.call preserves S3 source expressions and matches formal arguments", async ({ page }) => {
+  await page.goto("/console/")
+  const output = await page.evaluate(async () => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const result = []
+      for (const code of [
+        "local({a<-alist(stop('unforced'),z=3);identical(a,list(quote(stop('unforced')),z=3))})",
+        "x<-1:3;y<-structure(x,class='a');!is.object(x)&&is.object(y)",
+        "local({f<-function(alpha,beta=2)match.call();identical(f(be=4,1),quote(f(alpha=1,beta=4)))})",
+        "identical(match.call(definition=function(alpha,beta=2){},call=quote(f(be=4,1))),quote(f(alpha=1,beta=4)))",
+        "local({h<-function(x,...)UseMethod('h');h.a<-function(x,...)match.call();identical(h(structure(1,class='a'),k=3),quote(h.a(x=structure(1,class='a'),k=3)))})",
+      ]) result.push((await runtime.run(code,"console")).output.trim())
+      return result
+    } finally { runtime.dispose() }
+  })
+  expect(output).toEqual(Array(5).fill("[1] TRUE"))
+})
+
 test("namespace bytecode, automatic file opening and sink routing match GNU", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-checkfun/base-abs.rds", import.meta.url))
   await page.goto("/console/")

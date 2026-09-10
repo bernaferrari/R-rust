@@ -105,6 +105,24 @@ pub(crate) unsafe fn initialize_base_bindings_in(inst: *mut RInstance, base_env:
 /// shortcuts so argument promises retain GNU R's lazy semantics.
 unsafe fn initialize_base_functions(base_env: SEXP) {
     unsafe {
+        // GNU base: alist <- function(...) as.list(sys.call())[-1L].
+        // Keeping a closure preserves unevaluated arguments and introspection.
+        let alist_formals = formals_from_specs(&[arg("...")]);
+        let _alist_formals_guard = super::protect::protect(alist_formals);
+        let alist_call = Rf_allocList(1);
+        let _alist_call_guard = super::protect::protect(alist_call);
+        (*alist_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        SETCAR(alist_call, Rf_install_in_current("sys.call"));
+        let alist_list = Rf_lang2(Rf_install_in_current("as.list"), alist_call);
+        let _alist_list_guard = super::protect::protect(alist_list);
+        let alist_index = Rf_ScalarInteger(-1);
+        let _alist_index_guard = super::protect::protect(alist_index);
+        let alist_body = Rf_lang3(Rf_install_in_current("["), alist_list, alist_index);
+        let _alist_body_guard = super::protect::protect(alist_body);
+        let alist = crate::mainutils::dstruct::mkCLOSXP(alist_formals, alist_body, base_env);
+        let _alist_guard = super::protect::protect(alist);
+        defineVar(Rf_install_in_current("alist"), alist, base_env);
+
         // `%||%` <- function(x, y) if (is.null(x)) y else x
         let formals = formals_from_specs(&[arg("x"), arg("y")]);
         let _formals_guard = super::protect::protect(formals);
