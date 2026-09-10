@@ -391,3 +391,19 @@ source commit pinned by `oracle/r-oracle.json`. Fixture-backed cases first load
 the listed RDS into `f`; other expressions run directly with `Rscript --vanilla`.
 Owned behavior gaps are tracked by `rport-tte8`, `rport-g41y`, and `rport-inie`.
 This discovery batch changes tests and evidence only, not runtime behavior.
+
+The subsequent repair batch fixes seven of those eight initial failures:
+compiled namespace calls now use the evaluator's primitive identity resolution;
+line-based I/O temporarily opens closed connections without deleting them; and
+sink routing respects capture boundaries, restores the previous sink, and tees
+split output. Two additional GNU sink-stack regressions also pass.
+
+The full repair validation reported 3,095 passing tests, one unresolved S3
+`match.call()` failure, and five ignored tests. The fresh Wasm contract suite
+passed all 22 tests. This is not a green full-workspace or full-parity claim.
+`gnu_red_match_call` additionally tests ordinary formal matching and explicit
+`definition`/`call` arguments against pinned GNU results; `rport-dat7` owns those
+contracts. The S3-specific source-call contract remains tracked by `rport-inie`.
+The separate `gnu_red_match_call` run confirms both added probes fail on the
+port while passing in GNU R. Together with the S3 case, three ordinary red
+call-metadata tests remain; none is ignored or converted to an expected panic.
