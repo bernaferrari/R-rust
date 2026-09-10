@@ -39,16 +39,148 @@ use crate::sexp::symbol::Rf_install;
 // Complete R runtime — match.call, sys.nframe, sys.function, on.exit
 // ---------------------------------------------------------------------------
 
-/// R's `match.call(definition, call, expand.dots)` — match call arguments.
-/// Simplified: returns the call as-is.
-pub unsafe fn do_match_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+/// Match the source call against closure formals without evaluating its arguments.
+pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // Return the call argument if provided, otherwise the current call
-        let call_arg = CAR(args);
-        if !call_arg.is_null() && call_arg != R_NilValue() {
-            return call_arg;
+        // Use the same matcher for this public wrapper and the inspected call.
+        let mut roots = Vec::new();
+        let mut controls = R_NilValue();
+        for name in [c"envir", c"expand.dots", c"call", c"definition"] {
+            controls = Rf_cons(R_MissingArg(), controls);
+            roots.push(protect(controls));
+            SETTAG(controls, Rf_install(name.as_ptr()));
         }
-        _call
+        let supplied = crate::mainutils::duplicate::shallow_duplicate(args);
+        let _supplied = protect(supplied);
+        let values = crate::mainutils::match_mod::matchArgs_RC(controls, supplied, call);
+        let _values = protect(values);
+        let definition_arg = CAR(values);
+        let call_arg = CAR(CDR(values));
+        let expand_arg = CAR(CDR(CDR(values)));
+        let envir_arg = CAR(CDR(CDR(CDR(values))));
+        let top = crate::sexp::context::R_GlobalContext();
+        let definition = if definition_arg == R_MissingArg() || definition_arg == R_NilValue() {
+            crate::eval::context::R_sysfunction(0, top)
+        } else {
+            definition_arg
+        };
+        let mut source = if call_arg == R_MissingArg() {
+            crate::eval::context::R_syscall(0, top)
+        } else {
+            call_arg
+        };
+        if TYPEOF(source) == SEXPTYPE::EXPRSXP && XLENGTH(source) > 0 {
+            source = VECTOR_ELT(source, 0);
+        }
+        if TYPEOF(definition) != SEXPTYPE::CLOSXP {
+            base_error("invalid 'definition' argument");
+        }
+        if TYPEOF(source) != SEXPTYPE::LANGSXP {
+            base_error("invalid 'call' argument");
+        }
+        let _definition = protect(definition);
+        let _source = protect(source);
+        let expand = if expand_arg == R_MissingArg() {
+            TRUE
+        } else {
+            crate::main::coerce::asLogical(expand_arg)
+        };
+        if expand == NA_LOGICAL {
+            base_error("invalid 'expand.dots' argument");
+        }
+        let mut envir = envir_arg;
+        if envir == R_MissingArg() {
+            envir = rho;
+            let mut context = top;
+            while !context.is_null() {
+                if (*context).cloenv == rho && !(*context).sysparent.is_null() {
+                    envir = (*context).sysparent;
+                    break;
+                }
+                context = (*context).nextcontext;
+            }
+        }
+        if TYPEOF(envir) != SEXPTYPE::ENVSXP {
+            base_error("'envir' must be an environment");
+        }
+        let _envir = protect(envir);
+        let dots_symbol = Rf_install(c"...".as_ptr());
+        let mut actuals = R_NilValue();
+        let mut tail = R_NilValue();
+        // Every allocated cell stays rooted until the final call is built.
+        let mut append = |head: &mut SEXP, tail: &mut SEXP, value: SEXP, tag: SEXP| {
+            let cell = Rf_cons(value, R_NilValue());
+            roots.push(protect(cell));
+            SETTAG(cell, tag);
+            if *head == R_NilValue() {
+                *head = cell;
+            } else {
+                SETCDR(*tail, cell);
+            }
+            *tail = cell;
+        };
+        let mut cursor = CDR(source);
+        while cursor != R_NilValue() && !cursor.is_null() {
+            if CAR(cursor) == dots_symbol {
+                let mut dots = crate::sexp::envir::R_findVar(dots_symbol, envir);
+                if dots != R_MissingArg() && dots != R_NilValue() {
+                    if TYPEOF(dots) != SEXPTYPE::DOTSXP {
+                        base_error("'...' used in an incorrect context");
+                    }
+                    let mut dot_index = 1usize;
+                    while dots != R_NilValue() && !dots.is_null() {
+                        let mut expr = CAR(dots);
+                        while TYPEOF(expr) == SEXPTYPE::PROMSXP {
+                            expr = crate::sexp::accessors::PRCODE(expr);
+                        }
+                        if TYPEOF(expr) == SEXPTYPE::SYMSXP || TYPEOF(expr) == SEXPTYPE::LANGSXP {
+                            let name =
+                                CString::new(format!("..{dot_index}")).expect("numeric dots name");
+                            expr = Rf_install(name.as_ptr());
+                        }
+                        append(&mut actuals, &mut tail, expr, TAG(dots));
+                        dot_index += 1;
+                        dots = CDR(dots);
+                    }
+                }
+            } else {
+                append(&mut actuals, &mut tail, CAR(cursor), TAG(cursor));
+            }
+            cursor = CDR(cursor);
+        }
+        let matched =
+            crate::mainutils::match_mod::matchArgs_RC(FORMALS(definition), actuals, source);
+        let _matched = protect(matched);
+        let mut result_args = R_NilValue();
+        let mut result_tail = R_NilValue();
+        let mut formal = FORMALS(definition);
+        let mut entry = matched;
+        while entry != R_NilValue() {
+            let value = CAR(entry);
+            if value != R_MissingArg() {
+                if TAG(formal) == dots_symbol && value != R_NilValue() {
+                    if expand != FALSE {
+                        let mut dot = value;
+                        while dot != R_NilValue() {
+                            append(&mut result_args, &mut result_tail, CAR(dot), TAG(dot));
+                            dot = CDR(dot);
+                        }
+                    } else {
+                        let list = crate::mainutils::duplicate::shallow_duplicate(value);
+                        let _list = protect(list);
+                        (*list).sxpinfo.set_type(SEXPTYPE::LISTSXP);
+                        append(&mut result_args, &mut result_tail, list, dots_symbol);
+                    }
+                } else if TAG(formal) != dots_symbol {
+                    append(&mut result_args, &mut result_tail, value, TAG(formal));
+                }
+            }
+            entry = CDR(entry);
+            formal = CDR(formal);
+        }
+        let result = Rf_cons(CAR(source), result_args);
+        (*result).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        result
     }
 }
 

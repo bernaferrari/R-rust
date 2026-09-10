@@ -727,6 +727,10 @@ pub unsafe fn do_structure(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             return R_NilValue();
         }
 
+        // Attributes belong to the returned value, not aliases or source literals.
+        x = crate::mainutils::duplicate::shallow_duplicate(x);
+        let _input_copy = protect(x);
+
         const SPECIALS: [&str; 5] = [".Dim", ".Dimnames", ".Names", ".Tsp", ".Label"];
         const REPLACEMENTS: [&str; 5] = ["dim", "dimnames", "names", "tsp", "levels"];
 
