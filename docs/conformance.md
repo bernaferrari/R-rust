@@ -403,7 +403,42 @@ The full repair validation reported 3,095 passing tests, one unresolved S3
 passed all 22 tests. This is not a green full-workspace or full-parity claim.
 `gnu_red_match_call` additionally tests ordinary formal matching and explicit
 `definition`/`call` arguments against pinned GNU results; `rport-dat7` owns those
-contracts. The S3-specific source-call contract remains tracked by `rport-inie`.
-The separate `gnu_red_match_call` run confirms both added probes fail on the
-port while passing in GNU R. Together with the S3 case, three ordinary red
-call-metadata tests remain; none is ignored or converted to an expected panic.
+contracts. The S3-specific source-call contract was tracked by `rport-inie`.
+At that checkpoint, the separate `gnu_red_match_call` run confirmed both added
+probes failed on the port while passing in GNU R. Together with the S3 case,
+three ordinary call-metadata tests were red; none was ignored or converted to
+an expected panic.
+
+
+The next repair batch addresses those three call-metadata failures. `structure()`
+now copies its input before adding attributes, preserving aliases and literal
+expressions shared with a call. `match.call()` uses formal argument matching,
+handles explicit definitions and calls, and retains forwarded dots without
+forcing argument expressions. Additional tests exercise ambiguity errors,
+formals after `...`, unexpanded pairlists, source preservation under GC stress,
+and S3 substitution. These are bounded behavioral contracts, not proof of every
+S3/S4 dispatch edge.
+
+This batch also installs the GNU base `alist()` closure, preserving expressions,
+symbols, missing arguments, and names without evaluating the supplied arguments.
+Native regressions cover these contracts, including exact function-body
+introspection. The freshly rebuilt Wasm runtime passes all
+23 browser contract tests, including the new structure, call-matching, and
+`alist()` checks. The broader compiler, serialization, graphics, isolation, and
+memory-accounting work remains tracked separately; full GNU parity is not yet
+established.
+
+
+A follow-up oracle probe exposed repeated literal `...` in an explicit
+`match.call()` source: the port duplicated forwarded arguments. The correction
+substitutes only the first occurrence, strips remaining dots from expanded
+calls, and preserves them in an unexpanded pairlist, matching GNU's `subDots`
+and `StripUnmatched` behavior (`rport-w2xr`).
+
+
+The full native checkpoint completed with **3,112 passed, zero failed, and five
+ignored tests**, including the formerly red call-metadata cases. This full run
+preceded the final repeated-dots and exact `alist()` body corrections; those
+follow-ups pass all **22 focused native language tests** and all **23 rebuilt
+browser contract tests**, rather than being counted as part of that earlier
+full run.

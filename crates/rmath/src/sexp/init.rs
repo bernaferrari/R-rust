@@ -115,7 +115,9 @@ unsafe fn initialize_base_functions(base_env: SEXP) {
         SETCAR(alist_call, Rf_install_in_current("sys.call"));
         let alist_list = Rf_lang2(Rf_install_in_current("as.list"), alist_call);
         let _alist_list_guard = super::protect::protect(alist_list);
-        let alist_index = Rf_ScalarInteger(-1);
+        let alist_one = Rf_ScalarInteger(1);
+        let _alist_one_guard = super::protect::protect(alist_one);
+        let alist_index = Rf_lang2(Rf_install_in_current("-"), alist_one);
         let _alist_index_guard = super::protect::protect(alist_index);
         let alist_body = Rf_lang3(Rf_install_in_current("["), alist_list, alist_index);
         let _alist_body_guard = super::protect::protect(alist_body);

@@ -1,3 +1,5 @@
+//! Expected TRUE results verified with GNU R oracle bac583951b728e97b9786804d3b4081f0fe18df5.
+//! Beads: rport-bt3e / rport-rp3v.
 use r_embed::RSession;
 
 #[test]
@@ -40,4 +42,11 @@ fn structure_does_not_change_s3_call_metadata_or_argument_class() {
             .trim(),
         "[1] TRUE"
     );
+}
+
+#[test]
+fn s3_method_preserves_substitute_and_match_call_source() {
+    let mut session = RSession::new().unwrap();
+    let got = session.eval("local({h<-function(x,...)UseMethod('h');h.a<-function(x,...)list(substitute(x),substitute(list(...)),match.call());identical(h(structure(1,class='a'),k=3),list(quote(structure(1,class='a')),quote(list(k=3)),quote(h.a(x=structure(1,class='a'),k=3))))})").unwrap();
+    assert_eq!(got.trim(), "[1] TRUE");
 }

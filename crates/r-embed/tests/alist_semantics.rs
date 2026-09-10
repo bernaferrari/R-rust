@@ -31,3 +31,15 @@ fn alist_is_a_closure_and_preserves_forwarded_dots_syntax() {
     let got = s.eval("local({f<-function(x,...)alist(x,...); a<-f(stop('unforced'),z=2); identical(typeof(alist),'closure') && identical(a,list(quote(x),quote(...)))})").unwrap();
     assert_eq!(got.trim(), "[1] TRUE");
 }
+
+#[test]
+fn alist_body_matches_gnu_source() {
+    let mut session = RSession::new().unwrap();
+    assert_eq!(
+        session
+            .eval("identical(body(alist),quote(as.list(sys.call())[-1L]))")
+            .unwrap()
+            .trim(),
+        "[1] TRUE"
+    );
+}

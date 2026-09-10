@@ -1,3 +1,5 @@
+//! Expected TRUE results verified with GNU R oracle bac583951b728e97b9786804d3b4081f0fe18df5.
+//! Beads: rport-dat7 / rport-9upy.
 use r_embed::RSession;
 
 #[test]
@@ -74,4 +76,14 @@ fn match_call_preserves_source_under_gctorture() {
 fn match_call_forwarded_dots_retain_lazy_references() {
     let mut s = RSession::new().unwrap();
     assert_eq!(s.eval("f<-function(...)match.call();g<-function(...)f(...);identical(g(x=1+2,y=4),quote(f(x=..1,y=4)))").unwrap().trim(), "[1] TRUE");
+}
+
+// rport-w2xr: GNU subDots substitutes only the first literal dots occurrence.
+#[test]
+fn repeated_literal_dots_expand_once_and_preserve_unexpanded_pairlist() {
+    let mut session = RSession::new().unwrap();
+    let got = session.eval("local({f<-function(...)match.call(call=quote(f(...,...)));g<-function(...)f(...);identical(g(1,2),quote(f(1,2)))})").unwrap();
+    assert_eq!(got.trim(), "[1] TRUE");
+    let got = session.eval("local({f<-function(...)match.call(call=quote(f(...,...)),expand.dots=FALSE);g<-function(...)f(...);mc<-g(1,2);identical(as.list(mc[[2]]),list(1,2,quote(...)))})").unwrap();
+    assert_eq!(got.trim(), "[1] TRUE");
 }

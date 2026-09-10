@@ -9,6 +9,8 @@ test("match.call preserves S3 source expressions and matches formal arguments", 
     try {
       const result = []
       for (const code of [
+        "identical(body(alist),quote(as.list(sys.call())[-1L]))",
+        "local({f<-function(...)match.call(call=quote(f(...,...)));g<-function(...)f(...);identical(g(1,2),quote(f(1,2)))})",
         "local({a<-alist(stop('unforced'),z=3);identical(a,list(quote(stop('unforced')),z=3))})",
         "x<-1:3;y<-structure(x,class='a');!is.object(x)&&is.object(y)",
         "local({f<-function(alpha,beta=2)match.call();identical(f(be=4,1),quote(f(alpha=1,beta=4)))})",
@@ -18,7 +20,7 @@ test("match.call preserves S3 source expressions and matches formal arguments", 
       return result
     } finally { runtime.dispose() }
   })
-  expect(output).toEqual(Array(5).fill("[1] TRUE"))
+  expect(output).toEqual(Array(7).fill("[1] TRUE"))
 })
 
 test("namespace bytecode, automatic file opening and sink routing match GNU", async ({ page }) => {

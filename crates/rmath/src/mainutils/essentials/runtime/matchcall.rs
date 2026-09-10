@@ -120,8 +120,12 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             *tail = cell;
         };
         let mut cursor = CDR(source);
+        // GNU substitutes the first literal dots occurrence; StripUnmatched
+        // later drops remaining dots only from the expanded argument list.
+        let mut substituted_dots = false;
         while cursor != R_NilValue() && !cursor.is_null() {
-            if CAR(cursor) == dots_symbol {
+            if CAR(cursor) == dots_symbol && !substituted_dots {
+                substituted_dots = true;
                 let mut dots = crate::sexp::envir::R_findVar(dots_symbol, envir);
                 if dots != R_MissingArg() && dots != R_NilValue() {
                     if TYPEOF(dots) != SEXPTYPE::DOTSXP {
@@ -162,7 +166,9 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                     if expand != FALSE {
                         let mut dot = value;
                         while dot != R_NilValue() {
-                            append(&mut result_args, &mut result_tail, CAR(dot), TAG(dot));
+                            if CAR(dot) != dots_symbol {
+                                append(&mut result_args, &mut result_tail, CAR(dot), TAG(dot));
+                            }
                             dot = CDR(dot);
                         }
                     } else {
@@ -171,7 +177,7 @@ pub unsafe fn do_match_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
                         (*list).sxpinfo.set_type(SEXPTYPE::LISTSXP);
                         append(&mut result_args, &mut result_tail, list, dots_symbol);
                     }
-                } else if TAG(formal) != dots_symbol {
+                } else if TAG(formal) != dots_symbol && value != dots_symbol {
                     append(&mut result_args, &mut result_tail, value, TAG(formal));
                 }
             }
