@@ -26,6 +26,7 @@ struct CaptureFrame {
     truncated: bool,
     used_bytes: usize,
     split_stdout: bool,
+    sink_depth_at_start: usize,
     connection: Option<(*mut RInstance, i32)>,
 }
 
@@ -139,17 +140,27 @@ impl OutputCaptureState {
         msg: &str,
         instance: Option<*mut RInstance>,
     ) -> bool {
+        let mut pending_depth = instance.map_or(0, |instance| unsafe {
+            (*instance).connections_state.sink.sink_number
+        });
         for frame in std::iter::once(&mut self.current).chain(self.stack.iter_mut().rev()) {
-            // Explicit capture layers override older sinks. At the embedding
-            // layer, forward to this exact session's sink (never an ambient one).
-            if matches!(stream, OutputStream::Stdout)
-                && frame.stdout.is_some()
-                && frame.stderr.is_some()
-                && instance.is_some_and(|instance| {
-                    crate::mainutils::connections::write_output_sink_in(instance, msg.as_bytes())
-                })
-            {
-                return true;
+            if matches!(stream, OutputStream::Stdout) && frame.stdout.is_some() {
+                let floor = if frame.stderr.is_some() {
+                    0
+                } else {
+                    frame.sink_depth_at_start.min(pending_depth)
+                };
+                if let Some(instance) = instance {
+                    if crate::mainutils::connections::write_output_sinks_between(
+                        instance,
+                        msg.as_bytes(),
+                        floor,
+                        pending_depth,
+                    ) {
+                        return true;
+                    }
+                }
+                pending_depth = floor;
             }
             if frame.write(stream, msg, self.max_bytes) {
                 return true;
@@ -244,10 +255,10 @@ impl OutputCaptureGuard {
     pub(crate) fn start_with_options(stdout: bool, stderr: bool, split: bool) -> Self {
         let instance = super::instance::with_required_current_instance(|instance| instance);
         unsafe {
-            (*instance)
-                .output_capture
-                .borrow_mut()
-                .start_with_options(stdout, stderr, split);
+            let depth = (*instance).connections_state.sink.sink_number;
+            let mut capture = (*instance).output_capture.borrow_mut();
+            capture.start_with_options(stdout, stderr, split);
+            capture.current.sink_depth_at_start = depth;
         }
         Self {
             instance,

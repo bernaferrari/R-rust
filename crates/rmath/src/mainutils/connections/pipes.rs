@@ -425,7 +425,7 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                 if sink.sink_number > 0 {
                     sink.sink_number -= 1;
                 }
-                sink.output_con = 1;
+                sink.output_con = sink.sink_cons[sink.sink_number];
             }
         } else {
             // Error/message sink

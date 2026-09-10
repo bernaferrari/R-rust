@@ -75,6 +75,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 .unwrap_or_else(|e| r_error(&format!("cannot open file '{}': {}", path, e)));
             let lines = nul_normalized_lines(&contents, n, skip_nul);
             let ans = Rf_allocVector(SEXPTYPE::STRSXP, lines.len() as c_int);
+            let _ans_root = protect(ans);
             if !ans.is_null() {
                 for (idx, line) in lines.iter().enumerate() {
                     let c_line = CString::new(line.as_str()).unwrap_or_default();
@@ -89,6 +90,14 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             r_error("'con' is not a connection");
         }
         let i = checked_connection_index(as_integer(scon));
+        let temporarily_open = {
+            let table = connection_table();
+            table[i].as_ref().is_some_and(|conn| !conn.isopen)
+        };
+        if temporarily_open {
+            auto_open_connection(scon, "r");
+        }
+        let mut auto_guard = temporarily_open.then(|| AutoCloseGuard::new(scon));
 
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
@@ -223,6 +232,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
+        drop(table);
         // Build result STRSXP
         let nlines = lines.len() as c_int;
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
@@ -234,6 +244,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             }
         }
 
+        if let Some(guard) = auto_guard.as_mut() {
+            guard.close();
+        }
         ans
     }
 }
@@ -263,6 +276,14 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         let text_len = LENGTH(text) as R_xlen_t;
 
         let i = checked_connection_index(as_integer(scon));
+        let temporarily_open = {
+            let table = connection_table();
+            table[i].as_ref().is_some_and(|conn| !conn.isopen)
+        };
+        if temporarily_open {
+            auto_open_connection(scon, "w");
+        }
+        let mut auto_guard = temporarily_open.then(|| AutoCloseGuard::new(scon));
         let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
@@ -348,6 +369,58 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
             }
         }
 
+        drop(table);
+        if let Some(guard) = auto_guard.as_mut() {
+            guard.close();
+        }
         R_NilValue()
+    }
+}
+
+unsafe fn auto_open_connection(con: SEXP, mode: &str) {
+    unsafe {
+        let mode = Rf_mkString(CString::new(mode).unwrap_or_default().as_ptr());
+        let _mode_root = protect(mode);
+        let inner = Rf_cons(mode, R_NilValue());
+        let _inner_root = protect(inner);
+        let call_args = Rf_cons(con, inner);
+        let _args_root = protect(call_args);
+        super::file::do_open(ptr::null_mut(), ptr::null_mut(), call_args, R_NilValue());
+    }
+}
+
+struct AutoCloseGuard {
+    owner: *mut RInstance,
+    index: usize,
+    active: bool,
+}
+
+impl AutoCloseGuard {
+    fn new(con: SEXP) -> Self {
+        let owner = with_required_current_instance(|instance| instance);
+        let index = unsafe { checked_connection_index(as_integer(con)) };
+        Self {
+            owner,
+            index,
+            active: true,
+        }
+    }
+    unsafe fn close(&mut self) {
+        if std::mem::replace(&mut self.active, false) {
+            unsafe {
+                if let Some(conn) = (&mut (*self.owner).connections_state.table)
+                    .get_mut(self.index)
+                    .and_then(Option::as_mut)
+                {
+                    super::file::close_connection_inner(conn);
+                }
+            }
+        }
+    }
+}
+
+impl Drop for AutoCloseGuard {
+    fn drop(&mut self) {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { self.close() }));
     }
 }

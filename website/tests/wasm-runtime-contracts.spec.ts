@@ -1,6 +1,26 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("namespace bytecode, automatic file opening and sink routing match GNU", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-checkfun/base-abs.rds", import.meta.url))
+  await page.goto("/console/")
+  const output = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      const result = []
+      for (const code of [
+        `f<-unserialize(as.raw(c(${values})));identical(f(c(-2L,3L)),c(2L,3L))`,
+        "con<-file('auto.txt');writeLines('hello',con);!isOpen(con)&&identical(readLines(con),'hello')&&!isOpen(con)",
+        "local({a<-'outer.txt';b<-'inner.txt';sink(a);sink(b);cat('b');sink();cat('a');sink();identical(readLines(a,warn=FALSE),'a')&&identical(readLines(b,warn=FALSE),'b')})",
+        "local({p<-'split.txt';v<-capture.output({sink(p,split=TRUE);cat('both');sink()});identical(v,'both')&&identical(readLines(p,warn=FALSE),'both')})",
+      ]) result.push((await runtime.run(code,"console")).output.trim())
+      return result
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(output).toEqual(Array(4).fill("[1] TRUE"))
+})
+
 test("GNU computed calls and deferred capture connections work in Wasm", async ({ page }) => {
   const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-checkfun/callable-argument.rds", import.meta.url))
   await page.goto("/console/")

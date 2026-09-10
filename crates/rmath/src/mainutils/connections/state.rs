@@ -159,9 +159,9 @@ pub struct SinkState {
 impl Default for SinkState {
     fn default() -> Self {
         SinkState {
-            sink_cons: Vec::new(),
-            sink_close: Vec::new(),
-            sink_split: Vec::new(),
+            sink_cons: vec![1],
+            sink_close: vec![false],
+            sink_split: vec![false],
             sink_number: 0,
             output_con: 1,
             error_con: 2,
@@ -259,36 +259,46 @@ pub(crate) fn write_output_sink(bytes: &[u8]) -> bool {
 }
 // P1/P2: raw *mut — reenters via init_connections_table/r_error/connection I/O; field borrows stay local.
 pub(crate) fn write_output_sink_in(instance: *mut RInstance, bytes: &[u8]) -> bool {
-    unsafe {
-        let sink = &(*instance).connections_state.sink;
-        let target = (sink.sink_number > 0 && sink.output_con != 1).then_some(sink.output_con);
-        let Some(connection) = target else {
-            return false;
-        };
+    let depth = unsafe { (*instance).connections_state.sink.sink_number };
+    write_output_sinks_between(instance, bytes, 0, depth)
+}
 
-        if connection < 0 {
-            r_error("invalid connection");
+/// Write newest-to-oldest down to a capture boundary. Split sinks continue.
+pub(crate) fn write_output_sinks_between(
+    instance: *mut RInstance,
+    bytes: &[u8],
+    floor: usize,
+    ceiling: usize,
+) -> bool {
+    unsafe {
+        for depth in (floor + 1..=ceiling).rev() {
+            let (connection, split) = {
+                let sink = &(*instance).connections_state.sink;
+                let Some(&connection) = sink.sink_cons.get(depth) else {
+                    r_error("invalid sink stack");
+                };
+                (connection, sink.sink_split[depth])
+            };
+            let table = &mut (*instance).connections_state.table;
+            let Some(conn) = usize::try_from(connection)
+                .ok()
+                .and_then(|index| table.get_mut(index))
+                .and_then(Option::as_mut)
+            else {
+                r_error("invalid connection");
+            };
+            if !conn.isopen {
+                r_error("connection is not open");
+            }
+            if !conn.canwrite {
+                r_error("cannot write to this connection");
+            }
+            write_bytes_to_conn(conn, bytes);
+            if !split {
+                return true;
+            }
         }
-        let index = connection as usize;
-        // NLL ends the `sink` borrow here; no ambient write between read and use.
-        if (*instance).connections_state.table.is_empty() {
-            init_connections_table();
-        }
-        let table = &mut (*instance).connections_state.table;
-        if index >= table.len() {
-            r_error("invalid connection");
-        }
-        let Some(conn) = table[index].as_mut() else {
-            r_error("invalid connection");
-        };
-        if !conn.isopen {
-            r_error("connection is not open");
-        }
-        if !conn.canwrite {
-            r_error("cannot write to this connection");
-        }
-        write_bytes_to_conn(conn, bytes);
-        true
+        false
     }
 }
 
