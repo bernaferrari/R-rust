@@ -358,3 +358,36 @@ valid GNU instruction streams without changing their retained source: SQRT to
 EXP, and a loop's LT to GT. Both mutated closures were also executed in GNU R,
 returning `54.59815` (rounded to six decimal places) and `-1`, respectively.
 The unmodified compiled `abs` fixture passes in both runtimes as a control.
+
+### Differential discovery probes
+
+The `gnu_red_computed_calls`, `gnu_red_connection_semantics`, and
+`gnu_red_language_contracts` integration targets contain normal assertions against
+GNU R, including unresolved differences. They deliberately fail while those
+contracts are missing; they are neither ignored nor marked `should_panic`.
+Consequently the full workspace suite is currently red.
+
+Run all three without stopping after the first failing target:
+
+```sh
+scripts/cargo_dev.sh test -p r-embed \
+  --test gnu_red_computed_calls \
+  --test gnu_red_connection_semantics \
+  --test gnu_red_language_contracts \
+  --no-fail-fast -- --test-threads=4
+```
+
+The initial discovery run found **8 failing probes and 5 passing controls**:
+four compiled namespace-call cases, nested sink routing, automatic opening by
+`readLines()` and `writeLines()`, and S3 method `match.call()` differ from GNU.
+The four namespace failures exercise one known failure family, not four
+independently established root causes. Computed callable arguments, S3 class
+order and named arguments, and shared-environment serialization match the tested
+GNU cases.
+
+Exact R expressions and reference stdout are recorded in
+`crates/r-embed/tests/fixtures/gnu-differential-wave9/oracle.json`, using the
+source commit pinned by `oracle/r-oracle.json`. Fixture-backed cases first load
+the listed RDS into `f`; other expressions run directly with `Rscript --vanilla`.
+Owned behavior gaps are tracked by `rport-tte8`, `rport-g41y`, and `rport-inie`.
+This discovery batch changes tests and evidence only, not runtime behavior.
