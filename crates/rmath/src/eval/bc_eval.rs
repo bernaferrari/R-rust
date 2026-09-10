@@ -705,10 +705,11 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                                 )
                             }
                             kind if kind == SEXPTYPE::BUILTINSXP => {
-                                let name = super::primitive::PRIMNAME(fun);
                                 let raw_args = if !builtin_only
-                                    && super::builtin::unevaluated_builtin_handler(name).is_some()
-                                {
+                                    && super::apply::builtin_requires_raw_args(
+                                        Sexp::from_raw_unchecked(fun),
+                                        call.clone(),
+                                    ) {
                                     CDR(call_expr)
                                 } else {
                                     args

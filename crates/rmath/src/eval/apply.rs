@@ -118,6 +118,18 @@ fn namespace_lookup_name(call: Sexp<'_>) -> Option<String> {
         Some(name.to_string())
     }
 }
+
+/// Whether a builtin must receive the source call's unevaluated arguments.
+///
+/// Bytecode callers need the same name resolution as the normal application
+/// path. In particular, a primitive may not expose a usable `PRIMNAME`, while
+/// its call head still identifies namespace operators such as `::`.
+pub(crate) fn builtin_requires_raw_args(fun: Sexp<'_>, call: Sexp<'_>) -> bool {
+    let primitive = PrimitiveDescriptor::from_sexp(fun.clone());
+    let op_name = primitive_call_name(primitive, fun, call);
+    super::builtin::unevaluated_builtin_handler(&op_name).is_some()
+}
+
 /// Safe special form application.
 pub(crate) fn apply_special_safe<'a>(
     fun: Sexp<'a>,
