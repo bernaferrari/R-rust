@@ -132,6 +132,7 @@ pub const GNU_OP_CALL: c_int = 38;
 pub const GNU_OP_PUSHARG: c_int = 33;
 pub const GNU_OP_CALLBUILTIN: c_int = 39;
 pub const GNU_OP_POP: c_int = 4;
+pub const GNU_OP_DUP: c_int = 5;
 pub const GNU_OP_GOTO: c_int = 2;
 pub const GNU_OP_STARTFOR: c_int = 11;
 pub const GNU_OP_STEPFOR: c_int = 12;
@@ -273,7 +274,7 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
         match opcode {
             GNU_OP_RETURN | GNU_OP_INVISIBLE | GNU_OP_LDNULL | GNU_OP_LDTRUE | GNU_OP_LDFALSE
             | GNU_OP_POP | GNU_OP_ENDFOR | GNU_OP_PUSHNULLARG | GNU_OP_PUSHTRUEARG
-            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN => {}
+            | GNU_OP_PUSHFALSEARG | GNU_OP_PUSHARG | GNU_OP_CHECKFUN | GNU_OP_DUP => {}
             GNU_OP_LDCONST | GNU_OP_GETVAR | GNU_OP_GETFUN | GNU_OP_GETBUILTIN
             | GNU_OP_MAKEPROM | GNU_OP_PUSHCONSTARG | GNU_OP_UMINUS | GNU_OP_UPLUS | GNU_OP_ADD
             | GNU_OP_SUB | GNU_OP_MUL | GNU_OP_DIV | GNU_OP_EXPT | GNU_OP_EQ | GNU_OP_NE
@@ -495,6 +496,17 @@ pub fn validate_gnu_adapter_stream(code: &[c_int], constant_count: usize) -> Res
                 loop_stack,
                 call_stack.clone(),
             )),
+            GNU_OP_DUP => {
+                if depth == 0 {
+                    return Err(format!(
+                        "GNU DUP at instruction {instruction_pc} has an empty stack"
+                    ));
+                }
+                if depth >= 64 {
+                    return Err("GNU bytecode exceeds the bounded adapter stack limit of 64".into());
+                }
+                pending.push((next, depth + 1, loop_stack, call_stack.clone()));
+            }
             GNU_OP_POP => {
                 if depth == 0 {
                     return Err(format!(
@@ -1755,5 +1767,23 @@ mod tests {
         // an actual compiler-produced fixture, not the private dialect.
         let fixture = [12, 20, 1, 3, 0, 13, 20, 1, 16, 2, 44, 3, 1, 16, 4, 17];
         assert!(validate_gnu_bytecode_stream(&fixture).is_ok());
+    }
+
+    #[test]
+    fn gnu_dup_validator_rejects_underflow_and_stack_growth() {
+        assert!(
+            validate_gnu_adapter_stream(&[12, 5, 1], 0)
+                .unwrap_err()
+                .contains("empty stack")
+        );
+        let mut words = vec![12, 17];
+        words.extend(std::iter::repeat_n(5, 64));
+        words.push(1);
+        assert!(
+            validate_gnu_adapter_stream(&words, 0)
+                .unwrap_err()
+                .contains("stack limit")
+        );
+        assert!(validate_gnu_adapter_stream(&[12, 17, 5, 4, 1], 0).unwrap());
     }
 }

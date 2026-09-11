@@ -1,6 +1,24 @@
 import { test, expect } from "@playwright/test"
 import { readFileSync } from "node:fs"
 
+test("GNU DUP executes its stream in the browser", async ({ page }) => {
+  const bytes = readFileSync(new URL("../../crates/r-embed/tests/fixtures/gnu-bytecode-dup/duplicate.rds", import.meta.url))
+  const stream = Buffer.alloc(28)
+  ;[12,20,1,5,44,0,1].forEach((word,index) => stream.writeInt32BE(word,index*4))
+  const offset = bytes.indexOf(stream)
+  expect(offset).toBeGreaterThan(-1)
+  bytes.writeInt32BE(46,offset+16)
+  await page.goto("/console/")
+  const output = await page.evaluate(async (values) => {
+    const { RRuntime } = await import("/src/runtime/r-runtime.ts")
+    const runtime = new RRuntime()
+    try {
+      return (await runtime.run(`f<-unserialize(as.raw(c(${values})));identical(f(3L),9L)`,"console")).output.trim()
+    } finally { runtime.dispose() }
+  }, Array.from(bytes).join(","))
+  expect(output).toBe("[1] TRUE")
+})
+
 test("match.call preserves S3 source expressions and matches formal arguments", async ({ page }) => {
   await page.goto("/console/")
   const output = await page.evaluate(async () => {

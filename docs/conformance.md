@@ -442,3 +442,12 @@ preceded the final repeated-dots and exact `alist()` body corrections; those
 follow-ups pass all **22 focused native language tests** and all **23 rebuilt
 browser contract tests**, rather than being counted as part of that earlier
 full run.
+
+
+The next bytecode batch adds GNU `DUP` (opcode 5) execution. A pinned-GNU
+instruction fixture checks integer/NA results and method dispatch during GC;
+mutated streams distinguish execution from retained-source fallback and check
+invisibility. The validator rejects an empty stack and growth beyond the
+adapter's 64-value stack bound. Seven focused native bytecode tests and the
+separate stack-validator test pass; the rebuilt Wasm suite passes 24 contracts.
+These checks cover this opcode, not the full GNU instruction set.

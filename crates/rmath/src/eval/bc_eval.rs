@@ -452,6 +452,10 @@ unsafe fn eval_gnu_adapter(body: SEXP, rho: SEXP) -> SEXP {
                 super::bytecode::GNU_OP_INVISIBLE => {
                     super::runtime::set_visible(FALSE);
                 }
+                super::bytecode::GNU_OP_DUP => {
+                    let value = stack_top_checked(&stack, "GNU DUP");
+                    stack.push(value);
+                }
                 super::bytecode::GNU_OP_POP => {
                     stack_pop_checked(&mut stack, "GNU POP");
                 }
