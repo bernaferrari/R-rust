@@ -12,8 +12,8 @@ in a browser, a desktop application, or a mobile app.
 [Run the website](website/README.md) · [Embed R](crates/r-embed) · [Compatibility](docs/conformance.md) · [Contribute](#build-something-with-us)
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="website/public/examples/loess-dark.png">
-  <img src="website/public/examples/loess.png" alt="A LOESS curve revealing the signal in noisy observations, rendered by Rove" width="760">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bernaferrari/R-rust/main/website/public/examples/loess-dark.png">
+  <img src="https://raw.githubusercontent.com/bernaferrari/R-rust/main/website/public/examples/loess.png" alt="A LOESS curve revealing the signal in noisy observations, rendered by Rove" width="760">
 </picture>
 
 *80 observations. One good hunch. Real R code, running on a Rust runtime.*
@@ -41,8 +41,8 @@ The website has **18 editable examples**: statistics, simulations, correlation m
 
 <table>
 <tr>
-<td width="50%"><img src="website/public/examples/sunflower.png" alt="Simulated sample means approaching a bell curve"><br><strong>Watch averages settle.</strong> See the central limit theorem emerge from simulation.</td>
-<td width="50%"><img src="website/public/examples/grid.png" alt="A calendar composed with R grid viewports"><br><strong>Find your rhythm.</strong> Build a calendar from small moments.</td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bernaferrari/R-rust/main/website/public/examples/sunflower-dark.png"><img src="https://raw.githubusercontent.com/bernaferrari/R-rust/main/website/public/examples/sunflower.png" alt="Simulated sample means approaching a bell curve"></picture><br><strong>Watch averages settle.</strong> See the central limit theorem emerge from simulation.</td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/bernaferrari/R-rust/main/website/public/examples/grid-dark.png"><img src="https://raw.githubusercontent.com/bernaferrari/R-rust/main/website/public/examples/grid.png" alt="A calendar composed with R grid viewports"></picture><br><strong>Find your rhythm.</strong> Build a calendar from small moments.</td>
 </tr>
 </table>
 
@@ -57,7 +57,7 @@ The website has **18 editable examples**: statistics, simulations, correlation m
 | **Graphics** | Portable CPU rendering and optional GPU canvas/window presentation APIs | [Vello GPU](crates/r-device-vello-gpu/README.md) |
 | **Numerics** | Distribution and special-function routines without the interpreter | [Standalone nmath](crates/nmath) |
 
-The AI demo supports a WebGPU browser model and an optional Ollama endpoint. You review the generated code before opening it in the playground. Model weights download only when requested; they are separate from the R runtime.
+The local AI page connects to Ollama on your computer. Review the generated R code before opening it in the playground; the model runs separately from the R runtime.
 
 ## Try it locally
 
